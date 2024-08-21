@@ -1,0 +1,156 @@
+# ========== Poetry Settings ==========
+
+[tool.poetry]
+name = "rfsocinterface"
+version = "0.1.0"
+description = "A user-friendly GUI for configuring and monitoring MKID readout software"
+authors = ["Nia McNichols <niamcnichols@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+numpy = "^2.1.0"
+scipy = "^1.14.1"
+matplotlib = "^3.9.2"
+PySide6 = "^6.7.2"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.6.1"
+mypy = "^1.11.1"
+pytest = "^8.3.2"
+pytest-cov = "^5.0.0"
+pytest-xdist = "^3.6.1"
+pytest-mock = "^3.14.0"
+coverage = {extras = ["toml"], version = "^7.6.1"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# ========== Ruff Settings ==========
+
+[tool.ruff]
+include = [
+    "rfsocinterface/*",
+    "tests/*",
+]
+fix = true
+show-fixes = true
+
+# Same as Black.
+line-length = 88
+
+indent-width = 4
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "preserve"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP", "BLE", "FBT", "B", "A", "COM",
+    "C4", "ISC", "ICN", "PIE", "T20", "PT", "Q", "RSE", "RET", "SLF", "SIM", "TID",
+    "ARG", "ERA", "PL", "TRY", "NPY", "PERF", "FURB", "RUF"]
+ignore = [
+    "ANN",  # Type hints / annotations; handled by mypy
+    "COM812",  # "Trailing Comma Missing"
+    "TRY003",  # "Avoid specifying long messages outside the exception class"
+    "PLR0913",  # Too many arguments to function call
+    "FBT001",  # Boolean-typed positional argument in function definitions
+    "FBT002",  # Boolean default positional argument in function definitions
+    "FBT003",  # Boolean positional value in function call,
+]
+
+task-tags = [
+    "TODO",
+    "NOTE",
+    "FIXME",
+    "XXX"
+]
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.pycodestyle]
+ignore-overlong-task-comments = true
+
+[tool.ruff.lint.flake8-pytest-style]
+parametrize-names-type = "csv"
+parametrize-values-type = "list"
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "single"
+
+[tool.ruff.lint.flake8-unused-arguments]
+ignore-variadic-names = true
+
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = ["setData", "headerData", "rowCount", "columnCount"]
+
+[tool.ruff.lint.pydocstyle]
+# Use Google-style docstrings.
+convention = "google"
+
+property-decorators = ["abc.abstractproperty"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+# ========== Pytest Settings ==========
+
+[tool.pytest.ini_options]
+markers = [
+    "smoke: these tests should always run to check for regressions quickly",
+]
+
+testpaths = ["tests"]
+
+# ========== Coverage Settings ==========
+
+[tool.coverage.run]
+branch = true
+source = ["rfsocinterface"]
+omit = [
+    "*tests*",
+]
+
+[tool.coverage.report]
+# Regexes for lines to exclude from consideration
+exclude_also = [
+    # Don't complain about missing debug-only code:
+    "def __repr__",
+    "if self\\.debug",
+
+    # Don't complain if tests don't hit defensive assertion code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+
+    # Don't complain if non-runnable code isn't run:
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "__str__",
+    "loggig.debug",
+    "logging.info",
+    "logging.warning",
+    "pass",
+
+    # Don't complain about abstract methods, they aren't run:
+    "@(abc\\.)?abstractmethod",
+    ]
+
+ignore_errors = true
+show_missing = true
+fail_under = 70
+
+# ========== MyPy Settings ==========
+
+[tool.mypy]
+files = "rfsocinterface"
+exclude = [
+    'ui_.*\.py$',  # Ignore files starting with 'ui_'
+]
+show_error_codes = true
+show_error_code_links = true
