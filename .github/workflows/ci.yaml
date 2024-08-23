@@ -32,6 +32,9 @@ jobs:
 
       - name: Install the project dependencies
         run: poetry install
+    
+      - name: Make UI files
+        run: make uic
 
       - name: Run Test Suite
         run: poetry run pytest
