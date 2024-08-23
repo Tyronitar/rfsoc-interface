@@ -11,21 +11,26 @@
 from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
     QMetaObject, QObject, QPoint, QRect,
     QSize, QTime, QUrl, Qt)
-from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
-    QFont, QFontDatabase, QGradient, QIcon,
-    QImage, QKeySequence, QLinearGradient, QPainter,
-    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
+    QCursor, QFont, QFontDatabase, QGradient,
+    QIcon, QImage, QKeySequence, QLinearGradient,
+    QPainter, QPalette, QPixmap, QRadialGradient,
+    QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QCheckBox,
     QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QMainWindow, QMenuBar,
-    QPushButton, QRadioButton, QSizePolicy, QSpacerItem,
-    QStatusBar, QVBoxLayout, QWidget)
+    QLabel, QLineEdit, QMainWindow, QMenu,
+    QMenuBar, QPushButton, QRadioButton, QSizePolicy,
+    QSpacerItem, QStatusBar, QVBoxLayout, QWidget)
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
         MainWindow.resize(800, 600)
+        self.actionWhat_s_This = QAction(MainWindow)
+        self.actionWhat_s_This.setObjectName(u"actionWhat_s_This")
+        icon = QIcon(QIcon.fromTheme(QIcon.ThemeIcon.HelpFaq))
+        self.actionWhat_s_This.setIcon(icon)
         self.centralwidget = QWidget(MainWindow)
         self.centralwidget.setObjectName(u"centralwidget")
         self.verticalLayout = QVBoxLayout(self.centralwidget)
@@ -87,16 +92,16 @@ class Ui_MainWindow(object):
 
         self.formLayout.setWidget(3, QFormLayout.FieldRole, self.deltaf_lineEdit)
 
-        self.flagging_threshold_label = QLabel(self.lo_settings_groupBox)
-        self.flagging_threshold_label.setObjectName(u"flagging_threshold_label")
+        self.flagging_label = QLabel(self.lo_settings_groupBox)
+        self.flagging_label.setObjectName(u"flagging_label")
 
-        self.formLayout.setWidget(4, QFormLayout.LabelRole, self.flagging_threshold_label)
+        self.formLayout.setWidget(4, QFormLayout.LabelRole, self.flagging_label)
 
-        self.flagging_threshold_lineEdit = QLineEdit(self.lo_settings_groupBox)
-        self.flagging_threshold_lineEdit.setObjectName(u"flagging_threshold_lineEdit")
-        self.flagging_threshold_lineEdit.setMaximumSize(QSize(100, 16777215))
+        self.flagging_lineEdit = QLineEdit(self.lo_settings_groupBox)
+        self.flagging_lineEdit.setObjectName(u"flagging_lineEdit")
+        self.flagging_lineEdit.setMaximumSize(QSize(100, 16777215))
 
-        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.flagging_threshold_lineEdit)
+        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.flagging_lineEdit)
 
         self.filename_suffix_label = QLabel(self.lo_settings_groupBox)
         self.filename_suffix_label.setObjectName(u"filename_suffix_label")
@@ -210,11 +215,19 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 800, 33))
+        self.menubar.setGeometry(QRect(0, 0, 800, 22))
+        self.menuFile = QMenu(self.menubar)
+        self.menuFile.setObjectName(u"menuFile")
+        self.menuHelp = QMenu(self.menubar)
+        self.menuHelp.setObjectName(u"menuHelp")
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QStatusBar(MainWindow)
         self.statusbar.setObjectName(u"statusbar")
         MainWindow.setStatusBar(self.statusbar)
+
+        self.menubar.addAction(self.menuFile.menuAction())
+        self.menubar.addAction(self.menuHelp.menuAction())
+        self.menuHelp.addAction(self.actionWhat_s_This)
 
         self.retranslateUi(MainWindow)
 
@@ -223,9 +236,13 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"LO Sweep Configuration", None))
+        self.actionWhat_s_This.setText(QCoreApplication.translate("MainWindow", u"What's This?", None))
+#if QT_CONFIG(tooltip)
+        self.actionWhat_s_This.setToolTip(QCoreApplication.translate("MainWindow", u"Click on GUI elements for more information", None))
+#endif // QT_CONFIG(tooltip)
         self.lo_settings_groupBox.setTitle(QCoreApplication.translate("MainWindow", u"LO Sweep Settings", None))
 #if QT_CONFIG(tooltip)
-        self.tone_list_label.setToolTip(QCoreApplication.translate("MainWindow", u"List of tones of resonant frequencies", None))
+        self.tone_list_label.setToolTip(QCoreApplication.translate("MainWindow", u"Choose a list of resonant frequencies", None))
 #endif // QT_CONFIG(tooltip)
 #if QT_CONFIG(whatsthis)
         self.tone_list_label.setWhatsThis(QCoreApplication.translate("MainWindow", u"List of tones of resonant frequencies", None))
@@ -233,7 +250,7 @@ class Ui_MainWindow(object):
         self.tone_list_label.setText(QCoreApplication.translate("MainWindow", u"Tone List:", None))
         self.tone_list_pushButton.setText(QCoreApplication.translate("MainWindow", u"Browse...", None))
 #if QT_CONFIG(tooltip)
-        self.global_shift_label.setToolTip(QCoreApplication.translate("MainWindow", u"Amount to shift each tone in KHz, at 400 MHz", None))
+        self.global_shift_label.setToolTip(QCoreApplication.translate("MainWindow", u"A shift to apply to each tone", None))
 #endif // QT_CONFIG(tooltip)
 #if QT_CONFIG(whatsthis)
         self.global_shift_label.setWhatsThis(QCoreApplication.translate("MainWindow", u"Amount to shift each tone in KHz, at 400 MHz", None))
@@ -259,13 +276,13 @@ class Ui_MainWindow(object):
         self.deltaf_lineEdit.setText("")
         self.deltaf_lineEdit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"100", None))
 #if QT_CONFIG(tooltip)
-        self.flagging_threshold_label.setToolTip(QCoreApplication.translate("MainWindow", u"Maximum shift to flag", None))
+        self.flagging_label.setToolTip(QCoreApplication.translate("MainWindow", u"Maximum shift to flag", None))
 #endif // QT_CONFIG(tooltip)
 #if QT_CONFIG(whatsthis)
-        self.flagging_threshold_label.setWhatsThis(QCoreApplication.translate("MainWindow", u"Maximum shift to flag", None))
+        self.flagging_label.setWhatsThis(QCoreApplication.translate("MainWindow", u"Maximum shift to flag", None))
 #endif // QT_CONFIG(whatsthis)
-        self.flagging_threshold_label.setText(QCoreApplication.translate("MainWindow", u"Flagging Threshold (KHz):", None))
-        self.flagging_threshold_lineEdit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"3", None))
+        self.flagging_label.setText(QCoreApplication.translate("MainWindow", u"Resonator Flagging Max (KHz):", None))
+        self.flagging_lineEdit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"3", None))
 #if QT_CONFIG(tooltip)
         self.filename_suffix_label.setToolTip(QCoreApplication.translate("MainWindow", u"Suffix to append to the end of the LO sweep file", None))
 #endif // QT_CONFIG(tooltip)
@@ -307,5 +324,7 @@ class Ui_MainWindow(object):
         self.filename_elevation_radioButton.setText(QCoreApplication.translate("MainWindow", u"Elevation", None))
         self.filename_example_label.setText(QCoreApplication.translate("MainWindow", u"Example:", None))
         self.filename_example_lineEdit.setText(QCoreApplication.translate("MainWindow", u"YYYYMMDD_RFSOCX_LO_Sweep_HH", None))
+        self.menuFile.setTitle(QCoreApplication.translate("MainWindow", u"File", None))
+        self.menuHelp.setTitle(QCoreApplication.translate("MainWindow", u"Help", None))
     # retranslateUi
 

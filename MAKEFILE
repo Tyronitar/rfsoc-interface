@@ -1,0 +1,13 @@
+UI_CC := poetry run pyside6-uic
+UI_FILE_DIR := ui_resources
+UI_PYTHON_DIR := rfsocinterface/ui
+
+# All of the file stems in the ui_resources directory
+ui_elements := $(patsubst $(UI_FILE_DIR)/%.ui,%, $(wildcard $(UI_FILE_DIR)/*.ui))
+
+# Compile all of the ui elements
+uic: $(ui_elements)
+
+# Create a separate rule for each individual element
+$(ui_elements): %:
+	$(UI_CC) $(UI_FILE_DIR)/$@.ui -o $(UI_PYTHON_DIR)/$@_uic.py

@@ -24,7 +24,7 @@
        <item row="0" column="0">
         <widget class="QLabel" name="tone_list_label">
          <property name="toolTip">
-          <string>List of tones of resonant frequencies</string>
+          <string>Choose a list of resonant frequencies</string>
          </property>
          <property name="whatsThis">
           <string>List of tones of resonant frequencies</string>
@@ -51,7 +51,7 @@
        <item row="1" column="0">
         <widget class="QLabel" name="global_shift_label">
          <property name="toolTip">
-          <string>Amount to shift each tone in KHz, at 400 MHz</string>
+          <string>A shift to apply to each tone</string>
          </property>
          <property name="whatsThis">
           <string>Amount to shift each tone in KHz, at 400 MHz</string>
@@ -133,7 +133,7 @@
         </widget>
        </item>
        <item row="4" column="0">
-        <widget class="QLabel" name="flagging_threshold_label">
+        <widget class="QLabel" name="flagging_label">
          <property name="toolTip">
           <string>Maximum shift to flag</string>
          </property>
@@ -141,12 +141,12 @@
           <string>Maximum shift to flag</string>
          </property>
          <property name="text">
-          <string>Flagging Threshold (KHz):</string>
+          <string>Resonator Flagging Max (KHz):</string>
          </property>
         </widget>
        </item>
        <item row="4" column="1">
-        <widget class="QLineEdit" name="flagging_threshold_lineEdit">
+        <widget class="QLineEdit" name="flagging_lineEdit">
          <property name="maximumSize">
           <size>
            <width>100</width>
@@ -378,11 +378,35 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>33</height>
+     <height>22</height>
     </rect>
    </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Help</string>
+    </property>
+    <addaction name="actionWhat_s_This"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionWhat_s_This">
+   <property name="icon">
+    <iconset theme="QIcon::ThemeIcon::HelpFaq"/>
+   </property>
+   <property name="text">
+    <string>What's This?</string>
+   </property>
+   <property name="toolTip">
+    <string>Click on GUI elements for more information</string>
+   </property>
+  </action>
  </widget>
  <resources/>
  <connections/>
