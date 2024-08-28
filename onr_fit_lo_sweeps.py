@@ -183,7 +183,7 @@ def simple_derivative_fits(df, freq, tone_list, s21):
         
 #     return resonator_object
 
-def main(tone_list,filename='',DerivFit=True,quickPlot=False,pdfFlag=False,Qc_array=0,printFlag=False):
+def main(tone_list,filename='',DerivFit=True,quickPlot=False,pdfFlag=False,Qc_array=0,printFlag=False, chanmask_file=''):
     #path, center_freq, pdfFlag = False, quickPlot = False, Qc_array = 0, printFlag = True, FlagBad = False, MaxGoodInd = 0, DerivFit = False):
 
     #get the lo sweep file, get the filename if needed
@@ -202,7 +202,7 @@ def main(tone_list,filename='',DerivFit=True,quickPlot=False,pdfFlag=False,Qc_ar
         os.remove(file)
 
     #initialize variables for fitting
-    chanmask = onrkidpy.get_chanmask()
+    chanmask = onrkidpy.get_chanmask(chanmask_file)
     n_chan = np.size(chanmask)
     fit_f0 = np.zeros(n_chan)
     fit_qi = np.zeros(n_chan)
@@ -350,7 +350,7 @@ def main(tone_list,filename='',DerivFit=True,quickPlot=False,pdfFlag=False,Qc_ar
 # #           os.remove(i_file)
 
     if quickPlot:
-        plt.show(block=False)
+        plt.show()
 
     return fit_f0, fit_qi, fit_qc
 
