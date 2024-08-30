@@ -27,7 +27,7 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindows):
         chanmask_file: str,
         fit_f0: npt.NDArray,
     ):
-        fig, flagged = plot_lo_fit(tone_list, sweep_file, chanmask_file, fit_f0)
+        fig, flagged = plot_lo_fit(tone_list, sweep_file, chanmask_file, fit_f0, fig_width=10)
         self.canvas.set_figure(fig, flagged)
     
     def toggle_flagged(self):
@@ -41,23 +41,24 @@ if __name__ == '__main__':
     app = QApplication()
     w = DiagnosticsWindow()
 
-    fit_f0, _, _,= fit_lo_sweep(
-        get_tone_list('Default_tone_list.npy'),
-        '20240822_rfsoc2_LO_Sweep_hour16p3294.npy',
-        chanmask_file='chanmask.npy',
-        do_print=True,
-    )
+    # fit_f0, _, _,= fit_lo_sweep(
+    #     get_tone_list('Default_tone_list.npy'),
+    #     '20240822_rfsoc2_LO_Sweep_hour16p3294.npy',
+    #     chanmask_file='chanmask.npy',
+    #     do_print=True,
+    # )
 
-    w.create_lo_plot(
-        get_tone_list('Default_tone_list.npy'),
-        '20240822_rfsoc2_LO_Sweep_hour16p3294.npy',
-        'chanmask.npy',
-        fit_f0,
-    )
+    # w.create_lo_plot(
+    #     get_tone_list('Default_tone_list.npy'),
+    #     '20240822_rfsoc2_LO_Sweep_hour16p3294.npy',
+    #     'chanmask.npy',
+    #     fit_f0,
+    # )
 
-    # dummy_fig = plt.figure()
-    # plt.plot(np.arange(10), np.arange(10))
+    fig, axes = plt.subplots(2, 2)
+    for ax in axes.ravel():
+        ax.plot(np.arange(10), np.arange(10))
+    w.canvas.set_figure(fig, np.argwhere(1 == 1))
 
-    # w.set_figure(fig)
     w.show()
     app.exec()

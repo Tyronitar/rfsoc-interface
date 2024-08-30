@@ -1,7 +1,7 @@
 """GUI Elements dealing with Configuring the LO Sweep."""
 
 from rfsocinterface.ui.loconfig_uic import Ui_MainWindow as Ui_LOConfigWindow
-from PySide6.QtWidgets import QMainWindow, QRadioButton
+from PySide6.QtWidgets import QMainWindow, QRadioButton, QApplication
 
 
 class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
@@ -29,3 +29,10 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
                 self.filename_elevation_lineEdit.setEnabled(True)
                 self.filename_temperature_lineEdit.setDisabled(True)
                 self.filename_temperature_lineEdit.clear()
+
+if __name__ == '__main__':
+    app = QApplication()
+
+    lo_window = LOConfigWindow()
+    lo_window.show()
+    app.exec()

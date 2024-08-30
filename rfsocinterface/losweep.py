@@ -148,6 +148,7 @@ def plot_lo_fit(
         counter += 1
 
     flagged = np.argwhere(np.abs(difference) > diff_to_flag)
+    plt.tight_layout()
     return fig, flagged
 
 
