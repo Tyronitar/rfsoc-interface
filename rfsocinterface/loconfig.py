@@ -1,6 +1,6 @@
 """GUI Elements dealing with Configuring the LO Sweep."""
 
-from rfsocinterface.ui.loconfig_uic import Ui_MainWindow as Ui_LOConfigWindow
+from rfsocinterface.ui.loconfig_ui import Ui_MainWindow as Ui_LOConfigWindow
 from PySide6.QtWidgets import QMainWindow, QRadioButton, QApplication
 
 

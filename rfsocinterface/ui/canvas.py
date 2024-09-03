@@ -39,6 +39,30 @@ class ScrollableCanvas(QWidget):
         self.scroll_area.widget().setStyleSheet("background-color:white;");
         self.canvas.draw()
 
+    
+class ResonatorCanvas(QWidget):
+
+    def __init__(self, parent=None, fig: Figure | None=None):
+        super().__init__(parent)
+        if fig is None:
+            fig = Figure(figsize=(8, 5))
+        self.canvas = FigureCanvas(fig)
+        self.set_figure(fig)
+
+        self.setLayout(QVBoxLayout(self))
+        self.layout().addWidget(self.canvas)
+    
+    def set_figure(self, fig: Figure):
+        self.canvas.figure = fig
+        self.canvas.draw()
+    
+    def set_axes(self, ax: plt.Axes):
+        if len(self.canvas.figure.get_axes()) == 0:
+            self.canvas.figure.add_axes(ax)
+        else:
+            self.canvas.figure.axes[0] = ax
+        self.canvas.draw()
+
 
 class DiagnosticsCanvas(ScrollableCanvas):
     def __init__(self, parent=None):
@@ -79,7 +103,7 @@ class DiagnosticsCanvas(ScrollableCanvas):
     def select_axis(self, axes: plt.Axes | None):
         # Deselect previous axes
         if self.selected_axes is not None:
-            self.selected_axes.patch.set_linewidth(11)
+            self.selected_axes.patch.set_linewidth(6)
             self.selected_axes.patch.set_edgecolor('w')
             self.selected_axes.patch.draw(self.canvas.get_renderer())
             self.selected_axes.patch.set_linewidth(0)
@@ -87,7 +111,7 @@ class DiagnosticsCanvas(ScrollableCanvas):
             # self.selected_axes.set_facecolor(self.selected_axes.get_facecolor())
             self.selected_axes.draw(self.canvas.get_renderer())
         if axes is not None:
-            axes.patch.set_linewidth(10)
+            axes.patch.set_linewidth(5)
             axes.patch.set_edgecolor('cornflowerblue')
             axes.patch.draw(self.canvas.get_renderer())
             axes.draw(self.canvas.get_renderer())
