@@ -18,7 +18,7 @@ class ResonatorData:
         self.idx = idx
         self.flagged = False
     
-    def plot(self, ax: plt.Axes | None=None) -> Figure | None:
+    def plot(self, ax: plt.Axes | None=None, animated: bool=False) -> Figure | None:
         return_fig = False
         if ax is None:
             fig = plt.figure(figsize=(8, 5))
@@ -32,7 +32,8 @@ class ResonatorData:
             ax.set_xticks([])
 
         ax.plot(self.freq, self.s21)
-        ax.axvline(x=self.fit_f0, color='r')
+        ax.axvline(x=self.fit_f0, color='r', animated=animated)
+
 
         new_span = self.span * self.freq_ratio
         ax.set_xlim(np.mean(self.freq)-new_span/2., np.mean(self.freq+new_span/2.))

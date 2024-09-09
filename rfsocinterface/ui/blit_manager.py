@@ -1,6 +1,10 @@
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+import matplotlib
+matplotlib.use('QtAgg')
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.artist import Artist
 from matplotlib.backend_bases import DrawEvent
+from matplotlib.figure import Figure
 
 class BlitManager:
     def __init__(self, canvas: FigureCanvas, animated_artists: tuple[Artist, ...]=()):
@@ -27,13 +31,13 @@ class BlitManager:
     def on_draw(self, event: DrawEvent):
         """Callback to register with 'draw_event'."""
         cv = self.canvas
-        if event is not None:
-            if event.canvas != cv:
-                raise RuntimeError
+        # if event is not None:
+        #     if event.canvas != cv:
+        #         raise RuntimeError
         self._bg = cv.copy_from_bbox(cv.figure.bbox)
         self._draw_animated()
 
-    def add_artist(self, art: Artist):
+    def add_artist(self, parent: Figure | plt.Axes, art: Artist):
         """
         Add an artist to be managed.
 
@@ -49,13 +53,13 @@ class BlitManager:
         if art.figure != self.canvas.figure:
             raise RuntimeError
         art.set_animated(True)
-        self._artists.append(art)
+        self._artists.append((parent, art))
 
     def _draw_animated(self):
         """Draw all of the animated artists."""
         fig = self.canvas.figure
-        for a in self._artists:
-            fig.draw_artist(a)
+        for p, a in self._artists:
+            p.draw_artist(a)
 
     def update(self):
         """Update the screen with animated artists."""
@@ -63,13 +67,16 @@ class BlitManager:
         fig = cv.figure
         # paranoia in case we missed the draw event,
         if self._bg is None:
+            print('missed the draw event!')
             self.on_draw(None)
         else:
+            print('hit the draw event!')
             # restore the background
-            cv.restore_region(self._bg)
+            # cv.restore_region(self._bg)
             # draw all of the animated artists
             self._draw_animated()
             # update the GUI state
             cv.blit(fig.bbox)
         # let the GUI event loop process anything it has to do
+        cv.draw_idle()
         cv.flush_events()

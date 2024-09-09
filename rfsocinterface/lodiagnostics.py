@@ -6,10 +6,11 @@ from typing import Callable
 from PySide6.QtWidgets import QMainWindow, QApplication, QWidget
 from PySide6.QtCore import QPropertyAnimation, Qt
 from matplotlib.figure import Figure
-from matplotlib.backend_bases import MouseEvent, MouseButton, DrawEvent
+from matplotlib.backend_bases import MouseEvent, MouseButton, DrawEvent, PickEvent
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import time
 
 from rfsocinterface.ui.lodiagnostics_ui import Ui_MainWindow as Ui_DiagnosticsWindow
 from rfsocinterface.ui.loresonator_ui import Ui_MainWindow as Ui_ResonatorWindow
@@ -25,71 +26,46 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         self.setupUi(self)
         self.resonator = resonator
 
-        fig = self.resonator.plot()
-        self.canvas.set_figure(fig)
-
-
-        self.figcanvas = self.canvas.canvas.figure.canvas
-        self.ax = fig.axes[0]
-        print(self.ax.get_lines())
-        self.line = self.ax.get_lines()[1]
-        # self.line.set_animated(True)
-
-        self.bm = BlitManager(self.figcanvas)
-        self.bm.add_artist(self.line)
-
         self.epsilon = 1e3  # Max x difference to count as a line hit
         self.dragging = False
 
-        # self.figcanvas.mpl_connect('draw_event', self.on_draw)
+        fig = self.resonator.plot()
+        self.set_figure(fig)
+
+    def set_figure(self, fig: Figure):
+        self.canvas.set_figure(fig)
+
+        self.ax = fig.axes[0]
+        self.figcanvas = self.canvas.canvas
+
         self.figcanvas.mpl_connect('button_press_event', self.mouse_press)
         self.figcanvas.mpl_connect('button_release_event', self.mouse_release)
         self.figcanvas.mpl_connect('motion_notify_event', self.mouse_move)
 
-        # self.canvas.canvas.draw()
-        # self.figcanvas.draw()
-        self.bm.update()
-
-    def on_draw(self, event: DrawEvent):
-        self.background = self.figcanvas.copy_from_bbox(self.figcanvas.figure.bbox)
-        self.ax.draw_artist(self.line)
-        # do not need to blit here, this will fire before the screen is
-        # updated
-
     def mouse_release(self, event: MouseEvent):
         if event.button != 1: return
+        if event.inaxes != self.ax: return
 
-        self.dragging = False
+        if self.dragging:
+            self.dragging = False
+            self.canvas.line.set_xdata([event.xdata, event.xdata])
+            self.figcanvas.draw()
 
     def mouse_press(self, event: MouseEvent):
         if event.inaxes != self.ax: return
         if event.button != 1: return
 
-        print(self.line.get_xydata())
-        print(event.xdata)
-        d = np.abs(self.line.get_xdata()[0] - event.xdata)
-        print(d)
+        d = np.abs(self.canvas.line.get_xdata()[0] - event.xdata)
         if d < self.epsilon:
-            print('now dragging')
             self.dragging = True
-
-
-    def mouse_move(self, event):
+    
+    def mouse_move(self, event: MouseEvent):
         if not self.dragging: return
         if event.inaxes != self.ax: return
         if event.button != 1: return
 
-        self.line.set_xdata([event.xdata] * 2)
-
-        self.bm.update()
-
-        # self.figcanvas.restore_region(self.background)
-        # self.ax.draw_artist(self.line)
-        # self.figcanvas.blit()
-        # self.figcanvas.flush_events()
-        # self.figcanvas.draw_idle()
-        # self.figcanvas.draw()
-
+        self.canvas.line.set_xdata([event.xdata, event.xdata])
+        self.figcanvas.draw()
 
 class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
 
@@ -124,7 +100,7 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
 
         #     return override_close
         rw = ResonatorWindow(resonator, parent=self)
-        rw.setWindowModality(Qt.WindowModality.ApplicationModal)
+        # rw.setWindowModality(Qt.WindowModality.ApplicationModal)
         # rw.closeEvent = wrap_func(rw.closeEvent)
             
         rw.show()

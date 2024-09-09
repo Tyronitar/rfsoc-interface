@@ -5,9 +5,12 @@ from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout, QSizePolicy
 from PySide6.QtCore import Qt
 from time import sleep
 
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+import matplotlib
+matplotlib.use('QtAgg')
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
+from matplotlib.animation import FuncAnimation
 from copy import deepcopy
 from matplotlib.backend_bases import MouseEvent, MouseButton, DrawEvent
 import matplotlib.pyplot as plt
@@ -24,7 +27,6 @@ class ScrollableCanvas(QWidget):
         # self.scroll_area.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
         self.scroll_area.setStyleSheet("QScrollArea {background-color:white;}");
 
-        self._bg = None
         self.set_figure(Figure(figsize=(5, 5)))
 
         # self.nav = NavigationToolbar(self.canvas, self)
@@ -51,13 +53,23 @@ class ResonatorCanvas(QWidget):
         if fig is None:
             fig = Figure(figsize=(8, 5))
         self.canvas = FigureCanvas(fig)
-        self.set_figure(fig)
+        self.canvas.figure = fig
 
         self.setLayout(QVBoxLayout(self))
         self.layout().addWidget(self.canvas)
     
-    def set_figure(self, fig: Figure):
+    def update_figure(self):
+        print(self.line.get_xydata())
+        self.update()
+    
+    def set_figure(self, fig: Figure | None):
         self.canvas.figure = fig
+        if fig is not None:
+            # self.bm = BlitManager(self.canvas)
+            ax = fig.get_axes()[0]
+            self.line = ax.get_lines()[1]
+            # print(self.line.get_xydata())
+            # self.bm.add_artist(ax, self.line)
     
 
 class DiagnosticsCanvas(ScrollableCanvas):
@@ -72,8 +84,8 @@ class DiagnosticsCanvas(ScrollableCanvas):
             self.unflagged = np.delete(fig.axes, flagged)
         super().set_figure(fig)
         for ax in self.canvas.figure.axes:
-            self.bm.add_artist(ax.patch)
-            self.bm.add_artist(ax)
+            self.bm.add_artist(fig, ax.patch)
+            self.bm.add_artist(fig, ax)
         # self.canvas.blit()
         # self.canvas.flush_events()
         # self.canvas.figure.canvas.mpl_connect('button_press_event', self.click_plot)
