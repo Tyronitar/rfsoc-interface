@@ -124,7 +124,7 @@ class Ui_MainWindow(object):
         self.second_sweep_checkBox.setObjectName(u"second_sweep_checkBox")
         self.second_sweep_checkBox.setChecked(True)
 
-        self.formLayout.setWidget(8, QFormLayout.LabelRole, self.second_sweep_checkBox)
+        self.formLayout.setWidget(9, QFormLayout.LabelRole, self.second_sweep_checkBox)
 
         self.second_sweep_horizontalLayout = QHBoxLayout()
         self.second_sweep_horizontalLayout.setObjectName(u"second_sweep_horizontalLayout")
@@ -146,7 +146,7 @@ class Ui_MainWindow(object):
         self.second_sweep_horizontalLayout.addItem(self.second_sweep_horizontalSpacer)
 
 
-        self.formLayout.setLayout(8, QFormLayout.FieldRole, self.second_sweep_horizontalLayout)
+        self.formLayout.setLayout(9, QFormLayout.FieldRole, self.second_sweep_horizontalLayout)
 
         self.filename_suffix_formLayout = QFormLayout()
         self.filename_suffix_formLayout.setObjectName(u"filename_suffix_formLayout")
@@ -203,6 +203,11 @@ class Ui_MainWindow(object):
 
         self.formLayout.setLayout(5, QFormLayout.FieldRole, self.filename_suffix_formLayout)
 
+        self.only_flag_checkBox = QCheckBox(self.lo_settings_groupBox)
+        self.only_flag_checkBox.setObjectName(u"only_flag_checkBox")
+
+        self.formLayout.setWidget(6, QFormLayout.FieldRole, self.only_flag_checkBox)
+
 
         self.verticalLayout.addWidget(self.lo_settings_groupBox)
 
@@ -247,7 +252,7 @@ class Ui_MainWindow(object):
 #if QT_CONFIG(whatsthis)
         self.tone_list_label.setWhatsThis(QCoreApplication.translate("MainWindow", u"List of tones of resonant frequencies", None))
 #endif // QT_CONFIG(whatsthis)
-        self.tone_list_label.setText(QCoreApplication.translate("MainWindow", u"Tone List:", None))
+        self.tone_list_label.setText(QCoreApplication.translate("MainWindow", u"Tone list file:", None))
         self.tone_list_pushButton.setText(QCoreApplication.translate("MainWindow", u"Browse...", None))
 #if QT_CONFIG(tooltip)
         self.global_shift_label.setToolTip(QCoreApplication.translate("MainWindow", u"A shift to apply to each tone", None))
@@ -255,7 +260,7 @@ class Ui_MainWindow(object):
 #if QT_CONFIG(whatsthis)
         self.global_shift_label.setWhatsThis(QCoreApplication.translate("MainWindow", u"Amount to shift each tone in KHz, at 400 MHz", None))
 #endif // QT_CONFIG(whatsthis)
-        self.global_shift_label.setText(QCoreApplication.translate("MainWindow", u"Global shift (KHz):", None))
+        self.global_shift_label.setText(QCoreApplication.translate("MainWindow", u"Global shift at LO frequency (KHz):", None))
         self.global_shift_lineEdit.setText("")
         self.global_shift_lineEdit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"0", None))
 #if QT_CONFIG(tooltip)
@@ -264,7 +269,7 @@ class Ui_MainWindow(object):
 #if QT_CONFIG(whatsthis)
         self.df_label.setWhatsThis(QCoreApplication.translate("MainWindow", u"Spacing between data points in KHz", None))
 #endif // QT_CONFIG(whatsthis)
-        self.df_label.setText(QCoreApplication.translate("MainWindow", u"df (KHz):", None))
+        self.df_label.setText(QCoreApplication.translate("MainWindow", u"LO spacing df (KHz):", None))
         self.df_lineEdit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"1", None))
 #if QT_CONFIG(tooltip)
         self.deltaf_label.setToolTip(QCoreApplication.translate("MainWindow", u"Total span of sweep in KHZ", None))
@@ -272,7 +277,7 @@ class Ui_MainWindow(object):
 #if QT_CONFIG(whatsthis)
         self.deltaf_label.setWhatsThis(QCoreApplication.translate("MainWindow", u"Total span of sweep in KHz", None))
 #endif // QT_CONFIG(whatsthis)
-        self.deltaf_label.setText(QCoreApplication.translate("MainWindow", u"\u0394f (KHz):", None))
+        self.deltaf_label.setText(QCoreApplication.translate("MainWindow", u"Full LO span \u0394f (KHz):", None))
         self.deltaf_lineEdit.setText("")
         self.deltaf_lineEdit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"100", None))
 #if QT_CONFIG(tooltip)
@@ -281,7 +286,7 @@ class Ui_MainWindow(object):
 #if QT_CONFIG(whatsthis)
         self.flagging_label.setWhatsThis(QCoreApplication.translate("MainWindow", u"Maximum shift to flag", None))
 #endif // QT_CONFIG(whatsthis)
-        self.flagging_label.setText(QCoreApplication.translate("MainWindow", u"Resonator Flagging Max (KHz):", None))
+        self.flagging_label.setText(QCoreApplication.translate("MainWindow", u"Maximum shift to flag (KHz):", None))
         self.flagging_lineEdit.setPlaceholderText(QCoreApplication.translate("MainWindow", u"3", None))
 #if QT_CONFIG(tooltip)
         self.filename_suffix_label.setToolTip(QCoreApplication.translate("MainWindow", u"Suffix to append to the end of the LO sweep file", None))
@@ -320,10 +325,11 @@ class Ui_MainWindow(object):
         self.second_sweep_df_label.setText(QCoreApplication.translate("MainWindow", u"df (KHz):", None))
         self.second_sweep_df_lineEdit.setText(QCoreApplication.translate("MainWindow", u"0.1", None))
         self.filename_none_radioButton.setText(QCoreApplication.translate("MainWindow", u"None", None))
-        self.filename_temperature_radioButton.setText(QCoreApplication.translate("MainWindow", u"Temperature", None))
-        self.filename_elevation_radioButton.setText(QCoreApplication.translate("MainWindow", u"Elevation", None))
+        self.filename_temperature_radioButton.setText(QCoreApplication.translate("MainWindow", u"Focal plane temperature (mK)", None))
+        self.filename_elevation_radioButton.setText(QCoreApplication.translate("MainWindow", u"Telescope elevation (deg)", None))
         self.filename_example_label.setText(QCoreApplication.translate("MainWindow", u"Example:", None))
         self.filename_example_lineEdit.setText(QCoreApplication.translate("MainWindow", u"YYYYMMDD_RFSOCX_LO_Sweep_HH", None))
+        self.only_flag_checkBox.setText(QCoreApplication.translate("MainWindow", u"Only show flagged resonators", None))
         self.menuFile.setTitle(QCoreApplication.translate("MainWindow", u"File", None))
         self.menuHelp.setTitle(QCoreApplication.translate("MainWindow", u"Help", None))
     # retranslateUi

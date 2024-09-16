@@ -43,8 +43,12 @@ class ResonatorData:
                 fontsize=6,
                 loc = 3,
                 frameon=False,
+                framealpha=0,
                 handlelength=0,
-                bbox_to_anchor=(-0.2,-0.15)
+                bbox_to_anchor=(0.01,0.02),
+                alignment='center',
+                edgecolor='black',
+                # bbox_to_anchor=(-0.2,-0.15)
             )
             if self.flagged:
                 ax.set_facecolor('yellow')
@@ -54,8 +58,11 @@ class ResonatorData:
                 fontsize=6,
                 loc = 3,
                 frameon=False,
+                framealpha=0,
                 handlelength=0,
-                bbox_to_anchor=(-0.2,-0.15)
+                bbox_to_anchor=(0.01,0.02),
+                alignment='center',
+                edgecolor='black',
             )
             ax.set_facecolor('orange')
         

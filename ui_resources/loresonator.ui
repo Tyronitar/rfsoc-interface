@@ -26,11 +26,14 @@
       <widget class="QToolButton" name="edit_toolButton">
        <property name="geometry">
         <rect>
-         <x>740</x>
-         <y>10</y>
-         <width>30</width>
-         <height>30</height>
+         <x>746</x>
+         <y>9</y>
+         <width>27</width>
+         <height>26</height>
         </rect>
+       </property>
+       <property name="layoutDirection">
+        <enum>Qt::LayoutDirection::LeftToRight</enum>
        </property>
        <property name="autoFillBackground">
         <bool>false</bool>

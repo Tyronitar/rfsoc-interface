@@ -1,8 +1,9 @@
 
 import numpy as np
 import numpy.typing as npt
-from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout, QSizePolicy
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout, QSizePolicy, QGraphicsView, QStackedLayout
+from PySide6.QtCore import Qt, QObject, QEvent, QCoreApplication
+from PySide6.QtGui import QWheelEvent
 from time import sleep
 
 import matplotlib
@@ -18,14 +19,14 @@ import matplotlib.pyplot as plt
 from rfsocinterface.losweep import plot_lo_fit
 from rfsocinterface.ui.blit_manager import BlitManager
 
-class ScrollableCanvas(QWidget):
+class ScrollableCanvas(QScrollArea):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.scroll_area = QScrollArea(self)
-        self.scroll_area.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        # self.scroll_area = QScrollArea(self)
+        self.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         # self.scroll_area.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
-        self.scroll_area.setStyleSheet("QScrollArea {background-color:white;}");
+        self.setStyleSheet("QScrollArea {background-color:white;}");
 
         self.set_figure(Figure(figsize=(5, 5)))
 
@@ -33,17 +34,32 @@ class ScrollableCanvas(QWidget):
         
         self.setLayout(QVBoxLayout(self))
         # self.layout().addWidget(self.nav)
-        self.layout().addWidget(self.scroll_area)
+        self.layout().addWidget(self.canvas)
+        self.layout().installEventFilter(self)
+
+        # self.wheelEvent = self.wheelEvent
+        # self.canvas.wheelEvent = self.wheelEvent
 
     def set_figure(self, fig: Figure):
         # self.canvas.figure.clf()
         # self.canvas.figure.axes.clear()
         self.canvas = FigureCanvas(fig)
         self.canvas.sizePolicy().setHorizontalPolicy(QSizePolicy.Policy.Minimum)
-        self.scroll_area.setWidget(self.canvas)
-        self.scroll_area.widget().setStyleSheet("background-color:white;");
+        self.setWidget(self.canvas)
+        self.widget().setStyleSheet("background-color:white;");
 
-        self.bm = BlitManager(fig.canvas)
+        self.bm = BlitManager(self.canvas)
+    
+    def eventFilter(self, obj: QObject, event: QEvent):
+        if isinstance(event, QWheelEvent):
+            vangle = event.angleDelta().y()
+            vbar = self.verticalScrollBar()
+            if vangle > 0:
+                vbar.setValue(max(vbar.minimum(), vbar.value() - vangle / 2))
+            else:
+                vbar.setValue(min(vbar.maximum(), vbar.value() - vangle / 2))
+            return True
+        return super().eventFilter(obj, event)
     
 
 class ResonatorCanvas(QWidget):
@@ -55,8 +71,11 @@ class ResonatorCanvas(QWidget):
         self.canvas = FigureCanvas(fig)
         self.canvas.figure = fig
 
-        self.setLayout(QVBoxLayout(self))
-        self.layout().addWidget(self.canvas)
+        self.stacked_layout = QStackedLayout()
+        self.stacked_layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        self.stacked_layout.addWidget(self.canvas)
+        # self.stacked_layout.setCurrentIndex(1)
+        self.setLayout(self.stacked_layout)
     
     def update_figure(self):
         print(self.line.get_xydata())
@@ -153,6 +172,8 @@ class DiagnosticsCanvas(ScrollableCanvas):
             fig.draw_artist(axes)
             # axes.draw(self.canvas.get_renderer())
             # self.canvas.blit(axes.patch.get_clip_box())
-        self.canvas.figure.canvas.blit()
-        self.canvas.figure.canvas.flush_events()
+        self.canvas.blit()
+        self.canvas.flush_events()
+        # self.canvas.figure.canvas.blit()
+        # self.canvas.figure.canvas.flush_events()
         self.selected_axes = axes

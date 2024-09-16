@@ -3,8 +3,9 @@ matplotlib.use('QtAgg')
 
 from typing import Callable
 
-from PySide6.QtWidgets import QMainWindow, QApplication, QWidget
+from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QLabel
 from PySide6.QtCore import QPropertyAnimation, Qt
+from PySide6.QtGui import QDoubleValidator
 from matplotlib.figure import Figure
 from matplotlib.backend_bases import MouseEvent, MouseButton, DrawEvent, PickEvent
 import matplotlib.pyplot as plt
@@ -25,12 +26,56 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         super().__init__(parent=parent)
         self.setupUi(self)
         self.resonator = resonator
+        self.editing = False
 
         self.epsilon = 1e3  # Max x difference to count as a line hit
         self.dragging = False
 
         fig = self.resonator.plot()
         self.set_figure(fig)
+
+        # self.canvas.layout().addWidget(self.edit_toolButton)
+        self.canvas.stacked_layout.addWidget(self.edit_toolButton)
+        self.edit_toolButton.clicked.connect(self.toggle_edit)
+
+        self.old_freq_value_label.setText(f'{self.resonator.tone:.5f}')
+
+        self.depth_value_label.setText('N/A')
+
+        self.error_label = None
+        freq_range = self.ax.get_xlim()
+        self.validator = QDoubleValidator(freq_range[0], freq_range[1], 5, parent=self)
+        self.new_freq_lineEdit.setValidator(self.validator)
+        self.new_freq_lineEdit.textChanged.connect(self.change_freq)
+        self.new_freq_lineEdit.setText(f'{self.resonator.fit_f0:.5f}')
+
+    
+    def change_freq(self):
+        freq_range = self.ax.get_xlim()
+        new_freq = self.new_freq_lineEdit.text()
+        # print(new_freq)
+        valid = self.validator.validate(new_freq, 0)[0]
+        # if not self.new_freq_lineEdit.hasAcceptableInput():
+        if not valid == QDoubleValidator.State.Acceptable:
+            self.new_freq_lineEdit.setStyleSheet('background-color: "#FFCCCC"; border: 1px solid red;')
+            if self.error_label is None:
+                self.error_label = QLabel(self)
+                self.error_label.setText(f'New frequency must be in the range [{freq_range[0]:.5f}, {freq_range[1]:.5f}]')
+                self.error_label.setStyleSheet("color: red;")
+                self.formLayout.insertRow(2, None, self.error_label)
+        else:
+            if self.error_label is not None:
+                self.new_freq_lineEdit.setStyleSheet('')
+                self.formLayout.removeRow(self.error_label)
+                self.error_label = None
+            new_freq = float(new_freq)
+            self.new_freq_lineEdit.setStyleSheet("")
+            self.canvas.line.set_xdata([new_freq, new_freq])
+            self.figcanvas.draw_idle()
+            self.delta_value_label.setText(f'{new_freq - self.resonator.tone:.5f}')
+
+    def toggle_edit(self):
+        pass
 
     def set_figure(self, fig: Figure):
         self.canvas.set_figure(fig)
@@ -49,7 +94,7 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         if self.dragging:
             self.dragging = False
             self.canvas.line.set_xdata([event.xdata, event.xdata])
-            self.figcanvas.draw()
+            self.figcanvas.draw_idle()
 
     def mouse_press(self, event: MouseEvent):
         if event.inaxes != self.ax: return
@@ -65,7 +110,8 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         if event.button != 1: return
 
         self.canvas.line.set_xdata([event.xdata, event.xdata])
-        self.figcanvas.draw()
+        self.new_freq_lineEdit.setText(f'{event.xdata:.3f}')
+        self.figcanvas.draw_idle()
 
 class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
 

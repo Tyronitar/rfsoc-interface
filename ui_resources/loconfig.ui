@@ -30,7 +30,7 @@
           <string>List of tones of resonant frequencies</string>
          </property>
          <property name="text">
-          <string>Tone List:</string>
+          <string>Tone list file:</string>
          </property>
         </widget>
        </item>
@@ -57,7 +57,7 @@
           <string>Amount to shift each tone in KHz, at 400 MHz</string>
          </property>
          <property name="text">
-          <string>Global shift (KHz):</string>
+          <string>Global shift at LO frequency (KHz):</string>
          </property>
         </widget>
        </item>
@@ -86,7 +86,7 @@
           <string>Spacing between data points in KHz</string>
          </property>
          <property name="text">
-          <string>df (KHz):</string>
+          <string>LO spacing df (KHz):</string>
          </property>
         </widget>
        </item>
@@ -112,7 +112,7 @@
           <string>Total span of sweep in KHz</string>
          </property>
          <property name="text">
-          <string>Δf (KHz):</string>
+          <string>Full LO span Δf (KHz):</string>
          </property>
         </widget>
        </item>
@@ -141,7 +141,7 @@
           <string>Maximum shift to flag</string>
          </property>
          <property name="text">
-          <string>Resonator Flagging Max (KHz):</string>
+          <string>Maximum shift to flag (KHz):</string>
          </property>
         </widget>
        </item>
@@ -203,7 +203,7 @@
          </property>
         </widget>
        </item>
-       <item row="8" column="0">
+       <item row="9" column="0">
         <widget class="QCheckBox" name="second_sweep_checkBox">
          <property name="toolTip">
           <string>Run a second LO sweep</string>
@@ -219,7 +219,7 @@
          </property>
         </widget>
        </item>
-       <item row="8" column="1">
+       <item row="9" column="1">
         <layout class="QHBoxLayout" name="second_sweep_horizontalLayout">
          <item>
           <widget class="QLabel" name="second_sweep_df_label">
@@ -289,7 +289,7 @@
             <bool>true</bool>
            </property>
            <property name="text">
-            <string>Temperature</string>
+            <string>Focal plane temperature (mK)</string>
            </property>
            <property name="checked">
             <bool>false</bool>
@@ -318,7 +318,7 @@
          <item row="2" column="0">
           <widget class="QRadioButton" name="filename_elevation_radioButton">
            <property name="text">
-            <string>Elevation</string>
+            <string>Telescope elevation (deg)</string>
            </property>
            <attribute name="buttonGroup">
             <string notr="true">buttonGroup</string>
@@ -359,6 +359,13 @@
           </widget>
          </item>
         </layout>
+       </item>
+       <item row="6" column="1">
+        <widget class="QCheckBox" name="only_flag_checkBox">
+         <property name="text">
+          <string>Only show flagged resonators</string>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
