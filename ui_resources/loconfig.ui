@@ -233,7 +233,7 @@
             <string>Spacing between data points in KHz</string>
            </property>
            <property name="text">
-            <string>df (KHz):</string>
+            <string>LO Spacing df (KHz):</string>
            </property>
           </widget>
          </item>
@@ -351,7 +351,7 @@
             <bool>false</bool>
            </property>
            <property name="text">
-            <string>YYYYMMDD_RFSOCX_LO_Sweep_HH</string>
+            <string>YYYYMMDD_rfsocN_LO_Sweep_hourH</string>
            </property>
            <property name="readOnly">
             <bool>true</bool>
@@ -385,7 +385,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>22</height>
+     <height>33</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
