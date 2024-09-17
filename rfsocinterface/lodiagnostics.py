@@ -5,7 +5,7 @@ from typing import Callable
 
 from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QLabel, QSizePolicy, QGridLayout, QSpacerItem, QToolButton
 from PySide6.QtCore import QPropertyAnimation, Qt, QRect, QSize
-from PySide6.QtGui import QDoubleValidator, QIcon
+from PySide6.QtGui import QDoubleValidator, QIcon, QResizeEvent, QCursor
 from matplotlib.figure import Figure
 from matplotlib.backend_bases import MouseEvent, MouseButton, DrawEvent, PickEvent
 import matplotlib.pyplot as plt
@@ -41,11 +41,15 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         # self.canvas.layout().addWidget(self.edit_toolButton)
 
         # self.canvas.stacked_layout.addWidget(ResonatorEditButton(self))
-        self.canvas.stacked_layout.addWidget(self.edit_toolButton)
-        self.canvas.stacked_layout.setCurrentIndex(1)
+        # self.canvas.grid_layout.addWidget(self.edit_toolButton)
+        # self.canvas.grid_layout.setCurrentIndex(1)
         # self.edit_toolButton.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         # self.edit_toolButton.raise_()
-        self.edit_toolButton.edit_toolButton.clicked.connect(self.toggle_edit)
+        # self.edit_toolButton.clicked.connect(self.toggle_edit)
+        # self.edit_toolButton.setVisible(True)
+        # self.canvas.lower()
+
+        self.reset_pushButton.clicked.connect(self.reset_freq)
 
         self.old_freq_value_label.setText(f'{self.resonator.tone:.5f}')
 
@@ -57,7 +61,16 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         self.new_freq_lineEdit.setValidator(self.validator)
         self.new_freq_lineEdit.textChanged.connect(self.change_freq)
         self.new_freq_lineEdit.setText(f'{self.resonator.fit_f0:.5f}')
+    
+    # def resizeEvent(self, event: QResizeEvent):
 
+    #     super().resizeEvent(event)
+    #     anchor_point = self.canvas.geometry().topRight()
+    #     self.edit_toolButton.setGeometry(30, 30, anchor_point.x() - 40, anchor_point.y() - 40)
+    #     self.edit_toolButton.update()
+
+    def reset_freq(self):
+        self.new_freq_lineEdit.setText(f'{self.resonator.fit_f0:.5f}')
     
     def change_freq(self):
         freq_range = self.ax.get_xlim()
@@ -107,6 +120,7 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
 
         if self.dragging:
             self.dragging = False
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
             self.canvas.line.set_xdata([event.xdata, event.xdata])
             self.figcanvas.draw_idle()
 
@@ -116,14 +130,22 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
 
         if self.is_close(event.xdata):
             self.dragging = True
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
     
     def mouse_move(self, event: MouseEvent):
-        if event.inaxes != self.ax: return
+        if event.inaxes != self.ax:
+            self.canvas.line.set_linewidth('1.5')
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.dragging = False
+            self.figcanvas.draw_idle()
+            return
         if not self.dragging:
             if self.is_close(event.xdata):
                 self.canvas.line.set_linewidth('3')
+                self.setCursor(Qt.CursorShape.OpenHandCursor)
             else:
                 self.canvas.line.set_linewidth('1.5')
+                self.setCursor(Qt.CursorShape.ArrowCursor)
             self.figcanvas.draw_idle()
             return
         if event.button != 1: return

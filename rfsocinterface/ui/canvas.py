@@ -1,9 +1,9 @@
 
 import numpy as np
 import numpy.typing as npt
-from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout, QSizePolicy, QGraphicsView, QStackedLayout
-from PySide6.QtCore import Qt, QObject, QEvent, QCoreApplication
-from PySide6.QtGui import QWheelEvent
+from PySide6.QtWidgets import QWidget, QScrollArea, QVBoxLayout, QSizePolicy, QGraphicsView, QStackedLayout, QGridLayout, QToolButton
+from PySide6.QtCore import Qt, QObject, QEvent, QCoreApplication, QRect, QSize
+from PySide6.QtGui import QWheelEvent, QIcon
 from time import sleep
 
 import matplotlib
@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 
 from rfsocinterface.losweep import plot_lo_fit
 from rfsocinterface.ui.blit_manager import BlitManager
+from rfsocinterface.ui.editbutton import ResonatorEditButton
 
 class ScrollableCanvas(QScrollArea):
     def __init__(self, parent=None):
@@ -70,15 +71,25 @@ class ResonatorCanvas(QWidget):
             fig = Figure(figsize=(8, 5))
         self.canvas = FigureCanvas(fig)
         self.canvas.figure = fig
-        # self.setLayout(QVBoxLayout())
+        self.setLayout(QVBoxLayout())
+        self.layout().addWidget(self.canvas)
+
+        # self.setLayout(QGridLayout())
+        # self.layout().addWidget(self.canvas, 1, 1)
+        # self.stacked_layout.setCurrentIndex(1)
         # self.layout().addWidget(self.canvas)
 
-        self.stacked_layout = QStackedLayout()
-        self.stacked_layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
-        self.stacked_layout.addWidget(self.canvas)
-        # self.stacked_layout.setCurrentIndex(1)
-        self.setLayout(self.stacked_layout)
-        # self.layout().addWidget(self.canvas)
+        # self.edit_toolButton = QToolButton(self)
+        # self.edit_toolButton.setObjectName(u"edit_toolButton")
+        # self.edit_toolButton.setGeometry(QRect(750, 10, 27, 26))
+        # self.edit_toolButton.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        # self.edit_toolButton.setAutoFillBackground(False)
+        # icon = QIcon()
+        # icon.addFile(u":/icons/edit.svg", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        # self.edit_toolButton.setIcon(icon)
+        # self.edit_toolButton.setIconSize(QSize(20, 20))
+
+        # self.layout().addWidget(self.edit_toolButton, 0, 1)
 
     
     def update_figure(self):

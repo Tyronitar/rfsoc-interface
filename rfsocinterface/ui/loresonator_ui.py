@@ -16,33 +16,34 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialogButtonBox, QFormLayout,
-    QLabel, QLineEdit, QMainWindow, QMenuBar,
-    QSizePolicy, QStatusBar, QToolBar, QVBoxLayout,
-    QWidget)
+    QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+    QMenuBar, QPushButton, QSizePolicy, QSpacerItem,
+    QStatusBar, QToolBar, QVBoxLayout, QWidget)
 
 from rfsocinterface.ui.canvas import ResonatorCanvas
-from rfsocinterface.ui.editbutton import ResonatorEditButton
 from . import icons_rc
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(800, 600)
+        MainWindow.resize(633, 532)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(MainWindow.sizePolicy().hasHeightForWidth())
+        MainWindow.setSizePolicy(sizePolicy)
         self.centralwidget = QWidget(MainWindow)
         self.centralwidget.setObjectName(u"centralwidget")
         self.verticalLayout_2 = QVBoxLayout(self.centralwidget)
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
         self.canvas = ResonatorCanvas(self.centralwidget)
         self.canvas.setObjectName(u"canvas")
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.canvas.sizePolicy().hasHeightForWidth())
-        self.canvas.setSizePolicy(sizePolicy)
-        self.edit_toolButton = ResonatorEditButton(self.canvas)
-        self.edit_toolButton.setObjectName(u"edit_toolButton")
-        self.edit_toolButton.setGeometry(QRect(610, 50, 120, 80))
+        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        sizePolicy1.setHorizontalStretch(0)
+        sizePolicy1.setVerticalStretch(0)
+        sizePolicy1.setHeightForWidth(self.canvas.sizePolicy().hasHeightForWidth())
+        self.canvas.setSizePolicy(sizePolicy1)
 
         self.verticalLayout_2.addWidget(self.canvas)
 
@@ -63,10 +64,30 @@ class Ui_MainWindow(object):
 
         self.formLayout.setWidget(1, QFormLayout.LabelRole, self.new_freq_label)
 
+        self.horizontalLayout_2 = QHBoxLayout()
+        self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
         self.new_freq_lineEdit = QLineEdit(self.centralwidget)
         self.new_freq_lineEdit.setObjectName(u"new_freq_lineEdit")
+        self.new_freq_lineEdit.setMaximumSize(QSize(200, 16777215))
 
-        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.new_freq_lineEdit)
+        self.horizontalLayout_2.addWidget(self.new_freq_lineEdit)
+
+        self.reset_pushButton = QPushButton(self.centralwidget)
+        self.reset_pushButton.setObjectName(u"reset_pushButton")
+        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        sizePolicy2.setHorizontalStretch(0)
+        sizePolicy2.setVerticalStretch(0)
+        sizePolicy2.setHeightForWidth(self.reset_pushButton.sizePolicy().hasHeightForWidth())
+        self.reset_pushButton.setSizePolicy(sizePolicy2)
+
+        self.horizontalLayout_2.addWidget(self.reset_pushButton)
+
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_2.addItem(self.horizontalSpacer)
+
+
+        self.formLayout.setLayout(1, QFormLayout.FieldRole, self.horizontalLayout_2)
 
         self.delta_label = QLabel(self.centralwidget)
         self.delta_label.setObjectName(u"delta_label")
@@ -100,7 +121,7 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 800, 33))
+        self.menubar.setGeometry(QRect(0, 0, 633, 22))
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QStatusBar(MainWindow)
         self.statusbar.setObjectName(u"statusbar")
@@ -119,6 +140,7 @@ class Ui_MainWindow(object):
         self.old_freq_label.setText(QCoreApplication.translate("MainWindow", u"Old Frequency:", None))
         self.old_freq_value_label.setText("")
         self.new_freq_label.setText(QCoreApplication.translate("MainWindow", u"New Frequency:", None))
+        self.reset_pushButton.setText(QCoreApplication.translate("MainWindow", u"Reset", None))
         self.delta_label.setText(QCoreApplication.translate("MainWindow", u"\u0394f:", None))
         self.delta_value_label.setText("")
         self.depth_label.setText(QCoreApplication.translate("MainWindow", u"Resonance Depth:", None))

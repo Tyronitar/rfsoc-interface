@@ -24,8 +24,8 @@ class ResonatorData:
             fig = plt.figure(figsize=(8, 5))
             ax = plt.subplot()
             return_fig = True
-            ax.set_title(f'Transmission Magnitude of Resonator #{self.idx}')
-            ax.set_xlabel('Frequency (MHz)')
+            ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
+            ax.set_xlabel('Frequency (Hz)')
             ax.set_ylabel(r'$|S_{21}|$')
         else:
             ax.set_yticks([])
