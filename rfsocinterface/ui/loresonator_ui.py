@@ -17,10 +17,11 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialogButtonBox, QFormLayout,
     QLabel, QLineEdit, QMainWindow, QMenuBar,
-    QSizePolicy, QStatusBar, QToolBar, QToolButton,
-    QVBoxLayout, QWidget)
+    QSizePolicy, QStatusBar, QToolBar, QVBoxLayout,
+    QWidget)
 
 from rfsocinterface.ui.canvas import ResonatorCanvas
+from rfsocinterface.ui.editbutton import ResonatorEditButton
 from . import icons_rc
 
 class Ui_MainWindow(object):
@@ -39,15 +40,9 @@ class Ui_MainWindow(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.canvas.sizePolicy().hasHeightForWidth())
         self.canvas.setSizePolicy(sizePolicy)
-        self.edit_toolButton = QToolButton(self.canvas)
+        self.edit_toolButton = ResonatorEditButton(self.canvas)
         self.edit_toolButton.setObjectName(u"edit_toolButton")
-        self.edit_toolButton.setGeometry(QRect(746, 9, 27, 26))
-        self.edit_toolButton.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-        self.edit_toolButton.setAutoFillBackground(False)
-        icon = QIcon()
-        icon.addFile(u":/icons/edit.svg", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
-        self.edit_toolButton.setIcon(icon)
-        self.edit_toolButton.setIconSize(QSize(20, 20))
+        self.edit_toolButton.setGeometry(QRect(610, 50, 120, 80))
 
         self.verticalLayout_2.addWidget(self.canvas)
 
@@ -105,7 +100,7 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 800, 22))
+        self.menubar.setGeometry(QRect(0, 0, 800, 33))
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QStatusBar(MainWindow)
         self.statusbar.setObjectName(u"statusbar")
@@ -121,7 +116,6 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"MainWindow", None))
-        self.edit_toolButton.setText(QCoreApplication.translate("MainWindow", u"...", None))
         self.old_freq_label.setText(QCoreApplication.translate("MainWindow", u"Old Frequency:", None))
         self.old_freq_value_label.setText("")
         self.new_freq_label.setText(QCoreApplication.translate("MainWindow", u"New Frequency:", None))

@@ -3,9 +3,9 @@ matplotlib.use('QtAgg')
 
 from typing import Callable
 
-from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QLabel
-from PySide6.QtCore import QPropertyAnimation, Qt
-from PySide6.QtGui import QDoubleValidator
+from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QLabel, QSizePolicy, QGridLayout, QSpacerItem, QToolButton
+from PySide6.QtCore import QPropertyAnimation, Qt, QRect, QSize
+from PySide6.QtGui import QDoubleValidator, QIcon
 from matplotlib.figure import Figure
 from matplotlib.backend_bases import MouseEvent, MouseButton, DrawEvent, PickEvent
 import matplotlib.pyplot as plt
@@ -21,6 +21,7 @@ from rfsocinterface.losweep import fit_lo_sweep, get_tone_list, plot_lo_fit, LoS
 
 DPI = 100
 
+
 class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
     def __init__(self, resonator: ResonatorData, parent: QWidget | None = None):
         super().__init__(parent=parent)
@@ -33,10 +34,18 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
 
         fig = self.resonator.plot()
         self.set_figure(fig)
+        self.canvas.line.set_label('New Frequency')
+        self.ax.axvline(self.resonator.tone, 0, 1, color='gray', linestyle='--', label='Old Frequency')
+        self.ax.legend()
 
         # self.canvas.layout().addWidget(self.edit_toolButton)
+
+        # self.canvas.stacked_layout.addWidget(ResonatorEditButton(self))
         self.canvas.stacked_layout.addWidget(self.edit_toolButton)
-        self.edit_toolButton.clicked.connect(self.toggle_edit)
+        self.canvas.stacked_layout.setCurrentIndex(1)
+        # self.edit_toolButton.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        # self.edit_toolButton.raise_()
+        self.edit_toolButton.edit_toolButton.clicked.connect(self.toggle_edit)
 
         self.old_freq_value_label.setText(f'{self.resonator.tone:.5f}')
 
@@ -75,7 +84,7 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
             self.delta_value_label.setText(f'{new_freq - self.resonator.tone:.5f}')
 
     def toggle_edit(self):
-        pass
+        print('clicked edit button')
 
     def set_figure(self, fig: Figure):
         self.canvas.set_figure(fig)
@@ -86,6 +95,11 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         self.figcanvas.mpl_connect('button_press_event', self.mouse_press)
         self.figcanvas.mpl_connect('button_release_event', self.mouse_release)
         self.figcanvas.mpl_connect('motion_notify_event', self.mouse_move)
+    
+    def is_close(self, xdata: float, epsilon: float=1e3) -> bool:
+        d = np.abs(self.canvas.line.get_xdata()[0] - xdata)
+        return d < self.epsilon
+
 
     def mouse_release(self, event: MouseEvent):
         if event.button != 1: return
@@ -100,14 +114,20 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         if event.inaxes != self.ax: return
         if event.button != 1: return
 
-        d = np.abs(self.canvas.line.get_xdata()[0] - event.xdata)
-        if d < self.epsilon:
+        if self.is_close(event.xdata):
             self.dragging = True
     
     def mouse_move(self, event: MouseEvent):
-        if not self.dragging: return
         if event.inaxes != self.ax: return
+        if not self.dragging:
+            if self.is_close(event.xdata):
+                self.canvas.line.set_linewidth('3')
+            else:
+                self.canvas.line.set_linewidth('1.5')
+            self.figcanvas.draw_idle()
+            return
         if event.button != 1: return
+
 
         self.canvas.line.set_xdata([event.xdata, event.xdata])
         self.new_freq_lineEdit.setText(f'{event.xdata:.3f}')

@@ -70,12 +70,16 @@ class ResonatorCanvas(QWidget):
             fig = Figure(figsize=(8, 5))
         self.canvas = FigureCanvas(fig)
         self.canvas.figure = fig
+        # self.setLayout(QVBoxLayout())
+        # self.layout().addWidget(self.canvas)
 
         self.stacked_layout = QStackedLayout()
         self.stacked_layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
         self.stacked_layout.addWidget(self.canvas)
         # self.stacked_layout.setCurrentIndex(1)
         self.setLayout(self.stacked_layout)
+        # self.layout().addWidget(self.canvas)
+
     
     def update_figure(self):
         print(self.line.get_xydata())
