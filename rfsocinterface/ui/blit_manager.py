@@ -31,9 +31,9 @@ class BlitManager:
     def on_draw(self, event: DrawEvent):
         """Callback to register with 'draw_event'."""
         cv = self.canvas
-        # if event is not None:
-        #     if event.canvas != cv:
-        #         raise RuntimeError
+        if event is not None:
+            if event.canvas != cv:
+                raise RuntimeError
         self._bg = cv.copy_from_bbox(cv.figure.bbox)
         self._draw_animated()
 
@@ -57,7 +57,6 @@ class BlitManager:
 
     def _draw_animated(self):
         """Draw all of the animated artists."""
-        fig = self.canvas.figure
         for p, a in self._artists:
             p.draw_artist(a)
 

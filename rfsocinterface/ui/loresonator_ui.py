@@ -137,11 +137,11 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"MainWindow", None))
-        self.old_freq_label.setText(QCoreApplication.translate("MainWindow", u"Old Frequency:", None))
+        self.old_freq_label.setText(QCoreApplication.translate("MainWindow", u"Old Frequency (MHz):", None))
         self.old_freq_value_label.setText("")
-        self.new_freq_label.setText(QCoreApplication.translate("MainWindow", u"New Frequency:", None))
+        self.new_freq_label.setText(QCoreApplication.translate("MainWindow", u"New Frequency (MHz):", None))
         self.reset_pushButton.setText(QCoreApplication.translate("MainWindow", u"Reset", None))
-        self.delta_label.setText(QCoreApplication.translate("MainWindow", u"\u0394f:", None))
+        self.delta_label.setText(QCoreApplication.translate("MainWindow", u"\u0394f (KHz):", None))
         self.delta_value_label.setText("")
         self.depth_label.setText(QCoreApplication.translate("MainWindow", u"Resonance Depth:", None))
         self.depth_value_label.setText("")

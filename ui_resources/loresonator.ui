@@ -36,7 +36,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="old_freq_label">
         <property name="text">
-         <string>Old Frequency:</string>
+         <string>Old Frequency (MHz):</string>
         </property>
        </widget>
       </item>
@@ -50,7 +50,7 @@
       <item row="1" column="0">
        <widget class="QLabel" name="new_freq_label">
         <property name="text">
-         <string>New Frequency:</string>
+         <string>New Frequency (MHz):</string>
         </property>
        </widget>
       </item>
@@ -97,7 +97,7 @@
       <item row="2" column="0">
        <widget class="QLabel" name="delta_label">
         <property name="text">
-         <string>Δf:</string>
+         <string>Δf (KHz):</string>
         </property>
        </widget>
       </item>

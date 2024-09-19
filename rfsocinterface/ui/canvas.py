@@ -16,9 +16,7 @@ from copy import deepcopy
 from matplotlib.backend_bases import MouseEvent, MouseButton, DrawEvent
 import matplotlib.pyplot as plt
 
-from rfsocinterface.losweep import plot_lo_fit
 from rfsocinterface.ui.blit_manager import BlitManager
-from rfsocinterface.ui.editbutton import ResonatorEditButton
 
 class ScrollableCanvas(QScrollArea):
     def __init__(self, parent=None):
@@ -31,10 +29,7 @@ class ScrollableCanvas(QScrollArea):
 
         self.set_figure(Figure(figsize=(5, 5)))
 
-        # self.nav = NavigationToolbar(self.canvas, self)
-        
         self.setLayout(QVBoxLayout(self))
-        # self.layout().addWidget(self.nav)
         self.layout().addWidget(self.canvas)
         self.layout().installEventFilter(self)
 
@@ -71,7 +66,10 @@ class ResonatorCanvas(QWidget):
             fig = Figure(figsize=(8, 5))
         self.canvas = FigureCanvas(fig)
         self.canvas.figure = fig
+        # self.nav = NavigationToolbar(self.canvas, self)
+
         self.setLayout(QVBoxLayout())
+        # self.layout().addWidget(self.nav)
         self.layout().addWidget(self.canvas)
 
         # self.setLayout(QGridLayout())
