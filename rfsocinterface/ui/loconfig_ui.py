@@ -213,14 +213,14 @@ class Ui_MainWindow(object):
 
         self.dialog_button_box = QDialogButtonBox(self.centralwidget)
         self.dialog_button_box.setObjectName(u"dialog_button_box")
-        self.dialog_button_box.setStandardButtons(QDialogButtonBox.StandardButton.Apply|QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok)
+        self.dialog_button_box.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok)
 
         self.verticalLayout.addWidget(self.dialog_button_box)
 
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 800, 33))
+        self.menubar.setGeometry(QRect(0, 0, 800, 22))
         self.menuFile = QMenu(self.menubar)
         self.menuFile.setObjectName(u"menuFile")
         self.menuHelp = QMenu(self.menubar)
@@ -328,7 +328,7 @@ class Ui_MainWindow(object):
         self.filename_temperature_radioButton.setText(QCoreApplication.translate("MainWindow", u"Focal plane temperature (mK)", None))
         self.filename_elevation_radioButton.setText(QCoreApplication.translate("MainWindow", u"Telescope elevation (deg)", None))
         self.filename_example_label.setText(QCoreApplication.translate("MainWindow", u"Example:", None))
-        self.filename_example_lineEdit.setText(QCoreApplication.translate("MainWindow", u"YYYYMMDD_rfsocN_LO_Sweep_hourH", None))
+        self.filename_example_lineEdit.setText(QCoreApplication.translate("MainWindow", u"YYYYMMDD_rfsocN_LO_Sweep_hourHH", None))
         self.only_flag_checkBox.setText(QCoreApplication.translate("MainWindow", u"Only show flagged resonators", None))
         self.menuFile.setTitle(QCoreApplication.translate("MainWindow", u"File", None))
         self.menuHelp.setTitle(QCoreApplication.translate("MainWindow", u"Help", None))
