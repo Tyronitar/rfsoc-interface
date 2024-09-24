@@ -72,15 +72,10 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_2.addWidget(self.new_freq_lineEdit)
 
-        self.reset_pushButton = QPushButton(self.centralwidget)
-        self.reset_pushButton.setObjectName(u"reset_pushButton")
-        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-        sizePolicy2.setHorizontalStretch(0)
-        sizePolicy2.setVerticalStretch(0)
-        sizePolicy2.setHeightForWidth(self.reset_pushButton.sizePolicy().hasHeightForWidth())
-        self.reset_pushButton.setSizePolicy(sizePolicy2)
+        self.refit_pushButton = QPushButton(self.centralwidget)
+        self.refit_pushButton.setObjectName(u"refit_pushButton")
 
-        self.horizontalLayout_2.addWidget(self.reset_pushButton)
+        self.horizontalLayout_2.addWidget(self.refit_pushButton)
 
         self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
@@ -114,7 +109,7 @@ class Ui_MainWindow(object):
 
         self.buttonBox = QDialogButtonBox(self.centralwidget)
         self.buttonBox.setObjectName(u"buttonBox")
-        self.buttonBox.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Save)
+        self.buttonBox.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Reset|QDialogButtonBox.StandardButton.Save)
 
         self.verticalLayout_2.addWidget(self.buttonBox)
 
@@ -140,7 +135,7 @@ class Ui_MainWindow(object):
         self.old_freq_label.setText(QCoreApplication.translate("MainWindow", u"Old Frequency (MHz):", None))
         self.old_freq_value_label.setText("")
         self.new_freq_label.setText(QCoreApplication.translate("MainWindow", u"New Frequency (MHz):", None))
-        self.reset_pushButton.setText(QCoreApplication.translate("MainWindow", u"Reset", None))
+        self.refit_pushButton.setText(QCoreApplication.translate("MainWindow", u"Refit", None))
         self.delta_label.setText(QCoreApplication.translate("MainWindow", u"\u0394f (KHz):", None))
         self.delta_value_label.setText("")
         self.depth_label.setText(QCoreApplication.translate("MainWindow", u"Resonance Depth:", None))

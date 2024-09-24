@@ -67,15 +67,9 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="reset_pushButton">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
+         <widget class="QPushButton" name="refit_pushButton">
           <property name="text">
-           <string>Reset</string>
+           <string>Refit</string>
           </property>
          </widget>
         </item>
@@ -127,7 +121,7 @@
     <item>
      <widget class="QDialogButtonBox" name="buttonBox">
       <property name="standardButtons">
-       <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Save</set>
+       <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Reset|QDialogButtonBox::StandardButton::Save</set>
       </property>
      </widget>
     </item>

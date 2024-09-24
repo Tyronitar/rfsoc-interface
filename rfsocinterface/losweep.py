@@ -53,6 +53,7 @@ class ResonatorData:
             ax.set_ylabel(r'$|S_{21}|$')
         # Otherwise, just plot inside the existing axes
         else:
+            ax.set_facecolor('white')
             ax.set_yticks([])
             ax.set_xticks([])
 
@@ -134,6 +135,7 @@ class ResonatorData:
     @fit_f0.setter
     def fit_f0(self, val: float):
         self.data.fit_f0[self.idx] = val
+        self.flagged = np.abs(self.difference) > self.data.diff_to_flag[self.idx]
     
     @property
     def fit_qi(self) -> float:
@@ -215,6 +217,11 @@ class LoSweepData:
         return np.size(self.chanmask)
     
     @property
+    def df(self) -> float:
+        """The difference between two frequency data points."""
+        return self.freq[0, 1] - self.freq[0, 0]
+    
+    @property
     def offres_ind(self) -> npt.NDArray:
         """The indices of frequencies that are off-resonance."""
         return np.argwhere(self.chanmask == 0)
@@ -226,7 +233,6 @@ class LoSweepData:
     
     def fit(self, do_print=False):
         """Perform a fit to determine the resoncance frequencies of each resonator."""
-        df = self.freq[0, 1] - self.freq[0, 0]
 
         for i_chan in np.argwhere(self.chanmask == 1):
             # pull in the sweep data for this tone
@@ -234,7 +240,7 @@ class LoSweepData:
             resonator = self.resonator_data[i_chan]
 
             # call the resonator fitter
-            f0, qc, qi = resonator.fit(df)
+            f0, qc, qi = resonator.fit(self.df)
             self.fit_f0[i_chan] = f0
             self.fit_qc[i_chan] = qc
             self.fit_qi[i_chan] = qi
