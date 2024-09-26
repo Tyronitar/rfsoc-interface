@@ -5,7 +5,7 @@
 
 from PySide6 import QtCore
 
-qt_resource_data = b"\
+qt_resource_data = b'\
 \x00\x00\x04\x00\
 <\
 ?xml version=\x221.\
@@ -72,9 +72,9 @@ id=\x22edit-[#1479]\
            </g>\x0d\
 \x0a        </g>\x0d\x0a \
    </g>\x0d\x0a</svg>\
-"
+'
 
-qt_resource_name = b"\
+qt_resource_name = b'\
 \x00\x05\
 \x00o\xa6S\
 \x00i\
@@ -83,21 +83,28 @@ qt_resource_name = b"\
 \x0b\x07W\xa7\
 \x00e\
 \x00d\x00i\x00t\x00.\x00s\x00v\x00g\
-"
+'
 
-qt_resource_struct = b"\
+qt_resource_struct = b'\
 \x00\x00\x00\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x01\
 \x00\x00\x00\x00\x00\x00\x00\x00\
 \x00\x00\x00\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x02\
 \x00\x00\x00\x00\x00\x00\x00\x00\
 \x00\x00\x00\x10\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\
 \x00\x00\x01\x91\xb9,\x06:\
-"
+'
+
 
 def qInitResources():
-    QtCore.qRegisterResourceData(0x03, qt_resource_struct, qt_resource_name, qt_resource_data)
+    QtCore.qRegisterResourceData(
+        0x03, qt_resource_struct, qt_resource_name, qt_resource_data
+    )
+
 
 def qCleanupResources():
-    QtCore.qUnregisterResourceData(0x03, qt_resource_struct, qt_resource_name, qt_resource_data)
+    QtCore.qUnregisterResourceData(
+        0x03, qt_resource_struct, qt_resource_name, qt_resource_data
+    )
+
 
 qInitResources()

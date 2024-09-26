@@ -1,7 +1,7 @@
-from typing import ParamSpec, TypeVar, Callable
-from pathlib import Path
 import functools
 import os
+from pathlib import Path
+from typing import Callable, ParamSpec, TypeVar
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 
@@ -30,7 +30,7 @@ def ensure_path(
     *targets: int | str,
 ) -> Callable[[Callable[P, R]], Callable[Q, R]]:
     """Function decorator factory for converting PathLike's to Path's.
-    
+
     Arguments:
         *targets (int | str): The arguments to convert to Path's before evaluating the
             function. If a target is an integer, it indicates the index of the
@@ -43,18 +43,25 @@ def ensure_path(
 
         Arguments:
             func (Callable[P, R]): A function that may take Path objects as arguments.
-        
+
         Returns:
             (Callable[Q, R]): A function that can take PathLike arguments and converts
                 them to Path objects.
         """
+
         @functools.wraps(func)
         def wrapper(
             *args: Q.args,
             **kwargs: Q.kwargs,
         ) -> R:
-            new_args = [convert_path(arg) if i in targets else arg for i, arg in enumerate(args)]
-            new_kwargs = {k: (convert_path(v) if k in targets else v) for k, v in kwargs.items()}
+            new_args = [
+                convert_path(arg) if i in targets else arg for i, arg in enumerate(args)
+            ]
+            new_kwargs = {
+                k: (convert_path(v) if k in targets else v) for k, v in kwargs.items()
+            }
             return func(*new_args, **new_kwargs)
+
         return wrapper
+
     return decorator

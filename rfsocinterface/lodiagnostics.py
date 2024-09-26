@@ -1,31 +1,35 @@
-import matplotlib
-matplotlib.use('QtAgg')
+import matplotlib as mpl
+
+mpl.use('QtAgg')
 
 from typing import Callable
 
-from PySide6.QtWidgets import QMainWindow, QApplication, QWidget, QLabel, QSizePolicy, QGridLayout, QSpacerItem, QToolButton, QDialogButtonBox
-from PySide6.QtCore import QPropertyAnimation, Qt, QRect, QSize
-from PySide6.QtGui import QDoubleValidator, QIcon, QResizeEvent, QCursor
-from matplotlib.figure import Figure
-from matplotlib.backend_bases import MouseEvent, MouseButton, DrawEvent, PickEvent
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy.typing as npt
-import time
+from matplotlib.backend_bases import MouseButton, MouseEvent
+from matplotlib.figure import Figure
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QDoubleValidator
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialogButtonBox,
+    QLabel,
+    QMainWindow,
+    QWidget,
+)
 
+from rfsocinterface.losweep import LoSweepData, ResonatorData, get_tone_list
 from rfsocinterface.ui.lodiagnostics_ui import Ui_MainWindow as Ui_DiagnosticsWindow
 from rfsocinterface.ui.loresonator_ui import Ui_MainWindow as Ui_ResonatorWindow
-from rfsocinterface.ui.canvas import ScrollableCanvas, ResonatorCanvas
-from rfsocinterface.ui.blit_manager import BlitManager
-from rfsocinterface.losweep import get_tone_list, LoSweepData, ResonatorData
 
 DPI = 100
 
 EPSILON = 1e-4  # Max x difference to count as the mouse being close to the line
 
+
 class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
     """Window displaying information about the resonator.
-    
+
     Attributes:
         resonator (ResonatorData): The data for the resonator corresponding to this
             window.
@@ -52,7 +56,14 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         fig = self.resonator.plot()
         self.set_figure(fig)
         self.canvas.line.set_label('New Frequency')
-        self.ax.axvline(self.resonator.tone * 1e-6, 0, 1, color='gray', linestyle='--', label='Old Frequency')
+        self.ax.axvline(
+            self.resonator.tone * 1e-6,
+            0,
+            1,
+            color='gray',
+            linestyle='--',
+            label='Old Frequency',
+        )
         self.ax.legend()
 
         # Fill in the necessary values in the UI
@@ -66,14 +77,20 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
 
         # Setup text validator
         freq_range = self.ax.get_xlim()
-        self.validator = QDoubleValidator(freq_range[0], freq_range[1] + 0.001, 5, parent=self)
+        self.validator = QDoubleValidator(
+            freq_range[0], freq_range[1] + 0.001, 5, parent=self
+        )
         self.new_freq_lineEdit.setValidator(self.validator)
 
         # Setup connections to signals
         self.buttonBox.accepted.connect(self.accept)
         # self.buttonBox.rejected.connect(self.reject)
-        self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(self.reset_freq)
-        self.buttonBox.button(QDialogButtonBox.StandardButton.Cancel).clicked.connect(self.reject)
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(
+            self.reset_freq
+        )
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Cancel).clicked.connect(
+            self.reject
+        )
         self.refit_pushButton.clicked.connect(self.refit)
         self.new_freq_lineEdit.textChanged.connect(self.change_freq)
 
@@ -86,14 +103,16 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         self.resonator.fit_qc = self.temp_fit_qc
         self.resonator.fit_qi = self.temp_fit_qi
         self.close()
-    
+
     def reject(self):
         """Handle rejecting changes."""
         self.close()
-    
+
     def refit(self):
         """Refit the resonator."""
-        fit_f0, fit_qc, fit_qi = self.resonator.fit(self.resonator.data.df, self.temp_fit_f0)
+        fit_f0, fit_qc, fit_qi = self.resonator.fit(
+            self.resonator.data.df, self.temp_fit_f0
+        )
         self.temp_fit_f0 = fit_f0
         self.temp_fit_qc = fit_qc
         self.temp_fit_qi = fit_qi
@@ -102,23 +121,27 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
     def reset_freq(self):
         """Reset the line to the initial frequency."""
         self.new_freq_lineEdit.setText(f'{self.resonator.fit_f0 * 1e-6:.3f}')
-    
+
     def change_freq(self):
-        """Handle changes to the frequency in the lineEdit"""
+        """Handle changes to the frequency in the lineEdit."""
         freq_range = self.ax.get_xlim()
         new_freq = self.new_freq_lineEdit.text()
 
         valid = self.validator.validate(new_freq, 0)[0]
-        
-        if not valid == QDoubleValidator.State.Acceptable:  # Value is invalid 
+
+        if valid != QDoubleValidator.State.Acceptable:  # Value is invalid
             # Highlight in red
-            self.new_freq_lineEdit.setStyleSheet('background-color: "#FFCCCC"; border: 1px solid red;')
+            self.new_freq_lineEdit.setStyleSheet(
+                'background-color: "#FFCCCC"; border: 1px solid red;'
+            )
 
             # Create the error_label if needed
             if self.error_label is None:
                 self.error_label = QLabel(self)
-                self.error_label.setText(f'New frequency must be in the range [{freq_range[0]:.3f}, {freq_range[1]:.3f}]')
-                self.error_label.setStyleSheet("color: red;")
+                self.error_label.setText(
+                    f'New frequency must be in the range [{freq_range[0]:.3f}, {freq_range[1]:.3f}]'
+                )
+                self.error_label.setStyleSheet('color: red;')
                 self.formLayout.insertRow(2, None, self.error_label)
         else:  # Value is valid
             # Remove the error label since the value is valid
@@ -126,14 +149,16 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
                 self.new_freq_lineEdit.setStyleSheet('')
                 self.formLayout.removeRow(self.error_label)
                 self.error_label = None
-            self.new_freq_lineEdit.setStyleSheet("")
+            self.new_freq_lineEdit.setStyleSheet('')
 
             # Update the line's position
             new_freq = float(new_freq)
             self.temp_fit_f0 = new_freq * 1e6
             self.canvas.line.set_xdata([new_freq, new_freq])
             self.figcanvas.draw_idle()
-            self.delta_value_label.setText(f'{(new_freq - self.resonator.tone * 1e-6) * 1e3:.3f}')
+            self.delta_value_label.setText(
+                f'{(new_freq - self.resonator.tone * 1e-6) * 1e3:.3f}'
+            )
 
     def set_figure(self, fig: Figure):
         """Change the figure in the canvas."""
@@ -146,15 +171,17 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         self.figcanvas.mpl_connect('button_press_event', self.mouse_press)
         self.figcanvas.mpl_connect('button_release_event', self.mouse_release)
         self.figcanvas.mpl_connect('motion_notify_event', self.mouse_move)
-    
-    def close_to_line(self, xdata: float, epsilon: float=EPSILON) -> bool:
+
+    def close_to_line(self, xdata: float, epsilon: float = EPSILON) -> bool:
         """Return whether a value is close to the line."""
         return np.allclose(self.canvas.line.get_xdata()[0], xdata, atol=epsilon)
 
     def mouse_release(self, event: MouseEvent):
         """Handle releasing a mouse button."""
-        if event.button != 1: return  # Not left click
-        if event.inaxes != self.ax: return  # Not inside the plot
+        if event.button != 1:
+            return  # Not left click
+        if event.inaxes != self.ax:
+            return  # Not inside the plot
 
         if self.dragging:
             # Stop dragging and update the line's position
@@ -167,14 +194,16 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
 
     def mouse_press(self, event: MouseEvent):
         """Handle left clicking."""
-        if event.inaxes != self.ax: return  # Not in the plot
-        if event.button != 1: return  # Not left button
+        if event.inaxes != self.ax:
+            return  # Not in the plot
+        if event.button != 1:
+            return  # Not left button
 
         # Begin dragging if close to the line
         if self.close_to_line(event.xdata):
             self.dragging = True
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
-    
+
     def mouse_move(self, event: MouseEvent):
         """Handle mouse movement."""
         # If mouse moves out of plot, unhighlight the line and stop dragging
@@ -194,7 +223,8 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
                 self.setCursor(Qt.CursorShape.ArrowCursor)
             self.figcanvas.draw_idle()
             return
-        if event.button != 1: return  # Not left clicking
+        if event.button != 1:
+            return  # Not left clicking
 
         # Moving while holding left mouse and dragging, so update the line's position
         self.new_freq_lineEdit.setText(f'{event.xdata:.5f}')
@@ -205,7 +235,7 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
 
 class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
     """Window displaying all resonator plots.
-    
+
     Attributes:
         sweep (LoSweepData): The relevant LO sweep data.
     """
@@ -217,7 +247,7 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
         self.sweep = sweep
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
         self.plot()
-    
+
     def click_plot(self, event: MouseEvent):
         """Handle clicking the plots."""
         axes = event.inaxes
@@ -231,13 +261,14 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
                 idx = self.canvas.canvas.figure.axes.index(axes)
                 resonator = self.sweep.resonator_data[idx]
                 self.make_resonator_window(resonator, axes)
-    
+
     def make_resonator_window(self, resonator: ResonatorData, ax: plt.Axes):
         """Create and open a ResonatorWindow using the provided ResonatorData."""
+
         def wrap_func(f: Callable):
             def override_close(*args):
                 f(*args)
-                
+
                 # Redraw the plot when closing the resonator window
                 ax.cla()
                 resonator.plot(ax)
@@ -246,18 +277,19 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
                 self.canvas.select_axis(self.canvas.selected_axes)
 
             return override_close
+
         rw = ResonatorWindow(resonator, parent=self)
         rw.closeEvent = wrap_func(rw.closeEvent)
-            
+
         rw.show()
-    
+
     def plot(self, fig_width=15):
         """Plot all of the resonators."""
         fig = self.sweep.plot(ncols=fig_width)
         fig.canvas.mpl_connect('button_press_event', self.click_plot)
         self.canvas.set_figure(fig)
         self.canvas.set_flagged(self.sweep.flagged)
-    
+
     def toggle_unflagged(self):
         """Toggle whether the unflagged resonator plots are shown."""
         self.canvas.set_flagged(self.sweep.flagged)
@@ -265,8 +297,8 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
             self.canvas.hide_unflagged()
         else:
             self.canvas.show_all()
-    
-    def get_figure(self) ->  Figure:
+
+    def get_figure(self) -> Figure:
         """Return the window's figure."""
         return self.canvas.canvas.figure
 

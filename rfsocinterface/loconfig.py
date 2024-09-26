@@ -1,15 +1,18 @@
 """GUI Elements dealing with Configuring the LO Sweep."""
 
-from rfsocinterface.ui.loconfig_ui import Ui_MainWindow as Ui_LOConfigWindow
-from PySide6.QtWidgets import QMainWindow, QRadioButton, QApplication, QFileDialog
 from pathlib import Path
 from typing import Literal
 
+from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton
+
+from rfsocinterface.ui.loconfig_ui import Ui_MainWindow as Ui_LOConfigWindow
+
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
+
 
 class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
     """Window for configuring the LO sweep.
-    
+
     Attributes:
         active_suffix (Literal['none', 'temperature', 'elevation]): The currently
             selected suffix to append to the filename. Can be 'none', 'temperature',
@@ -27,9 +30,13 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
         self.second_sweep_checkBox.clicked.connect(self.check_second_sweep)
         self.show_diagnostics_checkBox.clicked.connect(self.check_diagnostics)
         self.tone_list_pushButton.clicked.connect(self.choose_tone_file)
-        self.filename_temperature_lineEdit.textEdited.connect(self.update_filename_example)
-        self.filename_elevation_lineEdit.textEdited.connect(self.update_filename_example)
-    
+        self.filename_temperature_lineEdit.textEdited.connect(
+            self.update_filename_example
+        )
+        self.filename_elevation_lineEdit.textEdited.connect(
+            self.update_filename_example
+        )
+
     def choose_tone_file(self):
         """Open a file dialog to select the tone file."""
         fname, _ = QFileDialog.getOpenFileName(
@@ -42,14 +49,14 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
         if fname:
             self.tone_path = Path(fname)
             self.tone_list_lineEdit.setText(fname)
-    
+
     def check_diagnostics(self):
         """Callback for when the "show diagnostics" box is clicked."""
         if self.show_diagnostics_checkBox.isChecked():
             self.only_flag_checkBox.show()
         else:
             self.only_flag_checkBox.hide()
-            
+
     def check_second_sweep(self):
         """Callback for when the "perform second sweep" box is clicked."""
         if self.second_sweep_checkBox.isChecked():
@@ -79,7 +86,7 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
                 self.filename_elevation_lineEdit.setEnabled(True)
 
         self.update_filename_example()
-    
+
     def update_filename_example(self):
         """Update the example filename box to reflect the chosen suffix."""
         match self.active_suffix:
@@ -94,7 +101,10 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
                     f'{DEFAULT_FILENAME}_elev{self.filename_elevation_lineEdit.text()}'
                 )
             case _:
-                raise RuntimeError(f'Invalid `active_suffix` encountered: {self.active_suffix}')
+                raise RuntimeError(
+                    f'Invalid `active_suffix` encountered: {self.active_suffix}'
+                )
+
 
 if __name__ == '__main__':
     app = QApplication()
