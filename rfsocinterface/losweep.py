@@ -160,9 +160,11 @@ class ResonatorData:
         """float: The span of the frequency window for the resonator."""
         return np.ptp(self.freq)
     
-    def fit(self, df: float) -> tuple[float, float, float]:
+    def fit(self, df: float, start: float=None) -> tuple[float, float, float]:
         """Perform a fit to find the resonance frequency."""
-        fit_f0 = simple_derivative_fits(df, self.freq, self.tone, self.s21)
+        if start is None:
+            start = self.tone
+        fit_f0 = simple_derivative_fits(df, self.freq, start, self.s21)
         fit_qi = 0.
         fit_qc = 0.
 
@@ -195,8 +197,8 @@ class LoSweepData:
         """Initialize a LoSweepData object."""
         self.data = np.load(sweep_file)
         self.tone_list = tone_list
-        self.freq = self.data[0, :, :]
-        self.s21 = 10. * np.log10(np.abs(self.data[1, :, :]))
+        self.freq = np.real(self.data[0, :, :])
+        self.s21 = np.real(10. * np.log10(np.abs(self.data[1, :, :])))
         self.chanmask = get_chanmask(chanmask_file)
         self.resonator_data = [ResonatorData(self, i) for i in range(self.nchan)]
 
@@ -229,7 +231,7 @@ class LoSweepData:
     @property
     def flagged(self) -> npt.NDArray:
         """The indices of the resonators which are flagged."""
-        return np.argwhere(self.difference > self.diff_to_flag)
+        return np.argwhere(np.abs(self.difference) > self.diff_to_flag)
     
     def fit(self, do_print=False):
         """Perform a fit to determine the resoncance frequencies of each resonator."""

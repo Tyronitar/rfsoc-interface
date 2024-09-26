@@ -5,6 +5,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.artist import Artist
 from matplotlib.backend_bases import DrawEvent
 from matplotlib.figure import Figure
+from matplotlib.transforms import Bbox
 
 class BlitManager:
     def __init__(self, canvas: FigureCanvas, animated_artists: tuple[Artist, ...]=()):
@@ -54,6 +55,13 @@ class BlitManager:
             raise RuntimeError
         art.set_animated(True)
         self._artists.append((parent, art))
+    
+    def update_artists(self, artists: list[tuple[Artist, Bbox]]):
+        """Update the screen around each of the artists in the provided list."""
+        cv = self.canvas
+        for a, bbox in artists:
+            cv.restore_region(cv.copy_from_bbox(bbox))
+            cv.figure.draw_artist(a)
 
     def _draw_animated(self):
         """Draw all of the animated artists."""
@@ -66,12 +74,10 @@ class BlitManager:
         fig = cv.figure
         # paranoia in case we missed the draw event,
         if self._bg is None:
-            print('missed the draw event!')
             self.on_draw(None)
         else:
-            print('hit the draw event!')
             # restore the background
-            # cv.restore_region(self._bg)
+            cv.restore_region(self._bg)
             # draw all of the animated artists
             self._draw_animated()
             # update the GUI state

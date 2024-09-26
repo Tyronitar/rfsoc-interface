@@ -93,7 +93,7 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
     
     def refit(self):
         """Refit the resonator."""
-        fit_f0, fit_qc, fit_qi = self.resonator.fit(self.resonator.data.df)
+        fit_f0, fit_qc, fit_qi = self.resonator.fit(self.resonator.data.df, self.temp_fit_f0)
         self.temp_fit_f0 = fit_f0
         self.temp_fit_qc = fit_qc
         self.temp_fit_qi = fit_qi
@@ -243,11 +243,7 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
                 resonator.plot(ax)
                 self.get_figure().draw_artist(ax.patch)
                 self.get_figure().draw_artist(ax)
-                # self.canvas.canvas.blit()
-                # self.canvas.canvas.flush_events()
                 self.canvas.select_axis(self.canvas.selected_axes)
-
-                # self.rw = None
 
             return override_close
         rw = ResonatorWindow(resonator, parent=self)
@@ -259,10 +255,12 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
         """Plot all of the resonators."""
         fig = self.sweep.plot(ncols=fig_width)
         fig.canvas.mpl_connect('button_press_event', self.click_plot)
-        self.canvas.set_figure(fig, self.sweep.flagged)
+        self.canvas.set_figure(fig)
+        self.canvas.set_flagged(self.sweep.flagged)
     
     def toggle_unflagged(self):
         """Toggle whether the unflagged resonator plots are shown."""
+        self.canvas.set_flagged(self.sweep.flagged)
         if self.flagged_checkBox.isChecked():
             self.canvas.hide_unflagged()
         else:
@@ -281,7 +279,7 @@ if __name__ == '__main__':
         '20240822_rfsoc2_LO_Sweep_hour16p3294.npy',
         chanmask_file='chanmask.npy',
     )
-    sweep.fit(do_print=True)
+    sweep.fit(do_print=False)
 
     w = DiagnosticsWindow(sweep)
 
