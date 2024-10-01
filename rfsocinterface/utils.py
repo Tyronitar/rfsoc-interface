@@ -1,9 +1,16 @@
 import functools
 import os
 from pathlib import Path
+import json
 from typing import Callable, ParamSpec, TypeVar
+import logging
+import numpy as np
+import numpy.typing as npt
+from kidpy import wait_for_free, wait_for_reply, kidpy
+import redis
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
+Number = TypeVar('Number', int, float, complex, bytes)
 
 # Generic types for type hints
 T = TypeVar('T')
@@ -65,3 +72,58 @@ def ensure_path(
         return wrapper
 
     return decorator
+
+
+
+
+def write_fList(kpy: kidpy, fList: npt.ArrayLike, ampList: npt.ArrayLike):
+    """
+    Function for writing tones to the rfsoc. Accepts both numpy arrays and lists.
+    :param fList: List of desired tones
+    :type fList: list
+    :param ampList: List of desired amplitudes
+    :type ampList: list
+    .. note::
+        fList and ampList must be the same size
+    """
+    # log = logger.getChild("write_fList")
+    f = fList
+    a = ampList
+
+    # Convert to numpy arrays as needed
+    if isinstance(fList, np.ndarray):
+        f = fList.tolist()
+    if isinstance(ampList, np.ndarray):
+        a = ampList.tolist()
+
+    # Format Command based on provided parameters
+    cmd = {}
+    if len(f) == 0:
+        cmd = {"cmd": "ulWaveform", "args": []}
+    elif len(f) > 0 and len(a) == 0:
+        a = np.ones_like(f).tolist()
+        cmd = {"cmd": "ulWaveform", "args": [f, a]}
+    elif len(f) > 0 and len(a) > 0:
+        assert len(a) == len(
+            f
+        ), "Frequency list and Amplitude list must be the same dimmension"
+        cmd = {"cmd": "ulWaveform", "args": [f, a]}
+    else:
+        # log.error("Weird edge case, something went very wrong.....")
+        return
+
+    cmdstr = json.dumps(cmd)
+    kpy.r.publish("picard", cmdstr)
+    success, _ = wait_for_reply(kpy.p, "ulWaveform", max_timeout=10)
+    # if success:
+    #     log.info("Wrote waveform.")
+    # else:
+    #     log.error("FAILED TO WRITE WAVEFORM")
+
+def test_connection(r):
+    try:
+        r.set("testkey", "123")
+        return True
+    except redis.exceptions.ConnectionError as e:
+        print(e)
+        return False

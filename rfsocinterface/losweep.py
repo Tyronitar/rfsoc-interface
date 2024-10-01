@@ -301,7 +301,7 @@ class LoSweepData:
         return fig
 
 
-def get_tone_list(filename: str, lo_freq: float = 400):
+def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
     """Get the data from a tone-list and convert to Hz from MHz."""
     flist = np.load(filename)
     return lo_freq * 1.0e6 + flist
