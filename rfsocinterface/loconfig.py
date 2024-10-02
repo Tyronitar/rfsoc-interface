@@ -1,9 +1,10 @@
 """GUI Elements dealing with Configuring the LO Sweep."""
 
 from pathlib import Path
-from typing import Literal, Type
+from typing import Literal, Type, Callable
 
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit
+from PySide6.QtCore import Qt
 
 from rfsocinterface.ui.loconfig_ui import Ui_MainWindow as Ui_LOConfigWindow
 from rfsocinterface.losweep import LoSweepData, get_tone_list
@@ -103,14 +104,21 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
         savefile = onrkidpy.get_filename(
             type="LO", chan_name=chan_name
         )
+        match self.buttonGroup.checkedButton():
+            case self.filename_elevation_radioButton:
+                savefile += f'_elev_{self.filename_elevation_lineEdit.text()}'
+            case self.filename_temperature_radioButton:
+                savefile += f'_temp_{self.filename_temperature_lineEdit.text()}'
+            case _:
+                pass
 
-        # TODO: Replace with the actual LO sweep code from kidpy
-        sweep_data = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
-        tone_list = get_tone_list('Default_tone_list.npy')
+        # sweep_data = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
+        # tone_list = get_tone_list('Default_tone_list.npy')
 
+        print(vars(kidpy))
         sweeps.loSweep(
             self.kpy.valon,
-            self.kpy.__udp,
+            self.kpy._kidpy__udp,
             self.kpy.get_last_flist(),
             valon5009.Synthesizer.get_frequency(
                 self.kpy.valon, valon5009.SYNTH_B
@@ -120,15 +128,27 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
             savefile=savefile,
         )
 
+        tone_list = self.kpy.get_last_flist()
+        sweep_data = savefile + '.npy'
         sweep = LoSweepData(
             tone_list,
             sweep_data,
-            chanmask_file='chanmask.npy',
+            '/home/onrkids/readout/host/params/chanmask_rfsoc2.npy',
         ) 
-        sweep.fit()
-        dw = DiagnosticsWindow(sweep)
+        sweep.fit(do_print=True)
+
+        def wrap_func(f: Callable):
+            def override_close(*args):
+                f(*args)
+                # Close this window when finished with the diagnostics
+                self.close()
+
+            return override_close
+
+        dw = DiagnosticsWindow(sweep, parent=self)
+        dw.closeEvent = wrap_func(dw.closeEvent)
+        dw.setWindowModality(Qt.WindowModality.WindowModal)
         dw.show()
-        self.close()
 
 
     def choose_tone_file(self):
