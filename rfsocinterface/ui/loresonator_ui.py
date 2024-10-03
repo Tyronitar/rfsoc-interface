@@ -124,6 +124,9 @@ class Ui_MainWindow(object):
         self.toolBar = QToolBar(MainWindow)
         self.toolBar.setObjectName(u"toolBar")
         MainWindow.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolBar)
+#if QT_CONFIG(shortcut)
+        self.new_freq_label.setBuddy(self.new_freq_lineEdit)
+#endif // QT_CONFIG(shortcut)
 
         self.retranslateUi(MainWindow)
 

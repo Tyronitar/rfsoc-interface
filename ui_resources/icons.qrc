@@ -1,6 +1,14 @@
-<!DOCTYPE RCC>
 <RCC>
-    <qresource prefix="icons">
-        <file alias="edit.svg">edit_icon.svg</file>
-    </qresource>
+  <qresource prefix="icons">
+    <file alias="edit.svg">edit_icon.svg</file>
+    <file>octagon.svg</file>
+    <file alias="up-left.png">icons8-up-left-52.png</file>
+    <file alias="up.png">icons8-up-52.png</file>
+    <file alias="up-right.png">icons8-up-right-52.png</file>
+    <file alias="right.png">icons8-right-52.png</file>
+    <file alias="down-right.png">icons8-down-right-52.png</file>
+    <file alias="down.png">icons8-down-52.png</file>
+    <file>icons8-down-left-52.png</file>
+    <file alias="left.png">icons8-left-52.png</file>
+  </qresource>
 </RCC>
