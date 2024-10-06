@@ -46,8 +46,8 @@ logging.basicConfig(format=__LOGFMT, level=logging.INFO)
 logger = logging.getLogger(__name__+"-kidpy")
 __logh = logging.FileHandler("./kidpy.log")
 logging.root.addHandler(__logh)
-logger.log(100, __LOGFMT)
-__logh.flush()
+# logger.log(100, __LOGFMT)
+# __logh.flush()
 __logh.setFormatter(logging.Formatter(__LOGFMT))
 ################
 

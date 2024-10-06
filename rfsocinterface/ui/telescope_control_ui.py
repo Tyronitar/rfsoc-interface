@@ -16,29 +16,32 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QApplication, QFormLayout, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QMainWindow, QMenuBar,
-    QPushButton, QSizePolicy, QSpacerItem, QStatusBar,
-    QVBoxLayout, QWidget)
+    QHBoxLayout, QLabel, QPushButton, QSizePolicy,
+    QSpacerItem, QVBoxLayout, QWidget)
 
 from rfsocinterface.ui.controller import Controller
 from . import icons_rc
 
-class Ui_MainWindow(object):
-    def setupUi(self, MainWindow):
-        if not MainWindow.objectName():
-            MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(860, 393)
-        self.centralwidget = QWidget(MainWindow)
-        self.centralwidget.setObjectName(u"centralwidget")
-        self.gridLayout = QGridLayout(self.centralwidget)
+class Ui_TelescopeControlWidget(object):
+    def setupUi(self, TelescopeControlWidget):
+        if not TelescopeControlWidget.objectName():
+            TelescopeControlWidget.setObjectName(u"TelescopeControlWidget")
+        TelescopeControlWidget.resize(862, 360)
+        self.gridLayout_2 = QGridLayout(TelescopeControlWidget)
+        self.gridLayout_2.setObjectName(u"gridLayout_2")
+        self.gridLayout = QGridLayout()
         self.gridLayout.setObjectName(u"gridLayout")
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Minimum)
+
+        self.gridLayout.addItem(self.horizontalSpacer_2, 0, 4, 1, 1)
+
         self.verticalLayout_2 = QVBoxLayout()
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
         self.verticalSpacer_3 = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
         self.verticalLayout_2.addItem(self.verticalSpacer_3)
 
-        self.pushButton = QPushButton(self.centralwidget)
+        self.pushButton = QPushButton(TelescopeControlWidget)
         self.pushButton.setObjectName(u"pushButton")
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
@@ -65,9 +68,22 @@ class Ui_MainWindow(object):
 
         self.gridLayout.addLayout(self.verticalLayout_2, 0, 0, 1, 1)
 
+        self.control_groupBox = QGroupBox(TelescopeControlWidget)
+        self.control_groupBox.setObjectName(u"control_groupBox")
+        self.verticalLayout_3 = QVBoxLayout(self.control_groupBox)
+        self.verticalLayout_3.setObjectName(u"verticalLayout_3")
+        self.widget = Controller(self.control_groupBox)
+        self.widget.setObjectName(u"widget")
+        self.widget.setMinimumSize(QSize(250, 250))
+
+        self.verticalLayout_3.addWidget(self.widget)
+
+
+        self.gridLayout.addWidget(self.control_groupBox, 0, 5, 1, 1)
+
         self.verticalLayout = QVBoxLayout()
         self.verticalLayout.setObjectName(u"verticalLayout")
-        self.position_groupBox = QGroupBox(self.centralwidget)
+        self.position_groupBox = QGroupBox(TelescopeControlWidget)
         self.position_groupBox.setObjectName(u"position_groupBox")
         self.horizontalLayout = QHBoxLayout(self.position_groupBox)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
@@ -196,63 +212,37 @@ class Ui_MainWindow(object):
 
         self.gridLayout.addItem(self.horizontalSpacer, 0, 1, 1, 1)
 
-        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
 
-        self.gridLayout.addItem(self.horizontalSpacer_2, 0, 4, 1, 1)
-
-        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
-
-        self.gridLayout.addItem(self.verticalSpacer, 1, 3, 1, 1)
-
-        self.control_groupBox = QGroupBox(self.centralwidget)
-        self.control_groupBox.setObjectName(u"control_groupBox")
-        self.verticalLayout_3 = QVBoxLayout(self.control_groupBox)
-        self.verticalLayout_3.setObjectName(u"verticalLayout_3")
-        self.widget = Controller(self.control_groupBox)
-        self.widget.setObjectName(u"widget")
-        self.widget.setMinimumSize(QSize(250, 250))
-
-        self.verticalLayout_3.addWidget(self.widget)
+        self.gridLayout_2.addLayout(self.gridLayout, 0, 0, 1, 1)
 
 
-        self.gridLayout.addWidget(self.control_groupBox, 0, 5, 1, 1)
+        self.retranslateUi(TelescopeControlWidget)
 
-        MainWindow.setCentralWidget(self.centralwidget)
-        self.menubar = QMenuBar(MainWindow)
-        self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 860, 22))
-        MainWindow.setMenuBar(self.menubar)
-        self.statusbar = QStatusBar(MainWindow)
-        self.statusbar.setObjectName(u"statusbar")
-        MainWindow.setStatusBar(self.statusbar)
-
-        self.retranslateUi(MainWindow)
-
-        QMetaObject.connectSlotsByName(MainWindow)
+        QMetaObject.connectSlotsByName(TelescopeControlWidget)
     # setupUi
 
-    def retranslateUi(self, MainWindow):
-        MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"MainWindow", None))
-        self.pushButton.setText(QCoreApplication.translate("MainWindow", u"STOP", None))
-        self.position_groupBox.setTitle(QCoreApplication.translate("MainWindow", u"Telescope Position", None))
-        self.azimuthLabel.setText(QCoreApplication.translate("MainWindow", u"Azimuth", None))
-        self.azimuth_actualLabel.setText(QCoreApplication.translate("MainWindow", u"Actual", None))
-        self.label.setText(QCoreApplication.translate("MainWindow", u"0.0\u00b0", None))
-        self.azimuth_commandedLabel.setText(QCoreApplication.translate("MainWindow", u"Commanded", None))
-        self.label_3.setText(QCoreApplication.translate("MainWindow", u"0.0\u00b0", None))
-        self.azimuth_errorLabel.setText(QCoreApplication.translate("MainWindow", u"Error", None))
-        self.label_5.setText(QCoreApplication.translate("MainWindow", u"0.0\u00b0", None))
-        self.azimuth_velocityLabel.setText(QCoreApplication.translate("MainWindow", u"Velocity", None))
-        self.label_6.setText(QCoreApplication.translate("MainWindow", u"0.0\u00b0/sec", None))
-        self.zenith_actualLabel.setText(QCoreApplication.translate("MainWindow", u"Actual", None))
-        self.zenithLabel.setText(QCoreApplication.translate("MainWindow", u"Zentih", None))
-        self.zenith_commandedLabel.setText(QCoreApplication.translate("MainWindow", u"Commanded", None))
-        self.zenith_errorLabel.setText(QCoreApplication.translate("MainWindow", u"Error", None))
-        self.zenith_velocityLabel.setText(QCoreApplication.translate("MainWindow", u"Velocity", None))
-        self.label_2.setText(QCoreApplication.translate("MainWindow", u"0.0\u00b0", None))
-        self.label_4.setText(QCoreApplication.translate("MainWindow", u"0.0\u00b0", None))
-        self.label_7.setText(QCoreApplication.translate("MainWindow", u"0.0\u00b0", None))
-        self.label_8.setText(QCoreApplication.translate("MainWindow", u"0.0\u00b0/sec", None))
-        self.control_groupBox.setTitle(QCoreApplication.translate("MainWindow", u"Manual Control", None))
+    def retranslateUi(self, TelescopeControlWidget):
+        TelescopeControlWidget.setWindowTitle(QCoreApplication.translate("TelescopeControlWidget", u"MainWindow", None))
+        self.pushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"STOP", None))
+        self.control_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Manual Control", None))
+        self.position_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Telescope Position", None))
+        self.azimuthLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Azimuth", None))
+        self.azimuth_actualLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Actual", None))
+        self.label.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.azimuth_commandedLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Commanded", None))
+        self.label_3.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.azimuth_errorLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Error", None))
+        self.label_5.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.azimuth_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))
+        self.label_6.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
+        self.zenith_actualLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Actual", None))
+        self.zenithLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Zentih", None))
+        self.zenith_commandedLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Commanded", None))
+        self.zenith_errorLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Error", None))
+        self.zenith_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))
+        self.label_2.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.label_4.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.label_7.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.label_8.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
     # retranslateUi
 

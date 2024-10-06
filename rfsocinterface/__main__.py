@@ -1,15 +1,20 @@
 """Main entry point for the rfsocinterface package."""
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
 
-from onr_fit_lo_sweeps import main
-from rfsocinterface.loconfig import LOConfigWindow
+from rfsocinterface.ui.full_ui_ui import Ui_MainWindow
+
+
+class MainWindow(QMainWindow, Ui_MainWindow):
+    """The Main program window."""
+
+    def __init__(self, parent: QWidget | None=None):
+        super().__init__(parent)
+        self.setupUi(self)
 
 if __name__ == '__main__':
     app = QApplication()
 
-    lo_window = LOConfigWindow()
-    lo_window.show()
+    w = MainWindow()
+    w.show()
     app.exec()
-
-    main()

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 ################################################################################
-## Form generated from reading UI file 'loprogress.ui'
+## Form generated from reading UI file 'progress_bar.ui'
 ##
 ## Created by: Qt User Interface Compiler version 6.7.2
 ##
@@ -63,6 +63,6 @@ class Ui_Dialog(object):
 
     def retranslateUi(self, Dialog):
         Dialog.setWindowTitle(QCoreApplication.translate("Dialog", u"Dialog", None))
-        self.label.setText(QCoreApplication.translate("Dialog", u"Running LO Sweep...", None))
+        self.label.setText(QCoreApplication.translate("Dialog", u"Running...", None))
     # retranslateUi
 

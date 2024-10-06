@@ -15,46 +15,47 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QCheckBox, QMainWindow, QMenuBar,
-    QSizePolicy, QStatusBar, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QCheckBox, QDialog,
+    QDialogButtonBox, QSizePolicy, QVBoxLayout, QWidget)
 
 from rfsocinterface.ui.canvas import DiagnosticsCanvas
 
-class Ui_MainWindow(object):
-    def setupUi(self, MainWindow):
-        if not MainWindow.objectName():
-            MainWindow.setObjectName(u"MainWindow")
-        MainWindow.resize(800, 600)
-        self.centralwidget = QWidget(MainWindow)
-        self.centralwidget.setObjectName(u"centralwidget")
-        self.verticalLayout = QVBoxLayout(self.centralwidget)
-        self.verticalLayout.setObjectName(u"verticalLayout")
-        self.flagged_checkBox = QCheckBox(self.centralwidget)
+class Ui_Dialog(object):
+    def setupUi(self, Dialog):
+        if not Dialog.objectName():
+            Dialog.setObjectName(u"Dialog")
+        Dialog.resize(800, 600)
+        self.verticalLayout_2 = QVBoxLayout(Dialog)
+        self.verticalLayout_2.setObjectName(u"verticalLayout_2")
+        self.flagged_checkBox = QCheckBox(Dialog)
         self.flagged_checkBox.setObjectName(u"flagged_checkBox")
 
-        self.verticalLayout.addWidget(self.flagged_checkBox)
+        self.verticalLayout_2.addWidget(self.flagged_checkBox)
 
-        self.canvas = DiagnosticsCanvas(self.centralwidget)
+        self.verticalLayout = QVBoxLayout()
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.canvas = DiagnosticsCanvas(Dialog)
         self.canvas.setObjectName(u"canvas")
 
         self.verticalLayout.addWidget(self.canvas)
 
-        MainWindow.setCentralWidget(self.centralwidget)
-        self.menubar = QMenuBar(MainWindow)
-        self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 800, 22))
-        MainWindow.setMenuBar(self.menubar)
-        self.statusbar = QStatusBar(MainWindow)
-        self.statusbar.setObjectName(u"statusbar")
-        MainWindow.setStatusBar(self.statusbar)
 
-        self.retranslateUi(MainWindow)
+        self.verticalLayout_2.addLayout(self.verticalLayout)
 
-        QMetaObject.connectSlotsByName(MainWindow)
+        self.buttonBox = QDialogButtonBox(Dialog)
+        self.buttonBox.setObjectName(u"buttonBox")
+        self.buttonBox.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Save)
+
+        self.verticalLayout_2.addWidget(self.buttonBox)
+
+
+        self.retranslateUi(Dialog)
+
+        QMetaObject.connectSlotsByName(Dialog)
     # setupUi
 
-    def retranslateUi(self, MainWindow):
-        MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"LO Sweep Diagnostics", None))
-        self.flagged_checkBox.setText(QCoreApplication.translate("MainWindow", u"Only Show Flagged Resonators", None))
+    def retranslateUi(self, Dialog):
+        Dialog.setWindowTitle(QCoreApplication.translate("Dialog", u"LO Sweep Diagnostics", None))
+        self.flagged_checkBox.setText(QCoreApplication.translate("Dialog", u"Only Show Flagged Resonators", None))
     # retranslateUi
 

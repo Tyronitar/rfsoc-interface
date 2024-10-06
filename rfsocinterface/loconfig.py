@@ -3,24 +3,28 @@
 from pathlib import Path
 from typing import Literal, Type, Callable
 
-from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit
+from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget
 from PySide6.QtCore import Qt
 
-from rfsocinterface.ui.loconfig_ui import Ui_MainWindow as Ui_LOConfigWindow
+from rfsocinterface.ui.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.losweep import LoSweepData, get_tone_list
-from rfsocinterface.lodiagnostics import DiagnosticsWindow
+from rfsocinterface.lodiagnostics import DiagnosticsDialog
+from rfsocinterface.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
+
 from kidpy import kidpy
+import time
 import valon5009
 import numpy as np
 import onrkidpy
 import sweeps
-from rfsocinterface.utils import write_fList, Number, test_connection
+from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job
 
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
 DEFAULT_F_CENTER = 400.0
+DEFAULT_CHANMASK = '/home/onrkids/readout/host/params/chanmask_rfsoc2.npy',
 
 
-class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
+class LoConfigWidget(QWidget, Ui_LOConfigWidget):
     """Window for configuring the LO sweep.
 
     Attributes:
@@ -30,9 +34,9 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
         tone_path (Path): The path to the selected tone list file.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
-        super().__init__()
+        super().__init__(parent)
         self.setupUi(self)
         self.active_suffix: Literal['none', 'temperature', 'elevation'] = 'none'
 
@@ -48,7 +52,7 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
         )
         
         self.dialog_button_box.accepted.connect(self.run_sweep)
-        self.init_kidpy()
+        # self.init_kidpy()
     
     def get_num_value(self, line_edit: QLineEdit, num_type: Type[Number]=float) -> Number:
         """Get the value from a QLineEdit and convert to a number."""
@@ -76,80 +80,91 @@ class LOConfigWindow(QMainWindow, Ui_LOConfigWindow):
 
     def run_sweep(self):
 
-        self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
-        chan_name = 'rfsoc2'
+#         self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
+#         chan_name = 'rfsoc2'
 
-        tone_shift = self.get_num_value(self.deltaf_lineEdit)
-        if tone_shift != 0:
-            lo_freq = valon5009.Synthesizer.get_frequency(
-                self.kpy.valon,
-                valon5009.SYNTH_B,
-            )
-            curr_tone_list = self.kpy.get_tone_list()
-            fList = np.ndarray.tolist(
-                curr_tone_list
-                + float(tone_shift)
-                * curr_tone_list
-                / np.median(curr_tone_list)
-                * 1.0e3
-                - lo_freq * 1.0e6
-            )
-            print(
-                "Waiting for the RFSOC to finish writing the updated frequency list"
-            )
-            fAmps = self.kpy.get_last_alist() #amplitudes
-            write_fList(self.kpy, fList, np.ndarray.tolist(fAmps))
+        # tone_shift = self.get_num_value(self.global_shift_lineEdit)
+        # if tone_shift != 0:
+#             lo_freq = valon5009.Synthesizer.get_frequency(
+#                 self.kpy.valon,
+#                 valon5009.SYNTH_B,
+#             )
+#             curr_tone_list = self.kpy.get_tone_list()
+#             fList = np.ndarray.tolist(
+#                 curr_tone_list
+#                 + float(tone_shift)
+#                 * curr_tone_list
+#                 / np.median(curr_tone_list)
+#                 * 1.0e3
+#                 - lo_freq * 1.0e6
+#             )
+#             print(
+#                 "Waiting for the RFSOC to finish writing the updated frequency list"
+#             )
+#             fAmps = self.kpy.get_last_alist() #amplitudes
+#             write_fList(self.kpy, fList, np.ndarray.tolist(fAmps))
             
-#                                write_fList(self, fList, [])
-        savefile = onrkidpy.get_filename(
-            type="LO", chan_name=chan_name
-        )
-        match self.buttonGroup.checkedButton():
-            case self.filename_elevation_radioButton:
-                savefile += f'_elev_{self.filename_elevation_lineEdit.text()}'
-            case self.filename_temperature_radioButton:
-                savefile += f'_temp_{self.filename_temperature_lineEdit.text()}'
-            case _:
-                pass
+# #                                write_fList(self, fList, [])
+#         savefile = onrkidpy.get_filename(
+#             type="LO", chan_name=chan_name
+#         )
+#         match self.buttonGroup.checkedButton():
+#             case self.filename_elevation_radioButton:
+#                 savefile += f'_elev_{self.filename_elevation_lineEdit.text()}'
+#             case self.filename_temperature_radioButton:
+#                 savefile += f'_temp_{self.filename_temperature_lineEdit.text()}'
+#             case _:
+#                 pass
 
-        # sweep_data = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
-        # tone_list = get_tone_list('Default_tone_list.npy')
+#         print(vars(kidpy))
+#         sweeps.loSweep(
+#             self.kpy.valon,
+#             self.kpy._kidpy__udp,
+#             self.kpy.get_last_flist(),
+#             valon5009.Synthesizer.get_frequency(
+#                 self.kpy.valon, valon5009.SYNTH_B
+#             ),
+#             N_steps=200,
+#             freq_step=0.001,
+#             savefile=savefile,
+#         )
 
-        print(vars(kidpy))
-        sweeps.loSweep(
-            self.kpy.valon,
-            self.kpy._kidpy__udp,
-            self.kpy.get_last_flist(),
-            valon5009.Synthesizer.get_frequency(
-                self.kpy.valon, valon5009.SYNTH_B
-            ),
-            N_steps=200,
-            freq_step=0.001,
-            savefile=savefile,
-        )
+        # tone_list = self.kpy.get_last_flist()
+        # sweep_data = savefile + '.npy'
+        # chanmask = DEFAULT_CHANMASK
+        sweep_data = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
+        tone_list = get_tone_list('Default_tone_list.npy')
+        chanmask = 'chanmask.npy'
 
-        tone_list = self.kpy.get_last_flist()
-        sweep_data = savefile + '.npy'
         sweep = LoSweepData(
             tone_list,
             sweep_data,
-            '/home/onrkids/readout/host/params/chanmask_rfsoc2.npy',
+            chanmask,
         ) 
-        sweep.fit(do_print=True)
-
-        def wrap_func(f: Callable):
-            def override_close(*args):
-                f(*args)
-                # Close this window when finished with the diagnostics
-                self.close()
-
-            return override_close
-
-        dw = DiagnosticsWindow(sweep, parent=self)
-        dw.closeEvent = wrap_func(dw.closeEvent)
+        dw = DiagnosticsDialog(sweep, parent=self)
         dw.setWindowModality(Qt.WindowModality.WindowModal)
-        dw.show()
 
+        pb = SequentialProgressBarDialog(parent=self)
+        nchan = sweep.nchan
+        pb.add_job(sweep.fit, num_tasks=nchan, start_message='Fitting sweep data...', do_print=True)
+
+        # pb.add_job(dw.plot, num_tasks=0, start_message='Plotting fit results...')
+        pb.show()
+        # self.pb = pb
+        time.sleep(0.5)
+        # pb.allFinished.connect(lambda: dw.set_figure(pb.get_result(1)))
+        pb.allFinished.connect(lambda: self.plot_sweep(sweep, dw, pb))
+        # pb.allFinished.connect(dw.show)
+        # pb.allFinished.connect(pb.close)
+        pb.start()
+    
+    def plot_sweep(self, sweep: LoSweepData, dw: DiagnosticsDialog, pb: SequentialProgressBarDialog):
+        pb.label.setText('Plotting fit results...')
+        pb.reset()
+        pb.set_total_tasks(sweep.nchan)
+        dw.plot(signal=pb.incrementSignal)
+        dw.show()
+        pb.close()
 
     def choose_tone_file(self):
         """Open a file dialog to select the tone file."""

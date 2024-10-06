@@ -1,6 +1,8 @@
 from __future__ import annotations
+from typing import Callable, Iterable
 
 from pathlib import Path
+from PySide6.QtCore import SignalInstance
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,7 +11,9 @@ from matplotlib.figure import Figure
 
 from onr_fit_lo_sweeps import simple_derivative_fits
 from onrkidpy import get_chanmask
-from rfsocinterface.utils import ensure_path
+from PySide6.QtWidgets import QApplication
+from rfsocinterface.utils import ensure_path, Job
+import time
 
 
 class ResonatorData:
@@ -246,7 +250,7 @@ class LoSweepData:
         """The indices of the resonators which are flagged."""
         return np.argwhere(np.abs(self.difference) > self.diff_to_flag)
 
-    def fit(self, do_print=False):
+    def fit(self, do_print=False, signal: SignalInstance | None=None):
         """Perform a fit to determine the resoncance frequencies of each resonator."""
         for i_chan in np.argwhere(self.chanmask == 1):
             # pull in the sweep data for this tone
@@ -273,8 +277,13 @@ class LoSweepData:
                         '|| difference (kHz) =',
                         f'{diff:+5.3f}',
                     )
+            if signal:
+                signal.emit()
+                # job.updateProgress.emit()
+                # QApplication.processEvents()
 
-    def plot(self, ncols: int = 18) -> Figure:
+
+    def plot(self, ncols: int = 18, signal: SignalInstance=None) -> Figure:
         """Plot the results of fitting the LO sweep.
 
         Arguments:
@@ -296,6 +305,8 @@ class LoSweepData:
                 (nrows, ncols), (counter // ncols, np.mod(counter, ncols))
             )
             resonator.plot(subplot)
+            if signal:
+                signal.emit()
 
         plt.tight_layout()
         return fig

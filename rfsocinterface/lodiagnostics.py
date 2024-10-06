@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backend_bases import MouseButton, MouseEvent
 from matplotlib.figure import Figure
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, SignalInstance
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,18 +16,20 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QWidget,
+    QDialog,
 )
 
 from rfsocinterface.losweep import LoSweepData, ResonatorData, get_tone_list
-from rfsocinterface.ui.lodiagnostics_ui import Ui_MainWindow as Ui_DiagnosticsWindow
-from rfsocinterface.ui.loresonator_ui import Ui_MainWindow as Ui_ResonatorWindow
+from rfsocinterface.ui.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
+from rfsocinterface.ui.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
+from rfsocinterface.utils import Job
 
 DPI = 100
 
 EPSILON = 1e-4  # Max x difference to count as the mouse being close to the line
 
 
-class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
+class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     """Window displaying information about the resonator.
 
     Attributes:
@@ -233,7 +235,7 @@ class ResonatorWindow(QMainWindow, Ui_ResonatorWindow):
         self.figcanvas.draw_idle()
 
 
-class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
+class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     """Window displaying all resonator plots.
 
     Attributes:
@@ -246,7 +248,6 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
         self.setupUi(self)
         self.sweep = sweep
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
-        self.plot()
 
     def click_plot(self, event: MouseEvent):
         """Handle clicking the plots."""
@@ -278,17 +279,23 @@ class DiagnosticsWindow(QMainWindow, Ui_DiagnosticsWindow):
 
             return override_close
 
-        rw = ResonatorWindow(resonator, parent=self)
+        rw = ResonatorDialog(resonator, parent=self)
         rw.closeEvent = wrap_func(rw.closeEvent)
 
         rw.show()
 
-    def plot(self, fig_width=15):
-        """Plot all of the resonators."""
-        fig = self.sweep.plot(ncols=fig_width)
+    def set_figure(self, fig: Figure):
         fig.canvas.mpl_connect('button_press_event', self.click_plot)
         self.canvas.set_figure(fig)
         self.canvas.set_flagged(self.sweep.flagged)
+
+    def plot(self, fig_width=15, signal: SignalInstance=None):
+        """Plot all of the resonators."""
+        fig = self.make_plot(fig_width=fig_width, signal=signal)
+        self.set_figure(fig)
+    
+    def make_plot(self, fig_width=15, signal: SignalInstance=None) -> Figure:
+        return self.sweep.plot(ncols=fig_width, signal=signal)
 
     def toggle_unflagged(self):
         """Toggle whether the unflagged resonator plots are shown."""
@@ -313,7 +320,7 @@ if __name__ == '__main__':
     )
     sweep.fit(do_print=False)
 
-    w = DiagnosticsWindow(sweep)
+    w = DiagnosticsDialog(sweep)
 
     w.show()
     app.exec()

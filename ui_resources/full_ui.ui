@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>892</width>
+    <height>603</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="horizontalLayout">
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>2</number>
+      </property>
+      <widget class="QWidget" name="initialization_tab">
+       <attribute name="title">
+        <string>Initialization</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="losweep_tab">
+       <attribute name="title">
+        <string>LO Sweep</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_4">
+        <item>
+         <widget class="LoConfigWidget" name="losweep_widget" native="true"/>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="telescope_tab">
+       <attribute name="title">
+        <string>Telescope</string>
+       </attribute>
+       <layout class="QGridLayout" name="gridLayout">
+        <item row="0" column="0">
+         <widget class="TelescopeControlWidget" name="telescope_widget" native="true"/>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="data_tab">
+       <attribute name="title">
+        <string>Data</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="imaging_tab">
+       <attribute name="title">
+        <string>Imaging</string>
+       </attribute>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>892</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>LoConfigWidget</class>
+   <extends>QWidget</extends>
+   <header>rfsocinterface.loconfig</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>TelescopeControlWidget</class>
+   <extends>QWidget</extends>
+   <header>rfsocinterface.telescope</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources>
+  <include location="icons.qrc"/>
+ </resources>
+ <connections/>
+</ui>

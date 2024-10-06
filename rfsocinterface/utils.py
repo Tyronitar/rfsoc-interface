@@ -2,12 +2,14 @@ import functools
 import os
 from pathlib import Path
 import json
-from typing import Callable, ParamSpec, TypeVar
+from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any
 import logging
 import numpy as np
 import numpy.typing as npt
 from kidpy import wait_for_free, wait_for_reply, kidpy
 import redis
+from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt
+import time
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 Number = TypeVar('Number', int, float, complex, bytes)
@@ -127,3 +129,140 @@ def test_connection(r):
     except redis.exceptions.ConnectionError as e:
         print(e)
         return False
+
+class Job(QRunnable, QObject):
+
+    #This is the signal that will be emitted during the processing.
+    #By including int as an argument, it lets the signal know to expect
+    #an integer argument when emitting.
+    updateProgress = Signal()
+    started = Signal(str)
+    finished = Signal(Any)
+
+    #You can do any extra things in this init you need, but for this example
+    #nothing else needs to be done expect call the super's init
+    def __init__(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs):
+        QRunnable.__init__(self)
+        QObject.__init__(self)
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+        self.strt_msg = ''
+    
+    def set_start_message(self, message: str):
+        self.strt_msg = message
+        # self.setAutoDelete(False)
+        # self.
+        # self.finished.connect(self.finishWork.emit)
+
+    #A QThread is run by calling it's start() function, which calls this run()
+    #function in it's own "thread". 
+    def run(self):
+        self.started.emit(self.strt_msg)
+        res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
+        self.finished.emit(res)
+        #Notice this is the same thing you were doing in your progress() function
+
+
+class JobQueue(QThreadPool):
+
+    def __init__(self, max_threads: int = 0, parent: QObject | None=None):
+        super().__init__(parent)
+        self.setMaxThreadCount(max_threads)
+        self.queue: list[tuple[Job, bool]] = []
+        self.results = []
+    
+    def __len__(self) -> int:
+        return len(self.queue)
+    
+    @overload
+    def add_job(self, func: Callable[P, None], *args: P.args, **kwargs: P.kwargs): ...
+    
+    @overload
+    def add_job(self, job: Job): ...
+
+    def add_job(self, arg: Job | Callable[P, None], *args: P.args, use_main_thread=False, **kwargs: P.kwargs):
+        new_job = arg if isinstance(arg, Job) else Job(arg, args, kwargs)
+        idx = len(self)
+        new_job.finished.connect(lambda res: self.set_result(idx, res))
+        self.queue.append((new_job, use_main_thread))
+    
+    def set_result(self, idx: int, result: Any):
+        self.results[idx] = result
+    
+    # def run_next(self):
+    #     job = self.queue.pop()
+    #     self.start(job)
+    
+    def run_all(self):
+        self.results = [None] * len(self)
+        for i, (job, main_thread) in enumerate(self.queue):
+            if main_thread:
+                QThreadPool.globalInstance().start(job)
+            else:
+                self.start(job)
+        # for i, job in enumerate(self.queue):
+        #     QThreadPool.globalInstance().reserveThread()
+        #     QThreadPool.globalInstance().startOnReservedThread(job)
+
+class SequentialJobQueue(JobQueue):
+
+    allFinished = Signal()
+
+    def __init__(self, parent: QObject | None = None):
+        super().__init__(1, parent)
+        self.last_job = None
+    
+    def emit_finished(self, *args):
+        self.allFinished.emit()
+    
+    def add_job(self, arg: Job | Callable[P, None], *args: P.args, use_main_thread=False, **kwargs: P.kwargs):
+        new_job = arg if isinstance(arg, Job) else Job(arg, args, kwargs)
+        new_job.finished.connect(lambda res: self.results.append(res))
+        new_job.finished.connect(self.emit_finished)
+        new_job.finished.connect(lambda _: print('job done'))
+        if len(self) > 0:
+            self.last_job.finished.connect(
+                lambda: QThreadPool.globalInstance().start(new_job) if use_main_thread else self.start(new_job),
+                # Qt.ConnectionType.QueuedConnection,
+            )
+            self.last_job.finished.disconnect(self.emit_finished)
+        self.queue.append((new_job, use_main_thread))
+        self.last_job = new_job
+
+    def run_all(self):
+        if len(self) > 0:
+            job, use_main_thread = self.queue[0]
+            if use_main_thread:
+                QThreadPool.globalInstance().start(job)
+            else:
+                self.start(job)
+
+
+def add_callbacks(*callbacks: Callable) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def loop_callback(func: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            def loop_with_callback(iterable: Iterable):
+                for i, item in enumerate(iterable):
+                    yield item
+                    for cb in callbacks:
+                        cb()
+            
+            # Replace the original loop with the new loop
+            original_globals = func.__globals__
+            original_globals['range'] = lambda *args: loop_with_callback(range(*args))
+            original_globals['list'] = lambda x: loop_with_callback(x)
+            original_globals['np.array'] = lambda x: loop_with_callback(x)
+            
+            return func(*args, **kwargs)
+        
+        return wrapper
+    return loop_callback
+
+if __name__ == '__main__':
+    def test_fun():
+        for i in range(5):
+            print(i)
+    
+    add_callbacks(lambda: print('hello'))(test_fun)()
