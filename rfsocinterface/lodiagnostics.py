@@ -85,13 +85,13 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.new_freq_lineEdit.setValidator(self.validator)
 
         # Setup connections to signals
-        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.accepted.connect(self.accept_changes)
         # self.buttonBox.rejected.connect(self.reject)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(
             self.reset_freq
         )
         self.buttonBox.button(QDialogButtonBox.StandardButton.Cancel).clicked.connect(
-            self.reject
+            self.reject_changes
         )
         self.refit_pushButton.clicked.connect(self.refit)
         self.new_freq_lineEdit.textChanged.connect(self.change_freq)
@@ -99,16 +99,16 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         # This line will call change_freq since the signal has been connected
         self.new_freq_lineEdit.setText(f'{self.resonator.fit_f0 * 1e-6:.3f}')
 
-    def accept(self):
+    def accept_changes(self):
         """Handle accepting changes."""
         self.resonator.fit_f0 = self.temp_fit_f0
         self.resonator.fit_qc = self.temp_fit_qc
         self.resonator.fit_qi = self.temp_fit_qi
-        self.close()
+        self.accept()
 
-    def reject(self):
+    def reject_changes(self):
         """Handle rejecting changes."""
-        self.close()
+        self.reject()
 
     def refit(self):
         """Refit the resonator."""
@@ -263,24 +263,19 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
                 resonator = self.sweep.resonator_data[idx]
                 self.make_resonator_window(resonator, axes)
 
+    def redraw_axes(self, resonator: ResonatorData, ax: plt.Axes):
+        """Redraw the specified axes."""
+        ax.cla()
+        resonator.plot(ax)
+        self.get_figure().draw_artist(ax.patch)
+        self.get_figure().draw_artist(ax)
+        self.canvas.select_axis(self.canvas.selected_axes)
+
     def make_resonator_window(self, resonator: ResonatorData, ax: plt.Axes):
         """Create and open a ResonatorWindow using the provided ResonatorData."""
 
-        def wrap_func(f: Callable):
-            def override_close(*args):
-                f(*args)
-
-                # Redraw the plot when closing the resonator window
-                ax.cla()
-                resonator.plot(ax)
-                self.get_figure().draw_artist(ax.patch)
-                self.get_figure().draw_artist(ax)
-                self.canvas.select_axis(self.canvas.selected_axes)
-
-            return override_close
-
         rw = ResonatorDialog(resonator, parent=self)
-        rw.closeEvent = wrap_func(rw.closeEvent)
+        rw.finished.connect(lambda _: self.redraw_axes(resonator, ax))
 
         rw.show()
 

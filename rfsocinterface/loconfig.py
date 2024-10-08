@@ -17,7 +17,7 @@ import valon5009
 import numpy as np
 import onrkidpy
 import sweeps
-from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job
+from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value
 
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
 DEFAULT_F_CENTER = 400.0
@@ -53,16 +53,6 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         self.dialog_button_box.accepted.connect(self.run_sweep)
         # self.init_kidpy()
     
-    def get_num_value(self, line_edit: QLineEdit, num_type: Type[Number]=float) -> Number:
-        """Get the value from a QLineEdit and convert to a number."""
-        val = line_edit.text()
-        if val == '':
-            val = line_edit.placeholderText()
-        try:
-            return num_type(val)
-        except ValueError  as e:
-            raise ValueError(f'Could not convert value {val} to type "{num_type}"')
-    
     def init_kidpy(self):
         self.kpy = kidpy()
         conStatus = test_connection(self.kpy.r)
@@ -82,7 +72,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
 #         self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
 #         chan_name = 'rfsoc2'
 
-        # tone_shift = self.get_num_value(self.global_shift_lineEdit)
+        # tone_shift = get_num_value(self.global_shift_lineEdit)
         # if tone_shift != 0:
 #             lo_freq = valon5009.Synthesizer.get_frequency(
 #                 self.kpy.valon,

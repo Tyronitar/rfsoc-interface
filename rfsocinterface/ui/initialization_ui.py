@@ -250,10 +250,10 @@ class Ui_InitializationTabWidget(object):
 
         self.formLayout_5.setWidget(0, QFormLayout.LabelRole, self.socket2_sourceLabel)
 
-        self.socket_sourceLineEdit = QLineEdit(self.udp_GroupBox)
-        self.socket_sourceLineEdit.setObjectName(u"socket_sourceLineEdit")
+        self.socket2_sourceLineEdit = QLineEdit(self.udp_GroupBox)
+        self.socket2_sourceLineEdit.setObjectName(u"socket2_sourceLineEdit")
 
-        self.formLayout_5.setWidget(0, QFormLayout.FieldRole, self.socket_sourceLineEdit)
+        self.formLayout_5.setWidget(0, QFormLayout.FieldRole, self.socket2_sourceLineEdit)
 
         self.socket2_destLabel = QLabel(self.udp_GroupBox)
         self.socket2_destLabel.setObjectName(u"socket2_destLabel")

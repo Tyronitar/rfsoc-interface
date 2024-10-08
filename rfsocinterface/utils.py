@@ -2,13 +2,14 @@ import functools
 import os
 from pathlib import Path
 import json
-from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any
+from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type
 import logging
 import numpy as np
 import numpy.typing as npt
 from kidpy import wait_for_free, wait_for_reply, kidpy
 import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt
+from PySide6.QtWidgets import QLineEdit
 import time
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
@@ -259,6 +260,17 @@ def add_callbacks(*callbacks: Callable) -> Callable[[Callable[P, R]], Callable[P
         
         return wrapper
     return loop_callback
+
+def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float) -> Number:
+    """Get the value from a QLineEdit and convert to a number."""
+    val = line_edit.text()
+    if val == '':
+        val = line_edit.placeholderText()
+    try:
+        return num_type(val)
+    except ValueError as e:
+        raise ValueError(f'Could not convert value {val} to type "{num_type}"') from e
+    
 
 if __name__ == '__main__':
     def test_fun():

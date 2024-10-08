@@ -192,7 +192,7 @@ class Ui_LoConfigWidget(object):
 
         self.dialog_button_box = QDialogButtonBox(LoConfigWidget)
         self.dialog_button_box.setObjectName(u"dialog_button_box")
-        self.dialog_button_box.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok)
+        self.dialog_button_box.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.RestoreDefaults)
 
         self.verticalLayout.addWidget(self.dialog_button_box)
 

@@ -13,6 +13,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super().__init__(parent)
         self.setupUi(self)
         self.tabWidget.currentChanged.connect(self.resize_to_current)
+        # Do this to 
+        self.tabWidget.setCurrentIndex(0)
+        self.resize_to_current(0)
     
     def resize_to_current(self, index: int):
         for i in range(self.tabWidget.count()):
