@@ -43,7 +43,6 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         self.buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
         self.second_sweep_checkBox.clicked.connect(self.check_second_sweep)
         self.show_diagnostics_checkBox.clicked.connect(self.check_diagnostics)
-        self.tone_list_pushButton.clicked.connect(self.choose_tone_file)
         self.filename_temperature_lineEdit.textEdited.connect(
             self.update_filename_example
         )
@@ -163,21 +162,8 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         pb.reset()
         pb.set_total_tasks(sweep.nchan)
         dw.plot(signal=pb.incrementSignal)
-        dw.show()
         pb.close()
-
-    def choose_tone_file(self):
-        """Open a file dialog to select the tone file."""
-        fname, _ = QFileDialog.getOpenFileName(
-            self,
-            'Select Tone File',
-            './',
-            'Numpy (*.npy);;All Files(*.*)',
-            'Numpy (*.npy)',
-        )
-        if fname:
-            self.tone_path = Path(fname)
-            self.tone_list_lineEdit.setText(fname)
+        dw.show()
 
     def check_diagnostics(self):
         """Callback for when the "show diagnostics" box is clicked."""

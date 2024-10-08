@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (QApplication, QGridLayout, QHBoxLayout, QMainWind
     QMenuBar, QSizePolicy, QStatusBar, QTabWidget,
     QVBoxLayout, QWidget)
 
+from rfsocinterface.initialization import InitializationWidget
 from rfsocinterface.loconfig import LoConfigWidget
 from rfsocinterface.telescope import TelescopeControlWidget
 from . import icons_rc
@@ -36,6 +37,13 @@ class Ui_MainWindow(object):
         self.tabWidget.setObjectName(u"tabWidget")
         self.initialization_tab = QWidget()
         self.initialization_tab.setObjectName(u"initialization_tab")
+        self.verticalLayout = QVBoxLayout(self.initialization_tab)
+        self.verticalLayout.setObjectName(u"verticalLayout")
+        self.initialization_widget = InitializationWidget(self.initialization_tab)
+        self.initialization_widget.setObjectName(u"initialization_widget")
+
+        self.verticalLayout.addWidget(self.initialization_widget)
+
         self.tabWidget.addTab(self.initialization_tab, "")
         self.losweep_tab = QWidget()
         self.losweep_tab.setObjectName(u"losweep_tab")
@@ -77,7 +85,7 @@ class Ui_MainWindow(object):
 
         self.retranslateUi(MainWindow)
 
-        self.tabWidget.setCurrentIndex(2)
+        self.tabWidget.setCurrentIndex(0)
 
 
         QMetaObject.connectSlotsByName(MainWindow)

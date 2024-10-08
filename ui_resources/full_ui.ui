@@ -18,12 +18,17 @@
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>2</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="initialization_tab">
        <attribute name="title">
         <string>Initialization</string>
        </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <widget class="InitializationWidget" name="initialization_widget" native="true"/>
+        </item>
+       </layout>
       </widget>
       <widget class="QWidget" name="losweep_tab">
        <attribute name="title">
@@ -82,6 +87,12 @@
    <class>TelescopeControlWidget</class>
    <extends>QWidget</extends>
    <header>rfsocinterface.telescope</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>InitializationWidget</class>
+   <extends>QWidget</extends>
+   <header>rfsocinterface.initialization</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
