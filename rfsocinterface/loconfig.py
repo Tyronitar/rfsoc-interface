@@ -21,7 +21,7 @@ from rfsocinterface.utils import write_fList, Number, test_connection, add_callb
 
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
 DEFAULT_F_CENTER = 400.0
-DEFAULT_CHANMASK = '/home/onrkids/readout/host/params/chanmask_rfsoc2.npy',
+DEFAULT_CHANMASK = '/home/onrkids/readout/host/params/chanmask_rfsoc2.npy'
 
 
 class LoConfigWidget(QWidget, Ui_LOConfigWidget):
@@ -51,7 +51,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         )
         
         self.dialog_button_box.accepted.connect(self.run_sweep)
-        # self.init_kidpy()
+        self.init_kidpy()
     
     def init_kidpy(self):
         self.kpy = kidpy()
@@ -69,68 +69,68 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
 
     def run_sweep(self):
 
-#         self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
-#         chan_name = 'rfsoc2'
+        self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
+        chan_name = 'rfsoc2'
 
-        # tone_shift = get_num_value(self.global_shift_lineEdit)
-        # if tone_shift != 0:
-#             lo_freq = valon5009.Synthesizer.get_frequency(
-#                 self.kpy.valon,
-#                 valon5009.SYNTH_B,
-#             )
-#             curr_tone_list = self.kpy.get_tone_list()
-#             fList = np.ndarray.tolist(
-#                 curr_tone_list
-#                 + float(tone_shift)
-#                 * curr_tone_list
-#                 / np.median(curr_tone_list)
-#                 * 1.0e3
-#                 - lo_freq * 1.0e6
-#             )
-#             print(
-#                 "Waiting for the RFSOC to finish writing the updated frequency list"
-#             )
-#             fAmps = self.kpy.get_last_alist() #amplitudes
-#             write_fList(self.kpy, fList, np.ndarray.tolist(fAmps))
+        tone_shift = get_num_value(self.global_shift_lineEdit)
+        if tone_shift != 0:
+            lo_freq = valon5009.Synthesizer.get_frequency(
+                self.kpy.valon,
+                valon5009.SYNTH_B,
+            )
+            curr_tone_list = self.kpy.get_tone_list()
+            fList = np.ndarray.tolist(
+                curr_tone_list
+                + float(tone_shift)
+                * curr_tone_list
+                / np.median(curr_tone_list)
+                * 1.0e3
+                - lo_freq * 1.0e6
+            )
+            print(
+                "Waiting for the RFSOC to finish writing the updated frequency list"
+            )
+            fAmps = self.kpy.get_last_alist() #amplitudes
+            write_fList(self.kpy, fList, np.ndarray.tolist(fAmps))
             
-# #                                write_fList(self, fList, [])
-#         savefile = onrkidpy.get_filename(
-#             type="LO", chan_name=chan_name
-#         )
-#         match self.buttonGroup.checkedButton():
-#             case self.filename_elevation_radioButton:
-#                 savefile += f'_elev_{self.filename_elevation_lineEdit.text()}'
-#             case self.filename_temperature_radioButton:
-#                 savefile += f'_temp_{self.filename_temperature_lineEdit.text()}'
-#             case _:
-#                 pass
+#                                write_fList(self, fList, [])
+        savefile = onrkidpy.get_filename(
+            type="LO", chan_name=chan_name
+        )
+        match self.buttonGroup.checkedButton():
+            case self.filename_elevation_radioButton:
+                savefile += f'_elev_{self.filename_elevation_lineEdit.text()}'
+            case self.filename_temperature_radioButton:
+                savefile += f'_temp_{self.filename_temperature_lineEdit.text()}'
+            case _:
+                pass
 
-#         print(vars(kidpy))
-#         sweeps.loSweep(
-#             self.kpy.valon,
-#             self.kpy._kidpy__udp,
-#             self.kpy.get_last_flist(),
-#             valon5009.Synthesizer.get_frequency(
-#                 self.kpy.valon, valon5009.SYNTH_B
-#             ),
-#             N_steps=200,
-#             freq_step=0.001,
-#             savefile=savefile,
-#         )
+        sweeps.loSweep(
+            self.kpy.valon,
+            self.kpy._kidpy__udp,
+            self.kpy.get_last_flist(),
+            valon5009.Synthesizer.get_frequency(
+                self.kpy.valon, valon5009.SYNTH_B
+            ),
+            N_steps=200,
+            freq_step=0.001,
+            savefile=savefile,
+        )
 
-        # tone_list = self.kpy.get_last_flist()
-        # sweep_data = savefile + '.npy'
-        # chanmask = DEFAULT_CHANMASK
-        sweep_data = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
-        tone_list = get_tone_list('Default_tone_list.npy')
-        chanmask = 'chanmask.npy'
+        tone_list = self.kpy.get_tone_list()
+        sweep_data = savefile + '.npy'
+        chanmask = DEFAULT_CHANMASK
+        # sweep_data = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
+        # tone_list = get_tone_list('Default_tone_list.npy')
+        # chanmask = 'chanmask.npy'
 
         sweep = LoSweepData(
             tone_list,
             sweep_data,
             chanmask,
         ) 
-        dw = DiagnosticsDialog(sweep, parent=self)
+        dw = DiagnosticsDialog(sweep, sweep_data, parent=self)
+        dw.finished.connect(lambda result: sweep.saveh5(savefile + 'loconfig.npy'))
         dw.setWindowModality(Qt.WindowModality.WindowModal)
 
         pb = SequentialProgressBarDialog(parent=self)
@@ -154,6 +154,19 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         dw.plot(signal=pb.incrementSignal)
         pb.close()
         dw.show()
+    
+    def save_LO_sweep(self, sweep: LoSweepData):
+        fname, _ = QFileDialog.getSaveFileName(
+            self,
+            'Save Tone File',
+            './',
+            'Numpy (*.npy);;All Files(*.*)',
+            'Numpy (*.npy)',
+        )
+        if fname:
+            np.save(fname, self.swee)
+            self.tone_list_lineEdit.setText(fname)
+
 
     def check_diagnostics(self):
         """Callback for when the "show diagnostics" box is clicked."""

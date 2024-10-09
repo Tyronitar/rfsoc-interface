@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 from matplotlib.figure import Figure
+import h5py
 
 from onr_fit_lo_sweeps import simple_derivative_fits
 from onrkidpy import get_chanmask
@@ -310,6 +311,15 @@ class LoSweepData:
 
         plt.tight_layout()
         return fig
+    
+    def saveh5(self, fname: str):
+        """Save the LO Sweep to an HDF5 file."""
+        # Create HDF5 File
+        # Store in same format as lo_sweep in data_handler.py
+        # for backwards compatibility, save both formats (for now)
+        # TODO: Actually do what is advertised in this function
+        np.save(fname, self.data)
+
 
 
 def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:

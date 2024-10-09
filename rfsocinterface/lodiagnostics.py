@@ -17,12 +17,13 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
     QDialog,
+    QMessageBox,
 )
 
 from rfsocinterface.losweep import LoSweepData, ResonatorData, get_tone_list
 from rfsocinterface.ui.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.ui.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
-from rfsocinterface.utils import Job
+from rfsocinterface.utils import Job, PathLike
 
 DPI = 100
 
@@ -242,12 +243,40 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         sweep (LoSweepData): The relevant LO sweep data.
     """
 
-    def __init__(self, sweep: LoSweepData, parent: QWidget | None = None):
+    def __init__(self, sweep: LoSweepData, savefile: PathLike, parent: QWidget | None = None):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
         self.sweep = sweep
+        self.savefile = savefile
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
+        self.buttonBox.accepted.connect(self.save_and_close)
+        self.buttonBox.rejected.connect(self.reject)
+
+        self.edited = False
+
+    def save_and_close(self):
+        if self.edited:
+            msg = QMessageBox(
+                QMessageBox.Icon.Warning,
+                'Warning',
+                'Do you really want to save your changes?',
+                parent=self
+            )
+            msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+            msg.setDefaultButton(QMessageBox.StandardButton.Save)
+            ret = msg.exec()
+            match ret:
+                case QMessageBox.StandardButton.Save:
+                    self.sweep.saveh5(self.savefile)
+                case QMessageBox.StandardButton.Cancel:
+                    return  # Don't accept
+                case QMessageBox.StandardButton.Discard:
+                    pass
+                case _:
+                    raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
+        self.accept()
+
 
     def click_plot(self, event: MouseEvent):
         """Handle clicking the plots."""
@@ -270,12 +299,16 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.get_figure().draw_artist(ax.patch)
         self.get_figure().draw_artist(ax)
         self.canvas.select_axis(self.canvas.selected_axes)
+    
+    def set_edited(self):
+        self.edited = True
 
     def make_resonator_window(self, resonator: ResonatorData, ax: plt.Axes):
         """Create and open a ResonatorWindow using the provided ResonatorData."""
 
         rw = ResonatorDialog(resonator, parent=self)
         rw.finished.connect(lambda _: self.redraw_axes(resonator, ax))
+        rw.accepted.connect(self.set_edited)
 
         rw.show()
 
