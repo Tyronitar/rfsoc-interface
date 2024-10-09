@@ -253,7 +253,7 @@
                </font>
               </property>
               <property name="text">
-               <string>Zentih</string>
+               <string>Zenith</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignmentFlag::AlignCenter</set>
