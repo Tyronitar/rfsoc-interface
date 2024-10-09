@@ -17,7 +17,8 @@ import valon5009
 import numpy as np
 import onrkidpy
 import sweeps
-from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value
+import h5py
+from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path
 
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
 DEFAULT_F_CENTER = 400.0
@@ -129,8 +130,9 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
             sweep_data,
             chanmask,
         ) 
+        self.sweep = sweep
         dw = DiagnosticsDialog(sweep, sweep_data, parent=self)
-        dw.finished.connect(lambda result: sweep.saveh5(savefile + 'loconfig.npy'))
+        dw.accepted.connect(lambda: self.save_sweep(savefile))
         dw.setWindowModality(Qt.WindowModality.WindowModal)
 
         pb = SequentialProgressBarDialog(parent=self)
@@ -145,6 +147,11 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         # pb.allFinished.connect(dw.show)
         # pb.allFinished.connect(pb.close)
         pb.start()
+    
+    @ensure_path(1)
+    def save_sweep(self, savefile: Path):
+        self.sweep.saveh5(savefile)
+        self.sweep.savenp(savefile)
     
     def plot_sweep(self, sweep: LoSweepData, dw: DiagnosticsDialog, pb: SequentialProgressBarDialog):
         pb.label.setText('Plotting fit results...')

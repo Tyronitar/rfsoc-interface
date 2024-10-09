@@ -312,13 +312,24 @@ class LoSweepData:
         plt.tight_layout()
         return fig
     
-    def saveh5(self, fname: str):
+    @ensure_path(1)
+    def savenp(self, fname: Path):
+        path = fname.with_suffix('.npy')
+        np.save(path, self.data)
+
+    @ensure_path(1)
+    def saveh5(self, fname: Path):
         """Save the LO Sweep to an HDF5 file."""
-        # Create HDF5 File
-        # Store in same format as lo_sweep in data_handler.py
-        # for backwards compatibility, save both formats (for now)
-        # TODO: Actually do what is advertised in this function
-        np.save(fname, self.data)
+        path = fname.with_suffix('.h5')
+        with h5py.File(path, 'w') as fh:
+            fh.create_dataset('global_data/lo_sweep', data=self.data)
+            # fh.create_dataset('global_data/s21', data=self.s21)
+            # fh.create_dataset('global_data/freq', data=self.freq)
+            fh.create_dataset('global_data/baseband_freqs', data=self.tone_list)
+            fh.create_dataset('global_data/chanmask', data=self.chanmask)
+            fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
+            fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
+            fh.create_dataset('global_data/fit_qc', data=self.fit_qc)
 
 
 
