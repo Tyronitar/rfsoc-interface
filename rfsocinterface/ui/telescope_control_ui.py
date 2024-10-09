@@ -236,7 +236,7 @@ class Ui_TelescopeControlWidget(object):
         self.azimuth_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))
         self.label_6.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
         self.zenith_actualLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Actual", None))
-        self.zenithLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Zentih", None))
+        self.zenithLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Zenith", None))
         self.zenith_commandedLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Commanded", None))
         self.zenith_errorLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Error", None))
         self.zenith_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))

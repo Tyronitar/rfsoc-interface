@@ -140,7 +140,6 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         # pb.add_job(dw.plot, num_tasks=0, start_message='Plotting fit results...')
         pb.show()
         # self.pb = pb
-        time.sleep(0.5)
         # pb.allFinished.connect(lambda: dw.set_figure(pb.get_result(1)))
         pb.allFinished.connect(lambda: self.plot_sweep(sweep, dw, pb))
         # pb.allFinished.connect(dw.show)
