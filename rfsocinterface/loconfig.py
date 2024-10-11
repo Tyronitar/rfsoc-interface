@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButt
 from PySide6.QtCore import Qt
 
 from rfsocinterface.ui.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
-from rfsocinterface.losweep import LoSweepData, get_tone_list
+from rfsocinterface.losweep import LoSweepData, get_tone_list, LoSweep
 from rfsocinterface.lodiagnostics import DiagnosticsDialog
 from rfsocinterface.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
 
@@ -52,7 +52,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         )
         
         self.dialog_button_box.accepted.connect(self.run_sweep)
-        self.init_kidpy()
+        # self.init_kidpy()
     
     def init_kidpy(self):
         self.kpy = kidpy()
@@ -70,31 +70,31 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
 
     def run_sweep(self):
 
-        self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
+#         self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
         chan_name = 'rfsoc2'
 
-        tone_shift = get_num_value(self.global_shift_lineEdit)
-        if tone_shift != 0:
-            lo_freq = valon5009.Synthesizer.get_frequency(
-                self.kpy.valon,
-                valon5009.SYNTH_B,
-            )
-            curr_tone_list = self.kpy.get_tone_list()
-            fList = np.ndarray.tolist(
-                curr_tone_list
-                + float(tone_shift)
-                * curr_tone_list
-                / np.median(curr_tone_list)
-                * 1.0e3
-                - lo_freq * 1.0e6
-            )
-            print(
-                "Waiting for the RFSOC to finish writing the updated frequency list"
-            )
-            fAmps = self.kpy.get_last_alist() #amplitudes
-            write_fList(self.kpy, fList, np.ndarray.tolist(fAmps))
+#         tone_shift = get_num_value(self.global_shift_lineEdit)
+#         if tone_shift != 0:
+#             lo_freq = valon5009.Synthesizer.get_frequency(
+#                 self.kpy.valon,
+#                 valon5009.SYNTH_B,
+#             )
+#             curr_tone_list = self.kpy.get_tone_list()
+#             fList = np.ndarray.tolist(
+#                 curr_tone_list
+#                 + float(tone_shift)
+#                 * curr_tone_list
+#                 / np.median(curr_tone_list)
+#                 * 1.0e3
+#                 - lo_freq * 1.0e6
+#             )
+#             print(
+#                 "Waiting for the RFSOC to finish writing the updated frequency list"
+#             )
+#             fAmps = self.kpy.get_last_alist() #amplitudes
+#             write_fList(self.kpy, fList, np.ndarray.tolist(fAmps))
             
-#                                write_fList(self, fList, [])
+# #                                write_fList(self, fList, [])
         savefile = onrkidpy.get_filename(
             type="LO", chan_name=chan_name
         )
@@ -106,52 +106,57 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
             case _:
                 pass
 
-        sweeps.loSweep(
-            self.kpy.valon,
-            self.kpy._kidpy__udp,
-            self.kpy.get_last_flist(),
-            valon5009.Synthesizer.get_frequency(
-                self.kpy.valon, valon5009.SYNTH_B
-            ),
-            N_steps=200,
-            freq_step=0.001,
-            savefile=savefile,
-        )
+#         sweeps.loSweep(
+#             self.kpy.valon,
+#             self.kpy._kidpy__udp,
+#             self.kpy.get_last_flist(),
+#             valon5009.Synthesizer.get_frequency(
+#                 self.kpy.valon, valon5009.SYNTH_B
+#             ),
+#             N_steps=200,
+#             freq_step=0.001,
+#             savefile=savefile,
+#         )
+        # sweep = LoSweep(
+        #     self.kpy.valon,
+        #     self.kpy._kidpy__udp,
+        #     self.kpy.get_last_flist(),
+        #     valon5009.Synthesizer.get_frequency(self.kpy.valon, valon5009.SYNTH_B),
+        # )
+        # tone_list = self.kpy.get_tone_list()
+        # chanmask = DEFAULT_CHANMASK
+        # sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=200, freq_step=0.001)
 
-        tone_list = self.kpy.get_tone_list()
-        sweep_data = savefile + '.npy'
-        chanmask = DEFAULT_CHANMASK
-        # sweep_data = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
-        # tone_list = get_tone_list('Default_tone_list.npy')
-        # chanmask = 'chanmask.npy'
+        # sweep_data = savefile + '.npy'
 
-        sweep = LoSweepData(
-            tone_list,
-            sweep_data,
-            chanmask,
-        ) 
-        self.sweep = sweep
-        dw = DiagnosticsDialog(sweep, sweep_data, parent=self)
+        sweep_file = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
+        tone_list = 'Default_tone_list.npy'
+        chanmask = 'chanmask.npy'
+        savefile = Path(savefile).name
+        sweep_data = LoSweepData.from_file(tone_list, sweep_file, chanmask)
+
+        self.sweep_data = sweep_data
+        dw = DiagnosticsDialog(sweep_data, savefile, parent=self)
         dw.accepted.connect(lambda: self.save_sweep(savefile))
         dw.setWindowModality(Qt.WindowModality.WindowModal)
 
         pb = SequentialProgressBarDialog(parent=self)
-        nchan = sweep.nchan
-        pb.add_job(sweep.fit, num_tasks=nchan, start_message='Fitting sweep data...', do_print=True)
+        nchan = sweep_data.nchan
+        pb.add_job(sweep_data.fit, num_tasks=nchan, start_message='Fitting sweep data...', do_print=True)
 
         # pb.add_job(dw.plot, num_tasks=0, start_message='Plotting fit results...')
         pb.show()
         # self.pb = pb
         # pb.allFinished.connect(lambda: dw.set_figure(pb.get_result(1)))
-        pb.allFinished.connect(lambda: self.plot_sweep(sweep, dw, pb))
+        pb.allFinished.connect(lambda: self.plot_sweep(sweep_data, dw, pb))
         # pb.allFinished.connect(dw.show)
         # pb.allFinished.connect(pb.close)
         pb.start()
     
     @ensure_path(1)
     def save_sweep(self, savefile: Path):
-        self.sweep.saveh5(savefile)
-        self.sweep.savenp(savefile)
+        self.sweep_data.saveh5(savefile)
+        self.sweep_data.savenp(savefile)
     
     def plot_sweep(self, sweep: LoSweepData, dw: DiagnosticsDialog, pb: SequentialProgressBarDialog):
         pb.label.setText('Plotting fit results...')

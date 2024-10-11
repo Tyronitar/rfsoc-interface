@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Callable, Iterable
+import logging
 
 from pathlib import Path
 from PySide6.QtCore import SignalInstance
@@ -14,7 +15,9 @@ from onr_fit_lo_sweeps import simple_derivative_fits
 from onrkidpy import get_chanmask
 from PySide6.QtWidgets import QApplication
 from rfsocinterface.utils import ensure_path, Job
+import valon5009
 import time
+import udpcap
 
 
 class ResonatorData:
@@ -208,16 +211,15 @@ class LoSweepData:
             to flag for further inspection.
     """
 
-    @ensure_path(2, 3)
     def __init__(
-        self, tone_list: npt.NDArray, sweep_file: Path, chanmask_file: Path
+        self, tone_list: npt.NDArray, sweep_data: tuple[npt.NDArray, npt.NDArray], chanmask: npt.NDArray, 
     ) -> None:
         """Initialize a LoSweepData object."""
-        self.data = np.load(sweep_file)
+        self.data = sweep_data
         self.tone_list = tone_list
         self.freq = np.real(self.data[0, :, :])
         self.s21 = np.real(10.0 * np.log10(np.abs(self.data[1, :, :])))
-        self.chanmask = get_chanmask(chanmask_file)
+        self.chanmask = chanmask
         self.resonator_data = [ResonatorData(self, i) for i in range(self.nchan)]
 
         self.fit_f0 = np.zeros(self.nchan)
@@ -225,6 +227,15 @@ class LoSweepData:
         self.fit_qc = np.zeros(self.nchan)
         self.fit_f0[self.offres_ind] = tone_list[self.offres_ind]
         self.diff_to_flag = (3.0 / 200.0) * self.tone_list * 1e-6
+    
+    @classmethod
+    @ensure_path(1, 2, 3)
+    def from_file(cls, tone_file: Path, sweep_file: Path, chanmask_file: Path, lo_freq: float=400) -> LoSweepData:
+        """Create a LoSweepData object from a sweep file."""
+        tone_list = get_tone_list(tone_file, lo_freq=lo_freq)
+        data = np.load(sweep_file)
+        chanmask = get_chanmask(chanmask_file)
+        return cls(tone_list, data, chanmask)
 
     @property
     def difference(self) -> npt.NDArray:
@@ -337,3 +348,115 @@ def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
     """Get the data from a tone-list and convert to Hz from MHz."""
     flist = np.load(filename)
     return lo_freq * 1.0e6 + flist
+
+
+class LoSweep:
+    """Class for performing an LO Sweep"""
+
+    def __init__(self, valon: valon5009.Synthesizer, udp: udpcap.udpcap, freqs: npt.NDArray, f_center: float=400.0):
+        """Initialize an LoSweep"""
+        self.valon = valon
+        self._udp = udp
+        self.freqs = freqs
+        self.f_center = f_center
+
+    def _get_data(self, N_steps=500, freq_step=0.0):
+        """
+        Actually perform an LO Sweep using valon 5009's and save the data
+
+        :param loSource:
+            Valon 5009 Device Object instance
+        :type loSource: valon5009.Synthesizer
+        :param f_center:
+            Center frequency of upconverted tones
+        :param freqs: List of Baseband Frequencies returned from rfsocInterface.py's writeWaveform()
+        :type freqs: List
+
+        :param udp: udp data capture utility. This is our bread and butter for taking data from ethernet
+        :type udp: udpcap.udpcap object instance
+
+        :param N_steps: Number of steps with which to do the sweep.
+        :type N_steps: Int
+
+        Credit: Dr. Adrian Sinclair (adriankaisinclair@gmail.com)
+        """
+        log = logging.getLogger()
+        tone_diff = np.diff(self.freqs)[0] / 1e6  # MHz
+        log.info(f"tone diff={tone_diff}")
+        if freq_step > 0:
+            flo_step = freq_step
+        else:
+            flo_step = tone_diff / N_steps
+
+        log.info(f"lo step size={flo_step}")
+        flo_start = self.f_center - flo_step * N_steps / 2.0  # 256
+        flo_stop = self.f_center + flo_step * N_steps / 2.0  # 256
+
+        flos = np.arange(flo_start, flo_stop, flo_step) #+1e-6
+        # flos = np.round(flos * 1e3)*1e-3
+        log.info(f"len flos {flos.shape}")
+        self.udp.bindSocket()
+        actual_los = []
+        def temp(lofreq):
+            # self.set_ValonLO function here
+    
+            # print(lofreq)
+            self.valon.set_frequency(valon5009.SYNTH_B, lofreq)
+            # Read values and trash initial read, suspecting linear delay is cause..
+            Naccums = 100
+            I, Q = [], []
+            for i in range(20):  # toss 10 packets in the garbage
+                self.udp.parse_packet()
+
+            for i in range(Naccums):
+                # d = udp.parse_packet()
+                d = self.udp.parse_packet()
+                It = d[::2]
+                Qt = d[1::2]
+                I.append(It)
+                Q.append(Qt)
+            I = np.array(I)
+            Q = np.array(Q)
+            Imed = np.median(I, axis=0)
+            Qmed = np.median(Q, axis=0)
+
+            Z = Imed + 1j * Qmed
+            start_ind = np.min(np.argwhere(Imed != 0.0))
+            Z = Z[start_ind : start_ind + len(self.freqs)]
+
+            print(".", end="")
+
+            return Z
+        sweep_Z = np.array([temp(lofreq) for lofreq in flos])
+        log.info(f"sweepz.shape={sweep_Z.shape}")
+
+        f = np.zeros([np.size(self.freqs), np.size(flos)])
+        log.info(f"shape of f = {f.shape}")
+        for itone, ftone in enumerate(self.freqs):
+            f[itone, :] = flos * 1.0e6 + ftone
+        #    f = np.array([flos * 1e6 + ftone for ftone in freqs]).flatten()
+        sweep_Z_f = sweep_Z.T
+        #    sweep_Z_f = sweep_Z.T.flatten()
+        self.udp.release()
+        ## SAVE f and sweep_Z_f TO LOCAL FILES
+        # SHOULD BE ABLE TO SAVE TARG OR VNA
+        # WITH TIMESTAMP
+
+        # set the LO back to the original frequency
+        self.valon.set_frequency(valon5009.SYNTH_B, self.f_center)
+
+        return (f, sweep_Z_f)
+
+    def run_sweep(self, chanmask_file: Path, tone_list: npt.NDArray, N_steps=500, freq_step=1.0):
+        """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file
+
+        f_center: center frequency for sweep in [MHz], default is 400
+        """
+        #    print(freqs)
+        results = self._get_data(
+            N_steps=N_steps,
+            freq_step=freq_step,
+        )
+        chanmask = get_chanmask(chanmask_file)
+        return LoSweepData(tone_list, results, chanmask)
+        print("LO Sweep s21 file saved.")
