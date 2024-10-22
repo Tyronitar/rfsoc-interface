@@ -395,7 +395,7 @@ class LoSweep:
         flos = np.arange(flo_start, flo_stop, flo_step) #+1e-6
         # flos = np.round(flos * 1e3)*1e-3
         log.info(f"len flos {flos.shape}")
-        self.udp.bindSocket()
+        self._udp.bindSocket()
         actual_los = []
         def temp(lofreq):
             # self.set_ValonLO function here
@@ -406,11 +406,11 @@ class LoSweep:
             Naccums = 100
             I, Q = [], []
             for i in range(20):  # toss 10 packets in the garbage
-                self.udp.parse_packet()
+                self._udp.parse_packet()
 
             for i in range(Naccums):
                 # d = udp.parse_packet()
-                d = self.udp.parse_packet()
+                d = self._udp.parse_packet()
                 It = d[::2]
                 Qt = d[1::2]
                 I.append(It)
@@ -437,7 +437,7 @@ class LoSweep:
         #    f = np.array([flos * 1e6 + ftone for ftone in freqs]).flatten()
         sweep_Z_f = sweep_Z.T
         #    sweep_Z_f = sweep_Z.T.flatten()
-        self.udp.release()
+        self._udp.release()
         ## SAVE f and sweep_Z_f TO LOCAL FILES
         # SHOULD BE ABLE TO SAVE TARG OR VNA
         # WITH TIMESTAMP
@@ -458,5 +458,5 @@ class LoSweep:
             freq_step=freq_step,
         )
         chanmask = get_chanmask(chanmask_file)
-        return LoSweepData(tone_list, results, chanmask)
+        return LoSweepData(tone_list, np.array(results), chanmask)
         print("LO Sweep s21 file saved.")
