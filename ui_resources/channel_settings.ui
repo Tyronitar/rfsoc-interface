@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>465</width>
-    <height>262</height>
+    <width>281</width>
+    <height>154</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -20,71 +20,27 @@
    <string>Form</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="0" column="0" colspan="3" alignment="Qt::AlignmentFlag::AlignTop">
-    <widget class="QGroupBox" name="resonator_GroupBox">
-     <property name="title">
-      <string>Resonator Settings</string>
+   <item row="4" column="0" colspan="2" alignment="Qt::AlignmentFlag::AlignBottom">
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Apply|QDialogButtonBox::StandardButton::RestoreDefaults</set>
      </property>
-     <layout class="QFormLayout" name="formLayout_2">
-      <item row="0" column="0">
-       <widget class="QLabel" name="tone_list_label">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="toolTip">
-         <string>Choose a list of resonant frequencies</string>
-        </property>
-        <property name="whatsThis">
-         <string>List of tones of resonant frequencies</string>
-        </property>
-        <property name="text">
-         <string>Tone list file:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="FileUploadWidget" name="tone_list_file_upload_widget" native="true">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="tone_power_label">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="text">
-         <string>Tone power file:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="FileUploadWidget" name="tone_power_file_upload_widget" native="true">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-       </widget>
-      </item>
-     </layout>
+     <property name="centerButtons">
+      <bool>false</bool>
+     </property>
     </widget>
    </item>
-   <item row="1" column="2" alignment="Qt::AlignmentFlag::AlignTop">
+   <item row="3" column="0" colspan="2" alignment="Qt::AlignmentFlag::AlignTop">
+    <widget class="Section" name="advanced_section" native="true">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1">
     <widget class="QGroupBox" name="attenuation_GroupBox">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -226,98 +182,68 @@
      </layout>
     </widget>
    </item>
-   <item row="4" column="0" colspan="3" alignment="Qt::AlignmentFlag::AlignBottom">
-    <widget class="QDialogButtonBox" name="buttonBox">
-     <property name="standardButtons">
-      <set>QDialogButtonBox::StandardButton::Apply|QDialogButtonBox::StandardButton::RestoreDefaults</set>
-     </property>
-     <property name="centerButtons">
-      <bool>false</bool>
-     </property>
-    </widget>
-   </item>
-   <item row="1" column="0" colspan="2" alignment="Qt::AlignmentFlag::AlignTop">
-    <widget class="QGroupBox" name="udp_GroupBox">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
+   <item row="1" column="0">
+    <widget class="QGroupBox" name="resonator_GroupBox">
      <property name="title">
-      <string>UDP Connection</string>
+      <string>Resonator Settings</string>
      </property>
-     <layout class="QVBoxLayout" name="verticalLayout">
-      <item>
-       <layout class="QFormLayout" name="formLayout_6">
-        <item row="0" column="0">
-         <widget class="QLabel" name="udp_sourceLabel">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="text">
-           <string>Source port:</string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="1">
-         <widget class="QLineEdit" name="udp_sourceLineEdit">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QLineEdit" name="udp_destLineEdit"/>
-        </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="udp_destLabel">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="text">
-           <string>Destination port:</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item alignment="Qt::AlignmentFlag::AlignRight">
-       <widget class="QPushButton" name="udp_openPushButton">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="maximumSize">
+     <layout class="QFormLayout" name="formLayout_2">
+      <item row="0" column="0">
+       <widget class="QLabel" name="tone_list_label">
+        <property name="minimumSize">
          <size>
-          <width>150</width>
-          <height>16777215</height>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>Choose a list of resonant frequencies</string>
+        </property>
+        <property name="whatsThis">
+         <string>List of tones of resonant frequencies</string>
+        </property>
+        <property name="text">
+         <string>Tone list file:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="FileUploadWidget" name="tone_list_file_upload_widget" native="true">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="tone_power_label">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
          </size>
         </property>
         <property name="text">
-         <string>Open Socket</string>
+         <string>Tone power file:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="FileUploadWidget" name="tone_power_file_upload_widget" native="true">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
         </property>
        </widget>
       </item>
      </layout>
-    </widget>
-   </item>
-   <item row="3" column="0" colspan="3" alignment="Qt::AlignmentFlag::AlignTop">
-    <widget class="Section" name="advanced_section" native="true">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
     </widget>
    </item>
   </layout>

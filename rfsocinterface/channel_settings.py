@@ -2,7 +2,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect
 from PySide6.QtGui import QDoubleValidator, QIcon
 from rfsocinterface.ui.channel_settings_ui import Ui_ChannelSettingsWidget
-from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit
+from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QVBoxLayout, QSizePolicy, QGroupBox, QGridLayout
 
 from PySide6.QtWidgets import (QFormLayout,
     QHBoxLayout, QLabel,
@@ -55,9 +55,56 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         # TODO: Add upload functionality for attenuation
 
     def _additional_setup(self):
-        self.formLayout = QFormLayout()
-        self.formLayout.setObjectName(u"formLayout")        
 
+        self.advanced_verticalLayout = QVBoxLayout()
+        self.advanced_verticalLayout.setObjectName(u"advanced_verticalLayout")        
+
+        # Set up UDP Settings
+        sizePolicy3 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        sizePolicy3.setHorizontalStretch(0)
+        sizePolicy3.setVerticalStretch(0)
+        sizePolicy3.setHeightForWidth(self.rfoutLabel.sizePolicy().hasHeightForWidth())
+
+        self.udp_GroupBox = QGroupBox(self)
+        self.udp_GroupBox.setObjectName(u"udp_GroupBox")
+        sizePolicy5 = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        sizePolicy5.setHorizontalStretch(0)
+        sizePolicy5.setVerticalStretch(0)
+        sizePolicy5.setHeightForWidth(self.udp_GroupBox.sizePolicy().hasHeightForWidth())
+        self.udp_GroupBox.setSizePolicy(sizePolicy5)
+        self.udp_verticalLayout = QVBoxLayout(self.udp_GroupBox)
+        self.udp_verticalLayout.setObjectName(u"verticalLayout")
+        self.udp_formLayout = QFormLayout()
+        self.udp_formLayout.setObjectName(u"udp_formLayout")
+
+        self.udp_sourceLineEdit = QLineEdit(self.udp_GroupBox)
+        self.udp_sourceLineEdit.setObjectName(u"udp_sourceLineEdit")
+        sizePolicy6 = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        sizePolicy6.setHorizontalStretch(0)
+        sizePolicy6.setVerticalStretch(0)
+        sizePolicy6.setHeightForWidth(self.udp_sourceLineEdit.sizePolicy().hasHeightForWidth())
+        self.udp_sourceLineEdit.setSizePolicy(sizePolicy6)
+
+        self.udp_formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Source:', None), self.udp_sourceLineEdit)
+
+        self.udp_destLineEdit = QLineEdit(self.udp_GroupBox)
+        self.udp_destLineEdit.setObjectName(u"udp_destLineEdit")
+
+        self.udp_formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Destination:', None), self.udp_destLineEdit)
+
+        self.udp_verticalLayout.addLayout(self.udp_formLayout)
+
+        self.udp_openPushButton = QPushButton(self.udp_GroupBox)
+        self.udp_openPushButton.setObjectName(u"udp_openPushButton")
+        self.udp_openPushButton.setEnabled(False)
+        self.udp_openPushButton.setMaximumSize(QSize(150, 16777215))
+        self.udp_verticalLayout.addWidget(self.udp_openPushButton, 0, Qt.AlignmentFlag.AlignRight)
+
+
+        self.udp_GroupBox.setTitle(QCoreApplication.translate("ChannelSettingsWidget", u"UDP Connection", None))
+        self.udp_openPushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Open Socket", None))
+
+        # Chanmask Settings
         self.horizontalLayout = QHBoxLayout()
         self.horizontalLayout.setObjectName(u"horizontalLayout")
 
@@ -72,17 +119,22 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.chanmask_pushButton.setText(QCoreApplication.translate('ChannelSettingsWidget', u"Browse...", None))
         self.horizontalLayout.addWidget(self.chanmask_pushButton)
 
+        # Firmware Settings
         self.firmware_file_upload_widget = FileUploadWidget(self.advanced_section)
         self.firmware_file_upload_widget.setObjectName(u"firmware_file_upload_widget")
         self.firmware_file_upload_widget.setGeometry(QRect(120, 41, 318, 16))
 
-        self.formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Channel mask:', None), self.horizontalLayout)
-        self.formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Firmware bitstream:', None), self.firmware_file_upload_widget)
+        # Wrapping everything up
+        self.advanced_formLayout = QFormLayout()
+        self.advanced_formLayout.setObjectName(u"advanced_formLayout")
+        self.advanced_formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Channel mask:', None), self.horizontalLayout)
+        self.advanced_formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Firmware bitstream:', None), self.firmware_file_upload_widget)
+        self.advanced_verticalLayout.addLayout(self.advanced_formLayout)
+        self.advanced_verticalLayout.addWidget(self.udp_GroupBox, 0)
 
-        self.advanced_section.setContentLayout(self.formLayout)
+        self.advanced_section.setContentLayout(self.advanced_verticalLayout)
         self.advanced_section.setTitle('Advanced Settings')
         self.retranslateUi(self)
-
 
 
     def change_attenuation(self):
