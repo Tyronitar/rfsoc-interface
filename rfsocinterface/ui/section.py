@@ -66,6 +66,7 @@ class Section(wd.QWidget):
         self.toggleButton.toggled.connect(self.toggle)
         self.parent_sections = []
         self.children_sections = []
+        self.children_height = 0
     
     def setTitle(self,title):
         self.toggleButton.setText(title)
@@ -77,10 +78,10 @@ class Section(wd.QWidget):
 
         self.children_sections = find_children_sections(contentLayout)
         for child in self.children_sections:
-            print('child')
             child.parent_sections.append(self)
         
         self.collapsedHeight = self.sizeHint().height() - self.contentArea.maximumHeight()
+        self.contentHeight = self.contentArea.layout().sizeHint().height()
         self.update_size()
         self.update_animation()
 
@@ -99,38 +100,55 @@ class Section(wd.QWidget):
         contentAnimation.setStartValue(0)
         contentAnimation.setEndValue(self.contentHeight)
     
-    def resize_animation(self, direction):
+    def resize_animation(self, duration):
         resize_animation = cr.QParallelAnimationGroup(self)
 
+        section_animation_min = cr.QPropertyAnimation(self, b"minimumHeight")
+        section_animation_min.setDuration(duration)
+        section_animation_min.setStartValue(self.height())
+        section_animation_min.setEndValue(self.collapsedHeight + self.contentHeight)
         section_animation = cr.QPropertyAnimation(self, b"maximumHeight")
-        section_animation.setDuration(self.animationDuration)
-        section_animation.setStartValue(self.sizeHint().height())
+        section_animation.setDuration(duration)
+        section_animation.setStartValue(self.height())
         section_animation.setEndValue(self.collapsedHeight + self.contentHeight)
+        content_animation_min = cr.QPropertyAnimation(self.contentArea, b"minimumHeight")
+        content_animation_min.setDuration(duration)
+        content_animation_min.setStartValue(self.contentArea.height())
+        content_animation_min.setEndValue(self.contentHeight)
         content_animation = cr.QPropertyAnimation(self.contentArea, b"maximumHeight")
-        content_animation.setDuration(self.animationDuration)
-        content_animation.setStartValue(self.contentArea.layout().sizeHint().height())
+        content_animation.setDuration(duration)
+        content_animation.setStartValue(self.contentArea.height())
         content_animation.setEndValue(self.contentHeight)
 
         # self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self, b"minimumHeight"))
         # self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self, b"maximumHeight"))
         # self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self.contentArea, b"maximumHeight"))
+        resize_animation.addAnimation(section_animation_min)
         resize_animation.addAnimation(section_animation)
+        # resize_animation.addAnimation(content_animation_min)
         resize_animation.addAnimation(content_animation)
-        print('starting parent resize animation')
         # resize_animation.setDirection(direction)
         resize_animation.start()
     
+    def set_duration(self, duration: int):
+        for i in range(0, self.toggleAnimation.animationCount()):
+            animation = self.toggleAnimation.animationAt(i)
+            animation.setDuration(duration)
+        self.animationDuration = duration
+    
     def update_size(self):
         contentLayout = self.contentArea.layout()
-        self.contentHeight = contentLayout.sizeHint().height()  + self.find_children_height()
+        self.contentHeight -= self.children_height
+        self.children_height = self.find_children_height()
+        self.contentHeight += self.children_height
+        # self.contentHeight = contentLayout.sizeHint().height() + self.find_children_height()
     
     def find_children_height(self) -> int:
         total = 0
         for child in self.children_sections:
             if child.toggleButton.isChecked():
                 total += child.contentHeight
-            else:
-                total += child.collapsedHeight
+            # total += child.collapsedHeight
         return total
 
     def toggle(self, collapsed):
@@ -142,15 +160,14 @@ class Section(wd.QWidget):
             direction = cr.QAbstractAnimation.Backward
         self.toggleAnimation.setDirection(direction)
         self.toggleAnimation.start()
-        time.sleep(0.1)
+        # time.sleep(0.1)
         self.update_parent_sections(direction)
     
     def update_parent_sections(self, direction):
         for parent in self.parent_sections:
-            print('update parent')
             parent.update_size()
             parent.update_animation()
-            parent.resize_animation(direction)
+            parent.resize_animation(self.animationDuration)
             # resize_animation = cr.QPropertyAnimation(parent, b"maximumHeight")
             # resize_animation.setDuration(parent.animationDuration)
             # resize_animation.setStartValue(parent.height())

@@ -218,23 +218,6 @@ class Ui_ChannelSettingsWidget(object):
         self.advanced_section.setObjectName(u"advanced_section")
         sizePolicy.setHeightForWidth(self.advanced_section.sizePolicy().hasHeightForWidth())
         self.advanced_section.setSizePolicy(sizePolicy)
-        self.chanmask_label = QLabel(self.advanced_section)
-        self.chanmask_label.setObjectName(u"chanmask_label")
-        self.chanmask_label.setGeometry(QRect(9, 9, 97, 16))
-        self.chanmask_label.setMinimumSize(QSize(0, 0))
-        self.firmware_label = QLabel(self.advanced_section)
-        self.firmware_label.setObjectName(u"firmware_label")
-        self.firmware_label.setGeometry(QRect(9, 41, 105, 16))
-        self.firmware_label.setMinimumSize(QSize(0, 0))
-        self.firmware_file_upload_widget = FileUploadWidget(self.advanced_section)
-        self.firmware_file_upload_widget.setObjectName(u"firmware_file_upload_widget")
-        self.firmware_file_upload_widget.setGeometry(QRect(120, 41, 318, 16))
-        self.chanmask_lineEdit = QLineEdit(self.advanced_section)
-        self.chanmask_lineEdit.setObjectName(u"chanmask_lineEdit")
-        self.chanmask_lineEdit.setGeometry(QRect(211, 12, 133, 22))
-        self.chanmask_pushButton = QPushButton(self.advanced_section)
-        self.chanmask_pushButton.setObjectName(u"chanmask_pushButton")
-        self.chanmask_pushButton.setGeometry(QRect(350, 11, 75, 24))
 
         self.gridLayout.addWidget(self.advanced_section, 3, 0, 1, 3, Qt.AlignmentFlag.AlignTop)
 
@@ -266,8 +249,5 @@ class Ui_ChannelSettingsWidget(object):
         self.udp_sourceLabel.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Source port:", None))
         self.udp_destLabel.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Destination port:", None))
         self.udp_openPushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Open Socket", None))
-        self.chanmask_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Channel mask file:", None))
-        self.firmware_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Firmware bitstream:", None))
-        self.chanmask_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
     # retranslateUi
 

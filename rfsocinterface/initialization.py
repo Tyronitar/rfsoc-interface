@@ -18,11 +18,12 @@ class InitializationWidget(QWidget, Ui_InitializationTabWidget):
         self.channels = []
 
         self.scrollArea.setStyleSheet('QScrollArea {background-color:white;}')
-        for _ in range(1):
-            self.add_channel()
+        n_chan = 4
+        for i in range(n_chan):
+            self.add_channel(toggle=i == n_chan - 1)
 
     
-    def add_channel(self):
+    def add_channel(self, toggle: bool=False):
         channel_id = len(self.channels) + 1
         channel_section = Section(self.scrollAreaWidgetContents, animationDuration=300)
         channel_widget = ChannelSettingsWidget(channel_section)
@@ -35,7 +36,10 @@ class InitializationWidget(QWidget, Ui_InitializationTabWidget):
 
         self.verticalLayout.addWidget(channel_section, alignment=Qt.AlignmentFlag.AlignTop)
         self.channels.append(channel_widget)
-        channel_section.toggleButton.toggle()
+        if toggle:
+            channel_section.set_duration(0)
+            channel_section.toggleButton.toggle()
+            channel_section.set_duration(300)
 
 
     #     self.tone_list_browse_pushButton.clicked.connect(self.choose_tone_file)

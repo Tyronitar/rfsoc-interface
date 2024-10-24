@@ -1,6 +1,6 @@
 from pathlib import Path
-from PySide6.QtCore import Qt, QCoreApplication, QSize
-from PySide6.QtGui import QDoubleValidator
+from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect
+from PySide6.QtGui import QDoubleValidator, QIcon
 from rfsocinterface.ui.channel_settings_ui import Ui_ChannelSettingsWidget
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit
 
@@ -57,20 +57,28 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     def _additional_setup(self):
         self.formLayout = QFormLayout()
         self.formLayout.setObjectName(u"formLayout")        
-        self.formLayout.setWidget(0, QFormLayout.LabelRole, self.chanmask_label)
 
         self.horizontalLayout = QHBoxLayout()
         self.horizontalLayout.setObjectName(u"horizontalLayout")
 
+        self.chanmask_lineEdit = QLineEdit(self.advanced_section)
+        self.chanmask_lineEdit.setObjectName(u"chanmask_lineEdit")
+        self.chanmask_lineEdit.setGeometry(QRect(211, 12, 133, 22))
         self.horizontalLayout.addWidget(self.chanmask_lineEdit)
 
+        self.chanmask_pushButton = QPushButton(self.advanced_section)
+        self.chanmask_pushButton.setObjectName(u"chanmask_pushButton")
+        self.chanmask_pushButton.setGeometry(QRect(350, 11, 75, 24))
+        self.chanmask_pushButton.setText(QCoreApplication.translate('ChannelSettingsWidget', u"Browse...", None))
         self.horizontalLayout.addWidget(self.chanmask_pushButton)
 
-        self.formLayout.setLayout(0, QFormLayout.FieldRole, self.horizontalLayout)
+        self.firmware_file_upload_widget = FileUploadWidget(self.advanced_section)
+        self.firmware_file_upload_widget.setObjectName(u"firmware_file_upload_widget")
+        self.firmware_file_upload_widget.setGeometry(QRect(120, 41, 318, 16))
 
-        self.formLayout.setWidget(1, QFormLayout.LabelRole, self.firmware_label)
+        self.formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Channel mask:', None), self.horizontalLayout)
+        self.formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Firmware bitstream:', None), self.firmware_file_upload_widget)
 
-        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.firmware_file_upload_widget)
         self.advanced_section.setContentLayout(self.formLayout)
         self.advanced_section.setTitle('Advanced Settings')
         self.retranslateUi(self)

@@ -24,7 +24,7 @@ class Ui_FileUploadWidget(object):
         if not FileUploadWidget.objectName():
             FileUploadWidget.setObjectName(u"FileUploadWidget")
         FileUploadWidget.resize(260, 42)
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(FileUploadWidget.sizePolicy().hasHeightForWidth())
@@ -32,6 +32,7 @@ class Ui_FileUploadWidget(object):
         FileUploadWidget.setMinimumSize(QSize(0, 0))
         self.horizontalLayout = QHBoxLayout(FileUploadWidget)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
+        self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
         self.lineEdit = QLineEdit(FileUploadWidget)
         self.lineEdit.setObjectName(u"lineEdit")
 
