@@ -34,69 +34,12 @@
       <property name="autoFillBackground">
        <bool>true</bool>
       </property>
-      <layout class="QVBoxLayout" name="verticalLayout">
-       <item>
-        <widget class="QGroupBox" name="channel1_groupBox">
-         <property name="title">
-          <string>Channel 1</string>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayout_2">
-          <item>
-           <widget class="ChannelSettingsWidget" name="channel1_settings_widget" native="true"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="channel2_groupBox">
-         <property name="title">
-          <string>Channel 2</string>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayout_4">
-          <item>
-           <widget class="ChannelSettingsWidget" name="channel2_settings_widget" native="true"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="channel3_groupBox">
-         <property name="title">
-          <string>Channel 3</string>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayout_5">
-          <item>
-           <widget class="ChannelSettingsWidget" name="channel3_settings_widget" native="true"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="channel4_groupBox">
-         <property name="title">
-          <string>Channel 4</string>
-         </property>
-         <layout class="QVBoxLayout" name="verticalLayout_6">
-          <item>
-           <widget class="ChannelSettingsWidget" name="channel4_settings_widget" native="true"/>
-          </item>
-         </layout>
-        </widget>
-       </item>
-      </layout>
+      <layout class="QVBoxLayout" name="verticalLayout"/>
      </widget>
     </widget>
    </item>
   </layout>
  </widget>
- <customwidgets>
-  <customwidget>
-   <class>ChannelSettingsWidget</class>
-   <extends>QWidget</extends>
-   <header>rfsocinterface.channel_settings</header>
-   <container>1</container>
-  </customwidget>
- </customwidgets>
  <resources/>
  <connections/>
 </ui>

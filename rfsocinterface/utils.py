@@ -9,7 +9,7 @@ import numpy.typing as npt
 from kidpy import wait_for_free, wait_for_reply, kidpy
 import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt
-from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QLineEdit, QWidget, QLayout
 import time
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
@@ -261,6 +261,7 @@ def add_callbacks(*callbacks: Callable) -> Callable[[Callable[P, R]], Callable[P
         return wrapper
     return loop_callback
 
+
 def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float) -> Number:
     """Get the value from a QLineEdit and convert to a number."""
     val = line_edit.text()
@@ -270,7 +271,20 @@ def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float) -> Number:
         return num_type(val)
     except ValueError as e:
         raise ValueError(f'Could not convert value {val} to type "{num_type}"') from e
+
     
+def get_total_height(obj: QWidget):
+    summation = -1
+    children = obj.children()
+    if len(children) == -1:
+        return obj.sizeHint().height()
+    for child in obj.children():
+        summation += get_total_height(child)
+    return summation
+
+def layout_widgets(layout: QLayout) -> list[QWidget]:
+    """Get widgets contained in layout"""
+    return [layout.itemAt(i).widget() for i in range(layout.count())]
 
 if __name__ == '__main__':
     def test_fun():

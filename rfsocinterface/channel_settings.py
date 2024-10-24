@@ -1,8 +1,16 @@
 from pathlib import Path
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QCoreApplication, QSize
 from PySide6.QtGui import QDoubleValidator
 from rfsocinterface.ui.channel_settings_ui import Ui_ChannelSettingsWidget
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit
+
+from PySide6.QtWidgets import (QFormLayout,
+    QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, 
+    QWidget)
+
+from rfsocinterface.ui.file_upload import FileUploadWidget
+from rfsocinterface.ui.section import Section
 
 from rfsocinterface.utils import get_num_value
 
@@ -10,6 +18,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setupUi(self)
+        self._additional_setup()
+
 
         self.tone_list_file_upload_widget.set_caption('Select Tone File')
         self.tone_list_file_upload_widget.set_dir('./')
@@ -43,7 +53,29 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             edit.setValidator(self.validator)
             edit.textChanged.connect(self.change_attenuation)
         # TODO: Add upload functionality for attenuation
-    
+
+    def _additional_setup(self):
+        self.formLayout = QFormLayout()
+        self.formLayout.setObjectName(u"formLayout")        
+        self.formLayout.setWidget(0, QFormLayout.LabelRole, self.chanmask_label)
+
+        self.horizontalLayout = QHBoxLayout()
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
+
+        self.horizontalLayout.addWidget(self.chanmask_lineEdit)
+
+        self.horizontalLayout.addWidget(self.chanmask_pushButton)
+
+        self.formLayout.setLayout(0, QFormLayout.FieldRole, self.horizontalLayout)
+
+        self.formLayout.setWidget(1, QFormLayout.LabelRole, self.firmware_label)
+
+        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.firmware_file_upload_widget)
+        self.advanced_section.setContentLayout(self.formLayout)
+        self.advanced_section.setTitle('Advanced Settings')
+        self.retranslateUi(self)
+
+
 
     def change_attenuation(self):
         source: QLineEdit = self.sender()

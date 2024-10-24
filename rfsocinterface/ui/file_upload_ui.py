@@ -17,6 +17,7 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLineEdit, QPushButton,
     QSizePolicy, QToolButton, QWidget)
+from . import icons_rc
 
 class Ui_FileUploadWidget(object):
     def setupUi(self, FileUploadWidget):
@@ -44,7 +45,8 @@ class Ui_FileUploadWidget(object):
         self.toolButton = QToolButton(FileUploadWidget)
         self.toolButton.setObjectName(u"toolButton")
         self.toolButton.setEnabled(False)
-        icon = QIcon(QIcon.fromTheme(QIcon.ThemeIcon.GoUp))
+        icon = QIcon()
+        icon.addFile(u":/icons/upload.png", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
         self.toolButton.setIcon(icon)
 
         self.horizontalLayout.addWidget(self.toolButton)

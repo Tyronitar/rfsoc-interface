@@ -234,10 +234,3 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
                     f'Invalid `active_suffix` encountered: {self.active_suffix}'
                 )
 
-
-if __name__ == '__main__':
-    app = QApplication()
-
-    lo_window = LOConfigWindow()
-    lo_window.show()
-    app.exec()

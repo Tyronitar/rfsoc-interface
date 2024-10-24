@@ -10,5 +10,6 @@
     <file alias="down.png">icons8-down-52.png</file>
     <file>icons8-down-left-52.png</file>
     <file alias="left.png">icons8-left-52.png</file>
+    <file>upload.png</file>
   </qresource>
 </RCC>

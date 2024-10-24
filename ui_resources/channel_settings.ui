@@ -6,15 +6,21 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>412</width>
-    <height>350</height>
+    <width>465</width>
+    <height>262</height>
    </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
   </property>
   <property name="windowTitle">
    <string>Form</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="0" column="0" colspan="3">
+   <item row="0" column="0" colspan="3" alignment="Qt::AlignmentFlag::AlignTop">
     <widget class="QGroupBox" name="resonator_GroupBox">
      <property name="title">
       <string>Resonator Settings</string>
@@ -78,7 +84,7 @@
      </layout>
     </widget>
    </item>
-   <item row="1" column="2">
+   <item row="1" column="2" alignment="Qt::AlignmentFlag::AlignTop">
     <widget class="QGroupBox" name="attenuation_GroupBox">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -145,7 +151,8 @@
            <string>Upload Selected Tone List</string>
           </property>
           <property name="icon">
-           <iconset theme="QIcon::ThemeIcon::GoUp"/>
+           <iconset resource="icons.qrc">
+            <normaloff>:/icons/upload.png</normaloff>:/icons/upload.png</iconset>
           </property>
           <property name="arrowType">
            <enum>Qt::ArrowType::NoArrow</enum>
@@ -209,7 +216,8 @@
            <string>Upload Selected Tone List</string>
           </property>
           <property name="icon">
-           <iconset theme="QIcon::ThemeIcon::GoUp"/>
+           <iconset resource="icons.qrc">
+            <normaloff>:/icons/upload.png</normaloff>:/icons/upload.png</iconset>
           </property>
          </widget>
         </item>
@@ -218,7 +226,7 @@
      </layout>
     </widget>
    </item>
-   <item row="4" column="0" colspan="3">
+   <item row="4" column="0" colspan="3" alignment="Qt::AlignmentFlag::AlignBottom">
     <widget class="QDialogButtonBox" name="buttonBox">
      <property name="standardButtons">
       <set>QDialogButtonBox::StandardButton::Apply|QDialogButtonBox::StandardButton::RestoreDefaults</set>
@@ -228,62 +236,7 @@
      </property>
     </widget>
    </item>
-   <item row="3" column="0" colspan="3">
-    <widget class="QGroupBox" name="groupBox">
-     <property name="title">
-      <string>Advanced</string>
-     </property>
-     <property name="flat">
-      <bool>false</bool>
-     </property>
-     <layout class="QFormLayout" name="formLayout">
-      <item row="0" column="0">
-       <widget class="QLabel" name="chanmask_label">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="text">
-         <string>Channel mask file:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout">
-        <item>
-         <widget class="QLineEdit" name="chanmask_lineEdit"/>
-        </item>
-        <item>
-         <widget class="QPushButton" name="chanmask_pushButton">
-          <property name="text">
-           <string>Browse...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="firmware_label">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="text">
-         <string>Firmware bitstream:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="FileUploadWidget" name="firmware_file_upload_widget" native="true"/>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item row="1" column="0" colspan="2">
+   <item row="1" column="0" colspan="2" alignment="Qt::AlignmentFlag::AlignTop">
     <widget class="QGroupBox" name="udp_GroupBox">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
@@ -357,6 +310,87 @@
      </layout>
     </widget>
    </item>
+   <item row="3" column="0" colspan="3" alignment="Qt::AlignmentFlag::AlignTop">
+    <widget class="Section" name="advanced_section" native="true">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <widget class="QLabel" name="chanmask_label">
+      <property name="geometry">
+       <rect>
+        <x>9</x>
+        <y>9</y>
+        <width>97</width>
+        <height>16</height>
+       </rect>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="text">
+       <string>Channel mask file:</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="firmware_label">
+      <property name="geometry">
+       <rect>
+        <x>9</x>
+        <y>41</y>
+        <width>105</width>
+        <height>16</height>
+       </rect>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="text">
+       <string>Firmware bitstream:</string>
+      </property>
+     </widget>
+     <widget class="FileUploadWidget" name="firmware_file_upload_widget" native="true">
+      <property name="geometry">
+       <rect>
+        <x>120</x>
+        <y>41</y>
+        <width>318</width>
+        <height>16</height>
+       </rect>
+      </property>
+     </widget>
+     <widget class="QLineEdit" name="chanmask_lineEdit">
+      <property name="geometry">
+       <rect>
+        <x>211</x>
+        <y>12</y>
+        <width>133</width>
+        <height>22</height>
+       </rect>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="chanmask_pushButton">
+      <property name="geometry">
+       <rect>
+        <x>350</x>
+        <y>11</y>
+        <width>75</width>
+        <height>24</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Browse...</string>
+      </property>
+     </widget>
+    </widget>
+   </item>
   </layout>
  </widget>
  <customwidgets>
@@ -366,7 +400,15 @@
    <header>rfsocinterface.ui.file_upload</header>
    <container>1</container>
   </customwidget>
+  <customwidget>
+   <class>Section</class>
+   <extends>QWidget</extends>
+   <header>rfsocinterface.ui.section</header>
+   <container>1</container>
+  </customwidget>
  </customwidgets>
- <resources/>
+ <resources>
+  <include location="icons.qrc"/>
+ </resources>
  <connections/>
 </ui>

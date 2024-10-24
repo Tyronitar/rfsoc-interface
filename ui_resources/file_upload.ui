@@ -45,12 +45,15 @@
       <string>...</string>
      </property>
      <property name="icon">
-      <iconset theme="QIcon::ThemeIcon::GoUp"/>
+      <iconset resource="icons.qrc">
+       <normaloff>:/icons/upload.png</normaloff>:/icons/upload.png</iconset>
      </property>
     </widget>
    </item>
   </layout>
  </widget>
- <resources/>
+ <resources>
+  <include location="icons.qrc"/>
+ </resources>
  <connections/>
 </ui>

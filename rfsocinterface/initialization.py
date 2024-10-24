@@ -3,16 +3,40 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
 from rfsocinterface.ui.initialization_ui import Ui_InitializationTabWidget
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit
+from PySide6.QtWidgets import (QApplication, QGridLayout, QScrollArea, QSizePolicy,
+    QVBoxLayout, QWidget)
 
 from rfsocinterface.utils import get_num_value
+from rfsocinterface.ui.section import Section
+from rfsocinterface.channel_settings import ChannelSettingsWidget
 
 class InitializationWidget(QWidget, Ui_InitializationTabWidget):
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setupUi(self)
+        self.channels = []
 
         self.scrollArea.setStyleSheet('QScrollArea {background-color:white;}')
+        for _ in range(1):
+            self.add_channel()
+
+    
+    def add_channel(self):
+        channel_id = len(self.channels) + 1
+        channel_section = Section(self.scrollAreaWidgetContents, animationDuration=300)
+        channel_widget = ChannelSettingsWidget(channel_section)
+        channel_widget.setObjectName(f'channel_{channel_id}_widget')
+        vertical_layout = QVBoxLayout()
+        vertical_layout.setObjectName(f'channel_{channel_id}_verticalLayout')
+        vertical_layout.addWidget(channel_widget)
+        channel_section.setContentLayout(vertical_layout)
+        channel_section.setTitle(f'Channel {channel_id}')
+
+        self.verticalLayout.addWidget(channel_section, alignment=Qt.AlignmentFlag.AlignTop)
+        self.channels.append(channel_widget)
+        channel_section.toggleButton.toggle()
+
 
     #     self.tone_list_browse_pushButton.clicked.connect(self.choose_tone_file)
     #     self.chanmask_browse_pushButton.clicked.connect(self.choose_channel_mask)
