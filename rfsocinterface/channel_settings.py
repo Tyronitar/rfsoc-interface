@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QFormLayout,
 
 from rfsocinterface.ui.file_upload import FileUploadWidget
 from rfsocinterface.ui.section import Section
+from rfsocinterface.ui.lineedit import ClickableLineEdit
 
 from rfsocinterface.utils import get_num_value
 
@@ -77,7 +78,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.udp_formLayout = QFormLayout()
         self.udp_formLayout.setObjectName(u"udp_formLayout")
 
-        self.udp_sourceLineEdit = QLineEdit(self.udp_GroupBox)
+        self.udp_sourceLineEdit = ClickableLineEdit(self.udp_GroupBox)
         self.udp_sourceLineEdit.setObjectName(u"udp_sourceLineEdit")
         sizePolicy6 = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         sizePolicy6.setHorizontalStretch(0)
@@ -87,7 +88,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
 
         self.udp_formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Source:', None), self.udp_sourceLineEdit)
 
-        self.udp_destLineEdit = QLineEdit(self.udp_GroupBox)
+        self.udp_destLineEdit = ClickableLineEdit(self.udp_GroupBox)
         self.udp_destLineEdit.setObjectName(u"udp_destLineEdit")
 
         self.udp_formLayout.addRow(QCoreApplication.translate('ChannelSettingsWidget', 'Destination:', None), self.udp_destLineEdit)
@@ -108,7 +109,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.horizontalLayout = QHBoxLayout()
         self.horizontalLayout.setObjectName(u"horizontalLayout")
 
-        self.chanmask_lineEdit = QLineEdit(self.advanced_section)
+        self.chanmask_lineEdit = ClickableLineEdit(self.advanced_section)
         self.chanmask_lineEdit.setObjectName(u"chanmask_lineEdit")
         self.chanmask_lineEdit.setGeometry(QRect(211, 12, 133, 22))
         self.horizontalLayout.addWidget(self.chanmask_lineEdit)
@@ -138,7 +139,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
 
 
     def change_attenuation(self):
-        source: QLineEdit = self.sender()
+        source: ClickableLineEdit = self.sender()
         valid = self.validator.validate(source.text(), 0)[0]
 
         # val = get_num_value(source, float)

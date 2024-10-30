@@ -15,13 +15,42 @@
 '''
 
 import PySide6.QtCore as cr
+from PySide6.QtCore import Qt, QEvent
 import PySide6.QtWidgets as wd
+from PySide6.QtGui import QMouseEvent
 # import PyQt5.QtGui as gui
 import sys
 import time
 from rfsocinterface.utils import get_total_height, layout_widgets
 
+TOGGLE_BUTTON_CSS = """
+        QToolButton {
+            border: none;
+        }
+        QToolButton[active = "false"]:hover {
+            background: lightgray;
+        }
+        QToolButton[active = "true"]:hover {
+            background: qradialgradient(
+                cx: 0.3, cy: -0.4, fx: -0.3, fy: 0.4,
+                radius: 1.35, stop: 0 lightblue, stop: 1 lightskyblue
+            );
+        }
+        QToolButton:pressed {
+            background: lightgray;
+        }
+        QToolButton[active = "true"]{
+            background-color: lightskyblue;
+            border: none;
+        }
+        QToolButton[active = "false"]{
+            border: none;
+        }
+"""
+
 class Section(wd.QWidget):
+    clicked = cr.Signal()
+
     def __init__(self, parent=None,*, animationDuration=100):
         super().__init__(parent)
         self.animationDuration = animationDuration
@@ -32,11 +61,11 @@ class Section(wd.QWidget):
         self.mainLayout = wd.QGridLayout(self)
 
         self.toggleButton.setToolButtonStyle(cr.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        #self.toggleButton.setStyleSheet("QToolButton {border: none;}")
+        # self.toggleButton.setStyleSheet("QToolButton {border: none;}")
         self.toggleButton.setArrowType(cr.Qt.ArrowType.RightArrow)
-        #self.toggleButton.setText(title)
         self.toggleButton.setCheckable(True)
         self.toggleButton.setChecked(False)
+        self.set_active('false')
 
         self.headerLine.setFrameShape(wd.QFrame.HLine)
         self.headerLine.setFrameShadow(wd.QFrame.Sunken)
@@ -64,13 +93,51 @@ class Section(wd.QWidget):
         self.setLayout(self.mainLayout)
 
         self.toggleButton.toggled.connect(self.toggle)
+        # self.toggleButton.clicked.connect(lambda: self.clicked.emit())
         self.parent_sections = []
         self.children_sections = []
         self.children_height = 0
     
+    def set_active(self, value: str):
+        self.toggleButton.setProperty('active', value)
+        self.toggleButton.setStyleSheet(TOGGLE_BUTTON_CSS)
+
+    def install_event_filter_recursively(self, obj: cr.QObject | None):
+        if obj is None:
+            return
+        if isinstance(obj, wd.QLayout):
+            children = layout_widgets(obj)
+            for child in children:
+                self.install_event_filter_recursively(child)
+            for child in obj.findChildren(wd.QLayout):
+                self.install_event_filter_recursively(child)
+        else:
+            if isinstance(obj, wd.QWidget):
+            # if type(obj) in (wd.QWidget, wd.QPushButton, wd.QToolButton, wd.QLineEdit):
+                obj.installEventFilter(self)
+            if isinstance(obj, wd.QAbstractButton):
+                obj.clicked.connect(lambda: self.clicked.emit())
+            # if isinstance(obj, Section):
+            #     self.install_event_filter_recursively(obj.layout())
+            self.install_event_filter_recursively(obj.layout())
+
+    # def mousePressEvent(self, event):
+    #     if event.button() == Qt.LeftButton:
+    #         # print(f'Clicked inside {self}')
+    #         self.clicked.emit()
+        
+    def eventFilter(self, watched, event):
+        if event.type() == QMouseEvent.Type.MouseButtonPress:
+            if event.button() == Qt.LeftButton:
+                self.clicked.emit()
+            #     print(f'Clicked inside {self}')
+            # self.mousePressEvent(event)
+            return False
+        return super().eventFilter(watched, event)
+
     def setTitle(self,title):
         self.toggleButton.setText(title)
-
+    
     def setContentLayout(self, contentLayout: wd.QLayout):
         layout = self.contentArea.layout()
         del layout
@@ -79,6 +146,8 @@ class Section(wd.QWidget):
         self.children_sections = find_children_sections(contentLayout)
         for child in self.children_sections:
             child.parent_sections.append(self)
+            # child.installEventFilter(self)
+        self.install_event_filter_recursively(self.layout())
         
         self.collapsedHeight = self.sizeHint().height() - self.contentArea.maximumHeight()
         self.contentHeight = self.contentArea.layout().sizeHint().height()
@@ -205,8 +274,8 @@ def find_children_sections(widget: wd.QWidget) -> list[Section]:
         children.append(widget)
 
     if isinstance(widget, wd.QLayout):
-            for child in layout_widgets(widget):
-                children.extend(find_children_sections(child))
+        for child in layout_widgets(widget):
+            children.extend(find_children_sections(child))
     else:
         layout = widget.layout()
         if layout:

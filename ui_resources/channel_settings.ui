@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>281</width>
+    <width>407</width>
     <height>154</height>
    </rect>
   </property>
@@ -68,7 +68,7 @@
       <item row="0" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
-         <widget class="QLineEdit" name="rfout_lineEdit">
+         <widget class="ClickableLineEdit" name="rfout_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -133,7 +133,7 @@
       <item row="1" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_3">
         <item>
-         <widget class="QLineEdit" name="rfin_lineEdit">
+         <widget class="ClickableLineEdit" name="rfin_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -260,6 +260,11 @@
    <extends>QWidget</extends>
    <header>rfsocinterface.ui.section</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>ClickableLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>rfsocinterface.ui.lineedit</header>
   </customwidget>
  </customwidgets>
  <resources>

@@ -15,8 +15,10 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLineEdit, QPushButton,
-    QSizePolicy, QToolButton, QWidget)
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QPushButton, QSizePolicy,
+    QToolButton, QWidget)
+
+from rfsocinterface.ui.lineedit import ClickableLineEdit
 from . import icons_rc
 
 class Ui_FileUploadWidget(object):
@@ -33,7 +35,7 @@ class Ui_FileUploadWidget(object):
         self.horizontalLayout = QHBoxLayout(FileUploadWidget)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
-        self.lineEdit = QLineEdit(FileUploadWidget)
+        self.lineEdit = ClickableLineEdit(FileUploadWidget)
         self.lineEdit.setObjectName(u"lineEdit")
 
         self.horizontalLayout.addWidget(self.lineEdit)

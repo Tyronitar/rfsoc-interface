@@ -17,9 +17,10 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialogButtonBox, QFormLayout,
     QGridLayout, QGroupBox, QHBoxLayout, QLabel,
-    QLineEdit, QSizePolicy, QToolButton, QWidget)
+    QSizePolicy, QToolButton, QWidget)
 
 from rfsocinterface.ui.file_upload import FileUploadWidget
+from rfsocinterface.ui.lineedit import ClickableLineEdit
 from rfsocinterface.ui.section import Section
 from . import icons_rc
 
@@ -27,7 +28,7 @@ class Ui_ChannelSettingsWidget(object):
     def setupUi(self, ChannelSettingsWidget):
         if not ChannelSettingsWidget.objectName():
             ChannelSettingsWidget.setObjectName(u"ChannelSettingsWidget")
-        ChannelSettingsWidget.resize(281, 154)
+        ChannelSettingsWidget.resize(407, 154)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -70,7 +71,7 @@ class Ui_ChannelSettingsWidget(object):
 
         self.horizontalLayout_2 = QHBoxLayout()
         self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
-        self.rfout_lineEdit = QLineEdit(self.attenuation_GroupBox)
+        self.rfout_lineEdit = ClickableLineEdit(self.attenuation_GroupBox)
         self.rfout_lineEdit.setObjectName(u"rfout_lineEdit")
         sizePolicy3 = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         sizePolicy3.setHorizontalStretch(0)
@@ -106,7 +107,7 @@ class Ui_ChannelSettingsWidget(object):
 
         self.horizontalLayout_3 = QHBoxLayout()
         self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
-        self.rfin_lineEdit = QLineEdit(self.attenuation_GroupBox)
+        self.rfin_lineEdit = ClickableLineEdit(self.attenuation_GroupBox)
         self.rfin_lineEdit.setObjectName(u"rfin_lineEdit")
         sizePolicy3.setHeightForWidth(self.rfin_lineEdit.sizePolicy().hasHeightForWidth())
         self.rfin_lineEdit.setSizePolicy(sizePolicy3)

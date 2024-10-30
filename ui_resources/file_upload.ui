@@ -39,7 +39,7 @@
     <number>0</number>
    </property>
    <item>
-    <widget class="QLineEdit" name="lineEdit"/>
+    <widget class="ClickableLineEdit" name="lineEdit"/>
    </item>
    <item>
     <widget class="QPushButton" name="pushButton">
@@ -64,6 +64,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ClickableLineEdit</class>
+   <extends>QLineEdit</extends>
+   <header>rfsocinterface.ui.lineedit</header>
+  </customwidget>
+ </customwidgets>
  <resources>
   <include location="icons.qrc"/>
  </resources>
