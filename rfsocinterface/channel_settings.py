@@ -9,6 +9,13 @@ from PySide6.QtWidgets import (QFormLayout,
     QLineEdit, QPushButton, 
     QWidget)
 
+import time
+import json
+import redis
+import configparser
+from kidpy import checkBlastCli, wait_for_free, wait_for_reply
+import numpy as np
+
 from rfsocinterface.ui.file_upload import FileUploadWidget
 from rfsocinterface.ui.section import Section
 from rfsocinterface.ui.lineedit import ClickableLineEdit
@@ -54,6 +61,12 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             edit.setValidator(self.validator)
             edit.textChanged.connect(self.change_attenuation)
         # TODO: Add upload functionality for attenuation
+
+        # Redis and stuff from kidpy
+        self.setup_redis()
+        self.firmware_file_upload_widget.toolButton.clicked.connect(self.upload_firmware)
+        self.tone_list_file_upload_widget.toolButton.clicked.connect(self.upload_tone_list)
+        self.udp_openPushButton.clicked.connect(self.setup_udp)
 
     def _additional_setup(self):
 
@@ -213,3 +226,105 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         )
         if fname:
             self.chanmask_lineEdit.setText(fname)
+
+    def setup_redis(self):
+        config = configparser.ConfigParser()
+        config.read("generalConfig.conf")
+        self.__redis_host = config["REDIS"]["host"]
+
+        # setup redis
+        self.r = redis.Redis(self.__redis_host)
+        self.p = self.r.pubsub()
+        self.p.subscribe("ping")
+        time.sleep(1)
+        if self.p.get_message()["data"] != 1:
+            print("Failed to Subscribe to redis Ping Channel")
+            exit()
+        self.p.subscribe("picard_reply")
+        time.sleep(1)
+        if self.p.get_message()["data"] != 2:
+            # TODO: Handle this error is a better way
+            print("Failed to Subscribe redis picard_reply channel")
+            exit()
+
+        # check that the rfsoc is running redisControl.py
+        if not checkBlastCli(self.r, self.p):
+            # TODO: Handle this error is a better way
+            exit()
+    
+    def setup_valon(self):
+        pass
+    
+    def upload_firmware(self):
+        cmd = {"cmd": "ulBitstream", "args": []}
+        cmdstr = json.dumps(cmd)
+        self.r.publish("picard", cmdstr)
+        self.r.set("status", "busy")
+        print("Waiting for the RFSOC to upload it's bitstream...")
+        if wait_for_free(self.r, 0.75, 25):
+            print("Done")
+    
+    def setup_udp(self):
+        print("Initializing System and UDP Connection")
+        cmd = {"cmd": "initRegs", "args": []}
+        cmdstr = json.dumps(cmd)
+        self.r.publish("picard", cmdstr)
+        if wait_for_free(self.r, 0.5, 5):
+            print("Done")
+    
+    def write_fList(self, fList, ampList):
+        """
+        Function for writing tones to the rfsoc. Accepts both numpy arrays and lists.
+        :param fList: List of desired tones
+        :type fList: list
+        :param ampList: List of desired amplitudes
+        :type ampList: list
+        .. note::
+            fList and ampList must be the same size
+        """
+        f = fList
+        a = ampList
+
+        # Convert to numpy arrays as needed
+        if isinstance(fList, np.ndarray):
+            f = fList.tolist()
+        if isinstance(ampList, np.ndarray):
+            a = ampList.tolist()
+
+        # Format Command based on provided parameters
+        cmd = {}
+        if len(f) == 0:
+            cmd = {"cmd": "ulWaveform", "args": []}
+        elif len(f) > 0 and len(a) == 0:
+            a = np.ones_like(f).tolist()
+            cmd = {"cmd": "ulWaveform", "args": [f, a]}
+        elif len(f) > 0 and len(a) > 0:
+            assert len(a) == len(
+                f
+            ), "Frequency list and Amplitude list must be the same dimmension"
+            cmd = {"cmd": "ulWaveform", "args": [f, a]}
+        else:
+            print("Weird edge case, something went very wrong.....")
+            return
+
+        cmdstr = json.dumps(cmd)
+        self.r.publish("picard", cmdstr)
+        success, _ = wait_for_reply(self.p, "ulWaveform", max_timeout=10)
+        if success:
+            print("Wrote waveform.")
+        else:
+            print("FAILED TO WRITE WAVEFORM")
+    
+    def upload_tone_list(self):
+        # see if the user wants the default list or something different:
+        tone_file = self.tone_list_file_upload_widget.lineEdit.text()
+        freqfile = np.load(tone_file)
+        fList = np.ndarray.tolist(freqfile)
+        aList = []
+        # aList = np.ndarray.tolist(np.load(amplitude_file)) # doesnt exist yet...
+
+        print(
+            "Waiting for the RFSOC to finish writing the custom frequency list"
+        )
+        self.write_fList(fList, aList)
+

@@ -1,0 +1,17 @@
+rfsoc_config:
+  redis_ip : '127.0.0.1'
+  redis_port : 6379
+  rfsoc_name: 'rfsoc_ASU'
+  bitstream: '/home/xilinx/dualchan_v2.bit'
+  ethernet_config:
+    udp_data_a_sourceip: '192.168.3.41'
+    udp_data_b_sourceip: '192.168.4.41'
+    udp_data_a_destip: '192.168.3.40'
+    udp_data_b_destip: '192.168.4.40'
+    destmac_a: '681CA2123652'
+    destmac_b: '681CA2123652'
+    port_a: 4096
+    port_b: 4096
+  dsp_config:
+    lo_default_freq: 400e6 #MHz
+    n_averages: 524288 #2^19 (NOT IMPLEMENTED)
