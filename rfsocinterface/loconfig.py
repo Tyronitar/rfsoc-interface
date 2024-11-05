@@ -35,10 +35,11 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         tone_path (Path): The path to the selected tone list file.
     """
 
-    def __init__(self, parent: QWidget | None=None) -> None:
+    def __init__(self, kpy: kidpy, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
         super().__init__(parent)
         self.setupUi(self)
+        self.kpy = kpy
         self.active_suffix: Literal['none', 'temperature', 'elevation'] = 'none'
 
         self.buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
@@ -52,22 +53,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         )
         
         self.dialog_button_box.accepted.connect(self.run_sweep)
-        self.init_kidpy()
     
-    def init_kidpy(self):
-        self.kpy = kidpy()
-        conStatus = test_connection(self.kpy.r)
-        if conStatus:
-            print("\033[0;36m" + "\r\nConnected" + "\033[0m")
-        else:
-            print(
-                "\033[0;31m"
-                + "\r\nCouldn't connect to redis-server double check it's running and the generalConfig is correct"
-                + "\033[0m"
-            )
-        if conStatus == False:
-            exit(1)
-
     def run_sweep(self):
 
         self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
@@ -106,17 +92,17 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
             case _:
                 pass
 
-        sweeps.loSweep(
-            self.kpy.valon,
-            self.kpy._kidpy__udp,
-            self.kpy.get_last_flist(),
-            valon5009.Synthesizer.get_frequency(
-                self.kpy.valon, valon5009.SYNTH_B
-            ),
-            N_steps=200,
-            freq_step=0.001,
-            savefile=savefile,
-        )
+        # sweeps.loSweep(
+        #     self.kpy.valon,
+        #     self.kpy._kidpy__udp,
+        #     self.kpy.get_last_flist(),
+        #     valon5009.Synthesizer.get_frequency(
+        #         self.kpy.valon, valon5009.SYNTH_B
+        #     ),
+        #     N_steps=200,
+        #     freq_step=0.001,
+        #     savefile=savefile,
+        # )
         sweep = LoSweep(
             self.kpy.valon,
             self.kpy._kidpy__udp,
