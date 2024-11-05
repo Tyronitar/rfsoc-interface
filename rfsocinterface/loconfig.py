@@ -52,7 +52,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         )
         
         self.dialog_button_box.accepted.connect(self.run_sweep)
-        # self.init_kidpy()
+        self.init_kidpy()
     
     def init_kidpy(self):
         self.kpy = kidpy()
@@ -70,29 +70,29 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
 
     def run_sweep(self):
 
-#         self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
+        self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
         chan_name = 'rfsoc2'
 
-#         tone_shift = get_num_value(self.global_shift_lineEdit)
-#         if tone_shift != 0:
-#             lo_freq = valon5009.Synthesizer.get_frequency(
-#                 self.kpy.valon,
-#                 valon5009.SYNTH_B,
-#             )
-#             curr_tone_list = self.kpy.get_tone_list()
-#             fList = np.ndarray.tolist(
-#                 curr_tone_list
-#                 + float(tone_shift)
-#                 * curr_tone_list
-#                 / np.median(curr_tone_list)
-#                 * 1.0e3
-#                 - lo_freq * 1.0e6
-#             )
-#             print(
-#                 "Waiting for the RFSOC to finish writing the updated frequency list"
-#             )
-#             fAmps = self.kpy.get_last_alist() #amplitudes
-#             write_fList(self.kpy, fList, np.ndarray.tolist(fAmps))
+        tone_shift = get_num_value(self.global_shift_lineEdit)
+        if tone_shift != 0:
+            lo_freq = valon5009.Synthesizer.get_frequency(
+                self.kpy.valon,
+                valon5009.SYNTH_B,
+            )
+            curr_tone_list = self.kpy.get_tone_list()
+            fList = np.ndarray.tolist(
+                curr_tone_list
+                + float(tone_shift)
+                * curr_tone_list
+                / np.median(curr_tone_list)
+                * 1.0e3
+                - lo_freq * 1.0e6
+            )
+            print(
+                "Waiting for the RFSOC to finish writing the updated frequency list"
+            )
+            fAmps = self.kpy.get_last_alist() #amplitudes
+            write_fList(self.kpy, fList, np.ndarray.tolist(fAmps))
             
 # #                                write_fList(self, fList, [])
         savefile = onrkidpy.get_filename(
@@ -106,34 +106,34 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
             case _:
                 pass
 
-#         sweeps.loSweep(
-#             self.kpy.valon,
-#             self.kpy._kidpy__udp,
-#             self.kpy.get_last_flist(),
-#             valon5009.Synthesizer.get_frequency(
-#                 self.kpy.valon, valon5009.SYNTH_B
-#             ),
-#             N_steps=200,
-#             freq_step=0.001,
-#             savefile=savefile,
-#         )
-        # sweep = LoSweep(
-        #     self.kpy.valon,
-        #     self.kpy._kidpy__udp,
-        #     self.kpy.get_last_flist(),
-        #     valon5009.Synthesizer.get_frequency(self.kpy.valon, valon5009.SYNTH_B),
-        # )
-        # tone_list = self.kpy.get_tone_list()
-        # chanmask = DEFAULT_CHANMASK
-        # sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=200, freq_step=0.001)
+        sweeps.loSweep(
+            self.kpy.valon,
+            self.kpy._kidpy__udp,
+            self.kpy.get_last_flist(),
+            valon5009.Synthesizer.get_frequency(
+                self.kpy.valon, valon5009.SYNTH_B
+            ),
+            N_steps=200,
+            freq_step=0.001,
+            savefile=savefile,
+        )
+        sweep = LoSweep(
+            self.kpy.valon,
+            self.kpy._kidpy__udp,
+            self.kpy.get_last_flist(),
+            valon5009.Synthesizer.get_frequency(self.kpy.valon, valon5009.SYNTH_B),
+        )
+        tone_list = self.kpy.get_tone_list()
+        chanmask = DEFAULT_CHANMASK
+        sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=200, freq_step=0.001)
 
         # sweep_data = savefile + '.npy'
 
-        sweep_file = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
-        tone_list = 'Default_tone_list.npy'
-        chanmask = 'chanmask.npy'
-        savefile = Path(savefile).name
-        sweep_data = LoSweepData.from_file(tone_list, sweep_file, chanmask)
+        # sweep_file = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
+        # tone_list = 'Default_tone_list.npy'
+        # chanmask = 'chanmask.npy'
+        # savefile = Path(savefile).name
+        # sweep_data = LoSweepData.from_file(tone_list, sweep_file, chanmask)
 
         self.sweep_data = sweep_data
         dw = DiagnosticsDialog(sweep_data, savefile, parent=self)
