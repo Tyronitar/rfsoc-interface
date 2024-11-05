@@ -121,17 +121,10 @@ class Section(wd.QWidget):
             #     self.install_event_filter_recursively(obj.layout())
             self.install_event_filter_recursively(obj.layout())
 
-    # def mousePressEvent(self, event):
-    #     if event.button() == Qt.LeftButton:
-    #         # print(f'Clicked inside {self}')
-    #         self.clicked.emit()
-        
     def eventFilter(self, watched, event):
         if event.type() == QMouseEvent.Type.MouseButtonPress:
             if event.button() == Qt.LeftButton:
                 self.clicked.emit()
-            #     print(f'Clicked inside {self}')
-            # self.mousePressEvent(event)
             return False
         return super().eventFilter(watched, event)
 

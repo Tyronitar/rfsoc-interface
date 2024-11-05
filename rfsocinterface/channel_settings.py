@@ -63,7 +63,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         # TODO: Add upload functionality for attenuation
 
         # Redis and stuff from kidpy
-        self.setup_redis()
+        # self.setup_redis()
         self.firmware_file_upload_widget.toolButton.clicked.connect(self.upload_firmware)
         self.tone_list_file_upload_widget.toolButton.clicked.connect(self.upload_tone_list)
         self.udp_openPushButton.clicked.connect(self.setup_udp)

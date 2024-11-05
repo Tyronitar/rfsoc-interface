@@ -258,8 +258,8 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def save_and_close(self):
         if self.edited:
             msg = QMessageBox(
-                QMessageBox.Icon.Warning,
-                'Warning',
+                QMessageBox.Icon.Question,
+                'Save Changes?',
                 'Do you really want to save your changes?',
                 parent=self
             )
