@@ -34,7 +34,7 @@ jobs:
         run: poetry install
     
       - name: Make UI files
-        run: make uic
+        run: make all
 
       - name: Run Test Suite
         run: poetry run pytest

@@ -7,7 +7,7 @@ UI_PYTHON_DIR := rfsocinterface/ui
 ui_elements := $(patsubst $(UI_FILE_DIR)/%.ui,%, $(wildcard $(UI_FILE_DIR)/*.ui))
 resources:= $(patsubst $(UI_FILE_DIR)/%.qrc,%, $(wildcard $(UI_FILE_DIR)/*.qrc))
 
-all: uic rcc
+all: rcc uic
 
 # Compile all of the ui elements
 uic: $(ui_elements)
