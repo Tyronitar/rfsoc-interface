@@ -9,25 +9,30 @@ from PySide6.QtWidgets import (QFormLayout,
     QLineEdit, QPushButton, 
     QWidget)
 
+import numpy.typing as npt
+
 import time
 import json
 import redis
 import configparser
-from kidpy import checkBlastCli, wait_for_free, wait_for_reply
+from kidpy import checkBlastCli, wait_for_free, wait_for_reply, kidpy
 import numpy as np
 
 from rfsocinterface.ui.file_upload import FileUploadWidget
 from rfsocinterface.ui.section import Section
 from rfsocinterface.ui.lineedit import ClickableLineEdit
-
 from rfsocinterface.utils import get_num_value
 
+
+ONR_REPO_DIR = Path('~').expanduser() / 'onrkidpy'
+
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, kpy: kidpy, parent: QWidget | None = None):
         super().__init__(parent)
+        self.kpy = kpy
+
         self.setupUi(self)
         self._additional_setup()
-
 
         self.tone_list_file_upload_widget.set_caption('Select Tone File')
         self.tone_list_file_upload_widget.set_dir('./')
@@ -63,9 +68,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         # TODO: Add upload functionality for attenuation
 
         # Redis and stuff from kidpy
-        # self.setup_redis()
         self.firmware_file_upload_widget.toolButton.clicked.connect(self.upload_firmware)
         self.tone_list_file_upload_widget.toolButton.clicked.connect(self.upload_tone_list)
+        self.tone_power_file_upload_widget.toolButton.clicked.connect(self.upload_tone_powers)
         self.udp_openPushButton.clicked.connect(self.setup_udp)
 
     def _additional_setup(self):
@@ -226,53 +231,25 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         )
         if fname:
             self.chanmask_lineEdit.setText(fname)
-
-    def setup_redis(self):
-        config = configparser.ConfigParser()
-        config.read("generalConfig.conf")
-        self.__redis_host = config["REDIS"]["host"]
-
-        # setup redis
-        self.r = redis.Redis(self.__redis_host)
-        self.p = self.r.pubsub()
-        self.p.subscribe("ping")
-        time.sleep(1)
-        if self.p.get_message()["data"] != 1:
-            print("Failed to Subscribe to redis Ping Channel")
-            exit()
-        self.p.subscribe("picard_reply")
-        time.sleep(1)
-        if self.p.get_message()["data"] != 2:
-            # TODO: Handle this error is a better way
-            print("Failed to Subscribe redis picard_reply channel")
-            exit()
-
-        # check that the rfsoc is running redisControl.py
-        if not checkBlastCli(self.r, self.p):
-            # TODO: Handle this error is a better way
-            exit()
-    
-    def setup_valon(self):
-        pass
     
     def upload_firmware(self):
         cmd = {"cmd": "ulBitstream", "args": []}
         cmdstr = json.dumps(cmd)
-        self.r.publish("picard", cmdstr)
-        self.r.set("status", "busy")
+        self.kpy.r.publish("picard", cmdstr)
+        self.kpy.r.set("status", "busy")
         print("Waiting for the RFSOC to upload it's bitstream...")
-        if wait_for_free(self.r, 0.75, 25):
+        if wait_for_free(self.kpy.r, 0.75, 25):
             print("Done")
     
     def setup_udp(self):
         print("Initializing System and UDP Connection")
         cmd = {"cmd": "initRegs", "args": []}
         cmdstr = json.dumps(cmd)
-        self.r.publish("picard", cmdstr)
-        if wait_for_free(self.r, 0.5, 5):
+        self.kpy.r.publish("picard", cmdstr)
+        if wait_for_free(self.kpy.r, 0.5, 5):
             print("Done")
     
-    def write_fList(self, fList, ampList):
+    def write_fList(self, fList: npt.ArrayLike, ampList: npt.ArrayLike):
         """
         Function for writing tones to the rfsoc. Accepts both numpy arrays and lists.
         :param fList: List of desired tones
@@ -308,8 +285,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             return
 
         cmdstr = json.dumps(cmd)
-        self.r.publish("picard", cmdstr)
-        success, _ = wait_for_reply(self.p, "ulWaveform", max_timeout=10)
+        self.kpy.r.publish("picard", cmdstr)
+        success, _ = wait_for_reply(self.kpy.p, "ulWaveform", max_timeout=10)
         if success:
             print("Wrote waveform.")
         else:
@@ -327,4 +304,15 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             "Waiting for the RFSOC to finish writing the custom frequency list"
         )
         self.write_fList(fList, aList)
+    
+    def upload_tone_powers(self):
+        fList = self.kpy.get_last_flist()
+        max_power_file = self.tone_power_file_upload_widget.lineEdit.text()
+        if max_power_file != '':
+            power_dB = np.load(max_power_file)
+            # power_dB = np.load(ONR_REPO_DIR + '/params/' + max_power_file + '_max_readout_power_dB.npy')
+            fAmps = np.exp(power_dB/10.)
+        else:
+            fAmps = np.ones(np.size(fList))
+        self.write_fList(fList, fAmps)
 

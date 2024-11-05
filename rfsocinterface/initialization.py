@@ -9,12 +9,14 @@ from PySide6.QtWidgets import (QApplication, QGridLayout, QScrollArea, QSizePoli
 from rfsocinterface.utils import get_num_value
 from rfsocinterface.ui.section import Section
 from rfsocinterface.channel_settings import ChannelSettingsWidget
+from kidpy import kidpy
 
 class InitializationWidget(QWidget, Ui_InitializationTabWidget):
 
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, kpy: kidpy, parent: QWidget | None = None):
         super().__init__(parent)
         self.setupUi(self)
+        self.kpy = kpy
         self.channels: list[Section] = []
         self.active_channel = None
 
@@ -31,7 +33,7 @@ class InitializationWidget(QWidget, Ui_InitializationTabWidget):
         channel_id = len(self.channels) + 1
         channel_section = Section(self.scrollAreaWidgetContents, animationDuration=100)
         channel_section.setObjectName(f'channel_{channel_id}_section')
-        channel_widget = ChannelSettingsWidget(channel_section)
+        channel_widget = ChannelSettingsWidget(self.kpy ,channel_section)
         channel_widget.setObjectName(f'channel_{channel_id}_widget')
         vertical_layout = QVBoxLayout()
         vertical_layout.setObjectName(f'channel_{channel_id}_verticalLayout')
