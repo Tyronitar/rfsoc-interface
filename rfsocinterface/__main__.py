@@ -16,7 +16,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self, parent: QWidget | None=None):
         super().__init__(parent)
 
-        # self.kpy = kidpy()
+        self.kpy = None
         self.init_kidpy()
 
         self.setupUi(self)
