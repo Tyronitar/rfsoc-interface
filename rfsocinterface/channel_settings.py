@@ -1,5 +1,5 @@
 from pathlib import Path
-from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect
+from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot
 from PySide6.QtGui import QDoubleValidator, QIcon
 from rfsocinterface.ui.channel_settings_ui import Ui_ChannelSettingsWidget
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QVBoxLayout, QSizePolicy, QGroupBox, QGridLayout
@@ -17,6 +17,7 @@ import redis
 import configparser
 from kidpy import checkBlastCli, wait_for_free, wait_for_reply, kidpy
 import numpy as np
+from transceiver import Transceiver
 
 from rfsocinterface.ui.file_upload import FileUploadWidget
 from rfsocinterface.ui.section import Section
@@ -30,6 +31,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     def __init__(self, kpy: kidpy, parent: QWidget | None = None):
         super().__init__(parent)
         self.kpy = kpy
+        self.comport = '/dev/IF1Attenuators'
+        self.transceiver = Transceiver(self.comport)
 
         self.setupUi(self)
         self._additional_setup()
@@ -68,10 +71,13 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         # TODO: Add upload functionality for attenuation
 
         # Redis and stuff from kidpy
-        self.firmware_file_upload_widget.toolButton.clicked.connect(self.upload_firmware)
-        self.tone_list_file_upload_widget.toolButton.clicked.connect(self.upload_tone_list)
-        self.tone_power_file_upload_widget.toolButton.clicked.connect(self.upload_tone_powers)
+        self.firmware_file_upload_widget.uploaded.connect(self.upload_firmware)
+        # self.firmware_file_upload_widget.toolButton.clicked.connect(self.upload_firmware)
+        self.tone_list_file_upload_widget.uploaded.connect(self.upload_tone_list)
+        self.tone_power_file_upload_widget.uploaded.connect(self.upload_tone_powers)
         self.udp_openPushButton.clicked.connect(self.setup_udp)
+        self.rfin_uploadToolButton.clicked.connect(lambda: self.set_attenuation('in'))
+        self.rfout_uploadToolButton.clicked.connect(lambda: self.set_attenuation('out'))
 
     def _additional_setup(self):
 
@@ -158,7 +164,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
 
     def change_attenuation(self):
         source: ClickableLineEdit = self.sender()
-        valid = self.validator.validate(source.text(), 0)[0]
+        src_txt = source.text() if source.text() else source.placeholderText()
+        valid = self.validator.validate(src_txt, 0)[0]
 
         # val = get_num_value(source, float)
 
@@ -232,7 +239,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         if fname:
             self.chanmask_lineEdit.setText(fname)
     
-    def upload_firmware(self):
+    @Slot(str)
+    def upload_firmware(self, bitstream: str):
         cmd = {"cmd": "ulBitstream", "args": []}
         cmdstr = json.dumps(cmd)
         self.kpy.r.publish("picard", cmdstr)
@@ -292,9 +300,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         else:
             print("FAILED TO WRITE WAVEFORM")
     
-    def upload_tone_list(self):
+    @Slot(str)
+    def upload_tone_list(self, tone_file: str):
         # see if the user wants the default list or something different:
-        tone_file = self.tone_list_file_upload_widget.lineEdit.text()
         freqfile = np.load(tone_file)
         fList = np.ndarray.tolist(freqfile)
         aList = []
@@ -305,9 +313,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         )
         self.write_fList(fList, aList)
     
-    def upload_tone_powers(self):
+    @Slot(str)
+    def upload_tone_powers(self, max_power_file: str):
         fList = self.kpy.get_last_flist()
-        max_power_file = self.tone_power_file_upload_widget.lineEdit.text()
         if max_power_file != '':
             power_dB = np.load(max_power_file)
             # power_dB = np.load(ONR_REPO_DIR + '/params/' + max_power_file + '_max_readout_power_dB.npy')
@@ -315,4 +323,15 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         else:
             fAmps = np.ones(np.size(fList))
         self.write_fList(fList, fAmps)
-
+    
+    def set_attenuation(self, attenuation: str):
+        match attenuation:
+            case 'in':
+                addr = 1
+                att = get_num_value(self.rfin_lineEdit)
+            case 'out':
+                addr = 2
+                att = get_num_value(self.rfout_lineEdit)
+            case _:
+                raise ValueError(f'Function `set_attenuation` called with illegal argument "{attenuation}"; must be in ["in", "out"]')
+        self.transceiver.set_atten(addr, att)
