@@ -33,7 +33,7 @@ class InitializationWidget(QWidget, Ui_InitializationTabWidget):
         channel_id = len(self.channels) + 1
         channel_section = Section(self.scrollAreaWidgetContents, animationDuration=100)
         channel_section.setObjectName(f'channel_{channel_id}_section')
-        channel_widget = ChannelSettingsWidget(self.kpy ,channel_section)
+        channel_widget = ChannelSettingsWidget(self.kpy, parent=channel_section)
         channel_widget.setObjectName(f'channel_{channel_id}_widget')
         vertical_layout = QVBoxLayout()
         vertical_layout.setObjectName(f'channel_{channel_id}_verticalLayout')

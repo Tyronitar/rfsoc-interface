@@ -1,0 +1,19 @@
+RFSOC2:
+  redis_ip : '192.168.2.1'
+  redis_port : 6379
+  rfsoc_name: 'RFSOC2'
+  bitstream: '/home/xilinx/dualchan_v2.bit'
+  tone_list: '/home/onrkids/readout/host/params/Default_tone_list.npy'
+  tone_powers: '/home/onrkids/readout/host/params/Device_aSi1_Channel2_20220222_300K_200mK_max_readout_power.npy'
+  chanmask: '/home/onrkids/readout/host/params/chanmask_rfsoc2.npy'
+  ethernet_config:
+    udp_data_sourceip: '192.168.3.41'
+    udp_data_destip: '192.168.3.40'
+    destmac: '681CA2123652'
+    port: 4096
+  dsp_config:
+    lo_default_freq: 400e6 #MHz
+    n_averages: 524288 #2^19 (NOT IMPLEMENTED)
+  rfin: 0
+  rfout: 0
+

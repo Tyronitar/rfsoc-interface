@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QVBoxLayout, QSiz
 
 from PySide6.QtWidgets import (QFormLayout,
     QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, 
+    QLineEdit, QPushButton, QAbstractButton, QDialogButtonBox,
     QWidget)
 
 import numpy.typing as npt
@@ -18,6 +18,7 @@ import configparser
 from kidpy import checkBlastCli, wait_for_free, wait_for_reply, kidpy
 import numpy as np
 from transceiver import Transceiver
+import yaml
 
 from rfsocinterface.ui.file_upload import FileUploadWidget
 from rfsocinterface.ui.section import Section
@@ -26,13 +27,16 @@ from rfsocinterface.utils import get_num_value
 
 
 ONR_REPO_DIR = Path('~').expanduser() / 'onrkidpy'
+DEFAULT_CONFIG = 'defaults.yaml'
 
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
-    def __init__(self, kpy: kidpy, parent: QWidget | None = None):
+    def __init__(self, kpy: kidpy, cfg: str=DEFAULT_CONFIG, parent: QWidget | None = None):
         super().__init__(parent)
         self.kpy = kpy
         self.comport = '/dev/IF1Attenuators'
         self.transceiver = Transceiver(self.comport)
+        with open(cfg) as f:
+            self.cfg = yaml.safe_load(f)
 
         self.setupUi(self)
         self._additional_setup()
@@ -78,6 +82,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.udp_openPushButton.clicked.connect(self.setup_udp)
         self.rfin_uploadToolButton.clicked.connect(lambda: self.set_attenuation('in'))
         self.rfout_uploadToolButton.clicked.connect(lambda: self.set_attenuation('out'))
+        self.buttonBox.clicked.connect(self.restore_defaults)
+        self.set_defaults()
 
     def _additional_setup(self):
 
@@ -335,3 +341,19 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             case _:
                 raise ValueError(f'Function `set_attenuation` called with illegal argument "{attenuation}"; must be in ["in", "out"]')
         self.transceiver.set_atten(addr, att)
+    
+    def set_defaults(self):
+        self.tone_list_file_upload_widget.lineEdit.setText(self.cfg['RFSOC2']['tone_list'])
+        self.tone_power_file_upload_widget.lineEdit.setText(self.cfg['RFSOC2']['tone_powers'])
+        self.firmware_file_upload_widget.lineEdit.setText(self.cfg['RFSOC2']['bitstream'])
+        self.chanmask_lineEdit.setText(self.cfg['RFSOC2']['chanmask'])
+        self.udp_sourceLineEdit.setText(self.cfg['RFSOC2']['ethernet_config']['udp_data_sourceip'])
+        self.udp_destLineEdit.setText(self.cfg['RFSOC2']['ethernet_config']['udp_data_destip'])
+        self.rfin_lineEdit.setText(str(self.cfg['RFSOC2']['rfin']))
+        self.rfout_lineEdit.setText(str(self.cfg['RFSOC2']['rfout']))
+    
+    @Slot(QAbstractButton)
+    def restore_defaults(self, button: QAbstractButton):
+        std_btn = self.buttonBox.standardButton(button)
+        if std_btn == QDialogButtonBox.StandardButton.RestoreDefaults:
+            self.set_defaults()

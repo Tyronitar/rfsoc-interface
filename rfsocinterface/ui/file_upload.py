@@ -7,6 +7,8 @@ from typing import Callable, Any
 
 from rfsocinterface.utils import get_num_value
 
+DEFAULT_DIR = Path('./')
+
 class FileUploadWidget(QWidget, Ui_FileUploadWidget):
     uploaded = Signal(Any)
 
@@ -29,6 +31,7 @@ class FileUploadWidget(QWidget, Ui_FileUploadWidget):
         fname, _ = QFileDialog.getOpenFileName(self, **self.browse_dialog_options)
         if fname:
             self.lineEdit.setText(fname)
+            self.set_dir(str(Path(fname).parent))
         
     def get_text(self) -> str:
         txt = self.lineEdit.text()
@@ -55,7 +58,7 @@ class FileUploadWidget(QWidget, Ui_FileUploadWidget):
         self.browse_dialog_options['selectedFilter'] = filt
     
     def enable_upload(self):
-        if self.lineEdit.text() != '':
+        if self.get_text() != '':
             self.toolButton.setEnabled(True)
         else:
             self.toolButton.setEnabled(False)
