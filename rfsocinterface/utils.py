@@ -140,9 +140,9 @@ class Job(QRunnable, QObject):
     #This is the signal that will be emitted during the processing.
     #By including int as an argument, it lets the signal know to expect
     #an integer argument when emitting.
-    updateProgress = Signal()
+    updateProgress = Signal(int)
     started = Signal(str)
-    finished = Signal(Any)
+    finished = Signal(R)
     canceled = Signal(JobInterrupt)
 
     #You can do any extra things in this init you need, but for this example
@@ -168,9 +168,11 @@ class Job(QRunnable, QObject):
     def run(self):
         self.started.emit(self.strt_msg)
         try:
-            res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
+            # res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
+            res = self.func(*self.args, **self.kwargs)
             self.finished.emit(res)
         except JobInterrupt as e:
+            print('Job Canceled!!')
             self.canceled.emit(e)
         #Notice this is the same thing you were doing in your progress() function
 
@@ -178,7 +180,7 @@ class Job(QRunnable, QObject):
 class JobQueue(QThreadPool):
     cancelAll = Signal()
 
-    def __init__(self, max_threads: int = 0, parent: QObject | None=None):
+    def __init__(self, max_threads: int = 1, parent: QObject | None=None):
         super().__init__(parent)
         self.setMaxThreadCount(max_threads)
         self.queue: list[tuple[Job, bool]] = []
@@ -188,12 +190,12 @@ class JobQueue(QThreadPool):
         return len(self.queue)
     
     @overload
-    def add_job(self, func: Callable[P, None], *args: P.args, **kwargs: P.kwargs): ...
+    def add_job(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs): ...
     
     @overload
     def add_job(self, job: Job): ...
 
-    def add_job(self, arg: Job | Callable[P, None], *args: P.args, use_main_thread=False, **kwargs: P.kwargs):
+    def add_job(self, arg: Job | Callable[P, R], *args: P.args, use_main_thread=False, **kwargs: P.kwargs):
         new_job = arg if isinstance(arg, Job) else Job(arg, args, kwargs)
         self.cancelAll.connect(new_job.cancel)
         idx = len(self)
@@ -214,7 +216,9 @@ class JobQueue(QThreadPool):
         self.results = [None] * len(self)
         for i, (job, main_thread) in enumerate(self.queue):
             if main_thread:
-                QThreadPool.globalInstance().start(job)
+                print('Running in main thread')
+                job.run()
+                # QThreadPool.globalInstance().start(job)
             else:
                 self.start(job)
         # for i, job in enumerate(self.queue):
@@ -251,7 +255,8 @@ class SequentialJobQueue(JobQueue):
         if len(self) > 0:
             job, use_main_thread = self.queue[0]
             if use_main_thread:
-                QThreadPool.globalInstance().start(job)
+                print('Running in main thread')
+                job.run()
             else:
                 self.start(job)
 

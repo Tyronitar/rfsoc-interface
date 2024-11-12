@@ -265,9 +265,11 @@ class LoSweepData:
 
     def fit(self, do_print=False, signal: SignalInstance | None=None):
         """Perform a fit to determine the resoncance frequencies of each resonator."""
+        if signal:
+            signal.emit(len(self.chanmask == 1) - 1)
         for i_chan in np.argwhere(self.chanmask == 1):
             # pull in the sweep data for this tone
-            i = i_chan[0]
+            i: int = i_chan[0]
             resonator = self.resonator_data[i]
 
             # call the resonator fitter
@@ -291,11 +293,11 @@ class LoSweepData:
                         f'{diff:+5.3f}',
                     )
             if signal:
-                signal.emit()
+                signal.emit(0)
                 # job.updateProgress.emit()
                 # QApplication.processEvents()
-
-
+        
+    
     def plot(self, ncols: int = 18, signal: SignalInstance=None) -> Figure:
         """Plot the results of fitting the LO sweep.
 
@@ -313,13 +315,15 @@ class LoSweepData:
         plt.rc('font', size=8)
 
         # loop over resonators to perform fit
+        if signal:
+            signal.emit(len(self.resonator_data) - 1)
         for counter, resonator in enumerate(self.resonator_data):
             subplot = plt.subplot2grid(
                 (nrows, ncols), (counter // ncols, np.mod(counter, ncols))
             )
             resonator.plot(subplot)
             if signal:
-                signal.emit()
+                signal.emit(0)
 
         plt.tight_layout()
         return fig
@@ -361,7 +365,7 @@ class LoSweep:
         self.freqs = freqs
         self.f_center = f_center
 
-    def _get_data(self, N_steps=500, freq_step=0.0, signal: QProgressDialog | None=None):
+    def _get_data(self, N_steps=500, freq_step=0.0, signal: SignalInstance | None=None):
         """
         Actually perform an LO Sweep using valon 5009's and save the data
 
@@ -394,9 +398,8 @@ class LoSweep:
         flo_stop = self.f_center + flo_step * N_steps / 2.0  # 256
 
         flos = np.arange(flo_start, flo_stop, flo_step) #+1e-6
-        if pd is not None:
-            pd.setMaximum(len(flos))
-            pd.setLabelText('Performing LO Sweep...')
+        if signal is not None:
+            signal.emit(len(flos))
         # flos = np.round(flos * 1e3)*1e-3
         log.info(f"len flos {flos.shape}")
         self._udp.bindSocket()
@@ -433,8 +436,8 @@ class LoSweep:
             return Z
         z = []
         for i, lofreq in enumerate(flos):
-            if pd is not None:
-                pd.setValue(i)
+            if signal is not None:
+                signal.emit(0)
             z.append(temp(lofreq))
         sweep_Z = np.array(z)
 
@@ -458,7 +461,7 @@ class LoSweep:
 
         return (f, sweep_Z_f)
 
-    def run_sweep(self, chanmask_file: Path, tone_list: npt.NDArray, N_steps=500, freq_step=1.0, pd: QProgressDialog | None=None):
+    def run_sweep(self, chanmask_file: Path, tone_list: npt.NDArray, N_steps=500, freq_step=1.0, signal: SignalInstance | None=None):
         """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file
 
         f_center: center frequency for sweep in [MHz], default is 400
@@ -467,7 +470,7 @@ class LoSweep:
         results = self._get_data(
             N_steps=N_steps,
             freq_step=freq_step,
-            pd=pd,
+            signal=signal,
         )
         chanmask = get_chanmask(chanmask_file)
         return LoSweepData(tone_list, np.array(results), chanmask)
