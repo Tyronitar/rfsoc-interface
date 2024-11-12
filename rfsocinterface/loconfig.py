@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Literal, Type, Callable
 
-from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget
+from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog
 from PySide6.QtCore import Qt
 
 from rfsocinterface.ui.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
@@ -57,6 +57,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
     def run_sweep(self):
 
         chan_name = 'rfsoc2'
+        pd = QProgressDialog('Running...', 'Cancel', 0, 100, self)
 
         # For running on ONR Computer
         self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
@@ -101,7 +102,8 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         )
         tone_list = self.kpy.get_tone_list()
         chanmask = DEFAULT_CHANMASK
-        sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=200, freq_step=0.001)
+        pd.show()
+        sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=200, freq_step=0.001, pd=pd)
 
         # For running on local computer
         # sweep_file = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'

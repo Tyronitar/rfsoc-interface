@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QDialog, QWidget, QApplication
+from PySide6.QtWidgets import QDialog, QWidget, QApplication, QProgressDialog
 from PySide6.QtCore import Signal
 from typing import Callable, Any
 
@@ -6,7 +6,7 @@ from rfsocinterface.ui.progress_bar_ui import Ui_Dialog
 from rfsocinterface.utils import Job, P, JobQueue, SequentialJobQueue
 
 
-class ProgressBarDialog(QDialog, Ui_Dialog):
+class ProgressBarDialog(QProgressDialog):
     incrementSignal = Signal()
 
     def __init__(self, max_threads: int=1, parent: QWidget | None=None):
@@ -16,10 +16,10 @@ class ProgressBarDialog(QDialog, Ui_Dialog):
         self.job_queue = JobQueue(max_threads=max_threads)
         self.incrementSignal.connect(self.increment)
     
-    def reset(self):
-        self.total_tasks = 0
-        self._completed_tasks = 0
-        self.progressBar.setValue(0)
+    # def reset(self):
+    #     self.total_tasks = 0
+    #     self._completed_tasks = 0
+    #     self.progressBar.setValue(0)
     
     def add_job(self, func: Callable[P, None], *args: P.args, num_tasks: int=1, use_main_thread=False, start_message: str='', **kwargs: P.kwargs):
         job = Job(func, *args, **kwargs)

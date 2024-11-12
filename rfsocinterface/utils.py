@@ -77,6 +77,10 @@ def ensure_path(
     return decorator
 
 
+class JobInterrupt(Exception):
+    def __init__(self, *args):
+        super().__init__(*args)
+
 
 
 def write_fList(kpy: kidpy, fList: npt.ArrayLike, ampList: npt.ArrayLike):
@@ -139,6 +143,7 @@ class Job(QRunnable, QObject):
     updateProgress = Signal()
     started = Signal(str)
     finished = Signal(Any)
+    canceled = Signal(JobInterrupt)
 
     #You can do any extra things in this init you need, but for this example
     #nothing else needs to be done expect call the super's init
@@ -155,17 +160,23 @@ class Job(QRunnable, QObject):
         # self.setAutoDelete(False)
         # self.
         # self.finished.connect(self.finishWork.emit)
-
+    
+    def cancel(self):
+        raise JobInterrupt('Job Canceled')
     #A QThread is run by calling it's start() function, which calls this run()
     #function in it's own "thread". 
     def run(self):
         self.started.emit(self.strt_msg)
-        res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
-        self.finished.emit(res)
+        try:
+            res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
+            self.finished.emit(res)
+        except JobInterrupt as e:
+            self.canceled.emit(e)
         #Notice this is the same thing you were doing in your progress() function
 
 
 class JobQueue(QThreadPool):
+    cancelAll = Signal()
 
     def __init__(self, max_threads: int = 0, parent: QObject | None=None):
         super().__init__(parent)
@@ -184,12 +195,16 @@ class JobQueue(QThreadPool):
 
     def add_job(self, arg: Job | Callable[P, None], *args: P.args, use_main_thread=False, **kwargs: P.kwargs):
         new_job = arg if isinstance(arg, Job) else Job(arg, args, kwargs)
+        self.cancelAll.connect(new_job.cancel)
         idx = len(self)
         new_job.finished.connect(lambda res: self.set_result(idx, res))
         self.queue.append((new_job, use_main_thread))
     
     def set_result(self, idx: int, result: Any):
         self.results[idx] = result
+    
+    def cancel(self):
+        self.cancelAll.emit()
     
     # def run_next(self):
     #     job = self.queue.pop()
@@ -222,6 +237,7 @@ class SequentialJobQueue(JobQueue):
         new_job.finished.connect(lambda res: self.results.append(res))
         new_job.finished.connect(self.emit_finished)
         new_job.finished.connect(lambda _: print('job done'))
+        self.cancelAll.connect(new_job.cancel)
         if len(self) > 0:
             self.last_job.finished.connect(
                 lambda: QThreadPool.globalInstance().start(new_job) if use_main_thread else self.start(new_job),

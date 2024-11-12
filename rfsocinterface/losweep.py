@@ -4,6 +4,7 @@ import logging
 
 from pathlib import Path
 from PySide6.QtCore import SignalInstance
+from PySide6.QtWidgets import QProgressDialog
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -360,7 +361,7 @@ class LoSweep:
         self.freqs = freqs
         self.f_center = f_center
 
-    def _get_data(self, N_steps=500, freq_step=0.0):
+    def _get_data(self, N_steps=500, freq_step=0.0, signal: QProgressDialog | None=None):
         """
         Actually perform an LO Sweep using valon 5009's and save the data
 
@@ -393,6 +394,9 @@ class LoSweep:
         flo_stop = self.f_center + flo_step * N_steps / 2.0  # 256
 
         flos = np.arange(flo_start, flo_stop, flo_step) #+1e-6
+        if pd is not None:
+            pd.setMaximum(len(flos))
+            pd.setLabelText('Performing LO Sweep...')
         # flos = np.round(flos * 1e3)*1e-3
         log.info(f"len flos {flos.shape}")
         self._udp.bindSocket()
@@ -427,7 +431,14 @@ class LoSweep:
             print(".", end="")
 
             return Z
-        sweep_Z = np.array([temp(lofreq) for lofreq in flos])
+        z = []
+        for i, lofreq in enumerate(flos):
+            if pd is not None:
+                pd.setValue(i)
+            z.append(temp(lofreq))
+        sweep_Z = np.array(z)
+
+        # sweep_Z = np.array([temp(lofreq) for lofreq in flos])
         log.info(f"sweepz.shape={sweep_Z.shape}")
 
         f = np.zeros([np.size(self.freqs), np.size(flos)])
@@ -447,7 +458,7 @@ class LoSweep:
 
         return (f, sweep_Z_f)
 
-    def run_sweep(self, chanmask_file: Path, tone_list: npt.NDArray, N_steps=500, freq_step=1.0):
+    def run_sweep(self, chanmask_file: Path, tone_list: npt.NDArray, N_steps=500, freq_step=1.0, pd: QProgressDialog | None=None):
         """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file
 
         f_center: center frequency for sweep in [MHz], default is 400
@@ -456,6 +467,7 @@ class LoSweep:
         results = self._get_data(
             N_steps=N_steps,
             freq_step=freq_step,
+            pd=pd,
         )
         chanmask = get_chanmask(chanmask_file)
         return LoSweepData(tone_list, np.array(results), chanmask)
