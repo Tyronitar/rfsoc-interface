@@ -34,7 +34,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         super().__init__(parent)
         self.kpy = kpy
         self.comport = '/dev/IF1Attenuators'
-        self.transceiver = Transceiver(self.comport)
+        # self.transceiver = Transceiver(self.comport)
         with open(cfg) as f:
             self.cfg = yaml.safe_load(f)
 

@@ -11,5 +11,6 @@
     <file>icons8-down-left-52.png</file>
     <file alias="left.png">icons8-left-52.png</file>
     <file>upload.png</file>
+    <file>stop.png</file>
   </qresource>
 </RCC>
