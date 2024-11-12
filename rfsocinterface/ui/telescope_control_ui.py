@@ -26,7 +26,7 @@ class Ui_TelescopeControlWidget(object):
     def setupUi(self, TelescopeControlWidget):
         if not TelescopeControlWidget.objectName():
             TelescopeControlWidget.setObjectName(u"TelescopeControlWidget")
-        TelescopeControlWidget.resize(862, 360)
+        TelescopeControlWidget.resize(826, 314)
         self.gridLayout_2 = QGridLayout(TelescopeControlWidget)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
         self.gridLayout = QGridLayout()
@@ -41,25 +41,27 @@ class Ui_TelescopeControlWidget(object):
 
         self.verticalLayout_2.addItem(self.verticalSpacer_3)
 
-        self.pushButton = QPushButton(TelescopeControlWidget)
-        self.pushButton.setObjectName(u"pushButton")
+        self.stop_pushButton = QPushButton(TelescopeControlWidget)
+        self.stop_pushButton.setObjectName(u"stop_pushButton")
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.pushButton.sizePolicy().hasHeightForWidth())
-        self.pushButton.setSizePolicy(sizePolicy)
-        self.pushButton.setMinimumSize(QSize(200, 200))
-        self.pushButton.setMaximumSize(QSize(600, 600))
-        self.pushButton.setBaseSize(QSize(500, 500))
+        sizePolicy.setHeightForWidth(self.stop_pushButton.sizePolicy().hasHeightForWidth())
+        self.stop_pushButton.setSizePolicy(sizePolicy)
+        self.stop_pushButton.setMinimumSize(QSize(200, 200))
+        self.stop_pushButton.setMaximumSize(QSize(600, 600))
+        self.stop_pushButton.setBaseSize(QSize(500, 500))
         font = QFont()
         font.setPointSize(20)
         font.setWeight(QFont.Black)
-        self.pushButton.setFont(font)
-        self.pushButton.setStyleSheet(u"border-image: url(:/icons/octagon.svg);")
-        self.pushButton.setIconSize(QSize(100, 100))
-        self.pushButton.setFlat(False)
+        self.stop_pushButton.setFont(font)
+        self.stop_pushButton.setStyleSheet(u"background-color: transparent;")
+        icon = QIcon()
+        icon.addFile(u":/icons/stop.png", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        self.stop_pushButton.setIcon(icon)
+        self.stop_pushButton.setIconSize(QSize(190, 190))
 
-        self.verticalLayout_2.addWidget(self.pushButton)
+        self.verticalLayout_2.addWidget(self.stop_pushButton)
 
         self.verticalSpacer_2 = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
@@ -74,7 +76,7 @@ class Ui_TelescopeControlWidget(object):
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.widget = Controller(self.control_groupBox)
         self.widget.setObjectName(u"widget")
-        self.widget.setMinimumSize(QSize(250, 250))
+        self.widget.setMinimumSize(QSize(210, 210))
 
         self.verticalLayout_3.addWidget(self.widget)
 
@@ -223,7 +225,7 @@ class Ui_TelescopeControlWidget(object):
 
     def retranslateUi(self, TelescopeControlWidget):
         TelescopeControlWidget.setWindowTitle(QCoreApplication.translate("TelescopeControlWidget", u"MainWindow", None))
-        self.pushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"STOP", None))
+        self.stop_pushButton.setText("")
         self.control_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Manual Control", None))
         self.position_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Telescope Position", None))
         self.azimuthLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Azimuth", None))

@@ -18,8 +18,8 @@ from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
     QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QCheckBox,
     QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QRadioButton, QSizePolicy,
-    QSpacerItem, QVBoxLayout, QWidget)
+    QLabel, QLineEdit, QRadioButton, QScrollArea,
+    QSizePolicy, QSpacerItem, QVBoxLayout, QWidget)
 
 class Ui_LoConfigWidget(object):
     def setupUi(self, LoConfigWidget):
@@ -32,9 +32,15 @@ class Ui_LoConfigWidget(object):
         self.actionWhat_s_This.setIcon(icon)
         self.verticalLayout_2 = QVBoxLayout(LoConfigWidget)
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
-        self.verticalLayout = QVBoxLayout()
-        self.verticalLayout.setObjectName(u"verticalLayout")
-        self.lo_settings_groupBox = QGroupBox(LoConfigWidget)
+        self.scrollArea = QScrollArea(LoConfigWidget)
+        self.scrollArea.setObjectName(u"scrollArea")
+        self.scrollArea.setWidgetResizable(True)
+        self.scrollAreaWidgetContents = QWidget()
+        self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 780, 550))
+        self.verticalLayout_3 = QVBoxLayout(self.scrollAreaWidgetContents)
+        self.verticalLayout_3.setObjectName(u"verticalLayout_3")
+        self.lo_settings_groupBox = QGroupBox(self.scrollAreaWidgetContents)
         self.lo_settings_groupBox.setObjectName(u"lo_settings_groupBox")
         self.formLayout = QFormLayout(self.lo_settings_groupBox)
         self.formLayout.setObjectName(u"formLayout")
@@ -188,16 +194,17 @@ class Ui_LoConfigWidget(object):
         self.formLayout.setLayout(7, QFormLayout.FieldRole, self.second_sweep_horizontalLayout)
 
 
-        self.verticalLayout.addWidget(self.lo_settings_groupBox)
+        self.verticalLayout_3.addWidget(self.lo_settings_groupBox)
+
+        self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+
+        self.verticalLayout_2.addWidget(self.scrollArea)
 
         self.dialog_button_box = QDialogButtonBox(LoConfigWidget)
         self.dialog_button_box.setObjectName(u"dialog_button_box")
         self.dialog_button_box.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.RestoreDefaults)
 
-        self.verticalLayout.addWidget(self.dialog_button_box)
-
-
-        self.verticalLayout_2.addLayout(self.verticalLayout)
+        self.verticalLayout_2.addWidget(self.dialog_button_box)
 
 #if QT_CONFIG(shortcut)
         self.global_shift_label.setBuddy(self.global_shift_lineEdit)
