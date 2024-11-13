@@ -302,6 +302,41 @@ def layout_widgets(layout: QLayout) -> list[QWidget]:
     """Get widgets contained in layout"""
     return [layout.itemAt(i).widget() for i in range(layout.count())]
 
+def analog_to_digital(a: int, min: float, max: float, bits: int) -> int:
+    """Convert an analog number to digital.
+    
+    Needed because DAQ inputs/outputs have different resolutions.
+
+    Arguments:
+        a (int): The analog number
+        min (float): The minimum possible digital number
+        max (float): The maximum possible digital number
+        bits (int): The number of bits for representing the numbers.
+    Returns:
+        (int): The digital equivalent number.
+    """
+    vals = np.linspace(min, max, (2**bits) - 1)
+    d = int(np.argmin(np.abs(vals - a)))
+    return d
+
+def digital_to_analog(d: int, min: float, max: float, bits: int) -> int:
+    """Convert a digital number to analog.
+    
+    Needed because DAQ inputs/outputs have different resolutions.
+
+    Arguments:
+        d (int): The digital number
+        min (float): The minimum possible analog number
+        max (float): The maximum possible analog number
+        bits (int): The number of bits for representing the numbers.
+    Returns:
+        (int): The analog equivalent number.
+    """
+    vals = np.linspace(min, max, (2**bits) - 1)
+    a = vals[d]
+    return a
+
+
 if __name__ == '__main__':
     def test_fun():
         for i in range(5):
