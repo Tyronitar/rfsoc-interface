@@ -11,6 +11,11 @@ import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt
 from PySide6.QtWidgets import QLineEdit, QWidget, QLayout
 import time
+from multiprocessing import Pool, Queue, Manager
+from concurrent.futures import ProcessPoolExecutor, wait
+import matplotlib as mpl
+mpl.use('TkAgg')
+import matplotlib.pyplot as plt
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 Number = TypeVar('Number', int, float, complex, bytes)
@@ -307,9 +312,79 @@ def layout_widgets(layout: QLayout) -> list[QWidget]:
     """Get widgets contained in layout"""
     return [layout.itemAt(i).widget() for i in range(layout.count())]
 
-if __name__ == '__main__':
-    def test_fun():
-        for i in range(5):
-            print(i)
+def plot(x, y, ax: plt.Axes):
+    print(f'plotting {x}, {y}')
+    ax.plot(x, y)
+    ax.show()
+
+def parallel_plotting():
+    n_plots = 4
+    side_length = int(np.sqrt(n_plots))
+    ncols = nrows = side_length
+    rand_data = np.random.random((2, 10, n_plots))
+    x = np.arange(10)
+    y = np.random.random((n_plots, 10))
+
+    # fig = plt.figure(figsize=(side_length, side_length))
+    # plt.rc('font', size=8)
+    futures = []
+    with Manager() as man:
+        q = man.Queue()
+
+        with ProcessPoolExecutor(max_workers=n_plots) as ex:
+            print('Creating jobs...')
+            # for i in range(n_plots):
+            #     subplot = plt.subplot2grid(
+            #         (nrows, ncols), (i // ncols, np.mod(i, ncols)),
+            #         fig=fig,
+            #     )
+                # futures.append(ex.submit(plot, subplot, x, y[i]))
+            ex.map(plot, (x for _ in range(n_plots)), (y[i] for i in range(n_plots)), (q for _ in range(n_plots)))
+        
+        print('Waiting for jobs to finish...')
+        q.join()
+        print('All jobs done!')
+
+        # print('Plotting...')
+        # fig, axes = plt.subplots(side_length, side_length)
+        # for i in range(side_length):
+        #     for j in range(side_length):
+        #         axes[i, j] = q.get()
+    print('Showing plot')
+    # fig.show()
+    plt.show()
+
+    # wait(futures)
+        # futures = [None] * n_plots
+        # results = ex.map(plot, (x for _ in range(n_plots)), (y[i] for i in range(n_plots)))
+        # for i in range(n_plots):
+        #     x = rand_data[0, :, i]
+        #     y = rand_data[1, :, i]
+        #     # ex.submit(plot, x, y, results)
+        #     futures[i] = ex.submit(plot, x, y, results)
+        # print('Waiting for finish...')
+        # wait(futures)
+        # for i, future in enumerate(futures):
+        #     res = future.result()
+        #     print(res)
+        #     results[i] = res
+        # results = [future.result() for future in futures]
+
+    # results = list(results)
+    # results = [future.result() for future in futures]
+    # print(results)
+    # print('Plotting...')
+    # fig, axes = plt.subplots(side_length, side_length)
+    # for i in range(side_length):
+    #     for j in range(side_length):
+    #         fig.axes[i, j] = results.pop()
     
-    add_callbacks(lambda: print('hello'))(test_fun)()
+    # print('Showing plot')
+    # # fig.show()
+    # plt.show()
+    
+    
+
+
+if __name__ == '__main__':
+    parallel_plotting()
