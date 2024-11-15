@@ -147,12 +147,12 @@ class Job(QRunnable, QObject):
     #an integer argument when emitting.
     updateProgress = Signal(int)
     started = Signal(str)
-    finished = Signal(R)
+    finished = Signal(Any)
     canceled = Signal(JobInterrupt)
 
     #You can do any extra things in this init you need, but for this example
     #nothing else needs to be done expect call the super's init
-    def __init__(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs):
+    def __init__(self, func: Callable[P, Any], *args: P.args, **kwargs: P.kwargs):
         QRunnable.__init__(self)
         QObject.__init__(self)
         self.func = func
@@ -173,12 +173,14 @@ class Job(QRunnable, QObject):
     def run(self):
         self.started.emit(self.strt_msg)
         try:
-            # res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
-            res = self.func(*self.args, **self.kwargs)
+            res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
+            # res = self.func(*self.args, **self.kwargs)
             self.finished.emit(res)
         except JobInterrupt as e:
             print('Job Canceled!!')
             self.canceled.emit(e)
+            # return
+            exit()
         #Notice this is the same thing you were doing in your progress() function
 
 
@@ -222,7 +224,10 @@ class JobQueue(QThreadPool):
         for i, (job, main_thread) in enumerate(self.queue):
             if main_thread:
                 print('Running in main thread')
-                job.run()
+                try:
+                    job.run()
+                except JobInterrupt:
+                    print('Job Canceled')
                 # QThreadPool.globalInstance().start(job)
             else:
                 self.start(job)

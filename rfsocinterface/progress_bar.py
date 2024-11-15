@@ -54,7 +54,11 @@ class ProgressBarDialog(QProgressDialog):
     #     worker.start()
 
     def start(self):
-        self.job_queue.run_all()
+        try:
+            self.job_queue.run_all()
+        except KeyboardInterrupt as e:
+            print(e)
+
         # for worker in self.job_queue:
         #     worker.start()
     

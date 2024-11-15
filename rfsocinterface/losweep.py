@@ -3,7 +3,7 @@ from typing import Callable, Iterable
 import logging
 
 from pathlib import Path
-from PySide6.QtCore import SignalInstance
+from PySide6.QtCore import SignalInstance, QCoreApplication, Qt
 from PySide6.QtWidgets import QProgressDialog
 
 import matplotlib.pyplot as plt
@@ -294,6 +294,8 @@ class LoSweepData:
                     )
             if signal:
                 signal.emit(0)
+                QCoreApplication.processEvents()
+                # time.sleep(0.2)
                 # job.updateProgress.emit()
                 # QApplication.processEvents()
         

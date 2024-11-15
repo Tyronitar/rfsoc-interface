@@ -120,7 +120,8 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         pb = ProgressBarDialog('', 'Cancel', 0, 100, parent=self)
         pb.add_job(sweep_data.fit, start_message='Fitting sweep data...', do_print=True)
 
-        pb.add_job(dw.plot, start_message='Plotting fit results...', use_main_thread=True)
+        # pb.add_job(dw.plot, start_message='Plotting fit results...', use_main_thread=True)
+        # pb.add_job(dw.show, start_message='Plotting fit results...', use_main_thread=True)
         pb.show()
         # self.pb = pb
         # pb.allFinished.connect(lambda: dw.set_figure(pb.get_result(1)))
@@ -128,7 +129,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         # pb.allFinished.connect(dw.show)
         # pb.allFinished.connect(pb.close)
         pb.start()
-        dw.show()
+        # dw.show()
     
     @ensure_path(1)
     def save_sweep(self, savefile: Path):
