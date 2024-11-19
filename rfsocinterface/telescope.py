@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QWidget, QMainWindow, QApplication
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 import serial.tools
 import serial.tools.list_ports
 from rfsocinterface.ui.telescope_control_ui import Ui_TelescopeControlWidget as Ui_TelescopeControlWidget
@@ -21,17 +21,17 @@ import glob
 from pathlib import Path
 
 AZ_OUT_CHANNEL = 1
-ALT_OUT_CHANNEL = 0
+ZE_OUT_CHANNEL = 0
 POS_SW_LIM = 181.000
 NEG_SW_LIM = -181.000
-POS_ALT_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
-NEG_ALT_SW_LIM = -np.inf
+POS_ZE_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
+NEG_ZE_SW_LIM = -np.inf
 AZ_HOME = 0
 BAUDRATE = 38400
 TIMEOUT = 2
 AKD1 = "169.254.250.165"
 AKD2 = "169.254.250.166"  ##switches back and forth between these two channels when faults occur.
-ALTPORT = 23
+ZEPORT = 23
 GEAR_RATIO = 258
 
 ADDR_PL_FB = 588  ##This is the position loop feedback. Includes some offset parameter and error based on homing position. Appropriate for this application, though I need to figure out the resolution.
@@ -45,6 +45,9 @@ class StopMotion(Exception):
 
 class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
+
+    azimuthChanged = Signal(float)
+    zenithChanged = Signal(float)
 
     def __init__(self):
         self._initialized = False
@@ -96,27 +99,27 @@ class TelescopeMotorController:
         self.az_pos = self.get_ser_az_pos()
         print(f'Telescope AZ position is: {self.az_pos}')
 
-        # Altitude
-        self.ser_alt = Telnet(host=AKD1, port=ALTPORT)
-        self.ser_alt.open(host=AKD1, port=ALTPORT)
-        self.ser_alt.write(b'DRV.ACTIVE\r\n')
-        status_string = self.ser_alt.read_until(b'\r', 0.1).decode()
+        # Zenith Angle
+        self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
+        self.ser_ze.open(host=AKD1, port=ZEPORT)
+        self.ser_ze.write(b'DRV.ACTIVE\r\n')
+        status_string = self.ser_ze.read_until(b'\r', 0.1).decode()
         status = float(status_string.split('\r')[0])
 
         if status == 1:
-            print('ALT motor connected and software already enabled.')
+            print('ZE motor connected and software already enabled.')
         else:
-            self.ser_alt.write(b'DRV.EN\r\n')
-            sw_en = self.ser_alt.read_until(b'\r', 0.1)
-            print('ALT motor connected and software enabled by Python.')
-        self.alt_pos = 0
-        self.alt_pos = self.get_ser_alt_pos()
-        print(f'Telescope ALT position is: {self.alt_pos}')
+            self.ser_ze.write(b'DRV.EN\r\n')
+            sw_en = self.ser_ze.read_until(b'\r', 0.1)
+            print('ZE motor connected and software enabled by Python.')
+        self.ze_pos = 0
+        self.ze_pos = self.get_ser_ze_pos()
+        print(f'Telescope ZE position is: {self.ze_pos}')
         self._initialized = True
     
     def close(self):
         self.ser_az.close()
-        self.ser_alt.close()
+        self.ser_ze.close()
 
     def set_ao_value(self, data: float, channel: int):
         self.ao_device.a_out(channel, self.ul_range_out, self.ao_flags, data)
@@ -124,7 +127,7 @@ class TelescopeMotorController:
     def set_ao_zero(self):
         zero_data = analog_to_digital(0, -10, 10, 16)
         self.set_ao_value(zero_data, AZ_OUT_CHANNEL)
-        self.set_ao_value(zero_data, ALT_OUT_CHANNEL)
+        self.set_ao_value(zero_data, ZE_OUT_CHANNEL)
 
     # Azimuth settings
     def set_az_home(self):
@@ -164,32 +167,32 @@ class TelescopeMotorController:
     def set_az_speed_relation(self, voltage: float):
         pass
 
-    # Altitude settings
-    def set_alt_home(self):
+    # Zenith angle settings
+    def set_ze_home(self):
         pass
 
-    def get_ser_alt_pos(self) -> float | None:
-        old_pos = self.alt_pos
+    def get_ser_ze_pos(self) -> float | None:
+        old_pos = self.ze_pos
         try:
-            self.ser_alt.write('PL.FB\r\n'.encode('ASCII'))
-            pos_str = self.ser_alt.read_until(b']', 0.1).decode()
+            self.ser_ze.write('PL.FB\r\n'.encode('ASCII'))
+            pos_str = self.ser_ze.read_until(b']', 0.1).decode()
             pos = float(pos_str.split(' ')[0].split('>')[-1])
-            # self.alt_pos = pos
+            # self.ze_pos = pos
             return pos
         except ValueError:
             print(
-                'Error communicating with ALT controller; '
+                'Error communicating with ZE controller; '
                 'position set to most recent read.'
             )
             return old_pos
 
-    def set_alt_pos(self, new_pos: int, scan_mode: bool=False):
+    def set_ze_pos(self, new_pos: int, scan_mode: bool=False):
         pass
 
-    def alt_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
+    def ze_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
         pass
 
-    def set_alt_speed_relation(self, voltage: float):
+    def set_ze_speed_relation(self, voltage: float):
         pass
 
     # Misc
@@ -208,7 +211,7 @@ class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
     
     def update_ui(self):
         self.azimuth_actual_valLabel.setText(f'{self.ctrl.get_ser_az_pos():.3f}')
-        self.zenith_actual_valLabel.setText(f'{self.ctrl.get_ser_alt_pos():.3f}')
+        self.zenith_actual_valLabel.setText(f'{self.ctrl.get_ser_ze_pos():.3f}')
         # TODO: Show other values (commanded, error, velocity)
     
     def closeEvent(self, event):
