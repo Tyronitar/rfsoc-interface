@@ -47,6 +47,14 @@ class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
 
     def __init__(self):
+        self._initialized = False
+        self._initialize_system()
+    
+    def test_init(self):
+        if not self._initialized:
+            self._initialize_system
+    
+    def _initialize_system(self):
         try:
             # Connect to device
             descriptor = ul.get_daq_device_inventory(ul.InterfaceType.ANY)[0]
@@ -58,21 +66,9 @@ class TelescopeMotorController:
             self.ao_device = self.device.get_ao_device()
             self.ul_range_out = self.ao_device.get_info().get_ranges()[0]
             self.ao_flags = ul.AOutFlag.DEFAULT
-            data_value = analog_to_digital(0, -10, 10, 16)
             
             # Set output to zero
-            self.ao_device.a_out(
-                AZ_OUT_CHANNEL,
-                self.ul_range_out,
-                self.ao_flags,
-                data_value,
-            )
-            self.ao_device.a_out(
-                ALT_OUT_CHANNEL,
-                self.ul_range_out,
-                self.ao_flags,
-                data_value,
-            )
+            self.set_ao_zero()
         except OSError as e:
             raise OSError('DAQ could nto be initialized; Check comport and power supply') from e
         
@@ -94,30 +90,110 @@ class TelescopeMotorController:
         if ser_az.is_open:
             print('AZ motor connected to original port')
         else:
-            print('Could not communicate wit hAZ controller. System could not initialize.')
+            print('Could not communicate with AZ controller. System could not initialize.')
         self.ser_az = ser_az
-        self.az_pos = self.ser_az_pos()
+        self.az_pos = 0
+        self.az_pos = self.get_ser_az_pos()
         print(f'Telescope AZ position is: {self.az_pos}')
 
         # Altitude
         self.ser_alt = Telnet(host=AKD1, port=ALTPORT)
         self.ser_alt.open(host=AKD1, port=ALTPORT)
         self.ser_alt.write(b'DRV.ACTIVE\r\n')
-        status_string = self.ser_alt.read_until('b\r', 0.1).decode()
+        status_string = self.ser_alt.read_until(b'\r', 0.1).decode()
         status = float(status_string.split('\r')[0])
+
         if status == 1:
             print('ALT motor connected and software already enabled.')
         else:
             self.ser_alt.write(b'DRV.EN\r\n')
-            sw_en = self.ser_alt.read_until('b\r', 0.1)
+            sw_en = self.ser_alt.read_until(b'\r', 0.1)
             print('ALT motor connected and software enabled by Python.')
-        self.alt_pos = self.ser_alt_pos()
+        self.alt_pos = 0
+        self.alt_pos = self.get_ser_alt_pos()
         print(f'Telescope ALT position is: {self.alt_pos}')
+        self._initialized = True
+    
+    def close(self):
+        self.ser_az.close()
+        self.ser_alt.close()
 
-    def ser_az_pos(self) -> float | None:
+    def set_ao_value(self, data: float, channel: int):
+        self.ao_device.a_out(channel, self.ul_range_out, self.ao_flags, data)
+    
+    def set_ao_zero(self):
+        zero_data = analog_to_digital(0, -10, 10, 16)
+        self.set_ao_value(zero_data, AZ_OUT_CHANNEL)
+        self.set_ao_value(zero_data, ALT_OUT_CHANNEL)
+
+    # Azimuth settings
+    def set_az_home(self):
         pass
 
-    def ser_alt_pos(self) -> float | None:
+    def get_ser_az_pos(self) -> float:
+        old_pfb = self.az_pos
+        try:
+            if self.ser_az.is_open:
+                self.ser_az.write(b'PFB\r\n')
+                self.ser_az.readline()
+                pfb = self.ser_az.read_until(b'\r\n')
+                pfb = float(pfb.decode()) / 10000.0
+                # self.az_pos = pfb
+                self.ser_az.reset_input_buffer()
+                self.ser_az.reset_output_buffer()
+                return pfb
+        except ValueError:
+            print(
+                'Error communicating with AZ controller; '
+                'position set to most recent read.'
+            )
+            return old_pfb
+
+    def set_az_pos(self, new_pos: int, scan_mode: bool=False):
+        pass
+
+    def az_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
+        pass
+
+    def jog_az_pos(self, speed: float=1):
+        pass
+
+    def az_oscillate(self, total_t: float, freq: float, deg: float):
+        pass
+
+    def set_az_speed_relation(self, voltage: float):
+        pass
+
+    # Altitude settings
+    def set_alt_home(self):
+        pass
+
+    def get_ser_alt_pos(self) -> float | None:
+        old_pos = self.alt_pos
+        try:
+            self.ser_alt.write('PL.FB\r\n'.encode('ASCII'))
+            pos_str = self.ser_alt.read_until(b']', 0.1).decode()
+            pos = float(pos_str.split(' ')[0].split('>')[-1])
+            # self.alt_pos = pos
+            return pos
+        except ValueError:
+            print(
+                'Error communicating with ALT controller; '
+                'position set to most recent read.'
+            )
+            return old_pos
+
+    def set_alt_pos(self, new_pos: int, scan_mode: bool=False):
+        pass
+
+    def alt_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
+        pass
+
+    def set_alt_speed_relation(self, voltage: float):
+        pass
+
+    # Misc
+    def talk_to_az(self, command: str):
         pass
             
 
@@ -128,10 +204,17 @@ class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
         self.setupUi(self)
         self.kpy = kpy
         self.ctrl = TelescopeMotorController()
+        self.update_ui()
     
     def update_ui(self):
-        # TODO: Update the values to show current position etc.
-        pass
+        self.azimuth_actual_valLabel.setText(f'{self.ctrl.get_ser_az_pos():.3f}')
+        self.zenith_actual_valLabel.setText(f'{self.ctrl.get_ser_alt_pos():.3f}')
+        # TODO: Show other values (commanded, error, velocity)
+    
+    def closeEvent(self, event):
+        self.ctrl.close()
+        return super().closeEvent(event)
+    
 
 
 if __name__ == '__main__':

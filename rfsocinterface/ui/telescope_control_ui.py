@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'telescope_control.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.7.2
+## Created by: Qt User Interface Compiler version 6.7.3
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -15,9 +15,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QFormLayout, QGridLayout, QGroupBox,
-    QHBoxLayout, QLabel, QPushButton, QSizePolicy,
-    QSpacerItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QFormLayout, QFrame, QGridLayout,
+    QGroupBox, QHBoxLayout, QLabel, QPushButton,
+    QSizePolicy, QSpacerItem, QVBoxLayout, QWidget)
 
 from rfsocinterface.ui.controller import Controller
 from . import icons_rc
@@ -26,7 +26,7 @@ class Ui_TelescopeControlWidget(object):
     def setupUi(self, TelescopeControlWidget):
         if not TelescopeControlWidget.objectName():
             TelescopeControlWidget.setObjectName(u"TelescopeControlWidget")
-        TelescopeControlWidget.resize(826, 314)
+        TelescopeControlWidget.resize(899, 314)
         self.gridLayout_2 = QGridLayout(TelescopeControlWidget)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
         self.gridLayout = QGridLayout()
@@ -55,7 +55,7 @@ class Ui_TelescopeControlWidget(object):
         font.setPointSize(20)
         font.setWeight(QFont.Black)
         self.stop_pushButton.setFont(font)
-        self.stop_pushButton.setStyleSheet(u"background-color: transparent;")
+        self.stop_pushButton.setStyleSheet(u"border: none;")
         icon = QIcon()
         icon.addFile(u":/icons/stop.png", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
         self.stop_pushButton.setIcon(icon)
@@ -110,44 +110,51 @@ class Ui_TelescopeControlWidget(object):
 
         self.formLayout.setWidget(1, QFormLayout.LabelRole, self.azimuth_actualLabel)
 
-        self.label = QLabel(self.position_groupBox)
-        self.label.setObjectName(u"label")
-        self.label.setFont(font2)
+        self.azimuth_actual_valLabel = QLabel(self.position_groupBox)
+        self.azimuth_actual_valLabel.setObjectName(u"azimuth_actual_valLabel")
+        self.azimuth_actual_valLabel.setFont(font2)
 
-        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.label)
+        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.azimuth_actual_valLabel)
 
         self.azimuth_commandedLabel = QLabel(self.position_groupBox)
         self.azimuth_commandedLabel.setObjectName(u"azimuth_commandedLabel")
 
         self.formLayout.setWidget(2, QFormLayout.LabelRole, self.azimuth_commandedLabel)
 
-        self.label_3 = QLabel(self.position_groupBox)
-        self.label_3.setObjectName(u"label_3")
+        self.azimuth_commanded_valLabel = QLabel(self.position_groupBox)
+        self.azimuth_commanded_valLabel.setObjectName(u"azimuth_commanded_valLabel")
 
-        self.formLayout.setWidget(2, QFormLayout.FieldRole, self.label_3)
+        self.formLayout.setWidget(2, QFormLayout.FieldRole, self.azimuth_commanded_valLabel)
 
         self.azimuth_errorLabel = QLabel(self.position_groupBox)
         self.azimuth_errorLabel.setObjectName(u"azimuth_errorLabel")
 
         self.formLayout.setWidget(3, QFormLayout.LabelRole, self.azimuth_errorLabel)
 
-        self.label_5 = QLabel(self.position_groupBox)
-        self.label_5.setObjectName(u"label_5")
+        self.azimuth_error_valLabel = QLabel(self.position_groupBox)
+        self.azimuth_error_valLabel.setObjectName(u"azimuth_error_valLabel")
 
-        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.label_5)
+        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.azimuth_error_valLabel)
 
         self.azimuth_velocityLabel = QLabel(self.position_groupBox)
         self.azimuth_velocityLabel.setObjectName(u"azimuth_velocityLabel")
 
         self.formLayout.setWidget(4, QFormLayout.LabelRole, self.azimuth_velocityLabel)
 
-        self.label_6 = QLabel(self.position_groupBox)
-        self.label_6.setObjectName(u"label_6")
+        self.azimuth_velocity_valLabel = QLabel(self.position_groupBox)
+        self.azimuth_velocity_valLabel.setObjectName(u"azimuth_velocity_valLabel")
 
-        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.label_6)
+        self.formLayout.setWidget(4, QFormLayout.FieldRole, self.azimuth_velocity_valLabel)
 
 
         self.horizontalLayout.addLayout(self.formLayout)
+
+        self.line = QFrame(self.position_groupBox)
+        self.line.setObjectName(u"line")
+        self.line.setFrameShape(QFrame.Shape.VLine)
+        self.line.setFrameShadow(QFrame.Shadow.Sunken)
+
+        self.horizontalLayout.addWidget(self.line)
 
         self.formLayout_2 = QFormLayout()
         self.formLayout_2.setObjectName(u"formLayout_2")
@@ -180,26 +187,26 @@ class Ui_TelescopeControlWidget(object):
 
         self.formLayout_2.setWidget(4, QFormLayout.LabelRole, self.zenith_velocityLabel)
 
-        self.label_2 = QLabel(self.position_groupBox)
-        self.label_2.setObjectName(u"label_2")
-        self.label_2.setFont(font2)
+        self.zenith_actual_valLabel = QLabel(self.position_groupBox)
+        self.zenith_actual_valLabel.setObjectName(u"zenith_actual_valLabel")
+        self.zenith_actual_valLabel.setFont(font2)
 
-        self.formLayout_2.setWidget(1, QFormLayout.FieldRole, self.label_2)
+        self.formLayout_2.setWidget(1, QFormLayout.FieldRole, self.zenith_actual_valLabel)
 
-        self.label_4 = QLabel(self.position_groupBox)
-        self.label_4.setObjectName(u"label_4")
+        self.zenith_commanded_valLabel = QLabel(self.position_groupBox)
+        self.zenith_commanded_valLabel.setObjectName(u"zenith_commanded_valLabel")
 
-        self.formLayout_2.setWidget(2, QFormLayout.FieldRole, self.label_4)
+        self.formLayout_2.setWidget(2, QFormLayout.FieldRole, self.zenith_commanded_valLabel)
 
-        self.label_7 = QLabel(self.position_groupBox)
-        self.label_7.setObjectName(u"label_7")
+        self.zenith_error_valLabel = QLabel(self.position_groupBox)
+        self.zenith_error_valLabel.setObjectName(u"zenith_error_valLabel")
 
-        self.formLayout_2.setWidget(3, QFormLayout.FieldRole, self.label_7)
+        self.formLayout_2.setWidget(3, QFormLayout.FieldRole, self.zenith_error_valLabel)
 
-        self.label_8 = QLabel(self.position_groupBox)
-        self.label_8.setObjectName(u"label_8")
+        self.zenith_velocity_valLabel = QLabel(self.position_groupBox)
+        self.zenith_velocity_valLabel.setObjectName(u"zenith_velocity_valLabel")
 
-        self.formLayout_2.setWidget(4, QFormLayout.FieldRole, self.label_8)
+        self.formLayout_2.setWidget(4, QFormLayout.FieldRole, self.zenith_velocity_valLabel)
 
 
         self.horizontalLayout.addLayout(self.formLayout_2)
@@ -230,21 +237,21 @@ class Ui_TelescopeControlWidget(object):
         self.position_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Telescope Position", None))
         self.azimuthLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Azimuth", None))
         self.azimuth_actualLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Actual", None))
-        self.label.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.azimuth_actual_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
         self.azimuth_commandedLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Commanded", None))
-        self.label_3.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.azimuth_commanded_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
         self.azimuth_errorLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Error", None))
-        self.label_5.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.azimuth_error_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
         self.azimuth_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))
-        self.label_6.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
+        self.azimuth_velocity_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
         self.zenith_actualLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Actual", None))
         self.zenithLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Zenith", None))
         self.zenith_commandedLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Commanded", None))
         self.zenith_errorLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Error", None))
         self.zenith_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))
-        self.label_2.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
-        self.label_4.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
-        self.label_7.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
-        self.label_8.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
+        self.zenith_actual_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.zenith_commanded_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.zenith_error_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.zenith_velocity_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
     # retranslateUi
 

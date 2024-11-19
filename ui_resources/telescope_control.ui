@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>826</width>
+    <width>899</width>
     <height>314</height>
    </rect>
   </property>
@@ -80,7 +80,7 @@
           </font>
          </property>
          <property name="styleSheet">
-          <string notr="true">background-color: transparent;</string>
+          <string notr="true">border: none;</string>
          </property>
          <property name="text">
           <string/>
@@ -173,7 +173,7 @@
              </widget>
             </item>
             <item row="1" column="1">
-             <widget class="QLabel" name="label">
+             <widget class="QLabel" name="azimuth_actual_valLabel">
               <property name="font">
                <font>
                 <pointsize>15</pointsize>
@@ -192,7 +192,7 @@
              </widget>
             </item>
             <item row="2" column="1">
-             <widget class="QLabel" name="label_3">
+             <widget class="QLabel" name="azimuth_commanded_valLabel">
               <property name="text">
                <string>0.0°</string>
               </property>
@@ -206,7 +206,7 @@
              </widget>
             </item>
             <item row="3" column="1">
-             <widget class="QLabel" name="label_5">
+             <widget class="QLabel" name="azimuth_error_valLabel">
               <property name="text">
                <string>0.0°</string>
               </property>
@@ -220,13 +220,20 @@
              </widget>
             </item>
             <item row="4" column="1">
-             <widget class="QLabel" name="label_6">
+             <widget class="QLabel" name="azimuth_velocity_valLabel">
               <property name="text">
                <string>0.0°/sec</string>
               </property>
              </widget>
             </item>
            </layout>
+          </item>
+          <item>
+           <widget class="Line" name="line">
+            <property name="orientation">
+             <enum>Qt::Orientation::Vertical</enum>
+            </property>
+           </widget>
           </item>
           <item>
            <layout class="QFormLayout" name="formLayout_2">
@@ -283,7 +290,7 @@
              </widget>
             </item>
             <item row="1" column="1">
-             <widget class="QLabel" name="label_2">
+             <widget class="QLabel" name="zenith_actual_valLabel">
               <property name="font">
                <font>
                 <pointsize>15</pointsize>
@@ -295,21 +302,21 @@
              </widget>
             </item>
             <item row="2" column="1">
-             <widget class="QLabel" name="label_4">
+             <widget class="QLabel" name="zenith_commanded_valLabel">
               <property name="text">
                <string>0.0°</string>
               </property>
              </widget>
             </item>
             <item row="3" column="1">
-             <widget class="QLabel" name="label_7">
+             <widget class="QLabel" name="zenith_error_valLabel">
               <property name="text">
                <string>0.0°</string>
               </property>
              </widget>
             </item>
             <item row="4" column="1">
-             <widget class="QLabel" name="label_8">
+             <widget class="QLabel" name="zenith_velocity_valLabel">
               <property name="text">
                <string>0.0°/sec</string>
               </property>

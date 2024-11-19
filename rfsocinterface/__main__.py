@@ -101,6 +101,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # curr_tab.adjustSize()
         # self.resize(self.minimumSizeHint())
         # self.adjustSize()
+    
+    def closeEvent(self, event):
+        # Close things that need to be closed
+        self.telescope_widget.ctrl.close()
+
+        return super().closeEvent(event)
 
 
 if __name__ == '__main__':

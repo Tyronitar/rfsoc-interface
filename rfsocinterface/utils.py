@@ -317,6 +317,8 @@ def analog_to_digital(a: int, min: float, max: float, bits: int) -> int:
     """
     vals = np.linspace(min, max, (2**bits) - 1)
     d = int(np.argmin(np.abs(vals - a)))
+    # TODO: This method is only needed for windows? Email Dan
+    d = a
     return d
 
 def digital_to_analog(d: int, min: float, max: float, bits: int) -> int:
