@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QWidget, QMainWindow, QApplication
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal ,Slot, QObject
 import serial.tools
 import serial.tools.list_ports
 from rfsocinterface.ui.telescope_control_ui import Ui_TelescopeControlWidget as Ui_TelescopeControlWidget
@@ -36,6 +36,7 @@ GEAR_RATIO = 258
 
 ADDR_PL_FB = 588  ##This is the position loop feedback. Includes some offset parameter and error based on homing position. Appropriate for this application, though I need to figure out the resolution.
 ADDR_FB1_P = 1610  ##This is the absolute position from the FB1 (resolver).
+ZERO_DATA = analog_to_digital(0, -10, 10, 16)
 
 
 class StopMotion(Exception):
@@ -43,15 +44,20 @@ class StopMotion(Exception):
     def __init__(self, *args):
         super().__init__(*args)
 
-class TelescopeMotorController:
+class TelescopeMotorController(QObject):
     """Class for controlling the motion of the telescope."""
 
-    azimuthChanged = Signal(float)
-    zenithChanged = Signal(float)
+    azimuthUpdated = Signal(float)
+    azimuthCommanded = Signal(float)
+    azimuthVelocityChanged = Signal(float)
+    zenithUpdated = Signal(float)
+    zenithCommanded = Signal(float)
+    zenithVelocityChanged = Signal(float)
 
-    def __init__(self):
+    def __init__(self, parent=None):
         self._initialized = False
         self._initialize_system()
+        super().__init__(parent)
     
     def test_init(self):
         if not self._initialized:
@@ -98,6 +104,7 @@ class TelescopeMotorController:
         self.az_pos = 0
         self.az_pos = self.get_ser_az_pos()
         print(f'Telescope AZ position is: {self.az_pos}')
+        self.az_vel = 0
 
         # Zenith Angle
         self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
@@ -116,6 +123,7 @@ class TelescopeMotorController:
         self.ze_pos = self.get_ser_ze_pos()
         print(f'Telescope ZE position is: {self.ze_pos}')
         self._initialized = True
+        self.ze_vel = 0
     
     def close(self):
         self.ser_az.close()
@@ -125,12 +133,15 @@ class TelescopeMotorController:
         self.ao_device.a_out(channel, self.ul_range_out, self.ao_flags, data)
     
     def set_ao_zero(self):
-        zero_data = analog_to_digital(0, -10, 10, 16)
-        self.set_ao_value(zero_data, AZ_OUT_CHANNEL)
-        self.set_ao_value(zero_data, ZE_OUT_CHANNEL)
+        self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
+        self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
 
     # Azimuth settings
     def set_az_home(self):
+        self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
+        pfb = self.get_ser_az_pos()
+        counter = 0
+        # TODO: Finish this lol
         pass
 
     def get_ser_az_pos(self) -> float:
@@ -153,6 +164,7 @@ class TelescopeMotorController:
             return old_pfb
 
     def set_az_pos(self, new_pos: int, scan_mode: bool=False):
+        self.azimuthCommanded.emit(new_pos)
         pass
 
     def az_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
@@ -187,6 +199,7 @@ class TelescopeMotorController:
             return old_pos
 
     def set_ze_pos(self, new_pos: int, scan_mode: bool=False):
+        self.zenithCommanded.emit(new_pos)
         pass
 
     def ze_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
@@ -208,10 +221,42 @@ class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
         self.kpy = kpy
         self.ctrl = TelescopeMotorController()
         self.update_ui()
+
+        # Signal connections
+        self.ctrl.azimuthUpdated.connect(self.update_az_pos)
+        self.ctrl.azimuthCommanded.connect(self.update_az_cmd)
+        self.ctrl.azimuthVelocityChanged.connect(self.update_az_vel)
+        self.ctrl.zenithUpdated.connect(self.update_ze_pos)
+        self.ctrl.zenithCommanded.connect(self.update_ze_cmd)
+        self.ctrl.zenithVelocityChanged.connect(self.update_ze_vel)
+    
+    @Slot(float)
+    def update_az_pos(self, new_pos: float):
+        self.azimuth_actual_valLabel.setText(f'{new_pos:.3f}')
+    
+    @Slot(float)
+    def update_az_cmd(self, new_pos: float):
+        self.azimuth_commanded_valLabel.setText(f'{new_pos:.3f}')
+
+    @Slot(float)
+    def update_az_vel(self, new_vel: float):
+        self.azimuth_velocity_valLabel.setText(f'{new_vel:.2f}')
+    
+    @Slot(float)
+    def update_ze_pos(self, new_pos: float):
+        self.zenith_actual_valLabel.setText(f'{new_pos:.3f}')
+
+    @Slot(float)
+    def update_ze_cmd(self, new_pos: float):
+        self.zenith_commanded_valLabel.setText(f'{new_pos:.3f}')
+
+    @Slot(float)
+    def update_ze_vel(self, new_vel: float):
+        self.zenith_velocity_valLabel.setText(f'{new_vel:.2f}')
     
     def update_ui(self):
-        self.azimuth_actual_valLabel.setText(f'{self.ctrl.get_ser_az_pos():.3f}')
-        self.zenith_actual_valLabel.setText(f'{self.ctrl.get_ser_ze_pos():.3f}')
+        self.update_az_pos(self.ctrl.get_ser_az_pos())
+        self.update_ze_pos(self.ctrl.get_ser_ze_pos())
         # TODO: Show other values (commanded, error, velocity)
     
     def closeEvent(self, event):
