@@ -8,14 +8,15 @@ import numpy as np
 import numpy.typing as npt
 from kidpy import wait_for_free, wait_for_reply, kidpy
 import redis
-from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt
-from PySide6.QtWidgets import QLineEdit, QWidget, QLayout
+from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QCoreApplication
+from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QMainWindow, QApplication, QVBoxLayout
 import time
 from multiprocessing import Pool, Queue, Manager
-from concurrent.futures import ProcessPoolExecutor, wait
+from concurrent.futures import ProcessPoolExecutor, wait, ThreadPoolExecutor
 import matplotlib as mpl
-mpl.use('TkAgg')
+mpl.use('QtAgg')
 import matplotlib.pyplot as plt
+from rfsocinterface.ui.canvas import FigureCanvas
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 Number = TypeVar('Number', int, float, complex, bytes)
@@ -320,10 +321,12 @@ def layout_widgets(layout: QLayout) -> list[QWidget]:
 def plot(x, y, ax: plt.Axes):
     print(f'plotting {x}, {y}')
     ax.plot(x, y)
-    ax.show()
+    # ax.remove()
+    # ax.show()
+    return ax
 
 def parallel_plotting():
-    n_plots = 4
+    n_plots = 576
     side_length = int(np.sqrt(n_plots))
     ncols = nrows = side_length
     rand_data = np.random.random((2, 10, n_plots))
@@ -331,24 +334,24 @@ def parallel_plotting():
     y = np.random.random((n_plots, 10))
 
     # fig = plt.figure(figsize=(side_length, side_length))
+    fig, axes = plt.subplots(side_length, side_length)
     # plt.rc('font', size=8)
     futures = []
-    with Manager() as man:
-        q = man.Queue()
-
-        with ProcessPoolExecutor(max_workers=n_plots) as ex:
-            print('Creating jobs...')
-            # for i in range(n_plots):
-            #     subplot = plt.subplot2grid(
-            #         (nrows, ncols), (i // ncols, np.mod(i, ncols)),
-            #         fig=fig,
-            #     )
-                # futures.append(ex.submit(plot, subplot, x, y[i]))
-            ex.map(plot, (x for _ in range(n_plots)), (y[i] for i in range(n_plots)), (q for _ in range(n_plots)))
+    with ThreadPoolExecutor(max_workers=min(n_plots, 8)) as ex:
+        print('Creating jobs...')
+        # for i in range(n_plots):
+        #     subplot = plt.subplot2grid(
+        #         (nrows, ncols), (i // ncols, np.mod(i, ncols)),
+        #         fig=fig,
+        #     )
+        #     futures.append(ex.submit(plot, subplot, x, y[i]))
+        new_axes = list(ex.map(plot, (x for _ in range(n_plots)), (y[i] for i in range(n_plots)), (ax for ax in axes.ravel())))
+        print(new_axes, np.shape(new_axes))
+        new_axes = np.reshape(new_axes, (side_length, side_length))
         
-        print('Waiting for jobs to finish...')
-        q.join()
-        print('All jobs done!')
+        # print('Waiting for jobs to finish...')
+        # q.join()
+        # print('All jobs done!')
 
         # print('Plotting...')
         # fig, axes = plt.subplots(side_length, side_length)
@@ -356,8 +359,33 @@ def parallel_plotting():
         #     for j in range(side_length):
         #         axes[i, j] = q.get()
     print('Showing plot')
-    # fig.show()
-    plt.show()
+    return fig
+    # fig.axes = np.reshape(new_axes, (side_length, side_length))
+    # for ax in axes.ravel():
+    #     fig.delaxes(ax)
+    # new_fig = plt.figure()
+    # # new_fig, axes = plt.subplots(side_length, side_length)
+    # ax: plt.Axes
+    # for i, row in enumerate(new_axes):
+    #     for j, ax in enumerate(row):
+    #         # fig.add_subplot()
+    #         # axes[i, j].update_from(ax)
+    #         # axes[i, j] = ax
+    #         # ax.set_figure(new_fig)
+    #         ax.figure = new_fig
+    #         new_fig.add_axes(ax)
+    #         new_fig.set_
+    #         for artist in ax.artists:
+    #             artist.set_transform(new_fig.get_transform())
+    #         # new_fig.add_axes(ax)
+    # # for ax in new_axes:
+    # #     fig.add_subplot(ax)
+    # # new_fig.tight_layout()
+    # # new_fig.show()
+    # # plt.show()
+    # new_fig.subplots_adjust()
+    # return new_fig
+    
 
     # wait(futures)
         # futures = [None] * n_plots
@@ -392,4 +420,21 @@ def parallel_plotting():
 
 
 if __name__ == '__main__':
-    parallel_plotting()
+    app = QApplication()
+    fig = parallel_plotting()
+
+    class Window(QMainWindow):
+        def __init__(self, canvas: FigureCanvas, parent = None):
+            super().__init__(parent=parent)
+            self.centralwidget = QWidget(self)
+            self.vlayout = QVBoxLayout(self.centralwidget)
+            self.setCentralWidget(self.centralwidget)
+            self.canvas = canvas
+            self.vlayout.addWidget(self.canvas)
+
+    
+    print(np.shape(fig.axes))
+    win = Window(FigureCanvas(fig))
+    win.show()
+    app.exec()
+    # y = input('Done?')
