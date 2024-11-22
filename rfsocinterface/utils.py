@@ -1,5 +1,7 @@
 import functools
 import os
+import pickle
+from io import BytesIO
 from pathlib import Path
 import json
 from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type
@@ -16,6 +18,7 @@ from concurrent.futures import ProcessPoolExecutor, wait, ThreadPoolExecutor
 import matplotlib as mpl
 mpl.use('QtAgg')
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from rfsocinterface.ui.canvas import FigureCanvas
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
@@ -325,8 +328,58 @@ def plot(x, y, ax: plt.Axes):
     # ax.show()
     return ax
 
+def move_axes(ax: plt.Axes, old_ax: plt.Axes, fig: plt.Figure, subplot_spec=(1, 1, 1)):
+    """Move an Axes object from a figure to a new pyplot managed Figure in
+    the specified subplot."""
+    # get a reference to the old figure context so we can release it
+    # old_fig = ax.figure
+
+    # remove the Axes from it's original Figure context
+    ax.remove()
+
+    # set the pointer from the Axes to the new figure
+    ax.figure = fig
+
+    # add the Axes to the registry of axes for the figure
+    # fig.axes.append(ax)
+    # twice, I don't know why...
+
+    # then to actually show the Axes in the new figure we have to make
+    # a subplot with the positions etc for the Axes to go, so make a
+    # subplot which will have a dummy Axes
+    print(subplot_spec)
+    # dummy_ax = np.ravel(fig.axes)[subplot_spec[2] - 1]
+    # dummy_ax = fig.add_subplot(*subplot_spec)
+
+    # then copy the relevant data from the dummy to the ax
+    # ax.set_transform(old_ax.get_transform())
+    fig.add_axes(ax)
+    # ax.set_subplotspec()
+    gs = gridspec.GridSpec(subplot_spec[0], subplot_spec[1])
+    idx = subplot_spec[2] - 1
+    spec = gs[idx]
+    print(spec)
+    ax.set_position(spec.get_position(fig))
+    ax.set_subplotspec(spec)
+    # ax.set_position(old_ax.get_position(), which='original')
+    # fig.delaxes(old_ax)
+    old_ax.remove()
+
+    # then remove the dummy
+
+#   # close the figure the original axis was bound to
+#   plt.close(old_fig)
+
+def add_axes_to_fig(fig: plt.Figure, all_axes: list[list[plt.Axes]]):
+    nrows = len(all_axes)
+    ncols = len(all_axes[0])
+    old_axes =  fig.axes
+    for i, ax in enumerate(np.ravel(all_axes)):
+        move_axes(ax, old_axes[i], fig, (nrows, ncols, i + 1))
+        fig.tight_layout()
+
 def parallel_plotting():
-    n_plots = 576
+    n_plots = 2 ** 2
     side_length = int(np.sqrt(n_plots))
     ncols = nrows = side_length
     rand_data = np.random.random((2, 10, n_plots))
@@ -335,9 +388,10 @@ def parallel_plotting():
 
     # fig = plt.figure(figsize=(side_length, side_length))
     fig, axes = plt.subplots(side_length, side_length)
+    fig.tight_layout()
     # plt.rc('font', size=8)
     futures = []
-    with ThreadPoolExecutor(max_workers=min(n_plots, 8)) as ex:
+    with ProcessPoolExecutor(max_workers=min(n_plots, 8)) as ex:
         print('Creating jobs...')
         # for i in range(n_plots):
         #     subplot = plt.subplot2grid(
@@ -359,11 +413,14 @@ def parallel_plotting():
         #     for j in range(side_length):
         #         axes[i, j] = q.get()
     print('Showing plot')
-    return fig
+    # return fig
     # fig.axes = np.reshape(new_axes, (side_length, side_length))
     # for ax in axes.ravel():
     #     fig.delaxes(ax)
     # new_fig = plt.figure()
+    add_axes_to_fig(fig, new_axes)
+    fig.tight_layout()
+    return fig
     # # new_fig, axes = plt.subplots(side_length, side_length)
     # ax: plt.Axes
     # for i, row in enumerate(new_axes):
@@ -415,7 +472,53 @@ def parallel_plotting():
     # print('Showing plot')
     # # fig.show()
     # plt.show()
+
+def create_subplot_data(index):
+    fig, ax = plt.subplots()
+    x = np.linspace(0, 10, 1000)
+    y = np.sin(x + index)
+    ax.plot(x, y, label=f"Plot {index}")
+    ax.set_title(f"Subplot {index}")
+    ax.legend()
     
+    # Serialize figure to bytes
+    buffer = BytesIO()
+    pickle.dump(fig, buffer)
+    plt.close(fig)  # Close to free up memory
+    return buffer.getvalue()
+
+# Main process
+def parallel_plotting2():
+    n_plots = 4  # Reduce this for testing purposes
+
+    # Create a multiprocessing pool
+    with Pool() as pool:
+        # Offload plot creation
+        serialized_plots = pool.map(create_subplot_data, range(n_plots))
+    
+    # Create the main interactive figure
+    main_fig, axes = plt.subplots(nrows=2, ncols=5, figsize=(15, 6))
+
+    # Reconstruct plots in the main process
+    for ax, serialized_plot in zip(axes.flatten(), serialized_plots):
+        buffer = BytesIO(serialized_plot)
+        fig: plt.Figure = pickle.load(buffer)  # Deserialize
+        ser_ax = fig.axes[0]
+        # Copy artists (lines, etc.) to the main Axes
+        ser_ax.remove()
+        ser_ax.figure = main_fig
+        main_fig.add_axes(ser_ax)
+        ser_ax.set_position(ax.get_position())
+        ax.remove()
+        # ax.update_from(ser_ax)
+        # for artist in ser_ax.get_children():
+        #     ax.add_artist(artist)
+        # ax.set_title(ser_ax.get_title())
+        # ax.legend(*ser_ax.get_legend_handles_labels())
+    return main_fig
+    
+    # plt.tight_layout()
+    # plt.show() 
     
 
 
