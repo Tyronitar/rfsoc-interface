@@ -1,10 +1,14 @@
+from __future__ import annotations
 from PySide6.QtWidgets import QWidget, QMainWindow, QApplication
-from PySide6.QtCore import Qt, Signal ,Slot, QObject
+from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread
 import serial.tools
 import serial.tools.list_ports
 from rfsocinterface.ui.telescope_control_ui import Ui_TelescopeControlWidget as Ui_TelescopeControlWidget
 from kidpy import kidpy
-from rfsocinterface.utils import analog_to_digital, digital_to_analog
+from rfsocinterface.utils import analog_to_digital, digital_to_analog, P, R
+from typing import Callable, Concatenate, Any
+import functools
+import time
 
 import uldaq as ul
 import numpy as np
@@ -39,10 +43,43 @@ ADDR_FB1_P = 1610  ##This is the absolute position from the FB1 (resolver).
 ZERO_DATA = analog_to_digital(0, -10, 10, 16)
 
 
+
 class StopMotion(Exception):
     """Exception for handling pressing of the stop button."""
     def __init__(self, *args):
         super().__init__(*args)
+
+def interruptable(
+        func: Callable[
+            Concatenate[TelescopeMotorController, P],
+            R],
+) -> Callable[P, R]:
+    @functools.wraps(func)
+    def wrapper(ctrl: TelescopeMotorController, *args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return func(ctrl, *args, **kwargs)
+        except StopMotion:
+            # ctrl.stop()
+            pass
+    return wrapper
+
+class TelescopeMotionJob(QThread):
+    updateProgress = Signal()
+    returned = Signal(Any)
+    canceled = Signal()
+
+    #You can do any extra things in this init you need, but for this example
+    #nothing else needs to be done expect call the super's init
+    def __init__(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs):
+        super().__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
+        self.returned.emit(res)
+
 
 class TelescopeMotorController(QObject):
     """Class for controlling the motion of the telescope."""
@@ -56,6 +93,7 @@ class TelescopeMotorController(QObject):
 
     def __init__(self, parent=None):
         self._initialized = False
+        self._active_jobs: list[TelescopeMotionJob] = []
         self._initialize_system()
         super().__init__(parent)
     
@@ -138,11 +176,21 @@ class TelescopeMotorController(QObject):
 
     # Azimuth settings
     def set_az_home(self):
-        self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
-        pfb = self.get_ser_az_pos()
-        counter = 0
-        # TODO: Finish this lol
-        pass
+        if self.ser_az.is_open:
+            command = "NREF\r\n"
+            command = command.encode()
+            self.ser_az.write(command)
+            self.ser_az.readline()
+            pfb = self.ser_az.read_until(b"\r\n")
+            self.ser_az.reset_input_buffer()
+            self.ser_az.reset_output_buffer()
+            print("Home Set.")
+        else:
+            print("Home command not executed. Check connection with S700")
+    
+    # TODO: There's also a "setAZ_home_position"...
+
+    ##Read AZ Serial Position
 
     def get_ser_az_pos(self) -> float:
         old_pfb = self.az_pos
@@ -155,6 +203,7 @@ class TelescopeMotorController(QObject):
                 # self.az_pos = pfb
                 self.ser_az.reset_input_buffer()
                 self.ser_az.reset_output_buffer()
+                self.azimuthUpdated.emit(pfb)
                 return pfb
         except ValueError:
             print(
@@ -165,10 +214,148 @@ class TelescopeMotorController(QObject):
 
     def set_az_pos(self, new_pos: int, scan_mode: bool=False):
         self.azimuthCommanded.emit(new_pos)
-        pass
+        worker = TelescopeMotionJob(self._set_az_pos, new_pos, scan_mode)
+        self._active_jobs.append(worker)
+        worker.start()
+    
+    def _set_az_pos(self, new_pos: int, scan_mode: bool=False):
+        # I want to accept a number in degrees, but put the number in the integer value desired by S700 controller
+        # AZ controlled by 2 motors, the first to actually move the telescope, the second to put some tension on the gear for avoiding any backlash. Currently the secondary motor is disabled, probably providing little to no torque, but given the huge gearing ratio, it probably helps with backlash. The next easiest technique would be to run the secondary in "analog torque" mode, setting the zero value to some small torque. This could be improved by increasing the torque during motion and reducing when the first motor is not moving (probably by changing the zero value torque, since both analog outs are already in use). The proper way to do it, and the reason we were sold these S700 controllers is called RDP per the kollmorgen tech guy but my guess is he meant prd cogging mode.
+        self.set_ao_zero()
+        # Measure input voltage
+
+        ##confirm position
+        pfb = self.get_ser_az_pos()
+        if scan_mode:
+            this_ze = self.get_ser_ze_pos()
+            position_data = []
+        counter = 0
+        ##Run loop
+        pfb_time = time.time()
+
+        while (
+            np.abs(pfb - new_pos) > 0.016 ##currently overshoots by .018 degrees on average
+            and pfb > NEG_SW_LIM
+            and pfb < POS_SW_LIM
+        ):
+            try:
+                #get start time
+                
+                # Choose direction of motion. Negative Voltage goes clockwise when looking down at the telesecope from the sky!!
+                #                if keyboard.is_pressed("space"):
+                #                    print("User terminated motion!")
+                #                   break
+                if new_pos > pfb:
+                    direction = -1
+                else:
+                    direction = 1
+                # I still need to double check motion direction for accuracy
+                ##Set Speed faster if more travel needed
+                if scan_mode:
+                    # data_value = direction*self.convert_A_to_D(3.,[-10,10],16)
+                    if (
+                        abs(pfb - new_pos) > 0.5
+                    ):  ##If we are far from the setpoint, go at max speed
+                        data_value = direction * analog_to_digital(6.0, [-10, 10], 16)
+                        #print(data_value)
+                        #print("This is the voltage output")
+                    else:
+                        data_value = direction * analog_to_digital(2.0, [-10, 10], 16)
+                else:
+                    if (
+                        abs(pfb - new_pos) > 15
+                    ):  ##If we are far from the setpoint, go at max speed
+                        data_value = direction * analog_to_digital(7.25, [-10, 10], 16)
+                    elif (
+                        abs(pfb - new_pos) < 15
+                    ):  ##If we are far from the setpoint, go at max speed
+                        this_speed = 0.35 * abs(pfb - new_pos) + 1.5
+                        data_value = direction * analog_to_digital(this_speed, [-10, 10], 16)
+
+                # elif abs(pfb-az_set_pos) < 1.:##set to slower speed as approaching setpoint
+                # data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
+                # elif abs(pfb-az_set_pos) < .200:##set to slower speed as approaching setpoint
+                # self.set_AZ_speedrelation(10)##Not sure about this one yet. Need to test!
+                # data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
+                #            else:##else: set to slowest speed
+                #                data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
+                if counter % 50 == 0:
+                    print(pfb, data_value)
+                # time.sleep(.3)
+                self.azimuthVelocityChanged.emit(data_value)
+                self.set_ao_value(data_value, AZ_OUT_CHANNEL)
+                #pdb.set_trace()
+                this_dt = time.time() - pfb_time
+                while this_dt < 0.02:
+                   this_dt = time.time() - pfb_time
+                   time.sleep(1.e-4)
+                pfb_time = time.time()
+                pfb = self.get_ser_az_pos()
+                self.azimuthUpdated.emit(pfb)
+
+                if scan_mode:
+                    position_data = np.append(position_data, [pfb, this_ze, pfb_time])
+                    
+                counter = counter + 1
+
+            except KeyboardInterrupt:
+                print("User terminated motion!")
+                break
+
+            except ValueError:
+                print("caught an exception regarding Float conversion")
+                break
+        self.set_ao_zero()
+        self.azimuthVelocityChanged.emit(0)
+        ## Read position again
+        time.sleep(1)
+        pfb = self.get_ser_az_pos()
+        #        print ('Set to position: ', pfb)
+        if scan_mode:
+            return position_data
 
     def az_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
-        pass
+        worker = TelescopeMotionJob(self._az_scan_mode, start, stop, file, n_repeats)
+        self._active_jobs.append(worker)
+        worker.start()
+
+    def _az_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
+        az_start_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
+        az_end_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
+        current_az = self.get_ser_az_pos()
+        current_ze = self.get_ser_ze_pos()
+        az_start += current_az
+        az_stop += current_az
+        dummy = self._set_az_pos(az_start - az_start_buffer)  # Don't create a new thread
+        for i_rep in np.arange(n_repeats):
+            if np.mod(i_rep, 2) == 0:
+                self._set_ze_pos(current_ze)
+                this_position_data = self._set_az_pos(
+                    az_stop + az_end_buffer + 0.5, scan_mode=True
+                )
+                if i_rep == 0:
+                    position_data = this_position_data
+                else:
+                    position_data = np.append(position_data, this_position_data)
+            if np.mod(i_rep, 2) == 1:
+                self._set_ze_pos(current_ze + 0.04)
+                this_position_data = self._set_az_pos(
+                    az_start - az_start_buffer - 0.5, scan_mode=True
+                )
+                position_data = np.append(position_data, this_position_data)
+
+        # np.savez(position_data_file, az = position_data[0::3],el = position_data[1::3],time = position_data[2::3],az_start=AZ_start,
+        #  az_stop=AZ_stop,el_start=np.nan,el_stop=np.nan)
+        f = h5py.File(file, "a")
+        f.create_dataset("az_tel", data=position_data[0::3])
+        f.create_dataset("el_tel", data=position_data[1::3])
+        f.create_dataset("timestamp_tel", data=position_data[2::3])
+        f.create_dataset("optical_visibility", data=['****'])
+        f.close()
+        time.sleep(0.5)
+        print("Scan Complete")
+
+
 
     def jog_az_pos(self, speed: float=1):
         pass
@@ -177,11 +364,33 @@ class TelescopeMotorController(QObject):
         pass
 
     def set_az_speed_relation(self, voltage: float):
+        # Set the speed of the motor in RPM/10V. Default is 500, which would roughly turn the telescope 2.5 degree/second for 10 V input. ASCII code for serial is VSCALE1. AZ VALUE IS PER 10 VOLTS AND EL VALUE IS PER 1 VOLT! Needs more testing from Ubuntu, I think there is a lower limit set in the S700.
+        if self.ser_az.is_open:
+            command = "VSCALE1 " + str(voltage) + "\r\n"
+            command = command.encode()
+            self.ser_az.write(command)
+            self.ser_az.readline()
+            az_speed = self.ser_az.read_until(b"\r\n")
+            print("AZ speed set to: ", az_speed)  ###THIS MAY BREAK
+            self.azimuthVelocityChanged(az_speed)
+            self.ser_az.reset_input_buffer()
+            self.ser_az.reset_output_buffer()
         pass
-
     # Zenith angle settings
     def set_ze_home(self):
-        pass
+        # Set current position of the motor to zero.
+        pos = self.get_ser_ze_pos()
+        pdb.set_trace()
+        self.ser_ze.write(b"DRV.DIS\r\n")
+        sw_en = self.ser_ze.read_until(b"\r\n", 0.1)
+        time.sleep(1)
+        offset_command = "FB1.OFFSET " + str(-1 * pos) + "\r\n"
+        self.ser_ze.write(offset_command.encode("ascii"))
+        ret = self.ser_ze.read_until(b"\r\n")
+        self.ser_ze.write(b"DRV.EN\r\n")
+        sw_en = self.ser_ze.read_until(b"\r", 0.1)
+        pdb.set_trace()
+        print("EL Home Set.")
 
     def get_ser_ze_pos(self) -> float | None:
         old_pos = self.ze_pos
@@ -200,17 +409,134 @@ class TelescopeMotorController(QObject):
 
     def set_ze_pos(self, new_pos: int, scan_mode: bool=False):
         self.zenithCommanded.emit(new_pos)
-        pass
+        worker = TelescopeMotionJob(self._set_ze_pos, new_pos, scan_mode)
+        self._active_jobs.append(worker)
+        worker.start()
+
+    def _set_ze_pos(self, new_pos: int, scan_mode: bool=False):
+        new_pos = float(new_pos)
+        self.set_ao_zero()
+
+        ##confirm position
+        pos = self.get_ser_ze_pos()
+        self.zenithUpdated.emit(pos)
+        if scan_mode:
+            this_az = self.get_ser_az_pos()
+            position_data = []
+        counter = 0
+
+        ##Run loop
+        while abs(pos - new_pos) > 0.003:
+            try:
+                # Choose direction of motion
+                if pos > new_pos:
+                    direction = -1
+                else:
+                    direction = 1
+
+                #                if keyboard.is_pressed("space"): ###DOES THIS WORK IN UBUNTU?
+                #                    print("User terminated motion!")
+                #                    break
+                #"I still need to double check motion direction for accuracy"
+                ##Set Speed faster if more travel needed
+                if scan_mode:
+                    data_value = direction * analog_to_digital(1.0, [-10, 10], 16)
+                else:
+                    if (
+                        abs(pos - new_pos) > 15
+                    ):  ##If we are far from the setpoint, go at max speed
+                        data_value = direction * analog_to_digital(7.25, [-10, 10], 16)
+                    elif (
+                        abs(pos - new_pos) < 15
+                    ):  ##If we are far from the setpoint, go at max speed
+                        this_speed = 0.35 * abs(pos - new_pos) + 0.30
+                        data_value = direction * analog_to_digital(this_speed, [-10, 10], 16)
+
+                # elif abs(pos-el_set_pos) < 5:##set to slower speed as approaching setpoint
+                # data_value = direction*self.convert_A_to_D(2,[-10,10],16)
+                # elif abs(pos-el_set_pos) < 1:##set to slower speed as approaching setpoint
+                # self.set_EL_speedrelation(10)
+                # data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
+                # else:##else: set to slowest speed
+                #    data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
+
+                self.zenithVelocityChanged.emit(data_value)
+                self.set_ao_value(data_value, ZE_OUT_CHANNEL)
+                pos = self.get_ser_ze_pos()
+                self.zenithUpdated.emit(pos)
+                if scan_mode:
+                    position_data = np.append(
+                        position_data, [this_az, pos, time.time()]
+                    )
+                counter = counter + 1
+                if counter % 500 == 0:
+                    print(pos, data_value)
+                # time.sleep(.3)
+            except KeyboardInterrupt:
+                print("User terminated motion!")
+                break
+            except ValueError:
+                print("caught an exception regarding Float conversion")
+                break
+            finally:
+                # This code always executes after leaving the try statement
+                pass
+
+        self.set_ao_zero()
+        self.zenithVelocityChanged.emit(data_value)
+        ## Read position again
+        time.sleep(0.1)
+        pos = self.get_ser_ze_pos()
+        self.zenithUpdated.emit(pos)
+        #        print ('EL Set to position: ', str(pos))
+        #        print ('Position Set!')
+        if scan_mode:
+            return position_data
+
 
     def ze_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
-        pass
+        worker = TelescopeMotionJob(self._az_scan_mode, start, stop, file, n_repeats)
+        self._active_jobs.append(worker)
+        worker.start()
+
+    def _ze_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
+        ze_start_buffer = 0.2 * np.sign(stop - start)
+        ze_end_buffer = 0.2 * np.sign(stop - start)
+        dummy = self._set_ze_pos(start - ze_start_buffer, scan_mode=True)
+        position_data = self._set_ze_pos(stop + ze_end_buffer, scan_mode=True)
+        np.savez(
+            file,
+            az=position_data[0::3],
+            el=position_data[1::3],
+            time=position_data[2::3],
+        )
 
     def set_ze_speed_relation(self, voltage: float):
-        pass
+        # Set the speed of the motor in RPM/1V. Default is 40, which would roughly turn the telescope 1 degree/second. ASCII code for serial is AIN.VSCALE. NOTE: AZ VALUE IS PER 10 VOLTS AND EL VALUE IS PER 1 VOLT!
+        if self.ser_ze.is_open:
+            command = "AIN.VCALE " + str(voltage) + "\r\n"
+            command = command.encode()
+            self.ser_ze.write(command)
+            self.ser_ze.readline()
+            ze_speed = self.ser_ze.read_until(b"\r\n")
+            print("ZE speed set to: ", ze_speed)  ###THIS MAY BREAK
+            self.zenithVelocityChanged(ze_speed)
+            self.ser_ze.reset_input_buffer()
+            self.ser_ze.reset_output_buffer()
 
     # Misc
     def talk_to_az(self, command: str):
-        pass
+        # Function to test ASCII commands for the S700 motor controller
+        if self.ser_az.is_open:
+            command += "\r\n"
+            command = command.encode()
+            self.ser_az.write(command)
+            self.ser_az.readline()
+            response = self.ser_az.read_until(b"\r\n")
+            response = str(response.decode())
+            print(response)
+            self.ser_az.reset_input_buffer()
+            self.ser_az.reset_output_buffer()
             
 
 class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
