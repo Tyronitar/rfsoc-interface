@@ -293,7 +293,7 @@ class LoSweepData:
             if signal:
                 signal.emit()
                 # job.updateProgress.emit()
-                # QApplication.processEvents()
+                QApplication.processEvents()
 
 
     def plot(self, ncols: int = 18, signal: SignalInstance=None) -> Figure:
@@ -320,6 +320,7 @@ class LoSweepData:
             resonator.plot(subplot)
             if signal:
                 signal.emit()
+                QApplication.processEvents()
 
         plt.tight_layout()
         return fig
@@ -361,7 +362,7 @@ class LoSweep:
         self.freqs = freqs
         self.f_center = f_center
 
-    def _get_data(self, N_steps=500, freq_step=0.0, signal: QProgressDialog | None=None):
+    def _get_data(self, N_steps=500, freq_step=0.0, pd: QProgressDialog | None=None):
         """
         Actually perform an LO Sweep using valon 5009's and save the data
 
@@ -397,6 +398,7 @@ class LoSweep:
         if pd is not None:
             pd.setMaximum(len(flos))
             pd.setLabelText('Performing LO Sweep...')
+            QApplication.processEvents()
         # flos = np.round(flos * 1e3)*1e-3
         log.info(f"len flos {flos.shape}")
         self._udp.bindSocket()
@@ -434,7 +436,8 @@ class LoSweep:
         z = []
         for i, lofreq in enumerate(flos):
             if pd is not None:
-                pd.setValue(i)
+                pd.setValue(i + 1)
+                QApplication.processEvents()
             z.append(temp(lofreq))
         sweep_Z = np.array(z)
 

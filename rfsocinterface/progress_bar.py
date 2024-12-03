@@ -11,7 +11,7 @@ class ProgressBarDialog(QProgressDialog):
 
     def __init__(self, max_threads: int=1, parent: QWidget | None=None):
         super().__init__(parent)
-        self.setupUi(self)
+        # self.setupUi(self)
         self.reset()
         self.job_queue = JobQueue(max_threads=max_threads)
         self.incrementSignal.connect(self.increment)
@@ -28,15 +28,18 @@ class ProgressBarDialog(QProgressDialog):
         # job.finishWork.connect(self.worker_finished, job)
         self.job_queue.add_job(job, use_main_thread=use_main_thread)
         job.started.connect(self.worker_started)
-        self.total_tasks += num_tasks
+        self.setMaximum(num_tasks)
+        # self.total_tasks += num_tasks
     
     def worker_finished(self, message: str):
         if message:
-            self.label.setText(message)
+            self.setLabelText(message)
+            # self.label.setText(message)
 
     def worker_started(self, message: str):
         if message:
-            self.label.setText(message)
+            self.setLabelText(message)
+            # self.label.setText(message)
     
     def completed(self) -> bool:
         return self._completed_tasks >= self.total_tasks
@@ -54,9 +57,10 @@ class ProgressBarDialog(QProgressDialog):
         self.total_tasks = total
     
     def increment(self):
-        if self._completed_tasks < self.total_tasks:
-            self._completed_tasks += 1
-            self.progressBar.setValue(int((self._completed_tasks / self.total_tasks) * 100))
+        self.setValue(self.value() + 1)
+        # if self._completed_tasks < self.total_tasks:
+        #     self._completed_tasks += 1
+        #     self.progressBar.setValue(int((self._completed_tasks / self.total_tasks) * 100))
 
 class SequentialProgressBarDialog(ProgressBarDialog):
 

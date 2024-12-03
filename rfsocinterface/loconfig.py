@@ -18,7 +18,7 @@ import numpy as np
 import onrkidpy
 import sweeps
 import h5py
-from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path
+from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path, JobInterrupt
 
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
 DEFAULT_F_CENTER = 400.0
@@ -54,10 +54,15 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         
         self.dialog_button_box.accepted.connect(self.run_sweep)
     
+    def cancel_sweep(self):
+        raise JobInterrupt('LO Sweep Cancelled') 
+    
     def run_sweep(self):
 
         chan_name = 'rfsoc2'
         pd = QProgressDialog('Running...', 'Cancel', 0, 100, self)
+        pd.show()
+        pd.canceled.connect(self.cancel_sweep)
 
         # For running on ONR Computer
         self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
@@ -102,7 +107,6 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         )
         tone_list = self.kpy.get_tone_list()
         chanmask = DEFAULT_CHANMASK
-        pd.show()
         sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=200, freq_step=0.001, pd=pd)
 
         # For running on local computer
@@ -118,6 +122,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         dw.setWindowModality(Qt.WindowModality.WindowModal)
 
         pb = SequentialProgressBarDialog(parent=self)
+        pb.canceled.connect(self.cancel_sweep)
         nchan = sweep_data.nchan
         pb.add_job(sweep_data.fit, num_tasks=nchan, start_message='Fitting sweep data...', do_print=True)
 
@@ -136,9 +141,10 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         self.sweep_data.savenp(savefile)
     
     def plot_sweep(self, sweep: LoSweepData, dw: DiagnosticsDialog, pb: SequentialProgressBarDialog):
-        pb.label.setText('Plotting fit results...')
+        pb.setLabelText('Plotting fit results...')
         pb.reset()
-        pb.set_total_tasks(sweep.nchan)
+        pb.setMaximum(sweep.nchan)
+        # pb.set_total_tasks(sweep.nchan)
         dw.plot(signal=pb.incrementSignal)
         pb.close()
         dw.show()
