@@ -6,22 +6,60 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>216</width>
-    <height>204</height>
+    <width>280</width>
+    <height>250</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>200</width>
-    <height>200</height>
+    <width>280</width>
+    <height>250</height>
    </size>
   </property>
   <property name="windowTitle">
    <string>Form</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="3" column="1" alignment="Qt::AlignmentFlag::AlignHCenter|Qt::AlignmentFlag::AlignTop">
-    <widget class="QPushButton" name="down_pushButton">
+   <item row="1" column="1">
+    <widget class="QToolButton" name="up_toolButton">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>30</width>
+       <height>30</height>
+      </size>
+     </property>
+     <property name="layoutDirection">
+      <enum>Qt::LayoutDirection::RightToLeft</enum>
+     </property>
+     <property name="text">
+      <string>Negative ZA</string>
+     </property>
+     <property name="icon">
+      <iconset resource="icons.qrc">
+       <normaloff>:/icons/up.png</normaloff>:/icons/up.png</iconset>
+     </property>
+     <property name="iconSize">
+      <size>
+       <width>50</width>
+       <height>50</height>
+      </size>
+     </property>
+     <property name="toolButtonStyle">
+      <enum>Qt::ToolButtonStyle::ToolButtonTextUnderIcon</enum>
+     </property>
+     <attribute name="buttonGroup">
+      <string notr="true">buttonGroup</string>
+     </attribute>
+    </widget>
+   </item>
+   <item row="3" column="1">
+    <widget class="QToolButton" name="down_toolButton">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
        <horstretch>0</horstretch>
@@ -35,7 +73,7 @@
       </size>
      </property>
      <property name="text">
-      <string/>
+      <string>Positive ZA</string>
      </property>
      <property name="icon">
       <iconset resource="icons.qrc">
@@ -47,13 +85,16 @@
        <height>50</height>
       </size>
      </property>
+     <property name="toolButtonStyle">
+      <enum>Qt::ToolButtonStyle::ToolButtonTextUnderIcon</enum>
+     </property>
      <attribute name="buttonGroup">
       <string notr="true">buttonGroup</string>
      </attribute>
     </widget>
    </item>
-   <item row="2" column="0" alignment="Qt::AlignmentFlag::AlignRight">
-    <widget class="QPushButton" name="left_pushButton">
+   <item row="2" column="2">
+    <widget class="QToolButton" name="right_toolButton">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
        <horstretch>0</horstretch>
@@ -67,39 +108,7 @@
       </size>
      </property>
      <property name="text">
-      <string/>
-     </property>
-     <property name="icon">
-      <iconset resource="icons.qrc">
-       <normaloff>:/icons/left.png</normaloff>:/icons/left.png</iconset>
-     </property>
-     <property name="iconSize">
-      <size>
-       <width>50</width>
-       <height>50</height>
-      </size>
-     </property>
-     <attribute name="buttonGroup">
-      <string notr="true">buttonGroup</string>
-     </attribute>
-    </widget>
-   </item>
-   <item row="2" column="2" alignment="Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter">
-    <widget class="QPushButton" name="right_pushButton">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="minimumSize">
-      <size>
-       <width>30</width>
-       <height>30</height>
-      </size>
-     </property>
-     <property name="text">
-      <string/>
+      <string>Positive AZ</string>
      </property>
      <property name="icon">
       <iconset resource="icons.qrc">
@@ -111,13 +120,16 @@
        <height>50</height>
       </size>
      </property>
+     <property name="toolButtonStyle">
+      <enum>Qt::ToolButtonStyle::ToolButtonTextUnderIcon</enum>
+     </property>
      <attribute name="buttonGroup">
       <string notr="true">buttonGroup</string>
      </attribute>
     </widget>
    </item>
-   <item row="1" column="1" alignment="Qt::AlignmentFlag::AlignHCenter|Qt::AlignmentFlag::AlignBottom">
-    <widget class="QPushButton" name="up_pushButton">
+   <item row="2" column="0">
+    <widget class="QToolButton" name="left_toolButton">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
        <horstretch>0</horstretch>
@@ -130,18 +142,24 @@
        <height>30</height>
       </size>
      </property>
+     <property name="layoutDirection">
+      <enum>Qt::LayoutDirection::RightToLeft</enum>
+     </property>
      <property name="text">
-      <string/>
+      <string>Negative AZ</string>
      </property>
      <property name="icon">
       <iconset resource="icons.qrc">
-       <normaloff>:/icons/up.png</normaloff>:/icons/up.png</iconset>
+       <normaloff>:/icons/left.png</normaloff>:/icons/left.png</iconset>
      </property>
      <property name="iconSize">
       <size>
        <width>50</width>
        <height>50</height>
       </size>
+     </property>
+     <property name="toolButtonStyle">
+      <enum>Qt::ToolButtonStyle::ToolButtonTextUnderIcon</enum>
      </property>
      <attribute name="buttonGroup">
       <string notr="true">buttonGroup</string>

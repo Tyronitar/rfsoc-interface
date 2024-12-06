@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>899</width>
-    <height>314</height>
+    <width>1021</width>
+    <height>374</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -119,11 +119,21 @@
        </property>
        <layout class="QVBoxLayout" name="verticalLayout_3">
         <item>
-         <widget class="Controller" name="widget" native="true">
+         <widget class="QCheckBox" name="manual_controlcheckBox">
+          <property name="text">
+           <string>Enable Manual Control</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="Controller" name="controller" native="true">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
           <property name="minimumSize">
            <size>
-            <width>210</width>
-            <height>210</height>
+            <width>280</width>
+            <height>250</height>
            </size>
           </property>
          </widget>
@@ -226,6 +236,16 @@
               </property>
              </widget>
             </item>
+            <item row="5" column="0">
+             <widget class="QLineEdit" name="azimuth_setlineEdit"/>
+            </item>
+            <item row="5" column="1">
+             <widget class="QPushButton" name="azimuth_setpushButton">
+              <property name="text">
+               <string>Set</string>
+              </property>
+             </widget>
+            </item>
            </layout>
           </item>
           <item>
@@ -240,18 +260,6 @@
             <property name="formAlignment">
              <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
             </property>
-            <item row="1" column="0">
-             <widget class="QLabel" name="zenith_actualLabel">
-              <property name="font">
-               <font>
-                <pointsize>15</pointsize>
-               </font>
-              </property>
-              <property name="text">
-               <string>Actual</string>
-              </property>
-             </widget>
-            </item>
             <item row="0" column="0" colspan="2">
              <widget class="QLabel" name="zenithLabel">
               <property name="font">
@@ -268,24 +276,15 @@
               </property>
              </widget>
             </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="zenith_commandedLabel">
-              <property name="text">
-               <string>Commanded</string>
+            <item row="1" column="0">
+             <widget class="QLabel" name="zenith_actualLabel">
+              <property name="font">
+               <font>
+                <pointsize>15</pointsize>
+               </font>
               </property>
-             </widget>
-            </item>
-            <item row="3" column="0">
-             <widget class="QLabel" name="zenith_errorLabel">
               <property name="text">
-               <string>Error</string>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="0">
-             <widget class="QLabel" name="zenith_velocityLabel">
-              <property name="text">
-               <string>Velocity</string>
+               <string>Actual</string>
               </property>
              </widget>
             </item>
@@ -301,10 +300,24 @@
               </property>
              </widget>
             </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="zenith_commandedLabel">
+              <property name="text">
+               <string>Commanded</string>
+              </property>
+             </widget>
+            </item>
             <item row="2" column="1">
              <widget class="QLabel" name="zenith_commanded_valLabel">
               <property name="text">
                <string>0.0°</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="zenith_errorLabel">
+              <property name="text">
+               <string>Error</string>
               </property>
              </widget>
             </item>
@@ -315,10 +328,27 @@
               </property>
              </widget>
             </item>
+            <item row="4" column="0">
+             <widget class="QLabel" name="zenith_velocityLabel">
+              <property name="text">
+               <string>Velocity</string>
+              </property>
+             </widget>
+            </item>
             <item row="4" column="1">
              <widget class="QLabel" name="zenith_velocity_valLabel">
               <property name="text">
                <string>0.0°/sec</string>
+              </property>
+             </widget>
+            </item>
+            <item row="5" column="0">
+             <widget class="QLineEdit" name="zenith_setlineEdit"/>
+            </item>
+            <item row="5" column="1">
+             <widget class="QPushButton" name="zenith_setpushButton">
+              <property name="text">
+               <string>Set</string>
               </property>
              </widget>
             </item>
@@ -346,6 +376,13 @@
       </spacer>
      </item>
     </layout>
+   </item>
+   <item row="1" column="0">
+    <widget class="QPushButton" name="optical_pushButton">
+     <property name="text">
+      <string>Show Optical Image</string>
+     </property>
+    </widget>
    </item>
   </layout>
  </widget>

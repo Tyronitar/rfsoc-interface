@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Resonator</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>

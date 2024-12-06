@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QDialog, QWidget, QApplication, QProgressDialog
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
 from typing import Callable, Any
 
 from rfsocinterface.ui.progress_bar_ui import Ui_Dialog
@@ -11,6 +11,7 @@ class ProgressBarDialog(QProgressDialog):
 
     def __init__(self, max_threads: int=1, parent: QWidget | None=None):
         super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
         # self.setupUi(self)
         self.reset()
         self.job_queue = JobQueue(max_threads=max_threads)

@@ -1,9 +1,12 @@
 from __future__ import annotations
-from PySide6.QtWidgets import QWidget, QMainWindow, QApplication
-from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread
+from PySide6.QtWidgets import QWidget, QMainWindow, QApplication, QAbstractButton, QDialog, QVBoxLayout
+from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread, QTimer, QMutex, QMutexLocker
 import serial.tools
 import serial.tools.list_ports
 from rfsocinterface.ui.telescope_control_ui import Ui_TelescopeControlWidget as Ui_TelescopeControlWidget
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from rfsocinterface.camera import SKPR_Camera_Control
 from kidpy import kidpy
 from rfsocinterface.utils import analog_to_digital, digital_to_analog, P, R
 from typing import Callable, Concatenate, Any
@@ -77,7 +80,7 @@ class TelescopeMotionJob(QThread):
         self.kwargs = kwargs
 
     def run(self):
-        res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
+        res = self.func(*self.args, **self.kwargs)
         self.returned.emit(res)
 
 
@@ -93,6 +96,9 @@ class TelescopeMotorController(QObject):
 
     def __init__(self, parent=None):
         self._initialized = False
+        self.run = False
+        self.az_mutex = QMutex()
+        self.ze_mutex = QMutex()
         self._active_jobs: list[TelescopeMotionJob] = []
         self._initialize_system()
         super().__init__(parent)
@@ -152,18 +158,20 @@ class TelescopeMotorController(QObject):
         status = float(status_string.split('\r')[0])
 
         if status == 1:
-            print('ZE motor connected and software already enabled.')
+            print('ZA motor connected and software already enabled.')
         else:
             self.ser_ze.write(b'DRV.EN\r\n')
             sw_en = self.ser_ze.read_until(b'\r', 0.1)
-            print('ZE motor connected and software enabled by Python.')
+            print('ZA motor connected and software enabled by Python.')
         self.ze_pos = 0
         self.ze_pos = self.get_ser_ze_pos()
-        print(f'Telescope ZE position is: {self.ze_pos}')
+        print(f'Telescope ZA position is: {self.ze_pos}')
         self._initialized = True
         self.ze_vel = 0
     
     def close(self):
+        az_locker = QMutexLocker(self.az_mutex)
+        ze_locker = QMutexLocker(self.ze_mutex)
         self.ser_az.close()
         self.ser_ze.close()
 
@@ -194,16 +202,18 @@ class TelescopeMotorController(QObject):
 
     def get_ser_az_pos(self) -> float:
         old_pfb = self.az_pos
+        locker = QMutexLocker(self.az_mutex)
         try:
             if self.ser_az.is_open:
                 self.ser_az.write(b'PFB\r\n')
                 self.ser_az.readline()
                 pfb = self.ser_az.read_until(b'\r\n')
                 pfb = float(pfb.decode()) / 10000.0
-                # self.az_pos = pfb
                 self.ser_az.reset_input_buffer()
                 self.ser_az.reset_output_buffer()
-                self.azimuthUpdated.emit(pfb)
+                self.az_pos = pfb
+                if self._initialized:
+                    self.azimuthUpdated.emit(pfb)
                 return pfb
         except ValueError:
             print(
@@ -214,6 +224,7 @@ class TelescopeMotorController(QObject):
 
     def set_az_pos(self, new_pos: int, scan_mode: bool=False):
         self.azimuthCommanded.emit(new_pos)
+        self.run = True
         worker = TelescopeMotionJob(self._set_az_pos, new_pos, scan_mode)
         self._active_jobs.append(worker)
         worker.start()
@@ -237,6 +248,7 @@ class TelescopeMotorController(QObject):
             np.abs(pfb - new_pos) > 0.016 ##currently overshoots by .018 degrees on average
             and pfb > NEG_SW_LIM
             and pfb < POS_SW_LIM
+            and self.run
         ):
             try:
                 #get start time
@@ -256,21 +268,21 @@ class TelescopeMotorController(QObject):
                     if (
                         abs(pfb - new_pos) > 0.5
                     ):  ##If we are far from the setpoint, go at max speed
-                        data_value = direction * analog_to_digital(6.0, [-10, 10], 16)
+                        data_value = direction * analog_to_digital(6.0, -10, 10, 16)
                         #print(data_value)
                         #print("This is the voltage output")
                     else:
-                        data_value = direction * analog_to_digital(2.0, [-10, 10], 16)
+                        data_value = direction * analog_to_digital(2.0, -10, 10, 16)
                 else:
                     if (
                         abs(pfb - new_pos) > 15
                     ):  ##If we are far from the setpoint, go at max speed
-                        data_value = direction * analog_to_digital(7.25, [-10, 10], 16)
+                        data_value = direction * analog_to_digital(7.25, -10, 10, 16)
                     elif (
                         abs(pfb - new_pos) < 15
                     ):  ##If we are far from the setpoint, go at max speed
                         this_speed = 0.35 * abs(pfb - new_pos) + 1.5
-                        data_value = direction * analog_to_digital(this_speed, [-10, 10], 16)
+                        data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
                 # elif abs(pfb-az_set_pos) < 1.:##set to slower speed as approaching setpoint
                 # data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
@@ -282,7 +294,7 @@ class TelescopeMotorController(QObject):
                 if counter % 50 == 0:
                     print(pfb, data_value)
                 # time.sleep(.3)
-                self.azimuthVelocityChanged.emit(data_value)
+                # self.azimuthVelocityChanged.emit(data_value)
                 self.set_ao_value(data_value, AZ_OUT_CHANNEL)
                 #pdb.set_trace()
                 this_dt = time.time() - pfb_time
@@ -306,7 +318,8 @@ class TelescopeMotorController(QObject):
                 print("caught an exception regarding Float conversion")
                 break
         self.set_ao_zero()
-        self.azimuthVelocityChanged.emit(0)
+        self.run = False
+        # self.azimuthVelocityChanged.emit(0)
         ## Read position again
         time.sleep(1)
         pfb = self.get_ser_az_pos()
@@ -348,7 +361,7 @@ class TelescopeMotorController(QObject):
         #  az_stop=AZ_stop,el_start=np.nan,el_stop=np.nan)
         f = h5py.File(file, "a")
         f.create_dataset("az_tel", data=position_data[0::3])
-        f.create_dataset("el_tel", data=position_data[1::3])
+        f.create_dataset("za_tel", data=position_data[1::3])
         f.create_dataset("timestamp_tel", data=position_data[2::3])
         f.create_dataset("optical_visibility", data=['****'])
         f.close()
@@ -394,21 +407,25 @@ class TelescopeMotorController(QObject):
 
     def get_ser_ze_pos(self) -> float | None:
         old_pos = self.ze_pos
+        locker = QMutexLocker(self.ze_mutex)
         try:
             self.ser_ze.write('PL.FB\r\n'.encode('ASCII'))
             pos_str = self.ser_ze.read_until(b']', 0.1).decode()
             pos = float(pos_str.split(' ')[0].split('>')[-1])
-            # self.ze_pos = pos
+            self.ze_pos = pos
+            if self._initialized:
+                self.zenithUpdated.emit(pos)
             return pos
         except ValueError:
             print(
-                'Error communicating with ZE controller; '
+                'Error communicating with ZA controller; '
                 'position set to most recent read.'
             )
             return old_pos
 
     def set_ze_pos(self, new_pos: int, scan_mode: bool=False):
         self.zenithCommanded.emit(new_pos)
+        self.run = True
         worker = TelescopeMotionJob(self._set_ze_pos, new_pos, scan_mode)
         self._active_jobs.append(worker)
         worker.start()
@@ -426,7 +443,7 @@ class TelescopeMotorController(QObject):
         counter = 0
 
         ##Run loop
-        while abs(pos - new_pos) > 0.003:
+        while abs(pos - new_pos) > 0.003 and self.run:
             try:
                 # Choose direction of motion
                 if pos > new_pos:
@@ -440,17 +457,17 @@ class TelescopeMotorController(QObject):
                 #"I still need to double check motion direction for accuracy"
                 ##Set Speed faster if more travel needed
                 if scan_mode:
-                    data_value = direction * analog_to_digital(1.0, [-10, 10], 16)
+                    data_value = direction * analog_to_digital(1.0, -10, 10, 16)
                 else:
                     if (
                         abs(pos - new_pos) > 15
                     ):  ##If we are far from the setpoint, go at max speed
-                        data_value = direction * analog_to_digital(7.25, [-10, 10], 16)
+                        data_value = direction * analog_to_digital(7.25, -10, 10, 16)
                     elif (
                         abs(pos - new_pos) < 15
                     ):  ##If we are far from the setpoint, go at max speed
                         this_speed = 0.35 * abs(pos - new_pos) + 0.30
-                        data_value = direction * analog_to_digital(this_speed, [-10, 10], 16)
+                        data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
                 # elif abs(pos-el_set_pos) < 5:##set to slower speed as approaching setpoint
                 # data_value = direction*self.convert_A_to_D(2,[-10,10],16)
@@ -460,7 +477,7 @@ class TelescopeMotorController(QObject):
                 # else:##else: set to slowest speed
                 #    data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
 
-                self.zenithVelocityChanged.emit(data_value)
+                # self.zenithVelocityChanged.emit(data_value)
                 self.set_ao_value(data_value, ZE_OUT_CHANNEL)
                 pos = self.get_ser_ze_pos()
                 self.zenithUpdated.emit(pos)
@@ -482,8 +499,9 @@ class TelescopeMotorController(QObject):
                 # This code always executes after leaving the try statement
                 pass
 
+        self.run = False
         self.set_ao_zero()
-        self.zenithVelocityChanged.emit(data_value)
+        # self.zenithVelocityChanged.emit(0)
         ## Read position again
         time.sleep(0.1)
         pos = self.get_ser_ze_pos()
@@ -519,7 +537,7 @@ class TelescopeMotorController(QObject):
             self.ser_ze.write(command)
             self.ser_ze.readline()
             ze_speed = self.ser_ze.read_until(b"\r\n")
-            print("ZE speed set to: ", ze_speed)  ###THIS MAY BREAK
+            print("ZA speed set to: ", ze_speed)  ###THIS MAY BREAK
             self.zenithVelocityChanged(ze_speed)
             self.ser_ze.reset_input_buffer()
             self.ser_ze.reset_output_buffer()
@@ -546,7 +564,32 @@ class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
         self.setupUi(self)
         self.kpy = kpy
         self.ctrl = TelescopeMotorController()
-        self.update_ui()
+        self.interval = 200  # Milliseconds between update calls
+        self.ze_jog_voltage = 1  # Degrees / second
+        self.az_jog_voltage = 5  # Degrees / second
+
+        # Control Connections
+        self.stop_pushButton.clicked.connect(self.stop_motion)
+        self.azimuth_setpushButton.clicked.connect(self.set_az_pos)
+        self.zenith_setpushButton.clicked.connect(self.set_ze_pos)
+        self.controller.buttonGroup.buttonPressed.connect(self.steer)
+        self.controller.buttonGroup.buttonReleased.connect(self.stop_motion)
+        self.manual_controlcheckBox.toggled.connect(self.toggle_steering)
+
+        # Set up Optical Camera
+        self.cam_ctrl = SKPR_Camera_Control()
+        self.optical_pushButton.clicked.connect(self.take_pic)
+
+        # Update Timer
+        self.last_az = self.ctrl.az_pos
+        self.last_ze = self.ctrl.ze_pos
+        self.last_az_commanded = self.last_az
+        self.last_ze_commanded = self.last_ze
+        self.update_az_cmd(self.last_az_commanded)
+        self.update_ze_cmd(self.last_ze_commanded)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_ui)
+        self.timer.start(500)
 
         # Signal connections
         self.ctrl.azimuthUpdated.connect(self.update_az_pos)
@@ -555,37 +598,105 @@ class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
         self.ctrl.zenithUpdated.connect(self.update_ze_pos)
         self.ctrl.zenithCommanded.connect(self.update_ze_cmd)
         self.ctrl.zenithVelocityChanged.connect(self.update_ze_vel)
+
+    def stop_motion(self):
+        self.ctrl.run = False
+        self.ctrl.set_ao_zero()
+    
+    def take_pic(self):
+        pic_data = self.cam_ctrl.take_pic(show=False)
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.imshow(pic_data)
+        ax.set_axis_off()
+        fig.tight_layout()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Optical Image')
+        dialog_layout = QVBoxLayout(dialog)
+        dialog_layout.addWidget(FigureCanvas(fig))
+        dialog.setLayout(dialog_layout)
+        dialog.show()
+    
+    def toggle_steering(self):
+        if self.manual_controlcheckBox.isChecked():
+            self.controller.setEnabled(True)
+        else:
+            self.controller.setEnabled(False)
+    
+    def steer(self, btn: QAbstractButton): 
+        self.ctrl.run = True
+        match btn:
+            case self.controller.up_toolButton:
+                self.ctrl.set_ao_value(-self.ze_jog_voltage, ZE_OUT_CHANNEL)
+            case self.controller.down_toolButton:
+                self.ctrl.set_ao_value(self.ze_jog_voltage, ZE_OUT_CHANNEL)
+            case self.controller.left_toolButton:
+                self.ctrl.set_ao_value(self.az_jog_voltage, AZ_OUT_CHANNEL)
+            case self.controller.right_toolButton:
+                self.ctrl.set_ao_value(-self.az_jog_voltage, AZ_OUT_CHANNEL)
+
+
+    def set_az_pos(self):
+        new_pos = float(self.azimuth_setlineEdit.text())
+        self.ctrl.set_az_pos(new_pos)
+    
+    def set_ze_pos(self):
+        new_pos = float(self.zenith_setlineEdit.text())
+        self.ctrl.set_ze_pos(new_pos)
     
     @Slot(float)
     def update_az_pos(self, new_pos: float):
-        self.azimuth_actual_valLabel.setText(f'{new_pos:.3f}')
+        self.azimuth_actual_valLabel.setText(f'{new_pos:.3f}°')
     
     @Slot(float)
     def update_az_cmd(self, new_pos: float):
-        self.azimuth_commanded_valLabel.setText(f'{new_pos:.3f}')
+        self.last_az_commanded = new_pos
+        self.azimuth_commanded_valLabel.setText(f'{new_pos:.3f}°')
 
     @Slot(float)
     def update_az_vel(self, new_vel: float):
-        self.azimuth_velocity_valLabel.setText(f'{new_vel:.2f}')
+        self.azimuth_velocity_valLabel.setText(f'{new_vel:.2f}°/sec')
+
+    @Slot(float)
+    def update_az_err(self, new_err: float):
+        self.azimuth_error_valLabel.setText(f'{new_err:.3f}°')
     
     @Slot(float)
     def update_ze_pos(self, new_pos: float):
-        self.zenith_actual_valLabel.setText(f'{new_pos:.3f}')
+        self.zenith_actual_valLabel.setText(f'{new_pos:.3f}°')
 
     @Slot(float)
     def update_ze_cmd(self, new_pos: float):
-        self.zenith_commanded_valLabel.setText(f'{new_pos:.3f}')
+        self.last_ze_commanded = new_pos
+        self.zenith_commanded_valLabel.setText(f'{new_pos:.3f}°')
 
     @Slot(float)
     def update_ze_vel(self, new_vel: float):
-        self.zenith_velocity_valLabel.setText(f'{new_vel:.2f}')
+        self.zenith_velocity_valLabel.setText(f'{new_vel:.2f}°/sec')
+
+    @Slot(float)
+    def update_ze_err(self, new_err: float):
+        self.zenith_error_valLabel.setText(f'{new_err:.3f}°')
     
     def update_ui(self):
-        self.update_az_pos(self.ctrl.get_ser_az_pos())
-        self.update_ze_pos(self.ctrl.get_ser_ze_pos())
-        # TODO: Show other values (commanded, error, velocity)
+        new_az = self.ctrl.get_ser_az_pos()
+        new_ze = self.ctrl.get_ser_ze_pos()
+        az_velocity = (new_az - self.last_az) / self.interval * 1000
+        ze_velocity = (new_ze - self.last_ze) / self.interval * 1000
+        self.update_az_pos(new_az)
+        self.update_ze_pos(new_ze)
+        self.last_az = new_az
+        self.last_ze = new_ze
+        self.update_az_vel(az_velocity)
+        self.update_ze_vel(ze_velocity)
+        az_err = new_az - self.last_az_commanded
+        ze_err = new_ze - self.last_ze_commanded
+        self.update_az_err(az_err)
+        self.update_ze_err(ze_err)
     
     def closeEvent(self, event):
+        self.timer.stop()
         self.ctrl.close()
         return super().closeEvent(event)
     

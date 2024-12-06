@@ -1,4 +1,4 @@
-UI_CC := poetry run pyside6-uic
+UI_CC := pyside6-uic
 UI_RCC := poetry run pyside6-rcc
 UI_FILE_DIR := ui_resources
 UI_PYTHON_DIR := rfsocinterface/ui

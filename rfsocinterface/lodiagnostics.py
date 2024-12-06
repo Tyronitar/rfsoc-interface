@@ -3,13 +3,14 @@ import matplotlib as mpl
 mpl.use('QtAgg')
 
 from typing import Callable
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backend_bases import MouseButton, MouseEvent
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, SignalInstance
-from PySide6.QtGui import QDoubleValidator
+from PySide6.QtGui import QDoubleValidator, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
@@ -248,34 +249,45 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         super().__init__(parent=parent)
         self.setupUi(self)
         self.sweep = sweep
-        self.savefile = savefile
+        self.savefile = Path(savefile)
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
-        self.buttonBox.accepted.connect(self.save_and_close)
-        self.buttonBox.rejected.connect(self.reject)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.close_without_saving)
 
         self.edited = False
-
-    def save_and_close(self):
+    
+    def closeEvent(self, event: QCloseEvent):
         if self.edited:
-            msg = QMessageBox(
-                QMessageBox.Icon.Question,
-                'Save Changes?',
-                'Do you really want to save your changes?',
-                parent=self
-            )
-            msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
-            msg.setDefaultButton(QMessageBox.StandardButton.Save)
-            ret = msg.exec()
-            match ret:
-                case QMessageBox.StandardButton.Save:
-                    self.sweep.saveh5(self.savefile)
-                case QMessageBox.StandardButton.Cancel:
-                    return  # Don't accept
-                case QMessageBox.StandardButton.Discard:
-                    pass
-                case _:
-                    raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
-        self.accept()
+            if not self.close_without_saving():
+                event.ignore()
+                return
+        event.accept()
+
+    def close_without_saving(self) -> bool:
+        if not self.edited:
+            self.reject()
+            return True
+
+        msg = QMessageBox(
+            QMessageBox.Icon.Warning,
+            f'Do you want to save the changes you made to {self.savefile.stem}?',
+            'Your changes will be lost if you don\'t save them',
+            parent=self
+        )
+        msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton(QMessageBox.StandardButton.Discard)
+        ret = msg.exec()
+        match ret:
+            case QMessageBox.StandardButton.Save:
+                self.accept()
+                return True
+            case QMessageBox.StandardButton.Cancel:
+                return False# Don't close
+            case QMessageBox.StandardButton.Discard:
+                self.destroy()
+                return True
+            case _:
+                raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
 
 
     def click_plot(self, event: MouseEvent):
@@ -302,6 +314,8 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     
     def set_edited(self):
         self.edited = True
+        self.setWindowTitle('*LO Sweep Diagnostics')
+
 
     def make_resonator_window(self, resonator: ResonatorData, ax: plt.Axes):
         """Create and open a ResonatorWindow using the provided ResonatorData."""

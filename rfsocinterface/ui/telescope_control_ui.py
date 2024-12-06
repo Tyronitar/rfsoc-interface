@@ -15,9 +15,10 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QFormLayout, QFrame, QGridLayout,
-    QGroupBox, QHBoxLayout, QLabel, QPushButton,
-    QSizePolicy, QSpacerItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QCheckBox, QFormLayout, QFrame,
+    QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QSizePolicy, QSpacerItem,
+    QVBoxLayout, QWidget)
 
 from rfsocinterface.ui.controller import Controller
 from . import icons_rc
@@ -26,7 +27,7 @@ class Ui_TelescopeControlWidget(object):
     def setupUi(self, TelescopeControlWidget):
         if not TelescopeControlWidget.objectName():
             TelescopeControlWidget.setObjectName(u"TelescopeControlWidget")
-        TelescopeControlWidget.resize(899, 314)
+        TelescopeControlWidget.resize(1021, 374)
         self.gridLayout_2 = QGridLayout(TelescopeControlWidget)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
         self.gridLayout = QGridLayout()
@@ -74,11 +75,17 @@ class Ui_TelescopeControlWidget(object):
         self.control_groupBox.setObjectName(u"control_groupBox")
         self.verticalLayout_3 = QVBoxLayout(self.control_groupBox)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
-        self.widget = Controller(self.control_groupBox)
-        self.widget.setObjectName(u"widget")
-        self.widget.setMinimumSize(QSize(210, 210))
+        self.manual_controlcheckBox = QCheckBox(self.control_groupBox)
+        self.manual_controlcheckBox.setObjectName(u"manual_controlcheckBox")
 
-        self.verticalLayout_3.addWidget(self.widget)
+        self.verticalLayout_3.addWidget(self.manual_controlcheckBox)
+
+        self.controller = Controller(self.control_groupBox)
+        self.controller.setObjectName(u"controller")
+        self.controller.setEnabled(False)
+        self.controller.setMinimumSize(QSize(280, 250))
+
+        self.verticalLayout_3.addWidget(self.controller)
 
 
         self.gridLayout.addWidget(self.control_groupBox, 0, 5, 1, 1)
@@ -146,6 +153,16 @@ class Ui_TelescopeControlWidget(object):
 
         self.formLayout.setWidget(4, QFormLayout.FieldRole, self.azimuth_velocity_valLabel)
 
+        self.azimuth_setlineEdit = QLineEdit(self.position_groupBox)
+        self.azimuth_setlineEdit.setObjectName(u"azimuth_setlineEdit")
+
+        self.formLayout.setWidget(5, QFormLayout.LabelRole, self.azimuth_setlineEdit)
+
+        self.azimuth_setpushButton = QPushButton(self.position_groupBox)
+        self.azimuth_setpushButton.setObjectName(u"azimuth_setpushButton")
+
+        self.formLayout.setWidget(5, QFormLayout.FieldRole, self.azimuth_setpushButton)
+
 
         self.horizontalLayout.addLayout(self.formLayout)
 
@@ -159,12 +176,6 @@ class Ui_TelescopeControlWidget(object):
         self.formLayout_2 = QFormLayout()
         self.formLayout_2.setObjectName(u"formLayout_2")
         self.formLayout_2.setFormAlignment(Qt.AlignmentFlag.AlignLeading|Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignTop)
-        self.zenith_actualLabel = QLabel(self.position_groupBox)
-        self.zenith_actualLabel.setObjectName(u"zenith_actualLabel")
-        self.zenith_actualLabel.setFont(font2)
-
-        self.formLayout_2.setWidget(1, QFormLayout.LabelRole, self.zenith_actualLabel)
-
         self.zenithLabel = QLabel(self.position_groupBox)
         self.zenithLabel.setObjectName(u"zenithLabel")
         self.zenithLabel.setFont(font1)
@@ -172,20 +183,11 @@ class Ui_TelescopeControlWidget(object):
 
         self.formLayout_2.setWidget(0, QFormLayout.SpanningRole, self.zenithLabel)
 
-        self.zenith_commandedLabel = QLabel(self.position_groupBox)
-        self.zenith_commandedLabel.setObjectName(u"zenith_commandedLabel")
+        self.zenith_actualLabel = QLabel(self.position_groupBox)
+        self.zenith_actualLabel.setObjectName(u"zenith_actualLabel")
+        self.zenith_actualLabel.setFont(font2)
 
-        self.formLayout_2.setWidget(2, QFormLayout.LabelRole, self.zenith_commandedLabel)
-
-        self.zenith_errorLabel = QLabel(self.position_groupBox)
-        self.zenith_errorLabel.setObjectName(u"zenith_errorLabel")
-
-        self.formLayout_2.setWidget(3, QFormLayout.LabelRole, self.zenith_errorLabel)
-
-        self.zenith_velocityLabel = QLabel(self.position_groupBox)
-        self.zenith_velocityLabel.setObjectName(u"zenith_velocityLabel")
-
-        self.formLayout_2.setWidget(4, QFormLayout.LabelRole, self.zenith_velocityLabel)
+        self.formLayout_2.setWidget(1, QFormLayout.LabelRole, self.zenith_actualLabel)
 
         self.zenith_actual_valLabel = QLabel(self.position_groupBox)
         self.zenith_actual_valLabel.setObjectName(u"zenith_actual_valLabel")
@@ -193,20 +195,45 @@ class Ui_TelescopeControlWidget(object):
 
         self.formLayout_2.setWidget(1, QFormLayout.FieldRole, self.zenith_actual_valLabel)
 
+        self.zenith_commandedLabel = QLabel(self.position_groupBox)
+        self.zenith_commandedLabel.setObjectName(u"zenith_commandedLabel")
+
+        self.formLayout_2.setWidget(2, QFormLayout.LabelRole, self.zenith_commandedLabel)
+
         self.zenith_commanded_valLabel = QLabel(self.position_groupBox)
         self.zenith_commanded_valLabel.setObjectName(u"zenith_commanded_valLabel")
 
         self.formLayout_2.setWidget(2, QFormLayout.FieldRole, self.zenith_commanded_valLabel)
+
+        self.zenith_errorLabel = QLabel(self.position_groupBox)
+        self.zenith_errorLabel.setObjectName(u"zenith_errorLabel")
+
+        self.formLayout_2.setWidget(3, QFormLayout.LabelRole, self.zenith_errorLabel)
 
         self.zenith_error_valLabel = QLabel(self.position_groupBox)
         self.zenith_error_valLabel.setObjectName(u"zenith_error_valLabel")
 
         self.formLayout_2.setWidget(3, QFormLayout.FieldRole, self.zenith_error_valLabel)
 
+        self.zenith_velocityLabel = QLabel(self.position_groupBox)
+        self.zenith_velocityLabel.setObjectName(u"zenith_velocityLabel")
+
+        self.formLayout_2.setWidget(4, QFormLayout.LabelRole, self.zenith_velocityLabel)
+
         self.zenith_velocity_valLabel = QLabel(self.position_groupBox)
         self.zenith_velocity_valLabel.setObjectName(u"zenith_velocity_valLabel")
 
         self.formLayout_2.setWidget(4, QFormLayout.FieldRole, self.zenith_velocity_valLabel)
+
+        self.zenith_setlineEdit = QLineEdit(self.position_groupBox)
+        self.zenith_setlineEdit.setObjectName(u"zenith_setlineEdit")
+
+        self.formLayout_2.setWidget(5, QFormLayout.LabelRole, self.zenith_setlineEdit)
+
+        self.zenith_setpushButton = QPushButton(self.position_groupBox)
+        self.zenith_setpushButton.setObjectName(u"zenith_setpushButton")
+
+        self.formLayout_2.setWidget(5, QFormLayout.FieldRole, self.zenith_setpushButton)
 
 
         self.horizontalLayout.addLayout(self.formLayout_2)
@@ -224,6 +251,11 @@ class Ui_TelescopeControlWidget(object):
 
         self.gridLayout_2.addLayout(self.gridLayout, 0, 0, 1, 1)
 
+        self.optical_pushButton = QPushButton(TelescopeControlWidget)
+        self.optical_pushButton.setObjectName(u"optical_pushButton")
+
+        self.gridLayout_2.addWidget(self.optical_pushButton, 1, 0, 1, 1)
+
 
         self.retranslateUi(TelescopeControlWidget)
 
@@ -234,6 +266,7 @@ class Ui_TelescopeControlWidget(object):
         TelescopeControlWidget.setWindowTitle(QCoreApplication.translate("TelescopeControlWidget", u"MainWindow", None))
         self.stop_pushButton.setText("")
         self.control_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Manual Control", None))
+        self.manual_controlcheckBox.setText(QCoreApplication.translate("TelescopeControlWidget", u"Enable Manual Control", None))
         self.position_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Telescope Position", None))
         self.azimuthLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Azimuth", None))
         self.azimuth_actualLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Actual", None))
@@ -244,14 +277,17 @@ class Ui_TelescopeControlWidget(object):
         self.azimuth_error_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
         self.azimuth_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))
         self.azimuth_velocity_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
-        self.zenith_actualLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Actual", None))
+        self.azimuth_setpushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Set", None))
         self.zenithLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Zenith", None))
-        self.zenith_commandedLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Commanded", None))
-        self.zenith_errorLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Error", None))
-        self.zenith_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))
+        self.zenith_actualLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Actual", None))
         self.zenith_actual_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.zenith_commandedLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Commanded", None))
         self.zenith_commanded_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.zenith_errorLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Error", None))
         self.zenith_error_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0", None))
+        self.zenith_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))
         self.zenith_velocity_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
+        self.zenith_setpushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Set", None))
+        self.optical_pushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Show Optical Image", None))
     # retranslateUi
 

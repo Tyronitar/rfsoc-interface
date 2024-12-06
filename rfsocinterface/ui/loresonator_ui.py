@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'loresonator.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.7.2
+## Created by: Qt User Interface Compiler version 6.7.3
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -126,7 +126,7 @@ class Ui_Dialog(object):
     # setupUi
 
     def retranslateUi(self, Dialog):
-        Dialog.setWindowTitle(QCoreApplication.translate("Dialog", u"MainWindow", None))
+        Dialog.setWindowTitle(QCoreApplication.translate("Dialog", u"Resonator", None))
         self.old_freq_label.setText(QCoreApplication.translate("Dialog", u"Old Frequency (MHz):", None))
         self.old_freq_value_label.setText("")
         self.new_freq_label.setText(QCoreApplication.translate("Dialog", u"New Frequency (MHz):", None))

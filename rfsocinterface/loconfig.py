@@ -61,8 +61,10 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
 
         chan_name = 'rfsoc2'
         pd = QProgressDialog('Running...', 'Cancel', 0, 100, self)
+        pd.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
         pd.show()
-        pd.canceled.connect(self.cancel_sweep)
+        QApplication.processEvents()
+        # pd.canceled.connect(self.cancel_sweep)
 
         # For running on ONR Computer
         self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
@@ -122,7 +124,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         dw.setWindowModality(Qt.WindowModality.WindowModal)
 
         pb = SequentialProgressBarDialog(parent=self)
-        pb.canceled.connect(self.cancel_sweep)
+        # pb.canceled.connect(self.cancel_sweep)
         nchan = sweep_data.nchan
         pb.add_job(sweep_data.fit, num_tasks=nchan, start_message='Fitting sweep data...', do_print=True)
 
