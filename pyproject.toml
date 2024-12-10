@@ -8,19 +8,19 @@ authors = ["Nia McNichols <niamcnichols@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.13,<3.14"
 numpy = "^2.1.0"
 scipy = "^1.14.1"
 matplotlib = "^3.9.2"
-PySide6 = "^6.7.2"
+PySide6 = "^6.8.1"
 redis = "^5.0.8"
 pyserial = "^3.5"
 h5py = "^3.12.1"
 uldaq = "^1.2.3"
 pymodbustcp = "^0.3.0"
 pynput = "^1.7.7"
-scikit-learn = "^1.5.2"
 pyyaml = "^6.0.2"
+scikit-learn = {url = "https://files.pythonhosted.org/packages/a5/e7/0c869f9e60d225a77af90d2aefa7a4a4c0e745b149325d1450f0f0ce5399/scikit_learn-1.5.2-cp313-cp313-win_amd64.whl"}
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.1"

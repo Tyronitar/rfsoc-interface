@@ -266,7 +266,7 @@ class LoSweepData:
     def fit(self, do_print=False, signal: SignalInstance | None=None):
         """Perform a fit to determine the resoncance frequencies of each resonator."""
         if signal:
-            signal.emit(len(self.chanmask == 1) - 1)
+            signal.emit(len(self.chanmask == 1) - 2)
         for i_chan in np.argwhere(self.chanmask == 1):
             # pull in the sweep data for this tone
             i: int = i_chan[0]

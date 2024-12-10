@@ -19,7 +19,8 @@ import matplotlib as mpl
 mpl.use('QtAgg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-from rfsocinterface.ui.canvas import FigureCanvas
+from rfsocinterface.ui.canvas import FigureCanvas, ScrollableCanvas
+from threading import current_thread
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 Number = TypeVar('Number', int, float, complex, bytes)
@@ -322,11 +323,11 @@ def layout_widgets(layout: QLayout) -> list[QWidget]:
     return [layout.itemAt(i).widget() for i in range(layout.count())]
 
 def plot(x, y, ax: plt.Axes):
-    print(f'plotting {x}, {y}')
+    print(f'plotting {x}, {y} in thread {current_thread()}')
     ax.plot(x, y)
     # ax.remove()
     # ax.show()
-    return ax
+    # return ax
 
 def move_axes(ax: plt.Axes, old_ax: plt.Axes, fig: plt.Figure, subplot_spec=(1, 1, 1)):
     """Move an Axes object from a figure to a new pyplot managed Figure in
@@ -379,7 +380,8 @@ def add_axes_to_fig(fig: plt.Figure, all_axes: list[list[plt.Axes]]):
         fig.tight_layout()
 
 def parallel_plotting():
-    n_plots = 2 ** 2
+    print('Entered function')
+    n_plots = 10 ** 2
     side_length = int(np.sqrt(n_plots))
     ncols = nrows = side_length
     rand_data = np.random.random((2, 10, n_plots))
@@ -387,12 +389,20 @@ def parallel_plotting():
     y = np.random.random((n_plots, 10))
 
     # fig = plt.figure(figsize=(side_length, side_length))
-    fig, axes = plt.subplots(side_length, side_length)
-    fig.tight_layout()
+    print('Creating Figure...')
+    time.sleep(0.1)
+    fig, axes = plt.subplots(side_length, side_length, figsize=(2 * side_length, 2 * side_length))
+    # fig.tight_layout()
+    print('...Done!')
     # plt.rc('font', size=8)
     futures = []
-    with ProcessPoolExecutor(max_workers=min(n_plots, 8)) as ex:
+    print('Creating ThreadPoolExecutor...')
+    time.sleep(0.1)
+    with ThreadPoolExecutor(max_workers=min(n_plots, 8)) as ex:
+        print('...Done!')
+        time.sleep(0.1)
         print('Creating jobs...')
+        time.sleep(0.1)
         # for i in range(n_plots):
         #     subplot = plt.subplot2grid(
         #         (nrows, ncols), (i // ncols, np.mod(i, ncols)),
@@ -400,8 +410,8 @@ def parallel_plotting():
         #     )
         #     futures.append(ex.submit(plot, subplot, x, y[i]))
         new_axes = list(ex.map(plot, (x for _ in range(n_plots)), (y[i] for i in range(n_plots)), (ax for ax in axes.ravel())))
-        print(new_axes, np.shape(new_axes))
-        new_axes = np.reshape(new_axes, (side_length, side_length))
+        # print(new_axes, np.shape(new_axes))
+        # new_axes = np.reshape(new_axes, (side_length, side_length))
         
         # print('Waiting for jobs to finish...')
         # q.join()
@@ -418,7 +428,7 @@ def parallel_plotting():
     # for ax in axes.ravel():
     #     fig.delaxes(ax)
     # new_fig = plt.figure()
-    add_axes_to_fig(fig, new_axes)
+    # add_axes_to_fig(fig, new_axes)
     fig.tight_layout()
     return fig
     # # new_fig, axes = plt.subplots(side_length, side_length)
@@ -523,11 +533,13 @@ def parallel_plotting2():
 
 
 if __name__ == '__main__':
+    print('Creating Application...')
     app = QApplication()
+    print('...Done!')
     fig = parallel_plotting()
 
     class Window(QMainWindow):
-        def __init__(self, canvas: FigureCanvas, parent = None):
+        def __init__(self, canvas: ScrollableCanvas, parent = None):
             super().__init__(parent=parent)
             self.centralwidget = QWidget(self)
             self.vlayout = QVBoxLayout(self.centralwidget)
@@ -537,7 +549,9 @@ if __name__ == '__main__':
 
     
     print(np.shape(fig.axes))
-    win = Window(FigureCanvas(fig))
+    canvas = ScrollableCanvas()
+    canvas.set_figure(fig)
+    win = Window(canvas)
     win.show()
     app.exec()
     # y = input('Done?')
