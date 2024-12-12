@@ -572,9 +572,9 @@ class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
         self.stop_pushButton.clicked.connect(self.stop_motion)
         self.azimuth_setpushButton.clicked.connect(self.set_az_pos)
         self.zenith_setpushButton.clicked.connect(self.set_ze_pos)
-        self.controller.buttonGroup.buttonPressed.connect(self.steer)
+        self.controller.buttonGroup.buttonPressed.connect(self.jog)
         self.controller.buttonGroup.buttonReleased.connect(self.stop_motion)
-        self.manual_controlcheckBox.toggled.connect(self.toggle_steering)
+        self.manual_controlcheckBox.toggled.connect(self.toggle_jogging)
 
         # Set up Optical Camera
         self.cam_ctrl = SKPR_Camera_Control()
@@ -618,13 +618,13 @@ class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
         dialog.setLayout(dialog_layout)
         dialog.show()
     
-    def toggle_steering(self):
+    def toggle_jogging(self):
         if self.manual_controlcheckBox.isChecked():
             self.controller.setEnabled(True)
         else:
             self.controller.setEnabled(False)
     
-    def steer(self, btn: QAbstractButton): 
+    def jog(self, btn: QAbstractButton): 
         self.ctrl.run = True
         match btn:
             case self.controller.up_toolButton:
