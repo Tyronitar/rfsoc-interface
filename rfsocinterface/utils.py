@@ -13,7 +13,7 @@ import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QCoreApplication
 from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QMainWindow, QApplication, QVBoxLayout
 import time
-from multiprocessing import Pool, Queue, Manager
+from multiprocessing import Pool, Queue, Manager, cpu_count
 from concurrent.futures import ProcessPoolExecutor, wait, ThreadPoolExecutor
 import matplotlib as mpl
 mpl.use('QtAgg')
@@ -381,7 +381,7 @@ def add_axes_to_fig(fig: plt.Figure, all_axes: list[list[plt.Axes]]):
 
 def parallel_plotting():
     print('Entered function')
-    n_plots = 10 ** 2
+    n_plots = 50 ** 2
     side_length = int(np.sqrt(n_plots))
     ncols = nrows = side_length
     rand_data = np.random.random((2, 10, n_plots))
@@ -398,7 +398,7 @@ def parallel_plotting():
     futures = []
     print('Creating ThreadPoolExecutor...')
     time.sleep(0.1)
-    with ThreadPoolExecutor(max_workers=min(n_plots, 8)) as ex:
+    with ThreadPoolExecutor(max_workers=min(n_plots, cpu_count())) as ex:
         print('...Done!')
         time.sleep(0.1)
         print('Creating jobs...')
