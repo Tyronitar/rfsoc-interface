@@ -338,6 +338,10 @@ def digital_to_analog(d: int, min: float, max: float, bits: int) -> int:
     a = vals[d]
     return a
 
+class SettingsError(Exception):
+    def __init__(self, message: str):
+        super().__init__("Error in settings file: " + message)
+
 
 if __name__ == '__main__':
     def test_fun():

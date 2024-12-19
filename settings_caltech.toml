@@ -1,0 +1,48 @@
+[general]
+tabs = [
+    "initialization",
+    "losweep",
+    # "telescope",
+    "data",
+    "imaging",
+]
+active_tab = "initialization"
+
+[telescope]
+controller.class = "TelescopeMotorController"
+controller.path = "./telescope.py"
+azimuth_jog_voltage = 5
+zenith_jog_voltage = 1
+
+[defaults]
+    [defaults.losweep]
+    global_shift = 0.0
+    df = 1.0
+    deltaf = 100.0
+    flagging_threshold = 3.0
+    second_sweep.df = 1.0
+
+    [defaults.data_streaming]
+    use_default_filename = true
+    directory = "/data/"
+
+    [defaults.channel]
+    bitstream = "/home/xilinx/dualchan_v2.bit"
+    tone_list = "/home/onrkids/readout/host/params/Default_tone_list.npy"
+    tone_powers = "/home/onrkids/readout/host/params/Device_aSi1_Channel2_20220222_300K_200mK_max_readout_power.npy"
+    chanmask = "/home/onrkids/readout/host/params/chanmask_rfsoc2.npy"
+    dsp = {lo_freq = 400e6, n_average = 524288}
+    rfin = 0.0
+    rfout = 0.0
+
+[[channels]]
+name = "RFSOC1"
+redis = {ip = "fe80::8472:ce87:2997:72ca", port = 6379}
+ethernet = {sourceip = "192.168.3.41", destip = "192.168.3.40", destmac = "681CA2123652", port = 4096}
+chanmask = "/home/onrkids/readout/host/params/chanmask_rfsoc1.npy"
+rfin = 5.0
+
+[[channels]]
+name = "RFSOC2"
+redis = {ip = "fe80::8472:ce87:2997:72ca", port = 6379}
+ethernet = {sourceip = "192.168.3.41", destip = "192.168.3.40", destmac = "681CA2123652", port = 4096}

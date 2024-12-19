@@ -22,7 +22,8 @@ import os
 import pdb
 import serial
 from pyModbusTCP.client import ModbusClient
-from telnetlib import Telnet
+# from telnetlib import Telnet
+from Exscript.protocols.telnetlib import Telnet
 import h5py
 import glob
 from pathlib import Path

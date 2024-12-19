@@ -23,6 +23,8 @@ scikit-learn = "^1.5.2"
 pyyaml = "^6.0.2"
 opencv-python = "^4.10.0.84"
 vmbpy = {url = "https://github.com/alliedvision/VmbPy/releases/download/1.0.5/vmbpy-1.0.5-py3-none-any.whl"}
+kidpy3 = {url = "https://github.com/ASU-Astronomical-Instrumentation/readout/releases/download/0.2.3/kidpy3-0.2.3-py3-none-any.whl"}
+exscript = "^2.6.28"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.1"

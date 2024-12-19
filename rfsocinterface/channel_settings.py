@@ -30,13 +30,12 @@ ONR_REPO_DIR = Path('~').expanduser() / 'onrkidpy'
 DEFAULT_CONFIG = 'defaults.yaml'
 
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
-    def __init__(self, kpy: kidpy, cfg: str=DEFAULT_CONFIG, parent: QWidget | None = None):
+    def __init__(self, kpy: kidpy, settings: dict, parent: QWidget | None = None):
         super().__init__(parent)
         self.kpy = kpy
         self.comport = '/dev/IF1Attenuators'
         # self.transceiver = Transceiver(self.comport)
-        with open(cfg) as f:
-            self.cfg = yaml.safe_load(f)
+        self.settings = settings
 
         self.setupUi(self)
         self._additional_setup()
@@ -343,14 +342,22 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.transceiver.set_atten(addr, att)
     
     def set_defaults(self):
-        self.tone_list_file_upload_widget.lineEdit.setText(self.cfg['RFSOC2']['tone_list'])
-        self.tone_power_file_upload_widget.lineEdit.setText(self.cfg['RFSOC2']['tone_powers'])
-        self.firmware_file_upload_widget.lineEdit.setText(self.cfg['RFSOC2']['bitstream'])
-        self.chanmask_lineEdit.setText(self.cfg['RFSOC2']['chanmask'])
-        self.udp_sourceLineEdit.setText(self.cfg['RFSOC2']['ethernet_config']['udp_data_sourceip'])
-        self.udp_destLineEdit.setText(self.cfg['RFSOC2']['ethernet_config']['udp_data_destip'])
-        self.rfin_lineEdit.setText(str(self.cfg['RFSOC2']['rfin']))
-        self.rfout_lineEdit.setText(str(self.cfg['RFSOC2']['rfout']))
+        self.tone_list_file_upload_widget.lineEdit.setText(self.settings['tone_list'])
+        self.tone_list_file_upload_widget.lineEdit.setPlaceholderText(self.settings['tone_list'])
+        self.tone_power_file_upload_widget.lineEdit.setText(self.settings['tone_powers'])
+        self.tone_power_file_upload_widget.lineEdit.setPlaceholderText(self.settings['tone_powers'])
+        self.firmware_file_upload_widget.lineEdit.setText(self.settings['bitstream'])
+        self.firmware_file_upload_widget.lineEdit.setPlaceholderText(self.settings['bitstream'])
+        self.chanmask_lineEdit.setText(self.settings['chanmask'])
+        self.chanmask_lineEdit.setPlaceholderText(self.settings['chanmask'])
+        self.udp_sourceLineEdit.setText(self.settings['ethernet']['sourceip'])
+        self.udp_sourceLineEdit.setPlaceholderText(self.settings['ethernet']['sourceip'])
+        self.udp_destLineEdit.setText(self.settings['ethernet']['destip'])
+        self.udp_destLineEdit.setPlaceholderText(self.settings['ethernet']['destip'])
+        self.rfin_lineEdit.setText(str(self.settings['rfin']))
+        self.rfin_lineEdit.setPlaceholderText(str(self.settings['rfin']))
+        self.rfout_lineEdit.setText(str(self.settings['rfout']))
+        self.rfout_lineEdit.setPlaceholderText(str(self.settings['rfout']))
     
     @Slot(QAbstractButton)
     def restore_defaults(self, button: QAbstractButton):

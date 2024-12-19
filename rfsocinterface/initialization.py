@@ -13,33 +13,35 @@ from kidpy import kidpy
 
 class InitializationWidget(QWidget, Ui_InitializationTabWidget):
 
-    def __init__(self, kpy: kidpy, parent: QWidget | None = None):
+    def __init__(self, kpy: kidpy, settings: dict, parent: QWidget | None = None):
         super().__init__(parent)
         self.setupUi(self)
         self.kpy = kpy
+        self.settings = settings
         self.channels: list[Section] = []
         self.active_channel = None
 
         self.scrollArea.setStyleSheet('QScrollArea {background-color:white;}')
         self.scrollAreaWidgetContents.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
-        n_chan = 1
-        for i in range(n_chan):
-            self.add_channel(toggle=i == n_chan - 1)
+        n_chan = len(settings['channels'])
+        for i, channel in enumerate(settings['channels']):
+            self.add_channel(channel, toggle=i == n_chan - 1)
 
         self.add_toolButton.clicked.connect(lambda: self.add_channel(toggle=True))
         self.delete_toolButton.clicked.connect(self.remove_channel)
     
-    def add_channel(self, toggle: bool=False):
+    def add_channel(self, chan_dict: dict, toggle: bool=False):
+        channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)
         channel_id = len(self.channels) + 1
         channel_section = Section(self.scrollAreaWidgetContents, animationDuration=100)
         channel_section.setObjectName(f'channel_{channel_id}_section')
-        channel_widget = ChannelSettingsWidget(self.kpy, parent=channel_section)
+        channel_widget = ChannelSettingsWidget(self.kpy, channel_settings, parent=channel_section)
         channel_widget.setObjectName(f'channel_{channel_id}_widget')
         vertical_layout = QVBoxLayout()
         vertical_layout.setObjectName(f'channel_{channel_id}_verticalLayout')
         vertical_layout.addWidget(channel_widget)
         channel_section.setContentLayout(vertical_layout)
-        channel_section.setTitle(f'Channel {channel_id}')
+        channel_section.setTitle(channel_settings['name'])
 
         self.verticalLayout.addWidget(channel_section, alignment=Qt.AlignmentFlag.AlignTop)
         self.channels.append(channel_section)
