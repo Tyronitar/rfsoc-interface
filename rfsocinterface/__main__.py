@@ -60,7 +60,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.losweep_tab.setObjectName(u"losweep_tab")
         self.verticalLayout_4 = QVBoxLayout(self.losweep_tab)
         self.verticalLayout_4.setObjectName(u"verticalLayout_4")
-        self.losweep_widget = LoConfigWidget(self.kpy, self.losweep_tab)
+        self.losweep_widget = LoConfigWidget(self.kpy, self.settings, self.losweep_tab)
         self.losweep_widget.setObjectName(u"losweep_widget")
         self.verticalLayout_4.addWidget(self.losweep_widget)
         self.tabWidget.addTab(self.losweep_tab, "")
@@ -111,7 +111,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 case "imaging":
                     self._make_imaging_tab()
                 case _:
-                    raise SettingsError(f'Invalid name for general.tabs: "{tab}". Valid options are {TAB_NAMES}')
+                    raise SettingsError(f'Invalid name "{tab}" in general.tabs; valid options are {TAB_NAMES}')
 
         self.tabWidget.setCurrentIndex(0)
 
@@ -148,6 +148,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 if __name__ == '__main__':
     app = QApplication()
 
-    w = MainWindow("settings_caltech.toml")
+    w = MainWindow("settings.toml")
     w.show()
     app.exec()

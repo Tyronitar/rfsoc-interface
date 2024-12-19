@@ -18,11 +18,12 @@ import numpy as np
 import onrkidpy
 import sweeps
 import h5py
-from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path, JobInterrupt
+from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path, JobInterrupt, SettingsError
 
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
 DEFAULT_F_CENTER = 400.0
 DEFAULT_CHANMASK = '/home/onrkids/readout/host/params/chanmask_rfsoc2.npy'
+FILE_SUFFIXES = {'none', 'temperature', 'elevation'}
 
 
 class LoConfigWidget(QWidget, Ui_LOConfigWidget):
@@ -35,12 +36,14 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         tone_path (Path): The path to the selected tone list file.
     """
 
-    def __init__(self, kpy: kidpy, parent: QWidget | None=None) -> None:
+    def __init__(self, kpy: kidpy, settings: dict, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
         super().__init__(parent)
         self.setupUi(self)
         self.kpy = kpy
-        self.active_suffix: Literal['none', 'temperature', 'elevation'] = 'none'
+        self.settings = settings
+
+        self.set_defaults()
 
         self.buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
         self.second_sweep_checkBox.clicked.connect(self.check_second_sweep)
@@ -53,6 +56,21 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         )
         
         self.dialog_button_box.accepted.connect(self.run_sweep)
+    
+    def set_defaults(self):
+        defaults = self.settings['defaults']['losweep']
+        self.global_shift_lineEdit.setPlaceholderText(str(defaults['global_shift']))
+        self.df_lineEdit.setPlaceholderText(str(defaults['df']))
+        self.deltaf_lineEdit.setPlaceholderText(str(defaults['deltaf']))
+        self.flagging_lineEdit.setPlaceholderText(str(defaults['flagging_threshold']))
+
+        file_suffix = defaults.get('file_suffix', 'none')
+        if  file_suffix not in FILE_SUFFIXES:
+            raise SettingsError(f'Invalid value for defaults.losweep.file_suffix: "{file_suffix}; valid values are: {FILE_SUFFIXES}')
+        self.active_suffix: Literal['none', 'temperature', 'elevation'] = file_suffix
+
+        self.second_sweep_df_lineEdit.setPlaceholderText(str(defaults['second_sweep']['df']))
+
     
     def cancel_sweep(self):
         raise JobInterrupt('LO Sweep Cancelled') 
