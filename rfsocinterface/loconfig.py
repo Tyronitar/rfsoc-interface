@@ -82,7 +82,8 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         rfsoc = self.rfsocs[0]
         # TODO: Need to check which System it is
         # Should be channel X -> system X
-        valon = Valon5009("/dev/IF1System1LO")
+        # TODO: Get the actual comport file from the config
+        valon = Valon5009("/dev/asu_if_synth")
         chan = 1
 
         chan_name = 'rfsoc2'
@@ -93,7 +94,12 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         # pd.canceled.connect(self.cancel_sweep)
 
         # For running on ONR Computer
-        self.rfsocs.valon.set_frequency(2, DEFAULT_F_CENTER)
+        # TODO: Fix this
+        try:
+            lo_freq = self.settings['defaults']['channel']['dsp']['lo_freq']
+        except KeyError:
+            lo_freq = DEFAULT_F_CENTER
+        valon.set_frequency(2, lo_freq)
         tone_shift = get_num_value(self.global_shift_lineEdit)
         if tone_shift != 0:
             lo_freq = valon.get_frequency(SYNTH_B)

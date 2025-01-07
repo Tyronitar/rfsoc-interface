@@ -17,7 +17,7 @@ import redis
 import configparser
 from kidpy import checkBlastCli, wait_for_free, wait_for_reply, kidpy
 from kidpy3 import RFSOC
-from kidpy3.hardware import Transceiver320d
+from kidpy3.hardware import Transceiver321
 import numpy as np
 from transceiver import Transceiver
 import yaml
@@ -36,8 +36,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         super().__init__(parent)
         self.rfsoc = rfsoc
         self.channel = channel
-        self.comport = '/dev/IF1Attenuators'
-        self.transceiver = Transceiver320d(self.comport)
+        # TODO: Make this dynamic with config file
+        self.comport = '/dev/asu_if_atten'
+        self.transceiver = Transceiver321(self.comport)
         self.settings = settings
 
         self.setupUi(self)
@@ -80,12 +81,12 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.firmware_file_upload_widget.uploaded.connect(self.upload_firmware)
         # self.firmware_file_upload_widget.toolButton.clicked.connect(self.upload_firmware)
         self.tone_list_file_upload_widget.uploaded.connect(self.upload_tone_list)
-        self.tone_power_file_upload_widget.uploaded.connect(self.upload_tone_powers)
+        # self.tone_power_file_upload_widget.uploaded.connect(self.upload_tone_powers)
         self.udp_openPushButton.clicked.connect(self.setup_udp)
         self.rfin_uploadToolButton.clicked.connect(lambda: self.set_attenuation('in'))
         self.rfout_uploadToolButton.clicked.connect(lambda: self.set_attenuation('out'))
         self.buttonBox.clicked.connect(self.restore_defaults)
-        # self.set_defaults()
+        self.set_defaults()
 
     def _additional_setup(self):
 
@@ -326,7 +327,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         tone_file = get_lineEdit_text(self.tone_list_file_upload_widget.lineEdit)
         amp_file = get_lineEdit_text(self.tone_power_file_upload_widget.lineEdit)
         tone_list = np.ndarray.tolist(np.load(tone_file))
-        tone_powers = np.ndarray.tolist(np.load(amp_file))
+        # tone_powers = np.ndarray.tolist(np.load(amp_file))
+        tone_powers = np.ones_like(tone_list)
         self.rfsoc.set_tone_list(chan=self.channel, tonelist=tone_list, amplitudes=tone_powers)
 
     def set_attenuation(self, attenuation: str):
@@ -341,20 +343,23 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             case _:
                 raise ValueError(f'Function `set_attenuation` called with illegal argument "{attenuation}"; must be in ["in", "out"]')
         self.transceiver.set_atten(addr, att)
+        print('Succesfully set attenuation')
     
     def set_defaults(self):
         self.tone_list_file_upload_widget.lineEdit.setText(self.settings['tone_list'])
         self.tone_list_file_upload_widget.lineEdit.setPlaceholderText(self.settings['tone_list'])
-        self.tone_power_file_upload_widget.lineEdit.setText(self.settings['tone_powers'])
-        self.tone_power_file_upload_widget.lineEdit.setPlaceholderText(self.settings['tone_powers'])
+        if 'tone_powers' in self.settings:
+            self.tone_power_file_upload_widget.lineEdit.setText(self.settings['tone_powers'])
+            self.tone_power_file_upload_widget.lineEdit.setPlaceholderText(self.settings['tone_powers'])
         self.firmware_file_upload_widget.lineEdit.setText(self.settings['bitstream'])
         self.firmware_file_upload_widget.lineEdit.setPlaceholderText(self.settings['bitstream'])
-        self.chanmask_lineEdit.setText(self.settings['chanmask'])
-        self.chanmask_lineEdit.setPlaceholderText(self.settings['chanmask'])
-        self.udp_sourceLineEdit.setText(self.settings['ethernet']['sourceip'])
-        self.udp_sourceLineEdit.setPlaceholderText(self.settings['ethernet']['sourceip'])
-        self.udp_destLineEdit.setText(self.settings['ethernet']['destip'])
-        self.udp_destLineEdit.setPlaceholderText(self.settings['ethernet']['destip'])
+        if 'tone_powers' in self.settings:
+            self.chanmask_lineEdit.setText(self.settings['chanmask'])
+            self.chanmask_lineEdit.setPlaceholderText(self.settings['chanmask'])
+        self.udp_sourceLineEdit.setText(self.settings['ethernet']['sourceip_a'])
+        self.udp_sourceLineEdit.setPlaceholderText(self.settings['ethernet']['sourceip_a'])
+        self.udp_destLineEdit.setText(self.settings['ethernet']['destip_a'])
+        self.udp_destLineEdit.setPlaceholderText(self.settings['ethernet']['destip_a'])
         self.rfin_lineEdit.setText(str(self.settings['rfin']))
         self.rfin_lineEdit.setPlaceholderText(str(self.settings['rfin']))
         self.rfout_lineEdit.setText(str(self.settings['rfout']))

@@ -36,7 +36,7 @@ class InitializationWidget(QWidget, Ui_InitializationTabWidget):
         channel_section = Section(self.scrollAreaWidgetContents, animationDuration=100)
         channel_section.setObjectName(f'channel_{channel_id}_section')
         # TODO: Make the channel dynamic
-        channel_widget = ChannelSettingsWidget(self.rfsocs, 1, channel_settings, parent=channel_section)
+        channel_widget = ChannelSettingsWidget(self.rfsocs[0], 1, channel_settings, parent=channel_section)
         channel_widget.setObjectName(f'channel_{channel_id}_widget')
         vertical_layout = QVBoxLayout()
         vertical_layout.setObjectName(f'channel_{channel_id}_verticalLayout')

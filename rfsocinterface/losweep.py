@@ -417,9 +417,16 @@ class LoSweep:
 
             # Actually use this data
             Naccums = 100
-            packets = capture_packets(self.chan, Naccums)
-            I = packets[::2]
-            Q = packets[1::2]
+            packets = capture_packets(self.chan, Naccums).T
+            I = []
+            Q = []
+            for packet in packets:
+                It = packet[::2]
+                Qt = packet[1::2]
+                I.append(It)
+                Q.append(Qt)
+            I = np.array(I)
+            Q = np.array(Q)
 
             Imed = np.median(I, axis=0)
             Qmed = np.median(Q, axis=0)
@@ -449,7 +456,7 @@ class LoSweep:
         #    f = np.array([flos * 1e6 + ftone for ftone in freqs]).flatten()
         sweep_Z_f = sweep_Z.T
         #    sweep_Z_f = sweep_Z.T.flatten()
-        self._udp.release()
+
         ## SAVE f and sweep_Z_f TO LOCAL FILES
         # SHOULD BE ABLE TO SAVE TARG OR VNA
         # WITH TIMESTAMP
@@ -470,6 +477,8 @@ class LoSweep:
             freq_step=freq_step,
             pd=pd,
         )
-        chanmask = get_chanmask(chanmask_file)
+        # TODO: Fix this
+        # chanmask = get_chanmask(chanmask_file)
+        chanmask = np.ones_like(tone_list)
         return LoSweepData(tone_list, np.array(results), chanmask)
         print("LO Sweep s21 file saved.")

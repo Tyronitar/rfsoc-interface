@@ -12,7 +12,7 @@ from kidpy3 import RFSOC
 from rfsocinterface.ui.full_ui_ui import Ui_MainWindow
 from rfsocinterface.initialization import InitializationWidget
 from rfsocinterface.loconfig import LoConfigWidget
-from rfsocinterface.telescope import TelescopeControlWidget
+
 from rfsocinterface.utils import SettingsError, ensure_path, convert_to_kidy_format
 
 TAB_NAMES = {
@@ -73,6 +73,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabs.append(self.losweep_widget)
     
     def _make_telescope_tab(self):
+        from rfsocinterface.telescope import TelescopeControlWidget
         self.telescope_tab = QWidget()
         self.telescope_tab.setObjectName(u"telescope_tab")
         self.gridLayout = QGridLayout(self.telescope_tab)
@@ -127,7 +128,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             rfsoc_config.update(self.settings['defaults']['channel'])
             rfsoc_config.update(rfsoc_settings)
             yaml_contents = convert_to_kidy_format(rfsoc_config)
-            fname = f'{rfsoc_settings['name']}.yml'
+            fname = f'{rfsoc_settings["name"]}.yml'
             with open(fname, 'w') as f:
                 yaml.dump(yaml_contents, f)
             rfsoc = RFSOC(fname)

@@ -1,0 +1,17 @@
+rfsoc_config:
+  bitstream: /home/xilinx/dualchan_v2.bit
+  dsp_confgi:
+    lo_default_freq: 400000000.0
+    n_averages: 524288
+  ethernet_config:
+    destmac_a: FC5CEEB8C46C
+    destmac_b: 681CA2123652
+    port_a: 4096
+    port_b: 4096
+    udp_data_a_destip: 192.168.3.40
+    udp_data_a_sourceip: 192.168.3.41
+    udp_data_b_destip: 192.168.4.40
+    udp_data_b_sourceip: 192.168.4.4
+  redis_ip: 192.168.2.25
+  redis_port: 6379
+  rfsoc_name: RFSOC
