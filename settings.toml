@@ -32,19 +32,27 @@ zenith_jog_voltage = 1
     tone_list = "/home/onrkids/readout/host/params/Default_tone_list.npy"
     tone_powers = "/home/onrkids/readout/host/params/Device_aSi1_Channel2_20220222_300K_200mK_max_readout_power.npy"
     chanmask = "/home/onrkids/readout/host/params/chanmask_rfsoc2.npy"
-    dsp = {lo_freq = 400e6, n_average = 524288}
+    dsp = {lo_freq = 400e6, n_averages = 524288}
     rfin = 0.0
     rfout = 0.0
 
-[[channels]]
-name = "RFSOC1"
-redis = {ip = "fe80::8472:ce87:2997:72ca", port = 6379}
-ethernet = {sourceip = "192.168.3.41", destip = "192.168.3.40", destmac = "681CA2123652", port = 4096}
-chanmask = "/home/onrkids/readout/host/params/chanmask_rfsoc1.npy"
-rfin = 5.0
+# [[rfsocs]]
+# name = "RFSOC1"
+# redis = {ip = "fe80::8472:ce87:2997:72ca", port = 6379}
+# ethernet = {sourceip = "192.168.3.41", destip = "192.168.3.40", destmac = "681CA2123652", port = 4096}
+# chanmask = "/home/onrkids/readout/host/params/chanmask_rfsoc1.npy"
+# rfin = 5.0
 
-[[channels]]
+[[rfsocs]]
 name = "RFSOC2"
 # redis = {ip = "192.168.2.1", port = 6379}
 redis = {ip = "fe80::8472:ce87:2997:72ca", port = 6379}
-ethernet = {sourceip = "192.168.3.41", destip = "192.168.3.40", destmac = "681CA2123652", port = 4096}
+[rfsocs.ethernet]
+sourceip_a = '192.168.3.41'
+sourceip_b = '192.168.4.4'
+destip_a = '192.168.3.40'
+destip_b = '192.168.4.40'
+destmac_a = '681CA2123652'
+destmac_b = '681CA2123652'
+port_a = 4096
+port_b = 4096

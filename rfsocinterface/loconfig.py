@@ -12,8 +12,10 @@ from rfsocinterface.lodiagnostics import DiagnosticsDialog
 from rfsocinterface.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
 
 from kidpy import kidpy
+from kidpy3 import RFSOC
+from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 import time
-import valon5009
+# import valon5009
 import numpy as np
 import onrkidpy
 import sweeps
@@ -36,11 +38,11 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         tone_path (Path): The path to the selected tone list file.
     """
 
-    def __init__(self, kpy: kidpy, settings: dict, parent: QWidget | None=None) -> None:
+    def __init__(self, rfsocs: list[RFSOC], settings: dict, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
         super().__init__(parent)
         self.setupUi(self)
-        self.kpy = kpy
+        self.rfsocs = rfsocs
         self.settings = settings
 
         self.set_defaults()
@@ -76,6 +78,12 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         raise JobInterrupt('LO Sweep Cancelled') 
     
     def run_sweep(self):
+        # TODO: Choose which RFSOC and Channel to run the sweep
+        rfsoc = self.rfsocs[0]
+        # TODO: Need to check which System it is
+        # Should be channel X -> system X
+        valon = Valon5009("/dev/IF1System1LO")
+        chan = 1
 
         chan_name = 'rfsoc2'
         pd = QProgressDialog('Running...', 'Cancel', 0, 100, self)
@@ -85,15 +93,12 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         # pd.canceled.connect(self.cancel_sweep)
 
         # For running on ONR Computer
-        self.kpy.valon.set_frequency(2, DEFAULT_F_CENTER)
+        self.rfsocs.valon.set_frequency(2, DEFAULT_F_CENTER)
         tone_shift = get_num_value(self.global_shift_lineEdit)
         if tone_shift != 0:
-            lo_freq = valon5009.Synthesizer.get_frequency(
-                self.kpy.valon,
-                valon5009.SYNTH_B,
-            )
-            curr_tone_list = self.kpy.get_tone_list()
-            fList = np.ndarray.tolist(
+            lo_freq = valon.get_frequency(SYNTH_B)
+            curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
+            new_tones = np.ndarray.tolist(
                 curr_tone_list
                 + float(tone_shift)
                 * curr_tone_list
@@ -104,8 +109,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
             print(
                 "Waiting for the RFSOC to finish writing the updated frequency list"
             )
-            fAmps = self.kpy.get_last_alist() #amplitudes
-            write_fList(self.kpy, fList, np.ndarray.tolist(fAmps))
+            rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
             
         savefile = onrkidpy.get_filename(
             type="LO", chan_name=chan_name
@@ -120,12 +124,12 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
 
         # For running on ONR compupter
         sweep = LoSweep(
-            self.kpy.valon,
-            self.kpy._kidpy__udp,
-            self.kpy.get_last_flist(),
-            valon5009.Synthesizer.get_frequency(self.kpy.valon, valon5009.SYNTH_B),
+            valon,
+            rfsoc.rf1,
+            rfsoc.get_tone_list()[0],
+            valon.get_frequency(SYNTH_B),
         )
-        tone_list = self.kpy.get_tone_list()
+        tone_list = rfsoc.get_tone_list()[0]
         chanmask = DEFAULT_CHANMASK
         sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=200, freq_step=0.001, pd=pd)
 

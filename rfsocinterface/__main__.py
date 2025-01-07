@@ -2,16 +2,18 @@
 
 import tomllib
 from pathlib import Path
+import yaml
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QGridLayout, QTabWidget
 from PySide6.QtCore import Qt, QCoreApplication
 
 from kidpy import kidpy, testConnection, wait_for_reply, wait_for_free
+from kidpy3 import RFSOC
 from rfsocinterface.ui.full_ui_ui import Ui_MainWindow
 from rfsocinterface.initialization import InitializationWidget
 from rfsocinterface.loconfig import LoConfigWidget
 from rfsocinterface.telescope import TelescopeControlWidget
-from rfsocinterface.utils import SettingsError, ensure_path
+from rfsocinterface.utils import SettingsError, ensure_path, convert_to_kidy_format
 
 TAB_NAMES = {
     "initialization",
@@ -20,6 +22,8 @@ TAB_NAMES = {
     "data",
     "imaging",
 }
+
+import json
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -31,9 +35,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         with settings_file.open('rb') as f:
             self.settings = tomllib.load(f)
-
+        
         self.tabs = []
-        self.kpy = None
+        self.rfsocs: list[RFSOC] = []
+        self.init_rfsocs()
         # self.init_kidpy()
 
         self.setupUi(self)
@@ -48,7 +53,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.initialization_tab.setObjectName(u"initialization_tab")
         self.verticalLayout = QVBoxLayout(self.initialization_tab)
         self.verticalLayout.setObjectName(u"verticalLayout")
-        self.initialization_widget = InitializationWidget(self.kpy, self.settings, self.initialization_tab)
+        self.initialization_widget = InitializationWidget(self.rfsocs, self.settings, self.initialization_tab)
         self.initialization_widget.setObjectName(u"initialization_widget")
         self.verticalLayout.addWidget(self.initialization_widget)
         self.tabWidget.addTab(self.initialization_tab, "")
@@ -60,7 +65,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.losweep_tab.setObjectName(u"losweep_tab")
         self.verticalLayout_4 = QVBoxLayout(self.losweep_tab)
         self.verticalLayout_4.setObjectName(u"verticalLayout_4")
-        self.losweep_widget = LoConfigWidget(self.kpy, self.settings, self.losweep_tab)
+        self.losweep_widget = LoConfigWidget(self.rfsocs, self.settings, self.losweep_tab)
         self.losweep_widget.setObjectName(u"losweep_widget")
         self.verticalLayout_4.addWidget(self.losweep_widget)
         self.tabWidget.addTab(self.losweep_tab, "")
@@ -72,7 +77,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.telescope_tab.setObjectName(u"telescope_tab")
         self.gridLayout = QGridLayout(self.telescope_tab)
         self.gridLayout.setObjectName(u"gridLayout")
-        self.telescope_widget = TelescopeControlWidget(self.kpy, self.telescope_tab)
+        self.telescope_widget = TelescopeControlWidget(self.rfsocs, self.telescope_tab)
         self.telescope_widget.setObjectName(u"telescope_widget")
         self.gridLayout.addWidget(self.telescope_widget, 0, 0, 1, 1)
         self.tabWidget.addTab(self.telescope_tab, "")
@@ -115,20 +120,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.tabWidget.setCurrentIndex(0)
 
-    def init_kidpy(self):
-        self.kpy = kidpy()
-        conStatus = testConnection(self.kpy.r)
-        if conStatus:
-            print("\033[0;36m" + "\r\nConnected" + "\033[0m")
-        else:
-            print(
-                "\033[0;31m"
-                + "\r\nCouldn't connect to redis-server double check it's running and the generalConfig is correct"
-                + "\033[0m"
-            )
-        if conStatus == False:
-            exit(1)
-    
+    def init_rfsocs(self):
+        rfsoc_settings: dict
+        for rfsoc_settings in self.settings['rfsocs']:
+            rfsoc_config = {}
+            rfsoc_config.update(self.settings['defaults']['channel'])
+            rfsoc_config.update(rfsoc_settings)
+            yaml_contents = convert_to_kidy_format(rfsoc_config)
+            fname = f'{rfsoc_settings['name']}.yml'
+            with open(fname, 'w') as f:
+                yaml.dump(yaml_contents, f)
+            rfsoc = RFSOC(fname)
+            self.rfsocs.append(rfsoc)
+
     def resize_to_current(self, index: int):
         for i in range(self.tabWidget.count()):
             tab = self.tabWidget.widget(i)

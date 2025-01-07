@@ -16,6 +16,8 @@ import json
 import redis
 import configparser
 from kidpy import checkBlastCli, wait_for_free, wait_for_reply, kidpy
+from kidpy3 import RFSOC
+from kidpy3.hardware import Transceiver320d
 import numpy as np
 from transceiver import Transceiver
 import yaml
@@ -23,18 +25,19 @@ import yaml
 from rfsocinterface.ui.file_upload import FileUploadWidget
 from rfsocinterface.ui.section import Section
 from rfsocinterface.ui.lineedit import ClickableLineEdit
-from rfsocinterface.utils import get_num_value
+from rfsocinterface.utils import get_num_value, get_lineEdit_text
 
 
 ONR_REPO_DIR = Path('~').expanduser() / 'onrkidpy'
 DEFAULT_CONFIG = 'defaults.yaml'
 
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
-    def __init__(self, kpy: kidpy, settings: dict, parent: QWidget | None = None):
+    def __init__(self, rfsoc: RFSOC, channel: int, settings: dict, parent: QWidget | None = None):
         super().__init__(parent)
-        self.kpy = kpy
+        self.rfsoc = rfsoc
+        self.channel = channel
         self.comport = '/dev/IF1Attenuators'
-        # self.transceiver = Transceiver(self.comport)
+        self.transceiver = Transceiver320d(self.comport)
         self.settings = settings
 
         self.setupUi(self)
@@ -82,7 +85,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.rfin_uploadToolButton.clicked.connect(lambda: self.set_attenuation('in'))
         self.rfout_uploadToolButton.clicked.connect(lambda: self.set_attenuation('out'))
         self.buttonBox.clicked.connect(self.restore_defaults)
-        self.set_defaults()
+        # self.set_defaults()
 
     def _additional_setup(self):
 
@@ -246,21 +249,34 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     
     @Slot(str)
     def upload_firmware(self, bitstream: str):
-        cmd = {"cmd": "ulBitstream", "args": []}
-        cmdstr = json.dumps(cmd)
-        self.kpy.r.publish("picard", cmdstr)
-        self.kpy.r.set("status", "busy")
-        print("Waiting for the RFSOC to upload it's bitstream...")
-        if wait_for_free(self.kpy.r, 0.75, 25):
-            print("Done")
+        self.rfsoc.bitstream = bitstream
+        self.rfsoc.upload_bitstream()
+        # cmd = {"cmd": "ulBitstream", "args": []}
+        # cmdstr = json.dumps(cmd)
+        # self.rfsoc.r.publish("picard", cmdstr)
+        # self.rfsoc.r.set("status", "busy")
+        # print("Waiting for the RFSOC to upload it's bitstream...")
+        # if wait_for_free(self.rfsoc.r, 0.75, 25):
+        #     print("Done")
+
+    def update_ethernet_config(self):
+        # TODO: Make this use the correct line edits
+        self.rfsoc.eth.udp_data_a_sourceip = get_lineEdit_text(self.udp_sourceLineEdit)
+        self.rfsoc.eth.udp_data_a_destip = get_lineEdit_text(self.udp_destLineEdit)
+        self.rfsoc.eth.udp_data_b_sourceip = get_lineEdit_text(self.udp_sourceLineEdit)
+        self.rfsoc.eth.udp_data_b_destip = get_lineEdit_text(self.udp_destLineEdit)
+        # TODO: Add destmac
+        # TODO: Add ports
     
     def setup_udp(self):
-        print("Initializing System and UDP Connection")
-        cmd = {"cmd": "initRegs", "args": []}
-        cmdstr = json.dumps(cmd)
-        self.kpy.r.publish("picard", cmdstr)
-        if wait_for_free(self.kpy.r, 0.5, 5):
-            print("Done")
+        self.update_ethernet_config()
+        self.rfsoc.config_hardware()
+        # print("Initializing System and UDP Connection")
+        # cmd = {"cmd": "initRegs", "args": []}
+        # cmdstr = json.dumps(cmd)
+        # self.rfsoc.r.publish("picard", cmdstr)
+        # if wait_for_free(self.rfsoc.r, 0.5, 5):
+        #     print("Done")
     
     def write_fList(self, fList: npt.ArrayLike, ampList: npt.ArrayLike):
         """
@@ -298,38 +314,23 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             return
 
         cmdstr = json.dumps(cmd)
-        self.kpy.r.publish("picard", cmdstr)
-        success, _ = wait_for_reply(self.kpy.p, "ulWaveform", max_timeout=10)
+        self.rfsoc.r.publish("picard", cmdstr)
+        success, _ = wait_for_reply(self.rfsoc.p, "ulWaveform", max_timeout=10)
         if success:
             print("Wrote waveform.")
         else:
             print("FAILED TO WRITE WAVEFORM")
-    
-    @Slot(str)
-    def upload_tone_list(self, tone_file: str):
-        # see if the user wants the default list or something different:
-        freqfile = np.load(tone_file)
-        fList = np.ndarray.tolist(freqfile)
-        aList = []
-        # aList = np.ndarray.tolist(np.load(amplitude_file)) # doesnt exist yet...
 
-        print(
-            "Waiting for the RFSOC to finish writing the custom frequency list"
-        )
-        self.write_fList(fList, aList)
-    
-    @Slot(str)
-    def upload_tone_powers(self, max_power_file: str):
-        fList = self.kpy.get_last_flist()
-        if max_power_file != '':
-            power_dB = np.load(max_power_file)
-            # power_dB = np.load(ONR_REPO_DIR + '/params/' + max_power_file + '_max_readout_power_dB.npy')
-            fAmps = np.exp(power_dB/10.)
-        else:
-            fAmps = np.ones(np.size(fList))
-        self.write_fList(fList, fAmps)
-    
+    def upload_tone_list(self):
+        # see if the user wants the default list or something different:
+        tone_file = get_lineEdit_text(self.tone_list_file_upload_widget.lineEdit)
+        amp_file = get_lineEdit_text(self.tone_power_file_upload_widget.lineEdit)
+        tone_list = np.ndarray.tolist(np.load(tone_file))
+        tone_powers = np.ndarray.tolist(np.load(amp_file))
+        self.rfsoc.set_tone_list(chan=self.channel, tonelist=tone_list, amplitudes=tone_powers)
+
     def set_attenuation(self, attenuation: str):
+        # TODO: Make this work for two channels
         match attenuation:
             case 'in':
                 addr = 1

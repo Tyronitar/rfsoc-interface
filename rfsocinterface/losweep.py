@@ -19,6 +19,9 @@ from rfsocinterface.utils import ensure_path, Job
 import valon5009
 import time
 import udpcap
+from kidpy3 import RFSOC, capture_packets
+from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
+from kidpy3.data_handler import Rfchan
 
 
 class ResonatorData:
@@ -355,10 +358,10 @@ def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
 class LoSweep:
     """Class for performing an LO Sweep"""
 
-    def __init__(self, valon: valon5009.Synthesizer, udp: udpcap.udpcap, freqs: npt.NDArray, f_center: float=400.0):
+    def __init__(self, valon: Valon5009, chan: Rfchan, freqs: npt.NDArray, f_center: float=400.0):
         """Initialize an LoSweep"""
         self.valon = valon
-        self._udp = udp
+        self.chan = chan
         self.freqs = freqs
         self.f_center = f_center
 
@@ -401,28 +404,23 @@ class LoSweep:
             QApplication.processEvents()
         # flos = np.round(flos * 1e3)*1e-3
         log.info(f"len flos {flos.shape}")
-        self._udp.bindSocket()
         actual_los = []
         def temp(lofreq):
             # self.set_ValonLO function here
     
             # print(lofreq)
-            self.valon.set_frequency(valon5009.SYNTH_B, lofreq)
-            # Read values and trash initial read, suspecting linear delay is cause..
-            Naccums = 100
-            I, Q = [], []
-            for i in range(20):  # toss 10 packets in the garbage
-                self._udp.parse_packet()
+            self.valon.set_frequency(SYNTH_B, lofreq)
 
-            for i in range(Naccums):
-                # d = udp.parse_packet()
-                d = self._udp.parse_packet()
-                It = d[::2]
-                Qt = d[1::2]
-                I.append(It)
-                Q.append(Qt)
-            I = np.array(I)
-            Q = np.array(Q)
+            # Read values and trash initial read, suspecting linear delay is cause..
+            # toss 20 packets in the garbage
+            packets = capture_packets(self.chan, 20)
+
+            # Actually use this data
+            Naccums = 100
+            packets = capture_packets(self.chan, Naccums)
+            I = packets[::2]
+            Q = packets[1::2]
+
             Imed = np.median(I, axis=0)
             Qmed = np.median(Q, axis=0)
 

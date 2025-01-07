@@ -278,11 +278,15 @@ def add_callbacks(*callbacks: Callable) -> Callable[[Callable[P, R]], Callable[P
     return loop_callback
 
 
-def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float) -> Number:
-    """Get the value from a QLineEdit and convert to a number."""
+def get_lineEdit_text(line_edit: QLineEdit) -> str:
     val = line_edit.text()
     if val == '':
         val = line_edit.placeholderText()
+    return val
+
+def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float) -> Number:
+    """Get the value from a QLineEdit and convert to a number."""
+    val = get_lineEdit_text(line_edit)
     try:
         return num_type(val)
     except ValueError as e:
@@ -341,6 +345,39 @@ def digital_to_analog(d: int, min: float, max: float, bits: int) -> int:
 class SettingsError(Exception):
     def __init__(self, message: str):
         super().__init__("Error in settings file: " + message)
+    
+
+def convert_to_kidy_format(rfsoc_config: dict) -> dict:
+    yaml_contents = {'rfsoc_config': {}}
+    kidpy_config = yaml_contents['rfsoc_config']
+    kidpy_config['rfsoc_name'] = rfsoc_config['name']
+    kidpy_config['bitstream'] = rfsoc_config['bitstream']
+    kidpy_config['redis_ip'] = rfsoc_config['redis']['ip']
+    kidpy_config['redis_port'] = rfsoc_config['redis']['port']
+    kidpy_config['dsp_confgi'] = {
+        'lo_default_freq': rfsoc_config['dsp']['lo_freq'],
+        'n_averages': rfsoc_config['dsp']['n_averages'],
+    }
+    if 'sourceip_a' in rfsoc_config['ethernet']:
+        kidpy_config['ethernet_config'] = {
+            'udp_data_a_sourceip': rfsoc_config['ethernet']['sourceip_a'],
+            'udp_data_b_sourceip': rfsoc_config['ethernet']['sourceip_b'],
+            'udp_data_a_destip': rfsoc_config['ethernet']['destip_a'],
+            'udp_data_b_destip': rfsoc_config['ethernet']['destip_b'],
+            'destmac_a': rfsoc_config['ethernet']['destmac_a'],
+            'destmac_b': rfsoc_config['ethernet']['destmac_b'],
+            'port_a': rfsoc_config['ethernet']['port_a'],
+            'port_b': rfsoc_config['ethernet']['port_b'],
+        }
+    else:
+        kidpy_config['ethernet_config'] = {
+            'udp_data_a_sourceip': rfsoc_config['ethernet']['sourceip_a'],
+            'udp_data_a_destip': rfsoc_config['ethernet']['destip_a'],
+            'destmac_a': rfsoc_config['ethernet']['destmac_a'],
+            'port_a': rfsoc_config['ethernet']['port_a'],
+        }
+    
+    return yaml_contents
 
 
 if __name__ == '__main__':
@@ -349,3 +386,4 @@ if __name__ == '__main__':
             print(i)
     
     add_callbacks(lambda: print('hello'))(test_fun)()
+
