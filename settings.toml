@@ -29,10 +29,10 @@ zenith_jog_voltage = 1
 
     [defaults.channel]
     bitstream = "/home/xilinx/dualchan_v2.bit"
-    tone_list = "/home/shd/github/asureadout_singlechan/rfsoc-interface/default_tonelist.npy"
+    tone_list = "/home/nia/Documents/rfsoc-interface/Default_tone_list.npy"
     # tone_powers = "/home/onrkids/readout/host/params/Device_aSi1_Channel2_20220222_300K_200mK_max_readout_power.npy"
     # chanmask = "/home/onrkids/readout/host/params/chanmask_rfsoc2.npy"
-    dsp = {lo_freq = 750e6, n_averages = 524288}
+    dsp = {lo_freq = 400e6, n_averages = 524288}
     rfin = 0.0
     rfout = 0.0
 
@@ -43,17 +43,38 @@ zenith_jog_voltage = 1
 # chanmask = "/home/onrkids/readout/host/params/chanmask_rfsoc1.npy"
 # rfin = 5.0
 
+# [[rfsocs]]
+# name = "devrfsoc"
+# redis = {ip = "192.168.2.25", port = 6379}
+# rfin = 10.0
+# rfout = 20.0
+# dsp.lo_freq = 750e6
+# lo_comport_a = "/dev/asu_if_synth"
+# tone_list = "/home/shd/github/asureadout_singlechan/rfsoc-interface/default_tonelist.npy"
+# [rfsocs.ethernet]
+# sourceip_a = '192.168.3.41'
+# sourceip_b = '192.168.4.4'
+# destip_a = '192.168.3.40'
+# destip_b = '192.168.4.40'
+# destmac_a = 'FC5CEEB8C46C'
+# destmac_b = '681CA2123652'
+# port_a = 4096
+# port_b = 4096
+
 [[rfsocs]]
 name = "devrfsoc"
-redis = {ip = "192.168.2.25", port = 6379}
+redis = {ip = "192.168.1.10", port = 6379}
 rfin = 10.0
 rfout = 20.0
+lo_comport_a = '/dev/IF2System1LO'
+lo_comport_b = '/dev/IF2System2LO'
+atten_comport = '/dev/IF2Attenuators'
 [rfsocs.ethernet]
 sourceip_a = '192.168.3.41'
 sourceip_b = '192.168.4.4'
 destip_a = '192.168.3.40'
 destip_b = '192.168.4.40'
-destmac_a = 'FC5CEEB8C46C'
+destmac_a = '98B78520C5C2'
 destmac_b = '681CA2123652'
 port_a = 4096
 port_b = 4096

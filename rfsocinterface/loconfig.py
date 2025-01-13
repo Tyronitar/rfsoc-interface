@@ -83,7 +83,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         # TODO: Need to check which System it is
         # Should be channel X -> system X
         # TODO: Get the actual comport file from the config
-        valon = Valon5009("/dev/asu_if_synth")
+        valon = Valon5009("/dev/IF2System1LO")
         chan = 1
 
         chan_name = 'rfsoc2'

@@ -17,7 +17,7 @@ import redis
 import configparser
 from kidpy import checkBlastCli, wait_for_free, wait_for_reply, kidpy
 from kidpy3 import RFSOC
-from kidpy3.hardware import Transceiver321
+from kidpy3.hardware import Transceiver321, Transceiver320d
 import numpy as np
 from transceiver import Transceiver
 import yaml
@@ -37,8 +37,10 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.rfsoc = rfsoc
         self.channel = channel
         # TODO: Make this dynamic with config file
-        self.comport = '/dev/asu_if_atten'
-        self.transceiver = Transceiver321(self.comport)
+        # self.comport = '/dev/asu_if_atten'
+        self.comport = '/dev/IF2Attenuators'
+        # self.transceiver = Transceiver321(self.comport)
+        self.transceiver = Transceiver320d(self.comport)
         self.settings = settings
 
         self.setupUi(self)
