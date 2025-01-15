@@ -8,7 +8,8 @@ from PySide6.QtWidgets import (QApplication, QGridLayout, QScrollArea, QSizePoli
 
 from rfsocinterface.utils import get_num_value
 from rfsocinterface.ui.section import Section
-from rfsocinterface.channel_settings import ChannelSettingsWidget
+from rfsocinterface.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
+from rfsocinterface.rfsoc import RFSOCWrapper
 from kidpy3 import RFSOC
 
 class InitializationWidget(QWidget, Ui_InitializationTabWidget):
@@ -24,25 +25,27 @@ class InitializationWidget(QWidget, Ui_InitializationTabWidget):
         self.scrollArea.setStyleSheet('QScrollArea {background-color:white;}')
         self.scrollAreaWidgetContents.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
         n_chan = len(settings['rfsocs'])
-        for i, channel in enumerate(settings['rfsocs']):
-            self.add_channel(channel, toggle=i == n_chan - 1)
+        for i, rfsoc in enumerate(rfsocs):
+            self.add_channel(rfsoc, toggle=i == n_chan - 1)
 
         self.add_toolButton.clicked.connect(lambda: self.add_channel(toggle=True))
         self.delete_toolButton.clicked.connect(self.remove_channel)
     
-    def add_channel(self, chan_dict: dict, toggle: bool=False):
-        channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)
+    def add_channel(self, rfsoc: RFSOCWrapper, toggle: bool=False):
+        # channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)
         channel_id = len(self.channels) + 1
         channel_section = Section(self.scrollAreaWidgetContents, animationDuration=100)
         channel_section.setObjectName(f'channel_{channel_id}_section')
         # TODO: Make the channel dynamic
-        channel_widget = ChannelSettingsWidget(self.rfsocs[0], 1, channel_settings, parent=channel_section)
+        channel_widget = RFSOCSettingsWidget(rfsoc, self)
+        # channel_widget = ChannelSettingsWidget(self.rfsocs[0], 1, channel_settings, parent=channel_section)
         channel_widget.setObjectName(f'channel_{channel_id}_widget')
         vertical_layout = QVBoxLayout()
         vertical_layout.setObjectName(f'channel_{channel_id}_verticalLayout')
         vertical_layout.addWidget(channel_widget)
-        channel_section.setContentLayout(vertical_layout)
-        channel_section.setTitle(channel_settings['name'])
+        # channel_section.setContentLayout(vertical_layout)
+        channel_section.setContentLayout(channel_widget.layout())
+        channel_section.setTitle(rfsoc.settings['name'])
 
         self.verticalLayout.addWidget(channel_section, alignment=Qt.AlignmentFlag.AlignTop)
         self.channels.append(channel_section)

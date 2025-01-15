@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>407</width>
-    <height>154</height>
+    <width>530</width>
+    <height>346</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -20,7 +20,7 @@
    <string>Form</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="4" column="0" colspan="2" alignment="Qt::AlignmentFlag::AlignBottom">
+   <item row="6" column="0" colspan="2" alignment="Qt::AlignmentFlag::AlignBottom">
     <widget class="QDialogButtonBox" name="buttonBox">
      <property name="standardButtons">
       <set>QDialogButtonBox::StandardButton::Apply|QDialogButtonBox::StandardButton::RestoreDefaults</set>
@@ -30,14 +30,66 @@
      </property>
     </widget>
    </item>
-   <item row="3" column="0" colspan="2" alignment="Qt::AlignmentFlag::AlignTop">
-    <widget class="Section" name="advanced_section" native="true">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
+   <item row="5" column="0" colspan="2">
+    <widget class="QGroupBox" name="ethernet_GroupBox">
+     <property name="title">
+      <string>Ethernet Settings</string>
      </property>
+     <layout class="QGridLayout" name="gridLayout_2">
+      <item row="0" column="0">
+       <widget class="QLabel" name="eth_source_label">
+        <property name="text">
+         <string>Source IP address:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="eth_source_lineEdit"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="eth_dest_label">
+        <property name="text">
+         <string>Destination IP address:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="eth_dest_lineEdit"/>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="eth_mac_label">
+        <property name="text">
+         <string>Destimation MAC address:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLineEdit" name="eth_mac_lineEdit"/>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="eth_port_label">
+        <property name="text">
+         <string>Port:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLineEdit" name="eth_port_lineEdit"/>
+      </item>
+      <item row="4" column="1" alignment="Qt::AlignmentFlag::AlignRight">
+       <widget class="QPushButton" name="eth_pushButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Configure Hardware</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item row="1" column="1">
@@ -49,7 +101,7 @@
       </sizepolicy>
      </property>
      <property name="title">
-      <string>Attenuation Settings</string>
+      <string>IF Settings</string>
      </property>
      <layout class="QFormLayout" name="formLayout_4">
       <item row="0" column="0">
@@ -179,6 +231,68 @@
         </item>
        </layout>
       </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="lo_freq_label">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>LO freq (KHz):</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_4">
+        <item>
+         <widget class="ClickableLineEdit" name="lo_freq_lineEdit">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>50</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="placeholderText">
+           <string>4e6</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="lo_freq_uploadToolButton">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>150</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Upload Selected Tone List</string>
+          </property>
+          <property name="icon">
+           <iconset resource="icons.qrc">
+            <normaloff>:/icons/upload.png</normaloff>:/icons/upload.png</iconset>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
      </layout>
     </widget>
    </item>
@@ -243,6 +357,27 @@
         </property>
        </widget>
       </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="chanmask_label">
+        <property name="text">
+         <string>Channel mask:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QLineEdit" name="chanmask_lineEdit"/>
+        </item>
+        <item>
+         <widget class="QPushButton" name="chanmask_pushButton">
+          <property name="text">
+           <string>Browse...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
      </layout>
     </widget>
    </item>
@@ -253,12 +388,6 @@
    <class>FileUploadWidget</class>
    <extends>QWidget</extends>
    <header>rfsocinterface.ui.file_upload</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>Section</class>
-   <extends>QWidget</extends>
-   <header>rfsocinterface.ui.section</header>
    <container>1</container>
   </customwidget>
   <customwidget>

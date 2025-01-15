@@ -10,9 +10,10 @@ from rfsocinterface.ui.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.losweep import LoSweepData, get_tone_list, LoSweep
 from rfsocinterface.lodiagnostics import DiagnosticsDialog
 from rfsocinterface.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
+from rfsocinterface.rfsoc import RFSOCWrapper
 
 from kidpy import kidpy
-from kidpy3 import RFSOC
+# from kidpy3 import RFSOC
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 import time
 # import valon5009
@@ -38,7 +39,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         tone_path (Path): The path to the selected tone list file.
     """
 
-    def __init__(self, rfsocs: list[RFSOC], settings: dict, parent: QWidget | None=None) -> None:
+    def __init__(self, rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
         super().__init__(parent)
         self.setupUi(self)
@@ -80,25 +81,24 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
     def run_sweep(self):
         # TODO: Choose which RFSOC and Channel to run the sweep
         rfsoc = self.rfsocs[0]
+        chan = 1
+        channel_settings = rfsoc.settings[f'channel{chan}']
         # TODO: Need to check which System it is
         # Should be channel X -> system X
         # TODO: Get the actual comport file from the config
-        valon = Valon5009("/dev/IF2System1LO")
-        chan = 1
+        valon = Valon5009(str(channel_settings['lo_comport']))
 
         chan_name = 'rfsoc2'
         pd = QProgressDialog('Running...', 'Cancel', 0, 100, self)
         pd.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
+        pd.move(self.geometry().center() - pd.geometry().center())
         pd.show()
         QApplication.processEvents()
         # pd.canceled.connect(self.cancel_sweep)
 
         # For running on ONR Computer
         # TODO: Fix this
-        try:
-            lo_freq = self.settings['defaults']['channel']['dsp']['lo_freq']
-        except KeyError:
-            lo_freq = DEFAULT_F_CENTER
+        lo_freq = channel_settings['dsp']['lo_freq']
         valon.set_frequency(2, lo_freq)
         tone_shift = get_num_value(self.global_shift_lineEdit)
         if tone_shift != 0:
@@ -152,6 +152,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         dw.setWindowModality(Qt.WindowModality.WindowModal)
 
         pb = SequentialProgressBarDialog(parent=self)
+        pb.move(self.geometry().center() - pb.geometry().center())
         # pb.canceled.connect(self.cancel_sweep)
         nchan = sweep_data.nchan
         pb.add_job(sweep_data.fit, num_tasks=nchan, start_message='Fitting sweep data...', do_print=True)

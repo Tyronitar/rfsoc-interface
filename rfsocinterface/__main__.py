@@ -10,10 +10,11 @@ from PySide6.QtGui import QScreen
 import PySide6.QtGui as QtGui
 
 from kidpy import kidpy, testConnection, wait_for_reply, wait_for_free
-from kidpy3 import RFSOC
+# from kidpy3 import RFSOC
 from rfsocinterface.ui.full_ui_ui import Ui_MainWindow
 from rfsocinterface.initialization import InitializationWidget
 from rfsocinterface.loconfig import LoConfigWidget
+from rfsocinterface.rfsoc import RFSOCWrapper
 
 from rfsocinterface.utils import SettingsError, ensure_path, convert_to_kidy_format
 
@@ -39,7 +40,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.settings = tomllib.load(f)
         
         self.tabs = []
-        self.rfsocs: list[RFSOC] = []
+        self.rfsocs: list[RFSOCWrapper] = []
         self.init_rfsocs()
         # self.init_kidpy()
 
@@ -126,14 +127,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def init_rfsocs(self):
         rfsoc_settings: dict
         for rfsoc_settings in self.settings['rfsocs']:
-            rfsoc_config = {}
-            rfsoc_config.update(self.settings['defaults']['channel'])
-            rfsoc_config.update(rfsoc_settings)
-            yaml_contents = convert_to_kidy_format(rfsoc_config)
-            fname = f'{rfsoc_settings["name"]}.yml'
-            with open(fname, 'w') as f:
-                yaml.dump(yaml_contents, f)
-            rfsoc = RFSOC(fname)
+            rfsoc = RFSOCWrapper(self.settings['defaults'], rfsoc_settings)
             self.rfsocs.append(rfsoc)
 
     def resize_to_current(self, index: int):

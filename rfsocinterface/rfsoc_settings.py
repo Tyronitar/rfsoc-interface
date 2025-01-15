@@ -2,6 +2,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot
 from PySide6.QtGui import QDoubleValidator, QIcon
 from rfsocinterface.ui.channel_settings_ui import Ui_ChannelSettingsWidget
+from rfsocinterface.ui.rfsoc_advanced_settings_ui import Ui_RFSOCAdvancedSettingsWidget
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QVBoxLayout, QSizePolicy, QGroupBox, QGridLayout
 
 from PySide6.QtWidgets import (QFormLayout,
@@ -16,7 +17,6 @@ import json
 import redis
 import configparser
 from kidpy import checkBlastCli, wait_for_free, wait_for_reply, kidpy
-from kidpy3 import RFSOC
 from kidpy3.hardware import Transceiver321, Transceiver320d
 import numpy as np
 from transceiver import Transceiver
@@ -26,69 +26,111 @@ from rfsocinterface.ui.file_upload import FileUploadWidget
 from rfsocinterface.ui.section import Section
 from rfsocinterface.ui.lineedit import ClickableLineEdit
 from rfsocinterface.utils import get_num_value, get_lineEdit_text
+from rfsocinterface.rfsoc import RFSOCWrapper
 
 
 ONR_REPO_DIR = Path('~').expanduser() / 'onrkidpy'
 DEFAULT_CONFIG = 'defaults.yaml'
 
+class RFSOCSettingsWidget(QWidget):
+    def __init__(self, rfsoc: RFSOCWrapper, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.rfsoc = rfsoc
+        self.setupUi()
+    
+    def setupUi(self):
+        layout = QVBoxLayout(self)
+
+        channel1_layout = QVBoxLayout()
+        self.channel1_widget = ChannelSettingsWidget(self.rfsoc, 1, parent=self)
+        channel1_layout.addWidget(self.channel1_widget)
+        self.channel1_section = Section(self)
+        self.channel1_section.setTitle('Channel 1')
+        self.channel1_section.setContentLayout(channel1_layout)
+        layout.addWidget(self.channel1_section)
+
+        channel2_layout = QVBoxLayout()
+        self.channel2_widget = ChannelSettingsWidget(self.rfsoc, 2, parent=self)
+        channel2_layout.addWidget(self.channel2_widget)
+        self.channel2_section = Section(self)
+        self.channel2_section.setTitle('Channel 2')
+        self.channel2_section.setContentLayout(channel2_layout)
+        layout.addWidget(self.channel2_section)
+
+        advanced_layout = QVBoxLayout()
+        self.advanced_widget = AdvancedSettingsWidget(self.rfsoc, parent=self)
+        advanced_layout.addWidget(self.advanced_widget)
+        self.advanced_section = Section(self)
+        self.advanced_section.setTitle('Advanced')
+        self.advanced_section.setContentLayout(advanced_layout)
+        layout.addWidget(self.advanced_section)
+
+
+
+class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
+    def __init__(self, rfsoc: RFSOCWrapper, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setupUi(self)
+        self.rfsoc = rfsoc
+
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
-    def __init__(self, rfsoc: RFSOC, channel: int, settings: dict, parent: QWidget | None = None):
+    def __init__(self, rfsoc: RFSOCWrapper, channel: int, parent: QWidget | None = None):
         super().__init__(parent)
         self.rfsoc = rfsoc
         self.channel = channel
         # TODO: Make this dynamic with config file
         # self.comport = '/dev/asu_if_atten'
-        self.comport = '/dev/IF2Attenuators'
+        self.comport = rfsoc.settings[f'channel{self.channel}']['lo_comport']
         # self.transceiver = Transceiver321(self.comport)
-        self.transceiver = Transceiver320d(self.comport)
-        self.settings = settings
+        # self.transceiver = Transceiver320d(self.comport)
+        self.transceiver = None
 
         self.setupUi(self)
-        self._additional_setup()
+        # # self._additional_setup()
 
-        self.tone_list_file_upload_widget.set_caption('Select Tone File')
-        self.tone_list_file_upload_widget.set_dir('./')
-        self.tone_list_file_upload_widget.set_filter('Numpy (*.npy);;All Files(*.*)')
-        self.tone_list_file_upload_widget.set_selected_filter('Numpy (*.npy)')
-        # TODO: Add upload functionality
+        # self.tone_list_file_upload_widget.set_caption('Select Tone File')
+        # self.tone_list_file_upload_widget.set_dir('./')
+        # self.tone_list_file_upload_widget.set_filter('Numpy (*.npy);;All Files(*.*)')
+        # self.tone_list_file_upload_widget.set_selected_filter('Numpy (*.npy)')
+        # # TODO: Add upload functionality
 
-        self.tone_power_file_upload_widget.set_caption('Select Tone Power File')
-        self.tone_power_file_upload_widget.set_dir('./')
-        self.tone_power_file_upload_widget.set_filter('Numpy (*.npy);;All Files(*.*)')
-        self.tone_power_file_upload_widget.set_selected_filter('Numpy (*.npy)')
-        # TODO: Add upload functionality
+        # self.tone_power_file_upload_widget.set_caption('Select Tone Power File')
+        # self.tone_power_file_upload_widget.set_dir('./')
+        # self.tone_power_file_upload_widget.set_filter('Numpy (*.npy);;All Files(*.*)')
+        # self.tone_power_file_upload_widget.set_selected_filter('Numpy (*.npy)')
+        # # TODO: Add upload functionality
 
-        # TODO: create collapseable widget for the "advanced" settings
-        self.chanmask_pushButton.clicked.connect(self.choose_channel_mask)
+        # # TODO: create collapseable widget for the "advanced" settings
+        # self.chanmask_pushButton.clicked.connect(self.choose_channel_mask)
 
-        self.udp_lineEdits = [
-            self.udp_sourceLineEdit,
-            self.udp_destLineEdit,
-        ]
-        for edit in self.udp_lineEdits:
-            edit.textChanged.connect(self.enable_udp_button)
-        # TODO: Add opening UDP socket functionality
+        # self.udp_lineEdits = [
+        #     self.udp_sourceLineEdit,
+        #     self.udp_destLineEdit,
+        # ]
+        # for edit in self.udp_lineEdits:
+        #     edit.textChanged.connect(self.enable_udp_button)
+        # # TODO: Add opening UDP socket functionality
 
-        self.atten_lineEdit = [
-            self.rfin_lineEdit,
-            self.rfout_lineEdit,
-        ]
-        self.validator = QDoubleValidator(0, 31.75, 2, parent=self)
-        for edit in self.atten_lineEdit:
-            edit.setValidator(self.validator)
-            edit.textChanged.connect(self.change_attenuation)
-        # TODO: Add upload functionality for attenuation
+        # self.atten_lineEdit = [
+        #     self.rfin_lineEdit,
+        #     self.rfout_lineEdit,
+        # ]
+        # self.validator = QDoubleValidator(0, 31.75, 2, parent=self)
+        # for edit in self.atten_lineEdit:
+        #     edit.setValidator(self.validator)
+        #     edit.textChanged.connect(self.change_attenuation)
+        # # TODO: Add upload functionality for attenuation
 
-        # Redis and stuff from kidpy
-        self.firmware_file_upload_widget.uploaded.connect(self.upload_firmware)
-        # self.firmware_file_upload_widget.toolButton.clicked.connect(self.upload_firmware)
-        self.tone_list_file_upload_widget.uploaded.connect(self.upload_tone_list)
-        # self.tone_power_file_upload_widget.uploaded.connect(self.upload_tone_powers)
-        self.udp_openPushButton.clicked.connect(self.setup_udp)
-        self.rfin_uploadToolButton.clicked.connect(lambda: self.set_attenuation('in'))
-        self.rfout_uploadToolButton.clicked.connect(lambda: self.set_attenuation('out'))
-        self.buttonBox.clicked.connect(self.restore_defaults)
-        self.set_defaults()
+        # # Redis and stuff from kidpy
+        # self.firmware_file_upload_widget.uploaded.connect(self.upload_firmware)
+        # # self.firmware_file_upload_widget.toolButton.clicked.connect(self.upload_firmware)
+        # self.tone_list_file_upload_widget.uploaded.connect(self.upload_tone_list)
+        # # self.tone_power_file_upload_widget.uploaded.connect(self.upload_tone_powers)
+        # self.udp_openPushButton.clicked.connect(self.setup_udp)
+        # self.rfin_uploadToolButton.clicked.connect(lambda: self.set_attenuation('in'))
+        # self.rfout_uploadToolButton.clicked.connect(lambda: self.set_attenuation('out'))
+        # self.buttonBox.clicked.connect(self.restore_defaults)
+        # self.set_defaults()
 
     def _additional_setup(self):
 

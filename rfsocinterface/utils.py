@@ -11,6 +11,7 @@ import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt
 from PySide6.QtWidgets import QLineEdit, QWidget, QLayout
 import time
+from collections.abc import Mapping
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 Number = TypeVar('Number', int, float, complex, bytes)
@@ -348,37 +349,29 @@ class SettingsError(Exception):
     
 
 def convert_to_kidy_format(rfsoc_config: dict) -> dict:
-    yaml_contents = {'rfsoc_config': {}}
-    kidpy_config = yaml_contents['rfsoc_config']
+    kidpy_config = {}
     kidpy_config['rfsoc_name'] = rfsoc_config['name']
     kidpy_config['bitstream'] = rfsoc_config['bitstream']
     kidpy_config['redis_ip'] = rfsoc_config['redis']['ip']
     kidpy_config['redis_port'] = rfsoc_config['redis']['port']
-    kidpy_config['dsp_confgi'] = {
-        'lo_default_freq': rfsoc_config['dsp']['lo_freq'],
-        'n_averages': rfsoc_config['dsp']['n_averages'],
+    kidpy_config['ethernet_config'] = {
+        'udp_data_a_sourceip': rfsoc_config['channel1']['sourceip'],
+        'udp_data_b_sourceip': rfsoc_config['channel2']['sourceip'],
+        'udp_data_a_destip': rfsoc_config['channel1']['destip'],
+        'udp_data_b_destip': rfsoc_config['channel2']['destip'],
+        'port_a': rfsoc_config['channel1']['port'],
+        'port_b': rfsoc_config['channel2']['port'],
     }
-    if 'sourceip_a' in rfsoc_config['ethernet']:
-        kidpy_config['ethernet_config'] = {
-            'udp_data_a_sourceip': rfsoc_config['ethernet']['sourceip_a'],
-            'udp_data_b_sourceip': rfsoc_config['ethernet']['sourceip_b'],
-            'udp_data_a_destip': rfsoc_config['ethernet']['destip_a'],
-            'udp_data_b_destip': rfsoc_config['ethernet']['destip_b'],
-            'destmac_a': rfsoc_config['ethernet']['destmac_a'],
-            'destmac_b': rfsoc_config['ethernet']['destmac_b'],
-            'port_a': rfsoc_config['ethernet']['port_a'],
-            'port_b': rfsoc_config['ethernet']['port_b'],
-        }
-    else:
-        kidpy_config['ethernet_config'] = {
-            'udp_data_a_sourceip': rfsoc_config['ethernet']['sourceip_a'],
-            'udp_data_a_destip': rfsoc_config['ethernet']['destip_a'],
-            'destmac_a': rfsoc_config['ethernet']['destmac_a'],
-            'port_a': rfsoc_config['ethernet']['port_a'],
-        }
-    
-    return yaml_contents
+    return {'rfsoc_config': kidpy_config}
 
+
+def recursive_update(d: Mapping, u: Mapping):
+    for k, v in u.items():
+        if isinstance(v, Mapping):
+            d[k] = recursive_update(d.get(k, {}), v)
+        else:
+            d[k] = v
+    return d
 
 if __name__ == '__main__':
     def test_fun():
