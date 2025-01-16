@@ -24,9 +24,9 @@ class InitializationWidget(QWidget, Ui_InitializationTabWidget):
 
         self.scrollArea.setStyleSheet('QScrollArea {background-color:white;}')
         self.scrollAreaWidgetContents.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
-        n_chan = len(settings['rfsocs'])
+        n_rfsocs = len(settings['rfsocs'])
         for i, rfsoc in enumerate(rfsocs):
-            self.add_channel(rfsoc, toggle=i == n_chan - 1)
+            self.add_channel(rfsoc, toggle=i == n_rfsocs - 1)
 
         self.add_toolButton.clicked.connect(lambda: self.add_channel(toggle=True))
         self.delete_toolButton.clicked.connect(self.remove_channel)

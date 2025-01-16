@@ -8,10 +8,15 @@ import numpy as np
 import numpy.typing as npt
 from kidpy import wait_for_free, wait_for_reply, kidpy
 import redis
-from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt
-from PySide6.QtWidgets import QLineEdit, QWidget, QLayout
+from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QPoint, QSize
+from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QToolTip, QLabel
+from PySide6.QtGui import QValidator
 import time
 from collections.abc import Mapping
+import qtawesome as qta
+
+IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
+MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 Number = TypeVar('Number', int, float, complex, bytes)
@@ -372,6 +377,21 @@ def recursive_update(d: Mapping, u: Mapping):
         else:
             d[k] = v
     return d
+
+
+class QPathValidator(QValidator):
+
+    def __init__(self, parent: QWidget | None=None):
+        super().__init__(parent=parent)
+    
+    @ensure_path(1)
+    def validate(self, text: str, pos) -> QValidator.State:
+        if not Path.is_file(text):
+            return QValidator.State.Intermediate
+        return QValidator.State.Acceptable
+
+        
+
 
 if __name__ == '__main__':
     def test_fun():

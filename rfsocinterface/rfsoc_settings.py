@@ -1,8 +1,9 @@
 from pathlib import Path
 from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot
-from PySide6.QtGui import QDoubleValidator, QIcon
+from PySide6.QtGui import QDoubleValidator, QIcon, QRegularExpressionValidator
 from rfsocinterface.ui.channel_settings_ui import Ui_ChannelSettingsWidget
 from rfsocinterface.ui.rfsoc_advanced_settings_ui import Ui_RFSOCAdvancedSettingsWidget
+from rfsocinterface.ui.icon_label import IconLabel
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QVBoxLayout, QSizePolicy, QGroupBox, QGridLayout
 
 from PySide6.QtWidgets import (QFormLayout,
@@ -17,7 +18,7 @@ import json
 import redis
 import configparser
 from kidpy import checkBlastCli, wait_for_free, wait_for_reply, kidpy
-from kidpy3.hardware import Transceiver321, Transceiver320d
+from kidpy3.hardware import Transceiver321, Transceiver320d, Valon5009
 import numpy as np
 from transceiver import Transceiver
 import yaml
@@ -25,7 +26,8 @@ import yaml
 from rfsocinterface.ui.file_upload import FileUploadWidget
 from rfsocinterface.ui.section import Section
 from rfsocinterface.ui.lineedit import ClickableLineEdit
-from rfsocinterface.utils import get_num_value, get_lineEdit_text
+from rfsocinterface.utils import get_num_value, get_lineEdit_text, IPV4_REGEX, MAC_REGEX, QPathValidator
+from rfsocinterface.ui.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE
 from rfsocinterface.rfsoc import RFSOCWrapper
 
 
@@ -72,64 +74,79 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
         super().__init__(parent)
         self.setupUi(self)
         self.rfsoc = rfsoc
-
-class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
-    def __init__(self, rfsoc: RFSOCWrapper, channel: int, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.rfsoc = rfsoc
-        self.channel = channel
-        # TODO: Make this dynamic with config file
-        # self.comport = '/dev/asu_if_atten'
-        self.comport = rfsoc.settings[f'channel{self.channel}']['lo_comport']
-        # self.transceiver = Transceiver321(self.comport)
-        # self.transceiver = Transceiver320d(self.comport)
-        self.transceiver = None
-
-        self.setupUi(self)
-        # # self._additional_setup()
-
-        # self.tone_list_file_upload_widget.set_caption('Select Tone File')
-        # self.tone_list_file_upload_widget.set_dir('./')
-        # self.tone_list_file_upload_widget.set_filter('Numpy (*.npy);;All Files(*.*)')
-        # self.tone_list_file_upload_widget.set_selected_filter('Numpy (*.npy)')
-        # # TODO: Add upload functionality
-
-        # self.tone_power_file_upload_widget.set_caption('Select Tone Power File')
-        # self.tone_power_file_upload_widget.set_dir('./')
-        # self.tone_power_file_upload_widget.set_filter('Numpy (*.npy);;All Files(*.*)')
-        # self.tone_power_file_upload_widget.set_selected_filter('Numpy (*.npy)')
-        # # TODO: Add upload functionality
-
-        # # TODO: create collapseable widget for the "advanced" settings
-        # self.chanmask_pushButton.clicked.connect(self.choose_channel_mask)
-
-        # self.udp_lineEdits = [
-        #     self.udp_sourceLineEdit,
-        #     self.udp_destLineEdit,
-        # ]
-        # for edit in self.udp_lineEdits:
-        #     edit.textChanged.connect(self.enable_udp_button)
-        # # TODO: Add opening UDP socket functionality
-
-        # self.atten_lineEdit = [
-        #     self.rfin_lineEdit,
-        #     self.rfout_lineEdit,
-        # ]
-        # self.validator = QDoubleValidator(0, 31.75, 2, parent=self)
-        # for edit in self.atten_lineEdit:
-        #     edit.setValidator(self.validator)
-        #     edit.textChanged.connect(self.change_attenuation)
-        # # TODO: Add upload functionality for attenuation
-
         # # Redis and stuff from kidpy
         # self.firmware_file_upload_widget.uploaded.connect(self.upload_firmware)
         # # self.firmware_file_upload_widget.toolButton.clicked.connect(self.upload_firmware)
         # self.tone_list_file_upload_widget.uploaded.connect(self.upload_tone_list)
         # # self.tone_power_file_upload_widget.uploaded.connect(self.upload_tone_powers)
         # self.udp_openPushButton.clicked.connect(self.setup_udp)
-        # self.rfin_uploadToolButton.clicked.connect(lambda: self.set_attenuation('in'))
-        # self.rfout_uploadToolButton.clicked.connect(lambda: self.set_attenuation('out'))
         # self.buttonBox.clicked.connect(self.restore_defaults)
+
+class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
+    def __init__(self, rfsoc: RFSOCWrapper, channel: int, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.rfsoc = rfsoc
+        self.channel = channel
+        self.comport = rfsoc.settings[f'channel{self.channel}']['lo_comport']
+        # self.transceiver = Transceiver320d(self.comport)
+        self.transceiver = None
+
+        self.setupUi(self)
+        # # self._additional_setup()
+
+        # Resonator Settings Connections
+        self.tone_list_pushButton.clicked.connect(self.choose_tone_list)
+        self.tone_power_pushButton.clicked.connect(self.choose_tone_powers)
+        self.path_validator = QPathValidator(parent=self)
+        self.tone_list_lineEdit.setValidator(self.path_validator)
+        self.tone_power_lineEdit.setValidator(self.path_validator)
+        self.upload_tones_pushButton.clicked.connect(self.upload_tone_list)
+        # self.tone_list_lineEdit.textChanged.connect(self.enable_tone_upload)
+        # self.tone_power_lineEdit.textChanged.connect(self.enable_tone_upload)
+        # TODO: Add upload functionality
+
+        self.chanmask_pushButton.clicked.connect(self.choose_channel_mask)
+
+        # IF Settings Validation and Connections
+        self.atten_validator = QDoubleValidator(0, 31.75, 2, parent=self)
+        self.rfin_lineEdit.setValidator(self.atten_validator)
+        self.rfout_lineEdit.setValidator(self.atten_validator)
+        self.rfin_uploadToolButton.clicked.connect(lambda: self.set_attenuation('in'))
+        self.rfout_uploadToolButton.clicked.connect(lambda: self.set_attenuation('out'))
+        self.lo_validator = QDoubleValidator(parent=self)
+        self.lo_freq_lineEdit.setValidator(self.lo_validator)
+        self.lo_freq_uploadToolButton.clicked.connect(self.set_lo_freq)
+
+        # Ethernet Settings Validation and Connections
+        self.ip_validator = QRegularExpressionValidator(self)
+        self.ip_validator.setRegularExpression(IPV4_REGEX)
+        self.eth_source_lineEdit.setValidator(self.ip_validator)
+        self.eth_dest_lineEdit.setValidator(self.ip_validator)
+        self.mac_validator = QRegularExpressionValidator(MAC_REGEX)
+        self.eth_mac_lineEdit.setValidator(self.mac_validator)
+        self.eth_lineEdits = [
+            self.eth_source_lineEdit,
+            self.eth_dest_lineEdit,
+            self.eth_mac_lineEdit,
+            self.eth_port_lineEdit
+        ]
+        for edit in self.eth_lineEdits:
+            edit.textChanged.connect(self.enable_udp_button)
+        
+        # Error Labels
+        self.make_error_labels()
+        # self.error_labels = [
+        #     self.rfin_error_label,
+        #     self.rfout_error_label,
+        #     self.tone_list_error_label,
+        #     self.tone_power_error_label,
+        #     self.eth_source_error_label,
+        #     self.eth_dest_error_label,
+        #     self.eth_mac_error_label,
+        # ]
+        # for label in self.error_labels:
+        #     label.setVisible(False)
+
         # self.set_defaults()
 
     def _additional_setup(self):
@@ -214,6 +231,30 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.advanced_section.setTitle('Advanced Settings')
         self.retranslateUi(self)
 
+    def make_error_labels(self):
+        # Attenuation Error Labels
+        att_err_str = 'Attenuation must be in range [0.0, 31.75]'
+        self.if_gridLayout.removeWidget(self.rfout_error_label)
+        self.rfout_error_label= IconLabel(ERROR_ICON_CODE, att_err_str, color='red', parent=self)
+        self.if_gridLayout.addWidget(self.rfout_error_label, 1, 1, Qt.AlignmentFlag.AlignLeft)
+        self.rfout_error_label.setVisible(False)
+        
+        self.if_gridLayout.removeWidget(self.rfin_error_label)
+        self.rfin_error_label = IconLabel(ERROR_ICON_CODE, att_err_str, color='red', parent=self)
+        self.if_gridLayout.addWidget(self.rfin_error_label, 3, 1, Qt.AlignmentFlag.AlignLeft)
+        self.rfin_error_label.setVisible(False)
+
+        # Resonator Error Labels
+        file_err_str = 'Specified file does not exist'
+        self.resonator_gridLayout.removeWidget(self.tone_list_error_label)
+        self.tone_list_error_label = IconLabel(ERROR_ICON_CODE, file_err_str, color='red', parent=self)
+        self.resonator_gridLayout.addWidget(self.tone_list_error_label, 1, 1, Qt.AlignmentFlag.AlignLeft)
+        self.tone_list_error_label.setVisible(False)
+
+        self.resonator_gridLayout.removeWidget(self.tone_power_error_label)
+        self.tone_power_error_label= IconLabel(ERROR_ICON_CODE, file_err_str, color='red', parent=self)
+        self.resonator_gridLayout.addWidget(self.tone_power_error_label, 3, 1, Qt.AlignmentFlag.AlignLeft)
+        self.tone_power_error_label.setVisible(False)
 
     def change_attenuation(self):
         source: ClickableLineEdit = self.sender()
@@ -267,18 +308,30 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         else:
             self.udp_openPushButton.setEnabled(False)
     
-    def choose_tone_file(self):
-        """Open a file dialog to select the tone file."""
+    def choose_tone_list(self):
+        """Open a file dialog to select the tone list file."""
         fname, _ = QFileDialog.getOpenFileName(
             self,
-            'Select Tone File',
+            'Select Tone List',
             './',
             'Numpy (*.npy);;All Files(*.*)',
             'Numpy (*.npy)',
         )
         if fname:
-            self.tone_path = Path(fname)
             self.tone_list_lineEdit.setText(fname)
+
+    def choose_tone_powers(self):
+        """Open a file dialog to select the tone power file."""
+        fname, _ = QFileDialog.getOpenFileName(
+            self,
+            'Select Tone Powers',
+            './',
+            'Numpy (*.npy);;All Files(*.*)',
+            'Numpy (*.npy)',
+        )
+        if fname:
+            self.tone_power_lineEdit.setText(fname)
+    
     
     def choose_channel_mask(self):
         """Open a file dialog to select the channel mask file."""
@@ -368,8 +421,12 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
 
     def upload_tone_list(self):
         # see if the user wants the default list or something different:
-        tone_file = get_lineEdit_text(self.tone_list_file_upload_widget.lineEdit)
-        amp_file = get_lineEdit_text(self.tone_power_file_upload_widget.lineEdit)
+        tone_valid = verify_lineEdit(self.tone_list_lineEdit, self.tone_list_error_label)
+        power_valid = verify_lineEdit(self.tone_power_lineEdit, self.tone_power_error_label)
+        if not (tone_valid and power_valid):
+            return
+        tone_file = get_lineEdit_text(self.tone_list_lineEdit)
+        amp_file = get_lineEdit_text(self.tone_power_lineEdit)
         tone_list = np.ndarray.tolist(np.load(tone_file))
         # tone_powers = np.ndarray.tolist(np.load(amp_file))
         tone_powers = np.ones_like(tone_list)
@@ -380,14 +437,24 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         match attenuation:
             case 'in':
                 addr = 1
-                att = get_num_value(self.rfin_lineEdit)
+                lineEdit = self.rfin_lineEdit
+                error_label = self.rfin_error_label
             case 'out':
                 addr = 2
-                att = get_num_value(self.rfout_lineEdit)
+                lineEdit = self.rfout_lineEdit
+                error_label = self.rfout_error_label
             case _:
                 raise ValueError(f'Function `set_attenuation` called with illegal argument "{attenuation}"; must be in ["in", "out"]')
-        self.transceiver.set_atten(addr, att)
-        print('Succesfully set attenuation')
+        
+        if verify_lineEdit(lineEdit, error_label):
+            att = get_num_value(lineEdit)
+            # self.transceiver.set_atten(addr, att)
+            print('Succesfully set attenuation')
+    
+    def set_lo_freq(self):
+        lo_freq = get_num_value(self.lo_freq_lineEdit)
+        valon = Valon5009(str(self.comport))
+        valon.set_frequency(self.channel, lo_freq)
     
     def set_defaults(self):
         self.tone_list_file_upload_widget.lineEdit.setText(self.settings['tone_list'])

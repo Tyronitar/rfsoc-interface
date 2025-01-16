@@ -12,5 +12,6 @@
     <file alias="left.png">icons8-left-52.png</file>
     <file>upload.png</file>
     <file>stop.png</file>
+    <file>error.png</file>
   </qresource>
 </RCC>
