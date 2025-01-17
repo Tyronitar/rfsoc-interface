@@ -5,6 +5,7 @@ from typing import Any
 import numpy.typing as npt
 
 from kidpy3 import RFSOC
+from kidpy3.rfsoc import RedisConnection
 from kidpy3.data_handler import Rfchan
 from kidpy3.hardware import Valon5009, Transceiver320d
 
@@ -42,8 +43,43 @@ class RFSOCWrapper:
 
         # self.rfsoc = self.make_kidpy_rfsoc()
         self.rfsoc = None
-        # self.transceiver = Transceiver320d(str(self.settings['atten_comport']))
-        self.transceiver = None
+        self.atten_transceiver = None
+        # self.connect_to_comports()
+    
+    def connect_to_comports(self):
+        self.connect_to_atten_comport()
+        self.connect_to_lo_comport(0)
+        self.connect_to_lo_comport(1)
+    
+    @ensure_path(1)
+    def set_atten_comport(self, comport: Path):
+        self.settings['atten_comport'] = comport
+        if self.atten_transceiver is not None:
+            self.atten_transceiver.close()
+        self.connect_to_atten_comport
+    
+    def connect_to_atten_comport(self):
+        self.atten_transceiver = Transceiver320d(str(self.settings['atten_comport']))
+    
+    @ensure_path(2)
+    def set_lo_comport(self, addr: int, comport: Path):
+        match addr:
+            case 0:
+                self.settings['lo_comport_a'] = comport
+            case 1:
+                self.settings['lo_comport_b'] = comport
+            case _:
+                raise ValueError(f'Invalid address {addr}. Must be 0 or 1.')
+        self.connect_to_lo_comport(addr)
+    
+    def connect_to_lo_comport(self, addr: int):
+        match addr:
+            case 0:
+                self.valon_a = Valon5009(str(self.settings['lo_comport_a']))
+            case 1:
+                self.valon_b = Valon5009(str(self.settings['lo_comport_b']))
+            case _:
+                raise ValueError(f'Invalid address {addr}. Must be 0 or 1.')
     
     def to_kidpy(self) -> dict:
         kidpy_config = {}
@@ -60,10 +96,18 @@ class RFSOCWrapper:
             'port_b': self.settings['channel2']['port'],
         }
         return {'rfsoc_config': kidpy_config}
+    
+    def update_kidpy_rfsoc(self):
+        data = self.to_kidpy()
+        self.rfsoc.read_config(data)
+        self.rfsoc.rcon = RedisConnection(
+            self.settings['redis']['host'],
+            self.settings['redis']['port'],
+        )
 
     def make_kidpy_rfsoc(self) -> RFSOC:
         yaml_contents = self.to_kidpy()
-        fname = f'{self.name}.yml'
+        fname = f'{self.settings['name']}.yml'
         with open(fname, 'w') as f:
             yaml.dump(yaml_contents, f)
         return RFSOC(fname)
@@ -88,5 +132,11 @@ class RFSOCWrapper:
         self.rfsoc.set_tone_list(chan=chan, tonelist=tonelist, amplitudes=amplitudes)
     
     def set_atten(self, addr: int, value: float):
-        return self.transceiver.set_atten(addr, value)
+        return self.atten_transceiver.set_atten(addr, value)
     
+    def configure_hardware(self):
+        self.rfsoc.configure_hardware()
+    
+    @ensure_path(1)
+    def set_chanmask(self, fname: Path):
+        self.settings['chanmask'] = fname

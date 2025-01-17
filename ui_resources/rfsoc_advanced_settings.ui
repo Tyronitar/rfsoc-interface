@@ -15,7 +15,7 @@
   </property>
   <layout class="QFormLayout" name="formLayout_3">
    <item row="0" column="0">
-    <widget class="QLabel" name="label_2">
+    <widget class="QLabel" name="bitstream_label">
      <property name="text">
       <string>Firmware bitstream:</string>
      </property>
@@ -63,10 +63,18 @@
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="QLineEdit" name="lineEdit"/>
+       <widget class="QLineEdit" name="redis_ip_lineEdit">
+        <property name="placeholderText">
+         <string>255.255.255.255</string>
+        </property>
+       </widget>
       </item>
       <item row="1" column="1">
-       <widget class="QLineEdit" name="lineEdit_2"/>
+       <widget class="QLineEdit" name="redis_port_lineEdit">
+        <property name="placeholderText">
+         <string>0</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>
@@ -105,7 +113,7 @@
        </widget>
       </item>
       <item row="1" column="1">
-       <widget class="FileUploadWidget" name="comport_channel1_fileUploadWidger" native="true"/>
+       <widget class="FileUploadWidget" name="comport_channel1_fileUploadWidget" native="true"/>
       </item>
       <item row="2" column="1">
        <widget class="FileUploadWidget" name="comport_channel2_fileUploadWidget" native="true"/>

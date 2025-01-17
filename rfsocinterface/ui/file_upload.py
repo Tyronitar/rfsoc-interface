@@ -10,7 +10,7 @@ from rfsocinterface.utils import get_num_value
 DEFAULT_DIR = Path('./')
 
 class FileUploadWidget(QWidget, Ui_FileUploadWidget):
-    uploaded = Signal(Any)
+    uploaded = Signal(str)
 
     def __init__(self, parent = None):
         super().__init__(parent)
@@ -35,8 +35,6 @@ class FileUploadWidget(QWidget, Ui_FileUploadWidget):
         
     def get_text(self) -> str:
         txt = self.lineEdit.text()
-        if not txt:
-            txt = self.lineEdit.placeholderText()
         return txt
     
     def upload(self):
@@ -50,6 +48,9 @@ class FileUploadWidget(QWidget, Ui_FileUploadWidget):
 
     def set_dir(self, directory: str):
         self.browse_dialog_options['dir'] = directory
+    
+    def set_placeholder_text(self, text: str):
+        self.lineEdit.setPlaceholderText(text)
 
     def set_selected_filter(self, filt: str):
         all_filters = self.browse_dialog_options['filter']

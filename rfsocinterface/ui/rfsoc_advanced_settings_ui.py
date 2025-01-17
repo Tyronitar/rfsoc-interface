@@ -27,10 +27,10 @@ class Ui_RFSOCAdvancedSettingsWidget(object):
         RFSOCAdvancedSettingsWidget.resize(351, 232)
         self.formLayout_3 = QFormLayout(RFSOCAdvancedSettingsWidget)
         self.formLayout_3.setObjectName(u"formLayout_3")
-        self.label_2 = QLabel(RFSOCAdvancedSettingsWidget)
-        self.label_2.setObjectName(u"label_2")
+        self.bitstream_label = QLabel(RFSOCAdvancedSettingsWidget)
+        self.bitstream_label.setObjectName(u"bitstream_label")
 
-        self.formLayout_3.setWidget(0, QFormLayout.LabelRole, self.label_2)
+        self.formLayout_3.setWidget(0, QFormLayout.LabelRole, self.bitstream_label)
 
         self.redis_GroupBox = QGroupBox(RFSOCAdvancedSettingsWidget)
         self.redis_GroupBox.setObjectName(u"redis_GroupBox")
@@ -49,15 +49,15 @@ class Ui_RFSOCAdvancedSettingsWidget(object):
 
         self.formLayout_2.setWidget(1, QFormLayout.LabelRole, self.redis_port_label)
 
-        self.lineEdit = QLineEdit(self.redis_GroupBox)
-        self.lineEdit.setObjectName(u"lineEdit")
+        self.redis_ip_lineEdit = QLineEdit(self.redis_GroupBox)
+        self.redis_ip_lineEdit.setObjectName(u"redis_ip_lineEdit")
 
-        self.formLayout_2.setWidget(0, QFormLayout.FieldRole, self.lineEdit)
+        self.formLayout_2.setWidget(0, QFormLayout.FieldRole, self.redis_ip_lineEdit)
 
-        self.lineEdit_2 = QLineEdit(self.redis_GroupBox)
-        self.lineEdit_2.setObjectName(u"lineEdit_2")
+        self.redis_port_lineEdit = QLineEdit(self.redis_GroupBox)
+        self.redis_port_lineEdit.setObjectName(u"redis_port_lineEdit")
 
-        self.formLayout_2.setWidget(1, QFormLayout.FieldRole, self.lineEdit_2)
+        self.formLayout_2.setWidget(1, QFormLayout.FieldRole, self.redis_port_lineEdit)
 
 
         self.formLayout_3.setWidget(2, QFormLayout.SpanningRole, self.redis_GroupBox)
@@ -91,10 +91,10 @@ class Ui_RFSOCAdvancedSettingsWidget(object):
 
         self.formLayout.setWidget(2, QFormLayout.LabelRole, self.comport_channel2_label)
 
-        self.comport_channel1_fileUploadWidger = FileUploadWidget(self.comport_groupBox)
-        self.comport_channel1_fileUploadWidger.setObjectName(u"comport_channel1_fileUploadWidger")
+        self.comport_channel1_fileUploadWidget = FileUploadWidget(self.comport_groupBox)
+        self.comport_channel1_fileUploadWidget.setObjectName(u"comport_channel1_fileUploadWidget")
 
-        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.comport_channel1_fileUploadWidger)
+        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.comport_channel1_fileUploadWidget)
 
         self.comport_channel2_fileUploadWidget = FileUploadWidget(self.comport_groupBox)
         self.comport_channel2_fileUploadWidget.setObjectName(u"comport_channel2_fileUploadWidget")
@@ -112,7 +112,7 @@ class Ui_RFSOCAdvancedSettingsWidget(object):
 
     def retranslateUi(self, RFSOCAdvancedSettingsWidget):
         RFSOCAdvancedSettingsWidget.setWindowTitle(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"Form", None))
-        self.label_2.setText(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"Firmware bitstream:", None))
+        self.bitstream_label.setText(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"Firmware bitstream:", None))
         self.redis_GroupBox.setTitle(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"REDIS Settings", None))
 #if QT_CONFIG(tooltip)
         self.redis_ip_label.setToolTip(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"Choose a list of resonant frequencies", None))
@@ -122,6 +122,8 @@ class Ui_RFSOCAdvancedSettingsWidget(object):
 #endif // QT_CONFIG(whatsthis)
         self.redis_ip_label.setText(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"IP address:", None))
         self.redis_port_label.setText(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"Port:", None))
+        self.redis_ip_lineEdit.setPlaceholderText(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"255.255.255.255", None))
+        self.redis_port_lineEdit.setPlaceholderText(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"0", None))
         self.comport_groupBox.setTitle(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"Comports", None))
         self.comport_atten_label.setText(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"Attenuators:", None))
         self.comport_channel1_label.setText(QCoreApplication.translate("RFSOCAdvancedSettingsWidget", u"Channel 1 valon:", None))

@@ -15,13 +15,14 @@
 '''
 
 import PySide6.QtCore as cr
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import Qt, QEvent, QChildEvent
 import PySide6.QtWidgets as wd
 from PySide6.QtGui import QMouseEvent
 # import PyQt5.QtGui as gui
 import sys
 import time
 from rfsocinterface.utils import get_total_height, layout_widgets
+from rfsocinterface.ui.icon_label import IconLabel
 
 TOGGLE_BUTTON_CSS = """
         QToolButton {
@@ -53,12 +54,14 @@ class Section(wd.QWidget):
 
     def __init__(self, parent=None,*, animationDuration=100):
         super().__init__(parent)
+        self.initialized = False
         self.animationDuration = animationDuration
         self.toggleButton = wd.QToolButton(self)
         self.headerLine = wd.QFrame(self)
         self.toggleAnimation = cr.QParallelAnimationGroup(self)
         self.contentArea = wd.QScrollArea(self)
         self.mainLayout = wd.QGridLayout(self)
+        self.contentHeight = 0
 
         self.toggleButton.setToolButtonStyle(cr.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         # self.toggleButton.setStyleSheet("QToolButton {border: none;}")
@@ -72,7 +75,7 @@ class Section(wd.QWidget):
         self.headerLine.setSizePolicy(wd.QSizePolicy.Expanding, wd.QSizePolicy.Maximum)
 
         # self.contentArea.setLayout(wd.QHBoxLayout())
-        self.contentArea.setSizePolicy(wd.QSizePolicy.Expanding, wd.QSizePolicy.Fixed)
+        self.contentArea.setSizePolicy(wd.QSizePolicy.Expanding, wd.QSizePolicy.Ignored)
 
         # start out collapsed
         self.contentArea.setMaximumHeight(0)
@@ -97,6 +100,7 @@ class Section(wd.QWidget):
         self.parent_sections = []
         self.children_sections = []
         self.children_height = 0
+        self.initialized = True
     
     def set_active(self, value: str):
         self.toggleButton.setProperty('active', value)
@@ -112,7 +116,9 @@ class Section(wd.QWidget):
             for child in obj.findChildren(wd.QLayout):
                 self.install_event_filter_recursively(child)
         else:
-            if isinstance(obj, wd.QWidget):
+            # if isinstance(obj, IconLabel):
+            #     obj.hidden.connect(self.update_self)
+            if obj.isWidgetType():
             # if type(obj) in (wd.QWidget, wd.QPushButton, wd.QToolButton, wd.QLineEdit):
                 obj.installEventFilter(self)
             if isinstance(obj, wd.QAbstractButton):
@@ -135,6 +141,8 @@ class Section(wd.QWidget):
         layout = self.contentArea.layout()
         del layout
         self.contentArea.setLayout(contentLayout)
+        self.setMinimumWidth(contentLayout.minimumSize().width())
+        # self.contentArea.setSizePolicy(wd.QSizePolicy.Expanding, wd.QSizePolicy.Maximum)
 
         self.children_sections = find_children_sections(contentLayout)
         for child in self.children_sections:
@@ -236,6 +244,41 @@ class Section(wd.QWidget):
             # resize_animation.setEndValue(parent.collapsedHeight + parent.contentHeight)
             # resize_animation.start()
             # parent.toggleAnimation.start()
+    
+    def height_changed(self):
+        source = self.sender()
+        # self.contentArea.resize(self.contentArea.width(), self.contentArea.minimumSizeHint().height())
+        # if visible:
+        #     self.contentHeight += source.sizeHint().height()
+        # else:
+        #     self.contentHeight -= source.sizeHint().height()
+        # self.contentHeight = self.contentArea.layout().minimumSize().height()
+        self.contentHeight = self.contentArea.layout().sizeHint().height()
+        self.update_animation()
+        self.resize_animation(self.animationDuration)
+        self.update_parent_sections(None)
+    
+    def update_self(self, visible: bool):
+        # self.collapsedHeight = self.sizeHint().height() - self.contentArea.maximumHeight()
+        source: wd.QWidget = self.sender()
+        if visible:
+            self.contentHeight += source.sizeHint().height()
+            # self.contentHeight += source.height()
+        else:
+            self.contentHeight -= source.sizeHint().height()
+            # self.contentHeight -= source.height()
+        # self.contentHeight = self.contentArea.layout().sizeHint().height()
+        # self.update_size()
+        self.update_animation()
+        self.resize_animation(self.animationDuration)
+        self.update_parent_sections(None)
+        
+    # def childEvent(self, event: QChildEvent):
+    #     if self.initialized:
+    #         if event.child().isWidgetType():
+    #             self.update_size()
+    #             self.adjustSize()
+    #     return super().childEvent(event)
 
 
 def find_section_height(widget: wd.QWidget) -> int:

@@ -6,15 +6,21 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>657</width>
-    <height>492</height>
+    <width>650</width>
+    <height>510</height>
    </rect>
   </property>
   <property name="sizePolicy">
-   <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+   <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
     <horstretch>0</horstretch>
     <verstretch>0</verstretch>
    </sizepolicy>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>650</width>
+    <height>0</height>
+   </size>
   </property>
   <property name="windowTitle">
    <string>Form</string>
@@ -23,7 +29,7 @@
    <item row="6" column="0" colspan="2" alignment="Qt::AlignmentFlag::AlignBottom">
     <widget class="QDialogButtonBox" name="buttonBox">
      <property name="standardButtons">
-      <set>QDialogButtonBox::StandardButton::Apply|QDialogButtonBox::StandardButton::RestoreDefaults</set>
+      <set>QDialogButtonBox::StandardButton::Apply|QDialogButtonBox::StandardButton::Reset|QDialogButtonBox::StandardButton::RestoreDefaults</set>
      </property>
      <property name="centerButtons">
       <bool>false</bool>
@@ -36,49 +42,6 @@
       <string>Ethernet Settings</string>
      </property>
      <layout class="QGridLayout" name="eth_gridLayout">
-      <item row="4" column="1">
-       <widget class="QLineEdit" name="eth_mac_lineEdit"/>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="eth_dest_label">
-        <property name="text">
-         <string>Destination IP address:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QLineEdit" name="eth_source_lineEdit"/>
-      </item>
-      <item row="6" column="1">
-       <widget class="QLineEdit" name="eth_port_lineEdit"/>
-      </item>
-      <item row="2" column="1">
-       <widget class="QLineEdit" name="eth_dest_lineEdit"/>
-      </item>
-      <item row="1" column="1">
-       <widget class="QLabel" name="eth_source_error_label">
-        <property name="text">
-         <string/>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="eth_mac_label">
-        <property name="text">
-         <string>Destination MAC address:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0">
-       <widget class="QLabel" name="eth_port_label">
-        <property name="text">
-         <string>Port:</string>
-        </property>
-       </widget>
-      </item>
       <item row="3" column="1">
        <widget class="QLabel" name="eth_dest_error_label">
         <property name="text">
@@ -89,7 +52,28 @@
         </property>
        </widget>
       </item>
-      <item row="7" column="1" alignment="Qt::AlignmentFlag::AlignRight">
+      <item row="2" column="1">
+       <widget class="QLineEdit" name="eth_dest_lineEdit">
+        <property name="placeholderText">
+         <string>255.255.255.255</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QLineEdit" name="eth_port_lineEdit">
+        <property name="placeholderText">
+         <string>0</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="eth_dest_label">
+        <property name="text">
+         <string>Destination IP address:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="1" alignment="Qt::AlignmentFlag::AlignRight">
        <widget class="QPushButton" name="eth_pushButton">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -108,10 +92,48 @@
         </property>
        </widget>
       </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="eth_source_lineEdit">
+        <property name="placeholderText">
+         <string>255.255.255.255</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="eth_mac_label">
+        <property name="text">
+         <string>Destination MAC address:</string>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="0">
        <widget class="QLabel" name="eth_source_label">
         <property name="text">
          <string>Source IP address:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="eth_port_label">
+        <property name="text">
+         <string>Port:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QLineEdit" name="eth_mac_lineEdit">
+        <property name="placeholderText">
+         <string>XX:XX:XX:XX:XX:XX</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="eth_source_error_label">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
         </property>
        </widget>
       </item>
@@ -125,21 +147,119 @@
         </property>
        </widget>
       </item>
+      <item row="7" column="1">
+       <widget class="QLabel" name="eth_port_error_label">
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
    <item row="1" column="1">
     <widget class="QGroupBox" name="if_GroupBox">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+      <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>215</width>
+       <height>16777215</height>
+      </size>
      </property>
      <property name="title">
       <string>IF Settings</string>
      </property>
      <layout class="QGridLayout" name="if_gridLayout">
+      <item row="3" column="1">
+       <widget class="QLabel" name="rfin_error_label">
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="rfout_error_label">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_3">
+        <item>
+         <widget class="ClickableLineEdit" name="rfin_lineEdit">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="placeholderText">
+           <string>0.0</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="rfin_uploadToolButton">
+          <property name="enabled">
+           <bool>true</bool>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>150</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Upload Selected Tone List</string>
+          </property>
+          <property name="icon">
+           <iconset resource="icons.qrc">
+            <normaloff>:/icons/upload.png</normaloff>:/icons/upload.png</iconset>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="rfinLabel">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Rfin:</string>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
@@ -152,12 +272,12 @@
           </property>
           <property name="maximumSize">
            <size>
-            <width>50</width>
+            <width>16777215</width>
             <height>16777215</height>
            </size>
           </property>
           <property name="placeholderText">
-           <string>0</string>
+           <string>0.0</string>
           </property>
          </widget>
         </item>
@@ -176,6 +296,12 @@
            <size>
             <width>150</width>
             <height>16777215</height>
+           </size>
+          </property>
+          <property name="baseSize">
+           <size>
+            <width>25</width>
+            <height>25</height>
            </size>
           </property>
           <property name="text">
@@ -204,7 +330,7 @@
           </property>
           <property name="maximumSize">
            <size>
-            <width>50</width>
+            <width>16777215</width>
             <height>16777215</height>
            </size>
           </property>
@@ -241,39 +367,6 @@
         </item>
        </layout>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="rfoutLabel">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="text">
-         <string>Rfout:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QLabel" name="rfout_error_label">
-        <property name="text">
-         <string/>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="rfinLabel">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="text">
-         <string>Rfin:</string>
-        </property>
-       </widget>
-      </item>
       <item row="4" column="0">
        <widget class="QLabel" name="lo_freq_label">
         <property name="sizePolicy">
@@ -287,67 +380,49 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_3">
-        <item>
-         <widget class="ClickableLineEdit" name="rfin_lineEdit">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>50</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="placeholderText">
-           <string>0</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QToolButton" name="rfin_uploadToolButton">
-          <property name="enabled">
-           <bool>true</bool>
-          </property>
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>150</width>
-            <height>16777215</height>
-           </size>
-          </property>
-          <property name="text">
-           <string>Upload Selected Tone List</string>
-          </property>
-          <property name="icon">
-           <iconset resource="icons.qrc">
-            <normaloff>:/icons/upload.png</normaloff>:/icons/upload.png</iconset>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="3" column="1">
-       <widget class="QLabel" name="rfin_error_label">
+      <item row="0" column="0">
+       <widget class="QLabel" name="rfoutLabel">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="text">
-         <string/>
+         <string>Rfout:</string>
         </property>
        </widget>
+      </item>
+      <item row="5" column="1">
+       <spacer name="verticalSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>40</height>
+         </size>
+        </property>
+       </spacer>
       </item>
      </layout>
     </widget>
    </item>
    <item row="1" column="0">
     <widget class="QGroupBox" name="resonator_GroupBox">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>400</width>
+       <height>0</height>
+      </size>
+     </property>
      <property name="title">
       <string>Resonator Settings</string>
      </property>
@@ -381,10 +456,26 @@
       <item row="2" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_5">
         <item>
-         <widget class="QLineEdit" name="tone_power_lineEdit"/>
+         <widget class="QLineEdit" name="tone_power_lineEdit">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="placeholderText">
+           <string>/path/to/filename.npy</string>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QPushButton" name="tone_power_pushButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <property name="text">
            <string>Browse...</string>
           </property>
@@ -395,10 +486,26 @@
       <item row="5" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout">
         <item>
-         <widget class="QLineEdit" name="chanmask_lineEdit"/>
+         <widget class="QLineEdit" name="chanmask_lineEdit">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="placeholderText">
+           <string>/path/to/filename.npy</string>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QPushButton" name="chanmask_pushButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <property name="text">
            <string>Browse...</string>
           </property>
@@ -445,10 +552,26 @@
       <item row="0" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_6">
         <item>
-         <widget class="QLineEdit" name="tone_list_lineEdit"/>
+         <widget class="QLineEdit" name="tone_list_lineEdit">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="placeholderText">
+           <string>/path/to/filename.npy</string>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QPushButton" name="tone_list_pushButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <property name="text">
            <string>Browse...</string>
           </property>
