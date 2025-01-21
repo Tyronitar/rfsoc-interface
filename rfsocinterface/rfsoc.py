@@ -41,9 +41,10 @@ class RFSOCWrapper:
         self.settings['channel1'] = chan_settings_a
         self.settings['channel2'] = chan_settings_b
 
-        # self.rfsoc = self.make_kidpy_rfsoc()
-        self.rfsoc = None
-        self.atten_transceiver = None
+        self.rfsoc = self.make_kidpy_rfsoc()
+        self.connect_to_atten_comport()
+        # self.rfsoc = None
+        # self.atten_transceiver = None
         # self.connect_to_comports()
     
     def connect_to_comports(self):
@@ -56,7 +57,7 @@ class RFSOCWrapper:
         self.settings['atten_comport'] = comport
         if self.atten_transceiver is not None:
             self.atten_transceiver.close()
-        self.connect_to_atten_comport
+        self.connect_to_atten_comport()
     
     def connect_to_atten_comport(self):
         self.atten_transceiver = Transceiver320d(str(self.settings['atten_comport']))
@@ -106,6 +107,7 @@ class RFSOCWrapper:
         )
 
     def make_kidpy_rfsoc(self) -> RFSOC:
+        # TODO: Use a dictionary not a YAML file
         yaml_contents = self.to_kidpy()
         fname = f'{self.settings['name']}.yml'
         with open(fname, 'w') as f:

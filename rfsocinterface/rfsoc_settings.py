@@ -303,15 +303,16 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     def upload_tone_list(self):
         # see if the user wants the default list or something different:
         tone_valid, tone_toggled = verify_lineEdit(self.tone_list_lineEdit, self.tone_list_error_label)
-        power_valid, power_toggled = verify_lineEdit(self.tone_power_lineEdit, self.tone_power_error_label)
-        if tone_toggled or power_toggled:
-            self.height_updated.emit()
-        if not (tone_valid and power_valid):
-            return
+        # power_valid, power_toggled = verify_lineEdit(self.tone_power_lineEdit, self.tone_power_error_label)
+        # if tone_toggled or power_toggled:
+        #     self.height_updated.emit()
+        # if not (tone_valid and power_valid):
+        #     return
         tone_file = get_lineEdit_text(self.tone_list_lineEdit)
-        amp_file = get_lineEdit_text(self.tone_power_lineEdit)
+        # amp_file = get_lineEdit_text(self.tone_power_lineEdit)
         tone_list = np.ndarray.tolist(np.load(tone_file))
-        tone_powers = np.ndarray.tolist(np.load(amp_file))
+        # tone_powers = np.ndarray.tolist(np.load(amp_file))
+        tone_powers = np.ones_like(tone_list)
         self.rfsoc.set_tone_list(chan=self.channel, tonelist=tone_list, amplitudes=tone_powers)
 
     def set_attenuation(self, attenuation: str):
