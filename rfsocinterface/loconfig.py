@@ -184,14 +184,22 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
                 pass
 
         # For running on ONR compupter
+        match chan:
+            case 1:
+                rfchan = rfsoc.rfsoc.rf1
+            case 2:
+                rfchan = rfsoc.rfsoc.rf2
+            case _:
+                raise ValueError(f'Invalid channel number: {chan}')
         sweep = LoSweep(
             valon,
-            rfsoc.rfsoc.rf1,
+            rfchan,
             rfsoc.get_tone_list()[0],
             valon.get_frequency(SYNTH_B),
         )
         tone_list = rfsoc.get_tone_list()[0]
         chanmask = DEFAULT_CHANMASK
+        # chanmask = rfsoc.settings['chanmask']
         freq_step = get_num_value(self.df_lineEdit)
         full_span = get_num_value(self.deltaf_lineEdit)
         n_steps = full_span / freq_step

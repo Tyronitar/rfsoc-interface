@@ -69,9 +69,9 @@ redis = {ip = "192.168.1.10", port = 6379}
 atten_comport = '/dev/IF2Attenuators'
 [rfsocs.channel1]
 lo_comport = '/dev/IF2System1LO'
-sourceip = '192.168.3.41'
-destip = '192.168.3.40'
-destmac = '98B78520C5C2'
+sourceip = '192.168.3.40'
+destip = '192.168.3.41'
+destmac = '98B78520C5C0'
 port = 4096
 [rfsocs.channel2]
 lo_comport = '/dev/IF2System2LO'

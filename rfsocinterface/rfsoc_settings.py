@@ -303,7 +303,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         chan_settings['sourceip'] = get_lineEdit_text(self.eth_source_lineEdit)
         chan_settings['destip'] = get_lineEdit_text(self.eth_dest_lineEdit)
         chan_settings['destmac'] = get_lineEdit_text(self.eth_mac_lineEdit)
-        chan_settings['port'] = get_num_value(self.eth_port_lineEdit)
+        chan_settings['port'] = get_num_value(self.eth_port_lineEdit, int)
         self.rfsoc.update_kidpy_rfsoc()
 
     @Slot()
@@ -318,7 +318,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.height_updated.emit()
         elif all([source_ok, dest_ok, mac_ok, port_ok]):
             self.update_ethernet_config()
-            self.rfsoc.config_hardware()
+            self.rfsoc.configure_hardware()
 
     @Slot()
     def upload_tone_list(self):

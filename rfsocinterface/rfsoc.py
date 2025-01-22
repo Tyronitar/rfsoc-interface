@@ -94,6 +94,8 @@ class RFSOCWrapper:
             'udp_data_b_sourceip': self.settings['channel2']['sourceip'],
             'udp_data_a_destip': self.settings['channel1']['destip'],
             'udp_data_b_destip': self.settings['channel2']['destip'],
+            'destmac_a': self.settings['channel1']['destmac'],
+            'destmac_b': self.settings['channel2']['destmac'],
             'port_a': self.settings['channel1']['port'],
             'port_b': self.settings['channel2']['port'],
         }
@@ -103,7 +105,7 @@ class RFSOCWrapper:
         data = self.to_kidpy()
         self.rfsoc.read_config(data)
         self.rfsoc.rcon = RedisConnection(
-            self.settings['redis']['host'],
+            self.settings['redis']['ip'],
             self.settings['redis']['port'],
         )
 
@@ -139,7 +141,7 @@ class RFSOCWrapper:
         return self.atten_transceiver.set_atten(addr, value)
     
     def configure_hardware(self):
-        self.rfsoc.configure_hardware()
+        self.rfsoc.config_hardware()
     
     @ensure_path(1)
     def set_chanmask(self, fname: Path):
