@@ -192,7 +192,10 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         )
         tone_list = rfsoc.get_tone_list()[0]
         chanmask = DEFAULT_CHANMASK
-        sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=200, freq_step=0.001, pd=pd)
+        freq_step = get_num_value(self.df_lineEdit)
+        full_span = get_num_value(self.deltaf_lineEdit)
+        n_steps = full_span / freq_step
+        sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
 
         # For running on local computer
         # sweep_file = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'

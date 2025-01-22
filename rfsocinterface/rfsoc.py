@@ -41,12 +41,12 @@ class RFSOCWrapper:
         self.settings['channel1'] = chan_settings_a
         self.settings['channel2'] = chan_settings_b
 
-        # self.rfsoc = self.make_kidpy_rfsoc()
-        # self.connect_to_comports()
-        self.rfsoc = None
-        self.atten_transceiver = None
-        self.valon_a = None
-        self.valon_b = None
+        self.rfsoc = self.make_kidpy_rfsoc()
+        self.connect_to_comports()
+        # self.rfsoc = None
+        # self.atten_transceiver = None
+        # self.valon_a = None
+        # self.valon_b = None
     
     def connect_to_comports(self):
         self.connect_to_atten_comport()
@@ -67,9 +67,9 @@ class RFSOCWrapper:
     def set_lo_comport(self, addr: int, comport: Path):
         match addr:
             case 0:
-                self.settings['lo_comport_a'] = comport
+                self.settings['channel1']['lo_comport'] = str(comport)
             case 1:
-                self.settings['lo_comport_b'] = comport
+                self.settings['channel2']['lo_comport'] = str(comport)
             case _:
                 raise ValueError(f'Invalid address {addr}. Must be 0 or 1.')
         self.connect_to_lo_comport(addr)
@@ -77,9 +77,9 @@ class RFSOCWrapper:
     def connect_to_lo_comport(self, addr: int):
         match addr:
             case 0:
-                self.valon_a = Valon5009(str(self.settings['lo_comport_a']))
+                self.valon_a = Valon5009(str(self.settings['channel1']['lo_comport']))
             case 1:
-                self.valon_b = Valon5009(str(self.settings['lo_comport_b']))
+                self.valon_b = Valon5009(str(self.settings['channel2']['lo_comport']))
             case _:
                 raise ValueError(f'Invalid address {addr}. Must be 0 or 1.')
     
@@ -109,11 +109,12 @@ class RFSOCWrapper:
 
     def make_kidpy_rfsoc(self) -> RFSOC:
         # TODO: Use a dictionary not a YAML file
-        yaml_contents = self.to_kidpy()
-        fname = f'{self.settings['name']}.yml'
-        with open(fname, 'w') as f:
-            yaml.dump(yaml_contents, f)
-        return RFSOC(fname)
+        return RFSOC(self.to_kidpy())
+        # yaml_contents = self.to_kidpy()
+        # fname = f'{self.settings['name']}.yml'
+        # with open(fname, 'w') as f:
+        #     yaml.dump(yaml_contents, f)
+        # return RFSOC(fname)
 
     @ensure_path(1)
     def set_bitstream(self, path: Path):
