@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'loconfig.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.7.3
+## Created by: Qt User Interface Compiler version 6.8.1
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -17,15 +17,17 @@ from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
     QPainter, QPalette, QPixmap, QRadialGradient,
     QTransform)
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QCheckBox,
-    QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QRadioButton, QScrollArea,
-    QSizePolicy, QSpacerItem, QVBoxLayout, QWidget)
+    QComboBox, QDialogButtonBox, QFormLayout, QGridLayout,
+    QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QRadioButton, QScrollArea, QSizePolicy, QSpacerItem,
+    QToolButton, QVBoxLayout, QWidget)
+from . import icons_rc
 
 class Ui_LoConfigWidget(object):
     def setupUi(self, LoConfigWidget):
         if not LoConfigWidget.objectName():
             LoConfigWidget.setObjectName(u"LoConfigWidget")
-        LoConfigWidget.resize(800, 600)
+        LoConfigWidget.resize(603, 468)
         self.actionWhat_s_This = QAction(LoConfigWidget)
         self.actionWhat_s_This.setObjectName(u"actionWhat_s_This")
         icon = QIcon(QIcon.fromTheme(QIcon.ThemeIcon.HelpFaq))
@@ -37,61 +39,93 @@ class Ui_LoConfigWidget(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 780, 550))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 583, 418))
         self.verticalLayout_3 = QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.lo_settings_groupBox = QGroupBox(self.scrollAreaWidgetContents)
         self.lo_settings_groupBox.setObjectName(u"lo_settings_groupBox")
-        self.formLayout = QFormLayout(self.lo_settings_groupBox)
-        self.formLayout.setObjectName(u"formLayout")
+        self.lo_gridLayout = QGridLayout(self.lo_settings_groupBox)
+        self.lo_gridLayout.setObjectName(u"lo_gridLayout")
+        self.channel_label = QLabel(self.lo_settings_groupBox)
+        self.channel_label.setObjectName(u"channel_label")
+
+        self.lo_gridLayout.addWidget(self.channel_label, 0, 0, 1, 1)
+
+        self.horizontalLayout = QHBoxLayout()
+        self.horizontalLayout.setObjectName(u"horizontalLayout")
+        self.channel_comboBox = QComboBox(self.lo_settings_groupBox)
+        self.channel_comboBox.setObjectName(u"channel_comboBox")
+
+        self.horizontalLayout.addWidget(self.channel_comboBox)
+
+        self.channel_toolButton = QToolButton(self.lo_settings_groupBox)
+        self.channel_toolButton.setObjectName(u"channel_toolButton")
+        icon1 = QIcon()
+        icon1.addFile(u":/icons/external-link.svg", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        self.channel_toolButton.setIcon(icon1)
+
+        self.horizontalLayout.addWidget(self.channel_toolButton)
+
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout.addItem(self.horizontalSpacer)
+
+
+        self.lo_gridLayout.addLayout(self.horizontalLayout, 0, 1, 1, 1)
+
+        self.channel_error_label = QLabel(self.lo_settings_groupBox)
+        self.channel_error_label.setObjectName(u"channel_error_label")
+
+        self.lo_gridLayout.addWidget(self.channel_error_label, 1, 1, 1, 1)
+
         self.global_shift_label = QLabel(self.lo_settings_groupBox)
         self.global_shift_label.setObjectName(u"global_shift_label")
 
-        self.formLayout.setWidget(0, QFormLayout.LabelRole, self.global_shift_label)
+        self.lo_gridLayout.addWidget(self.global_shift_label, 2, 0, 1, 1)
 
         self.global_shift_lineEdit = QLineEdit(self.lo_settings_groupBox)
         self.global_shift_lineEdit.setObjectName(u"global_shift_lineEdit")
         self.global_shift_lineEdit.setMaximumSize(QSize(100, 16777215))
 
-        self.formLayout.setWidget(0, QFormLayout.FieldRole, self.global_shift_lineEdit)
+        self.lo_gridLayout.addWidget(self.global_shift_lineEdit, 2, 1, 1, 1)
 
         self.df_label = QLabel(self.lo_settings_groupBox)
         self.df_label.setObjectName(u"df_label")
 
-        self.formLayout.setWidget(1, QFormLayout.LabelRole, self.df_label)
+        self.lo_gridLayout.addWidget(self.df_label, 3, 0, 1, 1)
 
         self.df_lineEdit = QLineEdit(self.lo_settings_groupBox)
         self.df_lineEdit.setObjectName(u"df_lineEdit")
         self.df_lineEdit.setMaximumSize(QSize(100, 16777215))
 
-        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.df_lineEdit)
+        self.lo_gridLayout.addWidget(self.df_lineEdit, 3, 1, 1, 1)
 
         self.deltaf_label = QLabel(self.lo_settings_groupBox)
         self.deltaf_label.setObjectName(u"deltaf_label")
 
-        self.formLayout.setWidget(2, QFormLayout.LabelRole, self.deltaf_label)
+        self.lo_gridLayout.addWidget(self.deltaf_label, 4, 0, 1, 1)
 
         self.deltaf_lineEdit = QLineEdit(self.lo_settings_groupBox)
         self.deltaf_lineEdit.setObjectName(u"deltaf_lineEdit")
         self.deltaf_lineEdit.setMaximumSize(QSize(100, 16777215))
 
-        self.formLayout.setWidget(2, QFormLayout.FieldRole, self.deltaf_lineEdit)
+        self.lo_gridLayout.addWidget(self.deltaf_lineEdit, 4, 1, 1, 1)
 
         self.flagging_label = QLabel(self.lo_settings_groupBox)
         self.flagging_label.setObjectName(u"flagging_label")
 
-        self.formLayout.setWidget(3, QFormLayout.LabelRole, self.flagging_label)
+        self.lo_gridLayout.addWidget(self.flagging_label, 5, 0, 1, 1)
 
         self.flagging_lineEdit = QLineEdit(self.lo_settings_groupBox)
         self.flagging_lineEdit.setObjectName(u"flagging_lineEdit")
         self.flagging_lineEdit.setMaximumSize(QSize(100, 16777215))
 
-        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.flagging_lineEdit)
+        self.lo_gridLayout.addWidget(self.flagging_lineEdit, 5, 1, 1, 1)
 
         self.filename_suffix_label = QLabel(self.lo_settings_groupBox)
         self.filename_suffix_label.setObjectName(u"filename_suffix_label")
 
-        self.formLayout.setWidget(4, QFormLayout.LabelRole, self.filename_suffix_label)
+        self.lo_gridLayout.addWidget(self.filename_suffix_label, 6, 0, 1, 1)
 
         self.filename_suffix_formLayout = QFormLayout()
         self.filename_suffix_formLayout.setObjectName(u"filename_suffix_formLayout")
@@ -146,30 +180,30 @@ class Ui_LoConfigWidget(object):
         self.filename_suffix_formLayout.setWidget(3, QFormLayout.FieldRole, self.filename_example_lineEdit)
 
 
-        self.formLayout.setLayout(4, QFormLayout.FieldRole, self.filename_suffix_formLayout)
+        self.lo_gridLayout.addLayout(self.filename_suffix_formLayout, 6, 1, 1, 1)
 
         self.show_diagnostics_checkBox = QCheckBox(self.lo_settings_groupBox)
         self.show_diagnostics_checkBox.setObjectName(u"show_diagnostics_checkBox")
         self.show_diagnostics_checkBox.setChecked(True)
 
-        self.formLayout.setWidget(5, QFormLayout.LabelRole, self.show_diagnostics_checkBox)
+        self.lo_gridLayout.addWidget(self.show_diagnostics_checkBox, 7, 0, 1, 1)
 
         self.only_flag_checkBox = QCheckBox(self.lo_settings_groupBox)
         self.only_flag_checkBox.setObjectName(u"only_flag_checkBox")
 
-        self.formLayout.setWidget(5, QFormLayout.FieldRole, self.only_flag_checkBox)
+        self.lo_gridLayout.addWidget(self.only_flag_checkBox, 7, 1, 1, 1)
 
         self.reveiw_tones_checkbox = QCheckBox(self.lo_settings_groupBox)
         self.reveiw_tones_checkbox.setObjectName(u"reveiw_tones_checkbox")
         self.reveiw_tones_checkbox.setChecked(True)
 
-        self.formLayout.setWidget(6, QFormLayout.LabelRole, self.reveiw_tones_checkbox)
+        self.lo_gridLayout.addWidget(self.reveiw_tones_checkbox, 8, 0, 1, 1)
 
         self.second_sweep_checkBox = QCheckBox(self.lo_settings_groupBox)
         self.second_sweep_checkBox.setObjectName(u"second_sweep_checkBox")
         self.second_sweep_checkBox.setChecked(True)
 
-        self.formLayout.setWidget(7, QFormLayout.LabelRole, self.second_sweep_checkBox)
+        self.lo_gridLayout.addWidget(self.second_sweep_checkBox, 9, 0, 1, 1)
 
         self.second_sweep_horizontalLayout = QHBoxLayout()
         self.second_sweep_horizontalLayout.setObjectName(u"second_sweep_horizontalLayout")
@@ -191,10 +225,14 @@ class Ui_LoConfigWidget(object):
         self.second_sweep_horizontalLayout.addItem(self.second_sweep_horizontalSpacer)
 
 
-        self.formLayout.setLayout(7, QFormLayout.FieldRole, self.second_sweep_horizontalLayout)
+        self.lo_gridLayout.addLayout(self.second_sweep_horizontalLayout, 9, 1, 1, 1)
 
 
         self.verticalLayout_3.addWidget(self.lo_settings_groupBox)
+
+        self.verticalSpacer = QSpacerItem(20, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+
+        self.verticalLayout_3.addItem(self.verticalSpacer)
 
         self.scrollArea.setWidget(self.scrollAreaWidgetContents)
 
@@ -202,7 +240,7 @@ class Ui_LoConfigWidget(object):
 
         self.dialog_button_box = QDialogButtonBox(LoConfigWidget)
         self.dialog_button_box.setObjectName(u"dialog_button_box")
-        self.dialog_button_box.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.RestoreDefaults)
+        self.dialog_button_box.setStandardButtons(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.RestoreDefaults)
 
         self.verticalLayout_2.addWidget(self.dialog_button_box)
 
@@ -226,6 +264,13 @@ class Ui_LoConfigWidget(object):
         self.actionWhat_s_This.setToolTip(QCoreApplication.translate("LoConfigWidget", u"Click on GUI elements for more information", None))
 #endif // QT_CONFIG(tooltip)
         self.lo_settings_groupBox.setTitle(QCoreApplication.translate("LoConfigWidget", u"LO Sweep Settings", None))
+        self.channel_label.setText(QCoreApplication.translate("LoConfigWidget", u"Channel:", None))
+        self.channel_comboBox.setPlaceholderText(QCoreApplication.translate("LoConfigWidget", u"Please Select an Item...", None))
+#if QT_CONFIG(tooltip)
+        self.channel_toolButton.setToolTip(QCoreApplication.translate("LoConfigWidget", u"Open in \"Initialization\" tab", None))
+#endif // QT_CONFIG(tooltip)
+        self.channel_toolButton.setText(QCoreApplication.translate("LoConfigWidget", u"...", None))
+        self.channel_error_label.setText("")
 #if QT_CONFIG(tooltip)
         self.global_shift_label.setToolTip(QCoreApplication.translate("LoConfigWidget", u"A shift to apply to each tone", None))
 #endif // QT_CONFIG(tooltip)

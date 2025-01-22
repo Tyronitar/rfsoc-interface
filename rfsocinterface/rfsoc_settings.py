@@ -40,6 +40,11 @@ class RFSOCSettingsWidget(QWidget):
         self.rfsoc = rfsoc
         self.setupUi()
     
+    def collapse(self, recursive: bool=False):
+        self.channel1_section.collapse(recursive=recursive)
+        self.channel2_section.collapse(recursive=recursive)
+        self.advanced_section.collapse(recursive=recursive)
+    
     def setupUi(self):
         layout = QVBoxLayout(self)
 

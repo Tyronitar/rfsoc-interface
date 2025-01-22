@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 from rfsocinterface.camera import SKPR_Camera_Control
 from kidpy import kidpy
 from rfsocinterface.utils import analog_to_digital, digital_to_analog, P, R
-from typing import Callable, Concatenate, Any
+from typing import Callable, Concatenate, Any, TYPE_CHECKING
 import functools
 import time
 
@@ -27,6 +27,9 @@ from Exscript.protocols.telnetlib import Telnet
 import h5py
 import glob
 from pathlib import Path
+
+if TYPE_CHECKING:
+    from rfsocinterface.main_window import MainWindow
 
 AZ_OUT_CHANNEL = 1
 ZE_OUT_CHANNEL = 0
@@ -560,10 +563,10 @@ class TelescopeMotorController(QObject):
 
 class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
-    def __init__(self, kpy: kidpy, parent: QWidget | None=None):
+    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], parent: QWidget | None=None):
         super().__init__(parent)
         self.setupUi(self)
-        self.kpy = kpy
+        self.rfsocs = rfsocs
         self.ctrl = TelescopeMotorController()
         self.interval = 200  # Milliseconds between update calls
         self.ze_jog_voltage = 1  # Degrees / second

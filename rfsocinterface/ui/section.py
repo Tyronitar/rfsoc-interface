@@ -244,6 +244,23 @@ class Section(wd.QWidget):
             # resize_animation.setEndValue(parent.collapsedHeight + parent.contentHeight)
             # resize_animation.start()
             # parent.toggleAnimation.start()
+        
+    def collapse(self, recursive: bool=False):
+        if recursive:
+            for child in self.children_sections:
+                child.collapse()
+        self.set_duration(0)
+        self.toggleButton.setChecked(False)
+        self.set_duration(self.animationDuration)
+    
+    def expand(self, recursive: bool=False):
+        if recursive:
+            for child in self.children_sections:
+                child.expand()
+        self.set_duration(0)
+        self.toggleButton.setChecked(True)
+        self.set_duration(self.animationDuration)
+        
     
     def height_changed(self):
         source = self.sender()

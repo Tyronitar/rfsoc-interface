@@ -1,9 +1,9 @@
 """GUI Elements dealing with Configuring the LO Sweep."""
 
 from pathlib import Path
-from typing import Literal, Type, Callable
+from typing import Literal, Type, Callable, TYPE_CHECKING
 
-from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog
+from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog, QTabWidget
 from PySide6.QtCore import Qt
 
 from rfsocinterface.ui.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
@@ -11,6 +11,8 @@ from rfsocinterface.losweep import LoSweepData, get_tone_list, LoSweep
 from rfsocinterface.lodiagnostics import DiagnosticsDialog
 from rfsocinterface.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
 from rfsocinterface.rfsoc import RFSOCWrapper
+from rfsocinterface.ui.icon_label import IconLabel, ERROR_ICON_CODE
+from rfsocinterface.initialization import InitializationWidget
 
 from kidpy import kidpy
 # from kidpy3 import RFSOC
@@ -22,6 +24,9 @@ import onrkidpy
 import sweeps
 import h5py
 from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path, JobInterrupt, SettingsError
+
+if TYPE_CHECKING:
+    from rfsocinterface.main_window import MainWindow
 
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
 DEFAULT_F_CENTER = 400.0
@@ -39,14 +44,17 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         tone_path (Path): The path to the selected tone list file.
     """
 
-    def __init__(self, rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
+    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
         super().__init__(parent)
         self.setupUi(self)
+        self.main_window = main_window
         self.rfsocs = rfsocs
         self.settings = settings
 
         self.set_defaults()
+        self.make_error_labels()    
+        self.update_channel_choices()
 
         self.buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
         self.second_sweep_checkBox.clicked.connect(self.check_second_sweep)
@@ -59,6 +67,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         )
         
         self.dialog_button_box.accepted.connect(self.run_sweep)
+        self.channel_toolButton.clicked.connect(self.open_channel_in_initialization_tab)    
     
     def set_defaults(self):
         defaults = self.settings['defaults']['losweep']
@@ -74,23 +83,69 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
 
         self.second_sweep_df_lineEdit.setPlaceholderText(str(defaults['second_sweep']['df']))
 
+    def make_error_labels(self):
+        # Attenuation Error Labels
+        channel_err_str = 'No channel selected'
+        # self.formLayout.removeWidget(self.channel_error_label)
+        self.lo_gridLayout.removeWidget(self.channel_error_label)
+        self.channel_error_label.deleteLater()
+        self.channel_error_label = IconLabel(ERROR_ICON_CODE, channel_err_str, color='red', wrap_text=False, parent=self)
+        self.lo_gridLayout.addWidget(self.channel_error_label, 1, 1)
+        self.channel_error_label.hide()
+    
+    def update_channel_choices(self):
+        for rfsoc in self.rfsocs:
+            self.channel_comboBox.addItems([f'{rfsoc.settings['name']} - Channel {i+1}' for i in range(2)])
     
     def cancel_sweep(self):
         raise JobInterrupt('LO Sweep Cancelled') 
     
-    def run_sweep(self):
-        # TODO: Choose which RFSOC and Channel to run the sweep
+    def get_selected_channel(self) -> tuple[RFSOCWrapper, int]:
+        text = self.channel_comboBox.currentText()
+        if text == '':
+            raise SettingsError('No channel selected')
+        rfsoc_name = text.split(' - ')[0]
         rfsoc = self.rfsocs[0]
-        chan = 1
+        for rf in self.rfsocs:
+            if rf.settings['name'] == rfsoc_name:
+                rfsoc = rf
+                break
+        chan = int(text.split(' - ')[1].split(' ')[-1])
+        return rfsoc, chan
+    
+    def open_channel_in_initialization_tab(self):
+        rfsoc, chan = self.get_selected_channel()
+        tab_idx = self.main_window.tabWidget.indexOf(self.main_window.initialization_tab)
+        if 'initialization' in self.main_window.tabs:
+            init_tab: InitializationWidget = self.main_window.tabs['initialization']
+            tab_idx = self.main_window.index('initialization')
+        init_tab.collapse_all(recursive=True)
+        rfsoc_idx = self.rfsocs.index(rfsoc)
+        rfsoc_section, rfsoc_wid = init_tab.items[rfsoc_idx]
+        rfsoc_section.expand()
+        match chan:
+            case 1:
+                rfsoc_wid.channel1_section.expand()
+            case 2:
+                rfsoc_wid.channel2_section.expand()
+            case _:
+                raise ValueError(f'Invalid channel number: {chan}')
+        init_tab.set_active_section(rfsoc_section)
+        self.main_window.tabWidget.setCurrentIndex(tab_idx)
+    
+    def run_sweep(self):
+        try:
+            rfsoc, chan = self.get_selected_channel()
+        except SettingsError as e:
+            self.channel_error_label.show()
+            return
+        self.channel_error_label.hide()
         channel_settings = rfsoc.settings[f'channel{chan}']
-        # TODO: Need to check which System it is
-        # Should be channel X -> system X
-        # TODO: Get the actual comport file from the config
-        valon = Valon5009(str(channel_settings['lo_comport']))
+        valon = rfsoc.valon_a if chan == 1 else rfsoc.valon_b
 
         chan_name = 'rfsoc2'
         pd = QProgressDialog('Running...', 'Cancel', 0, 100, self)
-        pd.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
+        # pd.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
         pd.move(self.geometry().center() - pd.geometry().center())
         pd.show()
         QApplication.processEvents()
@@ -131,7 +186,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         # For running on ONR compupter
         sweep = LoSweep(
             valon,
-            rfsoc.rf1,
+            rfsoc.rfsoc.rf1,
             rfsoc.get_tone_list()[0],
             valon.get_frequency(SYNTH_B),
         )

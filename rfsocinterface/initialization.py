@@ -1,3 +1,4 @@
+from typing import TYPE_CHECKING, Iterator
 from pathlib import Path
 from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtGui import QDoubleValidator
@@ -10,78 +11,95 @@ from rfsocinterface.utils import get_num_value
 from rfsocinterface.ui.section import Section
 from rfsocinterface.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
 from rfsocinterface.rfsoc import RFSOCWrapper
+if TYPE_CHECKING:
+    from rfsocinterface.main_window import MainWindow
 from kidpy3 import RFSOC
 
 class InitializationWidget(QWidget, Ui_InitializationTabWidget):
 
-    def __init__(self, rfsocs: list[RFSOC], settings: dict, parent: QWidget | None = None):
+    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOC], settings: dict, parent: QWidget | None = None):
         super().__init__(parent)
         self.setupUi(self)
+        self.main_window = main_window
         self.rfsocs = rfsocs
         self.settings = settings
-        self.channels: list[Section] = []
-        self.active_channel = None
+        self.items: list[tuple[Section, RFSOCSettingsWidget]] = []
+        self.active_section = None
 
         self.scrollArea.setStyleSheet('QScrollArea {background-color:white;}')
         self.scrollAreaWidgetContents.layout().setAlignment(Qt.AlignmentFlag.AlignTop)
         n_rfsocs = len(settings['rfsocs'])
         for i, rfsoc in enumerate(rfsocs):
-            self.add_channel(rfsoc, toggle=i == n_rfsocs - 1)
+            self.add_section(rfsoc, toggle=i == n_rfsocs - 1)
 
-        self.add_toolButton.clicked.connect(lambda: self.add_channel(toggle=True))
-        self.delete_toolButton.clicked.connect(self.remove_channel)
+        self.add_toolButton.clicked.connect(lambda: self.add_section(toggle=True))
+        self.delete_toolButton.clicked.connect(self.remove_section)
     
-    def add_channel(self, rfsoc: RFSOCWrapper, toggle: bool=False):
+    def add_section(self, rfsoc: RFSOCWrapper, toggle: bool=False):
         # channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)
-        channel_id = len(self.channels) + 1
-        channel_section = Section(self.scrollAreaWidgetContents, animationDuration=100)
-        channel_section.setObjectName(f'channel_{channel_id}_section')
+        section_id = len(self.items) + 1
+        section = Section(self.scrollAreaWidgetContents, animationDuration=100)
+        section.setObjectName(f'section_{section_id}')
         # TODO: Make the channel dynamic
-        channel_widget = RFSOCSettingsWidget(rfsoc, self)
+        rfsoc_widget = RFSOCSettingsWidget(rfsoc, self)
         # channel_widget = ChannelSettingsWidget(self.rfsocs[0], 1, channel_settings, parent=channel_section)
-        channel_widget.setObjectName(f'channel_{channel_id}_widget')
+        rfsoc_widget.setObjectName(f'section_{section_id}_widget')
         vertical_layout = QVBoxLayout()
-        vertical_layout.setObjectName(f'channel_{channel_id}_verticalLayout')
-        vertical_layout.addWidget(channel_widget)
+        vertical_layout.setObjectName(f'section_{section_id}_verticalLayout')
+        vertical_layout.addWidget(rfsoc_widget)
         # channel_section.setContentLayout(vertical_layout)
-        channel_section.setContentLayout(channel_widget.layout())
-        channel_section.setTitle(rfsoc.settings['name'])
+        section.setContentLayout(rfsoc_widget.layout())
+        section.setTitle(rfsoc.settings['name'])
 
-        self.verticalLayout.addWidget(channel_section, alignment=Qt.AlignmentFlag.AlignTop)
-        self.channels.append(channel_section)
+        self.verticalLayout.addWidget(section, alignment=Qt.AlignmentFlag.AlignTop)
+        self.items.append((section, rfsoc_widget))
         if toggle:
-            channel_section.set_duration(0)
-            channel_section.toggleButton.toggle()
-            channel_section.set_duration(100)
+            section.set_duration(0)
+            section.toggleButton.toggle()
+            section.set_duration(100)
         self._enable_delete()
         
-        self._set_active_channel(channel_section)
-        channel_section.clicked.connect(self.channel_clicked)
+        self.set_active_section(section)
+        section.clicked.connect(self.section_clicked)
+    
+    @property
+    def sections(self) -> Iterator[Section]:
+        for section, _ in self.items:
+            yield section   
+    
+    @property
+    def rfsoc_widgets(self) -> Iterator[RFSOCSettingsWidget]:
+        for _, widget in self.items:
+            yield widget
+    
+    def collapse_all(self, recursive: bool=False):
+        for section in self.sections:
+            section.collapse(recursive=recursive)
     
     def _enable_delete(self):
-        if len(self.channels) > 1:
+        if len(self.items) > 1:
             self.delete_toolButton.setEnabled(True)
         else:
             self.delete_toolButton.setEnabled(False)
     
-    def _set_active_channel(self, channel_section: Section):
-        if self.active_channel is not None:
-            self.active_channel.set_active('false')
+    def set_active_section(self, rfsoc_section: Section):
+        if self.active_section is not None:
+            self.active_section.set_active('false')
 
-        self.active_channel = channel_section
-        self.active_channel.set_active('true')
+        self.active_section = rfsoc_section
+        self.active_section.set_active('true')
 
-    def channel_clicked(self):
-        channel: Section = self.sender()
-        if channel in self.channels:
-            self._set_active_channel(channel)
+    def section_clicked(self):
+        section: Section = self.sender()
+        if section in self.items:
+            self.set_active_section(section)
 
-    def remove_channel(self):
-        if len(self.channels) == 0:
+    def remove_section(self):
+        if len(self.items) == 0:
             return
-        channel_id = self.channels.index(self.active_channel)
-        self.verticalLayout.removeWidget(self.active_channel)
-        self.channels.remove(self.active_channel)
-        self.active_channel.deleteLater()
-        self._set_active_channel(self.channels[channel_id - 1])
+        section_id = self.items.index(self.active_section)
+        self.verticalLayout.removeWidget(self.active_section)
+        self.items.remove(self.active_section)
+        self.active_section.deleteLater()
+        self.set_active_section(self.items[section_id - 1][0])
         self._enable_delete()
