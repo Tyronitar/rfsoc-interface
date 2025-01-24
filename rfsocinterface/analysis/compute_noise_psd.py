@@ -1,0 +1,146 @@
+from pathlib import Path
+import numpy as np
+import numpy.typing as npt
+import sys, os
+import matplotlib.pyplot as plt
+from scipy import signal, ndimage, fftpack
+from matplotlib.backends.backend_pdf import PdfPages
+from scipy.optimize import curve_fit
+import pdb
+import h5py
+
+
+
+def compute_noise_psd(
+    input_time_ordered_data: npt.NDArray,
+    timestamp: npt.NDArray,
+    chanmask: npt.NDArray | None=None,
+    ds_factor: int=1,
+    nominal_block_length: float=1e100,
+    cut_time: float=0.0,
+):
+    """Compute noise PSD.
+
+    input_time_ordered_data: 2 x N_res x N_sample or N_res x N_sample
+    timestamp: N_sample
+    chanmask: N_res
+    ds_factor: Downscaling factor
+    nominal_block_length: seconds
+    cut_time: seconds to cut from ends of data
+    """
+    is_complex = len(np.shape(input_time_ordered_data)) == 3
+    first_dimension = 2 if is_complex else 1
+    if chanmask is None:
+        chanmask = np.ones_like(input_time_ordered_data[0, :, 0])
+    timestamp -= timestamp[0]
+    # For data for each resonator:  either 2 or 1
+    #   calculate noise
+    if ds_factor != 1:
+        new_input_time_ordered_data = np.zeros(
+            [
+                first_dimension,
+                np.size(chanmask),
+                np.size(signal.decimate(input_time_ordered_data[0,0,:], ds_factor))
+        ])
+        for i_res in range(np.size(chanmask)):
+            for i_complex in range(first_dimension):
+                new_input_time_ordered_data[i_complex, i_res, :] = signal.decimate(
+                    input_time_ordered_data[i_complex, i_res, :],
+                    ds_factor,
+                )
+        input_time_ordered_data = new_input_time_ordered_data
+        timestamp = timestamp[0::ds_factor]
+    fs = 1. / (timestamp[1] - timestamp[0])
+
+    # Cut data at start and end
+    if cut_time > 0:
+        n_samples_to_cut = np.round(cut_time * fs).astype(int)
+        input_time_ordered_data = input_time_ordered_data[:, :, n_samples_to_cut:-n_samples_to_cut]
+        timestamp = timestamp[n_samples_to_cut:-n_samples_to_cut]
+
+    # Determine the number of blocks for computing the PSD
+    n_samples = np.size(timestamp)
+    n_samples_per_block = int(2**np.ceil(np.log2(nominal_block_length / fs)))
+    n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
+    if n_blocks == 0:
+        n_blocks = 1
+        n_samples_per_block = (2 ** np.floor(np.log2(n_samples))).astype(int)
+    
+    # Window for the PSD
+    wind = signal.get_window('hamming', n_samples_per_block)
+
+    n_chan = np.size(chanmask)
+    psd_all = np.zeros((first_dimension, n_chan, int(n_samples_per_block / 2 + 1)))
+    psd_all_clean = np.zeros((first_dimension, n_chan, int(n_samples_per_block / 2 + 1)))
+    freq, _ = signal.periodogram(np.ones(n_samples_per_block), fs)
+
+    # Loop over good resonators
+    for i_chan in np.where(chanmask == 1)[0]:
+
+        # Loop over I and Q
+        for i_complex in range(first_dimension):
+            psd = np.zeros(int(n_samples_per_block / 2 + 1))
+            psd_clean = np.zeros(int(n_samples_per_block / 2 + 1))
+
+            # Loop over blocks
+            for i_block in range(n_blocks):
+
+                # Compute the power spectrum of the raw data
+                this_data = input_time_ordered_data[
+                    i_complex,
+                    i_chan,
+                    i_block * n_samples_per_block : (i_block+1)*n_samples_per_block
+                ]
+                _, this_psd = signal.periodogram(this_data, fs, window=wind)
+                psd += this_psd / float(n_blocks)
+
+                # #correlate with average template, subtract polynomial, then computed power spectrum
+                # this_data_filt = data_filt[i_block*n_samples_per_block:(i_block+1)*n_samples_per_block]
+                # this_data_filt = this_data_filt - np.mean(this_data_filt)
+                # this_data_filt2 = data_filt2[i_block*n_samples_per_block:(i_block+1)*n_samples_per_block]
+                # this_data_filt2 = this_data_filt2 - np.mean(this_data_filt2)
+                # this_template_filt = data_mean_filt[i_block*n_samples_per_block:(i_block+1)*n_samples_per_block]
+                # this_template_filt = this_template_filt - np.mean(this_template_filt)
+                # this_template_filt2 = data_mean_filt2[i_block*n_samples_per_block:(i_block+1)*n_samples_per_block]
+                # this_template_filt2 = this_template_filt2 - np.mean(this_template_filt2)
+                # template_corr = np.mean(np.multiply(this_data_filt2,this_template_filt2)) / \
+                #                 np.mean(np.multiply(this_template_filt2,this_template_filt2))
+                # clean_data = this_data_filt - template_corr * this_template_filt
+                # pfit = np.polyfit(dummy_time, clean_data, 2)
+                # clean_data = clean_data - np.polyval(pfit, dummy_time)
+                # dummy, this_psd = signal.periodogram(clean_data, fs, window=wind)
+                # psd_clean = psd_clean + this_psd / float(n_blocks)
+
+            psd_all[i_complex, i_chan, :] = psd
+            plt.loglog(freq, psd_all[i_complex, i_chan, :])
+            plt.xlim(freq[1], freq[-1])
+            plt.show()
+            # psd_all_clean[i_chan,:] = psd_clean
+
+# def flag():
+#     n_flag = np.zeros(np.size(chanmask))
+#     fs = float(1./ ((time[1]-time[0]) * ds_factor))
+#     filt_cut = 1. / (0.5 * fs)
+#     b, a = signal.butter(5, filt_cut, btype='high', analog=False)
+#     for i_res in range(np.size(chanmask)):
+#         this_hpf_data = signal.filtfilt(b, a, new_input_time_ordered_data[i_res,:])
+#         dummy, _ = reject_outliers(this_hpf_data,sigma=4)
+#         n_flag[i_res] = np.size(this_hpf_data) - np.size(dummy)
+#     goodchan = np.where(chanmask == 1)
+#     med_flag = np.median(n_flag[goodchan])
+#     chanmask[np.where(n_flag > 2.*med_flag)] = -1
+
+if __name__ == '__main__':
+    path = Path('data/data.hdf5')
+    with h5py.File(path, 'r') as f:
+        data_i = f['time_ordered_data/adc_i'][:]
+        data_q = f['time_ordered_data/adc_q'][:]
+        amp = np.sqrt(data_i ** 2 + data_q ** 2)
+        amp = np.nanmedian(amp, axis=1)
+        input_data = np.empty((2, data_i.shape[0], data_i.shape[1]))
+        input_data[0, :, :] = data_i / np.outer(amp, np.ones(data_i.shape[1]))
+        input_data[1, :, :] = data_q / np.outer(amp, np.ones(data_q.shape[1]))
+        timestamp = f['time_ordered_data/timestamp'][:]
+        chanmask = f['global_data/chanmask'][:]
+    compute_noise_psd(input_data, timestamp, chanmask=None, ds_factor=5)
+    print(timestamp)

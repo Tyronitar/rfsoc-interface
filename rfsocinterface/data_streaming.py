@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QWidget, QCheckBox
 from PySide6.QtCore import Qt, Slot, QTimer
 from functools import partial
 from pathlib import Path
+import time
 
 from kidpy3 import capture
 
@@ -65,7 +66,7 @@ class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
         total = 0
         for rfsoc in self.rfsocs:
             for i in range(2):
-                self.channel_comboBox.addItem(rfsoc.channel_as_text(i))
+                self.channel_comboBox.addItem(rfsoc.channel_as_text(i + 1))
                 item = self.channel_comboBox.model().item(total, 0)
                 item.setCheckState(Qt.CheckState.Unchecked)
                 total += 1
@@ -73,11 +74,16 @@ class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
     def get_selected_channels(self) -> Iterator[tuple[RFSOCWrapper, int]]:
         checked_ids = self.channel_comboBox.checked_indices()
         checked_text = [self.channel_comboBox.itemText(i) for i in checked_ids]
-        return map(partial(get_channel_from_text(rfsocs=self.rfsocs), checked_text))
+        return map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text)
     
     def start_streaming(self):
         rfchans = [rfsoc.get_channel(chan) for rfsoc, chan in self.get_selected_channels()]
-        capture()
+        save_location = self.get_chosen_save_location()
+        save_location.parent.mkdir(parents=True, exist_ok=True)
+        for rfchan in rfchans:
+            rfchan.raw_filename = str(save_location)
+        duration = get_num_value(self.duration_lineEdit)
+        capture(rfchans, time.sleep, duration)
     
     def stop_streaming(self):
         pass

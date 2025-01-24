@@ -103,7 +103,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         total = 0
         for rfsoc in self.rfsocs:
             for i in range(2):
-                self.channel_comboBox.addItem(rfsoc.channel_as_text(i))
+                self.channel_comboBox.addItem(rfsoc.channel_as_text(i + 1))
                 item = self.channel_comboBox.model().item(total, 0)
                 item.setCheckState(Qt.CheckState.Unchecked)
                 total += 1
@@ -116,7 +116,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         checked_text = [self.channel_comboBox.itemText(i) for i in checked_ids]
         if not checked_text:
             raise SettingsError('No channel selected')
-        return map(partial(get_channel_from_text(rfsocs=self.rfsocs), checked_text))
+        return map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text)
     
     def open_channel_in_initialization_tab(self):
         # TODO: Fix this
