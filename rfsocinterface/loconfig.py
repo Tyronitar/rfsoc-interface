@@ -1,18 +1,20 @@
 """GUI Elements dealing with Configuring the LO Sweep."""
 
 from pathlib import Path
-from typing import Literal, Type, Callable, TYPE_CHECKING
+from typing import Literal, Type, Callable, TYPE_CHECKING, Iterator
+from functools import partial
 
-from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog, QTabWidget
+from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog, QTabWidget, QDialogButtonBox, QPushButton
 from PySide6.QtCore import Qt
 
 from rfsocinterface.ui.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.losweep import LoSweepData, get_tone_list, LoSweep
 from rfsocinterface.lodiagnostics import DiagnosticsDialog
 from rfsocinterface.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
-from rfsocinterface.rfsoc import RFSOCWrapper
+from rfsocinterface.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.ui.icon_label import IconLabel, ERROR_ICON_CODE
 from rfsocinterface.initialization import InitializationWidget
+from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path, JobInterrupt, SettingsError
 
 from kidpy import kidpy
 # from kidpy3 import RFSOC
@@ -23,7 +25,6 @@ import numpy as np
 import onrkidpy
 import sweeps
 import h5py
-from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path, JobInterrupt, SettingsError
 
 if TYPE_CHECKING:
     from rfsocinterface.main_window import MainWindow
@@ -52,6 +53,8 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         self.rfsocs = rfsocs
         self.settings = settings
 
+        self.channel_comboBox.set_default_title('Select Channels...')
+
         self.set_defaults()
         self.make_error_labels()    
         self.update_channel_choices()
@@ -66,22 +69,25 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
             self.update_filename_example
         )
         
-        self.dialog_button_box.accepted.connect(self.run_sweep)
+        self.dialog_button_box.accepted.connect(self.run_sweeps)
+        self.dialog_button_box.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self.set_defaults)   
         self.channel_toolButton.clicked.connect(self.open_channel_in_initialization_tab)    
     
     def set_defaults(self):
         defaults = self.settings['defaults']['losweep']
-        self.global_shift_lineEdit.setPlaceholderText(str(defaults['global_shift']))
-        self.df_lineEdit.setPlaceholderText(str(defaults['df']))
-        self.deltaf_lineEdit.setPlaceholderText(str(defaults['deltaf']))
-        self.flagging_lineEdit.setPlaceholderText(str(defaults['flagging_threshold']))
+        self.global_shift_lineEdit.setText(str(defaults['global_shift']))
+        self.df_lineEdit.setText(str(defaults['df']))
+        self.deltaf_lineEdit.setText(str(defaults['deltaf']))
+        self.flagging_lineEdit.setText(str(defaults['flagging_threshold']))
 
         file_suffix = defaults.get('file_suffix', 'none')
         if  file_suffix not in FILE_SUFFIXES:
             raise SettingsError(f'Invalid value for defaults.losweep.file_suffix: "{file_suffix}; valid values are: {FILE_SUFFIXES}')
         self.active_suffix: Literal['none', 'temperature', 'elevation'] = file_suffix
 
-        self.second_sweep_df_lineEdit.setPlaceholderText(str(defaults['second_sweep']['df']))
+        self.second_sweep_df_lineEdit.setText(str(defaults['second_sweep']['df']))
+
+        self.channel_comboBox.deselect_all()
 
     def make_error_labels(self):
         # Attenuation Error Labels
@@ -94,27 +100,28 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         self.channel_error_label.hide()
     
     def update_channel_choices(self):
+        total = 0
         for rfsoc in self.rfsocs:
-            self.channel_comboBox.addItems([f'{rfsoc.settings['name']} - Channel {i+1}' for i in range(2)])
+            for i in range(2):
+                self.channel_comboBox.addItem(rfsoc.channel_as_text(i))
+                item = self.channel_comboBox.model().item(total, 0)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                total += 1
     
     def cancel_sweep(self):
         raise JobInterrupt('LO Sweep Cancelled') 
     
-    def get_selected_channel(self) -> tuple[RFSOCWrapper, int]:
-        text = self.channel_comboBox.currentText()
-        if text == '':
+    def get_selected_channels(self) -> Iterator[tuple[RFSOCWrapper, int]]:
+        checked_ids = self.channel_comboBox.checked_indices()
+        checked_text = [self.channel_comboBox.itemText(i) for i in checked_ids]
+        if not checked_text:
             raise SettingsError('No channel selected')
-        rfsoc_name = text.split(' - ')[0]
-        rfsoc = self.rfsocs[0]
-        for rf in self.rfsocs:
-            if rf.settings['name'] == rfsoc_name:
-                rfsoc = rf
-                break
-        chan = int(text.split(' - ')[1].split(' ')[-1])
-        return rfsoc, chan
+        return map(partial(get_channel_from_text(rfsocs=self.rfsocs), checked_text))
     
     def open_channel_in_initialization_tab(self):
-        rfsoc, chan = self.get_selected_channel()
+        # TODO: Fix this
+        channels = self.get_selected_channels()
+        rfsoc, chan = self.get_selected_channels()
         tab_idx = self.main_window.tabWidget.indexOf(self.main_window.initialization_tab)
         if 'initialization' in self.main_window.tabs:
             init_tab: InitializationWidget = self.main_window.tabs['initialization']
@@ -133,13 +140,18 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         init_tab.set_active_section(rfsoc_section)
         self.main_window.tabWidget.setCurrentIndex(tab_idx)
     
-    def run_sweep(self):
+    def run_sweeps(self):
         try:
-            rfsoc, chan = self.get_selected_channel()
-        except SettingsError as e:
+            selected_channels = self.get_selected_channels()
+        except SettingsError:
             self.channel_error_label.show()
             return
         self.channel_error_label.hide()
+        # TODO: Run sweeps in parallel
+        for rfsoc, chan in selected_channels:
+            self.run_sweep(rfsoc, chan)
+    
+    def run_sweep(self, rfsoc: RFSOCWrapper, chan: int):
         channel_settings = rfsoc.settings[f'channel{chan}']
         valon = rfsoc.valon_a if chan == 1 else rfsoc.valon_b
 

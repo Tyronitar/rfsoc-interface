@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>650</width>
-    <height>510</height>
+    <height>514</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -256,7 +256,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>Rfin:</string>
+         <string>Rfin (dB):</string>
         </property>
        </widget>
       </item>
@@ -376,7 +376,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>LO freq (KHz):</string>
+         <string>LO freq (Hz):</string>
         </property>
        </widget>
       </item>
@@ -389,7 +389,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>Rfout:</string>
+         <string>Rfout (dB):</string>
         </property>
        </widget>
       </item>

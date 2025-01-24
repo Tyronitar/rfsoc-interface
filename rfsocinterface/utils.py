@@ -2,7 +2,8 @@ import functools
 import os
 from pathlib import Path
 import json
-from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type
+from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type, Literal
+from datetime import datetime
 import logging
 import numpy as np
 import numpy.typing as npt
@@ -14,6 +15,7 @@ from PySide6.QtGui import QValidator
 import time
 from collections.abc import Mapping
 import qtawesome as qta
+import onrkidpy
 
 IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
 MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
@@ -379,7 +381,7 @@ def recursive_update(d: Mapping, u: Mapping):
     return d
 
 
-class QPathValidator(QValidator):
+class PathValidator(QValidator):
 
     def __init__(self, parent: QWidget | None=None):
         super().__init__(parent=parent)
@@ -390,7 +392,56 @@ class QPathValidator(QValidator):
             return QValidator.State.Intermediate
         return QValidator.State.Acceptable
 
-        
+   
+# From onrkidpy.py
+def get_yymmdd():
+    """Return today's date string in YYYYMMDD format."""
+    return datetime.today().strftime('%Y%m%d')
+
+def get_chanmask(chanmask_file=''):
+
+    if chanmask_file=='':
+        chanmask_file = '/home/onrkids/onrkidpy/params/chanmask.npy'
+    chanmask = np.load(chanmask_file)
+    return chanmask
+
+FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
+
+def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", attenuation=0.):
+    #see if we already have the parent folder for today's date
+    yymmdd = get_yymmdd()
+    date_folder = base_dir / yymmdd
+    date_folder.mkdir(exist_ok=True)
+    if chan_name:
+        chan_name += '_' 
+    date_folder = date_folder / (yymmdd + '_')
+
+    #provide the name of the file
+    match file_type.lower():
+        case 'lo' | 'tonelist':
+            hour = float(datetime.now().strftime('%H')) \
+                + float(datetime.now().strftime('%M'))/60. \
+                + float(datetime.now().strftime('%S'))/3600.
+            hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
+            match file_type.lower():
+                case 'lo':
+                    savefile = date_folder / f"{chan_name}LO_Sweep_{hour_str}"
+                case 'tonelist':
+                    savefile = date_folder / f"{chan_name}tone_list_{hour_str}"
+        case 'tod' | 'azel':
+            this_dir_files = list(date_folder.glob(f'*TOD_set*'))
+            if not this_dir_files:
+                setnum = 1001
+            else:
+                this_dir_files.sort()
+                offset = 1 if file_type == 'tod' else 0
+                setnum = int(this_dir_files[-1].name[-7:-3]) + offset
+            savefile = date_folder / f'chan_name{file_type.upper()}_set{setnum}'
+        case 'attenuator':
+            savefile = date_folder / f"{chan_name}attenuator{attenuation:02d}"
+        case _:
+            raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
+    return savefile
 
 
 if __name__ == '__main__':

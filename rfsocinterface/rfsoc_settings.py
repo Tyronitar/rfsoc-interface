@@ -26,7 +26,7 @@ import yaml
 from rfsocinterface.ui.file_upload import FileUploadWidget
 from rfsocinterface.ui.section import Section
 from rfsocinterface.ui.lineedit import ClickableLineEdit
-from rfsocinterface.utils import get_num_value, get_lineEdit_text, IPV4_REGEX, MAC_REGEX, QPathValidator
+from rfsocinterface.utils import get_num_value, get_lineEdit_text, IPV4_REGEX, MAC_REGEX, PathValidator
 from rfsocinterface.ui.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE
 from rfsocinterface.rfsoc import RFSOCWrapper
 
@@ -152,7 +152,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         # Resonator Settings Connections
         self.tone_list_pushButton.clicked.connect(self.choose_tone_list)
         self.tone_power_pushButton.clicked.connect(self.choose_tone_powers)
-        self.path_validator = QPathValidator(parent=self)
+        self.path_validator = PathValidator(parent=self)
         self.tone_list_lineEdit.setValidator(self.path_validator)
         self.tone_power_lineEdit.setValidator(self.path_validator)
         self.upload_tones_pushButton.clicked.connect(self.upload_tone_list)
@@ -191,6 +191,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.hide_error_labels()
 
         self.set_defaults()
+        self.buttonBox.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self.set_defaults)
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(self.clear_form)
 
     def hide_error_labels(self):
         for label in self.error_labels:
@@ -254,6 +256,19 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.eth_mac_error_label,
             self.eth_port_error_label,
         ]
+    
+    def clear_form(self):
+        self.tone_list_lineEdit.clear()
+        self.tone_power_lineEdit.clear()
+        self.chanmask_lineEdit.clear()
+        self.eth_source_lineEdit.clear()
+        self.eth_dest_lineEdit.clear()
+        self.eth_mac_lineEdit.clear()
+        self.eth_port_lineEdit.clear()
+        self.rfin_lineEdit.clear()
+        self.rfout_lineEdit.clear()
+        self.lo_freq_lineEdit.clear()
+        self.hide_error_labels()
 
     def choose_tone_list(self):
         """Open a file dialog to select the tone list file."""

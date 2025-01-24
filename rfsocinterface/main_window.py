@@ -13,6 +13,7 @@ from rfsocinterface.ui.full_ui_ui import Ui_MainWindow
 from rfsocinterface.initialization import InitializationWidget
 from rfsocinterface.loconfig import LoConfigWidget
 from rfsocinterface.rfsoc import RFSOCWrapper
+from rfsocinterface.data_streaming import DataStreamingWidget
 
 from rfsocinterface.utils import SettingsError, ensure_path, convert_to_kidy_format
 
@@ -91,6 +92,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.data_tab.setObjectName(u"data_tab")
         self.tabWidget.addTab(self.data_tab, "")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.data_tab), QCoreApplication.translate("MainWindow", u"Data", None))
+        self.data_widget = DataStreamingWidget(self, self.rfsocs, self.data_tab)
+        self.verticalLayout_5 = QVBoxLayout(self.data_tab)
+        self.verticalLayout_5.setObjectName(u"verticalLayout_5")
+        self.verticalLayout_5.addWidget(self.data_widget)
+        self.tabs['data'] = self.data_widget
         # self.tabs.append(self.data_widget)
     
     def _make_imaging_tab(self):

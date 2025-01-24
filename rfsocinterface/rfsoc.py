@@ -9,7 +9,7 @@ from kidpy3.rfsoc import RedisConnection
 from kidpy3.data_handler import Rfchan
 from kidpy3.hardware import Valon5009, Transceiver320d
 
-from rfsocinterface.utils import convert_to_kidy_format, convert_path, recursive_update, ensure_path
+from rfsocinterface.utils import convert_to_kidy_format, convert_path, recursive_update, ensure_path, SettingsError
 
 PATH_SETTINGS = ['tone_list', 'tone_powers', 'chanmask', 'lo_comport', 'atten_comport', 'bitstream']
 
@@ -41,12 +41,12 @@ class RFSOCWrapper:
         self.settings['channel1'] = chan_settings_a
         self.settings['channel2'] = chan_settings_b
 
-        self.rfsoc = self.make_kidpy_rfsoc()
-        self.connect_to_comports()
-        # self.rfsoc = None
-        # self.atten_transceiver = None
-        # self.valon_a = None
-        # self.valon_b = None
+        # self.rfsoc = self.make_kidpy_rfsoc()
+        # self.connect_to_comports()
+        self.rfsoc = None
+        self.atten_transceiver = None
+        self.valon_a = None
+        self.valon_b = None
     
     def connect_to_comports(self):
         self.connect_to_atten_comport()
@@ -146,3 +146,32 @@ class RFSOCWrapper:
     @ensure_path(1)
     def set_chanmask(self, fname: Path):
         self.settings['chanmask'] = fname
+    
+    def channel_as_text(self, channel: int) -> str:
+        return f'{self.settings['name']} - Channel {channel}'
+    
+    def get_channel(self, channel: int) -> Rfchan:
+        match channel:
+            case 1:
+                return self.rfsoc.rf1
+            case 2:
+                return self.rfsoc.rf2
+            case _:
+                raise ValueError(f'Invalid channel {channel}. Must be 1 or 2.')
+
+def get_channel_from_text(text: str, rfsocs: list[RFSOCWrapper]) -> tuple[RFSOCWrapper, int]:
+    if text == '':
+        raise SettingsError('No channel selected')
+    try:
+        rfsoc_name = text.split(' - ')[0]
+        rfsoc = None
+        for rf in rfsocs:
+            if rf.settings['name'] == rfsoc_name:
+                rfsoc = rf
+                break
+        if rfsoc is None:
+            raise SettingsError(f'Could not find an RFSOC with name: {rfsoc_name}')
+    except (IndexError, SettingsError) as e:
+        raise SettingsError(f'Could not find a channel from text: {text}') from e
+    chan = int(text.split(' - ')[1].split(' ')[-1])
+    return rfsoc, chan
