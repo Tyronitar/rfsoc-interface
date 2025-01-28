@@ -18,6 +18,8 @@ def compute_noise_psd(
     ds_factor: int=1,
     nominal_block_length: float=1e100,
     cut_time: float=0.0,
+    hp_filter_template: float=0.05,
+    lp_filter_template: float=115.,
 ):
     """Compute noise PSD.
 
@@ -27,6 +29,8 @@ def compute_noise_psd(
     ds_factor: Downscaling factor
     nominal_block_length: seconds
     cut_time: seconds to cut from ends of data
+    hp_filter_template: high-pass filter
+    lp_filter_template: low-pass filter
     """
     is_complex = len(np.shape(input_time_ordered_data)) == 3
     first_dimension = 2 if is_complex else 1
@@ -74,6 +78,25 @@ def compute_noise_psd(
     psd_all_clean = np.zeros((first_dimension, n_chan, int(n_samples_per_block / 2 + 1)))
     freq, _ = signal.periodogram(np.ones(n_samples_per_block), fs)
 
+    #figure out an average template to try to remove thermal fluctuations
+    data_all = input_time_ordered_data[np.ndarray.flatten(np.argwhere(chanmask == 1)),:]
+    data_std = np.outer(np.std(data_all,axis=1), np.ones(n_samples))
+    data_mean = np.mean(np.divide(data_all, data_std), axis=0)
+    data_mean = data_mean - np.mean(data_mean)
+
+    # Create bandpass filters
+    hpfilt_sos = signal.butter(6, hp_filter_template, 'hp', fs=fs, output='sos', analog=False)
+    lpfilt_sos = signal.butter(6, lp_filter_template, 'lp', fs=fs, output='sos', analog=False)
+    lpfilt_sos2 = signal.butter(6, 25, 'lp', fs=fs, output='sos', analog=False)
+    data_mean_filt = signal.sosfiltfilt(hpfilt_sos, data_mean)
+    data_mean_filt = signal.sosfiltfilt(lpfilt_sos, data_mean_filt)
+    data_mean_filt2 = signal.sosfiltfilt(hpfilt_sos, data_mean)
+    data_mean_filt2 = signal.sosfiltfilt(lpfilt_sos2, data_mean_filt2)
+    data_all_filt = signal.sosfiltfilt(hpfilt_sos, data_all, axis=1)
+    data_all_filt = signal.sosfiltfilt(lpfilt_sos, data_all_filt, axis=1)
+    data_all_filt2 = signal.sosfiltfilt(hpfilt_sos, data_all, axis=1)
+    data_all_filt2 = signal.sosfiltfilt(lpfilt_sos2, data_all_filt2, axis=1)
+
     # Loop over good resonators
     for i_chan in np.where(chanmask == 1)[0]:
 
@@ -81,6 +104,8 @@ def compute_noise_psd(
         for i_complex in range(first_dimension):
             psd = np.zeros(int(n_samples_per_block / 2 + 1))
             psd_clean = np.zeros(int(n_samples_per_block / 2 + 1))
+            data_filt = np.ndarray.flatten(data_all_filt[i_complex, i_chan, :])
+            data_filt2 = np.ndarray.flatten(data_all_filt2[i_complex, i_chan, :])
 
             # Loop over blocks
             for i_block in range(n_blocks):
@@ -89,29 +114,40 @@ def compute_noise_psd(
                 this_data = input_time_ordered_data[
                     i_complex,
                     i_chan,
-                    i_block * n_samples_per_block : (i_block+1)*n_samples_per_block
+                    i_block * n_samples_per_block : (i_block + 1) * n_samples_per_block
                 ]
                 _, this_psd = signal.periodogram(this_data, fs, window=wind)
                 psd += this_psd / float(n_blocks)
 
-                # #correlate with average template, subtract polynomial, then computed power spectrum
-                # this_data_filt = data_filt[i_block*n_samples_per_block:(i_block+1)*n_samples_per_block]
-                # this_data_filt = this_data_filt - np.mean(this_data_filt)
-                # this_data_filt2 = data_filt2[i_block*n_samples_per_block:(i_block+1)*n_samples_per_block]
-                # this_data_filt2 = this_data_filt2 - np.mean(this_data_filt2)
-                # this_template_filt = data_mean_filt[i_block*n_samples_per_block:(i_block+1)*n_samples_per_block]
-                # this_template_filt = this_template_filt - np.mean(this_template_filt)
-                # this_template_filt2 = data_mean_filt2[i_block*n_samples_per_block:(i_block+1)*n_samples_per_block]
-                # this_template_filt2 = this_template_filt2 - np.mean(this_template_filt2)
-                # template_corr = np.mean(np.multiply(this_data_filt2,this_template_filt2)) / \
-                #                 np.mean(np.multiply(this_template_filt2,this_template_filt2))
-                # clean_data = this_data_filt - template_corr * this_template_filt
-                # pfit = np.polyfit(dummy_time, clean_data, 2)
-                # clean_data = clean_data - np.polyval(pfit, dummy_time)
-                # dummy, this_psd = signal.periodogram(clean_data, fs, window=wind)
-                # psd_clean = psd_clean + this_psd / float(n_blocks)
+                #correlate with average template, subtract polynomial, then computed power spectrum
+                this_data_filt = data_filt[
+                    i_block * n_samples_per_block : (i_block + 1) * n_samples_per_block
+                ]
+                this_data_filt = this_data_filt - np.mean(this_data_filt)
+                this_data_filt2 = data_filt2[
+                    i_block * n_samples_per_block : (i_block + 1) * n_samples_per_block
+                ]
+                this_data_filt2 = this_data_filt2 - np.mean(this_data_filt2)
+
+                this_template_filt = data_mean_filt[
+                    i_block * n_samples_per_block : (i_block + 1) * n_samples_per_block
+                ]
+                this_template_filt = this_template_filt - np.mean(this_template_filt)
+                this_template_filt2 = data_mean_filt2[
+                    i_block * n_samples_per_block : (i_block + 1) * n_samples_per_block
+                ]
+                this_template_filt2 = this_template_filt2 - np.mean(this_template_filt2)
+
+                template_corr = np.mean(np.multiply(this_data_filt2,this_template_filt2)) / \
+                                np.mean(np.multiply(this_template_filt2,this_template_filt2))
+                clean_data = this_data_filt - template_corr * this_template_filt
+                pfit = np.polyfit(np.arange(n_samples_per_block), clean_data, 2)
+                clean_data = clean_data - np.polyval(pfit, np.arange(n_samples_per_block))
+                _, this_psd = signal.periodogram(clean_data, fs, window=wind)
+                psd_clean = psd_clean + this_psd / float(n_blocks)
 
             psd_all[i_complex, i_chan, :] = psd
+            psd_all_clean[i_complex, i_chan, :] = psd_clean
             plt.loglog(freq, psd_all[i_complex, i_chan, :])
             plt.xlim(freq[1], freq[-1])
             plt.show()
