@@ -2,17 +2,17 @@ from typing import TYPE_CHECKING, Iterator
 from pathlib import Path
 from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtGui import QDoubleValidator
-from rfsocinterface.ui.initialization_ui import Ui_InitializationTabWidget
+from rfsocinterface.gui.uic.initialization_ui import Ui_InitializationTabWidget
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit
 from PySide6.QtWidgets import (QApplication, QGridLayout, QScrollArea, QSizePolicy,
     QVBoxLayout, QWidget)
 
-from rfsocinterface.utils import get_num_value
-from rfsocinterface.ui.section import Section
-from rfsocinterface.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
-from rfsocinterface.rfsoc import RFSOCWrapper
+from rfsocinterface.core.utils import get_num_value
+from rfsocinterface.gui.widgets.section import Section
+from rfsocinterface.gui.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
+from rfsocinterface.core.rfsoc import RFSOCWrapper
 if TYPE_CHECKING:
-    from rfsocinterface.main_window import MainWindow
+    from rfsocinterface.gui.main_window import MainWindow
 from kidpy3 import RFSOC
 
 class InitializationWidget(QWidget, Ui_InitializationTabWidget):

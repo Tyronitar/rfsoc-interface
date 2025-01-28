@@ -7,13 +7,13 @@ import time
 
 from kidpy3 import capture
 
-from rfsocinterface.ui.data_streaming_ui import Ui_DataStreamingWidget
-from rfsocinterface.rfsoc import RFSOCWrapper, get_channel_from_text
-from rfsocinterface.utils import get_num_value, get_lineEdit_text, PathValidator, get_filename
+from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
+from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
+from rfsocinterface.core.utils import get_num_value, get_lineEdit_text, PathValidator, get_filename
 
 
 if TYPE_CHECKING:
-    from rfsocinterface.main_window import MainWindow
+    from rfsocinterface.gui.main_window import MainWindow
 
 class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], parent=None):

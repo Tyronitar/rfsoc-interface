@@ -9,13 +9,13 @@ import PySide6.QtGui as QtGui
 
 from kidpy import kidpy, testConnection, wait_for_reply, wait_for_free
 # from kidpy3 import RFSOC
-from rfsocinterface.ui.full_ui_ui import Ui_MainWindow
-from rfsocinterface.initialization import InitializationWidget
-from rfsocinterface.loconfig import LoConfigWidget
-from rfsocinterface.rfsoc import RFSOCWrapper
-from rfsocinterface.data_streaming import DataStreamingWidget
+from rfsocinterface.gui.uic.full_ui_ui import Ui_MainWindow
+from rfsocinterface.gui.initialization import InitializationWidget
+from rfsocinterface.gui.loconfig import LoConfigWidget
+from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.gui.data_streaming import DataStreamingWidget
 
-from rfsocinterface.utils import SettingsError, ensure_path, convert_to_kidy_format
+from rfsocinterface.core.utils import SettingsError, ensure_path, convert_to_kidy_format
 
 TAB_NAMES = {
     "initialization",

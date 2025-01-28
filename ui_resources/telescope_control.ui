@@ -390,7 +390,7 @@
   <customwidget>
    <class>Controller</class>
    <extends>QWidget</extends>
-   <header>rfsocinterface.ui.controller</header>
+   <header>rfsocinterface.gui.widgets.controller</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

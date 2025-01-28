@@ -460,7 +460,7 @@
   <customwidget>
    <class>CheckableComboBox</class>
    <extends>QComboBox</extends>
-   <header>rfsocinterface.ui.combo_box</header>
+   <header>rfsocinterface.gui.widgets.combo_box</header>
   </customwidget>
  </customwidgets>
  <resources>

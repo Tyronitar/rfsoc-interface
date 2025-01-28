@@ -3,7 +3,7 @@
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QGridLayout, QTabWidget
 from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtGui import QScreen
-from rfsocinterface.main_window import MainWindow
+from rfsocinterface.gui.main_window import MainWindow
 
 def move_to_center(win: QMainWindow, screen: QScreen):
     win.move(screen.geometry().center() - win.geometry().center())

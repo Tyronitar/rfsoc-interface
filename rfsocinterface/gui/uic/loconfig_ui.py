@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QChe
     QScrollArea, QSizePolicy, QSpacerItem, QToolButton,
     QVBoxLayout, QWidget)
 
-from rfsocinterface.ui.combo_box import CheckableComboBox
+from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from . import icons_rc
 
 class Ui_LoConfigWidget(object):

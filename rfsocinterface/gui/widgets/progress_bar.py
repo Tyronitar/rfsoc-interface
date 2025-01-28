@@ -2,8 +2,8 @@ from PySide6.QtWidgets import QDialog, QWidget, QApplication, QProgressDialog
 from PySide6.QtCore import Signal, Qt
 from typing import Callable, Any
 
-from rfsocinterface.ui.progress_bar_ui import Ui_Dialog
-from rfsocinterface.utils import Job, P, JobQueue, SequentialJobQueue
+from rfsocinterface.gui.uic.progress_bar_ui import Ui_Dialog
+from rfsocinterface.core.utils import Job, P, JobQueue, SequentialJobQueue
 
 
 class ProgressBarDialog(QProgressDialog):

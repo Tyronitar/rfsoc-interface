@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QFormLayout, QFrame,
     QLineEdit, QPushButton, QSizePolicy, QSpacerItem,
     QVBoxLayout, QWidget)
 
-from rfsocinterface.ui.controller import Controller
+from rfsocinterface.gui.widgets.controller import Controller
 from . import icons_rc
 
 class Ui_TelescopeControlWidget(object):

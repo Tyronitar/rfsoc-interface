@@ -18,7 +18,7 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
 from PySide6.QtWidgets import (QApplication, QHBoxLayout, QPushButton, QSizePolicy,
     QToolButton, QWidget)
 
-from rfsocinterface.ui.lineedit import ClickableLineEdit
+from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from . import icons_rc
 
 class Ui_FileUploadWidget(object):

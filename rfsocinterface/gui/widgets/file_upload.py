@@ -1,11 +1,11 @@
 from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDoubleValidator
-from rfsocinterface.ui.file_upload_ui import Ui_FileUploadWidget
+from rfsocinterface.gui.uic.file_upload_ui import Ui_FileUploadWidget
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit
 from typing import Callable, Any
 
-from rfsocinterface.utils import get_num_value
+from rfsocinterface.core.utils import get_num_value
 
 DEFAULT_DIR = Path('./')
 

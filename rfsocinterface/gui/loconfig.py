@@ -7,14 +7,14 @@ from functools import partial
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog, QTabWidget, QDialogButtonBox, QPushButton
 from PySide6.QtCore import Qt
 
-from rfsocinterface.ui.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
-from rfsocinterface.losweep import LoSweepData, get_tone_list, LoSweep
-from rfsocinterface.lodiagnostics import DiagnosticsDialog
-from rfsocinterface.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
-from rfsocinterface.rfsoc import RFSOCWrapper, get_channel_from_text
-from rfsocinterface.ui.icon_label import IconLabel, ERROR_ICON_CODE
-from rfsocinterface.initialization import InitializationWidget
-from rfsocinterface.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path, JobInterrupt, SettingsError
+from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
+from rfsocinterface.core.losweep import LoSweepData, get_tone_list, LoSweep
+from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
+from rfsocinterface.gui.widgets.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
+from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
+from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
+from rfsocinterface.gui.initialization import InitializationWidget
+from rfsocinterface.core.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path, JobInterrupt, SettingsError
 
 from kidpy import kidpy
 # from kidpy3 import RFSOC

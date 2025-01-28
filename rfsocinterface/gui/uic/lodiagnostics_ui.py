@@ -18,7 +18,7 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QCheckBox, QDialog,
     QDialogButtonBox, QSizePolicy, QVBoxLayout, QWidget)
 
-from rfsocinterface.ui.canvas import DiagnosticsCanvas
+from rfsocinterface.gui.widgets.canvas import DiagnosticsCanvas
 
 class Ui_Dialog(object):
     def setupUi(self, Dialog):

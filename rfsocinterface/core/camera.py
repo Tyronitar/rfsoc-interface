@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from vmbpy import VmbSystem
 from onrkidpy import get_filename
 from vimba_camera_control import SKPR_Camera_Control
-from rfsocinterface.utils import ensure_path
+from rfsocinterface.core.utils import ensure_path
 
 class SKPR_Camera_Control:
     def __init__(self):

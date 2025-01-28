@@ -15,7 +15,7 @@ import h5py
 from onr_fit_lo_sweeps import simple_derivative_fits
 from onrkidpy import get_chanmask
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.utils import ensure_path, Job
+from rfsocinterface.core.utils import ensure_path, Job
 import valon5009
 import time
 import udpcap

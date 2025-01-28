@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDialogBu
     QPushButton, QSizePolicy, QSpacerItem, QVBoxLayout,
     QWidget)
 
-from rfsocinterface.ui.canvas import ResonatorCanvas
+from rfsocinterface.gui.widgets.canvas import ResonatorCanvas
 from . import icons_rc
 
 class Ui_Dialog(object):

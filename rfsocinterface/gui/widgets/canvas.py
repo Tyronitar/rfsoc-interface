@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from rfsocinterface.ui.blit_manager import BlitManager
+from rfsocinterface.gui.blit_manager import BlitManager
 
 
 class ScrollableCanvas(QScrollArea):

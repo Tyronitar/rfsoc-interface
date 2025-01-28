@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
     QScrollArea, QSizePolicy, QSpacerItem, QVBoxLayout,
     QWidget)
 
-from rfsocinterface.ui.combo_box import CheckableComboBox
+from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 
 class Ui_DataStreamingWidget(object):
     def setupUi(self, DataStreamingWidget):

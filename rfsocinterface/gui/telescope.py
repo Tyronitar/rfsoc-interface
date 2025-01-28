@@ -3,12 +3,12 @@ from PySide6.QtWidgets import QWidget, QMainWindow, QApplication, QAbstractButto
 from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread, QTimer, QMutex, QMutexLocker
 import serial.tools
 import serial.tools.list_ports
-from rfsocinterface.ui.telescope_control_ui import Ui_TelescopeControlWidget as Ui_TelescopeControlWidget
+from rfsocinterface.gui.uic.telescope_control_ui import Ui_TelescopeControlWidget as Ui_TelescopeControlWidget
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from rfsocinterface.camera import SKPR_Camera_Control
+from rfsocinterface.core.camera import SKPR_Camera_Control
 from kidpy import kidpy
-from rfsocinterface.utils import analog_to_digital, digital_to_analog, P, R
+from rfsocinterface.core.utils import analog_to_digital, digital_to_analog, P, R
 from typing import Callable, Concatenate, Any, TYPE_CHECKING
 import functools
 import time
@@ -29,7 +29,7 @@ import glob
 from pathlib import Path
 
 if TYPE_CHECKING:
-    from rfsocinterface.main_window import MainWindow
+    from rfsocinterface.gui.main_window import MainWindow
 
 AZ_OUT_CHANNEL = 1
 ZE_OUT_CHANNEL = 0

@@ -68,7 +68,7 @@
   <customwidget>
    <class>ClickableLineEdit</class>
    <extends>QLineEdit</extends>
-   <header>rfsocinterface.ui.lineedit</header>
+   <header>rfsocinterface.gui.widgets.lineedit</header>
   </customwidget>
  </customwidgets>
  <resources>

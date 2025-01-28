@@ -1,9 +1,9 @@
 from pathlib import Path
 from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot, Signal
 from PySide6.QtGui import QDoubleValidator, QIcon, QRegularExpressionValidator
-from rfsocinterface.ui.channel_settings_ui import Ui_ChannelSettingsWidget
-from rfsocinterface.ui.rfsoc_advanced_settings_ui import Ui_RFSOCAdvancedSettingsWidget
-from rfsocinterface.ui.icon_label import IconLabel
+from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
+from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import Ui_RFSOCAdvancedSettingsWidget
+from rfsocinterface.gui.widgets.icon_label import IconLabel
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QVBoxLayout, QSizePolicy, QGroupBox, QGridLayout
 
 from PySide6.QtWidgets import (QFormLayout,
@@ -23,12 +23,12 @@ import numpy as np
 from transceiver import Transceiver
 import yaml
 
-from rfsocinterface.ui.file_upload import FileUploadWidget
-from rfsocinterface.ui.section import Section
-from rfsocinterface.ui.lineedit import ClickableLineEdit
-from rfsocinterface.utils import get_num_value, get_lineEdit_text, IPV4_REGEX, MAC_REGEX, PathValidator
-from rfsocinterface.ui.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE
-from rfsocinterface.rfsoc import RFSOCWrapper
+from rfsocinterface.gui.widgets.file_upload import FileUploadWidget
+from rfsocinterface.gui.widgets.section import Section
+from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
+from rfsocinterface.core.utils import get_num_value, get_lineEdit_text, IPV4_REGEX, MAC_REGEX, PathValidator
+from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE
+from rfsocinterface.core.rfsoc import RFSOCWrapper
 
 
 ONR_REPO_DIR = Path('~').expanduser() / 'onrkidpy'

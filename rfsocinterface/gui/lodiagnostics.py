@@ -21,10 +21,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
-from rfsocinterface.losweep import LoSweepData, ResonatorData, get_tone_list
-from rfsocinterface.ui.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
-from rfsocinterface.ui.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
-from rfsocinterface.utils import Job, PathLike
+from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list
+from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
+from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
+from rfsocinterface.core.utils import Job, PathLike
 
 DPI = 100
 

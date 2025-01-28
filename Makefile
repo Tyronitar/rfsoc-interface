@@ -1,7 +1,7 @@
 UI_CC := poetry run pyside6-uic
 UI_RCC := poetry run pyside6-rcc
 UI_FILE_DIR := ui_resources
-UI_PYTHON_DIR := rfsocinterface/ui
+UI_PYTHON_DIR := rfsocinterface/gui/uic
 
 # All of the file stems in the ui_resources directory
 ui_elements := $(patsubst $(UI_FILE_DIR)/%.ui,%, $(wildcard $(UI_FILE_DIR)/*.ui))
