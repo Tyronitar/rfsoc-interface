@@ -10,6 +10,8 @@ import pdb
 import h5py
 import argparse
 
+from rfsocinterface.core.utils import ensure_path
+
 
 
 def compute_noise_psd(
@@ -22,7 +24,7 @@ def compute_noise_psd(
     hp_filter_template: float=0.05,
     lp_filter_template: float=115.,
     lp_filter_template2: float=25.,
-):
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Compute noise PSD.
 
     input_time_ordered_data: 2 x N_res x N_sample or N_res x N_sample
@@ -94,9 +96,11 @@ def compute_noise_psd(
 
     # Create bandpass filters
     hpfilt_sos = signal.butter(6, hp_filter_template, 'hp', fs=fs, output='sos', analog=False)
-    # lpfilt_sos = signal.butter(6, lp_filter_template, 'lp', fs=fs, output='sos', analog=False)
-    lpfilt_sos = signal.butter(6, fs / 2.1, 'lp', fs=fs, output='sos', analog=False)
-    lpfilt_sos2 = signal.butter(6, 25, 'lp', fs=fs, output='sos', analog=False)
+    if lp_filter_template >= fs/2:
+        lpfilt_sos = signal.butter(6, fs / 2.1, 'lp', fs=fs, output='sos', analog=False)
+    else:
+        lpfilt_sos = signal.butter(6, lp_filter_template, 'lp', fs=fs, output='sos', analog=False)
+    lpfilt_sos2 = signal.butter(6, lp_filter_template2, 'lp', fs=fs, output='sos', analog=False)
     data_mean_filt = signal.sosfiltfilt(hpfilt_sos, data_mean)
     data_mean_filt = signal.sosfiltfilt(lpfilt_sos, data_mean_filt)
     data_mean_filt2 = signal.sosfiltfilt(hpfilt_sos, data_mean)
@@ -160,56 +164,59 @@ def compute_noise_psd(
 
             psd_all[i_complex, i_chan, :] = psd
             psd_all_clean[i_complex, i_chan, :] = psd_clean
+    # plt.cla()
     # plt.loglog(freq, psd_all[0, 100, :])
     # plt.loglog(freq, psd_all_clean[0, 100, :])
     # plt.xlim(freq[1], freq[-1])
     # plt.show()
 
-    valid_chan = np.argwhere(chanmask == 1).flatten()
-    n_good_chan = np.size(valid_chan)
-    min_ind = int(np.round(n_good_chan * 0.16))
-    med_ind = int(np.round(n_good_chan * 0.5))
-    max_ind = int(np.round(n_good_chan * 0.84))
+    return chanmask, freq, psd_all, psd_all_clean
+
+def plot_psd(chanmask: npt.NDArray, freq: npt.NDArray, psd_all: npt.NDArray, psd_all_clean: npt.NDArray):
+    n_good_chan = np.count_nonzero(chanmask)
     n_freq = np.size(freq)
-    psd_min = np.zeros((first_dimension, n_freq))
-    psd_med = np.zeros((first_dimension, n_freq))
-    psd_max = np.zeros((first_dimension, n_freq))
-    psd_min_clean = np.zeros((first_dimension, n_freq))
-    psd_med_clean = np.zeros((first_dimension, n_freq))
-    psd_max_clean = np.zeros((first_dimension, n_freq))
-    for i_complex in range(first_dimension):
-        for i_freq in range(0, n_freq):
-            psd_sort = np.sort(psd_all[i_complex, :, i_freq])
-            psd_min[i_complex, i_freq] = psd_sort[min_ind]
-            psd_med[i_complex, i_freq] = psd_sort[med_ind]
-            psd_max[i_complex, i_freq] = psd_sort[max_ind]
-            psd_sort = np.sort(psd_all_clean[i_complex, :, i_freq])
-            psd_min_clean[i_complex, i_freq] = psd_sort[min_ind]
-            psd_med_clean[i_complex, i_freq] = psd_sort[med_ind]
-            psd_max_clean[i_complex, i_freq] = psd_sort[max_ind]
+    
+    # Get the min, median, and max for plotting
+    psd_min = np.percentile(psd_all[:, :n_good_chan, :], 16, axis=1)
+    psd_med = np.median(psd_all[:, :n_good_chan, :], axis=1)
+    psd_max = np.percentile(psd_all[:, :n_good_chan, :], 84, axis=1)
+    psd_min_clean = np.percentile(psd_all_clean[:, :n_good_chan, :], 16, axis=1)
+    psd_med_clean = np.median(psd_all_clean[:, :n_good_chan, :], axis=1)
+    psd_max_clean = np.percentile(psd_all_clean[:, :n_good_chan, :], 84, axis=1)
 
+    # Only use good data for plotting
+    # TODO: Make complex index choice dynamic
     good_ind = np.arange(n_freq)
-    freq_fill = np.concatenate([freq[good_ind],np.flip(freq[good_ind],0)])
+    plot_data_min = 10 * np.log10(psd_min_clean[0, good_ind])
+    plot_data_med = 10 * np.log10(psd_med_clean[0, good_ind])
+    plot_data_max = 10 * np.log10(psd_max_clean[0, good_ind])
 
-    psd_fill_clean = np.concatenate([10 * np.log10(psd_min_clean[0, good_ind]),np.flip(10 * np.log10(psd_max_clean[0, good_ind]),0)])
-    plt.fill(freq_fill, psd_fill_clean, 'c', alpha=0.5)
-    plt.plot(freq[good_ind], 10 * np.log10(psd_med_clean[0, good_ind]), 'b', label='Measured Noise')
-    # plt.yscale('log')
-    plt.xscale('log')
-    plt.xlim(0.1,100.)
-    plt.ylim(-110, -60)
-    plt.xlabel('Frequency (Hz)', fontsize=16)
-    plt.ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.legend(fontsize=14, loc = 'upper right')
-    plt.title('RFSoC Loopback', fontsize=16)
-    plt.show()
+    # Plot the data
+    fig = plt.figure()
+    ax = plt.subplot()
+    ax.fill_between(
+        freq[good_ind],
+        plot_data_min,
+        plot_data_max,
+        facecolor='c',
+        alpha=0.5,
+    )
+    ax.plot(freq[good_ind], plot_data_med, color='b', label='Measured Noise')
+    ax.set_xscale('log')
+    ax.set_xlim(0.1,100.)
+    ax.set_ylim(-110, -60)
+    ax.set_xlabel('Frequency (Hz)', fontsize=16)
+    ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
+    ax.tick_params(labelsize=14)
+    ax.legend(fontsize=14, loc = 'upper right')
+    ax.set_title('RFSoC Loopback', fontsize=16)
+
+    return fig
 
 
-# def flag():
+# def flag(input_time_ordered_data: npt.NDArray, timestamp: npt.NDArray, chanmask: npt.NDArray, ds_factor: float=1):
 #     n_flag = np.zeros(np.size(chanmask))
-#     fs = float(1./ ((time[1]-time[0]) * ds_factor))
+#     fs = float(1./ ((timestamp[1]-timestamp[0]) * ds_factor))
 #     filt_cut = 1. / (0.5 * fs)
 #     b, a = signal.butter(5, filt_cut, btype='high', analog=False)
 #     for i_res in range(np.size(chanmask)):
@@ -220,12 +227,20 @@ def compute_noise_psd(
 #     med_flag = np.median(n_flag[goodchan])
 #     chanmask[np.where(n_flag > 2.*med_flag)] = -1
 
-if __name__ == '__main__':
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('data_file')
-    # args = parser.parse_args()
-    # path = args.data_file
-    path = Path('data/data.hdf5')
+
+# def reject_outliers(data,sigma=2):
+#   keepgoing = 1
+#   good_ind = np.arange(np.size(data))
+#   while keepgoing:
+#     valid = np.where(abs(data[good_ind] - np.median(data[good_ind])) < sigma * np.std(data[good_ind]))
+#     if np.size(valid) == np.size(good_ind):
+#       keepgoing = 0
+#     else:
+#       good_ind = good_ind[valid]
+#   return data[good_ind], good_ind
+
+@ensure_path(0)
+def load_data(path: Path) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     with h5py.File(path, 'r') as f:
         data_i = f['time_ordered_data/adc_i'][:]
         data_q = f['time_ordered_data/adc_q'][:]
@@ -239,4 +254,19 @@ if __name__ == '__main__':
         input_data[1, :, :] = data_q / np.outer(amp, np.ones(data_q.shape[1]))
         timestamp = f['time_ordered_data/timestamp'][:]
         chanmask = f['global_data/chanmask'][:]
-    compute_noise_psd(input_data, timestamp, chanmask=None, ds_factor=3)
+    return input_data, timestamp, chanmask
+
+
+if __name__ == '__main__':
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('data_file')
+    # args = parser.parse_args()
+    # path = args.data_file
+    input_data1, timestamp1, chanmask2 = load_data('data/data.hdf5')
+    input_data2, timestamp2, chanmask2 = load_data('data/data_2.hdf5')
+
+    chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(input_data1, timestamp1, chanmask=None, ds_factor=3)
+    chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
+    fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1)
+    # fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2)
+    plt.show()

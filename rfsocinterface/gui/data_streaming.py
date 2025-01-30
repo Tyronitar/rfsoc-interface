@@ -77,6 +77,7 @@ class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
         return map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text)
     
     def start_streaming(self):
+        # TODO: Do this in another thread
         rfchans = [rfsoc.get_channel(chan) for rfsoc, chan in self.get_selected_channels()]
         save_location = self.get_chosen_save_location()
         save_location.parent.mkdir(parents=True, exist_ok=True)
