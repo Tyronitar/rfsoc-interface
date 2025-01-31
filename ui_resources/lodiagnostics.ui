@@ -41,7 +41,7 @@
   <customwidget>
    <class>DiagnosticsCanvas</class>
    <extends>QWidget</extends>
-   <header>rfsocinterface.ui.canvas</header>
+   <header>rfsocinterface.gui.widgets.canvas</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

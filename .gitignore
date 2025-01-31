@@ -170,6 +170,13 @@ cython_debug/
 # Data files
 *.npy
 *.h5
+data/
+!Default_tone_list.npy
 
 # Plots
 *.pdf
+
+# Configuration Files
+*.yml
+*.yaml
+*.json

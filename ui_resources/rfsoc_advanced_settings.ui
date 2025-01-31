@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>RFSOCAdvancedSettingsWidget</class>
+ <widget class="QWidget" name="RFSOCAdvancedSettingsWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>351</width>
+    <height>232</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QFormLayout" name="formLayout_3">
+   <item row="0" column="0">
+    <widget class="QLabel" name="bitstream_label">
+     <property name="text">
+      <string>Firmware bitstream:</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="0" colspan="2">
+    <widget class="QGroupBox" name="redis_GroupBox">
+     <property name="title">
+      <string>REDIS Settings</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_2">
+      <item row="0" column="0">
+       <widget class="QLabel" name="redis_ip_label">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>Choose a list of resonant frequencies</string>
+        </property>
+        <property name="whatsThis">
+         <string>List of tones of resonant frequencies</string>
+        </property>
+        <property name="text">
+         <string>IP address:</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="redis_port_label">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>Port:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="redis_ip_lineEdit">
+        <property name="placeholderText">
+         <string>255.255.255.255</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="redis_port_lineEdit">
+        <property name="placeholderText">
+         <string>0</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="0" column="1">
+    <widget class="FileUploadWidget" name="bitstream_fileUploadWidget" native="true"/>
+   </item>
+   <item row="3" column="0" colspan="2">
+    <widget class="QGroupBox" name="comport_groupBox">
+     <property name="title">
+      <string>Comports</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="comport_atten_label">
+        <property name="text">
+         <string>Attenuators:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="FileUploadWidget" name="comport_atten_fileUploadWidget" native="true"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="comport_channel1_label">
+        <property name="text">
+         <string>Channel 1 valon:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="comport_channel2_label">
+        <property name="text">
+         <string>Channel 2 valon:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="FileUploadWidget" name="comport_channel1_fileUploadWidget" native="true"/>
+      </item>
+      <item row="2" column="1">
+       <widget class="FileUploadWidget" name="comport_channel2_fileUploadWidget" native="true"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>FileUploadWidget</class>
+   <extends>QWidget</extends>
+   <header>rfsocinterface.gui.widgets.file_upload</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>
