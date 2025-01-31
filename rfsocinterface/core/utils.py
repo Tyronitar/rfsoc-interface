@@ -436,7 +436,7 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", at
                 this_dir_files.sort()
                 offset = 1 if file_type == 'tod' else 0
                 setnum = int(this_dir_files[-1].name[-7:-3]) + offset
-            savefile = date_folder / f'chan_name{file_type.upper()}_set{setnum}'
+            savefile = date_folder / f'{chan_name}{file_type.upper()}_set{setnum}'
         case 'attenuator':
             savefile = date_folder / f"{chan_name}attenuator{attenuation:02d}"
         case _:

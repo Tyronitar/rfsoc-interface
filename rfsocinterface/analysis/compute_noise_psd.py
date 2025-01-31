@@ -227,17 +227,20 @@ def plot_psd(chanmask: npt.NDArray, freq: npt.NDArray, psd_all: npt.NDArray, psd
 #     med_flag = np.median(n_flag[goodchan])
 #     chanmask[np.where(n_flag > 2.*med_flag)] = -1
 
+def reject_outliers(data: npt.NDArray, sigma: float=2, axis: int | None=None):
+    d = np.abs(data - np.median(data, axis=axis))
+    std = np.std(d, axis=axis)
+    ind = np.where(d < sigma * std)
+    return data[ind], ind
 
-# def reject_outliers(data,sigma=2):
-#   keepgoing = 1
-#   good_ind = np.arange(np.size(data))
-#   while keepgoing:
-#     valid = np.where(abs(data[good_ind] - np.median(data[good_ind])) < sigma * np.std(data[good_ind]))
-#     if np.size(valid) == np.size(good_ind):
-#       keepgoing = 0
-#     else:
-#       good_ind = good_ind[valid]
-#   return data[good_ind], good_ind
+def iterative_reject_outliers(data: npt.NDArray, sigma: float=2):
+    good_ind = np.arange(np.size(data))
+    while True:
+        good_data, ind = reject_outliers(data.flatten()[good_ind], sigma)
+        if np.size(good_ind) == np.size(ind):
+            break
+        good_ind = good_ind[ind]
+    return data.flatten()[good_ind], good_ind
 
 @ensure_path(0)
 def load_data(path: Path) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
@@ -266,7 +269,8 @@ if __name__ == '__main__':
     input_data2, timestamp2, chanmask2 = load_data('data/data_2.hdf5')
 
     chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(input_data1, timestamp1, chanmask=None, ds_factor=3)
+    # d1, _ = iterative_reject_outliers(psd_all_clean1)
     chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
-    fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1)
+    # fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1)
     # fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2)
     plt.show()

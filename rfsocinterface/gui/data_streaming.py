@@ -26,6 +26,7 @@ class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
         self.update_channel_choices()
         self.data_locale_checkBox.setCheckState(Qt.CheckState.Checked)
         self.change_save_location_visibility(False)
+        self.update_default_save_location()
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.update_default_save_location)
         self.update_timer.start(10000)
@@ -58,7 +59,7 @@ class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
         self.save_locale_label.setText(f'Saving to "{save_path}"')
     
     def update_default_save_location(self):
-        self._default_path = get_filename(file_type='lo')
+        self._default_path = get_filename(file_type='tod')
         if self.data_locale_checkBox.isChecked():
             self.save_locale_label.setText(f'Saving to "{self._default_path}"')
 
