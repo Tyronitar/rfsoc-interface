@@ -623,4 +623,3 @@ def main(date, setnum, device, optical_tload=300., file_type='processed', intern
   this_chanmask = this_chanmask[valid_chan]
 
   return freq, psd_all, this_chanmask
-

@@ -10,7 +10,7 @@ import pdb
 import h5py
 import argparse
 
-from rfsocinterface.core.utils import ensure_path
+from rfsocinterface.core.utils import ensure_path, cartesian
 
 
 
@@ -24,6 +24,8 @@ def compute_noise_psd(
     hp_filter_template: float=0.05,
     lp_filter_template: float=115.,
     lp_filter_template2: float=25.,
+    flag_outliers: bool=True,
+    outlier_sigma: float=4,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Compute noise PSD.
 
@@ -36,38 +38,44 @@ def compute_noise_psd(
     hp_filter_template: high-pass filter
     lp_filter_template: low-pass filter
     """
-    is_complex = len(np.shape(input_time_ordered_data)) == 3
     # for i_res in range(50):
     #     plt.plot(input_time_ordered_data[0, i_res, :])
     # plt.show()
-    first_dimension = 2 if is_complex else 1
+    first_dimension = 2 if input_time_ordered_data.ndim == 3 else 1
+    if first_dimension == 1:
+        input_data = input_time_ordered_data.reshape((1, *input_time_ordered_data.shape))
+    else:
+        input_data = input_time_ordered_data
     if chanmask is None:
-        chanmask = np.ones_like(input_time_ordered_data[0, :, 0])
+        chanmask = np.ones_like(input_time_ordered_data[0, :, 0], dtype=int)
         chanmask[1000:] = 0  # This is a fix since these channels seem to be bad
+
+    n_chan = np.size(chanmask)
     timestamp -= timestamp[0]
-    # For data for each resonator:  either 2 or 1
-    #   calculate noise
+
     if ds_factor != 1:
-        new_input_time_ordered_data = np.zeros(
-            [
-                first_dimension,
-                np.size(chanmask),
-                np.size(signal.decimate(input_time_ordered_data[0,0,:], ds_factor))
-        ])
-        for i_res in range(np.size(chanmask)):
-            for i_complex in range(first_dimension):
-                new_input_time_ordered_data[i_complex, i_res, :] = signal.decimate(
-                    input_time_ordered_data[i_complex, i_res, :],
-                    ds_factor,
-                )
-        input_time_ordered_data = new_input_time_ordered_data
-        timestamp = timestamp[0::ds_factor]
+        new_input_data = signal.decimate(input_data, ds_factor)
+    else:
+        new_input_data = input_data
+
+    timestamp = timestamp[0::ds_factor]
     fs = 1. / (timestamp[1] - timestamp[0])
+
+    # Flag Outliers
+    if flag_outliers:
+        good_channels = np.where(chanmask == 1)[0]
+        n_flag = flag(new_input_data, fs, sigma=outlier_sigma)
+        med_flag = np.median(n_flag[:, good_channels])
+        chanmask[np.where(np.any(n_flag > 2. * med_flag, axis=0))] = -1
+        # for i_res in np.where(chanmask == 1)[0][:50]:
+        #     plt.plot(new_input_data[0, i_res, :])
+        # plt.show()
+        # exit()
 
     # Cut data at start and end
     if cut_time > 0:
         n_samples_to_cut = np.round(cut_time * fs).astype(int)
-        input_time_ordered_data = input_time_ordered_data[:, :, n_samples_to_cut:-n_samples_to_cut]
+        new_input_data = new_input_data[:, :, n_samples_to_cut:-n_samples_to_cut]
         timestamp = timestamp[n_samples_to_cut:-n_samples_to_cut]
 
     # Determine the number of blocks for computing the PSD
@@ -82,13 +90,12 @@ def compute_noise_psd(
     # Window for the PSD
     wind = signal.get_window('hamming', n_samples_per_block)
 
-    n_chan = np.size(chanmask)
     psd_all = np.zeros((first_dimension, n_chan, int(n_samples_per_block / 2 + 1)))
     psd_all_clean = np.zeros((first_dimension, n_chan, int(n_samples_per_block / 2 + 1)))
     freq, _ = signal.periodogram(np.ones(n_samples_per_block), fs)
 
     #figure out an average template to try to remove thermal fluctuations
-    data_all = input_time_ordered_data[:, np.argwhere(chanmask == 1).flatten(),:]
+    data_all = new_input_data[:, np.where(chanmask == 1)[0],:]
     # data_std = np.outer(np.std(data_all,axis=2), np.ones(n_samples))
     data_std = np.std(data_all, axis=2)[:,:,np.newaxis]
     data_mean = np.mean(np.divide(data_all, data_std), axis=1)
@@ -111,7 +118,7 @@ def compute_noise_psd(
     data_all_filt2 = signal.sosfiltfilt(lpfilt_sos2, data_all_filt2, axis=2)
 
     # Loop over good resonators
-    for i_chan in np.where(chanmask == 1)[0]:
+    for i_chan in range(len(np.where(chanmask == 1)[0])):
 
         # Loop over I and Q
         for i_complex in range(first_dimension):
@@ -125,7 +132,7 @@ def compute_noise_psd(
             for i_block in range(n_blocks):
 
                 # Compute the power spectrum of the raw data
-                this_data = input_time_ordered_data[
+                this_data = data_all[
                     i_complex,
                     i_chan,
                     i_block * n_samples_per_block : (i_block + 1) * n_samples_per_block
@@ -174,19 +181,24 @@ def compute_noise_psd(
 
 def plot_psd(chanmask: npt.NDArray, freq: npt.NDArray, psd_all: npt.NDArray, psd_all_clean: npt.NDArray):
     n_good_chan = np.count_nonzero(chanmask)
+    good_chan = np.where(chanmask == 1)[0]
+    n_good_chan = len(good_chan)
     n_freq = np.size(freq)
     
     # Get the min, median, and max for plotting
-    psd_min = np.percentile(psd_all[:, :n_good_chan, :], 16, axis=1)
-    psd_med = np.median(psd_all[:, :n_good_chan, :], axis=1)
-    psd_max = np.percentile(psd_all[:, :n_good_chan, :], 84, axis=1)
-    psd_min_clean = np.percentile(psd_all_clean[:, :n_good_chan, :], 16, axis=1)
-    psd_med_clean = np.median(psd_all_clean[:, :n_good_chan, :], axis=1)
-    psd_max_clean = np.percentile(psd_all_clean[:, :n_good_chan, :], 84, axis=1)
+    psd_min = np.percentile(psd_all[:, good_chan, :], 16, axis=1)
+    psd_med = np.median(psd_all[:, good_chan, :], axis=1)
+    psd_max = np.percentile(psd_all[:, good_chan, :], 84, axis=1)
+    psd_min_clean = np.percentile(psd_all_clean[:, good_chan, :], 16, axis=1)
+    psd_med_clean = np.median(psd_all_clean[:, good_chan, :], axis=1)
+    if psd_med_clean.max() == 0.0:
+        psd_med_clean = np.mean(psd_all_clean[:, good_chan, :], axis=1)
+    psd_max_clean = np.percentile(psd_all_clean[:, good_chan, :], 84, axis=1)
 
     # Only use good data for plotting
     # TODO: Make complex index choice dynamic
-    good_ind = np.arange(n_freq)
+    # good_ind = np.arange(n_good_chan)
+    good_ind = good_chan
     plot_data_min = 10 * np.log10(psd_min_clean[0, good_ind])
     plot_data_med = 10 * np.log10(psd_med_clean[0, good_ind])
     plot_data_max = 10 * np.log10(psd_max_clean[0, good_ind])
@@ -214,33 +226,57 @@ def plot_psd(chanmask: npt.NDArray, freq: npt.NDArray, psd_all: npt.NDArray, psd
     return fig
 
 
-# def flag(input_time_ordered_data: npt.NDArray, timestamp: npt.NDArray, chanmask: npt.NDArray, ds_factor: float=1):
-#     n_flag = np.zeros(np.size(chanmask))
-#     fs = float(1./ ((timestamp[1]-timestamp[0]) * ds_factor))
-#     filt_cut = 1. / (0.5 * fs)
-#     b, a = signal.butter(5, filt_cut, btype='high', analog=False)
-#     for i_res in range(np.size(chanmask)):
-#         this_hpf_data = signal.filtfilt(b, a, new_input_time_ordered_data[i_res,:])
-#         dummy, _ = reject_outliers(this_hpf_data,sigma=4)
-#         n_flag[i_res] = np.size(this_hpf_data) - np.size(dummy)
-#     goodchan = np.where(chanmask == 1)
-#     med_flag = np.median(n_flag[goodchan])
-#     chanmask[np.where(n_flag > 2.*med_flag)] = -1
+def flag(data: npt.NDArray, fs: float, sigma: float=2):
+    first_dimension, n_chan, _ = data.shape
+    n_flag = np.zeros((first_dimension, n_chan))
+    filt_cut = 1. / (0.5 * fs)
+    b, a = signal.butter(5, filt_cut, btype='high', analog=False)
+    hpf_data = signal.filtfilt(b, a, data)
+    for i_complex in range(first_dimension):
+        for i_res in range(n_chan):
+            inliers, _ = reject_outliers(hpf_data[i_complex, i_res, :], sigma=sigma)
+            n_flag[i_complex, i_res] = hpf_data.shape[-1] - np.size(inliers)
+    return n_flag
+
+    # goodchan = np.where(chanmask == 1)
+    # med_flag = np.median(n_flag[goodchan])
+    # chanmask[np.where(n_flag > 2.*med_flag)] = -1
+
 
 def reject_outliers(data: npt.NDArray, sigma: float=2, axis: int | None=None):
     d = np.abs(data - np.median(data, axis=axis))
-    std = np.std(d, axis=axis)
+    std = np.std(data, axis=axis)
     ind = np.where(d < sigma * std)
     return data[ind], ind
 
-def iterative_reject_outliers(data: npt.NDArray, sigma: float=2):
-    good_ind = np.arange(np.size(data))
+def get_all_indices(x: npt.NDArray):
+    return np.indices(input_data1.shape).reshape(3, -1).T
+
+def iteratively_reject_outliers(data: npt.NDArray, sigma: float=2, axis: int | None=None):
+    ind = np.arange(np.size(data))
+    # ind = np.ones_like(data, dtype=int)
+    # ind = get_all_indices(data)
+    if data.ndim != 1:
+        data = data.flatten()
     while True:
-        good_data, ind = reject_outliers(data.flatten()[good_ind], sigma)
-        if np.size(good_ind) == np.size(ind):
+        good_data, good_ind = reject_outliers(data[ind], sigma=sigma, axis=axis)
+        if np.size(ind) == np.size(good_ind):
             break
-        good_ind = good_ind[ind]
-    return data.flatten()[good_ind], good_ind
+        ind = ind[good_ind]
+    return data[ind], ind
+
+def reject_outliers_onr(data,sigma=2):
+  keepgoing = 1
+  good_ind = np.arange(np.size(data))
+  while keepgoing:
+    d = np.abs(data[good_ind] - np.median(data[good_ind]))
+    s = np.std(data[good_ind])
+    valid = np.where(d < sigma * s)
+    if np.size(valid) == np.size(good_ind):
+      keepgoing = 0
+    else:
+      good_ind = good_ind[valid]
+  return data[good_ind], good_ind
 
 @ensure_path(0)
 def load_data(path: Path) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
@@ -265,12 +301,27 @@ if __name__ == '__main__':
     # parser.add_argument('data_file')
     # args = parser.parse_args()
     # path = args.data_file
-    input_data1, timestamp1, chanmask2 = load_data('data/data.hdf5')
+    input_data1, timestamp1, chanmask1 = load_data('data/data.hdf5')
     input_data2, timestamp2, chanmask2 = load_data('data/data_2.hdf5')
 
-    chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(input_data1, timestamp1, chanmask=None, ds_factor=3)
-    # d1, _ = iterative_reject_outliers(psd_all_clean1)
-    chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
-    # fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1)
-    # fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2)
+    chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(
+        input_data1,
+        timestamp1,
+        chanmask=None,
+        ds_factor=3,
+        flag_outliers=False,
+    )
+    chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(
+        input_data1,
+        timestamp1,
+        chanmask=None,
+        ds_factor=3,
+        flag_outliers=True,
+    )
+    # d1, _ = iteratively_reject_outliers(psd_all_clean1[:, chanmask1, :])
+    # d2, _ = reject_outliers_onr(psd_all_clean1[:, chanmask1, :].flatten())
+    # exit()
+    # chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
+    fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1)
+    fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2)
     plt.show()
