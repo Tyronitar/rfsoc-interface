@@ -500,6 +500,17 @@ def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
             out[j*m:(j+1)*m, 1:] = out[0:m, 1:]
     return out
 
+def ordinal(n: int) -> str:
+    """Append the english ordinal suffix to an integer.
+    
+    From https://stackoverflow.com/a/20007730.
+    """
+    if 11 <= (n % 100) <= 13:
+        suffix = 'th'
+    else:
+        suffix = ['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]
+    return str(n) + suffix
+
 if __name__ == '__main__':
     def test_fun():
         for i in range(5):

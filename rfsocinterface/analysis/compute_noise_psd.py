@@ -10,7 +10,7 @@ import pdb
 import h5py
 import argparse
 
-from rfsocinterface.core.utils import ensure_path, cartesian
+from rfsocinterface.core.utils import ensure_path, cartesian, ordinal
 
 
 
@@ -64,7 +64,8 @@ def compute_noise_psd(
     # Flag Outliers
     if flag_outliers:
         good_channels = np.where(chanmask == 1)[0]
-        n_flag, timestream_rms = flag(new_input_data, fs, sigma=outlier_sigma)
+        n_flag, timestream_rms = flag(new_input_data[:, good_channels], fs, sigma=outlier_sigma)
+        # 2 x N_res
         # plt.plot(timestream_rms[0, good_channels])
         # plt.plot(timestream_rms[1, good_channels])
         # plt.yscale('log')
@@ -72,12 +73,12 @@ def compute_noise_psd(
         # plt.plot(clean_rms)
         # plt.show()
         # exit()
-        med_flag = np.median(n_flag[:, good_channels])
+        med_flag = np.median(n_flag)
         chanmask[np.where(np.any(n_flag > 2. * med_flag, axis=0))] = -1
         # TODO: Also flag for high RMS
         # clean_rms = np.zeros((first_dimension, len(good_channels)))
-        _, _, bad_indices_0 = iteratively_reject_outliers(timestream_rms[0, good_channels], sigma=outlier_sigma)
-        _, _, bad_indices_1 = iteratively_reject_outliers(timestream_rms[1, good_channels], sigma=outlier_sigma)
+        _, _, bad_indices_0 = iteratively_reject_outliers(timestream_rms[0], sigma=outlier_sigma)
+        _, _, bad_indices_1 = iteratively_reject_outliers(timestream_rms[1], sigma=outlier_sigma)
         bad_indices = np.union1d(bad_indices_0, bad_indices_1)
         chanmask[bad_indices] = -1
         # for i_res in np.where(chanmask == 1)[0][:50]:
@@ -193,21 +194,29 @@ def compute_noise_psd(
 
     return chanmask, freq, psd_all, psd_all_clean
 
-def plot_psd(chanmask: npt.NDArray, freq: npt.NDArray, psd_all: npt.NDArray, psd_all_clean: npt.NDArray):
+def plot_psd(
+        chanmask: npt.NDArray,
+        freq: npt.NDArray,
+        psd_all: npt.NDArray,
+        psd_all_clean: npt.NDArray,
+        min_percentile: float=16,
+        max_percentile: float=84,
+        title: str | None=None,
+):
     n_good_chan = np.count_nonzero(chanmask)
     good_chan = np.where(chanmask == 1)[0]
     n_good_chan = len(good_chan)
     n_freq = np.size(freq)
     
     # Get the min, median, and max for plotting
-    psd_min = np.percentile(psd_all[:, good_chan, :], 16, axis=1)
-    psd_med = np.median(psd_all[:, good_chan, :], axis=1)
-    psd_max = np.percentile(psd_all[:, good_chan, :], 84, axis=1)
-    psd_min_clean = np.percentile(psd_all_clean[:, good_chan, :], 16, axis=1)
+    # psd_min = np.percentile(psd_all[:, good_chan, :], 16, axis=1)
+    # psd_med = np.median(psd_all[:, good_chan, :], axis=1)
+    # psd_max = np.percentile(psd_all[:, good_chan, :], 84, axis=1)
+    psd_min_clean = np.percentile(psd_all_clean[:, good_chan, :], min_percentile, axis=1)
     psd_med_clean = np.median(psd_all_clean[:, good_chan, :], axis=1)
-    if psd_med_clean.max() == 0.0:
-        psd_med_clean = np.mean(psd_all_clean[:, good_chan, :], axis=1)
-    psd_max_clean = np.percentile(psd_all_clean[:, good_chan, :], 84, axis=1)
+    # if psd_med_clean.max() == 0.0:
+    #     psd_med_clean = np.mean(psd_all_clean[:, good_chan, :], axis=1)
+    psd_max_clean = np.percentile(psd_all_clean[:, good_chan, :], max_percentile, axis=1)
 
     # Only use good data for plotting
     # TODO: Make complex index choice dynamic
@@ -226,8 +235,9 @@ def plot_psd(chanmask: npt.NDArray, freq: npt.NDArray, psd_all: npt.NDArray, psd
         plot_data_max,
         facecolor='c',
         alpha=0.5,
+        label=f'{ordinal(int(min_percentile))} Percentile to {ordinal(int(max_percentile))} Percentile'
     )
-    ax.plot(freq[good_ind], plot_data_med, color='b', label='Measured Noise')
+    ax.plot(freq[good_ind], plot_data_med, color='b', label='Median Measured Noise')
     ax.set_xscale('log')
     ax.set_xlim(0.1,100.)
     ax.set_ylim(-110, -60)
@@ -235,7 +245,9 @@ def plot_psd(chanmask: npt.NDArray, freq: npt.NDArray, psd_all: npt.NDArray, psd
     ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
     ax.tick_params(labelsize=14)
     ax.legend(fontsize=14, loc = 'upper right')
-    ax.set_title('RFSoC Loopback', fontsize=16)
+    if title is None:
+        title = 'RFSoC Loopback'
+    ax.set_title(title, fontsize=16)
 
     return fig
 
@@ -264,8 +276,6 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: int | None=None):
     ind = np.where(d < sigma * std)
     return data[ind], ind
 
-def get_all_indices(x: npt.NDArray):
-    return np.indices(input_data1.shape).reshape(3, -1).T
 
 def iteratively_reject_outliers(data: npt.NDArray, sigma: float=2, axis: int | None=None):
     ind = np.arange(np.size(data))
@@ -279,6 +289,7 @@ def iteratively_reject_outliers(data: npt.NDArray, sigma: float=2, axis: int | N
             break
         ind = ind[good_ind]
     return data[ind], ind, np.setdiff1d(np.arange(np.size(data)), ind)
+
 
 def reject_outliers_onr(data,sigma=2):
   keepgoing = 1
@@ -319,13 +330,13 @@ if __name__ == '__main__':
     # input_data1, timestamp1, chanmask1 = load_data('data/data.hdf5')
     input_data2, timestamp2, chanmask2 = load_data('data/data_2.hdf5')
 
-    # chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(
-    #     input_data2,
-    #     timestamp2,
-    #     chanmask=None,
-    #     ds_factor=3,
-    #     flag_outliers=False,
-    # )
+    chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(
+        input_data2,
+        timestamp2,
+        chanmask=None,
+        ds_factor=3,
+        flag_outliers=False,
+    )
     chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(
         input_data2,
         timestamp2,
@@ -337,6 +348,7 @@ if __name__ == '__main__':
     # d2, _ = reject_outliers_onr(psd_all_clean1[:, chanmask1, :].flatten())
     # exit()
     # chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
-    # fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1)
-    fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2)
+    fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, max_percentile=84, title='No Outlier Removal')
+    fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=83, title='With Outlier Removal')
+    fig3 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=84, title='84th Percentile')
     plt.show()
