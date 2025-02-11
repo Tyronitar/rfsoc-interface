@@ -347,6 +347,13 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         tone_file = get_lineEdit_text(self.tone_list_lineEdit)
         # amp_file = get_lineEdit_text(self.tone_power_lineEdit)
         tone_list = np.ndarray.tolist(np.load(tone_file))
+
+        # Cody's code for equally spaced tones
+        Nover2 = 500 # number of tones to make  
+        freqs_up = -1.0*np.linspace(251.0e6,1.0e6,Nover2)  
+        freqs_lw = 1.0*np.linspace(2.25e6,252.25e6,Nover2)  
+        tone_list = np.append(freqs_up,freqs_lw)
+
         # tone_powers = np.ndarray.tolist(np.load(amp_file))
         tone_powers = np.ones_like(tone_list)
         self.rfsoc.set_tone_list(chan=self.channel, tonelist=tone_list, amplitudes=tone_powers)

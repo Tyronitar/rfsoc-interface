@@ -335,7 +335,7 @@ if __name__ == '__main__':
     # args = parser.parse_args()
     # path = args.data_file
     # input_data1, timestamp1, chanmask1 = load_data('data/data.hdf5')
-    input_data2, timestamp2, chanmask2 = load_data('data/data_2.hdf5')
+    input_data2, timestamp2, chanmask2 = load_data('data/equal.hdf5')
 
     chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(
         input_data2,
@@ -355,7 +355,8 @@ if __name__ == '__main__':
     # # d2, _ = reject_outliers_onr(psd_all_clean1[:, chanmask1, :].flatten())
     # # exit()
     # # chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
+    fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, title='RFSoC Loopback with 500 Equally Spaced Tones')
     # fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, max_percentile=84, title='No Outlier Removal')
     # fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=83, title='With Outlier Removal')
     # # fig3 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=84, title='84th Percentile')
-    # plt.show()
+    plt.show()
