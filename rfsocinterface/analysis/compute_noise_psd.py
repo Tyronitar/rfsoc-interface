@@ -314,12 +314,19 @@ def load_data(path: Path) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         amp = np.nanmedian(amp, axis=1)
         input_data = np.empty((2, *data_i.shape))
         input_data[0, :, :] = data_i / np.outer(amp, np.ones(data_i.shape[1]))
-        # input_data[0, :, :] = data_i / amp[:, np.newaxis]
-        # input_data[1, :, :] = data_q / amp[:, np.newaxis]
         input_data[1, :, :] = data_q / np.outer(amp, np.ones(data_q.shape[1]))
         timestamp = f['time_ordered_data/timestamp'][:]
         chanmask = f['global_data/chanmask'][:]
     return input_data, timestamp, chanmask
+
+def plot(data: npt.NDArray):
+    mean_data = np.nanmean(data, axis=-1)
+    centered_data = data - mean_data[..., np.newaxis]
+    print(centered_data)
+    n_tones = 30
+    for i_tone in range(530, 530 + n_tones):
+        plt.plot(centered_data[0, i_tone, :] + i_tone * 1e-3)
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -337,18 +344,18 @@ if __name__ == '__main__':
         ds_factor=3,
         flag_outliers=False,
     )
-    chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(
-        input_data2,
-        timestamp2,
-        chanmask=None,
-        ds_factor=3,
-        flag_outliers=True,
-    )
-    # d1, _ = iteratively_reject_outliers(psd_all_clean1[:, chanmask1, :])
-    # d2, _ = reject_outliers_onr(psd_all_clean1[:, chanmask1, :].flatten())
-    # exit()
-    # chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
-    fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, max_percentile=84, title='No Outlier Removal')
-    fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=83, title='With Outlier Removal')
-    fig3 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=84, title='84th Percentile')
-    plt.show()
+    # chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(
+    #     input_data2,
+    #     timestamp2,
+    #     chanmask=None,
+    #     ds_factor=3,
+    #     flag_outliers=True,
+    # )
+    # # d1, _ = iteratively_reject_outliers(psd_all_clean1[:, chanmask1, :])
+    # # d2, _ = reject_outliers_onr(psd_all_clean1[:, chanmask1, :].flatten())
+    # # exit()
+    # # chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
+    # fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, max_percentile=84, title='No Outlier Removal')
+    # fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=83, title='With Outlier Removal')
+    # # fig3 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=84, title='84th Percentile')
+    # plt.show()
