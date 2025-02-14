@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>650</width>
-    <height>514</height>
+    <height>614</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -438,6 +438,10 @@
         <property name="text">
          <string>Upload Tones</string>
         </property>
+        <property name="icon">
+         <iconset resource="icons.qrc">
+          <normaloff>:/icons/upload.png</normaloff>:/icons/upload.png</iconset>
+        </property>
        </widget>
       </item>
       <item row="2" column="0">
@@ -449,13 +453,26 @@
          </size>
         </property>
         <property name="text">
-         <string>Tone power file:</string>
+         <string>Tone power:</string>
         </property>
        </widget>
       </item>
       <item row="2" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_5">
-        <item>
+       <layout class="QGridLayout" name="gridLayout_3">
+        <item row="1" column="1">
+         <widget class="QPushButton" name="tone_power_pushButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>Browse...</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
          <widget class="QLineEdit" name="tone_power_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
@@ -468,16 +485,10 @@
           </property>
          </widget>
         </item>
-        <item>
-         <widget class="QPushButton" name="tone_power_pushButton">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
+        <item row="0" column="0">
+         <widget class="QCheckBox" name="tone_power_checkBox">
           <property name="text">
-           <string>Browse...</string>
+           <string>Use equal tone powers</string>
           </property>
          </widget>
         </item>
@@ -528,7 +539,7 @@
          <string>List of tones of resonant frequencies</string>
         </property>
         <property name="text">
-         <string>Tone list file:</string>
+         <string>Tone list:</string>
         </property>
         <property name="alignment">
          <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
@@ -550,8 +561,21 @@
        </widget>
       </item>
       <item row="0" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_6">
-        <item>
+       <layout class="QGridLayout" name="gridLayout_2">
+        <item row="3" column="1">
+         <widget class="QPushButton" name="tone_list_pushButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>Browse...</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
          <widget class="QLineEdit" name="tone_list_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
@@ -564,16 +588,44 @@
           </property>
          </widget>
         </item>
-        <item>
-         <widget class="QPushButton" name="tone_list_pushButton">
+        <item row="0" column="0">
+         <widget class="QCheckBox" name="tone_list_checkBox">
+          <property name="text">
+           <string>Use equally spaced tones</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="tone_list_bandwidth_label">
+          <property name="text">
+           <string>Bandwidth (MHz):</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="tone_list_bandwidth_lineEdit">
           <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
             <horstretch>0</horstretch>
             <verstretch>0</verstretch>
            </sizepolicy>
           </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QLineEdit" name="tone_list_ntones_lineEdit">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="tone_list_ntones_label">
           <property name="text">
-           <string>Browse...</string>
+           <string>Number of tones:</string>
           </property>
          </widget>
         </item>

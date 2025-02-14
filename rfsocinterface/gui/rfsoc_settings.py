@@ -1,6 +1,6 @@
 from pathlib import Path
 from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot, Signal
-from PySide6.QtGui import QDoubleValidator, QIcon, QRegularExpressionValidator
+from PySide6.QtGui import QDoubleValidator, QIcon, QRegularExpressionValidator, QIntValidator
 from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
 from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import Ui_RFSOCAdvancedSettingsWidget
 from rfsocinterface.gui.widgets.icon_label import IconLabel
@@ -156,6 +156,12 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.tone_list_lineEdit.setValidator(self.path_validator)
         self.tone_power_lineEdit.setValidator(self.path_validator)
         self.upload_tones_pushButton.clicked.connect(self.upload_tone_list)
+        self.tone_list_checkBox.stateChanged.connect(self.check_equal_tones)
+        self.tone_power_checkBox.stateChanged.connect(self.check_equal_power)
+        self.bandwidth_validator = QDoubleValidator(0, 512, 3, parent=self)
+        self.tone_list_bandwidth_lineEdit.setValidator(self.bandwidth_validator)
+        self.n_tone_validator = QIntValidator(1, 10000, parent=self)
+        self.tone_list_ntones_lineEdit.setValidator(self.n_tone_validator)
 
         self.chanmask_pushButton.clicked.connect(self.choose_channel_mask)
 
@@ -193,6 +199,31 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.set_defaults()
         self.buttonBox.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self.set_defaults)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(self.clear_form)
+
+        self.check_equal_tones(self.tone_list_checkBox.checkState())
+        self.check_equal_power(self.tone_power_checkBox.checkState())
+    
+    def check_equal_tones(self, state: int):
+        checked = Qt.CheckState(state) == Qt.CheckState.Checked
+        self.tone_list_lineEdit.setVisible(not checked)
+        self.tone_list_lineEdit.setStyleSheet('')
+        self.tone_list_pushButton.setVisible(not checked)
+        self.tone_list_bandwidth_label.setVisible(checked)
+        self.tone_list_bandwidth_lineEdit.setStyleSheet('')
+        self.tone_list_bandwidth_lineEdit.setVisible(checked)
+        self.tone_list_ntones_label.setVisible(checked)
+        self.tone_list_ntones_lineEdit.setVisible(checked)
+        self.tone_list_ntones_lineEdit.setStyleSheet('')
+        self.tone_list_error_label.setVisible(False)
+        self.height_updated.emit()
+
+    def check_equal_power(self, state: int):
+        checked = Qt.CheckState(state) == Qt.CheckState.Checked
+        self.tone_power_lineEdit.setVisible(not checked)
+        self.tone_power_lineEdit.setStyleSheet('')
+        self.tone_power_pushButton.setVisible(not checked)
+        self.tone_power_error_label.setVisible(False)
+        self.height_updated.emit()
 
     def hide_error_labels(self):
         for label in self.error_labels:
@@ -310,7 +341,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     
     @Slot(str)
     def upload_firmware(self, bitstream: str):
+        self.setCursor(Qt.CursorShape.WaitCursor)
         self.rfsoc.upload_bitstream(bitstream)
+        self.setCursor(Qt.CursorShape.ArrowCursor)
 
     @Slot()
     def update_ethernet_config(self):
@@ -332,31 +365,59 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         if any([source_toggled, dest_toggled, mac_toggled, port_toggled]):
             self.height_updated.emit()
         elif all([source_ok, dest_ok, mac_ok, port_ok]):
+            self.setCursor(Qt.CursorShape.WaitCursor)
             self.update_ethernet_config()
             self.rfsoc.configure_hardware()
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
     @Slot()
     def upload_tone_list(self):
         # see if the user wants the default list or something different:
-        tone_valid, tone_toggled = verify_lineEdit(self.tone_list_lineEdit, self.tone_list_error_label)
-        # power_valid, power_toggled = verify_lineEdit(self.tone_power_lineEdit, self.tone_power_error_label)
         # if tone_toggled or power_toggled:
         #     self.height_updated.emit()
         # if not (tone_valid and power_valid):
         #     return
-        tone_file = get_lineEdit_text(self.tone_list_lineEdit)
-        # amp_file = get_lineEdit_text(self.tone_power_lineEdit)
-        tone_list = np.ndarray.tolist(np.load(tone_file))
+        tones_valid = True
+        if self.tone_list_checkBox.isChecked():
+            n_valid, _ = verify_lineEdit(self.tone_list_ntones_lineEdit)
+            bw_valid, _ = verify_lineEdit(self.tone_list_bandwidth_lineEdit)
+            tones_valid &= n_valid
+            tones_valid &= bw_valid
+            if tones_valid:
+                n = get_num_value(self.tone_list_ntones_lineEdit, int)
+                bw = get_num_value(self.tone_list_bandwidth_lineEdit)
+                tone_list = np.linspace(-bw / 2, bw / 2, n) * 1e6
+            # TODO: Ask Cody about this
+            # Cody's code for equally spaced tones
+            # Nover2 = 500 # number of tones to make  
+            # freqs_up = -1.0*np.linspace(251.0e6,1.0e6,Nover2)  
+            # freqs_lw = 1.0*np.linspace(2.25e6,252.25e6,Nover2)  
+            # tone_list = np.append(freqs_up,freqs_lw)
+        else:
+            tone_list_valid, tone_toggled = verify_lineEdit(self.tone_list_lineEdit, self.tone_list_error_label)
+            tones_valid &= tone_list_valid
+            if tone_toggled:
+                self.height_updated.emit()
+            if tones_valid:
+                tone_file = get_lineEdit_text(self.tone_list_lineEdit)
+                tone_list = np.ndarray.tolist(np.load(tone_file))
 
-        # Cody's code for equally spaced tones
-        Nover2 = 500 # number of tones to make  
-        freqs_up = -1.0*np.linspace(251.0e6,1.0e6,Nover2)  
-        freqs_lw = 1.0*np.linspace(2.25e6,252.25e6,Nover2)  
-        tone_list = np.append(freqs_up,freqs_lw)
+        if self.tone_power_checkBox.isChecked():
+            if tones_valid:
+                tone_powers = np.ones_like(tone_list)
+        else:
+            power_valid, power_toggled = verify_lineEdit(self.tone_power_lineEdit, self.tone_power_error_label)
+            tones_valid &= power_valid
+            if power_toggled:
+                self.height_updated.emit()
+            if tones_valid:
+                amp_file = get_lineEdit_text(self.tone_power_lineEdit)
+                tone_powers = np.ndarray.tolist(np.load(amp_file))
 
-        # tone_powers = np.ndarray.tolist(np.load(amp_file))
-        tone_powers = np.ones_like(tone_list)
-        self.rfsoc.set_tone_list(chan=self.channel, tonelist=tone_list, amplitudes=tone_powers)
+        if tones_valid:
+            self.setCursor(Qt.CursorShape.WaitCursor)
+            self.rfsoc.set_tone_list(chan=self.channel, tonelist=tone_list, amplitudes=tone_powers)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def set_attenuation(self, attenuation: str):
         match attenuation:
@@ -376,12 +437,16 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.height_updated.emit()
         elif valid:
             att = get_num_value(lineEdit)
+            self.setCursor(Qt.CursorShape.WaitCursor)
             self.rfsoc.atten_transceiver.set_atten(addr, att)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
             print('Succesfully set attenuation')
     
     def set_lo_freq(self):
         lo_freq = get_num_value(self.lo_freq_lineEdit)
+        self.setCursor(Qt.CursorShape.WaitCursor)
         valon = self.rfsoc.valon_a if self.channel == 1 else self.rfsoc.valon_b
+        self.setCursor(Qt.CursorShape.ArrowCursor)
         valon.set_frequency(self.channel, lo_freq)
     
     def set_defaults(self):

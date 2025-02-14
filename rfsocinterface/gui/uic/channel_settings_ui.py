@@ -15,10 +15,10 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialogButtonBox, QGridLayout,
-    QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QSizePolicy, QSpacerItem, QToolButton,
-    QWidget)
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QCheckBox, QDialogButtonBox,
+    QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QSizePolicy, QSpacerItem,
+    QToolButton, QWidget)
 
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from . import icons_rc
@@ -27,7 +27,7 @@ class Ui_ChannelSettingsWidget(object):
     def setupUi(self, ChannelSettingsWidget):
         if not ChannelSettingsWidget.objectName():
             ChannelSettingsWidget.setObjectName(u"ChannelSettingsWidget")
-        ChannelSettingsWidget.resize(650, 514)
+        ChannelSettingsWidget.resize(650, 614)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -268,6 +268,7 @@ class Ui_ChannelSettingsWidget(object):
         self.upload_tones_pushButton.setObjectName(u"upload_tones_pushButton")
         sizePolicy1.setHeightForWidth(self.upload_tones_pushButton.sizePolicy().hasHeightForWidth())
         self.upload_tones_pushButton.setSizePolicy(sizePolicy1)
+        self.upload_tones_pushButton.setIcon(icon)
 
         self.resonator_gridLayout.addWidget(self.upload_tones_pushButton, 4, 1, 1, 1, Qt.AlignmentFlag.AlignRight)
 
@@ -277,8 +278,15 @@ class Ui_ChannelSettingsWidget(object):
 
         self.resonator_gridLayout.addWidget(self.tone_power_label, 2, 0, 1, 1)
 
-        self.horizontalLayout_5 = QHBoxLayout()
-        self.horizontalLayout_5.setObjectName(u"horizontalLayout_5")
+        self.gridLayout_3 = QGridLayout()
+        self.gridLayout_3.setObjectName(u"gridLayout_3")
+        self.tone_power_pushButton = QPushButton(self.resonator_GroupBox)
+        self.tone_power_pushButton.setObjectName(u"tone_power_pushButton")
+        sizePolicy1.setHeightForWidth(self.tone_power_pushButton.sizePolicy().hasHeightForWidth())
+        self.tone_power_pushButton.setSizePolicy(sizePolicy1)
+
+        self.gridLayout_3.addWidget(self.tone_power_pushButton, 1, 1, 1, 1)
+
         self.tone_power_lineEdit = QLineEdit(self.resonator_GroupBox)
         self.tone_power_lineEdit.setObjectName(u"tone_power_lineEdit")
         sizePolicy6 = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -287,17 +295,15 @@ class Ui_ChannelSettingsWidget(object):
         sizePolicy6.setHeightForWidth(self.tone_power_lineEdit.sizePolicy().hasHeightForWidth())
         self.tone_power_lineEdit.setSizePolicy(sizePolicy6)
 
-        self.horizontalLayout_5.addWidget(self.tone_power_lineEdit)
+        self.gridLayout_3.addWidget(self.tone_power_lineEdit, 1, 0, 1, 1)
 
-        self.tone_power_pushButton = QPushButton(self.resonator_GroupBox)
-        self.tone_power_pushButton.setObjectName(u"tone_power_pushButton")
-        sizePolicy1.setHeightForWidth(self.tone_power_pushButton.sizePolicy().hasHeightForWidth())
-        self.tone_power_pushButton.setSizePolicy(sizePolicy1)
+        self.tone_power_checkBox = QCheckBox(self.resonator_GroupBox)
+        self.tone_power_checkBox.setObjectName(u"tone_power_checkBox")
 
-        self.horizontalLayout_5.addWidget(self.tone_power_pushButton)
+        self.gridLayout_3.addWidget(self.tone_power_checkBox, 0, 0, 1, 1)
 
 
-        self.resonator_gridLayout.addLayout(self.horizontalLayout_5, 2, 1, 1, 1)
+        self.resonator_gridLayout.addLayout(self.gridLayout_3, 2, 1, 1, 1)
 
         self.horizontalLayout = QHBoxLayout()
         self.horizontalLayout.setObjectName(u"horizontalLayout")
@@ -335,24 +341,56 @@ class Ui_ChannelSettingsWidget(object):
 
         self.resonator_gridLayout.addWidget(self.tone_list_error_label, 1, 1, 1, 1)
 
-        self.horizontalLayout_6 = QHBoxLayout()
-        self.horizontalLayout_6.setObjectName(u"horizontalLayout_6")
-        self.tone_list_lineEdit = QLineEdit(self.resonator_GroupBox)
-        self.tone_list_lineEdit.setObjectName(u"tone_list_lineEdit")
-        sizePolicy6.setHeightForWidth(self.tone_list_lineEdit.sizePolicy().hasHeightForWidth())
-        self.tone_list_lineEdit.setSizePolicy(sizePolicy6)
-
-        self.horizontalLayout_6.addWidget(self.tone_list_lineEdit)
-
+        self.gridLayout_2 = QGridLayout()
+        self.gridLayout_2.setObjectName(u"gridLayout_2")
         self.tone_list_pushButton = QPushButton(self.resonator_GroupBox)
         self.tone_list_pushButton.setObjectName(u"tone_list_pushButton")
         sizePolicy1.setHeightForWidth(self.tone_list_pushButton.sizePolicy().hasHeightForWidth())
         self.tone_list_pushButton.setSizePolicy(sizePolicy1)
 
-        self.horizontalLayout_6.addWidget(self.tone_list_pushButton)
+        self.gridLayout_2.addWidget(self.tone_list_pushButton, 3, 1, 1, 1)
+
+        self.tone_list_lineEdit = QLineEdit(self.resonator_GroupBox)
+        self.tone_list_lineEdit.setObjectName(u"tone_list_lineEdit")
+        sizePolicy6.setHeightForWidth(self.tone_list_lineEdit.sizePolicy().hasHeightForWidth())
+        self.tone_list_lineEdit.setSizePolicy(sizePolicy6)
+
+        self.gridLayout_2.addWidget(self.tone_list_lineEdit, 3, 0, 1, 1)
+
+        self.tone_list_checkBox = QCheckBox(self.resonator_GroupBox)
+        self.tone_list_checkBox.setObjectName(u"tone_list_checkBox")
+
+        self.gridLayout_2.addWidget(self.tone_list_checkBox, 0, 0, 1, 1)
+
+        self.tone_list_bandwidth_label = QLabel(self.resonator_GroupBox)
+        self.tone_list_bandwidth_label.setObjectName(u"tone_list_bandwidth_label")
+
+        self.gridLayout_2.addWidget(self.tone_list_bandwidth_label, 1, 0, 1, 1)
+
+        self.tone_list_bandwidth_lineEdit = QLineEdit(self.resonator_GroupBox)
+        self.tone_list_bandwidth_lineEdit.setObjectName(u"tone_list_bandwidth_lineEdit")
+        sizePolicy7 = QSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        sizePolicy7.setHorizontalStretch(0)
+        sizePolicy7.setVerticalStretch(0)
+        sizePolicy7.setHeightForWidth(self.tone_list_bandwidth_lineEdit.sizePolicy().hasHeightForWidth())
+        self.tone_list_bandwidth_lineEdit.setSizePolicy(sizePolicy7)
+
+        self.gridLayout_2.addWidget(self.tone_list_bandwidth_lineEdit, 1, 1, 1, 1)
+
+        self.tone_list_ntones_lineEdit = QLineEdit(self.resonator_GroupBox)
+        self.tone_list_ntones_lineEdit.setObjectName(u"tone_list_ntones_lineEdit")
+        sizePolicy7.setHeightForWidth(self.tone_list_ntones_lineEdit.sizePolicy().hasHeightForWidth())
+        self.tone_list_ntones_lineEdit.setSizePolicy(sizePolicy7)
+
+        self.gridLayout_2.addWidget(self.tone_list_ntones_lineEdit, 2, 1, 1, 1)
+
+        self.tone_list_ntones_label = QLabel(self.resonator_GroupBox)
+        self.tone_list_ntones_label.setObjectName(u"tone_list_ntones_label")
+
+        self.gridLayout_2.addWidget(self.tone_list_ntones_label, 2, 0, 1, 1)
 
 
-        self.resonator_gridLayout.addLayout(self.horizontalLayout_6, 0, 1, 1, 1)
+        self.resonator_gridLayout.addLayout(self.gridLayout_2, 0, 1, 1, 1)
 
         self.tone_power_error_label = QLabel(self.resonator_GroupBox)
         self.tone_power_error_label.setObjectName(u"tone_power_error_label")
@@ -398,9 +436,10 @@ class Ui_ChannelSettingsWidget(object):
         self.rfoutLabel.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Rfout (dB):", None))
         self.resonator_GroupBox.setTitle(QCoreApplication.translate("ChannelSettingsWidget", u"Resonator Settings", None))
         self.upload_tones_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Upload Tones", None))
-        self.tone_power_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Tone power file:", None))
-        self.tone_power_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
+        self.tone_power_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Tone power:", None))
         self.tone_power_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
+        self.tone_power_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
+        self.tone_power_checkBox.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Use equal tone powers", None))
         self.chanmask_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
         self.chanmask_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
 #if QT_CONFIG(tooltip)
@@ -409,11 +448,14 @@ class Ui_ChannelSettingsWidget(object):
 #if QT_CONFIG(whatsthis)
         self.tone_list_label.setWhatsThis(QCoreApplication.translate("ChannelSettingsWidget", u"List of tones of resonant frequencies", None))
 #endif // QT_CONFIG(whatsthis)
-        self.tone_list_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Tone list file:", None))
+        self.tone_list_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Tone list:", None))
         self.chanmask_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Channel mask:", None))
         self.tone_list_error_label.setText("")
-        self.tone_list_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
         self.tone_list_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
+        self.tone_list_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
+        self.tone_list_checkBox.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Use equally spaced tones", None))
+        self.tone_list_bandwidth_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Bandwidth (MHz):", None))
+        self.tone_list_ntones_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Number of tones:", None))
         self.tone_power_error_label.setText("")
     # retranslateUi
 

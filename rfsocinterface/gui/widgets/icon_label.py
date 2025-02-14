@@ -47,9 +47,10 @@ class IconLabel(QWidget):
 
 def verify_lineEdit(
     source: QLineEdit,
-    error_label: IconLabel,
+    error_label: IconLabel | None=None,
     toggle_enabled: list[QWidget]=[],
 ) -> tuple[bool, bool]:
+    toggled = False
     if not source.hasAcceptableInput():
         # Highlight in red
         source.setStyleSheet(
@@ -62,14 +63,16 @@ def verify_lineEdit(
             widget.setEnabled(False)
 
         # Show the error_label 
-        toggled = error_label.isHidden()
-        error_label.setVisible(True)
+        if error_label is not None:
+            toggled = error_label.isHidden()
+            error_label.setVisible(True)
         QCoreApplication.processEvents()
         return False, toggled
     else:  # Value is valid
         # Remove the error label since the value is valid
-        toggled = error_label.isVisible()
-        error_label.setVisible(False)
+        if error_label is not None:
+            toggled = error_label.isVisible()
+            error_label.setVisible(False)
         QCoreApplication.processEvents()
 
         source.setStyleSheet('')
