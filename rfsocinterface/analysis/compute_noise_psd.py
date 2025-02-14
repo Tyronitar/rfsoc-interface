@@ -13,6 +13,20 @@ import argparse
 from rfsocinterface.core.utils import ensure_path, cartesian, ordinal
 
 
+def rotate_to_amplitude_and_phase(input_IQ_data: npt.NDArray):
+    """Compute chnage of basis to amplitude/phase."""
+    assert input_IQ_data.ndim == 3
+    assert input_IQ_data.shape[0] == 2
+    atan = np.atan2(input_IQ_data[1, :, :], input_IQ_data[0, :, :])
+    rotation_angle = np.nanmedian(atan, axis=-1)
+
+    idx = 200
+    amp = np.cos(rotation_angle)[:, np.newaxis] * input_IQ_data[0, :, :] + np.sin(rotation_angle)[:, np.newaxis] * input_IQ_data[1, :, :]
+    phase = -np.sin(rotation_angle)[:, np.newaxis] * input_IQ_data[0, :, :] + np.cos(rotation_angle)[:, np.newaxis] * input_IQ_data[1, :, :]
+    new_data = np.zeros(shape=input_IQ_data.shape)
+    new_data[0] = amp
+    new_data[1] = phase
+    return new_data
 
 def compute_noise_psd(
     input_time_ordered_data: npt.NDArray,
@@ -117,8 +131,8 @@ def compute_noise_psd(
 
     # Create bandpass filters
     hpfilt_sos = signal.butter(6, hp_filter_template, 'hp', fs=fs, output='sos', analog=False)
-    if lp_filter_template >= fs/2:
-        lpfilt_sos = signal.butter(6, fs / 2.1, 'lp', fs=fs, output='sos', analog=False)
+    if lp_filter_template > fs / 2:
+        lpfilt_sos = signal.butter(6, fs / 2, 'lp', fs=fs, output='sos', analog=False)
     else:
         lpfilt_sos = signal.butter(6, lp_filter_template, 'lp', fs=fs, output='sos', analog=False)
     lpfilt_sos2 = signal.butter(6, lp_filter_template2, 'lp', fs=fs, output='sos', analog=False)
@@ -126,6 +140,7 @@ def compute_noise_psd(
     data_mean_filt = signal.sosfiltfilt(lpfilt_sos, data_mean_filt)
     data_mean_filt2 = signal.sosfiltfilt(hpfilt_sos, data_mean)
     data_mean_filt2 = signal.sosfiltfilt(lpfilt_sos2, data_mean_filt2)
+    # data_all_filt = signal.sosfiltfilt(lpfilt_sos, data_all, axis=2)
     data_all_filt = signal.sosfiltfilt(hpfilt_sos, data_all, axis=2)
     data_all_filt = signal.sosfiltfilt(lpfilt_sos, data_all_filt, axis=2)
     data_all_filt2 = signal.sosfiltfilt(hpfilt_sos, data_all, axis=2)
@@ -334,12 +349,14 @@ if __name__ == '__main__':
     # parser.add_argument('data_file')
     # args = parser.parse_args()
     # path = args.data_file
-    # input_data1, timestamp1, chanmask1 = load_data('data/data.hdf5')
-    input_data2, timestamp2, chanmask2 = load_data('data/equal.hdf5')
+    input_data1, timestamp1, chanmask1 = load_data('data/data.hdf5')
+    # input_data2, timestamp2, chanmask2 = load_data('data/equal.hdf5')
+    rotated_data = rotate_to_amplitude_and_phase(input_data1)
 
     chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(
-        input_data2,
-        timestamp2,
+        # input_data2,
+        rotated_data,
+        timestamp1,
         chanmask=None,
         ds_factor=3,
         flag_outliers=False,
