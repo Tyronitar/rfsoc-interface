@@ -202,6 +202,16 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
 
         self.check_equal_tones(self.tone_list_checkBox.checkState())
         self.check_equal_power(self.tone_power_checkBox.checkState())
+        self.tone_list_bandwidth_lineEdit.textEdited.connect(self.update_bandwidth_label)
+        self.tone_list_ntones_lineEdit.textEdited.connect(self.update_bandwidth_label)
+    
+    def update_bandwidth_label(self, new_text: str):
+        bw = get_num_value(self.tone_list_bandwidth_lineEdit)
+        n = get_num_value(self.tone_list_ntones_lineEdit)
+        show_label = bw is not None and n is not None
+        self.tone_list_equal_label.setVisible(show_label)
+        if show_label:
+            self.tone_list_equal_label.setText(f'Generating {n} tones from {-bw / 2} to {bw / 2} MHz')
     
     def check_equal_tones(self, state: int):
         checked = Qt.CheckState(state) == Qt.CheckState.Checked
@@ -215,6 +225,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.tone_list_ntones_lineEdit.setVisible(checked)
         self.tone_list_ntones_lineEdit.setStyleSheet('')
         self.tone_list_error_label.setVisible(False)
+        self.tone_list_equal_label.setVisible(checked)
         self.height_updated.emit()
 
     def check_equal_power(self, state: int):
