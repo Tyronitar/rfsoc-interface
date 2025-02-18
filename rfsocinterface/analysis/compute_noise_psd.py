@@ -1,8 +1,10 @@
 from pathlib import Path
+from typing import Literal
 import numpy as np
 import numpy.typing as npt
 import sys, os
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 from scipy import signal, ndimage, fftpack
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import curve_fit
@@ -11,6 +13,9 @@ import h5py
 import argparse
 
 from rfsocinterface.core.utils import ensure_path, cartesian, ordinal
+
+XLIM = (0.1, 100)
+YLIM = (-110, -60)
 
 
 def rotate_to_amplitude_and_phase(input_IQ_data: npt.NDArray):
@@ -73,7 +78,13 @@ def compute_noise_psd(
         new_input_data = input_data
 
     timestamp = timestamp[0::ds_factor]
-    fs = 1. / (timestamp[1] - timestamp[0])
+    # plt.plot(timestamp, timestamp - np.roll(timestamp, 1))
+    # plt.xlim(0, 1)
+    # plt.ylim(-0.01, 0.01)
+    # plt.show()
+    # exit()
+    # fs = 1. / (timestamp[1] - timestamp[0])
+    fs = 1. / np.median(np.diff(timestamp))
 
     # Flag Outliers
     if flag_outliers:
@@ -132,7 +143,7 @@ def compute_noise_psd(
     # Create bandpass filters
     hpfilt_sos = signal.butter(6, hp_filter_template, 'hp', fs=fs, output='sos', analog=False)
     if lp_filter_template > fs / 2:
-        lpfilt_sos = signal.butter(6, fs / 2, 'lp', fs=fs, output='sos', analog=False)
+        lpfilt_sos = signal.butter(6, fs / 2.1, 'lp', fs=fs, output='sos', analog=False)
     else:
         lpfilt_sos = signal.butter(6, lp_filter_template, 'lp', fs=fs, output='sos', analog=False)
     lpfilt_sos2 = signal.butter(6, lp_filter_template2, 'lp', fs=fs, output='sos', analog=False)
@@ -209,19 +220,19 @@ def compute_noise_psd(
 
     return chanmask, freq, psd_all, psd_all_clean
 
+@ensure_path(4)
 def plot_psd(
         chanmask: npt.NDArray,
         freq: npt.NDArray,
         psd_all: npt.NDArray,
         psd_all_clean: npt.NDArray,
+        filename: Path,
         min_percentile: float=16,
         max_percentile: float=84,
         title: str | None=None,
-):
-    n_good_chan = np.count_nonzero(chanmask)
+        basis: Literal['pa', 'iq']='pa',
+) -> Figure:
     good_chan = np.where(chanmask == 1)[0]
-    n_good_chan = len(good_chan)
-    n_freq = np.size(freq)
     
     # Get the min, median, and max for plotting
     # psd_min = np.percentile(psd_all[:, good_chan, :], 16, axis=1)
@@ -236,23 +247,63 @@ def plot_psd(
     # Only use good data for plotting
     # TODO: Make complex index choice dynamic
     # good_ind = np.arange(n_good_chan)
-    good_ind = good_chan
-    plot_data_min = 10 * np.log10(psd_min_clean[0, good_ind])
-    plot_data_med = 10 * np.log10(psd_med_clean[0, good_ind])
-    plot_data_max = 10 * np.log10(psd_max_clean[0, good_ind])
+    plot_data_min = 10 * np.log10(psd_min_clean[:, good_chan])
+    plot_data_med = 10 * np.log10(psd_med_clean[:, good_chan])
+    plot_data_max = 10 * np.log10(psd_max_clean[:, good_chan])
+
+    if title is None:
+        title = 'RFSoC Loopback PSD'
+    match basis.lower():
+        case 'pa':
+            titles = [title + ' - Phase', title + ' - Amplitude']
+        case 'iq':
+            titles = [title + ' - I', title + ' - Q']
+        case _:
+            raise ValueError(f'Invalid basis {basis}; must be one of ["pa", "iq"]')
 
     # Plot the data
-    fig = plt.figure()
+    fig0 = create_plot(
+        freq[good_chan],
+        plot_data_min[0],
+        plot_data_med[0],
+        plot_data_max[0],
+        percentiles=(min_percentile, max_percentile),
+        title=titles[0],
+    )
+    fig1 = create_plot(
+        freq[good_chan],
+        plot_data_min[1],
+        plot_data_med[1],
+        plot_data_max[1],
+        percentiles=(min_percentile, max_percentile),
+        title=titles[1],
+    )
+    with PdfPages(filename) as pdf:
+        pdf.savefig(fig0)
+        pdf.savefig(fig1)
+
+    return fig0, fig1
+
+def create_plot(
+        xdata: npt.ArrayLike,
+        ydata_min: npt.ArrayLike,
+        ydata_med: npt.ArrayLike,
+        ydata_max: npt.ArrayLike,
+        percentiles: tuple[float, float]=(16., 84.),
+        label: str='Median Measured Noise',
+        title: str | None=None,
+) -> Figure:
+    fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
+    ax.plot(xdata, ydata_med, color='b', label=label)
     ax.fill_between(
-        freq[good_ind],
-        plot_data_min,
-        plot_data_max,
+        xdata,
+        ydata_min,
+        ydata_max,
         facecolor='c',
         alpha=0.5,
-        label=f'{ordinal(int(min_percentile))} Percentile to {ordinal(int(max_percentile))} Percentile'
+        label=f'{ordinal(int(percentiles[0]))} Percentile to {ordinal(int(percentiles[1]))} Percentile'
     )
-    ax.plot(freq[good_ind], plot_data_med, color='b', label='Median Measured Noise')
     ax.set_xscale('log')
     ax.set_xlim(0.1,100.)
     ax.set_ylim(-110, -60)
@@ -261,8 +312,9 @@ def plot_psd(
     ax.tick_params(labelsize=14)
     ax.legend(fontsize=14, loc = 'upper right')
     if title is None:
-        title = 'RFSoC Loopback'
+        title = 'RFSoC Loopback PSD'
     ax.set_title(title, fontsize=16)
+    plt.tight_layout()
 
     return fig
 
@@ -349,31 +401,33 @@ if __name__ == '__main__':
     # parser.add_argument('data_file')
     # args = parser.parse_args()
     # path = args.data_file
-    input_data1, timestamp1, chanmask1 = load_data('data/data.hdf5')
+    input_data1, timestamp1, chanmask1 = load_data('data/old_tones.hdf5')
+    input_data2, timestamp2, chanmask2 = load_data('data/1000_equal_with_edges.hdf5')
     # input_data2, timestamp2, chanmask2 = load_data('data/equal.hdf5')
-    rotated_data = rotate_to_amplitude_and_phase(input_data1)
+    rotated_data1 = rotate_to_amplitude_and_phase(input_data1)
+    rotated_data2 = rotate_to_amplitude_and_phase(input_data2)
 
     chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(
-        # input_data2,
-        rotated_data,
+        rotated_data1,
         timestamp1,
         chanmask=None,
         ds_factor=3,
         flag_outliers=False,
     )
-    # chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(
-    #     input_data2,
-    #     timestamp2,
-    #     chanmask=None,
-    #     ds_factor=3,
-    #     flag_outliers=True,
-    # )
+    chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(
+        rotated_data2,
+        timestamp2,
+        chanmask=None,
+        ds_factor=3,
+        flag_outliers=True,
+    )
     # # d1, _ = iteratively_reject_outliers(psd_all_clean1[:, chanmask1, :])
     # # d2, _ = reject_outliers_onr(psd_all_clean1[:, chanmask1, :].flatten())
     # # exit()
     # # chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
-    fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, title='RFSoC Loopback with 500 Equally Spaced Tones')
+    fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, 'old_tones.pdf', title='RFSoC Loopback with Old Tone List')
+    fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, '1000_equal_with_edges.pdf', title='RFSoC Loopback with 1000 Equally Spaced Tones')
     # fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, max_percentile=84, title='No Outlier Removal')
     # fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=83, title='With Outlier Removal')
     # # fig3 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=84, title='84th Percentile')
-    plt.show()
+    # plt.show()
