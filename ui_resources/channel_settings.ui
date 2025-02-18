@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>650</width>
-    <height>644</height>
+    <height>672</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -36,14 +36,66 @@
      </property>
     </widget>
    </item>
-   <item row="5" column="0" colspan="2">
+   <item row="5" column="0">
     <widget class="QGroupBox" name="ethernet_GroupBox">
      <property name="title">
       <string>Ethernet Settings</string>
      </property>
      <layout class="QGridLayout" name="eth_gridLayout">
+      <item row="4" column="1">
+       <widget class="QLineEdit" name="eth_mac_lineEdit">
+        <property name="placeholderText">
+         <string>XX:XX:XX:XX:XX:XX</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="eth_port_label">
+        <property name="text">
+         <string>Port:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="eth_source_label">
+        <property name="text">
+         <string>Source IP address:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="eth_source_lineEdit">
+        <property name="placeholderText">
+         <string>255.255.255.255</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QLabel" name="eth_port_error_label">
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="eth_mac_label">
+        <property name="text">
+         <string>Destination MAC address:</string>
+        </property>
+       </widget>
+      </item>
       <item row="3" column="1">
        <widget class="QLabel" name="eth_dest_error_label">
+        <property name="text">
+         <string/>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QLabel" name="eth_mac_error_label">
         <property name="text">
          <string/>
         </property>
@@ -56,20 +108,6 @@
        <widget class="QLineEdit" name="eth_dest_lineEdit">
         <property name="placeholderText">
          <string>255.255.255.255</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="1">
-       <widget class="QLineEdit" name="eth_port_lineEdit">
-        <property name="placeholderText">
-         <string>0</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="eth_dest_label">
-        <property name="text">
-         <string>Destination IP address:</string>
         </property>
        </widget>
       </item>
@@ -92,38 +130,10 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="QLineEdit" name="eth_source_lineEdit">
+      <item row="6" column="1">
+       <widget class="QLineEdit" name="eth_port_lineEdit">
         <property name="placeholderText">
-         <string>255.255.255.255</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="eth_mac_label">
-        <property name="text">
-         <string>Destination MAC address:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="eth_source_label">
-        <property name="text">
-         <string>Source IP address:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0">
-       <widget class="QLabel" name="eth_port_label">
-        <property name="text">
-         <string>Port:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
-       <widget class="QLineEdit" name="eth_mac_lineEdit">
-        <property name="placeholderText">
-         <string>XX:XX:XX:XX:XX:XX</string>
+         <string>0</string>
         </property>
        </widget>
       </item>
@@ -137,27 +147,17 @@
         </property>
        </widget>
       </item>
-      <item row="5" column="1">
-       <widget class="QLabel" name="eth_mac_error_label">
+      <item row="2" column="0">
+       <widget class="QLabel" name="eth_dest_label">
         <property name="text">
-         <string/>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="7" column="1">
-       <widget class="QLabel" name="eth_port_error_label">
-        <property name="text">
-         <string/>
+         <string>Destination IP address:</string>
         </property>
        </widget>
       </item>
      </layout>
     </widget>
    </item>
-   <item row="1" column="1">
+   <item row="5" column="1">
     <widget class="QGroupBox" name="if_GroupBox">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
@@ -409,7 +409,7 @@
      </layout>
     </widget>
    </item>
-   <item row="1" column="0">
+   <item row="1" column="0" colspan="2">
     <widget class="QGroupBox" name="resonator_GroupBox">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
@@ -562,7 +562,14 @@
       </item>
       <item row="0" column="1">
        <layout class="QGridLayout" name="gridLayout_2">
-        <item row="4" column="0">
+        <item row="1" column="0">
+         <widget class="QLabel" name="tone_list_baseband_min_label">
+          <property name="text">
+           <string>Lowest Baseband (MHz):</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="0">
          <widget class="QLineEdit" name="tone_list_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
@@ -575,22 +582,8 @@
           </property>
          </widget>
         </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="tone_list_ntones_label">
-          <property name="text">
-           <string>Number of tones:</string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="0">
-         <widget class="QCheckBox" name="tone_list_checkBox">
-          <property name="text">
-           <string>Use equally spaced tones</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QLineEdit" name="tone_list_bandwidth_lineEdit">
+        <item row="3" column="1">
+         <widget class="QLineEdit" name="tone_list_ntones_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -599,7 +592,24 @@
           </property>
          </widget>
         </item>
-        <item row="4" column="1">
+        <item row="4" column="0" colspan="2">
+         <widget class="QLabel" name="tone_list_equal_label">
+          <property name="text">
+           <string>Generating tones from XXX to XXX</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="tone_list_baseband_min_lineEdit">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="1">
          <widget class="QPushButton" name="tone_list_pushButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -612,27 +622,34 @@
           </property>
          </widget>
         </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="tone_list_bandwidth_label">
+        <item row="3" column="0">
+         <widget class="QLabel" name="tone_list_ntones_label">
           <property name="text">
-           <string>Bandwidth (MHz):</string>
+           <string>Number of tones:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="tone_list_baseband_max_label">
+          <property name="text">
+           <string>Highest Baseband (MHz):</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="0">
+         <widget class="QCheckBox" name="tone_list_checkBox">
+          <property name="text">
+           <string>Use equally spaced tones</string>
           </property>
          </widget>
         </item>
         <item row="2" column="1">
-         <widget class="QLineEdit" name="tone_list_ntones_lineEdit">
+         <widget class="QLineEdit" name="tone_list_baseband_max_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
             <horstretch>0</horstretch>
             <verstretch>0</verstretch>
            </sizepolicy>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="0" colspan="2">
-         <widget class="QLabel" name="tone_list_equal_label">
-          <property name="text">
-           <string>Generating tones from XXX to XXX</string>
           </property>
          </widget>
         </item>

@@ -43,7 +43,14 @@ class IconLabel(QWidget):
     
     def setText(self, text: str):
         self.label.setText(text)
-    
+
+def highlight_error_line_edit(line_edit: QLineEdit):
+    line_edit.setStyleSheet(
+        """QLineEdit {border-style: solid; border: 2px solid red; color: red;
+        border-radius: 5px; 
+        background-color: #fff1f1;};
+        """
+    )
 
 def verify_lineEdit(
     source: QLineEdit,
@@ -53,12 +60,7 @@ def verify_lineEdit(
     toggled = False
     if not source.hasAcceptableInput():
         # Highlight in red
-        source.setStyleSheet(
-            """QLineEdit {border-style: solid; border: 2px solid red; color: red;
-            border-radius: 5px; 
-            background-color: #fff1f1;};
-            """
-        )
+        highlight_error_line_edit(source)
         for widget in toggle_enabled:
             widget.setEnabled(False)
 

@@ -27,7 +27,7 @@ from rfsocinterface.gui.widgets.file_upload import FileUploadWidget
 from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from rfsocinterface.core.utils import get_num_value, get_lineEdit_text, IPV4_REGEX, MAC_REGEX, PathValidator
-from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE
+from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 
 
@@ -158,8 +158,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.upload_tones_pushButton.clicked.connect(self.upload_tone_list)
         self.tone_list_checkBox.stateChanged.connect(self.check_equal_tones)
         self.tone_power_checkBox.stateChanged.connect(self.check_equal_power)
-        self.bandwidth_validator = QDoubleValidator(0, 512, 3, parent=self)
-        self.tone_list_bandwidth_lineEdit.setValidator(self.bandwidth_validator)
+        self.baseband_validator = QDoubleValidator(0, 256, 3, parent=self)
+        self.tone_list_baseband_max_lineEdit.setValidator(self.baseband_validator)
+        self.tone_list_baseband_min_lineEdit.setValidator(self.baseband_validator)
         self.n_tone_validator = QIntValidator(1, 10000, parent=self)
         self.tone_list_ntones_lineEdit.setValidator(self.n_tone_validator)
 
@@ -202,21 +203,26 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
 
         self.check_equal_tones(self.tone_list_checkBox.checkState())
         self.check_equal_power(self.tone_power_checkBox.checkState())
-        self.tone_list_bandwidth_lineEdit.textEdited.connect(self.update_bandwidth_label)
+        self.tone_list_baseband_min_lineEdit.textEdited.connect(self.update_bandwidth_label)
+        self.tone_list_baseband_max_lineEdit.textEdited.connect(self.update_bandwidth_label)
         self.tone_list_ntones_lineEdit.textEdited.connect(self.update_bandwidth_label)
     
     @Slot(str)
     def update_bandwidth_label(self, new_text: str):
         show_label = True
         try:
-            bw = get_num_value(self.tone_list_bandwidth_lineEdit)
+            min_base = get_num_value(self.tone_list_baseband_min_lineEdit)
+            max_base = get_num_value(self.tone_list_baseband_max_lineEdit)
             n = get_num_value(self.tone_list_ntones_lineEdit, int)
         except ValueError:
             show_label = False
         show_changed = self.tone_list_equal_label.isVisible() != show_label
         self.tone_list_equal_label.setVisible(show_label)
         if show_label:
-            self.tone_list_equal_label.setText(f'Generating {n} tones from {-bw / 2} MHz to {bw / 2} MHz')
+            self.tone_list_equal_label.setText(
+                f'Generating {n / 2} tones from {-max_base} MHz to {-min_base} MHz'
+                f'and {n / 2} tones from {min_base} MHz to {max_base} MHz'
+            )
         if show_changed:
             self.height_updated.emit()
     
@@ -226,9 +232,15 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.tone_list_lineEdit.setVisible(not checked)
         self.tone_list_lineEdit.setStyleSheet('')
         self.tone_list_pushButton.setVisible(not checked)
-        self.tone_list_bandwidth_label.setVisible(checked)
-        self.tone_list_bandwidth_lineEdit.setStyleSheet('')
-        self.tone_list_bandwidth_lineEdit.setVisible(checked)
+
+        self.tone_list_baseband_max_label.setVisible(checked)
+        self.tone_list_baseband_max_lineEdit.setVisible(checked)
+        self.tone_list_baseband_max_lineEdit.setStyleSheet('')
+
+        self.tone_list_baseband_min_label.setVisible(checked)
+        self.tone_list_baseband_min_lineEdit.setVisible(checked)
+        self.tone_list_baseband_min_lineEdit.setStyleSheet('')
+
         self.tone_list_ntones_label.setVisible(checked)
         self.tone_list_ntones_lineEdit.setVisible(checked)
         self.tone_list_ntones_lineEdit.setStyleSheet('')
@@ -312,6 +324,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     def clear_form(self):
         self.tone_list_lineEdit.clear()
         self.tone_power_lineEdit.clear()
+        self.tone_list_baseband_max_lineEdit.clear()
+        self.tone_list_baseband_min_lineEdit.clear()
+        self.tone_list_ntones_lineEdit.clear()
         self.chanmask_lineEdit.clear()
         self.eth_source_lineEdit.clear()
         self.eth_dest_lineEdit.clear()
@@ -401,13 +416,22 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         tones_valid = True
         if self.tone_list_checkBox.isChecked():
             n_valid, _ = verify_lineEdit(self.tone_list_ntones_lineEdit)
-            bw_valid, _ = verify_lineEdit(self.tone_list_bandwidth_lineEdit)
+            bb_min_valid, _ = verify_lineEdit(self.tone_list_baseband_min_lineEdit)
+            bb_max_valid, _ = verify_lineEdit(self.tone_list_baseband_max_lineEdit)
             tones_valid &= n_valid
-            tones_valid &= bw_valid
+            tones_valid &= bb_min_valid
+            tones_valid &= bb_max_valid
             if tones_valid:
                 n = get_num_value(self.tone_list_ntones_lineEdit, int)
-                bw = get_num_value(self.tone_list_bandwidth_lineEdit)
-                tone_list = np.linspace(-bw / 2, bw / 2, n) * 1e6
+                bb_min = get_num_value(self.tone_list_baseband_min_lineEdit) * 1e6
+                bb_max = get_num_value(self.tone_list_baseband_max_lineEdit) * 1e6
+                if bb_max <= bb_min:
+                    tones_valid = False
+                    highlight_error_line_edit(self.tone_list_baseband_max_lineEdit)
+                else:
+                    freq_low = np.linspace(-bb_max, -bb_min, n // 2)
+                    freq_hi = np.linspace(bb_min, bb_max, n // 2)
+                    tone_list = np.append(freq_low, freq_hi)
             # TODO: Ask Cody about this
             # Cody's code for equally spaced tones
             # Nover2 = 500 # number of tones to make  
