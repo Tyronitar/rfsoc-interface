@@ -79,7 +79,8 @@ def compute_noise_psd(
 
     timestamp = timestamp[0::ds_factor]
     # plt.plot(timestamp, timestamp - np.roll(timestamp, 1))
-    # plt.xlim(0, 1)
+    # plt.plot(timestamp, np.diff(timestamp))
+    # plt.xlim(0, 10)
     # plt.ylim(-0.01, 0.01)
     # plt.show()
     # exit()
@@ -119,7 +120,7 @@ def compute_noise_psd(
 
     # Determine the number of blocks for computing the PSD
     n_samples = np.size(timestamp)
-    n_samples_per_block = int(2**np.ceil(np.log2(nominal_block_length / fs)))
+    n_samples_per_block = int(2**np.ceil(np.log2(nominal_block_length * fs)))
     n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
     if n_blocks == 0:
         n_blocks = 1
@@ -247,9 +248,9 @@ def plot_psd(
     # Only use good data for plotting
     # TODO: Make complex index choice dynamic
     # good_ind = np.arange(n_good_chan)
-    plot_data_min = 10 * np.log10(psd_min_clean[:, good_chan])
-    plot_data_med = 10 * np.log10(psd_med_clean[:, good_chan])
-    plot_data_max = 10 * np.log10(psd_max_clean[:, good_chan])
+    plot_data_min = 10 * np.log10(psd_min_clean)
+    plot_data_med = 10 * np.log10(psd_med_clean)
+    plot_data_max = 10 * np.log10(psd_max_clean)
 
     if title is None:
         title = 'RFSoC Loopback PSD'
@@ -263,7 +264,7 @@ def plot_psd(
 
     # Plot the data
     fig0 = create_plot(
-        freq[good_chan],
+        freq,
         plot_data_min[0],
         plot_data_med[0],
         plot_data_max[0],
@@ -271,7 +272,7 @@ def plot_psd(
         title=titles[0],
     )
     fig1 = create_plot(
-        freq[good_chan],
+        freq,
         plot_data_min[1],
         plot_data_med[1],
         plot_data_max[1],
@@ -401,33 +402,21 @@ if __name__ == '__main__':
     # parser.add_argument('data_file')
     # args = parser.parse_args()
     # path = args.data_file
-    input_data1, timestamp1, chanmask1 = load_data('data/old_tones.hdf5')
-    input_data2, timestamp2, chanmask2 = load_data('data/1000_equal_with_edges.hdf5')
-    # input_data2, timestamp2, chanmask2 = load_data('data/equal.hdf5')
-    rotated_data1 = rotate_to_amplitude_and_phase(input_data1)
-    rotated_data2 = rotate_to_amplitude_and_phase(input_data2)
-
-    chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(
-        rotated_data1,
-        timestamp1,
-        chanmask=None,
-        ds_factor=3,
-        flag_outliers=False,
-    )
-    chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(
-        rotated_data2,
-        timestamp2,
-        chanmask=None,
-        ds_factor=3,
-        flag_outliers=True,
-    )
-    # # d1, _ = iteratively_reject_outliers(psd_all_clean1[:, chanmask1, :])
-    # # d2, _ = reject_outliers_onr(psd_all_clean1[:, chanmask1, :].flatten())
-    # # exit()
-    # # chanmask2, freq2, psd_all2, psd_all_clean2 = compute_noise_psd(input_data2, timestamp2, chanmask=None, ds_factor=3)
-    fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, 'old_tones.pdf', title='RFSoC Loopback with Old Tone List')
-    fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, '1000_equal_with_edges.pdf', title='RFSoC Loopback with 1000 Equally Spaced Tones')
-    # fig1 = plot_psd(chanmask1, freq1, psd_all1, psd_all_clean1, max_percentile=84, title='No Outlier Removal')
-    # fig2 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=83, title='With Outlier Removal')
-    # # fig3 = plot_psd(chanmask2, freq2, psd_all2, psd_all_clean2, max_percentile=84, title='84th Percentile')
+    pairs = [
+        ('old_tones', 'RFSoC Loopback with Old Tone List'),
+        ('1000_equal_with_edges', 'RFSoC Loopback with 1000 Equally Spaced Tones'),
+    ]
+    for name, title in pairs:
+        input_data, timestamp, chanmask = load_data(f'data/{name}.hdf5')
+        rotated_data = rotate_to_amplitude_and_phase(input_data)
+        chanmask, freq, psd_all, psd_all_clean = compute_noise_psd(
+            rotated_data,
+            timestamp,
+            chanmask=None,
+            ds_factor=3,
+            flag_outliers=False,
+            nominal_block_length=10,
+        )
+        fig = plot_psd(chanmask, freq, psd_all, psd_all_clean, f'{name}.pdf', title=title)
     # plt.show()
+
