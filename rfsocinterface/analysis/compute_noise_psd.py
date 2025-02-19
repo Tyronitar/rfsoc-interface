@@ -398,13 +398,15 @@ def plot(data: npt.NDArray):
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('data_file')
-    # args = parser.parse_args()
-    # path = args.data_file
     pairs = [
-        ('old_tones', 'RFSoC Loopback with Old Tone List'),
-        ('1000_equal_with_edges', 'RFSoC Loopback with 1000 Equally Spaced Tones'),
+        ('equal_0-256', 'RFSoC Loopback with 1000 Tones Over Full Bandwidth'),
+        ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
+        ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
+        ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
+        ('default_0-256', 'RFSoC Loopback with Default Tones'),
+        ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
+        ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
+        ('default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
     ]
     for name, title in pairs:
         input_data, timestamp, chanmask = load_data(f'data/{name}.hdf5')
@@ -417,6 +419,6 @@ if __name__ == '__main__':
             flag_outliers=False,
             nominal_block_length=10,
         )
-        fig = plot_psd(chanmask, freq, psd_all, psd_all_clean, f'{name}.pdf', title=title)
+        fig = plot_psd(chanmask, freq, psd_all, psd_all_clean, f'plots/{name}.pdf', title=title)
     # plt.show()
 

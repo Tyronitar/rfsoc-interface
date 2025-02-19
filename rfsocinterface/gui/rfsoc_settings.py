@@ -203,12 +203,12 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
 
         self.check_equal_tones(self.tone_list_checkBox.checkState())
         self.check_equal_power(self.tone_power_checkBox.checkState())
-        self.tone_list_baseband_min_lineEdit.textEdited.connect(self.update_bandwidth_label)
-        self.tone_list_baseband_max_lineEdit.textEdited.connect(self.update_bandwidth_label)
-        self.tone_list_ntones_lineEdit.textEdited.connect(self.update_bandwidth_label)
+        self.tone_list_baseband_min_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
+        self.tone_list_baseband_max_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
+        self.tone_list_ntones_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
     
     @Slot(str)
-    def update_bandwidth_label(self, new_text: str):
+    def update_tone_list_equal_label(self, new_text: str):
         show_label = True
         try:
             min_base = get_num_value(self.tone_list_baseband_min_lineEdit)
@@ -221,7 +221,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         if show_label:
             self.tone_list_equal_label.setText(
                 f'Generating {n / 2} tones from {-max_base} MHz to {-min_base} MHz'
-                f'and {n / 2} tones from {min_base} MHz to {max_base} MHz'
+                f' and {n / 2} tones from {min_base} MHz to {max_base} MHz'
             )
         if show_changed:
             self.height_updated.emit()
@@ -231,6 +231,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         checked = Qt.CheckState(state) == Qt.CheckState.Checked
         self.tone_list_lineEdit.setVisible(not checked)
         self.tone_list_lineEdit.setStyleSheet('')
+        self.tone_list_error_label.setVisible(False)
         self.tone_list_pushButton.setVisible(not checked)
 
         self.tone_list_baseband_max_label.setVisible(checked)
@@ -244,9 +245,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.tone_list_ntones_label.setVisible(checked)
         self.tone_list_ntones_lineEdit.setVisible(checked)
         self.tone_list_ntones_lineEdit.setStyleSheet('')
-        self.tone_list_error_label.setVisible(False)
+
+        self.update_tone_list_equal_label('')
         self.tone_list_equal_label.setVisible(checked)
-        self.update_bandwidth_label('')
         self.height_updated.emit()
 
     @Slot(int)
@@ -429,9 +430,13 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                     tones_valid = False
                     highlight_error_line_edit(self.tone_list_baseband_max_lineEdit)
                 else:
-                    freq_low = np.linspace(-bb_max, -bb_min, n // 2)
-                    freq_hi = np.linspace(bb_min, bb_max, n // 2)
-                    tone_list = np.append(freq_low, freq_hi)
+                    # Only for testing purposes
+                    tone_list = np.load('Default_tone_list.npy')
+                    tone_list = tone_list[(bb_min <= np.abs(tone_list)) & (np.abs(tone_list) <= bb_max)]
+
+                    # freq_low = np.linspace(-bb_max, -bb_min, n // 2)
+                    # freq_hi = np.linspace(bb_min, bb_max, n // 2)
+                    # tone_list = np.append(freq_low, freq_hi)
             # TODO: Ask Cody about this
             # Cody's code for equally spaced tones
             # Nover2 = 500 # number of tones to make  
@@ -445,7 +450,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                 self.height_updated.emit()
             if tones_valid:
                 tone_file = get_lineEdit_text(self.tone_list_lineEdit)
-                tone_list = np.ndarray.tolist(np.load(tone_file))
+                tone_list = np.load(tone_file)
 
         if self.tone_power_checkBox.isChecked():
             if tones_valid:
@@ -457,7 +462,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                 self.height_updated.emit()
             if tones_valid:
                 amp_file = get_lineEdit_text(self.tone_power_lineEdit)
-                tone_powers = np.ndarray.tolist(np.load(amp_file))
+                tone_powers = np.load(amp_file)
 
         if tones_valid:
             self.setCursor(Qt.CursorShape.WaitCursor)

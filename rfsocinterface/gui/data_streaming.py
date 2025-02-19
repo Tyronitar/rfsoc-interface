@@ -34,6 +34,8 @@ class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
     def setup_connections(self):
         self.start_pushButton.clicked.connect(self.start_streaming)
         self.data_locale_checkBox.checkStateChanged.connect(self.handle_click_default_box)
+        self.data_directory_lineEdit.textEdited.connect(self.update_save_locale_label)
+        self.data_filename_lineEdit.textEdited.connect(self.update_save_locale_label)
     
     def change_save_location_visibility(self, visible: bool):
         self.data_directory_label.setVisible(visible)
@@ -51,6 +53,14 @@ class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
             filename = get_lineEdit_text(self.data_filename_lineEdit)
             save_path = Path(f'{directory}/{filename}')
         return save_path
+    
+    def update_save_locale_label(self):
+        if self.data_locale_checkBox.isChecked():
+            self._default_path = get_filename(file_type='tod')
+            self.save_locale_label.setText(f'Saving to "{self._default_path}"')
+        else:
+            save_path = self.get_chosen_save_location()
+            self.save_locale_label.setText(f'Saving to "{save_path}"')
     
     @Slot(Qt.CheckState)
     def handle_click_default_box(self, state: Qt.CheckState):
