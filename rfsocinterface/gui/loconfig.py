@@ -27,7 +27,7 @@ import sweeps
 import h5py
 
 if TYPE_CHECKING:
-    from rfsocinterface.main_window import MainWindow
+    from rfsocinterface.gui.main_window import MainWindow
 
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
 DEFAULT_F_CENTER = 400.0

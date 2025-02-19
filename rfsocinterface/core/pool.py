@@ -1,5 +1,5 @@
 """Module for handling parallelization."""
-from concurrent.futures import Future, as_completed, wait, CancelledError
+from concurrent.futures import Future, as_completed, wait, CancelledError, ThreadPoolExecutor
 from multiprocessing import Queue
 from threading import Thread, Lock, RLock
 from pebble import ProcessPool, ThreadPool, waitforthreads, MapFuture, ProcessMapFuture
@@ -292,7 +292,7 @@ class Worker(QRunnable):
 
     #You can do any extra things in this init you need, but for this example
     #nothing else needs to be done expect call the super's init
-    def __init__(self, future: Future, func: Callable[P, R], counter: list[int], mutex: QMutex, *args: P.args, **kwargs: P.kwargs):
+    def __init__(self, future: Future, func: Callable[P, R], counter: list[int], mutex: QMutex, *args: P.args, parent=None, **kwargs: P.kwargs):
         super().__init__(self)
         # self.setAutoDelete(False)
         self.future = future
@@ -301,7 +301,7 @@ class Worker(QRunnable):
         self.kwargs = kwargs
         self.counter = counter
         self.mutex = mutex
-        self.signals = WorkerSignals()
+        self.signals = WorkerSignals(parent=parent)
 
         track_progress = self.kwargs.pop('track_progress')
         if track_progress:
@@ -407,12 +407,15 @@ class QThreadPoolExecutor(QObject):
     @property
     def active(self) -> bool:
         self._update_pool_status()
-        return self._context.status in (PoolStatus.CLOSED, PoolStatus.RUNNING)
+        with self._context.status_mutex:
+            return self._context.status in (PoolStatus.CLOSED, PoolStatus.RUNNING)
     
     def schedule(self, fn: Callable[P, R], args: tuple, kwargs: dict) -> Future[R]:
         self._check_pool_status()
         f = Future()
-        worker = Worker(f, fn, self.task_counter, self.mutex, *args, **kwargs)
+        worker = Worker(f, fn, self.task_counter, self.mutex, *args, parent=self, **kwargs)
+        with QMutexLocker(self.mutex):
+            self.task_counter[0] += 1
 
         # Connect all signals
         worker.signals.finished.connect(self.handle_job_finish)
@@ -437,7 +440,8 @@ class QThreadPoolExecutor(QObject):
     @property
     def queue_size(self) -> int:
         with QMutexLocker(self.mutex):
-            res = max(0, self.task_counter[0] - self.thread_pool.activeThreadCount())
+            # print(f'Current counts: {self.task_counter[0]}, {self.thread_pool.activeThreadCount()}')
+            res = max(0, self.task_counter[0] + self.thread_pool.activeThreadCount())
         return res
 
     def map(self, fn: Callable[..., R], *iterables: Iterable, timeout: float | None=None, chunksize: int=1) -> MapFuture:
@@ -473,37 +477,40 @@ class QThreadPoolExecutor(QObject):
         while self.active:
             QApplication.processEvents()
             if timeout is not None and time.time() - tick > timeout:
+                # print(2.1)
                 raise TimeoutError("Tasks are still being executed")
             elif self.queue_size:
+                # print(2.2)
                 # QTimer.singleShot(100, lambda : self._wait_queue_depletion(timeout))
                 time.sleep(0.1)
             else:
+                # print(2.3)
                 return
 
     def _check_pool_status(self):
         self._update_pool_status()
 
-        with self._context.status_mutex:
-            if self._context.status == PoolStatus.ERROR:
-                raise RuntimeError('Unexpected error within the Pool')
-            elif self._context.status != PoolStatus.RUNNING:
-                raise RuntimeError('The Pool is not active')
+        if self._context.status == PoolStatus.ERROR:
+            raise RuntimeError('Unexpected error within the Pool')
+        elif self._context.status != PoolStatus.RUNNING:
+            raise RuntimeError('The Pool is not active')
 
     def _update_pool_status(self):
-        with self._context.status_mutex:
-            if self._context.status == PoolStatus.CREATED:
-                self._start_pool()
+        if self._context.status == PoolStatus.CREATED:
+            self._start_pool()
     
     def join(self, timeout: int=None):
-        with self._context.status_mutex:
-            if self._context.status == PoolStatus.RUNNING:
-                raise RuntimeError('The Pool is still running')
-            if self._context.status == PoolStatus.CLOSED:
-                self._wait_queue_depletion(timeout)
-                self.stop()
-                self.join()
-            else:
-                self._stop_pool()
+        if self._context.status == PoolStatus.RUNNING:
+            # print(1)
+            raise RuntimeError('The Pool is still running')
+        if self._context.status == PoolStatus.CLOSED:
+            # print(2)
+            self._wait_queue_depletion(timeout)
+            self.stop()
+            self.join()
+        else:
+            # print(3)
+            self._stop_pool()
     
     def cancel(self):
         self._consume_queue()
@@ -591,7 +598,7 @@ def counting(n: int, progress_callback: Callable):
     #     raise ValueError('Fuck 7')
     # print(f'Counting {n}')
     progress_callback(1)
-    # time.sleep(0.5)
+    time.sleep(0.1)
     return n
 
 def print_future_result(f: Future):
@@ -623,15 +630,21 @@ class Window(QMainWindow):
     
     def count_progress(self, i: int, d: QProgressDialog):
         self.count += 1
+        print(self.count)
+        curr_val = d.value()
         val = 100 * self.count / self.total
         print(f'Progress: {val:.2f}%')
         d.setValue(self.count)
+        QCoreApplication.processEvents()
+        print(f'{curr_val} / {d.maximum()}')
 
     def on_push(self):
         # with ThreadJobPool(max_workers=4) as pool:
-        #     future = pool.map(square, range(total))
+        #     future = pool.map(square, range(self.total))
+        #     future.add_done_callback(print_future_result)
         # print(list(future.result()))
         d = QProgressDialog('Running', 'Cancel', self.total, 0, parent=self)
+        d.setValue(0)
         d.show()
         self.count = 0
         with QThreadJobPool(max_workers=4, track_progress=True, parent=self) as pool:
