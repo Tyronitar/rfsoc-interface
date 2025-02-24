@@ -13,7 +13,7 @@ import sys
 import itertools
 
 import psutil
-from PySide6.QtCore import QThread, QThreadPool, Signal, QObject, QRunnable, QEventLoop, QMutex, QMutexLocker, QCoreApplication, QTimer
+from PySide6.QtCore import QThread, QThreadPool, Signal, QObject, QRunnable, QEventLoop, QMutex, QMutexLocker, QCoreApplication, QTimer, Qt
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QProgressDialog
 from rfsocinterface.core.utils import P, R, T
 
@@ -286,12 +286,6 @@ class WorkerSignals(QObject):
 
 class Worker(QRunnable):
 
-    #This is the signal that will be emitted during the processing.
-    #By including int as an argument, it lets the signal know to expect
-    #an integer argument when emitting.
-
-    #You can do any extra things in this init you need, but for this example
-    #nothing else needs to be done expect call the super's init
     def __init__(self, future: Future, func: Callable[P, R], counter: list[int], mutex: QMutex, *args: P.args, parent=None, **kwargs: P.kwargs):
         super().__init__(self)
         # self.setAutoDelete(False)
@@ -475,7 +469,7 @@ class QThreadPoolExecutor(QObject):
         #     raise TimeoutError("Tasks are still being executed")
         tick = time.time()
         while self.active:
-            QApplication.processEvents()
+            # QApplication.processEvents()
             if timeout is not None and time.time() - tick > timeout:
                 # print(2.1)
                 raise TimeoutError("Tasks are still being executed")
@@ -513,9 +507,11 @@ class QThreadPoolExecutor(QObject):
             self._stop_pool()
     
     def cancel(self):
-        self._consume_queue()
         self.stop()
         self.join()
+        # self._consume_queue()
+        # self.stop()
+        # self.join()
 
         # if not self.thread_pool.waitForDone(int(timeout * 1000)):
         #     raise TimeoutError(f'Timeout {timeout} exceeded waiting for QThreadPoolExecutor to join')
@@ -598,7 +594,7 @@ def counting(n: int, progress_callback: Callable):
     #     raise ValueError('Fuck 7')
     # print(f'Counting {n}')
     progress_callback(1)
-    time.sleep(0.1)
+    # time.sleep(0.1)
     return n
 
 def print_future_result(f: Future):
@@ -633,30 +629,36 @@ class Window(QMainWindow):
         print(self.count)
         curr_val = d.value()
         val = 100 * self.count / self.total
-        print(f'Progress: {val:.2f}%')
+        # print(f'Progress: {val:.2f}%')
         d.setValue(self.count)
         QCoreApplication.processEvents()
-        print(f'{curr_val} / {d.maximum()}')
+        # print(f'{curr_val} / {d.maximum()}')
+    
+    def finish(self, f: Future):
+        self.pool.close()
+        self.pool.join()
+        print_future_result(f)
 
     def on_push(self):
         # with ThreadJobPool(max_workers=4) as pool:
         #     future = pool.map(square, range(self.total))
         #     future.add_done_callback(print_future_result)
         # print(list(future.result()))
-        d = QProgressDialog('Running', 'Cancel', self.total, 0, parent=self)
+        d = QProgressDialog('Running', 'Cancel', 0, self.total, parent=self)
+        d.setModal(True)
         d.setValue(0)
         d.show()
         self.count = 0
-        with QThreadJobPool(max_workers=4, track_progress=True, parent=self) as pool:
-            d.canceled.connect(pool.cancel)
-            pool.progress.connect(lambda x: self.count_progress(x, d))
-            # for i in range(total):
-            #     f = pool.schedule(counting, i, done_callbacks=[print_future_result])
-            # future = pool.map(counting, range(self.total), done_callbacks=[print_future_result], chunksize=3)
-            future = pool.map(counting, range(self.total))
-            future.add_done_callback(print_future_result)
-            d.canceled.connect(future.cancel)
-            # future = pool.map(square, range(total))
+        self.pool = QThreadJobPool(max_workers=4, track_progress=True, parent=self)
+        d.canceled.connect(self.pool.cancel)
+        self.pool.progress.connect(lambda x: self.count_progress(x, d))
+        # for i in range(total):
+        #     f = pool.schedule(counting, i, done_callbacks=[print_future_result])
+        # future = pool.map(counting, range(self.total), done_callbacks=[print_future_result], chunksize=3)
+        future = self.pool.map(counting, range(self.total))
+        future.add_done_callback(self.finish)
+        d.canceled.connect(future.cancel)
+        # future = pool.map(square, range(total))
         # print(future)
         # print(list(future.result()._results))
         # print(list(future.result()))
