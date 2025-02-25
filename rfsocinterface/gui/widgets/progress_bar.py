@@ -3,6 +3,7 @@ from PySide6.QtCore import Signal, Qt, QCoreApplication, Slot
 from typing import Callable, Any, Iterable
 from concurrent.futures import Future
 from pebble import MapFuture, ProcessMapFuture
+import time
 
 from rfsocinterface.gui.uic.progress_bar_ui import Ui_Dialog
 from rfsocinterface.core.utils import Job, P, JobQueue, SequentialJobQueue, R, tr
@@ -10,7 +11,6 @@ from rfsocinterface.core.pool import QThreadJobPool
 
 
 class JobProgressDialog(QProgressDialog):
-    incrementSignal = Signal()
 
     def __init__(
             self,
@@ -23,8 +23,6 @@ class JobProgressDialog(QProgressDialog):
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, parent=parent, flags=flags)
         self.setValue(0)
-        # self.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
-        # self.setupUi(self)
         self.pool = QThreadJobPool(max_workers=max_workers, track_progress=True, parent=self)
         self.pool.progress.connect(self.handle_progress)
         self.canceled.connect(self.on_cancel)
@@ -35,9 +33,8 @@ class JobProgressDialog(QProgressDialog):
             new_val = self.value() + 1
         else:
             new_val = val
-        print(self.value(), val, new_val)
         self.setValue(new_val)
-        print(f'Progress: {new_val}/{self.maximum()}')
+        # print(f'Progress: {new_val}/{self.maximum()}')
         if new_val >= self.maximum():
             self.pool.close()
             self.pool.join()
@@ -61,16 +58,7 @@ class JobProgressDialog(QProgressDialog):
     ) -> MapFuture | ProcessMapFuture:
         return self.pool.map(fn, *iterables, done_callbacks=done_callbacks, timeout=timeout, chunksize=chunksize)
     
+    @Slot()
     def on_cancel(self):
-        # self.pool.cancel_all()
-        # print('Canceled futures')
-        self.pool.stop()
-        self.pool.join()
-        # self.reset()
-        # self.close()
+        self.pool.shutdown()
     
-    # def closeEvent(self, event):
-    #     print('Closing dialog')
-    #     if self.pool.active:
-    #         self.on_cancel()
-    #     return super().closeEvent(event)

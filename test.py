@@ -1,5 +1,6 @@
 import time
 from concurrent.futures import Future, CancelledError
+from threading import current_thread
 from typing import Callable, Iterable
 
 from PySide6.QtWidgets import QMainWindow, QPushButton, QApplication
@@ -11,8 +12,9 @@ from rfsocinterface.core.utils import print_future_result
 def square(n: int) -> int:
     return n ** 2
 
-def counting(n: int, progress_callback: Callable):
-    progress_callback()
+def counting(n: int, progress_callback: Callable | None=None):
+    if progress_callback is not None:
+        progress_callback()
     time.sleep(0.05)
     return n
 
@@ -33,7 +35,7 @@ class Window(QMainWindow):
             cancelButtonText='Cancel',
             minimum=0,
             maximum=self.total,
-            max_workers=2,
+            max_workers=4,
             parent=self,
         )
         self.d.setModal(True)
