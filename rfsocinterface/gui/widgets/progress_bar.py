@@ -1,77 +1,76 @@
 from PySide6.QtWidgets import QDialog, QWidget, QApplication, QProgressDialog
-from PySide6.QtCore import Signal, Qt
-from typing import Callable, Any
+from PySide6.QtCore import Signal, Qt, QCoreApplication, Slot
+from typing import Callable, Any, Iterable
+from concurrent.futures import Future
+from pebble import MapFuture, ProcessMapFuture
 
 from rfsocinterface.gui.uic.progress_bar_ui import Ui_Dialog
-from rfsocinterface.core.utils import Job, P, JobQueue, SequentialJobQueue
+from rfsocinterface.core.utils import Job, P, JobQueue, SequentialJobQueue, R, tr
+from rfsocinterface.core.pool import QThreadJobPool
 
 
-class ProgressBarDialog(QProgressDialog):
+class JobProgressDialog(QProgressDialog):
     incrementSignal = Signal()
 
-    def __init__(self, max_threads: int=1, parent: QWidget | None=None):
-        super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
+    def __init__(
+            self,
+            labelText: str='',
+            cancelButtonText='Cancel',
+            minimum: int=0,
+            maximum: int=100,
+            max_workers: int=1,
+            parent: QWidget | None=None,
+            flags: Qt.WindowType=Qt.WindowType.Dialog):
+        super().__init__(labelText, cancelButtonText, minimum, maximum, parent=parent, flags=flags)
+        self.setValue(0)
+        # self.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
         # self.setupUi(self)
-        self.reset()
-        self.job_queue = JobQueue(max_threads=max_threads)
-        self.incrementSignal.connect(self.increment)
+        self.pool = QThreadJobPool(max_workers=max_workers, track_progress=True, parent=self)
+        self.pool.progress.connect(self.handle_progress)
+        self.canceled.connect(self.on_cancel)
     
-    # def reset(self):
-    #     self.total_tasks = 0
-    #     self._completed_tasks = 0
-    #     self.progressBar.setValue(0)
+    @Slot(int)
+    def handle_progress(self, val: int):
+        if val < 0:
+            new_val = self.value() + 1
+        else:
+            new_val = val
+        print(self.value(), val, new_val)
+        self.setValue(new_val)
+        print(f'Progress: {new_val}/{self.maximum()}')
+        if new_val >= self.maximum():
+            self.pool.close()
+            self.pool.join()
     
-    def add_job(self, func: Callable[P, None], *args: P.args, num_tasks: int=1, use_main_thread=False, start_message: str='', **kwargs: P.kwargs):
-        job = Job(func, *args, **kwargs)
-        job.updateProgress.connect(self.increment)
-        job.set_start_message(start_message)
-        # job.finishWork.connect(self.worker_finished, job)
-        self.job_queue.add_job(job, use_main_thread=use_main_thread)
-        job.started.connect(self.worker_started)
-        self.setMaximum(num_tasks)
-        # self.total_tasks += num_tasks
+    def schedule(
+            self,
+            fn: Callable[P, R],
+            *args: P.args,
+            done_callbacks: list[Callable[[Future], None]]=[],
+            **kwargs: P.kwargs,
+    ) -> Future[R]:
+        return self.pool.schedule(fn, *args, done_callbacks=done_callbacks, **kwargs)
     
-    def worker_finished(self, message: str):
-        if message:
-            self.setLabelText(message)
-            # self.label.setText(message)
-
-    def worker_started(self, message: str):
-        if message:
-            self.setLabelText(message)
-            # self.label.setText(message)
+    def map(
+            self,
+            fn: Callable[..., R],
+            *iterables: Iterable[Any],
+            done_callbacks: list[Callable[[Future], None]]=[],
+            timeout: float | None=None,
+            chunksize: int=1,
+    ) -> MapFuture | ProcessMapFuture:
+        return self.pool.map(fn, *iterables, done_callbacks=done_callbacks, timeout=timeout, chunksize=chunksize)
     
-    def completed(self) -> bool:
-        return self._completed_tasks >= self.total_tasks
+    def on_cancel(self):
+        # self.pool.cancel_all()
+        # print('Canceled futures')
+        self.pool.stop()
+        self.pool.join()
+        # self.reset()
+        # self.close()
     
-    # def start_next(self):
-    #     worker = self.job_queue.pop()
-    #     worker.start()
-
-    def start(self):
-        self.job_queue.run_all()
-        # for worker in self.job_queue:
-        #     worker.start()
-    
-    def set_total_tasks(self, total: int):
-        self.total_tasks = total
-    
-    def increment(self):
-        self.setValue(self.value() + 1)
-        # if self._completed_tasks < self.total_tasks:
-        #     self._completed_tasks += 1
-        #     self.progressBar.setValue(int((self._completed_tasks / self.total_tasks) * 100))
-
-class SequentialProgressBarDialog(ProgressBarDialog):
-
-    allFinished = Signal()
-
-    def __init__(self, parent: QWidget | None = None):
-        super().__init__(max_threads=1, parent=parent)
-        self.job_queue = SequentialJobQueue()
-        self.job_queue.allFinished.connect(self.allFinished.emit)
-        self.job_queue.allFinished.connect(lambda: print('jobs done'))
-    
-    def get_result(self, idx: int) -> Any:
-        return self.job_queue.results[idx]
+    # def closeEvent(self, event):
+    #     print('Closing dialog')
+    #     if self.pool.active:
+    #         self.on_cancel()
+    #     return super().closeEvent(event)

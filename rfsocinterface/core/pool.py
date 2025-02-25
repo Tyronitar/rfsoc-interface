@@ -1,7 +1,7 @@
 """Module for handling parallelization."""
 from concurrent.futures import Future, as_completed, wait, CancelledError, ThreadPoolExecutor
 from multiprocessing import Queue
-from threading import Thread, Lock, RLock
+from threading import Thread, Lock, RLock, get_native_id
 from pebble import ProcessPool, ThreadPool, waitforthreads, MapFuture, ProcessMapFuture
 from pebble.pool.base_pool import map_results, PoolContext, PoolStatus, iter_chunks, MapResults
 from pebble.common.types import Result, ResultStatus
@@ -15,7 +15,7 @@ import itertools
 import psutil
 from PySide6.QtCore import QThread, QThreadPool, Signal, QObject, QRunnable, QEventLoop, QMutex, QMutexLocker, QCoreApplication, QTimer, Qt
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QProgressDialog
-from rfsocinterface.core.utils import P, R, T
+from rfsocinterface.core.utils import P, R, T, print_future_result
 
 class PoolContext:
     def __init__(self, max_workers: int):
@@ -49,6 +49,9 @@ class JobPool:
 
     def _unqueue_future(self, f: Future):
         self.futures.remove(f)
+    
+    def active(self) -> bool:
+        return self.executor.active
     
     def schedule(
             self,
@@ -112,103 +115,7 @@ class JobPool:
             for fut in f.futures:
                 fut.add_done_callback(callback)
         return f
-        # return self.starmap(fn, zip(iterable, *iterables, strict=False), done_callbacks=done_callbacks, ordered=ordered, timeout=timeout)
 
-    def starmap(
-            self,
-            fn: Callable[..., R],
-            iterable: Iterable[tuple],
-            done_callbacks: list[Callable[[Future], None]]=[],
-            ordered: bool=True,
-            timeout: float | None=None,
-    ) -> Iterator[Future[R]]:
-        """Return an iterator containing the results of `fn` for every set of arguments.
-
-            Arguments:
-                fn (Callable[..., R]): Function to execute
-                iterable (Iterable[tuple]): Tuples of positional arguments to pass to `fn`
-                ordered (bool): Whether the output order should be the same. Defaults to
-                    True.
-                timeout (float): Maximum number of seconds to wait before aborting
-                    execution. If None, then there is no time limit.
-                done_callbacks (list[Callable[[Future], None]]): Callback functions
-                    to be called when the future is finished. Defaults to [].
-
-            Returns:
-                (Iterator[R]): An iterator containig all calls to `fn`. Equivalent to the
-                    output of `itertools.starmap(fn, iterable)`.
-
-            Raises:
-                TimeoutError: If the execution didn't finish before the time limit.
-            """
-        if timeout is not None:
-            timer = time.monotonic
-            end_time = timeout + timer()
-
-        # futures: list[Future] | set[Future] = []
-        if ordered:
-            futures = [
-                self.schedule(
-                    fn,
-                    *args,
-                    done_callbacks=done_callbacks,
-                )
-            for args in iterable]
-        else:
-            futures = {
-                self.schedule(
-                    fn,
-                    *args,
-                    done_callbacks=done_callbacks,
-                )
-            for args in iterable}
-
-        def result(future: Future, timeout: float | None=None):
-            try:
-                try:
-                    return future.result(timeout)
-                finally:
-                    future.cancel()
-            finally:
-                del future
-
-        # try:
-        if isinstance(futures, list):
-            futures.reverse()
-            while futures:
-                to = timeout if timeout is None else end_time - timer()
-                yield result(futures.pop(), to)
-        else:
-            # assert isinstance(futures, set)  # So MyPy is happy
-            to = timeout if timeout is None else end_time - timer()
-            for f in as_completed(futures, to):
-                futures.remove(f)
-                yield result(f)
-        # finally:
-        #     while futures:
-        #         futures.pop().cancel()
-            
-        # try:
-        #     if ordered:
-        #         assert isinstance(futures, list)  # So MyPy is happy
-
-        #         futures.reverse()
-        #         while futures:
-        #             res = result(futures.pop()) if timeout is None else \
-        #                 result(futures.pop(), end_time - timer())
-        #             yield res
-        #     else:
-        #         assert isinstance(futures, set)  # So MyPy is happy
-
-        #         iterator = as_completed(futures) if timeout is None else \
-        #             as_completed(futures, end_time - timer())
-        #         for f in iterator:
-        #             futures.remove(f)
-        #             yield result(f)
-        # finally:
-        #     while futures:
-        #         futures.pop().cancel()
-    
     def cancel_all(self) -> bool:
         """Cancel all currently running jobs.
         
@@ -217,13 +124,9 @@ class JobPool:
         """
         all_canceled = True
         for f in self.futures:
-            all_canceled |= self.cancel(f)
+            all_canceled |= f.cancel()
         return all_canceled
     
-    def cancel(self, f: Future) -> bool:
-        """Cancel a future."""
-        return f.cancel()
-
     def shutdown(self, wait: bool=False):
         """Shutdown the executor and wait for all threads to finish."""
         self.executor.stop()
@@ -247,6 +150,7 @@ class JobPool:
         self.close()
         self.join(self.close_timeout)
 
+
 class ProcessJobPool(JobPool):
 
     def __init__(self, max_workers: int | None=None, close_timeout: int | None=None):
@@ -259,6 +163,7 @@ class ThreadJobPool(JobPool):
     def __init__(self, max_workers: int | None=None, close_timeout: int | None=None):
         super().__init__(max_workers=max_workers, use_logical=True, close_timeout=close_timeout)
         self.executor = ThreadPool(self.max_workers)
+
 
 class WorkerSignals(QObject):
     '''
@@ -286,10 +191,11 @@ class WorkerSignals(QObject):
 
 class Worker(QRunnable):
 
-    def __init__(self, future: Future, func: Callable[P, R], counter: list[int], mutex: QMutex, *args: P.args, parent=None, **kwargs: P.kwargs):
+    def __init__(self, future: Future, context: PoolContext, func: Callable[P, R], counter: list[int], mutex: QMutex, *args: P.args, parent=None, **kwargs: P.kwargs):
         super().__init__(self)
         # self.setAutoDelete(False)
         self.future = future
+        self.context = context
         self.func = func
         self.args = args
         self.kwargs = kwargs
@@ -299,7 +205,12 @@ class Worker(QRunnable):
 
         track_progress = self.kwargs.pop('track_progress')
         if track_progress:
-            self.kwargs['progress_callback'] = self.signals.progress.emit
+            self.kwargs['progress_callback'] = self.emit_progress
+    
+    def emit_progress(self, n: int | None=None):
+        if n is None:
+            n = -1
+        self.signals.progress.emit(n)
     
     def set_running_or_notify_cancel(self):
         if hasattr(self.future, 'map_future'):
@@ -315,37 +226,59 @@ class Worker(QRunnable):
             pass
     
     def check_cancelled(self):
-        cancelled = self.future.cancelled()
-
-        if cancelled:
-            self.set_running_or_notify_cancel()
-        
-        return cancelled
+        return self.future.cancelled()
 
     def run(self):
         """Run the target function with the provided args and kwargs.
 
         Partially adapted from: https://www.pythonguis.com/tutorials/multithreading-pyside6-applications-qthreadpool/
         """
+
+        print('start run')
+
         with QMutexLocker(self.mutex):
             self.counter[0] -= 1
 
-        if self.check_cancelled():
+        print(get_native_id(), self.context.status, self.counter)
+        if not self.context.alive:
+            print('Returning because context is not alive')
             return
 
-        try:
-            res = execute(self.func, *self.args, **self.kwargs)
-            if self.check_cancelled():
-                return
+        with QMutexLocker(self.mutex):
+            self.counter[1] += 1
 
-            if res.status == ResultStatus.SUCCESS:
-                self.signals.result.emit(res.value)
-                self.future.set_result(res.value)
+        print('start working')
+        try:
+            if self.check_cancelled():
+                print('canceled')
+                self.set_running_or_notify_cancel()
             else:
-                self.signals.error.emit(res.value)
-                self.future.set_exception(res.value)
+                    self.set_running_or_notify_cancel()
+                    print('Executing function')
+                    res = execute(self.func, *self.args, **self.kwargs)
+
+                    print('assigning result')
+                    if res.status == ResultStatus.SUCCESS:
+                        print('Before emitting result')
+                        self.signals.result.emit(res.value)
+                        print('Before assigning result')
+                        self.future.set_result(res.value)
+                        print('After assigning result')
+                    else:
+                        print('Before emitting exception')
+                        self.signals.error.emit(res.value)
+                        print('Before assigning exception')
+                        self.future.set_exception(res.value)
+                        print('After assigning exception')
+                    print('result assigned')
         finally:
+            print('emitting finished signal')
             self.signals.finished.emit()
+
+            print('done working')
+            with QMutexLocker(self.mutex):
+                self.counter[1] -= 1
+                print('Decremented counter of active jobs')
 
 
 def execute(function: Callable, *args, **kwargs):
@@ -370,18 +303,18 @@ class QThreadPoolExecutor(QObject):
     error = Signal(tuple)
     job_finished = Signal()
 
-    def __init__(self, max_workers: int=None):
-        QObject.__init__(self)
+    def __init__(self, max_workers: int=None, parent=None):
+        QObject.__init__(self, parent=parent)
         n_cpu = psutil.cpu_count(logical=True)
         if max_workers is None:
             max_workers = n_cpu
         self.max_workers = min(max_workers, n_cpu)
         self.thread_pool = QThreadPool(parent=self)
         self.thread_pool.setMaxThreadCount(self.max_workers)
-        self.task_counter = [0]  # List used as a mutable counter
+        self.task_counter = [0, 0]  # List used as a mutable counter
         self.mutex = QMutex()
         self._context = PoolContext(self.max_workers)
-        self.workers = []
+        self.workers: list[Worker] = []
 
     def handle_progress(self, n: float):
         # print(f'Handling progress {n}')
@@ -394,6 +327,14 @@ class QThreadPoolExecutor(QObject):
 
     def _stop_pool(self):
         return
+        # print('Deleted QThreadPool')
+        # self.thread_pool.clear()
+        # with QMutexLocker(self.mutex):
+        #     self.task_counter[0] = 0
+        #     self.task_counter[1] = 0
+        # self.thread_pool.deleteLater()
+        # # self.thread_pool = None
+        # print('Deleted QThreadPool')
         # if self._pool_manager_loop is not None:
         #     self._pool_manager_loop.join()
         # self._pool_manager.stop()
@@ -401,13 +342,12 @@ class QThreadPoolExecutor(QObject):
     @property
     def active(self) -> bool:
         self._update_pool_status()
-        with self._context.status_mutex:
-            return self._context.status in (PoolStatus.CLOSED, PoolStatus.RUNNING)
+        return self._context.status in (PoolStatus.CLOSED, PoolStatus.RUNNING)
     
     def schedule(self, fn: Callable[P, R], args: tuple, kwargs: dict) -> Future[R]:
         self._check_pool_status()
         f = Future()
-        worker = Worker(f, fn, self.task_counter, self.mutex, *args, parent=self, **kwargs)
+        worker = Worker(f, self._context, fn, self.task_counter, self.mutex, *args, parent=self, **kwargs)
         with QMutexLocker(self.mutex):
             self.task_counter[0] += 1
 
@@ -416,14 +356,12 @@ class QThreadPoolExecutor(QObject):
         worker.signals.error.connect(self.handle_error)
         # worker.signals.progress.connect(self.progress.emit)
         worker.signals.progress.connect(self.handle_progress)
-        # self.workers.append(worker)
+        worker.signals.result.connect(print)
 
         self.thread_pool.start(worker)
         return f
     
     def handle_job_finish(self):
-        # worker = self.sender()
-        # self.workers.remove(worker)
         # QCoreApplication.processEvents()
         # worker.deleteLater()
         self.job_finished.emit()
@@ -433,10 +371,25 @@ class QThreadPoolExecutor(QObject):
     
     @property
     def queue_size(self) -> int:
-        with QMutexLocker(self.mutex):
+        # with QMutexLocker(self.mutex):
             # print(f'Current counts: {self.task_counter[0]}, {self.thread_pool.activeThreadCount()}')
-            res = max(0, self.task_counter[0] + self.thread_pool.activeThreadCount())
-        return res
+        return self.task_counter[0]
+            # res = self.task_counter[0]
+            # res = max(0, self.task_counter[0])
+        # return res
+    
+    @property
+    def active_jobs(self) -> int:
+        # with QMutexLocker(self.mutex):
+            # print(f'Current counts: {self.task_counter[0]}, {self.thread_pool.activeThreadCount()}')
+        return self.task_counter[1]
+        #     res = self.task_counter[1]
+        # return res
+    
+    @property
+    def unfinished_tasks(self) -> int:
+        # with QMutexLocker(self.mutex):
+        return self.task_counter[0] + self.task_counter[1]
 
     def map(self, fn: Callable[..., R], *iterables: Iterable, timeout: float | None=None, chunksize: int=1) -> MapFuture:
         self._check_pool_status()
@@ -449,31 +402,36 @@ class QThreadPoolExecutor(QObject):
                    for chunk in iter_chunks(zip(*iters[1:]), chunksize)]
         return map_results(MapFuture(futures), timeout=timeout)
     
-    def _consume_queue(self):
+    def _clear_queue(self):
         self.thread_pool.clear()
+        print('Cleared thread pool')
         with QMutexLocker(self.mutex):
             self.task_counter[0] = 0
+        print('Cleared task counter')
 
     def stop(self):
-        # self._consume_queue()
         with self._context.status_mutex:
             self._context.status = PoolStatus.STOPPED
+        # self._clear_queue()
     
     def close(self):
         with self._context.status_mutex:
             self._context.status = PoolStatus.CLOSED
+    
+    def _wait_for_jobs(self):
+        while self.active_jobs:
+            # print(self.active_jobs, self.thread_pool.activeThreadCount())
+            time.sleep(0.1)
 
     def _wait_queue_depletion(self, timeout: float | None=None):
-        # to = timeout * 1e3 if timeout is not None else -1
-        # if not self.thread_pool.waitForDone(to):
-        #     raise TimeoutError("Tasks are still being executed")
         tick = time.time()
         while self.active:
+            # print(self.active_jobs)
             # QApplication.processEvents()
             if timeout is not None and time.time() - tick > timeout:
                 # print(2.1)
                 raise TimeoutError("Tasks are still being executed")
-            elif self.queue_size:
+            elif self.unfinished_tasks:
                 # print(2.2)
                 # QTimer.singleShot(100, lambda : self._wait_queue_depletion(timeout))
                 time.sleep(0.1)
@@ -499,22 +457,20 @@ class QThreadPoolExecutor(QObject):
             raise RuntimeError('The Pool is still running')
         if self._context.status == PoolStatus.CLOSED:
             # print(2)
+            print('Waiting for jobs to finish...')
             self._wait_queue_depletion(timeout)
+            print('...Done!')
             self.stop()
             self.join()
         else:
             # print(3)
+            self._clear_queue()
             self._stop_pool()
     
-    def cancel(self):
-        self.stop()
-        self.join()
-        # self._consume_queue()
-        # self.stop()
-        # self.join()
-
-        # if not self.thread_pool.waitForDone(int(timeout * 1000)):
-        #     raise TimeoutError(f'Timeout {timeout} exceeded waiting for QThreadPoolExecutor to join')
+    # def cancel(self):
+    #     self._consume_queue()
+    #     self.stop()
+    #     self.join()
     
 
 # NOTE: This must have a QEventLoop already running or the signals won't work
@@ -530,7 +486,7 @@ class QThreadJobPool(JobPool, QObject):
         # if close_timeout is None:
         #     close_timeout = -1
         # JobPool.__init__(self, max_workers=max_workers, use_logical=True, close_timeout=close_timeout)
-        self.executor = QThreadPoolExecutor(max_workers=self.max_workers)
+        self.executor = QThreadPoolExecutor(max_workers=self.max_workers, parent=self)
         self.executor.progress.connect(self.handle_progress)
         # self.executor.progress.connect(self.progress.emit)
         self.executor.error.connect(self.handle_error)
@@ -575,117 +531,9 @@ class QThreadJobPool(JobPool, QObject):
             chunksize=chunksize,
         )
     
-    # def emit_result(self, future: Future):
-    #     if not future.cancelled():
-    #         self.result.emit(future.result())
-    #         print(f'Emitted {future.result()}')
-    
-        # QCoreApplication.processEvents()
-    
-    def cancel(self):
-        print('Cancelling QThreadJobPool')
-        self.executor.cancel()
-
-def square(n: int) -> int:
-    return n ** 2
-
-def counting(n: int, progress_callback: Callable):
-    # if n == 7:
-    #     raise ValueError('Fuck 7')
-    # print(f'Counting {n}')
-    progress_callback(1)
-    # time.sleep(0.1)
-    return n
-
-def print_future_result(f: Future):
-    try:
-        res = f.result()
-        if isinstance(res, list) and isinstance(res[0], Result):
-            print([r.value for r in res])
-        elif isinstance(res, MapResults):
-            print(list(res))
-        else:
-            print(res)
-    except CancelledError:
-        return
-
-def print_future_results(f: Future[Iterable]):
-    print(list(f.result()))
-
-
-class Window(QMainWindow):
-    def __init__(self, total: int, parent = None):
-        super().__init__(parent)
-        self.count = 0
-        self.total = total
-
-        butt = QPushButton(self)
-        butt.setText('Push Me!')
-        butt.clicked.connect(self.on_push)
-        self.setCentralWidget(butt)
-    
-    def count_progress(self, i: int, d: QProgressDialog):
-        self.count += 1
-        print(self.count)
-        curr_val = d.value()
-        val = 100 * self.count / self.total
-        # print(f'Progress: {val:.2f}%')
-        d.setValue(self.count)
-        QCoreApplication.processEvents()
-        # print(f'{curr_val} / {d.maximum()}')
-    
-    def finish(self, f: Future):
-        self.pool.close()
-        self.pool.join()
-        print_future_result(f)
-
-    def on_push(self):
-        # with ThreadJobPool(max_workers=4) as pool:
-        #     future = pool.map(square, range(self.total))
-        #     future.add_done_callback(print_future_result)
-        # print(list(future.result()))
-        d = QProgressDialog('Running', 'Cancel', 0, self.total, parent=self)
-        d.setModal(True)
-        d.setValue(0)
-        d.show()
-        self.count = 0
-        self.pool = QThreadJobPool(max_workers=4, track_progress=True, parent=self)
-        d.canceled.connect(self.pool.cancel)
-        self.pool.progress.connect(lambda x: self.count_progress(x, d))
-        # for i in range(total):
-        #     f = pool.schedule(counting, i, done_callbacks=[print_future_result])
-        # future = pool.map(counting, range(self.total), done_callbacks=[print_future_result], chunksize=3)
-        future = self.pool.map(counting, range(self.total))
-        future.add_done_callback(self.finish)
-        d.canceled.connect(future.cancel)
-        # future = pool.map(square, range(total))
-        # print(future)
-        # print(list(future.result()._results))
-        # print(list(future.result()))
-        # print('stall')
-
-
-if __name__ == '__main__':
-    # TODO: Check that this actually works at all. It needs to have an event
-    # loop for proper functioning...
-
-    app = QApplication()
-    win = Window(total=100)
-    win.show()
-    app.exec()
-
-    # with ProcessJobPool(max_workers=4) as pool:
-    #     for i in range(total):
-    #         f = pool.schedule(square, i, done_callbacks=[print_future_result])
-    #     future = pool.map(square, range(total))
-    #     print(list(future.result()))
-
-    # with ThreadJobPool(max_workers=4) as pool:
-    #     for i in range(total):
-    #         f = pool.schedule(square, i, done_callbacks=[print_future_result])
-    #     future = pool.map(square, range(total))
-    # print(list(future.result()))
-    # time.sleep(1)
-
-    # print(pool.cancel_all())
-    # pool.cancel(f)
+    # def cancel_all(self):
+    #     print('Cancelling QThreadJobPool')
+    #     JobPool.cancel_all(self)
+    #     print('Cancelled all futures')
+    #     self.shutdown(True)
+    #     print('Succesfully shutdown pool')

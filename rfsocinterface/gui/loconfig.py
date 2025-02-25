@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.core.losweep import LoSweepData, get_tone_list, LoSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
-from rfsocinterface.gui.widgets.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
+from rfsocinterface.gui.widgets.progress_bar import JobProgressDialog, SequentialProgressBarDialog
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
 from rfsocinterface.gui.initialization import InitializationWidget

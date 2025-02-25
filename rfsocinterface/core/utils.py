@@ -5,13 +5,18 @@ import json
 from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type, Literal
 from datetime import datetime
 import logging
+from concurrent.futures import Future, CancelledError
+
+from pebble.common.types import Result
+from pebble.pool.base_pool import MapResults
 import numpy as np
 import numpy.typing as npt
 from kidpy import wait_for_free, wait_for_reply, kidpy
 import redis
-from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QPoint, QSize
+from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QPoint, QSize, QCoreApplication
 from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QToolTip, QLabel
 from PySide6.QtGui import QValidator
+
 import time
 from collections.abc import Mapping
 import qtawesome as qta
@@ -29,6 +34,10 @@ R = TypeVar('R')
 
 P = ParamSpec('P')
 Q = ParamSpec('Q')
+
+
+# Useful Aliases
+tr = QCoreApplication.translate
 
 
 def convert_path(path: PathLike) -> Path:
@@ -442,6 +451,18 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", at
         case _:
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
     return savefile
+
+def print_future_result(f: Future):
+    try:
+        res = f.result()
+        if isinstance(res, list) and isinstance(res[0], Result):
+            print([r.value for r in res])
+        elif isinstance(res, MapResults):
+            print(list(res))
+        else:
+            print(res)
+    except CancelledError:
+        return
 
 
 if __name__ == '__main__':
