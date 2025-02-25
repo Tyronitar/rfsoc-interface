@@ -148,15 +148,10 @@ def compute_noise_psd(
     else:
         lpfilt_sos = signal.butter(6, lp_filter_template, 'lp', fs=fs, output='sos', analog=False)
     lpfilt_sos2 = signal.butter(6, lp_filter_template2, 'lp', fs=fs, output='sos', analog=False)
-    data_mean_filt = signal.sosfiltfilt(hpfilt_sos, data_mean)
-    data_mean_filt = signal.sosfiltfilt(lpfilt_sos, data_mean_filt)
-    data_mean_filt2 = signal.sosfiltfilt(hpfilt_sos, data_mean)
-    data_mean_filt2 = signal.sosfiltfilt(lpfilt_sos2, data_mean_filt2)
-    # data_all_filt = signal.sosfiltfilt(lpfilt_sos, data_all, axis=2)
-    data_all_filt = signal.sosfiltfilt(hpfilt_sos, data_all, axis=2)
-    data_all_filt = signal.sosfiltfilt(lpfilt_sos, data_all_filt, axis=2)
-    data_all_filt2 = signal.sosfiltfilt(hpfilt_sos, data_all, axis=2)
-    data_all_filt2 = signal.sosfiltfilt(lpfilt_sos2, data_all_filt2, axis=2)
+    data_mean_filt = signal.sosfiltfilt(lpfilt_sos, data_mean)
+    data_mean_filt2 = signal.sosfiltfilt(lpfilt_sos2, data_mean)
+    data_all_filt = signal.sosfiltfilt(lpfilt_sos, data_all, axis=2)
+    data_all_filt2 = signal.sosfiltfilt(lpfilt_sos2, data_all, axis=2)
 
     # Loop over good resonators
     # TODO: Try enumerate
