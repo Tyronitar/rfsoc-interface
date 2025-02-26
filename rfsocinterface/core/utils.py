@@ -396,8 +396,8 @@ class PathValidator(QValidator):
         super().__init__(parent=parent)
     
     @ensure_path(1)
-    def validate(self, text: str, pos) -> QValidator.State:
-        if not Path.is_file(text):
+    def validate(self, text: Path, pos) -> QValidator.State:
+        if not text.is_file():
             return QValidator.State.Intermediate
         return QValidator.State.Acceptable
 
