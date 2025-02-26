@@ -6,7 +6,7 @@ from typing import Callable, Iterable
 from PySide6.QtWidgets import QMainWindow, QPushButton, QApplication
 from PySide6.QtCore import Qt
 
-from rfsocinterface.gui.widgets.progress_bar import JobProgressDialog
+from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog, QProcessJobProgressDialog
 from rfsocinterface.core.utils import print_future_result
 
 def square(n: int) -> int:
@@ -15,6 +15,7 @@ def square(n: int) -> int:
 def counting(n: int, progress_callback: Callable | None=None):
     if progress_callback is not None:
         progress_callback()
+    print(f'Counting {n}')
     time.sleep(0.05)
     return n
 
@@ -30,12 +31,12 @@ class Window(QMainWindow):
         self.setCentralWidget(butt)
     
     def on_push(self):
-        self.d = JobProgressDialog(
+        self.d = QThreadJobProgressDialog(
             labelText='Counting...',
             cancelButtonText='Cancel',
             minimum=0,
             maximum=self.total,
-            max_workers=4,
+            max_workers=2,
             parent=self,
         )
         self.d.setModal(True)
@@ -44,6 +45,11 @@ class Window(QMainWindow):
         future = self.d.map(counting, range(self.total))
         future.add_done_callback(print_future_result)
         # d.canceled.connect(d.close)
+
+    def closeEvent(self, event):
+        if self.d.active:
+            self.d.on_cancel()
+        event.accept()
 
 if __name__ == '__main__':
     app = QApplication()

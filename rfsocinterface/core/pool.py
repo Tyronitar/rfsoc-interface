@@ -1,16 +1,17 @@
 """Module for handling parallelization."""
-from concurrent.futures import Future, as_completed, wait, CancelledError, ThreadPoolExecutor
+from concurrent.futures import Future, as_completed, wait, CancelledError, ThreadPoolExecutor, ProcessPoolExecutor
 from multiprocessing import Queue
 from threading import Thread, Lock, RLock, get_native_id
 from pebble import ProcessPool, ThreadPool, waitforthreads, MapFuture, ProcessMapFuture
 from pebble.pool.base_pool import map_results, PoolContext, PoolStatus, iter_chunks, MapResults
-from pebble.common.types import Result, ResultStatus
+from pebble.common.types import Result, ResultStatus, ProcessFuture
 from abc import abstractmethod
 from typing import Callable, Any, Iterable, Iterator
 import time
 import traceback
 import sys
 import itertools
+from functools import partial
 
 import psutil
 from PySide6.QtCore import QThread, QThreadPool, Signal, QObject, QRunnable, QEventLoop, QMutex, QMutexLocker, QCoreApplication, QTimer, Qt, Slot
@@ -36,7 +37,6 @@ class PoolContext:
     def alive(self) -> bool:
         return self.status not in (PoolStatus.ERROR, PoolStatus.STOPPED)
 
-
 class JobPool:
     def __init__(self, max_workers: int | None=None, use_logical: bool=False, close_timeout: int | None=None):
         n_cpu = psutil.cpu_count(logical=use_logical)
@@ -50,6 +50,7 @@ class JobPool:
     def _unqueue_future(self, f: Future):
         self.futures.remove(f)
     
+    @property
     def active(self) -> bool:
         return self.executor.active
     
@@ -167,8 +168,10 @@ class ThreadJobPool(JobPool):
 
 def execute(function: Callable, *args, **kwargs):
     try:
+        # print(f'Executing function with args: {args} and kwargs: {kwargs}')
         return Result(ResultStatus.SUCCESS, function(*args, **kwargs))
     except BaseException as error:
+        # print(error)
         try:
             error.traceback = traceback.format_exc()
         except AttributeError:  # Frozen exception
@@ -181,7 +184,7 @@ def process_chunk(function: Callable, chunk: list, **kwargs) -> list:
     """Processes a chunk of the iterable passed to map dealing with errors."""
     return [execute(function, *args, **kwargs) for args in chunk]
 
-class QThreadPoolExecutor(QObject):
+class QPoolExecutor(QObject):
     progress = Signal(int)
     error = Signal(BaseException)
     job_finished = Signal()
@@ -193,7 +196,6 @@ class QThreadPoolExecutor(QObject):
         if max_workers is None:
             max_workers = n_cpu
         self.max_workers = min(max_workers, n_cpu)
-        self.pool = ThreadPoolExecutor(self.max_workers)
         self.track_progress= track_progress
     
     def emit_progress(self, n: int | None=None):
@@ -213,9 +215,41 @@ class QThreadPoolExecutor(QObject):
     
     @property
     def active(self) -> bool:
-        return not self.pool._shutdown
+        raise NotImplementedError()
     
     def schedule(self, fn: Callable[P, R], args: tuple, kwargs: dict) -> Future[R]:
+        raise NotImplementedError()
+    
+    def map(self, fn: Callable[..., R], *iterables: Iterable, timeout: float | None=None, chunksize: int=1) -> MapFuture:
+        raise NotImplementedError()
+    
+    def stop(self):
+        raise NotImplementedError()
+    
+    def close(self):
+        raise NotImplementedError()
+
+    def join(self, timeout: int=None):
+        raise NotImplementedError()
+
+
+def emit_progress(func: Callable[[int], None], n: int | None=None):
+    if n is None:
+        n = -1
+    func(n)
+
+
+class QThreadPoolExecutor(QPoolExecutor):
+
+    def __init__(self, max_workers: int=None, track_progress: bool=False, parent=None):
+        super().__init__(max_workers=max_workers, track_progress=track_progress, parent=parent)
+        self.pool = ThreadPoolExecutor(self.max_workers)
+
+    @property
+    def active(self) -> bool:
+        return not self.pool._shutdown
+
+    def schedule(self, fn: Callable[P, R], args: tuple, kwargs: dict, timeout: float=None) -> Future[R]:
         f = Future()
         if self.track_progress:
             kwargs['progress_callback'] = self.emit_progress
@@ -230,7 +264,7 @@ class QThreadPoolExecutor(QObject):
         futures = [self.schedule(process_chunk, (fn, chunk), {})
                    for chunk in iter_chunks(zip(*iterables), chunksize)]
         return map_results(MapFuture(futures), timeout=timeout)
-    
+
     def stop(self):
         self.pool.shutdown(cancel_futures=True)
     
@@ -240,10 +274,83 @@ class QThreadPoolExecutor(QObject):
     def join(self, timeout: int=None):
         return
 
+def convert_to_process_future(future: Future[R]) -> ProcessFuture[R]:
+    """Converts a Future to a ProcessFuture."""
+    if isinstance(future, ProcessFuture):
+        return future
+    else:
+        future.__class__ = ProcessFuture
+        with future._condition:
+            if future.set_running_or_notify_cancel():
+                future._state = 'running'
+        # future.set_running_or_notify_cancel = ProcessFuture.set_running_or_notify_cancel
+        return future
+
+
+class QProcessPoolExecutor(QPoolExecutor):
+    def __init__(self, max_workers: int=None, track_progress: bool=False, parent=None):
+        super().__init__(max_workers=max_workers, track_progress=track_progress, parent=parent)
+        self.pool = ProcessPool(self.max_workers)
+        # self.pool = ProcessPoolExecutor(self.max_workers)
+
+    @property
+    def active(self) -> bool:
+        return self.pool.active
+        # with self.pool._shutdown_lock:
+        #     return self.pool._shutdown_thread
+
+    def handle_future_done(self, f: Future):
+        print(f'Job finished: {f}')
+        self.job_finished.emit()
+        if f.cancelled():
+            return
+        try:
+            res = f.result()
+            self.result.emit(res)
+            self.progress.emit(-1)
+        except BaseException as e:
+            self.error.emit(e)
+
+    def schedule(self, fn: Callable[P, R], args: tuple, kwargs: dict, timeout: float=None) -> Future[R]:
+        # f = Future()
+        # print(f' Scheduling {fn} with args: {args} and kwargs: {kwargs}')
+        # f = self.pool.schedule(fn, args, kwargs, timeout=timeout)
+        f = self.pool.submit(fn, *args, **kwargs)
+        # f = convert_to_process_future(f)
+
+        f.add_done_callback(self.handle_future_done)
+        return f
+
+    def map(self, fn: Callable[..., R], *iterables: Iterable, timeout: float | None=None, chunksize: int=1) -> ProcessMapFuture:
+        # futures = self.pool.map(fn, *iterables, timeout=timeout, chunksize=chunksize)
+        fut = self.pool.map(fn, *iterables, timeout=timeout, chunksize=chunksize)
+        for f in fut._futures:
+            f.add_done_callback(self.handle_future_done)
+        return fut
+        # if chunksize < 1:
+        #     raise ValueError("chunksize must be >= 1")
+        # futures = [self.schedule(process_chunk, (fn, chunk), {})
+        #            for chunk in iter_chunks(zip(*iterables), chunksize)]
+        # return map_results(ProcessMapFuture(futures), timeout=timeout)
+    
+    def stop(self):
+        print('Stopping pool')
+        self.pool.stop()
+        # self.pool.shutdown(cancel_futures=True)
+
+    def close(self):
+        print('Closing pool')
+        self.pool.close()
+        # self.pool.shutdown(cancel_futures=False)
+    
+    def join(self, timeout: int=None):
+        print('Joining pool')
+        self.pool.join(timeout=timeout)
+
     
 
 # NOTE: This must have a QEventLoop already running or the signals won't work
-class QThreadJobPool(JobPool, QObject):
+class QJobPool(JobPool, QObject):
     progress = Signal(int)
     error = Signal(BaseException)
     job_finished = Signal()
@@ -253,7 +360,8 @@ class QThreadJobPool(JobPool, QObject):
         QObject.__init__(self, parent=parent)  # Initialize QObject
         JobPool.__init__(self, max_workers=max_workers, use_logical=True, close_timeout=close_timeout) 
         self.track_progress = track_progress
-        self.executor = QThreadPoolExecutor(max_workers=self.max_workers, track_progress=self.track_progress, parent=self)
+    
+    def setup_signals(self):
         self.executor.progress.connect(self.handle_progress)
         self.executor.error.connect(self.handle_error)
         self.executor.job_finished.connect(self.handle_job_finished)
@@ -274,3 +382,15 @@ class QThreadJobPool(JobPool, QObject):
     @Slot()
     def handle_job_finished(self):
         self.job_finished.emit()
+
+class QThreadJobPool(QJobPool):
+    def __init__(self, max_workers: int | None=None, track_progress: bool=False, close_timeout: int | None=None, parent=None):
+        super().__init__(max_workers=max_workers, track_progress=track_progress, close_timeout=close_timeout, parent=parent)
+        self.executor = QThreadPoolExecutor(max_workers=self.max_workers, track_progress=self.track_progress, parent=self)
+        self.setup_signals()
+
+class QProcessJobPool(QJobPool):
+    def __init__(self, max_workers: int | None=None, track_progress: bool=False, close_timeout: int | None=None, parent=None):
+        super().__init__(max_workers=max_workers, track_progress=track_progress, close_timeout=close_timeout, parent=parent)
+        self.executor = QProcessPoolExecutor(max_workers=self.max_workers, track_progress=self.track_progress, parent=self)
+        self.setup_signals()

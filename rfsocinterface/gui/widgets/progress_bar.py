@@ -7,10 +7,10 @@ import time
 
 from rfsocinterface.gui.uic.progress_bar_ui import Ui_Dialog
 from rfsocinterface.core.utils import Job, P, JobQueue, SequentialJobQueue, R, tr
-from rfsocinterface.core.pool import QThreadJobPool
+from rfsocinterface.core.pool import QThreadJobPool, QProcessJobPool
 
 
-class JobProgressDialog(QProgressDialog):
+class QJobProgressDialog(QProgressDialog):
 
     def __init__(
             self,
@@ -23,9 +23,6 @@ class JobProgressDialog(QProgressDialog):
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, parent=parent, flags=flags)
         self.setValue(0)
-        self.pool = QThreadJobPool(max_workers=max_workers, track_progress=True, parent=self)
-        self.pool.progress.connect(self.handle_progress)
-        self.canceled.connect(self.on_cancel)
     
     @Slot(int)
     def handle_progress(self, val: int):
@@ -34,7 +31,7 @@ class JobProgressDialog(QProgressDialog):
         else:
             new_val = val
         self.setValue(new_val)
-        # print(f'Progress: {new_val}/{self.maximum()}')
+        print(f'Progress: {new_val}/{self.maximum()}')
         if new_val >= self.maximum():
             self.pool.close()
             self.pool.join()
@@ -62,3 +59,47 @@ class JobProgressDialog(QProgressDialog):
     def on_cancel(self):
         self.pool.shutdown()
     
+    @property
+    def active(self) -> bool:
+        return self.pool.active
+    
+
+class QThreadJobProgressDialog(QJobProgressDialog):
+
+    def __init__(
+            self,
+            labelText: str='',
+            cancelButtonText='Cancel',
+            minimum: int=0,
+            maximum: int=100,
+            max_workers: int=1,
+            parent: QWidget | None=None,
+            flags: Qt.WindowType=Qt.WindowType.Dialog):
+        super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
+        self.pool = QThreadJobPool(max_workers=max_workers, track_progress=True, parent=self)
+        self.pool.progress.connect(self.handle_progress)
+        self.canceled.connect(self.on_cancel)
+
+class QProcessJobProgressDialog(QJobProgressDialog):
+
+    def __init__(
+            self,
+            labelText: str='',
+            cancelButtonText='Cancel',
+            minimum: int=0,
+            maximum: int=100,
+            max_workers: int=1,
+            parent: QWidget | None=None,
+            flags: Qt.WindowType=Qt.WindowType.Dialog):
+        super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
+        self.pool = QProcessJobPool(max_workers=max_workers, track_progress=True, parent=self)
+        self.pool.progress.connect(self.handle_progress)
+        self.canceled.connect(self.on_cancel)
+        self.pool.error.connect(print)
+
+    @Slot()
+    def on_cancel(self):
+        # self.pool.stop()
+        # self.pool.join()
+        # print(self.pool.cancel_all())
+        self.pool.shutdown(wait=True)
