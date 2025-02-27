@@ -1,5 +1,6 @@
 """Module for handling parallelization."""
-from concurrent.futures import Future, as_completed, wait, CancelledError, ThreadPoolExecutor, ProcessPoolExecutor
+from __future__ import annotations
+from concurrent.futures import Future, as_completed, wait, CancelledError, ThreadPoolExecutor, ProcessPoolExecutor, FIRST_COMPLETED, FIRST_EXCEPTION, ALL_COMPLETED
 from multiprocessing import Queue
 from threading import Thread, Lock, RLock, get_native_id
 from pebble import ProcessPool, ThreadPool, waitforthreads, MapFuture, ProcessMapFuture
@@ -16,7 +17,7 @@ from functools import partial
 import psutil
 from PySide6.QtCore import QThread, QThreadPool, Signal, QObject, QRunnable, QEventLoop, QMutex, QMutexLocker, QCoreApplication, QTimer, Qt, Slot
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QProgressDialog
-from rfsocinterface.core.utils import P, R, T, print_future_result
+from rfsocinterface.core.utils import P, R, T, print_future_result, CombinedFuture
 
 class PoolContext:
     def __init__(self, max_workers: int):
@@ -52,7 +53,7 @@ class JobPool:
     
     @property
     def active(self) -> bool:
-        return self.executor.active
+        return self.executor.active and len(self.futures) > 0
     
     def schedule(
             self,
@@ -87,7 +88,7 @@ class JobPool:
             done_callbacks: list[Callable[[Future], None]]=[],
             timeout: float | None=None,
             chunksize: int=1,
-    ) -> MapFuture | ProcessMapFuture:
+    ) -> MapFuture | ProcessMapFuture | CombinedFuture:
         """Apply `fn` to every item of `iterable` and return an iterator of the results.
 
         If additional iterable arguments are passed, `fn` must take that many
@@ -130,9 +131,9 @@ class JobPool:
     
     def shutdown(self, wait: bool=False):
         """Shutdown the executor and wait for all threads to finish."""
-        self.executor.stop()
+        self.stop()
         if wait:
-            self.executor.join()
+            self.join()
 
     def stop(self):
         self.executor.stop()
@@ -209,7 +210,11 @@ class QPoolExecutor(QObject):
             return
         try:
             res = f.result()
-            self.result.emit(res)
+            if isinstance(res, list) and isinstance(res[0], Result):
+                for r in res:
+                    self.result.emit(r.value)
+            else:
+                self.result.emit(res)
         except BaseException as e:
             self.error.emit(e)
     
@@ -231,13 +236,6 @@ class QPoolExecutor(QObject):
 
     def join(self, timeout: int=None):
         raise NotImplementedError()
-
-
-def emit_progress(func: Callable[[int], None], n: int | None=None):
-    if n is None:
-        n = -1
-    func(n)
-
 
 class QThreadPoolExecutor(QPoolExecutor):
 
@@ -287,65 +285,54 @@ def convert_to_process_future(future: Future[R]) -> ProcessFuture[R]:
         return future
 
 
+
 class QProcessPoolExecutor(QPoolExecutor):
     def __init__(self, max_workers: int=None, track_progress: bool=False, parent=None):
         super().__init__(max_workers=max_workers, track_progress=track_progress, parent=parent)
-        self.pool = ProcessPool(self.max_workers)
-        # self.pool = ProcessPoolExecutor(self.max_workers)
+        self.pool = ProcessPoolExecutor(self.max_workers)
 
     @property
     def active(self) -> bool:
-        return self.pool.active
-        # with self.pool._shutdown_lock:
-        #     return self.pool._shutdown_thread
+        with self.pool._shutdown_lock:
+            return self.pool._shutdown_thread
 
     def handle_future_done(self, f: Future):
-        print(f'Job finished: {f}')
-        self.job_finished.emit()
         if f.cancelled():
             return
+        self.job_finished.emit()
         try:
             res = f.result()
-            self.result.emit(res)
-            self.progress.emit(-1)
+            if isinstance(res, list) and isinstance(res[0], Result):
+                for r in res:
+                    self.result.emit(r.value)
+                    self.progress.emit(-1)
+            else:
+                self.result.emit(res)
+                self.progress.emit(-1)
         except BaseException as e:
             self.error.emit(e)
 
     def schedule(self, fn: Callable[P, R], args: tuple, kwargs: dict, timeout: float=None) -> Future[R]:
-        # f = Future()
-        # print(f' Scheduling {fn} with args: {args} and kwargs: {kwargs}')
-        # f = self.pool.schedule(fn, args, kwargs, timeout=timeout)
         f = self.pool.submit(fn, *args, **kwargs)
-        # f = convert_to_process_future(f)
 
         f.add_done_callback(self.handle_future_done)
         return f
 
     def map(self, fn: Callable[..., R], *iterables: Iterable, timeout: float | None=None, chunksize: int=1) -> ProcessMapFuture:
-        # futures = self.pool.map(fn, *iterables, timeout=timeout, chunksize=chunksize)
-        fut = self.pool.map(fn, *iterables, timeout=timeout, chunksize=chunksize)
-        for f in fut._futures:
-            f.add_done_callback(self.handle_future_done)
-        return fut
-        # if chunksize < 1:
-        #     raise ValueError("chunksize must be >= 1")
-        # futures = [self.schedule(process_chunk, (fn, chunk), {})
-        #            for chunk in iter_chunks(zip(*iterables), chunksize)]
-        # return map_results(ProcessMapFuture(futures), timeout=timeout)
+        if chunksize < 1:
+            raise ValueError("chunksize must be >= 1")
+        futures = [self.schedule(process_chunk, (fn, chunk), {})
+                   for chunk in iter_chunks(zip(*iterables), chunksize)]
+        return CombinedFuture(futures)
     
     def stop(self):
-        print('Stopping pool')
-        self.pool.stop()
-        # self.pool.shutdown(cancel_futures=True)
+        self.pool.shutdown(cancel_futures=True)
 
     def close(self):
-        print('Closing pool')
-        self.pool.close()
-        # self.pool.shutdown(cancel_futures=False)
+        self.pool.shutdown(cancel_futures=False)
     
     def join(self, timeout: int=None):
-        print('Joining pool')
-        self.pool.join(timeout=timeout)
+        return
 
     
 

@@ -31,7 +31,7 @@ class QJobProgressDialog(QProgressDialog):
         else:
             new_val = val
         self.setValue(new_val)
-        print(f'Progress: {new_val}/{self.maximum()}')
+        # print(f'Progress: {new_val}/{self.maximum()}')
         if new_val >= self.maximum():
             self.pool.close()
             self.pool.join()
@@ -57,11 +57,17 @@ class QJobProgressDialog(QProgressDialog):
     
     @Slot()
     def on_cancel(self):
-        self.pool.shutdown()
+        self.pool.shutdown(wait=True)
     
     @property
     def active(self) -> bool:
         return self.pool.active
+    
+    def _setup_connections(self):
+        self.canceled.connect(self.on_cancel)
+        self.pool.progress.connect(self.handle_progress)
+        self.pool.error.connect(print)
+        self.pool.result.connect(print)
     
 
 class QThreadJobProgressDialog(QJobProgressDialog):
@@ -77,8 +83,7 @@ class QThreadJobProgressDialog(QJobProgressDialog):
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
         self.pool = QThreadJobPool(max_workers=max_workers, track_progress=True, parent=self)
-        self.pool.progress.connect(self.handle_progress)
-        self.canceled.connect(self.on_cancel)
+        self._setup_connections()
 
 class QProcessJobProgressDialog(QJobProgressDialog):
 
@@ -93,13 +98,4 @@ class QProcessJobProgressDialog(QJobProgressDialog):
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
         self.pool = QProcessJobPool(max_workers=max_workers, track_progress=True, parent=self)
-        self.pool.progress.connect(self.handle_progress)
-        self.canceled.connect(self.on_cancel)
-        self.pool.error.connect(print)
-
-    @Slot()
-    def on_cancel(self):
-        # self.pool.stop()
-        # self.pool.join()
-        # print(self.pool.cancel_all())
-        self.pool.shutdown(wait=True)
+        self._setup_connections()

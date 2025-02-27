@@ -6,9 +6,10 @@ from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type, 
 from datetime import datetime
 import logging
 from concurrent.futures import Future, CancelledError
+import itertools
 
 from pebble.common.types import Result
-from pebble.pool.base_pool import MapResults
+from pebble.pool.base_pool import MapResults, chunk_result
 import numpy as np
 import numpy.typing as npt
 from kidpy import wait_for_free, wait_for_reply, kidpy
@@ -457,13 +458,61 @@ def print_future_result(f: Future):
         res = f.result()
         if isinstance(res, list) and isinstance(res[0], Result):
             print([r.value for r in res])
-        elif isinstance(res, MapResults):
+        elif isinstance(res, MapResults) or isinstance(f, CombinedFuture):
             print(list(res))
         else:
             print(res)
     except CancelledError:
         return
 
+class CombinedFuture(Future[Iterable[R]]):
+    """Class representing the result of multiple function calls.
+
+    It's a Future that returns an iterator over the results of each Future.
+    """
+
+    def __init__(self, futures: Iterable[Future[Result]]):
+        self._futures = list(futures)
+        self._completed_futures = [False] * len(self)
+        self._results: list[Result | None] = [None] * len(self)
+
+        super().__init__()
+
+        for future in self._futures:
+            future.add_done_callback(self._future_completed_callback)
+    
+    def __len__(self) -> int:
+        return len(self._futures)
+    
+    def cancel(self):
+        all_cancelled = super().cancel()
+        for future in self._futures:
+            all_cancelled |= future.cancel()
+        return all_cancelled
+
+    def _future_completed_callback(self, future: Future) -> None:
+
+        if self.cancelled():
+            return
+
+        id = self._futures.index(future)
+        self._completed_futures[id] = True
+        if future.cancelled():
+            super().cancel()
+            return
+        
+        try:
+            res = future.result()
+            self._results[id] = res
+        except BaseException as e:
+            self._results[id] = e
+
+        if all(self._completed_futures):
+            self._coallesce_results()
+
+    def _coallesce_results(self):
+        self._results = itertools.chain.from_iterable(r for r in self._results)
+        self.set_result(r.value for r in self._results)
 
 if __name__ == '__main__':
     def test_fun():

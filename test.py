@@ -15,7 +15,6 @@ def square(n: int) -> int:
 def counting(n: int, progress_callback: Callable | None=None):
     if progress_callback is not None:
         progress_callback()
-    print(f'Counting {n}')
     time.sleep(0.05)
     return n
 
@@ -31,18 +30,20 @@ class Window(QMainWindow):
         self.setCentralWidget(butt)
     
     def on_push(self):
-        self.d = QThreadJobProgressDialog(
+        self.d = QProcessJobProgressDialog(
             labelText='Counting...',
             cancelButtonText='Cancel',
             minimum=0,
             maximum=self.total,
-            max_workers=2,
+            max_workers=6,
             parent=self,
         )
         self.d.setModal(True)
         # d.setValue(0)
         self.d.show()
-        future = self.d.map(counting, range(self.total))
+        # for i in range(self.total):
+        #     self.d.schedule(counting, i)
+        future = self.d.map(counting, range(self.total), chunksize=3)
         future.add_done_callback(print_future_result)
         # d.canceled.connect(d.close)
 
