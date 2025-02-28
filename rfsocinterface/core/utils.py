@@ -2,14 +2,15 @@ import functools
 import os
 from pathlib import Path
 import json
+from enum import IntEnum
+from dataclasses import dataclass
 from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type, Literal
 from datetime import datetime
 import logging
 from concurrent.futures import Future, CancelledError
 import itertools
+from numbers import Number
 
-from pebble.common.types import Result
-from pebble.pool.base_pool import MapResults, chunk_result
 import numpy as np
 import numpy.typing as npt
 from kidpy import wait_for_free, wait_for_reply, kidpy
@@ -27,7 +28,8 @@ IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
 MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
-Number = TypeVar('Number', int, float, complex, bytes)
+# Number = TypeVar('Number', int, float, complex, bytes)
+FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
 
 # Generic types for type hints
 T = TypeVar('T')
@@ -95,12 +97,6 @@ def ensure_path(
     return decorator
 
 
-class JobInterrupt(Exception):
-    def __init__(self, *args):
-        super().__init__(*args)
-
-
-
 def write_fList(kpy: kidpy, fList: npt.ArrayLike, ampList: npt.ArrayLike):
     """
     Function for writing tones to the rfsoc. Accepts both numpy arrays and lists.
@@ -153,154 +149,13 @@ def test_connection(r):
         print(e)
         return False
 
-class Job(QRunnable, QObject):
-
-    #This is the signal that will be emitted during the processing.
-    #By including int as an argument, it lets the signal know to expect
-    #an integer argument when emitting.
-    updateProgress = Signal()
-    started = Signal(str)
-    finished = Signal(Any)
-    canceled = Signal(JobInterrupt)
-
-    #You can do any extra things in this init you need, but for this example
-    #nothing else needs to be done expect call the super's init
-    def __init__(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs):
-        QRunnable.__init__(self)
-        QObject.__init__(self)
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
-        self.strt_msg = ''
-    
-    def set_start_message(self, message: str):
-        self.strt_msg = message
-        # self.setAutoDelete(False)
-        # self.
-        # self.finished.connect(self.finishWork.emit)
-    
-    def cancel(self):
-        raise JobInterrupt('Job Canceled')
-    #A QThread is run by calling it's start() function, which calls this run()
-    #function in it's own "thread". 
-    def run(self):
-        self.started.emit(self.strt_msg)
-        try:
-            res = self.func(*self.args, signal=self.updateProgress, **self.kwargs)
-            self.finished.emit(res)
-        except JobInterrupt as e:
-            self.canceled.emit(e)
-        #Notice this is the same thing you were doing in your progress() function
-
-
-class JobQueue(QThreadPool):
-    cancelAll = Signal()
-
-    def __init__(self, max_threads: int = 0, parent: QObject | None=None):
-        super().__init__(parent)
-        self.setMaxThreadCount(max_threads)
-        self.queue: list[tuple[Job, bool]] = []
-        self.results = []
-    
-    def __len__(self) -> int:
-        return len(self.queue)
-    
-    @overload
-    def add_job(self, func: Callable[P, None], *args: P.args, **kwargs: P.kwargs): ...
-    
-    @overload
-    def add_job(self, job: Job): ...
-
-    def add_job(self, arg: Job | Callable[P, None], *args: P.args, use_main_thread=False, **kwargs: P.kwargs):
-        new_job = arg if isinstance(arg, Job) else Job(arg, args, kwargs)
-        self.cancelAll.connect(new_job.cancel)
-        idx = len(self)
-        new_job.finished.connect(lambda res: self.set_result(idx, res))
-        self.queue.append((new_job, use_main_thread))
-    
-    def set_result(self, idx: int, result: Any):
-        self.results[idx] = result
-    
-    def cancel(self):
-        self.cancelAll.emit()
-    
-    # def run_next(self):
-    #     job = self.queue.pop()
-    #     self.start(job)
-    
-    def run_all(self):
-        self.results = [None] * len(self)
-        for i, (job, main_thread) in enumerate(self.queue):
-            if main_thread:
-                QThreadPool.globalInstance().start(job)
-            else:
-                self.start(job)
-        # for i, job in enumerate(self.queue):
-        #     QThreadPool.globalInstance().reserveThread()
-        #     QThreadPool.globalInstance().startOnReservedThread(job)
-
-class SequentialJobQueue(JobQueue):
-
-    allFinished = Signal()
-
-    def __init__(self, parent: QObject | None = None):
-        super().__init__(1, parent)
-        self.last_job = None
-    
-    def emit_finished(self, *args):
-        self.allFinished.emit()
-    
-    def add_job(self, arg: Job | Callable[P, None], *args: P.args, use_main_thread=False, **kwargs: P.kwargs):
-        new_job = arg if isinstance(arg, Job) else Job(arg, args, kwargs)
-        new_job.finished.connect(lambda res: self.results.append(res))
-        new_job.finished.connect(self.emit_finished)
-        new_job.finished.connect(lambda _: print('job done'))
-        self.cancelAll.connect(new_job.cancel)
-        if len(self) > 0:
-            self.last_job.finished.connect(
-                lambda: QThreadPool.globalInstance().start(new_job) if use_main_thread else self.start(new_job),
-                # Qt.ConnectionType.QueuedConnection,
-            )
-            self.last_job.finished.disconnect(self.emit_finished)
-        self.queue.append((new_job, use_main_thread))
-        self.last_job = new_job
-
-    def run_all(self):
-        if len(self) > 0:
-            job, use_main_thread = self.queue[0]
-            if use_main_thread:
-                QThreadPool.globalInstance().start(job)
-            else:
-                self.start(job)
-
-
-def add_callbacks(*callbacks: Callable) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    def loop_callback(func: Callable[P, R]) -> Callable[P, R]:
-        @functools.wraps(func)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            def loop_with_callback(iterable: Iterable):
-                for i, item in enumerate(iterable):
-                    yield item
-                    for cb in callbacks:
-                        cb()
-            
-            # Replace the original loop with the new loop
-            original_globals = func.__globals__
-            original_globals['range'] = lambda *args: loop_with_callback(range(*args))
-            original_globals['list'] = lambda x: loop_with_callback(x)
-            original_globals['np.array'] = lambda x: loop_with_callback(x)
-            
-            return func(*args, **kwargs)
-        
-        return wrapper
-    return loop_callback
-
 
 def get_lineEdit_text(line_edit: QLineEdit) -> str:
     val = line_edit.text()
     if val == '':
         val = line_edit.placeholderText()
     return val
+
 
 def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float) -> Number:
     """Get the value from a QLineEdit and convert to a number."""
@@ -320,9 +175,11 @@ def get_total_height(obj: QWidget):
         summation += get_total_height(child)
     return summation
 
+
 def layout_widgets(layout: QLayout) -> list[QWidget]:
     """Get widgets contained in layout"""
     return [layout.itemAt(i).widget() for i in range(layout.count())]
+
 
 def analog_to_digital(a: int, min: float, max: float, bits: int) -> int:
     """Convert an analog number to digital.
@@ -342,6 +199,7 @@ def analog_to_digital(a: int, min: float, max: float, bits: int) -> int:
     # TODO: This method is only needed for windows? Email Dan
     d = a
     return d
+
 
 def digital_to_analog(d: int, min: float, max: float, bits: int) -> int:
     """Convert a digital number to analog.
@@ -408,6 +266,7 @@ def get_yymmdd():
     """Return today's date string in YYYYMMDD format."""
     return datetime.today().strftime('%Y%m%d')
 
+
 def get_chanmask(chanmask_file=''):
 
     if chanmask_file=='':
@@ -415,7 +274,6 @@ def get_chanmask(chanmask_file=''):
     chanmask = np.load(chanmask_file)
     return chanmask
 
-FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
 
 def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", attenuation=0.):
     #see if we already have the parent folder for today's date
@@ -453,17 +311,45 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", at
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
     return savefile
 
+#
+# Utils for parallelized code
+#
+
 def print_future_result(f: Future):
     try:
         res = f.result()
         if isinstance(res, list) and isinstance(res[0], Result):
             print([r.value for r in res])
-        elif isinstance(res, MapResults) or isinstance(f, CombinedFuture):
+        elif isinstance(f, CombinedFuture):
             print(list(res))
         else:
             print(res)
     except CancelledError:
         return
+    except BaseException as e:
+        print(e)
+
+
+# Code borrowed from the Pebble library: https://pypi.org/project/Pebble/
+class ResultStatus(IntEnum):
+    """Status of results of a function execution."""
+    SUCCESS = 0
+    FAILURE = 1
+    ERROR = 2
+
+
+@dataclass
+class Result:
+    """Result of a function execution."""
+    status: ResultStatus
+    value: Any
+
+
+def iter_chunks(iterable: iter, chunksize: int) -> iter:
+    """Iterates over zipped iterables in chunks."""
+    yield from itertools.batched(iterable, chunksize)
+
+# End Pebble code
 
 class CombinedFuture(Future[Iterable[R]]):
     """Class representing the result of multiple function calls.
@@ -471,10 +357,10 @@ class CombinedFuture(Future[Iterable[R]]):
     It's a Future that returns an iterator over the results of each Future.
     """
 
-    def __init__(self, futures: Iterable[Future[Result]]):
+    def __init__(self, futures: Iterable[Future[list[Result]]]):
         self._futures = list(futures)
-        self._completed_futures = [False] * len(self)
-        self._results: list[Result | None] = [None] * len(self)
+        self._completed_futures = [False for _ in range(len(self))]
+        self._results: list[list[Any]] = [[] for _ in range(len(self))]
 
         super().__init__()
 
@@ -490,9 +376,9 @@ class CombinedFuture(Future[Iterable[R]]):
             all_cancelled |= future.cancel()
         return all_cancelled
 
-    def _future_completed_callback(self, future: Future) -> None:
+    def _future_completed_callback(self, future: Future[list[Result]]) -> None:
 
-        if self.cancelled():
+        if self.cancelled() or self.done():
             return
 
         id = self._futures.index(future)
@@ -501,23 +387,19 @@ class CombinedFuture(Future[Iterable[R]]):
             super().cancel()
             return
         
-        try:
-            res = future.result()
-            self._results[id] = res
-        except BaseException as e:
-            self._results[id] = e
+        res = future.result()
+        for r in res:
+            if r.status == ResultStatus.SUCCESS:
+                self._results[id].append(r.value)
+            else:
+                self.set_exception(r.value)
+                return
 
         if all(self._completed_futures):
             self._coallesce_results()
 
     def _coallesce_results(self):
-        self._results = itertools.chain.from_iterable(r for r in self._results)
-        self.set_result(r.value for r in self._results)
-
-if __name__ == '__main__':
-    def test_fun():
-        for i in range(5):
-            print(i)
-    
-    add_callbacks(lambda: print('hello'))(test_fun)()
+        self._results = itertools.chain.from_iterable(self._results)
+        self.set_result(self._results)
+        # self.set_result(r.value for r in self._results)
 

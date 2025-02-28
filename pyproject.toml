@@ -22,7 +22,6 @@ vmbpy = {url = "https://github.com/alliedvision/VmbPy/releases/download/1.0.5/vm
 kidpy3 = {url = "https://github.com/ASU-Astronomical-Instrumentation/readout/releases/download/0.2.5/kidpy3-0.2.5-py3-none-any.whl"}
 exscript = "^2.6.28"
 psutil = "^6.1.1"
-pebble = "^5.1.0"
 
 [tool.poetry.group.gui.dependencies]
 shiboken6 = "6.8.1"
@@ -37,6 +36,7 @@ pytest-cov = "^5.0.0"
 pytest-xdist = "^3.6.1"
 pytest-mock = "^3.14.0"
 coverage = {extras = ["toml"], version = "^7.6.1"}
+pytest-qt = "^4.4.0"
 
 [build-system]
 requires = ["poetry-core"]

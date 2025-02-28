@@ -18,6 +18,12 @@ def counting(n: int, progress_callback: Callable | None=None):
     time.sleep(0.05)
     return n
 
+def fail_on_evens(n: int):
+    if n % 2 == 0:
+        raise ValueError('Evens are unlucky')
+    return n
+
+
 class Window(QMainWindow):
     def __init__(self, total: int, parent = None):
         super().__init__(parent)
@@ -43,9 +49,9 @@ class Window(QMainWindow):
         self.d.show()
         # for i in range(self.total):
         #     self.d.schedule(counting, i)
-        future = self.d.map(counting, range(self.total), chunksize=3)
+        # future = self.d.map(counting, range(self.total), chunksize=3)
+        future = self.d.map(fail_on_evens, range(self.total))
         future.add_done_callback(print_future_result)
-        # d.canceled.connect(d.close)
 
     def closeEvent(self, event):
         if self.d.active:

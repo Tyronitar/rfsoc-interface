@@ -1,12 +1,10 @@
-from PySide6.QtWidgets import QDialog, QWidget, QApplication, QProgressDialog
-from PySide6.QtCore import Signal, Qt, QCoreApplication, Slot
+from PySide6.QtWidgets import QWidget, QProgressDialog, QErrorMessage
+from PySide6.QtCore import Qt, Slot
 from typing import Callable, Any, Iterable
 from concurrent.futures import Future
-from pebble import MapFuture, ProcessMapFuture
 import time
 
-from rfsocinterface.gui.uic.progress_bar_ui import Ui_Dialog
-from rfsocinterface.core.utils import Job, P, JobQueue, SequentialJobQueue, R, tr
+from rfsocinterface.core.utils import P, R, CombinedFuture
 from rfsocinterface.core.pool import QThreadJobPool, QProcessJobPool
 
 
@@ -23,6 +21,7 @@ class QJobProgressDialog(QProgressDialog):
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, parent=parent, flags=flags)
         self.setValue(0)
+        self.em = QErrorMessage(parent=self)
     
     @Slot(int)
     def handle_progress(self, val: int):
@@ -35,6 +34,17 @@ class QJobProgressDialog(QProgressDialog):
         if new_val >= self.maximum():
             self.pool.close()
             self.pool.join()
+    
+    @Slot(BaseException)
+    def handle_error(self, e: BaseException):
+        if hasattr(e, 'message'):
+            self.em.showMessage(e.message)
+        else:
+            self.em.showMessage(str(e))
+    
+    @Slot(object)
+    def handle_result(self, val: Any):
+        pass
     
     def schedule(
             self,
@@ -52,7 +62,7 @@ class QJobProgressDialog(QProgressDialog):
             done_callbacks: list[Callable[[Future], None]]=[],
             timeout: float | None=None,
             chunksize: int=1,
-    ) -> MapFuture | ProcessMapFuture:
+    ) -> CombinedFuture[Iterable[R]]:
         return self.pool.map(fn, *iterables, done_callbacks=done_callbacks, timeout=timeout, chunksize=chunksize)
     
     @Slot()
@@ -66,8 +76,8 @@ class QJobProgressDialog(QProgressDialog):
     def _setup_connections(self):
         self.canceled.connect(self.on_cancel)
         self.pool.progress.connect(self.handle_progress)
-        self.pool.error.connect(print)
-        self.pool.result.connect(print)
+        self.pool.error.connect(self.handle_error)
+        self.pool.result.connect(self.handle_result)
     
 
 class QThreadJobProgressDialog(QJobProgressDialog):
@@ -82,7 +92,7 @@ class QThreadJobProgressDialog(QJobProgressDialog):
             parent: QWidget | None=None,
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
-        self.pool = QThreadJobPool(max_workers=max_workers, track_progress=True, parent=self)
+        self.pool = QThreadJobPool(max_workers=max_workers, parent=self)
         self._setup_connections()
 
 class QProcessJobProgressDialog(QJobProgressDialog):
@@ -97,5 +107,5 @@ class QProcessJobProgressDialog(QJobProgressDialog):
             parent: QWidget | None=None,
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
-        self.pool = QProcessJobPool(max_workers=max_workers, track_progress=True, parent=self)
+        self.pool = QProcessJobPool(max_workers=max_workers, parent=self)
         self._setup_connections()
