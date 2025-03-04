@@ -22,6 +22,10 @@ class QJobProgressDialog(QProgressDialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, parent=parent, flags=flags)
         self.setValue(0)
         self.em = QErrorMessage(parent=self)
+        self.pool = None
+    
+    def make_pool(self, max_workers: int | None=None):
+        raise NotImplementedError
     
     @Slot(int)
     def handle_progress(self, val: int):
@@ -32,8 +36,9 @@ class QJobProgressDialog(QProgressDialog):
         self.setValue(new_val)
         # print(f'Progress: {new_val}/{self.maximum()}')
         if new_val >= self.maximum():
-            self.pool.close()
-            self.pool.join()
+            if self.autoClose():
+                self.pool.close()
+                self.pool.join()
     
     @Slot(BaseException)
     def handle_error(self, e: BaseException):
@@ -92,6 +97,13 @@ class QThreadJobProgressDialog(QJobProgressDialog):
             parent: QWidget | None=None,
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
+        self.make_pool(max_workers=max_workers)
+        # self.pool = QThreadJobPool(max_workers=max_workers, parent=self)
+    
+    def make_pool(self, max_workers: int | None=None):
+        if self.pool is not None:
+            self.pool.shutdown(wait=True)
+            self.pool.deleteLater()
         self.pool = QThreadJobPool(max_workers=max_workers, parent=self)
         self._setup_connections()
 
@@ -107,5 +119,12 @@ class QProcessJobProgressDialog(QJobProgressDialog):
             parent: QWidget | None=None,
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
+        self.make_pool(max_workers=max_workers)
+        # self.pool = QProcessJobPool(max_workers=max_workers, parent=self)
+    
+    def make_pool(self, max_workers: int | None=None):
+        if self.pool is not None:
+            self.pool.shutdown(wait=True)
+            self.pool.deleteLater()
         self.pool = QProcessJobPool(max_workers=max_workers, parent=self)
         self._setup_connections()

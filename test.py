@@ -49,12 +49,12 @@ class Window(QMainWindow):
         self.d.show()
         # for i in range(self.total):
         #     self.d.schedule(counting, i)
-        # future = self.d.map(counting, range(self.total), chunksize=3)
-        future = self.d.map(fail_on_evens, range(self.total))
+        future = self.d.map(counting, range(self.total), chunksize=3)
+        # future = self.d.map(fail_on_evens, range(self.total))
         future.add_done_callback(print_future_result)
 
     def closeEvent(self, event):
-        if self.d.active:
+        if self.d is not None and self.d.active:
             self.d.on_cancel()
         event.accept()
 
