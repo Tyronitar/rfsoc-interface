@@ -1,0 +1,65 @@
+import time
+from concurrent.futures import Future, CancelledError
+from threading import current_thread
+from typing import Callable, Iterable
+
+from PySide6.QtWidgets import QMainWindow, QPushButton, QApplication
+from PySide6.QtCore import Qt
+
+from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog, QProcessJobProgressDialog
+from rfsocinterface.core.utils import print_future_result
+
+def square(n: int) -> int:
+    return n ** 2
+
+def counting(n: int, progress_callback: Callable | None=None):
+    if progress_callback is not None:
+        progress_callback()
+    time.sleep(0.05)
+    return n
+
+def fail_on_evens(n: int):
+    if n % 2 == 0:
+        raise ValueError('Evens are unlucky')
+    return n
+
+
+class Window(QMainWindow):
+    def __init__(self, total: int, parent = None):
+        super().__init__(parent)
+        self.count = 0
+        self.total = total
+
+        butt = QPushButton(self)
+        butt.setText('Push Me!')
+        butt.clicked.connect(self.on_push)
+        self.setCentralWidget(butt)
+    
+    def on_push(self):
+        self.d = QProcessJobProgressDialog(
+            labelText='Counting...',
+            cancelButtonText='Cancel',
+            minimum=0,
+            maximum=self.total,
+            max_workers=6,
+            parent=self,
+        )
+        self.d.setModal(True)
+        # d.setValue(0)
+        self.d.show()
+        # for i in range(self.total):
+        #     self.d.schedule(counting, i)
+        future = self.d.map(counting, range(self.total), chunksize=3)
+        # future = self.d.map(fail_on_evens, range(self.total))
+        future.add_done_callback(print_future_result)
+
+    def closeEvent(self, event):
+        if self.d is not None and self.d.active:
+            self.d.on_cancel()
+        event.accept()
+
+if __name__ == '__main__':
+    app = QApplication()
+    win = Window(total=100)
+    win.show()
+    app.exec()

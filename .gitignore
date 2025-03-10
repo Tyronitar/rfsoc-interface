@@ -175,6 +175,7 @@ data/
 
 # Plots
 *.pdf
+*.png
 
 # Configuration Files
 *.yml
