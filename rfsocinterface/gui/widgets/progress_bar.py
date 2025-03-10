@@ -1,3 +1,4 @@
+from typing import override
 from PySide6.QtWidgets import QWidget, QProgressDialog, QErrorMessage
 from PySide6.QtCore import Qt, Slot
 from typing import Callable, Any, Iterable
@@ -20,12 +21,21 @@ class QJobProgressDialog(QProgressDialog):
             parent: QWidget | None=None,
             flags: Qt.WindowType=Qt.WindowType.Dialog):
         super().__init__(labelText, cancelButtonText, minimum, maximum, parent=parent, flags=flags)
-        self.setValue(0)
+        self.setValue(minimum)
         self.em = QErrorMessage(parent=self)
         self.pool = None
+        self.max_workers=max_workers
+        self.canceled.connect(self.on_cancel)
     
     def make_pool(self, max_workers: int | None=None):
         raise NotImplementedError
+    
+    def reset(self):
+        # print('resetting')
+        super().reset()
+        self.setValue(self.minimum())
+        # print(self.minimum(), self.value())
+        # assert False
     
     @Slot(int)
     def handle_progress(self, val: int):
@@ -33,12 +43,14 @@ class QJobProgressDialog(QProgressDialog):
             new_val = self.value() + 1
         else:
             new_val = val
-        self.setValue(new_val)
         # print(f'Progress: {new_val}/{self.maximum()}')
+        self.setValue(new_val)
         if new_val >= self.maximum():
             if self.autoClose():
                 self.pool.close()
                 self.pool.join()
+            if self.autoReset():
+                self.reset()
     
     @Slot(BaseException)
     def handle_error(self, e: BaseException):
@@ -79,7 +91,6 @@ class QJobProgressDialog(QProgressDialog):
         return self.pool.active
     
     def _setup_connections(self):
-        self.canceled.connect(self.on_cancel)
         self.pool.progress.connect(self.handle_progress)
         self.pool.error.connect(self.handle_error)
         self.pool.result.connect(self.handle_result)
@@ -104,6 +115,7 @@ class QThreadJobProgressDialog(QJobProgressDialog):
         if self.pool is not None:
             self.pool.shutdown(wait=True)
             self.pool.deleteLater()
+        self.reset()
         self.pool = QThreadJobPool(max_workers=max_workers, parent=self)
         self._setup_connections()
 
@@ -126,5 +138,6 @@ class QProcessJobProgressDialog(QJobProgressDialog):
         if self.pool is not None:
             self.pool.shutdown(wait=True)
             self.pool.deleteLater()
+        self.reset()
         self.pool = QProcessJobPool(max_workers=max_workers, parent=self)
         self._setup_connections()

@@ -203,7 +203,7 @@ class QPoolExecutor(QObject):
         self.pool.shutdown(cancel_futures=False)
     
     def join(self, timeout: int=None):
-        return
+        self.pool.shutdown(wait=True)
     
     @property
     def active(self) -> bool:
@@ -227,7 +227,7 @@ class QProcessPoolExecutor(QPoolExecutor):
     @property
     def active(self) -> bool:
         with self.pool._shutdown_lock:
-            return self.pool._shutdown_thread
+            return not self.pool._shutdown_thread
 
 
 # NOTE: This must have a QEventLoop already running or the signals won't work
@@ -241,7 +241,7 @@ class QJobPool(JobPool, QObject):
         QObject.__init__(self, parent=parent)  # Initialize QObject
         JobPool.__init__(self, max_workers=max_workers, use_logical=True, close_timeout=close_timeout) 
     
-    def setup_signals(self):
+    def _setup_signals(self):
         self.executor.progress.connect(self.handle_progress)
         self.executor.error.connect(self.handle_error)
         self.executor.job_finished.connect(self.handle_job_finished)
@@ -267,10 +267,10 @@ class QThreadJobPool(QJobPool):
     def __init__(self, max_workers: int | None=None, close_timeout: int | None=None, parent=None):
         super().__init__(max_workers=max_workers, close_timeout=close_timeout, parent=parent)
         self.executor = QThreadPoolExecutor(max_workers=self.max_workers, parent=self)
-        self.setup_signals()
+        self._setup_signals()
 
 class QProcessJobPool(QJobPool):
     def __init__(self, max_workers: int | None=None, close_timeout: int | None=None, parent=None):
         super().__init__(max_workers=max_workers, close_timeout=close_timeout, parent=parent)
         self.executor = QProcessPoolExecutor(max_workers=self.max_workers, parent=self)
-        self.setup_signals()
+        self._setup_signals()

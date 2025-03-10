@@ -1,8 +1,11 @@
 from typing import Callable
 import time
+from concurrent.futures import wait
 
 import pytest
+from PySide6.QtCore import QCoreApplication
 from rfsocinterface.core.pool import QThreadJobPool, QProcessJobPool
+from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog, QProcessJobProgressDialog
 
 from tests.utils import assert_equal
 
@@ -97,3 +100,80 @@ def test_qprocess_job_pool_exception(qtbot):
     with pytest.raises(ValueError, match='Four is unlucky'):
         print(future.exception())
         raise future.exception()
+
+#
+# Progress Dialog Tests
+#
+
+def test_qthread_pd(qtbot):
+    n_tasks = 30
+    pd = QThreadJobProgressDialog(labelText='Test Dialog', maximum=n_tasks, max_workers=4)
+    pd.setAutoClose(False)
+    pd.setAutoReset(False)
+    expected_signals = [(pd.pool.progress, 'progress')] * n_tasks
+    with qtbot.waitSignals(expected_signals):
+        future = pd.map(fibonacci, range(n_tasks))
+    assert pd.value() == n_tasks
+    assert_equal(list(future.result()), FIBONACCI[:n_tasks])
+
+    # Run again to make sure values are reset properly
+    pd.reset()
+    with qtbot.waitSignals(expected_signals):
+        future = pd.map(fibonacci, range(n_tasks))
+    assert pd.value() == n_tasks
+    assert_equal(list(future.result()), FIBONACCI[:n_tasks])
+
+def test_qthread_pd_make_pool(qtbot):
+    n_tasks = 30
+    pd = QThreadJobProgressDialog(labelText='Test Dialog', maximum=n_tasks, max_workers=4)
+    pd.setAutoReset(False)
+    expected_signals = [(pd.pool.progress, 'progress')] * n_tasks
+    with qtbot.waitSignals(expected_signals):
+        future = pd.map(fibonacci, range(n_tasks))
+    assert pd.value() == n_tasks
+    assert_equal(list(future.result()), FIBONACCI[:n_tasks])
+
+    # Create a new pool and check that it works as expected
+    pd.make_pool(max_workers=3)
+    expected_signals = [(pd.pool.progress, 'progress')] * n_tasks
+    with qtbot.waitSignals(expected_signals):
+        future = pd.map(fibonacci, range(n_tasks))
+    assert pd.value() == n_tasks
+    assert_equal(list(future.result()), FIBONACCI[:n_tasks])
+
+
+def test_qprocess_pd(qtbot):
+    n_tasks = 30
+    pd = QProcessJobProgressDialog(labelText='Test Dialog', maximum=n_tasks, max_workers=4)
+    pd.setAutoClose(False)
+    pd.setAutoReset(False)
+    expected_signals = [(pd.pool.progress, 'progress')] * n_tasks
+    with qtbot.waitSignals(expected_signals):
+        future = pd.map(fibonacci, range(n_tasks))
+    assert pd.value() == n_tasks
+    assert_equal(list(future.result()), FIBONACCI[:n_tasks])
+
+    # Run again to make sure values are reset properly
+    pd.reset()
+    with qtbot.waitSignals(expected_signals):
+        future = pd.map(fibonacci, range(n_tasks))
+    assert pd.value() == n_tasks
+    assert_equal(list(future.result()), FIBONACCI[:n_tasks])
+
+def test_qprocess_pd_make_pool(qtbot):
+    n_tasks = 30
+    pd = QProcessJobProgressDialog(labelText='Test Dialog', maximum=n_tasks, max_workers=4)
+    pd.setAutoReset(False)
+    expected_signals = [(pd.pool.progress, 'progress')] * n_tasks
+    with qtbot.waitSignals(expected_signals):
+        future = pd.map(fibonacci, range(n_tasks))
+    assert pd.value() == n_tasks
+    assert_equal(list(future.result()), FIBONACCI[:n_tasks])
+
+    # Create a new pool and check that it works as expected
+    pd.make_pool(max_workers=3)
+    expected_signals = [(pd.pool.progress, 'progress')] * n_tasks
+    with qtbot.waitSignals(expected_signals):
+        future = pd.map(fibonacci, range(n_tasks))
+    assert pd.value() == n_tasks
+    assert_equal(list(future.result()), FIBONACCI[:n_tasks])
