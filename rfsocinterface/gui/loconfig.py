@@ -3,18 +3,22 @@
 from pathlib import Path
 from typing import Literal, Type, Callable, TYPE_CHECKING, Iterator
 from functools import partial
+from concurrent.futures import Future
+
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import Figure
 
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog, QTabWidget, QDialogButtonBox, QPushButton
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, Slot
 
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.core.losweep import LoSweepData, get_tone_list, LoSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
-from rfsocinterface.gui.widgets.progress_bar import ProgressBarDialog, SequentialProgressBarDialog
+from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
 from rfsocinterface.gui.initialization import InitializationWidget
-from rfsocinterface.core.utils import write_fList, Number, test_connection, add_callbacks, Job, get_num_value, PathLike, ensure_path, JobInterrupt, SettingsError
+from rfsocinterface.core.utils import get_num_value, ensure_path, SettingsError
 
 from kidpy import kidpy
 # from kidpy3 import RFSOC
@@ -44,6 +48,8 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
             or 'elevation'.
         tone_path (Path): The path to the selected tone list file.
     """
+    start_fit = Signal(object, QThreadJobProgressDialog)
+    start_plot = Signal(QThreadJobProgressDialog)
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
@@ -52,6 +58,8 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         self.main_window = main_window
         self.rfsocs = rfsocs
         self.settings = settings
+        self.start_fit.connect(self._fit_sweep)
+        self.start_plot.connect(self._plot_fit)
 
         self.channel_comboBox.set_default_title('Select Channels...')
 
@@ -108,9 +116,6 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
                 item.setCheckState(Qt.CheckState.Unchecked)
                 total += 1
     
-    def cancel_sweep(self):
-        raise JobInterrupt('LO Sweep Cancelled') 
-    
     def get_selected_channels(self) -> Iterator[tuple[RFSOCWrapper, int]]:
         checked_ids = self.channel_comboBox.checked_indices()
         checked_text = [self.channel_comboBox.itemText(i) for i in checked_ids]
@@ -156,12 +161,6 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         valon = rfsoc.valon_a if chan == 1 else rfsoc.valon_b
 
         chan_name = 'rfsoc2'
-        pd = QProgressDialog('Running...', 'Cancel', 0, 100, self)
-        # pd.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
-        pd.move(self.geometry().center() - pd.geometry().center())
-        pd.show()
-        QApplication.processEvents()
-        # pd.canceled.connect(self.cancel_sweep)
 
         # For running on ONR Computer
         # TODO: Fix this
@@ -184,14 +183,14 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
             )
             rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
             
-        savefile = onrkidpy.get_filename(
+        self.savefile = onrkidpy.get_filename(
             type="LO", chan_name=chan_name
         )
         match self.buttonGroup.checkedButton():
             case self.filename_elevation_radioButton:
-                savefile += f'_elev_{self.filename_elevation_lineEdit.text()}'
+                self.savefile += f'_elev_{self.filename_elevation_lineEdit.text()}'
             case self.filename_temperature_radioButton:
-                savefile += f'_temp_{self.filename_temperature_lineEdit.text()}'
+                self.savefile += f'_temp_{self.filename_temperature_lineEdit.text()}'
             case _:
                 pass
 
@@ -215,7 +214,22 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         freq_step = get_num_value(self.df_lineEdit)
         full_span = get_num_value(self.deltaf_lineEdit)
         n_steps = full_span / freq_step
-        sweep_data = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
+
+        pd = QThreadJobProgressDialog(labelText='Running LO Sweep...',  maximum=n_steps, max_workers=1, parent=self)
+        pd.setAutoClose(False)
+        # pd.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
+        # pd.move(self.geometry().center() - pd.geometry().center())
+        pd.show()
+        QApplication.processEvents()
+        # pd.canceled.connect(self.cancel_sweep)
+
+        self.dw = DiagnosticsDialog(None, self.savefile, parent=self)
+        self.dw.accepted.connect(lambda: self.save_sweep(self.savefile))
+        self.dw.setWindowModality(Qt.WindowModality.WindowModal)
+
+        sweep_data_future = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
+        # sweep_data_future.add_done_callback(lambda _: self._fit_sweep(sweep, pd))
+        sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd))
 
         # For running on local computer
         # sweep_file = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
@@ -224,39 +238,67 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         # savefile = Path(savefile).name
         # sweep_data = LoSweepData.from_file(tone_list, sweep_file, chanmask)
 
-        self.sweep_data = sweep_data
-        dw = DiagnosticsDialog(sweep_data, savefile, parent=self)
-        dw.accepted.connect(lambda: self.save_sweep(savefile))
-        dw.setWindowModality(Qt.WindowModality.WindowModal)
+    def _fit_sweep(self, sweep: LoSweep, pd: QThreadJobProgressDialog):
+        while not sweep._processed:
+            QApplication.processEvents()
+            time.sleep(0.1)
+        self.sweep_data = sweep.data
+        self.dw.sweep = self.sweep_data
 
-        pb = SequentialProgressBarDialog(parent=self)
-        pb.move(self.geometry().center() - pb.geometry().center())
-        # pb.canceled.connect(self.cancel_sweep)
-        nchan = sweep_data.nchan
-        pb.add_job(sweep_data.fit, num_tasks=nchan, start_message='Fitting sweep data...', do_print=True)
+        # pb = SequentialProgressBarDialog(parent=self)
+        # pb.move(self.geometry().center() - pb.geometry().center())
+        # # pb.canceled.connect(self.cancel_sweep)
+        nchan = self.sweep_data.ngoodchan
+        # pd = QThreadJobProgressDialog(labelText='Fitting sweep results...', parent=self, maximum=nchan)
+        # pd = QThreadJobProgressDialog(labelText='...',  maximum=nchan, parent=self)
+        pd.setValue(0)
+        pd.setLabelText('Fitting sweep results...')
+        pd.setMaximum(self.sweep_data.ngoodchan)
+        QApplication.processEvents()
+        pd.make_pool()
+        future = self.sweep_data.fit(pd=pd)
+        # future.add_done_callback(lambda _: self._plot_fit(pd))
+        future.add_done_callback(lambda _: self.start_plot.emit(pd))
+    
+    def _plot_fit(self, pd: QThreadJobProgressDialog):
+        nchan = self.sweep_data.ngoodchan
+        # pd = QThreadJobProgressDialog(labelText='Plotting fit results...', parent=self, maximum=nchan)
+        pd.setValue(0)
+        pd.setLabelText('Plotting fit results...')
+        pd.setMaximum(self.sweep_data.nchan)
+        pd.setAutoClose(True)
+        QApplication.processEvents()
+        fig, future = self.dw.plot(pd=pd)
+        self.dw.set_figure(fig)
+        future.add_done_callback(lambda _: self._show_diagnostics())
+    
+    def _show_diagnostics(self):
+        plt.tight_layout()
+        # self.dw.set_figure(fig)
+        self.dw.show()
 
-        # pb.add_job(dw.plot, num_tasks=0, start_message='Plotting fit results...')
-        pb.show()
-        # self.pb = pb
-        # pb.allFinished.connect(lambda: dw.set_figure(pb.get_result(1)))
-        pb.allFinished.connect(lambda: self.plot_sweep(sweep_data, dw, pb))
-        # pb.allFinished.connect(dw.show)
-        # pb.allFinished.connect(pb.close)
-        pb.start()
+        # # pb.add_job(dw.plot, num_tasks=0, start_message='Plotting fit results...')
+        # pb.show()
+        # # self.pb = pb
+        # # pb.allFinished.connect(lambda: dw.set_figure(pb.get_result(1)))
+        # pb.allFinished.connect(lambda: self.plot_sweep(sweep_data, dw, pb))
+        # # pb.allFinished.connect(dw.show)
+        # # pb.allFinished.connect(pb.close)
+        # pb.start()
     
     @ensure_path(1)
     def save_sweep(self, savefile: Path):
         self.sweep_data.saveh5(savefile)
         self.sweep_data.savenp(savefile)
     
-    def plot_sweep(self, sweep: LoSweepData, dw: DiagnosticsDialog, pb: SequentialProgressBarDialog):
-        pb.setLabelText('Plotting fit results...')
-        pb.reset()
-        pb.setMaximum(sweep.nchan)
-        # pb.set_total_tasks(sweep.nchan)
-        dw.plot(signal=pb.incrementSignal)
-        pb.close()
-        dw.show()
+    # def plot_sweep(self, sweep: LoSweepData, dw: DiagnosticsDialog, pb: SequentialProgressBarDialog):
+    #     pb.setLabelText('Plotting fit results...')
+    #     pb.reset()
+    #     pb.setMaximum(sweep.nchan)
+    #     # pb.set_total_tasks(sweep.nchan)
+    #     dw.plot(signal=pb.incrementSignal)
+    #     pb.close()
+    #     dw.show()
     
     def save_LO_sweep(self, sweep: LoSweepData):
         fname, _ = QFileDialog.getSaveFileName(

@@ -1,4 +1,6 @@
 from pathlib import Path
+
+
 from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot, Signal
 from PySide6.QtGui import QDoubleValidator, QIcon, QRegularExpressionValidator, QIntValidator
 from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
@@ -262,7 +264,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     def hide_error_labels(self):
         for label in self.error_labels:
             label.setVisible(False)
-
+        
     def make_error_labels(self):
         # Attenuation Error Labels
         att_err_str = 'Attenuation must be in range [0.0, 31.75]'
@@ -488,16 +490,15 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         elif valid:
             att = get_num_value(lineEdit)
             self.setCursor(Qt.CursorShape.WaitCursor)
-            self.rfsoc.atten_transceiver.set_atten(addr, att)
+            self.rfsoc.set_atten(addr, att)
             self.setCursor(Qt.CursorShape.ArrowCursor)
             print('Succesfully set attenuation')
     
     def set_lo_freq(self):
         lo_freq = get_num_value(self.lo_freq_lineEdit)
         self.setCursor(Qt.CursorShape.WaitCursor)
-        valon = self.rfsoc.valon_a if self.channel == 1 else self.rfsoc.valon_b
+        self.rfsoc.set_frequency(self.channel, lo_freq)
         self.setCursor(Qt.CursorShape.ArrowCursor)
-        valon.set_frequency(self.channel, lo_freq)
     
     def set_defaults(self):
         chan_settings = self.rfsoc.settings[f'channel{self.channel}']

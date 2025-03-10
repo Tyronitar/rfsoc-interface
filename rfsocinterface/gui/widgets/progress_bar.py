@@ -1,77 +1,143 @@
-from PySide6.QtWidgets import QDialog, QWidget, QApplication, QProgressDialog
-from PySide6.QtCore import Signal, Qt
-from typing import Callable, Any
+from typing import override
+from PySide6.QtWidgets import QWidget, QProgressDialog, QErrorMessage
+from PySide6.QtCore import Qt, Slot
+from typing import Callable, Any, Iterable
+from concurrent.futures import Future
+import time
 
-from rfsocinterface.gui.uic.progress_bar_ui import Ui_Dialog
-from rfsocinterface.core.utils import Job, P, JobQueue, SequentialJobQueue
+from rfsocinterface.core.utils import P, R, CombinedFuture
+from rfsocinterface.core.pool import QThreadJobPool, QProcessJobPool
 
 
-class ProgressBarDialog(QProgressDialog):
-    incrementSignal = Signal()
+class QJobProgressDialog(QProgressDialog):
 
-    def __init__(self, max_threads: int=1, parent: QWidget | None=None):
-        super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
-        # self.setupUi(self)
+    def __init__(
+            self,
+            labelText: str='',
+            cancelButtonText='Cancel',
+            minimum: int=0,
+            maximum: int=100,
+            max_workers: int=1,
+            parent: QWidget | None=None,
+            flags: Qt.WindowType=Qt.WindowType.Dialog):
+        super().__init__(labelText, cancelButtonText, minimum, maximum, parent=parent, flags=flags)
+        self.setValue(minimum)
+        self.em = QErrorMessage(parent=self)
+        self.pool = None
+        self.max_workers=max_workers
+        self.canceled.connect(self.on_cancel)
+    
+    def make_pool(self, max_workers: int | None=None):
+        raise NotImplementedError
+    
+    def reset(self):
+        # print('resetting')
+        super().reset()
+        self.setValue(self.minimum())
+        # print(self.minimum(), self.value())
+        # assert False
+    
+    @Slot(int)
+    def handle_progress(self, val: int):
+        if val < 0:
+            new_val = self.value() + 1
+        else:
+            new_val = val
+        # print(f'Progress: {new_val}/{self.maximum()}')
+        self.setValue(new_val)
+        if new_val >= self.maximum():
+            if self.autoClose():
+                self.pool.close()
+                self.pool.join()
+            if self.autoReset():
+                self.reset()
+    
+    @Slot(BaseException)
+    def handle_error(self, e: BaseException):
+        if hasattr(e, 'message'):
+            self.em.showMessage(e.message)
+        else:
+            self.em.showMessage(str(e))
+    
+    @Slot(object)
+    def handle_result(self, val: Any):
+        pass
+    
+    def schedule(
+            self,
+            fn: Callable[P, R],
+            *args: P.args,
+            done_callbacks: list[Callable[[Future], None]]=[],
+            **kwargs: P.kwargs,
+    ) -> Future[R]:
+        return self.pool.schedule(fn, *args, done_callbacks=done_callbacks, **kwargs)
+    
+    def map(
+            self,
+            fn: Callable[..., R],
+            *iterables: Iterable[Any],
+            done_callbacks: list[Callable[[Future], None]]=[],
+            timeout: float | None=None,
+            chunksize: int=1,
+    ) -> CombinedFuture[Iterable[R]]:
+        return self.pool.map(fn, *iterables, done_callbacks=done_callbacks, timeout=timeout, chunksize=chunksize)
+    
+    @Slot()
+    def on_cancel(self):
+        self.pool.shutdown(wait=True)
+    
+    @property
+    def active(self) -> bool:
+        return self.pool.active
+    
+    def _setup_connections(self):
+        self.pool.progress.connect(self.handle_progress)
+        self.pool.error.connect(self.handle_error)
+        self.pool.result.connect(self.handle_result)
+    
+
+class QThreadJobProgressDialog(QJobProgressDialog):
+
+    def __init__(
+            self,
+            labelText: str='',
+            cancelButtonText='Cancel',
+            minimum: int=0,
+            maximum: int=100,
+            max_workers: int=1,
+            parent: QWidget | None=None,
+            flags: Qt.WindowType=Qt.WindowType.Dialog):
+        super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
+        self.make_pool(max_workers=max_workers)
+        # self.pool = QThreadJobPool(max_workers=max_workers, parent=self)
+    
+    def make_pool(self, max_workers: int | None=None):
+        if self.pool is not None:
+            self.pool.shutdown(wait=True)
+            self.pool.deleteLater()
         self.reset()
-        self.job_queue = JobQueue(max_threads=max_threads)
-        self.incrementSignal.connect(self.increment)
-    
-    # def reset(self):
-    #     self.total_tasks = 0
-    #     self._completed_tasks = 0
-    #     self.progressBar.setValue(0)
-    
-    def add_job(self, func: Callable[P, None], *args: P.args, num_tasks: int=1, use_main_thread=False, start_message: str='', **kwargs: P.kwargs):
-        job = Job(func, *args, **kwargs)
-        job.updateProgress.connect(self.increment)
-        job.set_start_message(start_message)
-        # job.finishWork.connect(self.worker_finished, job)
-        self.job_queue.add_job(job, use_main_thread=use_main_thread)
-        job.started.connect(self.worker_started)
-        self.setMaximum(num_tasks)
-        # self.total_tasks += num_tasks
-    
-    def worker_finished(self, message: str):
-        if message:
-            self.setLabelText(message)
-            # self.label.setText(message)
+        self.pool = QThreadJobPool(max_workers=max_workers, parent=self)
+        self._setup_connections()
 
-    def worker_started(self, message: str):
-        if message:
-            self.setLabelText(message)
-            # self.label.setText(message)
-    
-    def completed(self) -> bool:
-        return self._completed_tasks >= self.total_tasks
-    
-    # def start_next(self):
-    #     worker = self.job_queue.pop()
-    #     worker.start()
+class QProcessJobProgressDialog(QJobProgressDialog):
 
-    def start(self):
-        self.job_queue.run_all()
-        # for worker in self.job_queue:
-        #     worker.start()
+    def __init__(
+            self,
+            labelText: str='',
+            cancelButtonText='Cancel',
+            minimum: int=0,
+            maximum: int=100,
+            max_workers: int=1,
+            parent: QWidget | None=None,
+            flags: Qt.WindowType=Qt.WindowType.Dialog):
+        super().__init__(labelText, cancelButtonText, minimum, maximum, max_workers=max_workers, parent=parent, flags=flags)
+        self.make_pool(max_workers=max_workers)
+        # self.pool = QProcessJobPool(max_workers=max_workers, parent=self)
     
-    def set_total_tasks(self, total: int):
-        self.total_tasks = total
-    
-    def increment(self):
-        self.setValue(self.value() + 1)
-        # if self._completed_tasks < self.total_tasks:
-        #     self._completed_tasks += 1
-        #     self.progressBar.setValue(int((self._completed_tasks / self.total_tasks) * 100))
-
-class SequentialProgressBarDialog(ProgressBarDialog):
-
-    allFinished = Signal()
-
-    def __init__(self, parent: QWidget | None = None):
-        super().__init__(max_threads=1, parent=parent)
-        self.job_queue = SequentialJobQueue()
-        self.job_queue.allFinished.connect(self.allFinished.emit)
-        self.job_queue.allFinished.connect(lambda: print('jobs done'))
-    
-    def get_result(self, idx: int) -> Any:
-        return self.job_queue.results[idx]
+    def make_pool(self, max_workers: int | None=None):
+        if self.pool is not None:
+            self.pool.shutdown(wait=True)
+            self.pool.deleteLater()
+        self.reset()
+        self.pool = QProcessJobPool(max_workers=max_workers, parent=self)
+        self._setup_connections()

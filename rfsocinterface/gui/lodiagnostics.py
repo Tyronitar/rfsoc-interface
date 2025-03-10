@@ -4,6 +4,7 @@ mpl.use('QtAgg')
 
 from typing import Callable
 from pathlib import Path
+from concurrent.futures import Future
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,7 +25,8 @@ from PySide6.QtWidgets import (
 from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
-from rfsocinterface.core.utils import Job, PathLike
+from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
+from rfsocinterface.core.utils import PathLike
 
 DPI = 100
 
@@ -331,13 +333,14 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.canvas.set_figure(fig)
         self.canvas.set_flagged(self.sweep.flagged)
 
-    def plot(self, fig_width=15, signal: SignalInstance=None):
+    def plot(self, fig_width=15, pd: QThreadJobProgressDialog | None=None) -> tuple[Figure, Future]:
         """Plot all of the resonators."""
-        fig = self.make_plot(fig_width=fig_width, signal=signal)
+        return self.make_plot(fig_width=fig_width, pd=pd)
+        fig = self.make_plot(fig_width=fig_width, pd=pd)
         self.set_figure(fig)
     
-    def make_plot(self, fig_width=15, signal: SignalInstance=None) -> Figure:
-        return self.sweep.plot(ncols=fig_width, signal=signal)
+    def make_plot(self, fig_width=15, pd: QThreadJobProgressDialog | None=None) -> tuple[Figure, Future]:
+        return self.sweep.plot(ncols=fig_width, pd=pd)
 
     def toggle_unflagged(self):
         """Toggle whether the unflagged resonator plots are shown."""
