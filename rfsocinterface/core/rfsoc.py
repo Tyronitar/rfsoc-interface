@@ -131,6 +131,10 @@ class RFSOCWrapper:
             path = ''
         self.rfsoc.upload_bitstream(str(path))
     
+    def set_frequency(self, channel: int, freq: float):
+        valon = self.valon_a if channel == 1 else self.valon_b
+        valon.set_frequency(channel, freq)
+    
     def get_tone_list(self, chan: int=1) -> tuple[npt.NDArray, npt.NDArray]:
         return self.rfsoc.get_tone_list(chan)
     
