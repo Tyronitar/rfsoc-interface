@@ -14,16 +14,10 @@ from rfsocinterface.gui.initialization import InitializationWidget
 from rfsocinterface.gui.loconfig import LoConfigWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.data_streaming import DataStreamingWidget
+from rfsocinterface.gui.main_widget import MainWidget
+from rfsocinterface.gui.imaging import ImagingWidget
 
-from rfsocinterface.core.utils import SettingsError, ensure_path, convert_to_kidy_format
-
-TAB_NAMES = {
-    "initialization",
-    "losweep",
-    "telescope",
-    "data",
-    "imaging",
-}
+from rfsocinterface.core.utils import SettingsError, ensure_path, convert_to_kidy_format, TabName
 
 import json
 
@@ -38,15 +32,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         with settings_file.open('rb') as f:
             self.settings = tomllib.load(f)
         
-        self.tabs = {}
+        self.tabs: dict[TabName, MainWidget] = {}
         self.rfsocs: list[RFSOCWrapper] = []
         self.init_rfsocs()
-        # self.init_kidpy()
 
         self.setupUi(self)
         self._additional_ui_setup()
         self.tabWidget.currentChanged.connect(self.resize_to_current)
-        # Do this to 
         self.tabWidget.setCurrentIndex(0)
         self.resize_to_current(0)
 
@@ -60,7 +52,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.verticalLayout.addWidget(self.initialization_widget)
         self.tabWidget.addTab(self.initialization_tab, "")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.initialization_tab), QCoreApplication.translate("MainWindow", u"Initialization", None))
-        self.tabs['initialization'] = self.initialization_widget
+        self.tabs[TabName.INITIALIZATION] = self.initialization_widget
     
     def _make_losweep_tab(self):
         self.losweep_tab = QWidget()
@@ -72,59 +64,63 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.verticalLayout_4.addWidget(self.losweep_widget)
         self.tabWidget.addTab(self.losweep_tab, "")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.losweep_tab), QCoreApplication.translate("MainWindow", u"LO Sweep", None))
-        self.tabs['losweep'] = self.losweep_widget
+        self.tabs[TabName.LOSWEEP] = self.losweep_widget
     
     def _make_telescope_tab(self):
-        from rfsocinterface.telescope import TelescopeControlWidget
+        from rfsocinterface.gui.telescope import TelescopeControlWidget
         self.telescope_tab = QWidget()
         self.telescope_tab.setObjectName(u"telescope_tab")
         self.gridLayout = QGridLayout(self.telescope_tab)
         self.gridLayout.setObjectName(u"gridLayout")
-        self.telescope_widget = TelescopeControlWidget(self, self.rfsocs, self.telescope_tab)
+        self.telescope_widget = TelescopeControlWidget(self, self.rfsocs, self.settings, self.telescope_tab)
         self.telescope_widget.setObjectName(u"telescope_widget")
         self.gridLayout.addWidget(self.telescope_widget, 0, 0, 1, 1)
         self.tabWidget.addTab(self.telescope_tab, "")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.telescope_tab), QCoreApplication.translate("MainWindow", u"Telescope", None))
-        self.tabs['telescope'] = self.telescope_widget
+        self.tabs[TabName.TELESCOPE] = self.telescope_widget
     
     def _make_data_tab(self):
         self.data_tab = QWidget()
         self.data_tab.setObjectName(u"data_tab")
         self.tabWidget.addTab(self.data_tab, "")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.data_tab), QCoreApplication.translate("MainWindow", u"Data", None))
-        self.data_widget = DataStreamingWidget(self, self.rfsocs, self.data_tab)
+        self.data_widget = DataStreamingWidget(self, self.rfsocs, self.settings, self.data_tab)
         self.verticalLayout_5 = QVBoxLayout(self.data_tab)
         self.verticalLayout_5.setObjectName(u"verticalLayout_5")
         self.verticalLayout_5.addWidget(self.data_widget)
-        self.tabs['data'] = self.data_widget
-        # self.tabs.append(self.data_widget)
+        self.tabs[TabName.DATA] = self.data_widget
     
     def _make_imaging_tab(self):
         self.imaging_tab = QWidget()
         self.imaging_tab.setObjectName(u"imaging_tab")
         self.tabWidget.addTab(self.imaging_tab, "")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.imaging_tab), QCoreApplication.translate("MainWindow", u"Imaging", None))
-        # self.tabs.append(self.imaging_widget)
+        self.imaging_widget = ImagingWidget(self, self.rfsocs, self.settings, self.imaging_tab)
+        self.verticalLayout_6 = QVBoxLayout(self.imaging_tab)
+        self.verticalLayout_6.setObjectName(u"verticalLayout_6")
+        self.verticalLayout_6.addWidget(self.imaging_widget)
+        self.tabs[TabName.IMAGING] = self.imaging_tab
     
     def _additional_ui_setup(self):
         self.tabWidget = QTabWidget(self.centralwidget)
         self.tabWidget.setObjectName(u"tabWidget")
 
         self.horizontalLayout.addWidget(self.tabWidget)
+        tab: str
         for tab in self.settings['general']['tabs']:
-            match tab:
-                case "initialization":
+            match tab.lower():
+                case TabName.INITIALIZATION:
                     self._make_initialization_tab()
-                case "losweep":
+                case TabName.LOSWEEP:
                     self._make_losweep_tab()
-                case "telescope":
+                case TabName.TELESCOPE:
                     self._make_telescope_tab()
-                case "data":
+                case TabName.DATA:
                     self._make_data_tab()
-                case "imaging":
+                case TabName.IMAGING:
                     self._make_imaging_tab()
                 case _:
-                    raise SettingsError(f'Invalid name "{tab}" in general.tabs; valid options are {TAB_NAMES}')
+                    raise SettingsError(f'Invalid name "{tab}" in general.tabs; valid options are {[name.value for name in TabName]}')
 
         self.tabWidget.setCurrentIndex(0)
 

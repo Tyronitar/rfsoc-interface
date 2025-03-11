@@ -10,20 +10,20 @@ from kidpy3 import capture
 from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.utils import get_num_value, get_lineEdit_text, PathValidator, get_filename
+from rfsocinterface.gui.main_widget import MainWidget
 
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
-class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
-    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], parent=None):
-        super(DataStreamingWidget, self).__init__(parent)
+class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
+    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent=None):
+        super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
+
         self.channel_comboBox.set_default_title('Select Channels...')
-        self.main_window = main_window 
-        self.rfsocs = rfsocs
         self.setup_connections()
-        self.update_channel_choices()
+        self.update_channel_choices(self.channel_comboBox)
         self.data_locale_checkBox.setCheckState(Qt.CheckState.Checked)
         self.change_save_location_visibility(False)
         self.update_default_save_location()
@@ -63,15 +63,6 @@ class DataStreamingWidget(QWidget, Ui_DataStreamingWidget):
         if self.data_locale_checkBox.isChecked():
             self.save_locale_label.setText(f'Saving to "{self._default_path}"')
 
-    def update_channel_choices(self):
-        total = 0
-        for rfsoc in self.rfsocs:
-            for i in range(2):
-                self.channel_comboBox.addItem(rfsoc.channel_as_text(i + 1))
-                item = self.channel_comboBox.model().item(total, 0)
-                item.setCheckState(Qt.CheckState.Unchecked)
-                total += 1
-    
     def get_selected_channels(self) -> Iterator[tuple[RFSOCWrapper, int]]:
         checked_ids = self.channel_comboBox.checked_indices()
         checked_text = [self.channel_comboBox.itemText(i) for i in checked_ids]

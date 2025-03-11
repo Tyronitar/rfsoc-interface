@@ -2,7 +2,7 @@ import functools
 import os
 from pathlib import Path
 import json
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from dataclasses import dataclass
 from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type, Literal
 from datetime import datetime
@@ -30,6 +30,14 @@ MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 # Number = TypeVar('Number', int, float, complex, bytes)
 FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
+
+class TabName(StrEnum):
+    """Possible tab names for the GUI."""
+    INITIALIZATION = 'initialization'
+    LOSWEEP = 'losweep'
+    TELESCOPE = 'telescope'
+    DATA = 'data'
+    IMAGING = 'imaging'
 
 # Generic types for type hints
 T = TypeVar('T')

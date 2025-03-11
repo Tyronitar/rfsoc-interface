@@ -9,6 +9,8 @@ from matplotlib.figure import Figure
 from rfsocinterface.core.camera import SKPR_Camera_Control
 from kidpy import kidpy
 from rfsocinterface.core.utils import analog_to_digital, digital_to_analog, P, R
+from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.gui.main_widget import MainWidget
 from typing import Callable, Concatenate, Any, TYPE_CHECKING
 import functools
 import time
@@ -561,13 +563,13 @@ class TelescopeMotorController(QObject):
             self.ser_az.reset_output_buffer()
             
 
-class TelescopeControlWidget(QWidget, Ui_TelescopeControlWidget):
+class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
-    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], parent: QWidget | None=None):
-        super().__init__(parent)
+    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None):
+        super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
-        self.rfsocs = rfsocs
-        self.ctrl = TelescopeMotorController()
+        return
+
         self.interval = 200  # Milliseconds between update calls
         self.ze_jog_voltage = 1  # Degrees / second
         self.az_jog_voltage = 5  # Degrees / second
