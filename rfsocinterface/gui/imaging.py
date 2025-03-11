@@ -11,6 +11,10 @@ from rfsocinterface.gui.telescope import TelescopeMotorController
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
+
+def dummy_func(string: str, num: float, check: bool):
+    print(f'"{string}", {num}, {check}')
+
 class ImagingWidget(MainWidget, Ui_ImagingWidget):
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
         super().__init__(main_window, rfsocs, settings, parent=parent)
@@ -21,10 +25,10 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         self.patterns: list[FunctionWidget] = []
 
         self.stacked_layout = QStackedLayout(parent=self)
-        self.dither_groupBox.layout().addLayout(self.stacked_layout)
+        self.dither_groupBox.layout().addLayout(self.stacked_layout, 2, 0, 1, 2)
 
         self.add_dither_pattern(
-            'Scan Mode',
+            'AZ Scan Mode',
             TelescopeMotorController.az_scan_mode,
             [
                 ('Start: ', ArgumentType.FLOAT),
@@ -33,8 +37,19 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
                 ('N Repeats: ', ArgumentType.INT),
             ]
         )
-        self.dither_comboBox.currentIndexChanged.connect(self.choose_pattern)
-        self.dither_comboBox.setCurrentIndex(-1)
+        self.add_dither_pattern(
+            'Test Pattern',
+            dummy_func,
+            [
+                ('Arg 1: ', ArgumentType.STR),
+                ('Arg 2: ', ArgumentType.FLOAT),
+                ('Arg 3', ArgumentType.BOOL),
+            ]
+        )
+        # self.dither_comboBox.setPlaceholderText('Choose dither pattern...')
+        self.dither_comboBox.activated.connect(self.choose_pattern)
+        self.pushButton.clicked.connect(self.run)
+        self.choose_pattern(0)
     
     def add_dither_pattern(self, label: str, fn: Callable, args: list[tuple[str, ArgumentType]]):
         pattern = FunctionWidget(fn, args=args, parent=self)
@@ -42,16 +57,15 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         self.dither_comboBox.addItem(label)
         self.stacked_layout.addWidget(pattern)
     
-    def set_pattern_visibility(self, visible: bool):
-        for pattern in self.patterns:
-            pattern.setVisible(visible)
-    
     def choose_pattern(self, index: int):
-        if index == -1:
-            # TODO: Remove current function widget from screen
-            self.set_pattern_visibility(False)
-        self.set_pattern_visibility(True)
         print(f'Showing current pattern: {index}')
         self.stacked_layout.setCurrentIndex(index)
+        self.active_pattern = self.patterns[index]
         # pattern = self.patterns[index]
+    
+    def run(self):
+        # TODO: Start streaming data
+        
+        # TODO: validate the inputs somehow...
+        self.active_pattern.call_function()
 
