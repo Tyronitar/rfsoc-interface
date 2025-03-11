@@ -31,10 +31,12 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
             'AZ Scan Mode',
             TelescopeMotorController.az_scan_mode,
             [
-                ('Start: ', ArgumentType.FLOAT),
-                ('Stop: ', ArgumentType.FLOAT),
                 ('File: ', ArgumentType.FILE),
+                ('Starting azimuth: ', ArgumentType.FLOAT),
+                ('End azimuth: ', ArgumentType.FLOAT),
                 ('N Repeats: ', ArgumentType.INT),
+                ('Zenith angle dither: ', ArgumentType.FLOAT),
+                ('Return to starting position', ArgumentType.BOOL),
             ]
         )
         self.add_dither_pattern(
@@ -58,7 +60,6 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         self.stacked_layout.addWidget(pattern)
     
     def choose_pattern(self, index: int):
-        print(f'Showing current pattern: {index}')
         self.stacked_layout.setCurrentIndex(index)
         self.active_pattern = self.patterns[index]
         # pattern = self.patterns[index]

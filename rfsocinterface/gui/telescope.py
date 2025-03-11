@@ -333,12 +333,29 @@ class TelescopeMotorController(QObject):
         if scan_mode:
             return position_data
 
-    def az_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
-        worker = TelescopeMotionJob(self._az_scan_mode, start, stop, file, n_repeats)
+    def az_scan_mode(
+            self,
+            file: str,
+            az_start: float,
+            az_stop: float,
+            n_repeats: int=1,
+            ze_dither: float=0.04,
+            position_return: bool=True,
+    ):
+        worker = TelescopeMotionJob(self._az_scan_mode, az_start, az_stop, file, n_repeats, ze_dither, position_return)
         self._active_jobs.append(worker)
+        self.run = True
         worker.start()
 
-    def _az_scan_mode(self, az_start: float, az_stop: float, file: str, n_repeats: int=1):
+    def _az_scan_mode(
+            self,
+            file: str,
+            az_start: float,
+            az_stop: float,
+            n_repeats: int=1,
+            ze_dither: float=0.04,
+            position_return: bool=True,
+    ):
         az_start_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         az_end_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         current_az = self.get_ser_az_pos()
@@ -350,6 +367,8 @@ class TelescopeMotorController(QObject):
         self._set_az_pos(az_start - az_start_buffer)
 
         for i_rep in np.arange(n_repeats):
+            if not self.run:
+                break
             if np.mod(i_rep, 2) == 0:
                 self._set_ze_pos(current_ze)
                 this_position_data = self._set_az_pos(
@@ -360,7 +379,7 @@ class TelescopeMotorController(QObject):
                 else:
                     position_data = np.append(position_data, this_position_data)
             if np.mod(i_rep, 2) == 1:
-                self._set_ze_pos(current_ze + 0.04)
+                self._set_ze_pos(current_ze + ze_dither)
                 this_position_data = self._set_az_pos(
                     az_start - az_start_buffer - 0.5, scan_mode=True
                 )
@@ -368,6 +387,7 @@ class TelescopeMotorController(QObject):
 
         # np.savez(position_data_file, az = position_data[0::3],el = position_data[1::3],time = position_data[2::3],az_start=AZ_start,
         #  az_stop=AZ_stop,el_start=np.nan,el_stop=np.nan)
+        self.run = False
         f = h5py.File(file, "a")
         f.create_dataset("az_tel", data=position_data[0::3])
         f.create_dataset("za_tel", data=position_data[1::3])
@@ -375,9 +395,10 @@ class TelescopeMotorController(QObject):
         f.create_dataset("optical_visibility", data=['****'])
         f.close()
         time.sleep(0.5)
+        if position_return:
+            self._set_az_pos(current_az)
+            self._set_ze_pos(current_ze)
         print("Scan Complete")
-
-
 
     def jog_az_pos(self, speed: float=1):
         pass
@@ -397,7 +418,7 @@ class TelescopeMotorController(QObject):
             self.azimuthVelocityChanged(az_speed)
             self.ser_az.reset_input_buffer()
             self.ser_az.reset_output_buffer()
-        pass
+
     # Zenith angle settings
     def set_ze_home(self):
         # Set current position of the motor to zero.
@@ -519,7 +540,6 @@ class TelescopeMotorController(QObject):
         #        print ('Position Set!')
         if scan_mode:
             return position_data
-
 
     def ze_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
         worker = TelescopeMotionJob(self._az_scan_mode, start, stop, file, n_repeats)
