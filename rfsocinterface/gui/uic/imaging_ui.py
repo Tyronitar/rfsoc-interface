@@ -20,33 +20,29 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
     QSizePolicy, QWidget)
 
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
+from rfsocinterface.gui.widgets.save_location import SaveLocationWidget
 
 class Ui_ImagingWidget(object):
     def setupUi(self, ImagingWidget):
         if not ImagingWidget.objectName():
             ImagingWidget.setObjectName(u"ImagingWidget")
-        ImagingWidget.resize(217, 172)
+        ImagingWidget.resize(217, 173)
         self.gridLayout = QGridLayout(ImagingWidget)
         self.gridLayout.setObjectName(u"gridLayout")
         self.pushButton = QPushButton(ImagingWidget)
         self.pushButton.setObjectName(u"pushButton")
 
-        self.gridLayout.addWidget(self.pushButton, 6, 1, 1, 1)
-
-        self.show_checkBox = QCheckBox(ImagingWidget)
-        self.show_checkBox.setObjectName(u"show_checkBox")
-
-        self.gridLayout.addWidget(self.show_checkBox, 4, 0, 1, 1)
-
-        self.channels_label = QLabel(ImagingWidget)
-        self.channels_label.setObjectName(u"channels_label")
-
-        self.gridLayout.addWidget(self.channels_label, 0, 0, 1, 1)
+        self.gridLayout.addWidget(self.pushButton, 7, 1, 1, 1)
 
         self.channel_comboBox = CheckableComboBox(ImagingWidget)
         self.channel_comboBox.setObjectName(u"channel_comboBox")
 
         self.gridLayout.addWidget(self.channel_comboBox, 0, 1, 1, 1)
+
+        self.show_checkBox = QCheckBox(ImagingWidget)
+        self.show_checkBox.setObjectName(u"show_checkBox")
+
+        self.gridLayout.addWidget(self.show_checkBox, 5, 0, 1, 1)
 
         self.dither_groupBox = QGroupBox(ImagingWidget)
         self.dither_groupBox.setObjectName(u"dither_groupBox")
@@ -70,7 +66,17 @@ class Ui_ImagingWidget(object):
         self.gridLayout_2.addWidget(self.dither_line, 1, 0, 1, 2)
 
 
-        self.gridLayout.addWidget(self.dither_groupBox, 1, 0, 1, 2)
+        self.gridLayout.addWidget(self.dither_groupBox, 2, 0, 1, 2)
+
+        self.channels_label = QLabel(ImagingWidget)
+        self.channels_label.setObjectName(u"channels_label")
+
+        self.gridLayout.addWidget(self.channels_label, 0, 0, 1, 1)
+
+        self.save_location_widget = SaveLocationWidget(ImagingWidget)
+        self.save_location_widget.setObjectName(u"save_location_widget")
+
+        self.gridLayout.addWidget(self.save_location_widget, 1, 0, 1, 2)
 
 
         self.retranslateUi(ImagingWidget)
@@ -82,8 +88,8 @@ class Ui_ImagingWidget(object):
         ImagingWidget.setWindowTitle(QCoreApplication.translate("ImagingWidget", u"Form", None))
         self.pushButton.setText(QCoreApplication.translate("ImagingWidget", u"Start", None))
         self.show_checkBox.setText(QCoreApplication.translate("ImagingWidget", u"Show image", None))
-        self.channels_label.setText(QCoreApplication.translate("ImagingWidget", u"Channels:", None))
         self.dither_groupBox.setTitle(QCoreApplication.translate("ImagingWidget", u"Dithering", None))
         self.dither_label.setText(QCoreApplication.translate("ImagingWidget", u"Dither pattern:", None))
+        self.channels_label.setText(QCoreApplication.translate("ImagingWidget", u"Channels:", None))
     # retranslateUi
 
