@@ -338,14 +338,17 @@ class TelescopeMotorController(QObject):
         self._active_jobs.append(worker)
         worker.start()
 
-    def _az_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
+    def _az_scan_mode(self, az_start: float, az_stop: float, file: str, n_repeats: int=1):
         az_start_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         az_end_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         current_az = self.get_ser_az_pos()
         current_ze = self.get_ser_ze_pos()
         az_start += current_az
         az_stop += current_az
-        dummy = self._set_az_pos(az_start - az_start_buffer)  # Don't create a new thread
+
+        # Set start position in current thread
+        self._set_az_pos(az_start - az_start_buffer)
+
         for i_rep in np.arange(n_repeats):
             if np.mod(i_rep, 2) == 0:
                 self._set_ze_pos(current_ze)
