@@ -1,10 +1,49 @@
-from rfsocinterface.core.utils import ArgumentType
 
 
-from PySide6.QtWidgets import QFormLayout, QWidget, QCheckBox
+from enum import IntEnum
+from PySide6.QtWidgets import QComboBox, QFormLayout, QLineEdit, QWidget, QCheckBox
 
 
 from typing import Any, Callable
+
+from rfsocinterface.core.utils import get_num_value
+from rfsocinterface.gui.widgets.file_upload import FileUploadWidget
+
+
+class ArgumentType(IntEnum):
+    """Class for specifying the type of argument to add to a GUI."""
+    BOOL = 0
+    ENUM = 1
+    INT = 2
+    FLOAT = 3
+    STR = 4
+    FILE = 5
+
+    def widget(self, *args, **kwargs) -> QWidget:
+        match self.value:
+            case ArgumentType.BOOL:
+                return QCheckBox(*args, **kwargs)
+            case ArgumentType.ENUM:
+                return QComboBox(*args, **kwargs)
+            case ArgumentType.FILE:
+                return FileUploadWidget(*args, **kwargs)
+            case _:
+                return QLineEdit(*args, **kwargs)
+
+    def access_function(self) -> Callable:
+        match self.value:
+            case ArgumentType.BOOL:
+                return QCheckBox.isChecked
+            case ArgumentType.ENUM:
+                return QComboBox.currentText
+            case ArgumentType.INT:
+                return (lambda wid: get_num_value(wid, int))
+            case ArgumentType.FLOAT:
+                return (lambda wid: get_num_value(wid, float))
+            case ArgumentType.FILE:
+                return FileUploadWidget.get_text
+            case _:
+                return QLineEdit.text
 
 
 class FunctionWidget(QWidget):
@@ -16,8 +55,8 @@ class FunctionWidget(QWidget):
         self.args: list[tuple[str, ArgumentType]] = []
         self.form_layout = QFormLayout(parent=self)
         for arg in args:
-            self.add_argument(*args)
-        self.setLayout(self.layout)
+            self.add_argument(*arg)
+        self.setLayout(self.form_layout)
 
     def add_argument(self, label: str, arg_type: ArgumentType, *args, **kwargs):
         self.args.append((label, arg_type))

@@ -1,12 +1,11 @@
 from typing import TYPE_CHECKING, Callable, Any
 
-from PySide6.QtWidgets import QWidget, QCheckBox, QComboBox, QLineEdit
+from PySide6.QtWidgets import QWidget, QCheckBox, QComboBox, QLineEdit, QStackedLayout
 
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import MainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import ArgumentType
-from rfsocinterface.gui.widgets.function import FunctionWidget
+from rfsocinterface.gui.widgets.function import FunctionWidget, ArgumentType
 from rfsocinterface.gui.telescope import TelescopeMotorController
 
 if TYPE_CHECKING:
@@ -21,6 +20,9 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         self.update_channel_choices(self.channel_comboBox)
         self.patterns: list[FunctionWidget] = []
 
+        self.stacked_layout = QStackedLayout(parent=self)
+        self.dither_groupBox.layout().addLayout(self.stacked_layout)
+
         self.add_dither_pattern(
             'Scan Mode',
             TelescopeMotorController.az_scan_mode,
@@ -32,15 +34,24 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
             ]
         )
         self.dither_comboBox.currentIndexChanged.connect(self.choose_pattern)
+        self.dither_comboBox.setCurrentIndex(-1)
     
     def add_dither_pattern(self, label: str, fn: Callable, args: list[tuple[str, ArgumentType]]):
         pattern = FunctionWidget(fn, args=args, parent=self)
         self.patterns.append(pattern)
         self.dither_comboBox.addItem(label)
+        self.stacked_layout.addWidget(pattern)
+    
+    def set_pattern_visibility(self, visible: bool):
+        for pattern in self.patterns:
+            pattern.setVisible(visible)
     
     def choose_pattern(self, index: int):
         if index == -1:
             # TODO: Remove current function widget from screen
-            return
-        pattern = self.patterns[index]
+            self.set_pattern_visibility(False)
+        self.set_pattern_visibility(True)
+        print(f'Showing current pattern: {index}')
+        self.stacked_layout.setCurrentIndex(index)
+        # pattern = self.patterns[index]
 

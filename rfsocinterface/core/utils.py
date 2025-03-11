@@ -16,14 +16,13 @@ import numpy.typing as npt
 from kidpy import wait_for_free, wait_for_reply, kidpy
 import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QPoint, QSize, QCoreApplication
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QWidget, QLayout, QToolTip, QLabel
+from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QToolTip, QLabel
 from PySide6.QtGui import QValidator
 
 import time
 from collections.abc import Mapping
 import qtawesome as qta
 import onrkidpy
-from rfsocinterface.gui.widgets.file_upload import FileUploadWidget
 
 IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
 MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
@@ -412,39 +411,5 @@ class CombinedFuture(Future[Iterable[R]]):
         self.set_result(self._results)
 
 
-class ArgumentType(IntEnum):
-    """Class for specifying the type of argument to add to a GUI."""
-    BOOL = 0
-    ENUM = 1
-    INT = 2
-    FLOAT = 3
-    STR = 4
-    FILE = 5
-
-    def widget(self, *args, **kwargs) -> QWidget:
-        match self.value:
-            case ArgumentType.BOOL:
-                return QCheckBox(*args, **kwargs)
-            case ArgumentType.ENUM:
-                return QComboBox(*args, **kwargs)
-            case ArgumentType.FILE:
-                return FileUploadWidget(*args, **kwargs)
-            case _:
-                return QLineEdit(*args, **kwargs)
-
-    def access_function(self) -> Callable:
-        match self.value:
-            case ArgumentType.BOOL:
-                return QCheckBox.isChecked
-            case ArgumentType.ENUM:
-                return QComboBox.currentText
-            case ArgumentType.INT:
-                return (lambda wid: get_num_value(wid, int))
-            case ArgumentType.FLOAT:
-                return (lambda wid: get_num_value(wid, float))
-            case ArgumentType.FILE:
-                return FileUploadWidget.get_text
-            case _:
-                return QLineEdit.text
         # self.set_result(r.value for r in self._results)
 
