@@ -158,9 +158,9 @@ def test_connection(r):
         return False
 
 
-def get_lineEdit_text(line_edit: QLineEdit) -> str:
+def get_lineEdit_text(line_edit: QLineEdit, use_placeholder_text: bool=False) -> str:
     val = line_edit.text()
-    if val == '':
+    if val == '' and use_placeholder_text:
         val = line_edit.placeholderText()
     return val
 
