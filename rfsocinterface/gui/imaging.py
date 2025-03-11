@@ -1,10 +1,12 @@
-from typing import TYPE_CHECKING, Callable, Any
+from typing import TYPE_CHECKING, Callable, Any, Concatenate
+from pathlib import Path
 
 from PySide6.QtWidgets import QWidget, QCheckBox, QComboBox, QLineEdit, QStackedLayout
 
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import MainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.utils import PathLike, P
 from rfsocinterface.gui.widgets.function import FunctionWidget, ArgumentType
 from rfsocinterface.gui.telescope import TelescopeMotorController
 
@@ -14,6 +16,16 @@ if TYPE_CHECKING:
 
 def dummy_func(string: str, num: float, check: bool):
     print(f'"{string}", {num}, {check}')
+
+class DitherPatternWidget(FunctionWidget):
+    def __init__(self, fn: Callable[Concatenate[PathLike, P], Any], file_func: Callable[[], PathLike], *args: P.args, parent=None):
+        super().__init__(fn, *args, parent)
+        self.file_func = file_func
+    
+    def call_function(self):
+        values = self.get_inputs()
+        file = self.file_func()
+        self.fn(file, *values)
 
 class ImagingWidget(MainWidget, Ui_ImagingWidget):
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
