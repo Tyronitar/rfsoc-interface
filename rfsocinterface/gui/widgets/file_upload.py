@@ -1,5 +1,5 @@
 from pathlib import Path
-from PySide6.QtCore import Qt, Signal, QCoreApplication, QMetaObject, QSize
+from PySide6.QtCore import Qt, Signal, QCoreApplication, QMetaObject, QSize, Slot
 from PySide6.QtGui import QDoubleValidator, QIcon
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QHBoxLayout, QPushButton, QToolButton
 from typing import Callable, Any
@@ -17,15 +17,36 @@ DEFAULT_BROWSE_OPTIONS = {
 }
 
 class FileSelectWidget(QWidget):
+    clicked = Signal()
+    cursorPositionChanged = Signal(int, int)
+    editingFinished = Signal()
+    inputRejected = Signal()
+    returnPressed = Signal()
+    selectionChanged = Signal()
+    textChanged = Signal(str)
+    textEdited = Signal(str)
+    
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setupUi()
 
         self.browse_dialog_options = DEFAULT_BROWSE_OPTIONS
+        self.setup_connections()
+    
+    def setup_connections(self):
         self.pushButton.clicked.connect(self.choose_file)
+        self.lineEdit.clicked.connect(self.clicked.emit)
+        self.lineEdit.cursorPositionChanged.connect(self.cursorPositionChanged.emit)
+        self.lineEdit.editingFinished.connect(self.editingFinished.emit)
+        self.lineEdit.inputRejected.connect(self.inputRejected.emit)
+        self.lineEdit.returnPressed.connect(self.returnPressed.emit)
+        self.lineEdit.selectionChanged.connect(self.selectionChanged.emit)
+        self.lineEdit.textChanged.connect(self.textChanged.emit)
+        self.lineEdit.textEdited.connect(self.textEdited.emit)
 
     def setupUi(self):
-        self.horizontalLayout = QHBoxLayout(parent=self)
+        self.horizontalLayout = QHBoxLayout()
         self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
 
         self.lineEdit = ClickableLineEdit(parent=self)
@@ -36,10 +57,13 @@ class FileSelectWidget(QWidget):
         self.pushButton.setObjectName(u"pushButton")
         self.horizontalLayout.addWidget(self.pushButton)
 
+        self.setLayout(self.horizontalLayout)
+
         self.retranslateUi()
 
         QMetaObject.connectSlotsByName(self)
 
+    @Slot()
     def choose_file(self):
         """Open a file dialog to select the tone file."""
         fname, _ = QFileDialog.getOpenFileName(self, **self.browse_dialog_options)
@@ -78,9 +102,8 @@ class FileUploadWidget(FileSelectWidget):
 
     def __init__(self, parent = None):
         super().__init__(parent)
-        self.setupUi(self)
 
-        self.toolButton = QToolButton(FileUploadWidget)
+        self.toolButton = QToolButton(self)
         self.toolButton.setObjectName(u"toolButton")
         self.toolButton.setEnabled(False)
         icon = QIcon()
@@ -92,11 +115,13 @@ class FileUploadWidget(FileSelectWidget):
         self.lineEdit.textChanged.connect(self.enable_upload)
         self.toolButton.clicked.connect(self.upload)
 
+    @Slot()
     def upload(self):
         self.uploaded.emit(self.get_text())
     
-    def enable_upload(self):
-        if self.get_text() != '':
+    @Slot(str)
+    def enable_upload(self, text: str):
+        if text != '':
             self.toolButton.setEnabled(True)
         else:
             self.toolButton.setEnabled(False)
