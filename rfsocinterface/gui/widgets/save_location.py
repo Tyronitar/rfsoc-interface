@@ -34,8 +34,8 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
         if self.checkBox.isChecked():
             save_path = get_filename(file_type=self.file_type)
         else:
-            directory = self.directory_file_select.get_text()
-            filename = self.filename_file_select.get_text()
+            directory = self.directory_file_select.text()
+            filename = self.filename_file_select.text()
             save_path = Path(f'{directory}/{filename}')
         return save_path
 

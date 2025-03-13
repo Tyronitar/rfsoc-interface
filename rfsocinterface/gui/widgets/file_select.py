@@ -75,9 +75,11 @@ class FileSelectWidget(QWidget):
         self.setWindowTitle(QCoreApplication.translate("FileSelectWidget", u"FileSelectWidget", None))
         self.pushButton.setText(QCoreApplication.translate("FileSelectWidget", u"Browse...", None))
 
-    def get_text(self) -> str:
-        txt = self.lineEdit.text()
-        return txt
+    def text(self) -> str:
+        return self.lineEdit.text()
+    
+    def setText(self, text: str):
+        self.lineEdit.setText(text)
     
     def set_caption(self, caption: str):
         self.browse_dialog_options['caption'] = caption
@@ -117,7 +119,7 @@ class FileUploadWidget(FileSelectWidget):
 
     @Slot()
     def upload(self):
-        self.uploaded.emit(self.get_text())
+        self.uploaded.emit(self.text())
     
     @Slot(str)
     def enable_upload(self, text: str):

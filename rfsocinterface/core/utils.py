@@ -283,14 +283,11 @@ def get_chanmask(chanmask_file=''):
     return chanmask
 
 
-def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", attenuation=0.):
+def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', attenuation=0.):
     #see if we already have the parent folder for today's date
     yymmdd = get_yymmdd()
     date_folder = base_dir / yymmdd
     date_folder.mkdir(exist_ok=True)
-    if chan_name:
-        chan_name += '_' 
-    date_folder = date_folder / (yymmdd + '_')
 
     #provide the name of the file
     match file_type.lower():
@@ -301,9 +298,9 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", at
             hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
             match file_type.lower():
                 case 'lo':
-                    savefile = date_folder / f"{chan_name}LO_Sweep_{hour_str}"
+                    strings = [yymmdd, chan_name, 'LO_Sweep', hour_str]
                 case 'tonelist':
-                    savefile = date_folder / f"{chan_name}tone_list_{hour_str}"
+                    strings = [yymmdd, chan_name, 'tone_list', hour_str]
         case 'tod' | 'azel':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:
@@ -312,12 +309,12 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", at
                 this_dir_files.sort()
                 offset = 1 if file_type == 'tod' else 0
                 setnum = int(this_dir_files[-1].name[-7:-3]) + offset
-            savefile = date_folder / f'{chan_name}{file_type.upper()}_set{setnum}'
+            strings = [yymmdd, chan_name, file_type.upper(), f'set{setnum}']
         case 'attenuator':
-            savefile = date_folder / f"{chan_name}attenuator{attenuation:02d}"
+            strings = [yymmdd, chan_name, f'attenuator{attenuation:02d}']
         case _:
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
-    return savefile
+    return date_folder / '_'.join(filter(None, strings))
 
 #
 # Utils for parallelized code
