@@ -72,12 +72,13 @@ class FunctionWidget(QWidget):
                 if has_default:
                     widget.setChecked(default_val)
             case ArgumentType.ENUM:
-                options = kwargs.pop('options')
+                # Get options to populate the combo box with
+                options = kwargs.pop('options')  
                 widget = arg_type.widget(*args, parent=self, **kwargs)
                 widget.addItems(options)
                 if has_default:
                     widget.setCurrentText(default_val)
-                self.form_layout.addRow(label, widget)  # QCheckBox has its label built-in
+                self.form_layout.addRow(label, widget)
             case _:
                 widget = arg_type.widget(*args, parent=self, **kwargs)
                 if has_default:
