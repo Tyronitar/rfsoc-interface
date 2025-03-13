@@ -25,7 +25,7 @@ import numpy as np
 from transceiver import Transceiver
 import yaml
 
-from rfsocinterface.gui.widgets.file_upload import FileUploadWidget
+from rfsocinterface.gui.widgets.file_select import FileUploadWidget
 from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from rfsocinterface.core.utils import get_num_value, get_lineEdit_text, IPV4_REGEX, MAC_REGEX, PathValidator

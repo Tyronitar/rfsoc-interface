@@ -18,15 +18,21 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
 from PySide6.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
     QLabel, QSizePolicy, QVBoxLayout, QWidget)
 
-from rfsocinterface.gui.widgets.file_upload import FileSelectWidget
+from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 
 class Ui_SaveLocationWidget(object):
     def setupUi(self, SaveLocationWidget):
         if not SaveLocationWidget.objectName():
             SaveLocationWidget.setObjectName(u"SaveLocationWidget")
-        SaveLocationWidget.resize(396, 292)
+        SaveLocationWidget.resize(284, 140)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(SaveLocationWidget.sizePolicy().hasHeightForWidth())
+        SaveLocationWidget.setSizePolicy(sizePolicy)
         self.verticalLayout = QVBoxLayout(SaveLocationWidget)
         self.verticalLayout.setObjectName(u"verticalLayout")
+        self.verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.groupBox = QGroupBox(SaveLocationWidget)
         self.groupBox.setObjectName(u"groupBox")
         self.gridLayout_3 = QGridLayout(self.groupBox)

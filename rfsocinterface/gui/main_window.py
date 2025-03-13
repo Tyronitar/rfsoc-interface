@@ -15,7 +15,6 @@ from rfsocinterface.gui.loconfig import LoConfigWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.data_streaming import DataStreamingWidget
 from rfsocinterface.gui.main_widget import MainWidget
-from rfsocinterface.gui.imaging import ImagingWidget
 
 from rfsocinterface.core.utils import SettingsError, ensure_path, convert_to_kidy_format, TabName
 
@@ -91,6 +90,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabs[TabName.DATA] = self.data_widget
     
     def _make_imaging_tab(self):
+        from rfsocinterface.gui.imaging import ImagingWidget
         self.imaging_tab = QWidget()
         self.imaging_tab.setObjectName(u"imaging_tab")
         self.tabWidget.addTab(self.imaging_tab, "")

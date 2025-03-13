@@ -41,8 +41,8 @@ class RFSOCWrapper:
         self.settings['channel1'] = chan_settings_a
         self.settings['channel2'] = chan_settings_b
 
-        self.rfsoc = self.make_kidpy_rfsoc()
-        self.connect_to_comports()
+        # self.rfsoc = self.make_kidpy_rfsoc()
+        # self.connect_to_comports()
         # self.rfsoc = None
         # self.atten_transceiver = None
         # self.valon_a = None

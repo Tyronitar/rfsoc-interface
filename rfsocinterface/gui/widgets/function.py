@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QComboBox, QFormLayout, QLineEdit, QWidget, QCheck
 from typing import Any, Callable
 
 from rfsocinterface.core.utils import get_num_value
-from rfsocinterface.gui.widgets.file_upload import FileUploadWidget
+from rfsocinterface.gui.widgets.file_select import FileUploadWidget
 
 
 class ArgumentType(IntEnum):

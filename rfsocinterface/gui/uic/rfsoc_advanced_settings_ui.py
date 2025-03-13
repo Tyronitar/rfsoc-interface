@@ -18,7 +18,7 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
 from PySide6.QtWidgets import (QApplication, QFormLayout, QGroupBox, QLabel,
     QLineEdit, QSizePolicy, QWidget)
 
-from rfsocinterface.gui.widgets.file_upload import FileUploadWidget
+from rfsocinterface.gui.widgets.file_select import FileUploadWidget
 
 class Ui_RFSOCAdvancedSettingsWidget(object):
     def setupUi(self, RFSOCAdvancedSettingsWidget):

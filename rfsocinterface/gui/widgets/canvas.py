@@ -31,7 +31,9 @@ class ScrollableCanvas(QScrollArea):
 
         self.set_figure(Figure(figsize=(5, 5)))
 
-        self.setLayout(QVBoxLayout(self))
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
         self.layout().addWidget(self.canvas)
         self.layout().installEventFilter(self)
 
@@ -77,7 +79,9 @@ class ResonatorCanvas(QWidget):
         self.canvas.figure = fig
         # self.nav = NavigationToolbar(self.canvas, self)
 
-        self.setLayout(QVBoxLayout())
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
         # self.layout().addWidget(self.nav)
         self.layout().addWidget(self.canvas)
 

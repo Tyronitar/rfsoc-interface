@@ -8,7 +8,7 @@ from rfsocinterface.gui.main_widget import MainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P
 from rfsocinterface.gui.widgets.function import FunctionWidget, ArgumentType
-from rfsocinterface.gui.telescope import TelescopeMotorController
+# from rfsocinterface.gui.telescope import TelescopeMotorController
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -39,18 +39,18 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         self.stacked_layout = QStackedLayout(parent=self)
         self.dither_groupBox.layout().addLayout(self.stacked_layout, 2, 0, 1, 2)
 
-        self.add_dither_pattern(
-            'AZ Scan Mode',
-            TelescopeMotorController.az_scan_mode,
-            [
-                ('File: ', ArgumentType.FILE),
-                ('Starting azimuth: ', ArgumentType.FLOAT),
-                ('End azimuth: ', ArgumentType.FLOAT),
-                ('N Repeats: ', ArgumentType.INT),
-                ('Zenith angle dither: ', ArgumentType.FLOAT),
-                ('Return to starting position', ArgumentType.BOOL),
-            ]
-        )
+        # self.add_dither_pattern(
+        #     'AZ Scan Mode',
+        #     TelescopeMotorController.az_scan_mode,
+        #     [
+        #         ('File: ', ArgumentType.FILE),
+        #         ('Starting azimuth: ', ArgumentType.FLOAT),
+        #         ('End azimuth: ', ArgumentType.FLOAT),
+        #         ('N Repeats: ', ArgumentType.INT),
+        #         ('Zenith angle dither: ', ArgumentType.FLOAT),
+        #         ('Return to starting position', ArgumentType.BOOL),
+        #     ]
+        # )
         self.add_dither_pattern(
             'Test Pattern',
             dummy_func,

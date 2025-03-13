@@ -26,9 +26,10 @@ class Ui_ImagingWidget(object):
     def setupUi(self, ImagingWidget):
         if not ImagingWidget.objectName():
             ImagingWidget.setObjectName(u"ImagingWidget")
-        ImagingWidget.resize(217, 189)
+        ImagingWidget.resize(201, 189)
         self.gridLayout = QGridLayout(ImagingWidget)
         self.gridLayout.setObjectName(u"gridLayout")
+        self.gridLayout.setContentsMargins(9, 9, 9, 9)
         self.pushButton = QPushButton(ImagingWidget)
         self.pushButton.setObjectName(u"pushButton")
 
@@ -46,6 +47,11 @@ class Ui_ImagingWidget(object):
 
         self.dither_groupBox = QGroupBox(ImagingWidget)
         self.dither_groupBox.setObjectName(u"dither_groupBox")
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.dither_groupBox.sizePolicy().hasHeightForWidth())
+        self.dither_groupBox.setSizePolicy(sizePolicy)
         self.gridLayout_2 = QGridLayout(self.dither_groupBox)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
         self.dither_label = QLabel(self.dither_groupBox)
@@ -75,6 +81,8 @@ class Ui_ImagingWidget(object):
 
         self.save_location_widget = SaveLocationWidget(ImagingWidget)
         self.save_location_widget.setObjectName(u"save_location_widget")
+        sizePolicy.setHeightForWidth(self.save_location_widget.sizePolicy().hasHeightForWidth())
+        self.save_location_widget.setSizePolicy(sizePolicy)
 
         self.gridLayout.addWidget(self.save_location_widget, 1, 0, 1, 2)
 
