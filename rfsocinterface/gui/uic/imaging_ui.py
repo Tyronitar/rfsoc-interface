@@ -26,7 +26,7 @@ class Ui_ImagingWidget(object):
     def setupUi(self, ImagingWidget):
         if not ImagingWidget.objectName():
             ImagingWidget.setObjectName(u"ImagingWidget")
-        ImagingWidget.resize(217, 173)
+        ImagingWidget.resize(217, 189)
         self.gridLayout = QGridLayout(ImagingWidget)
         self.gridLayout.setObjectName(u"gridLayout")
         self.pushButton = QPushButton(ImagingWidget)
