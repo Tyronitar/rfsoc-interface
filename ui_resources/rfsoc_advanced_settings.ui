@@ -127,7 +127,7 @@
   <customwidget>
    <class>FileUploadWidget</class>
    <extends>QWidget</extends>
-   <header>rfsocinterface.gui.widgets.file_upload</header>
+   <header>rfsocinterface.gui.widgets.file_select</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

@@ -2,7 +2,7 @@ import functools
 import os
 from pathlib import Path
 import json
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from dataclasses import dataclass
 from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type, Literal
 from datetime import datetime
@@ -30,6 +30,14 @@ MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 # Number = TypeVar('Number', int, float, complex, bytes)
 FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
+
+class TabName(StrEnum):
+    """Possible tab names for the GUI."""
+    INITIALIZATION = 'initialization'
+    LOSWEEP = 'losweep'
+    TELESCOPE = 'telescope'
+    DATA = 'data'
+    IMAGING = 'imaging'
 
 # Generic types for type hints
 T = TypeVar('T')
@@ -97,62 +105,9 @@ def ensure_path(
     return decorator
 
 
-def write_fList(kpy: kidpy, fList: npt.ArrayLike, ampList: npt.ArrayLike):
-    """
-    Function for writing tones to the rfsoc. Accepts both numpy arrays and lists.
-    :param fList: List of desired tones
-    :type fList: list
-    :param ampList: List of desired amplitudes
-    :type ampList: list
-    .. note::
-        fList and ampList must be the same size
-    """
-    # log = logger.getChild("write_fList")
-    f = fList
-    a = ampList
-
-    # Convert to numpy arrays as needed
-    if isinstance(fList, np.ndarray):
-        f = fList.tolist()
-    if isinstance(ampList, np.ndarray):
-        a = ampList.tolist()
-
-    # Format Command based on provided parameters
-    cmd = {}
-    if len(f) == 0:
-        cmd = {"cmd": "ulWaveform", "args": []}
-    elif len(f) > 0 and len(a) == 0:
-        a = np.ones_like(f).tolist()
-        cmd = {"cmd": "ulWaveform", "args": [f, a]}
-    elif len(f) > 0 and len(a) > 0:
-        assert len(a) == len(
-            f
-        ), "Frequency list and Amplitude list must be the same dimmension"
-        cmd = {"cmd": "ulWaveform", "args": [f, a]}
-    else:
-        # log.error("Weird edge case, something went very wrong.....")
-        return
-
-    cmdstr = json.dumps(cmd)
-    kpy.r.publish("picard", cmdstr)
-    success, _ = wait_for_reply(kpy.p, "ulWaveform", max_timeout=10)
-    # if success:
-    #     log.info("Wrote waveform.")
-    # else:
-    #     log.error("FAILED TO WRITE WAVEFORM")
-
-def test_connection(r):
-    try:
-        r.set("testkey", "123")
-        return True
-    except redis.exceptions.ConnectionError as e:
-        print(e)
-        return False
-
-
-def get_lineEdit_text(line_edit: QLineEdit) -> str:
+def get_lineEdit_text(line_edit: QLineEdit, use_placeholder_text: bool=False) -> str:
     val = line_edit.text()
-    if val == '':
+    if val == '' and use_placeholder_text:
         val = line_edit.placeholderText()
     return val
 
@@ -275,14 +230,11 @@ def get_chanmask(chanmask_file=''):
     return chanmask
 
 
-def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", attenuation=0.):
+def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', attenuation=0.):
     #see if we already have the parent folder for today's date
     yymmdd = get_yymmdd()
     date_folder = base_dir / yymmdd
     date_folder.mkdir(exist_ok=True)
-    if chan_name:
-        chan_name += '_' 
-    date_folder = date_folder / (yymmdd + '_')
 
     #provide the name of the file
     match file_type.lower():
@@ -293,9 +245,9 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", at
             hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
             match file_type.lower():
                 case 'lo':
-                    savefile = date_folder / f"{chan_name}LO_Sweep_{hour_str}"
+                    strings = [yymmdd, chan_name, 'LO_Sweep', hour_str]
                 case 'tonelist':
-                    savefile = date_folder / f"{chan_name}tone_list_{hour_str}"
+                    strings = [yymmdd, chan_name, 'tone_list', hour_str]
         case 'tod' | 'azel':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:
@@ -304,12 +256,12 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name="", at
                 this_dir_files.sort()
                 offset = 1 if file_type == 'tod' else 0
                 setnum = int(this_dir_files[-1].name[-7:-3]) + offset
-            savefile = date_folder / f'{chan_name}{file_type.upper()}_set{setnum}'
+            strings = [yymmdd, chan_name, file_type.upper(), f'set{setnum}']
         case 'attenuator':
-            savefile = date_folder / f"{chan_name}attenuator{attenuation:02d}"
+            strings = [yymmdd, chan_name, f'attenuator{attenuation:02d}']
         case _:
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
-    return savefile
+    return date_folder / '_'.join(filter(None, strings))
 
 def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
     """
@@ -469,5 +421,7 @@ class CombinedFuture(Future[Iterable[R]]):
     def _coallesce_results(self):
         self._results = itertools.chain.from_iterable(self._results)
         self.set_result(self._results)
+
+
         # self.set_result(r.value for r in self._results)
 

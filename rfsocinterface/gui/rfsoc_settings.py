@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot, Signal
 from PySide6.QtGui import QDoubleValidator, QIcon, QRegularExpressionValidator, QIntValidator
 from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
@@ -25,13 +24,12 @@ import numpy as np
 from transceiver import Transceiver
 import yaml
 
-from rfsocinterface.gui.widgets.file_upload import FileUploadWidget
+from rfsocinterface.gui.widgets.file_select import FileUploadWidget
 from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from rfsocinterface.core.utils import get_num_value, get_lineEdit_text, IPV4_REGEX, MAC_REGEX, PathValidator
 from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-
 
 ONR_REPO_DIR = Path('~').expanduser() / 'onrkidpy'
 DEFAULT_CONFIG = 'defaults.yaml'
@@ -139,8 +137,6 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
         self.comport_atten_fileUploadWidget.lineEdit.setText(str(settings['atten_comport']))
         self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channel1']['lo_comport']))
         self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channel2']['lo_comport']))
-
-
 
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     height_updated = Signal()
@@ -522,7 +518,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         # IF Settings
         self.rfin_lineEdit.setText(str(chan_settings['rfin']))
         self.rfout_lineEdit.setText(str(chan_settings['rfout']))
-        self.lo_freq_lineEdit.setText(f'{chan_settings['dsp']['lo_freq']:.3e}')
+        self.lo_freq_lineEdit.setText(f'{chan_settings['dsp']['lo_freq']:e}')
     
     @Slot(QAbstractButton)
     def restore_defaults(self, button: QAbstractButton):

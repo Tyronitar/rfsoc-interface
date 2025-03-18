@@ -82,4 +82,3 @@ def verify_lineEdit(
             widget.setEnabled(True)
         
         return True, toggled
-

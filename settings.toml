@@ -2,8 +2,8 @@
 tabs = [
     "initialization",
     "losweep",
-    # "telescope",
     "data",
+    "telescope",
     "imaging",
 ]
 active_tab = "initialization"

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*coding: utf-8 -*-
 
 ################################################################################
 ## Form generated from reading UI file 'channel_settings.ui'
@@ -121,7 +121,6 @@ class Ui_ChannelSettingsWidget(object):
 
         self.eth_gridLayout.addWidget(self.eth_dest_label, 2, 0, 1, 1)
 
-
         self.gridLayout.addWidget(self.ethernet_GroupBox, 5, 0, 1, 1)
 
         self.if_GroupBox = QGroupBox(ChannelSettingsWidget)
@@ -172,7 +171,6 @@ class Ui_ChannelSettingsWidget(object):
 
         self.horizontalLayout_3.addWidget(self.rfin_uploadToolButton)
 
-
         self.if_gridLayout.addLayout(self.horizontalLayout_3, 2, 1, 1, 1)
 
         self.rfinLabel = QLabel(self.if_GroupBox)
@@ -207,7 +205,6 @@ class Ui_ChannelSettingsWidget(object):
 
         self.horizontalLayout_2.addWidget(self.rfout_uploadToolButton)
 
-
         self.if_gridLayout.addLayout(self.horizontalLayout_2, 0, 1, 1, 1)
 
         self.horizontalLayout_4 = QHBoxLayout()
@@ -230,7 +227,6 @@ class Ui_ChannelSettingsWidget(object):
 
         self.horizontalLayout_4.addWidget(self.lo_freq_uploadToolButton)
 
-
         self.if_gridLayout.addLayout(self.horizontalLayout_4, 4, 1, 1, 1)
 
         self.lo_freq_label = QLabel(self.if_GroupBox)
@@ -250,7 +246,6 @@ class Ui_ChannelSettingsWidget(object):
         self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
         self.if_gridLayout.addItem(self.verticalSpacer, 5, 1, 1, 1)
-
 
         self.gridLayout.addWidget(self.if_GroupBox, 5, 1, 1, 1)
 
@@ -302,7 +297,6 @@ class Ui_ChannelSettingsWidget(object):
 
         self.gridLayout_3.addWidget(self.tone_power_checkBox, 0, 0, 1, 1)
 
-
         self.resonator_gridLayout.addLayout(self.gridLayout_3, 2, 1, 1, 1)
 
         self.horizontalLayout = QHBoxLayout()
@@ -320,7 +314,6 @@ class Ui_ChannelSettingsWidget(object):
         self.chanmask_pushButton.setSizePolicy(sizePolicy1)
 
         self.horizontalLayout.addWidget(self.chanmask_pushButton)
-
 
         self.resonator_gridLayout.addLayout(self.horizontalLayout, 5, 1, 1, 1)
 
@@ -406,7 +399,6 @@ class Ui_ChannelSettingsWidget(object):
 
         self.gridLayout_2.addWidget(self.tone_list_baseband_max_lineEdit, 2, 1, 1, 1)
 
-
         self.resonator_gridLayout.addLayout(self.gridLayout_2, 0, 1, 1, 1)
 
         self.tone_power_error_label = QLabel(self.resonator_GroupBox)
@@ -414,9 +406,7 @@ class Ui_ChannelSettingsWidget(object):
 
         self.resonator_gridLayout.addWidget(self.tone_power_error_label, 3, 1, 1, 1)
 
-
         self.gridLayout.addWidget(self.resonator_GroupBox, 1, 0, 1, 2)
-
 
         self.retranslateUi(ChannelSettingsWidget)
 
@@ -454,11 +444,11 @@ class Ui_ChannelSettingsWidget(object):
         self.resonator_GroupBox.setTitle(QCoreApplication.translate("ChannelSettingsWidget", u"Resonator Settings", None))
         self.upload_tones_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Upload Tones", None))
         self.tone_power_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Tone power:", None))
-        self.tone_power_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
+        self.tone_power_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse…", None))
         self.tone_power_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
         self.tone_power_checkBox.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Use equal tone powers", None))
         self.chanmask_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
-        self.chanmask_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
+        self.chanmask_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse…", None))
 #if QT_CONFIG(tooltip)
         self.tone_list_label.setToolTip(QCoreApplication.translate("ChannelSettingsWidget", u"Choose a list of resonant frequencies", None))
 #endif // QT_CONFIG(tooltip)
@@ -471,10 +461,9 @@ class Ui_ChannelSettingsWidget(object):
         self.tone_list_baseband_min_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Lowest Baseband (MHz):", None))
         self.tone_list_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
         self.tone_list_equal_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Generating tones from XXX to XXX", None))
-        self.tone_list_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
+        self.tone_list_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse…", None))
         self.tone_list_ntones_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Number of tones:", None))
         self.tone_list_baseband_max_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Highest Baseband (MHz):", None))
         self.tone_list_checkBox.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Use equally spaced tones", None))
         self.tone_power_error_label.setText("")
     # retranslateUi
-
