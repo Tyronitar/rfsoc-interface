@@ -1,16 +1,13 @@
-from pathlib import Path
 import numpy as np
 import numpy.typing as npt
-import sys, os
 import matplotlib.pyplot as plt
 from scipy import signal, ndimage, fftpack
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import curve_fit
 import pdb
-import h5py
 import argparse
 
-from rfsocinterface.core.utils import ensure_path
+from rfsocinterface.core.data import load_time_ordered_IQ_data
 
 
 
@@ -242,31 +239,13 @@ def iterative_reject_outliers(data: npt.NDArray, sigma: float=2):
         good_ind = good_ind[ind]
     return data.flatten()[good_ind], good_ind
 
-@ensure_path(0)
-def load_data(path: Path) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-    with h5py.File(path, 'r') as f:
-        data_i = f['time_ordered_data/adc_i'][:]
-        data_q = f['time_ordered_data/adc_q'][:]
-        amp = np.sqrt(data_i ** 2. + data_q ** 2.)
-        # amp = np.sqrt(float(data_i) ** 2 + float(data_q) ** 2)
-        amp = np.nanmedian(amp, axis=1)
-        input_data = np.empty((2, *data_i.shape))
-        input_data[0, :, :] = data_i / np.outer(amp, np.ones(data_i.shape[1]))
-        # input_data[0, :, :] = data_i / amp[:, np.newaxis]
-        # input_data[1, :, :] = data_q / amp[:, np.newaxis]
-        input_data[1, :, :] = data_q / np.outer(amp, np.ones(data_q.shape[1]))
-        timestamp = f['time_ordered_data/timestamp'][:]
-        chanmask = f['global_data/chanmask'][:]
-    return input_data, timestamp, chanmask
-
-
 if __name__ == '__main__':
     # parser = argparse.ArgumentParser()
     # parser.add_argument('data_file')
     # args = parser.parse_args()
     # path = args.data_file
-    input_data1, timestamp1, chanmask2 = load_data('data/data.hdf5')
-    input_data2, timestamp2, chanmask2 = load_data('data/data_2.hdf5')
+    input_data1, timestamp1, chanmask2 = load_time_ordered_IQ_data('data/data.hdf5')
+    input_data2, timestamp2, chanmask2 = load_time_ordered_IQ_data('data/data_2.hdf5')
 
     chanmask1, freq1, psd_all1, psd_all_clean1 = compute_noise_psd(input_data1, timestamp1, chanmask=None, ds_factor=3)
     # d1, _ = iterative_reject_outliers(psd_all_clean1)

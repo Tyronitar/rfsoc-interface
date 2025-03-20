@@ -244,6 +244,24 @@ class LoSweepData:
         chanmask = get_chanmask(chanmask_file)
         return cls(tone_list, data, chanmask)
 
+    @classmethod
+    @ensure_path(1)
+    def from_h5(cls, path: Path) -> LoSweepData:
+        """Create a LoSweepData object from a sweep file."""
+        path = path.with_suffix('.h5')
+        with h5py.File(path, 'r') as f:
+            tone_list = f['global_data/baseband_freqs'][:]
+            data = f['global_data/lo_sweep'][:]
+            chanmask = f['global_data/chanmask'][:]
+            fit_f0 = f['global_data/fit_f0'][:]
+            fit_qi = f['global_data/fit_qi'][:]
+            fit_qc = f['global_data/fit_qc'][:]
+        sweep = cls(tone_list, data, chanmask)
+        sweep.fit_f0 = fit_f0
+        sweep.fit_qi = fit_qi
+        sweep.fit_qc = fit_qc
+        return sweep
+
     @property
     def difference(self) -> npt.NDArray:
         """The difference of the fitted frequencies and the provided tones."""
@@ -253,6 +271,11 @@ class LoSweepData:
     def nchan(self) -> int:
         """The number of resonators."""
         return np.size(self.chanmask)
+
+    @property
+    def nfreq(self) -> int:
+        """The number of frequencies."""
+        return np.size(self.freq[0, :])
 
     @property
     def ngoodchan(self) -> int:
@@ -268,6 +291,16 @@ class LoSweepData:
     def offres_ind(self) -> npt.NDArray:
         """The indices of frequencies that are off-resonance."""
         return np.argwhere(self.chanmask == 0)
+
+    @property
+    def data_I(self) -> npt.NDArray:
+        """The real part of the data."""
+        return np.real(self.data[1, ...])
+
+    @property
+    def data_Q(self) -> npt.NDArray:
+        """The imaginary part of the data."""
+        return np.imag(self.data[1, ...])
 
     @property
     def flagged(self) -> npt.NDArray:
@@ -359,6 +392,20 @@ class LoSweepData:
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
             fh.create_dataset('global_data/fit_qc', data=self.fit_qc)
+    
+    def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> npt.NDArray:
+        dIQ_df = np.zeros((2, self.nchan))
+        mid_ind = self.nfreq // 2
+        edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
+        ind_val = np.arange(edge_indices[0], edge_indices[1])
+        for i_chan in range(0, self.nchan):
+            fit_I = np.polyfit(ind_val, self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            fit_I_deriv = np.polyder(fit_I)
+            dIQ_df[0, i_chan] = np.polyval(fit_I_deriv, mid_ind) / self.df
+            fit_Q = np.polyfit(ind_val, self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            fit_Q_deriv = np.polyder(fit_Q)
+            dIQ_df[1, i_chan] = np.polyval(fit_Q_deriv, mid_ind) / self.df
+        return dIQ_df
 
 
 
