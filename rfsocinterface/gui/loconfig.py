@@ -19,6 +19,7 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
 from rfsocinterface.gui.initialization import InitializationWidget
 from rfsocinterface.core.utils import get_num_value, ensure_path, SettingsError
+from rfsocinterface.gui.main_widget import MainWidget
 
 from kidpy import kidpy
 # from kidpy3 import RFSOC
@@ -39,7 +40,7 @@ DEFAULT_CHANMASK = '/home/onrkids/readout/host/params/chanmask_rfsoc2.npy'
 FILE_SUFFIXES = {'none', 'temperature', 'elevation'}
 
 
-class LoConfigWidget(QWidget, Ui_LOConfigWidget):
+class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     """Window for configuring the LO sweep.
 
     Attributes:
@@ -53,11 +54,9 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
-        super().__init__(parent)
+        super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
-        self.main_window = main_window
-        self.rfsocs = rfsocs
-        self.settings = settings
+
         self.start_fit.connect(self._fit_sweep)
         self.start_plot.connect(self._plot_fit)
 
@@ -65,7 +64,7 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
 
         self.set_defaults()
         self.make_error_labels()    
-        self.update_channel_choices()
+        self.update_channel_choices(self.channel_comboBox)
 
         self.buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
         self.second_sweep_checkBox.clicked.connect(self.check_second_sweep)
@@ -106,15 +105,6 @@ class LoConfigWidget(QWidget, Ui_LOConfigWidget):
         self.channel_error_label = IconLabel(ERROR_ICON_CODE, channel_err_str, color='red', wrap_text=False, parent=self)
         self.lo_gridLayout.addWidget(self.channel_error_label, 1, 1)
         self.channel_error_label.hide()
-    
-    def update_channel_choices(self):
-        total = 0
-        for rfsoc in self.rfsocs:
-            for i in range(2):
-                self.channel_comboBox.addItem(rfsoc.channel_as_text(i + 1))
-                item = self.channel_comboBox.model().item(total, 0)
-                item.setCheckState(Qt.CheckState.Unchecked)
-                total += 1
     
     def get_selected_channels(self) -> Iterator[tuple[RFSOCWrapper, int]]:
         checked_ids = self.channel_comboBox.checked_indices()

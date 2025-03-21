@@ -11,18 +11,16 @@ from rfsocinterface.core.utils import get_num_value
 from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.gui.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.gui.main_widget import MainWidget
+
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
-from kidpy3 import RFSOC
 
-class InitializationWidget(QWidget, Ui_InitializationTabWidget):
+class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
 
-    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOC], settings: dict, parent: QWidget | None = None):
-        super().__init__(parent)
+    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None = None):
+        super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
-        self.main_window = main_window
-        self.rfsocs = rfsocs
-        self.settings = settings
         self.items: list[tuple[Section, RFSOCSettingsWidget]] = []
         self.active_section = None
 
