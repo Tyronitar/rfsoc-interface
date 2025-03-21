@@ -262,6 +262,74 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
     return date_folder / '_'.join(filter(None, strings))
 
+def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
+    """
+    Generate a Cartesian product of input arrays.
+
+    Code from: https://stackoverflow.com/a/1235363
+
+    Parameters
+    ----------
+    arrays : list of array-like
+        1-D arrays to form the Cartesian product of.
+    out : ndarray
+        Array to place the Cartesian product in.
+
+    Returns
+    -------
+    out : ndarray
+        2-D array of shape (M, len(arrays)) containing Cartesian products
+        formed of input arrays.
+
+    Examples
+    --------
+    >>> cartesian(([1, 2, 3], [4, 5], [6, 7]))
+    array([[1, 4, 6],
+           [1, 4, 7],
+           [1, 5, 6],
+           [1, 5, 7],
+           [2, 4, 6],
+           [2, 4, 7],
+           [2, 5, 6],
+           [2, 5, 7],
+           [3, 4, 6],
+           [3, 4, 7],
+           [3, 5, 6],
+           [3, 5, 7]])
+
+    """
+    arr = []
+    for x in arrays:
+        arr.append(np.asarray(x))
+    # arrays = [np.asarray(x) for x in arrays]
+    arrays = arr
+    dtype = arrays[0].dtype
+
+    n = np.prod([x.size for x in arrays])
+    if out is None:
+        out = np.zeros([n, len(arrays)], dtype=dtype)
+
+    #m = n / arrays[0].size
+    m = int(n / arrays[0].size)
+    out[:,0] = np.repeat(arrays[0], m)
+    if arrays[1:]:
+        cartesian(*arrays[1:], out=out[0:m, 1:])
+        for j in range(1, arrays[0].size):
+        #for j in xrange(1, arrays[0].size):
+            out[j*m:(j+1)*m, 1:] = out[0:m, 1:]
+    return out
+
+def ordinal(n: int) -> str:
+    """Append the english ordinal suffix to an integer.
+    
+    From https://stackoverflow.com/a/20007730.
+    """
+    if 11 <= (n % 100) <= 13:
+        suffix = 'th'
+    else:
+        suffix = ['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]
+    return str(n) + suffix
+
 #
 # Utils for parallelized code
 #

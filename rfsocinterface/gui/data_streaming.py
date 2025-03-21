@@ -40,4 +40,4 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
         capture(rfchans, time.sleep, duration)
     
     def stop_streaming(self):
-        pass
+        raise NotImplementedError('Stop streaming not implemented yet')
