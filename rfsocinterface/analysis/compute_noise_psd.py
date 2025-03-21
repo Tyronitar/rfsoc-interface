@@ -1,8 +1,8 @@
+
 from pathlib import Path
 from typing import Literal
 import numpy as np
 import numpy.typing as npt
-import sys, os
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from scipy import signal, ndimage, fftpack
@@ -10,9 +10,10 @@ from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import curve_fit
 import scipy
 import pdb
-import h5py
 import argparse
 
+
+from rfsocinterface.core.data import load_time_ordered_IQ_data
 from rfsocinterface.core.utils import ensure_path, cartesian, ordinal
 
 XLIM = (0.1, 100)
@@ -551,30 +552,6 @@ def reject_outliers_onr(data,sigma=2):
       good_ind = good_ind[valid]
   return data[good_ind], good_ind
 
-@ensure_path(0)
-def load_data(path: Path) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-    with h5py.File(path, 'r') as f:
-        data_i = f['time_ordered_data/adc_i'][:]
-        data_q = f['time_ordered_data/adc_q'][:]
-        amp = np.sqrt(data_i ** 2. + data_q ** 2.)
-        # amp = np.sqrt(float(data_i) ** 2 + float(data_q) ** 2)
-        amp = np.nanmedian(amp, axis=1)
-        input_data = np.empty((2, *data_i.shape))
-        input_data[0, :, :] = data_i / np.outer(amp, np.ones(data_i.shape[1]))
-        input_data[1, :, :] = data_q / np.outer(amp, np.ones(data_q.shape[1]))
-        timestamp = f['time_ordered_data/timestamp'][:]
-        chanmask = f['global_data/chanmask'][:]
-    return input_data, timestamp, chanmask
-
-def plot(data: npt.NDArray):
-    mean_data = np.nanmean(data, axis=-1)
-    centered_data = data - mean_data[..., np.newaxis]
-    print(centered_data)
-    n_tones = 30
-    for i_tone in range(530, 530 + n_tones):
-        plt.plot(centered_data[0, i_tone, :] + i_tone * 1e-3)
-    plt.show()
-
 
 if __name__ == '__main__':
     pairs = [
@@ -588,7 +565,8 @@ if __name__ == '__main__':
         ('default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
     ]
     for name, title in pairs:
-        input_data, timestamp, chanmask = load_data(f'data/{name}.hdf5')
+        input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
+        
         rotate = True
         rotated_data = rotate_to_amplitude_and_phase(input_data)
         save_name = f'welch_{name}'
