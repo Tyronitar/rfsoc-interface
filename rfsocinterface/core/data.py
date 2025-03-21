@@ -67,14 +67,11 @@ class MapData(DetectorData):
     flagged_values: npt.NDArray = field(default_factory=lambda: np.array([]))
     integration_time: npt.NDArray = field(default_factory=lambda: np.array([]))
     NETD: npt.NDArray = field(default_factory=lambda: np.array([]))
+    chanmask: npt.NDArray = field(default_factory=lambda: np.array([]))
 
     @property
-    def relative_timestamp(self) -> npt.NDArray:
-        return self.timestamp - self.timestamp[0]
-    
-    @property
     def fs(self) -> float:
-        return 1 / self.relative_timestamp[1]
+        return 1 / self.timestamp[1]
     
     def __copy__(self) -> MapData:
         return MapData(
@@ -86,6 +83,7 @@ class MapData(DetectorData):
             flagged_values=self.flagged_values[:],
             integration_time=self.integration_time[:],
             NETD=self.NETD[:],
+            chanmask=self.chanmask[:],
         )
     
     def with_values(self, **kwargs) -> MapData:

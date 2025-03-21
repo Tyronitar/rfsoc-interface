@@ -13,6 +13,8 @@ from sklearn.cluster import DBSCAN
 from rfsocinterface.core.utils import ensure_path
 from rfsocinterface.core.data import ProcessedData, MapData
 
+DECIMATE_ORDER = 5
+BUTTER_ORDER = 6
 
 def _unimplemented_forward(self, *args):
     raise NotImplementedError(
@@ -45,12 +47,10 @@ class Mapper:
 
 
 class CleanTOD(DataRoutine):
-    DECIMATE_ORDER = 5
-    BUTTER_ORDER = 6
 
     def __init__(
             self,
-            ds_factor: int =6,
+            ds_factor: int=6,
             hp_filt_freq: float=0.5,
             lp_filt_freq: float=10.,
     ):
@@ -65,18 +65,17 @@ class CleanTOD(DataRoutine):
         #used later for the power spectrum computation
 
         data_raw = data_raw.data_mK
-        timestamp = data_raw.timestamp
         chanmask = data_raw.chanmask
         detector_az = data_raw.detector_az
         detector_za = data_raw.detector_za
         detector_pol = data_raw.detector_pol
 
-        time = timestamp - timestamp[0]
-        dtime = time - np.roll(time, 1)
+        timestamp = timestamp - timestamp[0]
+        dtime = timestamp - np.roll(timestamp, 1)
         
         fs = float(1./np.median(dtime))
-        hpfilt_sos = signal.butter(self.BUTTER_ORDER, self.hp_filt_freq, 'hp', fs=fs/self.ds_factor, output='sos', analog=False)
-        lpfilt_sos = signal.butter(self.BUTTER_ORDER, self.lp_filt_freq, 'lp', fs=fs/self.ds_factor, output='sos', analog=False)
+        hpfilt_sos = signal.butter(BUTTER_ORDER, self.hp_filt_freq, 'hp', fs=fs/self.ds_factor, output='sos', analog=False)
+        lpfilt_sos = signal.butter(BUTTER_ORDER, self.lp_filt_freq, 'lp', fs=fs/self.ds_factor, output='sos', analog=False)
 
         #downsample the data and apply hp filter
         data_ds = signal.decimate(data_raw, self.ds_factor)
@@ -96,10 +95,17 @@ class CleanTOD(DataRoutine):
 
         #downsample ancillary data
         time_ds = signal.decimate(timestamp, self.ds_factor)
-        detector_az_ds = signal.decimate(detector_az, self.ds_factor, n=self.DECIMATE_ORDER, axis=1)
-        detector_za_ds = signal.decimate(detector_za, self.ds_factor, n=self.DECIMATE_ORDER, axis=1)
+        detector_az_ds = signal.decimate(detector_az, self.ds_factor, n=DECIMATE_ORDER, axis=1)
+        detector_za_ds = signal.decimate(detector_za, self.ds_factor, n=DECIMATE_ORDER, axis=1)
 
-        return MapData(data_clean, detector_az_ds, detector_za_ds, detector_pol, time_ds)
+        return MapData(
+            data_clean,
+            detector_az_ds,
+            detector_za_ds,
+            detector_pol,
+            time_ds,
+            chanmask=data_raw.chanmask,
+        )
 
 
 class RemovePointLomaPickup(DataRoutine):
