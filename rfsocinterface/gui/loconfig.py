@@ -81,18 +81,18 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.channel_toolButton.clicked.connect(self.open_channel_in_initialization_tab)    
     
     def set_defaults(self):
-        defaults = self.settings['defaults']['losweep']
-        self.global_shift_lineEdit.setText(str(defaults['global_shift']))
+        defaults = self.settings['defaults']['loSweep']
+        self.global_shift_lineEdit.setText(str(defaults['globalShift']))
         self.df_lineEdit.setText(str(defaults['df']))
         self.deltaf_lineEdit.setText(str(defaults['deltaf']))
-        self.flagging_lineEdit.setText(str(defaults['flagging_threshold']))
+        self.flagging_lineEdit.setText(str(defaults['flaggingThreshold']))
 
         file_suffix = defaults.get('file_suffix', 'none')
         if  file_suffix not in FILE_SUFFIXES:
             raise SettingsError(f'Invalid value for defaults.losweep.file_suffix: "{file_suffix}; valid values are: {FILE_SUFFIXES}')
         self.active_suffix: Literal['none', 'temperature', 'elevation'] = file_suffix
 
-        self.second_sweep_df_lineEdit.setText(str(defaults['second_sweep']['df']))
+        self.second_sweep_df_lineEdit.setText(str(defaults['secondSweep']['df']))
 
         self.channel_comboBox.deselect_all()
 

@@ -12,7 +12,8 @@ if __name__ == '__main__':
     app = QApplication()
     screen = app.primaryScreen()
 
-    w = MainWindow("settings.toml")
+    # w = MainWindow("settings.toml")
+    w = MainWindow()
     w.setScreen(screen)
     move_to_center(w, screen)
     w.show()

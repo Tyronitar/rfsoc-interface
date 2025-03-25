@@ -16,7 +16,7 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.data_streaming import DataStreamingWidget
 from rfsocinterface.gui.main_widget import MainWidget
 
-from rfsocinterface.core.utils import SettingsError, ensure_path, convert_to_kidy_format, TabName
+from rfsocinterface.core.utils import SettingsError, ensure_path, convert_to_kidy_format, TabName, Settings
 
 import json
 
@@ -25,11 +25,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     """The Main program window."""
 
     @ensure_path(1)
-    def __init__(self, settings_file: Path, parent: QWidget | None=None):
+    def __init__(self, parent: QWidget | None=None):
         super().__init__(parent)
 
-        with settings_file.open('rb') as f:
-            self.settings = tomllib.load(f)
+        self.settings = Settings()
+        self.settings.load_settings()
         
         self.tabs: dict[TabName, MainWidget] = {}
         self.rfsocs: list[RFSOCWrapper] = []
@@ -107,7 +107,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.horizontalLayout.addWidget(self.tabWidget)
         tab: str
-        for tab in self.settings['general']['tabs']:
+        for tab in self.settings['app']['tabs']:
             match tab.lower():
                 case TabName.INITIALIZATION:
                     self._make_initialization_tab()
@@ -122,15 +122,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 case _:
                     raise SettingsError(f'Invalid name "{tab}" in general.tabs; valid options are {[name.value for name in TabName]}')
 
-        self.tabWidget.setCurrentIndex(0)
+        active_tab = self.settings['app'].get('activeTab', TabName.INITIALIZATION)
+        self.tabWidget.setCurrentIndex(self.index(active_tab))
 
-    def index(self, tab_name: str) -> int:
+    def index(self, tab_name: TabName) -> int:
         return list(self.tabs.keys()).index(tab_name)
 
     def init_rfsocs(self):
-        rfsoc_settings: dict
         for rfsoc_settings in self.settings['rfsocs']:
-            rfsoc = RFSOCWrapper(self.settings['defaults'], rfsoc_settings)
+            rfsoc = RFSOCWrapper(rfsoc_settings)
             self.rfsocs.append(rfsoc)
 
     def resize_to_current(self, index: int):
