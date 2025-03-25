@@ -31,11 +31,14 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
     
     def start_streaming(self):
         # TODO: Do this in another thread
-        rfchans = [rfsoc.get_channel(chan) for rfsoc, chan in self.get_selected_channels()]
-        save_location = self.save_location_widget.get_chosen_save_location()
-        save_location.parent.mkdir(parents=True, exist_ok=True)
-        for rfchan in rfchans:
+        chans = self.get_selected_channels(self.channel_comboBox)
+        rfchans = []
+        for rfsoc, chan in chans:
+            rfchan = rfsoc.get_channel(chan)
+            save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'chan_{chan}')
+            save_location.parent.mkdir(parents=True, exist_ok=True)
             rfchan.raw_filename = str(save_location)
+            rfchans.append(rfchan)
         duration = get_num_value(self.duration_lineEdit)
         capture(rfchans, time.sleep, duration)
     

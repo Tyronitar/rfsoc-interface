@@ -106,17 +106,10 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.lo_gridLayout.addWidget(self.channel_error_label, 1, 1)
         self.channel_error_label.hide()
     
-    def get_selected_channels(self) -> Iterator[tuple[RFSOCWrapper, int]]:
-        checked_ids = self.channel_comboBox.checked_indices()
-        checked_text = [self.channel_comboBox.itemText(i) for i in checked_ids]
-        if not checked_text:
-            raise SettingsError('No channel selected')
-        return map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text)
-    
     def open_channel_in_initialization_tab(self):
         # TODO: Fix this
-        channels = self.get_selected_channels()
-        rfsoc, chan = self.get_selected_channels()
+        channels = self.get_selected_channels(self.channel_comboBox)
+        rfsoc, chan = self.get_selected_channels(self.channel_comboBox)
         tab_idx = self.main_window.tabWidget.indexOf(self.main_window.initialization_tab)
         if 'initialization' in self.main_window.tabs:
             init_tab: InitializationWidget = self.main_window.tabs['initialization']
@@ -137,7 +130,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     
     def run_sweeps(self):
         try:
-            selected_channels = self.get_selected_channels()
+            selected_channels = self.get_selected_channels(self.channel_comboBox)
         except SettingsError:
             self.channel_error_label.show()
             return

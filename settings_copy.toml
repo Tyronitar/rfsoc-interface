@@ -31,9 +31,8 @@ zenith_jog_voltage = 1
     bitstream = "/home/xilinx/dualchan_v2.bit"
 
     [defaults.channel]
-    # tone_list = "/home/nia/Documents/rfsoc-interface/Default_tone_list.npy"
-    tone_list = "/home/onrkids/readout/host/params/Default_tone_list.npy"
-    tone_powers = "/home/onrkids/readout/host/params/Device_aSi1_Channel2_20220222_300K_200mK_max_readout_power.npy"
+    tone_list = "/home/nia/Documents/rfsoc-interface/Default_tone_list.npy"
+    # tone_powers = "/home/onrkids/readout/host/params/Device_aSi1_Channel2_20220222_300K_200mK_max_readout_power.npy"
     # chanmask = "/home/onrkids/readout/host/params/chanmask_rfsoc2.npy"
     dsp = {lo_freq = 400e6, n_averages = 524288}
     rfin = 0.0
@@ -66,17 +65,17 @@ zenith_jog_voltage = 1
 
 [[rfsocs]]
 name = "devrfsoc"
-redis = {ip = "192.168.1.1", port = 6379}
-atten_comport = '/dev/IF1Attenuators'
+redis = {ip = "192.168.1.10", port = 6379}
+atten_comport = '/dev/IF2Attenuators'
 [rfsocs.channel1]
-lo_comport = '/dev/IF1System1LO'
-sourceip = '192.168.5.41'
-destip = '192.168.5.40'
-destmac = '3CECEFBB00F2'
+lo_comport = '/dev/IF2System1LO'
+sourceip = '192.168.3.40'
+destip = '192.168.3.41'
+destmac = '98B78520C5C0'
 port = 4096
 [rfsocs.channel2]
-lo_comport = '/dev/IF1System2LO'
-sourceip = '192.168.8.41'
-destip = '192.168.8.40'
-destmac = '3CECEFBB00F0'
+lo_comport = '/dev/IF2System2LO'
+sourceip = '192.168.4.4'
+destip = '192.168.4.40'
+destmac = '681CA2123652'
 port = 4096

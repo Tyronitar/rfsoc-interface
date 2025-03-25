@@ -112,9 +112,9 @@ def get_lineEdit_text(line_edit: QLineEdit, use_placeholder_text: bool=False) ->
     return val
 
 
-def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float) -> Number:
+def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float, use_placeholder_text: bool=False) -> Number:
     """Get the value from a QLineEdit and convert to a number."""
-    val = get_lineEdit_text(line_edit)
+    val = get_lineEdit_text(line_edit, use_placeholder_text=use_placeholder_text)
     try:
         return num_type(val)
     except ValueError as e:

@@ -1,9 +1,11 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
+from functools import partial
 
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt
 
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
+from rfsocinterface.core.utils import SettingsError
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -24,3 +26,10 @@ class MainWidget(QWidget):
                 item = combo_box.model().item(total, 0)
                 item.setCheckState(Qt.CheckState.Unchecked)
                 total += 1
+
+    def get_selected_channels(self, combob_box: CheckableComboBox) -> Iterator[tuple[RFSOCWrapper, int]]:
+        checked_ids = combob_box.checked_indices()
+        checked_text = [combob_box.itemText(i) for i in checked_ids]
+        if not checked_text:
+            raise SettingsError('No channel selected')
+        return map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text)
