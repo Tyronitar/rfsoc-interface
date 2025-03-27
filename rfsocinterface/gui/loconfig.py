@@ -149,17 +149,15 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         # TODO: Fix this
         lo_freq = channel_settings['dsp']['lo_freq']
         valon.set_frequency(2, lo_freq)
-        tone_shift = get_num_value(self.global_shift_lineEdit)
+        tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3  # KHz to Hz
         if tone_shift != 0:
-            lo_freq = valon.get_frequency(SYNTH_B)
+            lo_freq = valon.get_frequency(SYNTH_B) * 1e6  # MHz to Hz
             curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
             new_tones = np.ndarray.tolist(
                 curr_tone_list
                 + float(tone_shift)
-                * curr_tone_list
-                / np.median(curr_tone_list)
-                * 1.0e3
-                - lo_freq * 1.0e6
+                * (curr_tone_list + lo_freq)
+                / np.median(curr_tone_list + lo_freq)
             )
             print(
                 "Waiting for the RFSOC to finish writing the updated frequency list"
