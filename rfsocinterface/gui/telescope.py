@@ -15,6 +15,9 @@ from typing import Callable, Concatenate, Any, TYPE_CHECKING
 import functools
 import time
 
+from multiprocessing import Process, Pipe
+from multiprocessing.connection import Connection
+
 import uldaq as ul
 import numpy as np
 import numpy.typing as npt
@@ -92,24 +95,39 @@ class TelescopeMotionJob(QThread):
         self.returned.emit(res)
 
 
-class TelescopeMotorController(QObject):
+class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
 
-    azimuthUpdated = Signal(float)
-    azimuthCommanded = Signal(float)
-    azimuthVelocityChanged = Signal(float)
-    zenithUpdated = Signal(float)
-    zenithCommanded = Signal(float)
-    zenithVelocityChanged = Signal(float)
-
-    def __init__(self, parent=None):
+    def __init__(self, conn: Connection):
         self._initialized = False
         self.run = False
         self.az_mutex = QMutex()
         self.ze_mutex = QMutex()
         self._active_jobs: list[TelescopeMotionJob] = []
         self._initialize_system()
-        super().__init__(parent)
+        self.conn = conn
+        self._listener_loop()
+    
+    def listener_loop(self):
+        while True:
+            command, *args = self.conn.recv()
+            match command.lower():
+                case 'get_ser_az_pos':
+                    pfb = self.get_ser_az_pos()
+                    self.conn.send(['az_pos', pfb])
+                case 'set_az_pos':
+                    self.set_az_pos(*args)
+                case 'get_ser_ze_pos':
+                    pos = self.get_ser_ze_pos()
+                    self.conn.send(['ze_pos', pos])
+                case 'set_ze_pos':
+                    self.set_ze_pos(*args)
+                case 'stop':
+                    self.set_ao_zero()
+                    break
+                case _:
+                    self.conn.send(['err', 'Unknown command "{command}" received.'])
+
     
     def test_init(self):
         if not self._initialized:
@@ -180,8 +198,6 @@ class TelescopeMotorController(QObject):
         self.ze_vel = 0
     
     def close(self):
-        az_locker = QMutexLocker(self.az_mutex)
-        ze_locker = QMutexLocker(self.ze_mutex)
         self.ser_az.close()
         self.ser_ze.close()
 
@@ -212,7 +228,6 @@ class TelescopeMotorController(QObject):
 
     def get_ser_az_pos(self) -> float:
         old_pfb = self.az_pos
-        locker = QMutexLocker(self.az_mutex)
         try:
             if self.ser_az.is_open:
                 self.ser_az.write(b'PFB\r\n')
@@ -222,8 +237,6 @@ class TelescopeMotorController(QObject):
                 self.ser_az.reset_input_buffer()
                 self.ser_az.reset_output_buffer()
                 self.az_pos = pfb
-                if self._initialized:
-                    self.azimuthUpdated.emit(pfb)
                 return pfb
         except ValueError:
             print(
@@ -233,11 +246,13 @@ class TelescopeMotorController(QObject):
             return old_pfb
 
     def set_az_pos(self, new_pos: int, scan_mode: bool=False):
-        self.azimuthCommanded.emit(new_pos)
+        # self.azimuthCommanded.emit(new_pos)
+        self.conn.send(['az_poz_comm', new_pos])
         self.run = True
-        worker = TelescopeMotionJob(self._set_az_pos, new_pos, scan_mode)
-        self._active_jobs.append(worker)
-        worker.start()
+        # worker = TelescopeMotionJob(self._set_az_pos, new_pos, scan_mode)
+        # self._active_jobs.append(worker)
+        # worker.start()
+        self._set_az_pos(new_pos, scan_mode)
     
     def _set_az_pos(self, new_pos: int, scan_mode: bool=False):
         # I want to accept a number in degrees, but put the number in the integer value desired by S700 controller
@@ -313,7 +328,8 @@ class TelescopeMotorController(QObject):
                    time.sleep(1.e-4)
                 pfb_time = time.time()
                 pfb = self.get_ser_az_pos()
-                self.azimuthUpdated.emit(pfb)
+                # self.azimuthUpdated.emit(pfb)
+                self.conn.send(['az_pos', pfb])
 
                 if scan_mode:
                     position_data = np.append(position_data, [pfb, this_ze, pfb_time])
@@ -346,10 +362,11 @@ class TelescopeMotorController(QObject):
             ze_dither: float=0.04,
             position_return: bool=True,
     ):
-        worker = TelescopeMotionJob(self._az_scan_mode, az_start, az_stop, file, n_repeats, ze_dither, position_return)
-        self._active_jobs.append(worker)
+        # worker = TelescopeMotionJob(self._az_scan_mode, az_start, az_stop, file, n_repeats, ze_dither, position_return)
+        # self._active_jobs.append(worker)
         self.run = True
-        worker.start()
+        # worker.start()
+        self._az_scan_mode(file, az_start, az_stop, n_repeats, ze_dither, position_return)
 
     def _az_scan_mode(
             self,
@@ -419,7 +436,8 @@ class TelescopeMotorController(QObject):
             self.ser_az.readline()
             az_speed = self.ser_az.read_until(b"\r\n")
             print("AZ speed set to: ", az_speed)  ###THIS MAY BREAK
-            self.azimuthVelocityChanged(az_speed)
+            # self.azimuthVelocityChanged(az_speed)
+            self.conn.send(['az_vel', az_speed])
             self.ser_az.reset_input_buffer()
             self.ser_az.reset_output_buffer()
 
@@ -441,7 +459,7 @@ class TelescopeMotorController(QObject):
 
     def get_ser_ze_pos(self) -> float | None:
         old_pos = self.ze_pos
-        locker = QMutexLocker(self.ze_mutex)
+        # locker = QMutexLocker(self.ze_mutex)
         try:
             self.ser_ze.write('PL.FB\r\n'.encode('ASCII'))
             # pos_str = self.ser_ze.read_until(b']', 0.1).decode()
@@ -449,7 +467,8 @@ class TelescopeMotorController(QObject):
             pos = float(pos_str.split(' ')[0].split('>')[-1])
             self.ze_pos = pos
             if self._initialized:
-                self.zenithUpdated.emit(pos)
+                self.conn.send(['ze_pos', pos])
+                # self.zenithUpdated.emit(pos)
             return pos
         except ValueError:
             print(
@@ -459,11 +478,13 @@ class TelescopeMotorController(QObject):
             return old_pos
 
     def set_ze_pos(self, new_pos: int, scan_mode: bool=False):
-        self.zenithCommanded.emit(new_pos)
+        # self.zenithCommanded.emit(new_pos)
+        self.conn.send(['ze_pos_comm', new_pos])
         self.run = True
-        worker = TelescopeMotionJob(self._set_ze_pos, new_pos, scan_mode)
-        self._active_jobs.append(worker)
-        worker.start()
+        # worker = TelescopeMotionJob(self._set_ze_pos, new_pos, scan_mode)
+        # self._active_jobs.append(worker)
+        # worker.start()
+        self._set_ze_pos(new_pos, scan_mode)
 
     def _set_ze_pos(self, new_pos: float, scan_mode: bool=False):
         # new_pos = float(new_pos)
@@ -471,7 +492,8 @@ class TelescopeMotorController(QObject):
 
         ##confirm position
         pos = self.get_ser_ze_pos()
-        self.zenithUpdated.emit(pos)
+        # self.zenithUpdated.emit(pos)
+        self.conn.send(['ze_pos', pos])
         if scan_mode:
             this_az = self.get_ser_az_pos()
             position_data = []
@@ -516,7 +538,8 @@ class TelescopeMotorController(QObject):
                 # self.zenithVelocityChanged.emit(data_value)
                 self.set_ao_value(data_value, ZE_OUT_CHANNEL)
                 pos = self.get_ser_ze_pos()
-                self.zenithUpdated.emit(pos)
+                # self.zenithUpdated.emit(pos)
+                self.conn.send(['ze_pos', pos])
                 if scan_mode:
                     position_data = np.append(
                         position_data, [this_az, pos, time.time()]
@@ -541,16 +564,18 @@ class TelescopeMotorController(QObject):
         ## Read position again
         time.sleep(0.1)
         pos = self.get_ser_ze_pos()
-        self.zenithUpdated.emit(pos)
+        # self.zenithUpdated.emit(pos)
+        self.conn.send(['ze_pos', pos])
         #        print ('EL Set to position: ', str(pos))
         #        print ('Position Set!')
         if scan_mode:
             return position_data
 
     def ze_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
-        worker = TelescopeMotionJob(self._az_scan_mode, start, stop, file, n_repeats)
-        self._active_jobs.append(worker)
-        worker.start()
+        # worker = TelescopeMotionJob(self._az_scan_mode, start, stop, file, n_repeats)
+        # self._active_jobs.append(worker)
+        # worker.start()
+        self._ze_scan_mode(start, stop, file, n_repeats)
 
     def _ze_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
         ze_start_buffer = 0.2 * np.sign(stop - start)
@@ -614,7 +639,10 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
         self.cam_ctrl = SKPR_Camera_Control()
         self.optical_pushButton.clicked.connect(self.take_pic)
 
-        self.ctrl = TelescopeMotorController(parent=self)
+        # self.ctrl = TelescopeMotorController(parent=self)
+        self.conn_parent, self.conn_child = Pipe(duplex=True)
+        self.ctrl_process = Process(target=TelescopeMotorController.__init__, args=(self.conn_child,))
+        self.ctrl_process.start()
 
         # Update Timer
         self.last_az = self.ctrl.az_pos
@@ -671,11 +699,31 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
                 self.ctrl.set_ao_value(self.az_jog_voltage, AZ_OUT_CHANNEL)
             case self.controller.right_toolButton:
                 self.ctrl.set_ao_value(-self.az_jog_voltage, AZ_OUT_CHANNEL)
+    
+    def connection_loop(self):
+        response, *data = self.conn_parent.recv()
+        match response.lower():
+            case 'az_pos':
+                self.update_az_pos(data)
+            case 'ze_pos':
+                self.update_ze_pos(data)
+            case 'az_pos_comm':
+                self.update_az_cmd(data)
+            case 'ze_pos_comm':
+                self.update_ze_cmd(data)
 
 
     def set_az_pos(self):
         new_pos = float(self.azimuth_setlineEdit.text())
-        self.ctrl.set_az_pos(new_pos)
+        self.conn_parent.send(['set_az_pos', new_pos])
+        # self.ctrl.set_az_pos(new_pos)
+        # TODO: Actually handle waiting for it
+    
+    def get_az_pos(self) -> float:
+        self.conn_parent.send(['get_ser_az_pos'])
+        pfb = self.conn_parent.recv()
+        return pfb
+
     
     def set_ze_pos(self):
         new_pos = float(self.zenith_setlineEdit.text())
