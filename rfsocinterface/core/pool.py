@@ -154,6 +154,7 @@ class QPoolExecutor(QObject):
     error = Signal(BaseException)
     job_finished = Signal()
     result = Signal(object)
+    pool: ThreadPoolExecutor | ProcessPoolExecutor
 
     def __init__(self, max_workers: int=None, parent=None):
         QObject.__init__(self, parent=parent)

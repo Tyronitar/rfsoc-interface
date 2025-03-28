@@ -44,13 +44,14 @@ class QJobProgressDialog(QProgressDialog):
         else:
             new_val = val
         # print(f'Progress: {new_val}/{self.maximum()}')
-        self.setValue(new_val)
         if new_val >= self.maximum():
             if self.autoClose():
                 self.pool.close()
                 self.pool.join()
+                self.close()
             if self.autoReset():
                 self.reset()
+        self.setValue(new_val)
     
     @Slot(BaseException)
     def handle_error(self, e: BaseException):

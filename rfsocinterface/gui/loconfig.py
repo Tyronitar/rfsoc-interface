@@ -187,13 +187,13 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             valon,
             rfchan,
             rfsoc.get_tone_list()[0],
-            valon.get_frequency(SYNTH_B),
+            valon.get_frequency(SYNTH_B) * 1e6,  # MHZ to Hz
         )
         tone_list = rfsoc.get_tone_list()[0]
         chanmask = DEFAULT_CHANMASK
         # chanmask = rfsoc.settings['chanmask']
-        freq_step = get_num_value(self.df_lineEdit)
-        full_span = get_num_value(self.deltaf_lineEdit)
+        freq_step = get_num_value(self.df_lineEdit)  * 1e3  # KHz to Hz
+        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3  # KHz to Hz
         n_steps = full_span / freq_step
 
         pd = QThreadJobProgressDialog(labelText='Running LO Sweep...',  maximum=n_steps, max_workers=1, parent=self)
@@ -224,6 +224,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             QApplication.processEvents()
             time.sleep(0.1)
         self.sweep_data = sweep.data
+        self.sweep_data.set_diff_to_flag(get_num_value(self.flagging_lineEdit))
         self.dw.sweep = self.sweep_data
 
         # pb = SequentialProgressBarDialog(parent=self)
@@ -252,9 +253,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         fig, future = self.dw.plot(pd=pd)
         self.dw.set_figure(fig)
         future.add_done_callback(lambda _: self._show_diagnostics())
+        # future.add_done_callback(lambda _: pd.close())
     
     def _show_diagnostics(self):
         plt.tight_layout()
+        QApplication.processEvents()
         # self.dw.set_figure(fig)
         self.dw.show()
 

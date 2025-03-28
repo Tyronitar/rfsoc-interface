@@ -17,12 +17,14 @@ FIBONACCI = [
     24157817, 39088169, 63245986,
 ]
 
-def fibonacci(n: int, progress_callback: Callable=None):
-    if progress_callback is not None:
-        progress_callback()
+counter = 0
+def fibonacci(n: int, depth: int=0):
+    global counter
+    if depth == 0:
+        counter += 1
     if n <= 1:
         return n
-    return fibonacci(n - 1) + fibonacci(n - 2)
+    return fibonacci(n - 1, depth + 1) + fibonacci(n - 2, depth + 1)
 
 
 def fail_on_four(n: int):
@@ -44,11 +46,14 @@ def test_qthread_job_pool(qtbot):
 
 
 def test_qthread_job_pool_cancel(qapp):
+    global counter
+    counter = 0
     n_tasks = 25
     pool = QThreadJobPool(max_workers=3)
     future = pool.map(fibonacci, range(n_tasks))
     pool.shutdown(wait=True)
     assert future.cancelled()  # Job is canceled before it can be finished
+    assert counter < 25
 
 
 def test_qthread_job_pool_exception(qtbot):

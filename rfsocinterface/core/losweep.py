@@ -236,7 +236,15 @@ class LoSweepData:
         self.fit_qi = np.zeros(self.nchan)
         self.fit_qc = np.zeros(self.nchan)
         self.fit_f0[self.offres_ind] = tone_list[self.offres_ind]
-        self.diff_to_flag = (3.0 / 200.0) * self.tone_list * 1e-6
+        self.set_diff_to_flag()
+    
+    def set_diff_to_flag(self, val: float=3.0):
+        """Set the flagging threshold.
+        
+        Arguments:
+            val (float): The minimumum difference to flag in KHz. (defaults to 3.0)
+        """
+        self.diff_to_flag = (val / 200.0) * self.tone_list * 1e-6
     
     @classmethod
     @ensure_path(1, 2, 3)
