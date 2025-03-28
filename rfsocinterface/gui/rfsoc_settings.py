@@ -130,13 +130,13 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
         self.bitstream_fileUploadWidget.lineEdit.setText(str(settings['bitstream']))
 
         # Redis
-        self.redis_ip_lineEdit.setText(settings['redis']['ip'])
+        self.redis_ip_lineEdit.setText(settings['redis']['IP'])
         self.redis_port_lineEdit.setText(str(settings['redis']['port']))
 
         # Comports
-        self.comport_atten_fileUploadWidget.lineEdit.setText(str(settings['atten_comport']))
-        self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channel1']['lo_comport']))
-        self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channel2']['lo_comport']))
+        self.comport_atten_fileUploadWidget.lineEdit.setText(str(settings['attenComport']))
+        self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channel1']['loComport']))
+        self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channel2']['loComport']))
 
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     height_updated = Signal()
@@ -383,9 +383,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     @Slot()
     def update_ethernet_config(self):
         chan_settings = self.rfsoc.settings[f'channel{self.channel}']
-        chan_settings['sourceip'] = get_lineEdit_text(self.eth_source_lineEdit)
-        chan_settings['destip'] = get_lineEdit_text(self.eth_dest_lineEdit)
-        chan_settings['destmac'] = get_lineEdit_text(self.eth_mac_lineEdit)
+        chan_settings['sourceIP'] = get_lineEdit_text(self.eth_source_lineEdit)
+        chan_settings['destIP'] = get_lineEdit_text(self.eth_dest_lineEdit)
+        chan_settings['destMAC'] = get_lineEdit_text(self.eth_mac_lineEdit)
         chan_settings['port'] = get_num_value(self.eth_port_lineEdit, int)
         self.rfsoc.update_kidpy_rfsoc()
 
@@ -501,25 +501,25 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         chan_settings = self.rfsoc.settings[f'channel{self.channel}']
 
         # Resonator Settings
-        self.tone_list_lineEdit.setText(str(chan_settings['tone_list']))
+        self.tone_list_lineEdit.setText(str(chan_settings['toneList']))
         # self.tone_list_lineEdit.setPlaceholderText(self.rfsoc.settings['tone_list'])
-        if 'tone_powers' in chan_settings:
-            self.tone_power_lineEdit.setText(str(chan_settings['tone_powers']))
+        if 'tonePowers' in chan_settings:
+            self.tone_power_lineEdit.setText(str(chan_settings['tonePowers']))
         # self.tone_power_lineEdit.setPlaceholderText(self.rfsoc.settings['tone_powers'])
         if 'chanmask' in chan_settings:
             self.chanmask_lineEdit.setText(str(chan_settings['chanmask']))
             # self.chanmask_lineEdit.setPlaceholderText(self.settings['chanmask'])
 
         # Ethernet Settings
-        self.eth_source_lineEdit.setText(chan_settings['sourceip'])
-        self.eth_dest_lineEdit.setText(chan_settings['destip'])
-        self.eth_mac_lineEdit.setText(chan_settings['destmac'])
+        self.eth_source_lineEdit.setText(chan_settings['sourceIP'])
+        self.eth_dest_lineEdit.setText(chan_settings['destIP'])
+        self.eth_mac_lineEdit.setText(chan_settings['destMAC'])
         self.eth_port_lineEdit.setText(str(chan_settings['port']))
 
         # IF Settings
         self.rfin_lineEdit.setText(str(chan_settings['rfin']))
         self.rfout_lineEdit.setText(str(chan_settings['rfout']))
-        self.lo_freq_lineEdit.setText(f'{chan_settings['dsp']['lo_freq']}')
+        self.lo_freq_lineEdit.setText(f'{chan_settings['dsp']['loFreq']}')
     
     @Slot(QAbstractButton)
     def restore_defaults(self, button: QAbstractButton):
