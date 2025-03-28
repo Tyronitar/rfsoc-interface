@@ -227,32 +227,32 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     @Slot(int)
     def check_equal_tones(self, state: int):
         checked = Qt.CheckState(state) == Qt.CheckState.Checked
-        self.tone_list_lineEdit.setVisible(not checked)
         self.tone_list_lineEdit.setStyleSheet('')
+        self.tone_list_lineEdit.setVisible(not checked)
         self.tone_list_error_label.setVisible(False)
         self.tone_list_pushButton.setVisible(not checked)
 
         self.tone_list_baseband_max_label.setVisible(checked)
-        self.tone_list_baseband_max_lineEdit.setVisible(checked)
         self.tone_list_baseband_max_lineEdit.setStyleSheet('')
+        self.tone_list_baseband_max_lineEdit.setVisible(checked)
 
         self.tone_list_baseband_min_label.setVisible(checked)
-        self.tone_list_baseband_min_lineEdit.setVisible(checked)
         self.tone_list_baseband_min_lineEdit.setStyleSheet('')
+        self.tone_list_baseband_min_lineEdit.setVisible(checked)
 
         self.tone_list_ntones_label.setVisible(checked)
-        self.tone_list_ntones_lineEdit.setVisible(checked)
         self.tone_list_ntones_lineEdit.setStyleSheet('')
+        self.tone_list_ntones_lineEdit.setVisible(checked)
 
-        self.update_tone_list_equal_label('')
         self.tone_list_equal_label.setVisible(checked)
+        self.update_tone_list_equal_label('')
         self.height_updated.emit()
 
     @Slot(int)
     def check_equal_power(self, state: int):
         checked = Qt.CheckState(state) == Qt.CheckState.Checked
-        self.tone_power_lineEdit.setVisible(not checked)
         self.tone_power_lineEdit.setStyleSheet('')
+        self.tone_power_lineEdit.setVisible(not checked)
         self.tone_power_pushButton.setVisible(not checked)
         self.tone_power_error_label.setVisible(False)
         self.height_updated.emit()
@@ -422,6 +422,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             tones_valid &= bb_max_valid
             if tones_valid:
                 n = get_num_value(self.tone_list_ntones_lineEdit, int)
+                # Get baseband frequencies in Hz
                 bb_min = get_num_value(self.tone_list_baseband_min_lineEdit) * 1e6
                 bb_max = get_num_value(self.tone_list_baseband_max_lineEdit) * 1e6
                 if bb_max <= bb_min:
@@ -429,12 +430,12 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                     highlight_error_line_edit(self.tone_list_baseband_max_lineEdit)
                 else:
                     # Only for testing purposes
-                    tone_list = np.load('Default_tone_list.npy')
-                    tone_list = tone_list[(bb_min <= np.abs(tone_list)) & (np.abs(tone_list) <= bb_max)]
+                    # tone_list = np.load('Default_tone_list.npy')
+                    # tone_list = tone_list[(bb_min <= np.abs(tone_list)) & (np.abs(tone_list) <= bb_max)]
 
-                    # freq_low = np.linspace(-bb_max, -bb_min, n // 2)
-                    # freq_hi = np.linspace(bb_min, bb_max, n // 2)
-                    # tone_list = np.append(freq_low, freq_hi)
+                    freq_low = np.linspace(-bb_max, -bb_min, n // 2)
+                    freq_hi = np.linspace(bb_min, bb_max, n // 2)
+                    tone_list = np.append(freq_low, freq_hi)
             # TODO: Ask Cody about this
             # Cody's code for equally spaced tones
             # Nover2 = 500 # number of tones to make  
@@ -491,7 +492,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             print('Succesfully set attenuation')
     
     def set_lo_freq(self):
-        lo_freq = get_num_value(self.lo_freq_lineEdit)
+        lo_freq = get_num_value(self.lo_freq_lineEdit) * 1e6  # MHz to Hz
         self.setCursor(Qt.CursorShape.WaitCursor)
         self.rfsoc.set_frequency(self.channel, lo_freq)
         self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -518,7 +519,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         # IF Settings
         self.rfin_lineEdit.setText(str(chan_settings['rfin']))
         self.rfout_lineEdit.setText(str(chan_settings['rfout']))
-        self.lo_freq_lineEdit.setText(f'{chan_settings['dsp']['lo_freq']:e}')
+        self.lo_freq_lineEdit.setText(f'{chan_settings['dsp']['lo_freq']}')
     
     @Slot(QAbstractButton)
     def restore_defaults(self, button: QAbstractButton):
