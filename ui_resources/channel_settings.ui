@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>650</width>
-    <height>672</height>
+    <height>728</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -43,7 +43,13 @@
      </property>
      <layout class="QGridLayout" name="eth_gridLayout">
       <item row="4" column="1">
-       <widget class="QLineEdit" name="eth_mac_lineEdit">
+       <widget class="ClickableLineEdit" name="eth_mac_lineEdit">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="placeholderText">
          <string>XX:XX:XX:XX:XX:XX</string>
         </property>
@@ -64,7 +70,13 @@
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="QLineEdit" name="eth_source_lineEdit">
+       <widget class="ClickableLineEdit" name="eth_source_lineEdit">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="placeholderText">
          <string>255.255.255.255</string>
         </property>
@@ -105,7 +117,13 @@
        </widget>
       </item>
       <item row="2" column="1">
-       <widget class="QLineEdit" name="eth_dest_lineEdit">
+       <widget class="ClickableLineEdit" name="eth_dest_lineEdit">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="placeholderText">
          <string>255.255.255.255</string>
         </property>
@@ -131,7 +149,13 @@
        </widget>
       </item>
       <item row="6" column="1">
-       <widget class="QLineEdit" name="eth_port_lineEdit">
+       <widget class="ClickableLineEdit" name="eth_port_lineEdit">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="placeholderText">
          <string>0</string>
         </property>
@@ -160,7 +184,7 @@
    <item row="5" column="1">
     <widget class="QGroupBox" name="if_GroupBox">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+      <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -323,7 +347,7 @@
         <item>
          <widget class="ClickableLineEdit" name="lo_freq_lineEdit">
           <property name="sizePolicy">
-           <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
             <horstretch>0</horstretch>
             <verstretch>0</verstretch>
            </sizepolicy>
@@ -335,7 +359,7 @@
            </size>
           </property>
           <property name="placeholderText">
-           <string>4e6</string>
+           <string>400</string>
           </property>
          </widget>
         </item>
@@ -376,7 +400,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>LO freq (Hz):</string>
+         <string>LO freq (MHz):</string>
         </property>
        </widget>
       </item>
@@ -473,7 +497,7 @@
          </widget>
         </item>
         <item row="1" column="0">
-         <widget class="QLineEdit" name="tone_power_lineEdit">
+         <widget class="ClickableLineEdit" name="tone_power_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -497,7 +521,7 @@
       <item row="5" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout">
         <item>
-         <widget class="QLineEdit" name="chanmask_lineEdit">
+         <widget class="ClickableLineEdit" name="chanmask_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -570,7 +594,7 @@
          </widget>
         </item>
         <item row="5" column="0">
-         <widget class="QLineEdit" name="tone_list_lineEdit">
+         <widget class="ClickableLineEdit" name="tone_list_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -583,7 +607,7 @@
          </widget>
         </item>
         <item row="3" column="1">
-         <widget class="QLineEdit" name="tone_list_ntones_lineEdit">
+         <widget class="ClickableLineEdit" name="tone_list_ntones_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -600,7 +624,7 @@
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QLineEdit" name="tone_list_baseband_min_lineEdit">
+         <widget class="ClickableLineEdit" name="tone_list_baseband_min_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -612,7 +636,7 @@
         <item row="5" column="1">
          <widget class="QPushButton" name="tone_list_pushButton">
           <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
             <horstretch>0</horstretch>
             <verstretch>0</verstretch>
            </sizepolicy>
@@ -644,7 +668,7 @@
          </widget>
         </item>
         <item row="2" column="1">
-         <widget class="QLineEdit" name="tone_list_baseband_max_lineEdit">
+         <widget class="ClickableLineEdit" name="tone_list_baseband_max_lineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
             <horstretch>0</horstretch>

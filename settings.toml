@@ -35,7 +35,7 @@ zenith_jog_voltage = 1
     tone_list = "/home/onrkids/readout/host/params/Default_tone_list.npy"
     tone_powers = "/home/onrkids/readout/host/params/Device_aSi1_Channel2_20220222_300K_200mK_max_readout_power.npy"
     # chanmask = "/home/onrkids/readout/host/params/chanmask_rfsoc2.npy"
-    dsp = {lo_freq = 400e6, n_averages = 524288}
+    dsp = {lo_freq = 400, n_averages = 524288}
     rfin = 0.0
     rfout = 0.0
 
