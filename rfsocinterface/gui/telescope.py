@@ -51,7 +51,9 @@ ADDR_PL_FB = 588  ##This is the position loop feedback. Includes some offset par
 ADDR_FB1_P = 1610  ##This is the absolute position from the FB1 (resolver).
 ZERO_DATA = analog_to_digital(0, -10, 10, 16)
 
-
+SPEED_MULTIPLIER = 0.1
+AZ_BASE_SPEED = 1.5
+ZE_BASE_SPEED = 0.3
 
 class StopMotion(Exception):
     """Exception for handling pressing of the stop button."""
@@ -160,7 +162,9 @@ class TelescopeMotorController(QObject):
         self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
         self.ser_ze.open(host=AKD1, port=ZEPORT)
         self.ser_ze.write(b'DRV.ACTIVE\r\n')
-        status_string = self.ser_ze.read_until(b'\r', 0.1).decode()
+        status_string = self.ser_ze.read_until(b'\r', 0.1)
+        # print(status_string, type(status_string))
+        # status_string = self.ser_ze.read_until(b'\r', 0.1).decode()
         status = float(status_string.split('\r')[0])
 
         if status == 1:
@@ -287,7 +291,7 @@ class TelescopeMotorController(QObject):
                     elif (
                         abs(pfb - new_pos) < 15
                     ):  ##If we are far from the setpoint, go at max speed
-                        this_speed = 0.35 * abs(pfb - new_pos) + 1.5
+                        this_speed = SPEED_MULTIPLIER * abs(pfb - new_pos) + AZ_BASE_SPEED
                         data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
                 # elif abs(pfb-az_set_pos) < 1.:##set to slower speed as approaching setpoint
@@ -440,7 +444,8 @@ class TelescopeMotorController(QObject):
         locker = QMutexLocker(self.ze_mutex)
         try:
             self.ser_ze.write('PL.FB\r\n'.encode('ASCII'))
-            pos_str = self.ser_ze.read_until(b']', 0.1).decode()
+            # pos_str = self.ser_ze.read_until(b']', 0.1).decode()
+            pos_str = self.ser_ze.read_until(b']', 0.1)
             pos = float(pos_str.split(' ')[0].split('>')[-1])
             self.ze_pos = pos
             if self._initialized:
@@ -460,8 +465,8 @@ class TelescopeMotorController(QObject):
         self._active_jobs.append(worker)
         worker.start()
 
-    def _set_ze_pos(self, new_pos: int, scan_mode: bool=False):
-        new_pos = float(new_pos)
+    def _set_ze_pos(self, new_pos: float, scan_mode: bool=False):
+        # new_pos = float(new_pos)
         self.set_ao_zero()
 
         ##confirm position
@@ -496,7 +501,8 @@ class TelescopeMotorController(QObject):
                     elif (
                         abs(pos - new_pos) < 15
                     ):  ##If we are far from the setpoint, go at max speed
-                        this_speed = 0.35 * abs(pos - new_pos) + 0.30
+                        # print(f'Pos: {pos}, New Pos: {new_pos}, Difference: {abs(pos - new_pos)}')
+                        this_speed = SPEED_MULTIPLIER * abs(pos - new_pos) + ZE_BASE_SPEED
                         data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
                 # elif abs(pos-el_set_pos) < 5:##set to slower speed as approaching setpoint
@@ -591,7 +597,6 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None):
         super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
-        return
 
         self.interval = 200  # Milliseconds between update calls
         self.ze_jog_voltage = 1  # Degrees / second
@@ -608,6 +613,8 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
         # Set up Optical Camera
         self.cam_ctrl = SKPR_Camera_Control()
         self.optical_pushButton.clicked.connect(self.take_pic)
+
+        self.ctrl = TelescopeMotorController(parent=self)
 
         # Update Timer
         self.last_az = self.ctrl.az_pos

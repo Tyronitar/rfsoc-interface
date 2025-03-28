@@ -30,9 +30,9 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
         self.filename_label.setVisible(visible)
         self.filename_file_select.setVisible(visible)
 
-    def get_chosen_save_location(self) -> Path:
+    def get_chosen_save_location(self, chan_name: str='') -> Path:
         if self.checkBox.isChecked():
-            save_path = get_filename(file_type=self.file_type)
+            save_path = get_filename(file_type=self.file_type, chan_name=chan_name).with_suffix('.h5')
         else:
             directory = self.directory_file_select.text()
             filename = self.filename_file_select.text()
@@ -42,7 +42,7 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
     @Slot(str)
     def update_save_locale_label(self, text: str):
         if self.checkBox.isChecked():
-            self._default_path = get_filename(file_type=self.file_type)
+            self._default_path = get_filename(file_type=self.file_type).with_suffix('.h5')
             self.save_locale_label.setText(f'Saving to "{self._default_path}"')
         else:
             save_path = self.get_chosen_save_location()
@@ -56,7 +56,7 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
     
     @Slot()
     def update_default_save_location(self):
-        self._default_path = get_filename(file_type=self.file_type)
+        self._default_path = get_filename(file_type=self.file_type).with_suffix('.h5')
         if self.checkBox.isChecked():
             self.save_locale_label.setText(f'Saving to "{self._default_path}"')
 
