@@ -429,16 +429,78 @@ class CombinedFuture(Future[Iterable[R]]):
 #
 # Settings Code
 #
+DEFAULT_SETTINGS = {
+    "app": {
+        "tabs": [
+            "initialization",
+            "losweep",
+            "data",
+            "telescope",
+            "imaging"
+        ],
+        "activeTab": "initialization"
+    },
+    "telescope": {
+        "jogVoltage": {
+            "azimuth": 5,
+            "zenith": 1
+        },
+        "controller": {
+            "class": "TelescopeMotorController",
+            "path": "./telescope.py"
+        }
+    },
+    "defaults": {
+        "loSweep": {
+            "globalShift": 0,
+            "df": 1.0,
+            "deltaf": 100.0,
+            "flaggingThreshold": 3.0,
+            "fileSuffix": "none",
+            "secondSweep": {
+                "df": 1.0
+            }
+        },
+        "data": {
+            "useDefaultFilename": True,
+            "directory": "/data/"
+        },
+        "rfsoc": {
+            "bitstream": "/home/xilinx/dualchan_v2.bit",
+            "channel": {
+                "toneList": "/home/onrkids/readout/host/params/Default_tone_list.npy",
+                "tone_powers": "/home/onrkids/readout/host/params/Device_aSi1_Channel2_20220222_300K_200mK_max_readout_power.npy",
+                "dsp": {
+                    "loFreq": 400,
+                    "nAverages": 524288
+                },
+                "rfin": 0.0,
+                "rfout": 0.0
+            }
+        }
+    },
+    "rfsocs": []
+}
 
-GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/defaults.json')
+# TODO: Global settings need sudo privelige to be created.
+# Although, when installing, that shouldn't be an issue
+GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
 USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
 
 class Settings(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._path = None
+    
+    @staticmethod
+    @ensure_path(0)
+    def _create_settings(path: Path):
+        path.expanduser().parent.mkdir(exist_ok=True)
+        with path.expanduser().open('w') as f:
+            json.dump(DEFAULT_SETTINGS, f, indent=4)
+        print(f'Created default settings file at {path}')
 
-    def _load_defaults(self):
+    def _load_global_settings(self):
         self.clear()
         with GLOBAL_SETTINGS_PATH.open('r') as f:
             self.update(json.load(f))
@@ -474,7 +536,9 @@ class Settings(dict):
 
     @ensure_path(1)
     def load_settings(self, user_settings_path: Path=USER_SETTINGS_PATH):
-        self._load_defaults()
+        self._load_global_settings()
+        if not user_settings_path.expanduser().exists():
+            Settings._create_settings(user_settings_path)
         self._path = user_settings_path
         with user_settings_path.expanduser().open('r') as f:
             user_settings = json.load(f)

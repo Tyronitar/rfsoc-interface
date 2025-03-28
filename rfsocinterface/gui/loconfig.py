@@ -147,7 +147,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # For running on ONR Computer
         # TODO: Fix this
-        lo_freq = channel_settings['dsp']['lo_freq']
+        lo_freq = channel_settings['dsp']['loFreq']
         valon.set_frequency(2, lo_freq)
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3  # KHz to Hz
         if tone_shift != 0:
