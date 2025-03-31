@@ -9,7 +9,8 @@ from kidpy3.rfsoc import RedisConnection
 from kidpy3.data_handler import Rfchan
 from kidpy3.hardware import Valon5009, Transceiver320d
 
-from rfsocinterface.core.utils import convert_to_kidy_format, convert_path, recursive_update, ensure_path, SettingsError
+from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
+from rfsocinterface.core.utils import convert_path, recursive_update, ensure_path
 
 PATH_SETTINGS = ['toneList', 'tonePowers', 'chanmask', 'loComport', 'attenComport', 'bitstream']
 

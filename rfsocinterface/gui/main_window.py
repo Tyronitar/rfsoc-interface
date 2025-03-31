@@ -9,6 +9,7 @@ import PySide6.QtGui as QtGui
 
 from kidpy import kidpy, testConnection, wait_for_reply, wait_for_free
 # from kidpy3 import RFSOC
+from rfsocinterface.core.settings import Settings, SettingsError, convert_to_kidy_format
 from rfsocinterface.gui.uic.full_ui_ui import Ui_MainWindow
 from rfsocinterface.gui.initialization import InitializationWidget
 from rfsocinterface.gui.loconfig import LoConfigWidget
@@ -16,7 +17,7 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.data_streaming import DataStreamingWidget
 from rfsocinterface.gui.main_widget import MainWidget
 
-from rfsocinterface.core.utils import SettingsError, ensure_path, convert_to_kidy_format, TabName, Settings
+from rfsocinterface.core.utils import ensure_path, TabName
 
 import json
 
