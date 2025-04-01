@@ -308,7 +308,23 @@ def psd(
         fs: float,
         n_samples_per_block: int,
 ) -> npt.NDArray:
-    pass
+    I = data[0]
+    Q = data[1]
+    Z = I+ 1j*Q
+    norm = np.mean(np.abs(Z), axis=1)[:, np.newaxis]
+    f,Spp_i=scipy.signal.welch(np.real(Z)/norm,fs=fs,nperseg=n_samples_per_block)
+    f,Spp_q=scipy.signal.welch(np.imag(Z)/norm,fs=fs,nperseg=n_samples_per_block)
+    Spp = (Spp_i + Spp_q) / 2
+    plt.semilogx(f, 10*np.log10(np.mean(Spp, axis=0)))
+
+    wind = signal.get_window('hamming', n_samples_per_block)
+    # _, psd1 = signal.periodogram(data, fs, window=wind)
+    f2, psd2 = signal.welch(data, fs, window=wind)
+    psd2_plot = (psd2[0] + psd2[1]) / 2
+    plt.semilogx(f2, 10*np.log10(np.mean(psd2_plot, axis=0)))
+    plt.xscale('log')
+    plt.show()
+    pdb.set_trace()
 
 
 
