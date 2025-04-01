@@ -281,14 +281,26 @@ def compute_templates(data: npt.NDArray) -> npt.NDArray:
     return templates
 
 
-def remove_correlatred_noise(
-        data: npt.NDArray,
-        fs: float,
-        chanmask: npt.NDArray,
-        n_samples_per_block: int,
-        n_blocks: int,
-) -> npt.NDArray:
-    pass
+def remove_correlatred_noise(data: npt.NDArray) -> npt.NDArray:
+    """Compute templates for correlated noise removal.
+    
+    Arguments:
+        data (npt.NDArray): Input data (N_chan x N_detector x N_samples)
+    
+    Returns:
+        (npt.NDarray): Cleaned data (N_chan x N_detector x N_samples).
+    """
+    templates = compute_templates(data)  # N_chan x 2 x N_samples
+
+    denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
+    numerator0 = np.einsum('ijk,ik->ij', data, templates[:, 0])  # N_chan x N_detector
+    corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
+    deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
+
+    numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
+    corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+    clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
+    return clean_data
 
 
 def psd(
@@ -304,10 +316,11 @@ def cody_psd(data, fs, npoints, file_name, title):
     I = data[0]
     Q = data[1]
     # templates = cody_template(I, Q)
-    compute_templates(data)
+    # compute_templates(data)
+    # I_clean, Q_clean = cody_clean(I, Q, *templates)
+    data_clean = remove_correlatred_noise(data)
+    noise_psd = psd(data, fs, npoints)
     exit()
-    I_clean, Q_clean = cody_clean(I, Q, *templates)
-
     # fig1 = cody_plot(I, Q, 8192, fs, file_name)
     fig = cody_plot(I_clean, Q_clean, npoints, fs, title)
     with PdfPages(f'plots/cody_{file_name}.pdf') as pdf:
@@ -618,8 +631,7 @@ if __name__ == '__main__':
     for name, title in pairs:
         input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
         
-        rotate = True
-        rotated_data = rotate_to_amplitude_and_phase(input_data)
+        # rotated_data = rotate_to_amplitude_and_phase(input_data)
         save_name = f'welch_{name}'
         # Do Cody's stuff with the I/Q data
         compute_noise_psd(
