@@ -134,7 +134,7 @@ def compute_noise_psd(
     if cody_title:
         return cody_psd(new_input_data[:, np.where(chanmask == 1)[0], :], fs, n_samples_per_block, cody_file, cody_title)
     else:
-        return psd(
+        return old_psd(
             new_input_data,
             fs,
             chanmask,
@@ -145,7 +145,7 @@ def compute_noise_psd(
             lp_filter_template2=lp_filter_template2,
     )
 
-def psd(
+def old_psd(
         new_input_data: npt.NDArray,
         fs: float,
         chanmask: npt.NDArray,
@@ -251,10 +251,61 @@ def psd(
 
     return chanmask, freq, psd_all, psd_all_clean
 
+
+def compute_templates(data: npt.NDArray) -> npt.NDArray:
+    """Compute templates for correlated noise removal.
+    
+    Arguments:
+        data (npt.NDArray): Input data (N_chan x N_detector x N_samples)
+    
+    Returns:
+        (npt.NDarray): Template for noise removal (N_chan x 2 x N_samples).
+            Computed using the first two eigenmodes of the correlation matrix.
+    """
+        # subtract the mean from each detector
+    data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    
+    # select only the middle few detectors
+    deproj = data_meansub[:, 8:1008, :]
+
+    # create a separate correlation matrix for all data channels
+    correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
+    # calculate the eigenmodes of the correlation matrices
+    _, v = np.linalg.eig(correlation_matrices)
+
+    # create templates based on the 2 largest eigenmodes of each
+    templates = np.einsum('ijk,ijl->ikl', v[:,:,0:2], deproj)
+
+    # subtract the mean again to be sure
+    templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
+    return templates
+
+
+def remove_correlatred_noise(
+        data: npt.NDArray,
+        fs: float,
+        chanmask: npt.NDArray,
+        n_samples_per_block: int,
+        n_blocks: int,
+) -> npt.NDArray:
+    pass
+
+
+def psd(
+        data: npt.NDArray,
+        fs: float,
+        n_samples_per_block: int,
+) -> npt.NDArray:
+    pass
+
+
+
 def cody_psd(data, fs, npoints, file_name, title):
     I = data[0]
     Q = data[1]
-    templates = cody_template(I, Q)
+    # templates = cody_template(I, Q)
+    compute_templates(data)
+    exit()
     I_clean, Q_clean = cody_clean(I, Q, *templates)
 
     # fig1 = cody_plot(I, Q, 8192, fs, file_name)
@@ -555,14 +606,14 @@ def reject_outliers_onr(data,sigma=2):
 
 if __name__ == '__main__':
     pairs = [
-        ('equal_0-256', 'RFSoC Loopback with 1000 Tones Over Full Bandwidth'),
-        ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
-        ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
-        ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
+        # ('equal_0-256', 'RFSoC Loopback with 1000 Tones Over Full Bandwidth'),
+        # ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
+        # ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
+        # ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
         ('default_0-256', 'RFSoC Loopback with Default Tones'),
-        ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
-        ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
-        ('default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
+        # ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
+        # ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
+        # ('default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
     ]
     for name, title in pairs:
         input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
@@ -571,26 +622,26 @@ if __name__ == '__main__':
         rotated_data = rotate_to_amplitude_and_phase(input_data)
         save_name = f'welch_{name}'
         # Do Cody's stuff with the I/Q data
-        # compute_noise_psd(
-        #     input_data,
-        #     timestamp,
-        #     chanmask=None,
-        #     ds_factor=3,
-        #     flag_outliers=True,
-        #     nominal_block_length=10,
-        #     outlier_sigma=2,
-        #     cody_file=save_name,
-        #     cody_title=title,
-        # )
-        chanmask, freq, psd_all, psd_all_clean = compute_noise_psd(
-            rotated_data,
+        compute_noise_psd(
+            input_data,
             timestamp,
             chanmask=None,
             ds_factor=3,
             flag_outliers=True,
             nominal_block_length=10,
             outlier_sigma=2,
+            cody_file=save_name,
+            cody_title=title,
         )
-        figs = plot_psd(chanmask, freq, psd_all, psd_all_clean, f'plots/{save_name}.pdf', basis='pa', title=title)
+        # chanmask, freq, psd_all, psd_all_clean = compute_noise_psd(
+        #     rotated_data,
+        #     timestamp,
+        #     chanmask=None,
+        #     ds_factor=3,
+        #     flag_outliers=True,
+        #     nominal_block_length=10,
+        #     outlier_sigma=2,
+        # )
+        # figs = plot_psd(chanmask, freq, psd_all, psd_all_clean, f'plots/{save_name}.pdf', basis='pa', title=title)
     # plt.show()
 
