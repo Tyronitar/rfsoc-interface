@@ -282,7 +282,7 @@ def compute_templates(data: npt.NDArray) -> npt.NDArray:
 
 
 def remove_correlatred_noise(data: npt.NDArray) -> npt.NDArray:
-    """Compute templates for correlated noise removal.
+    """Remove correlated noise templates from the data.
     
     Arguments:
         data (npt.NDArray): Input data (N_chan x N_detector x N_samples)
