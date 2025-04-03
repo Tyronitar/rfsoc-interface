@@ -131,7 +131,20 @@ def compute_noise_psd(
         # n_samples_per_block = (2 ** np.floor(np.log2(n_samples))).astype(int)
         n_samples_per_block = n_samples
     
+    data_clean = remove_correlatred_noise(new_input_data[:, np.where(chanmask == 1)[0], :])
+    freq, noise_psd = psd(data_clean, fs, n_samples_per_block)
+    # plot_psd(f, noise_psd, f'plots/{cody_file}.pdf')
+    return chanmask, freq, noise_psd
     if cody_title:
+        start = time.time()
+        data_clean = remove_correlatred_noise(new_input_data[:, np.where(chanmask == 1)[0], :])
+        f, noise_psd = psd(data_clean, fs, n_samples_per_block)
+
+        end = time.time()
+        print(f'Time for my code without plotting: {end - start:.3f}s')
+        plot_psd(f, noise_psd, f'plots/{cody_file}.pdf')
+        end = time.time()
+        print(f'Time for my code with plotting: {end - start:.3f}s')
         return cody_psd(new_input_data[:, np.where(chanmask == 1)[0], :], fs, n_samples_per_block, cody_file, cody_title)
     else:
         return old_psd(
@@ -307,37 +320,20 @@ def psd(
         data: npt.NDArray,
         fs: float,
         n_samples_per_block: int,
-) -> npt.NDArray:
-    I = data[0]
-    Q = data[1]
-    Z = I+ 1j*Q
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """Compute the PSD."""
+    Z = data[0] + 1j*data[1]
     norm = np.mean(np.abs(Z), axis=1)[:, np.newaxis]
-    f,Spp_i=scipy.signal.welch(np.real(Z)/norm,fs=fs,nperseg=n_samples_per_block)
-    f,Spp_q=scipy.signal.welch(np.imag(Z)/norm,fs=fs,nperseg=n_samples_per_block)
-    Spp = (Spp_i + Spp_q) / 2
-    plt.semilogx(f, 10*np.log10(np.mean(Spp, axis=0)))
 
-    wind = signal.get_window('hamming', n_samples_per_block)
-    # _, psd1 = signal.periodogram(data, fs, window=wind)
-    f2, psd2 = signal.welch(data, fs, window=wind)
-    psd2_plot = (psd2[0] + psd2[1]) / 2
-    plt.semilogx(f2, 10*np.log10(np.mean(psd2_plot, axis=0)))
-    plt.xscale('log')
-    plt.show()
-    pdb.set_trace()
-
+    f, pxx = signal.welch(data / norm, fs, nperseg=n_samples_per_block)
+    return f, pxx
 
 
 def cody_psd(data, fs, npoints, file_name, title):
     I = data[0]
     Q = data[1]
-    # templates = cody_template(I, Q)
-    # compute_templates(data)
-    # I_clean, Q_clean = cody_clean(I, Q, *templates)
-    data_clean = remove_correlatred_noise(data)
-    noise_psd = psd(data, fs, npoints)
-    exit()
-    # fig1 = cody_plot(I, Q, 8192, fs, file_name)
+    templates = cody_template(I, Q)
+    I_clean, Q_clean = cody_clean(I, Q, *templates)
     fig = cody_plot(I_clean, Q_clean, npoints, fs, title)
     with PdfPages(f'plots/cody_{file_name}.pdf') as pdf:
         pdf.savefig(fig)
@@ -472,36 +468,37 @@ def cody_plot(I, Q, npoints, fs, title):
     # print(fname)
     return fig
 
-@ensure_path(4)
+@ensure_path(2)
 def plot_psd(
-        chanmask: npt.NDArray,
         freq: npt.NDArray,
-        psd_all: npt.NDArray,
-        psd_all_clean: npt.NDArray,
+        noise_psd: npt.NDArray,
         filename: Path,
         min_percentile: float=16,
         max_percentile: float=84,
         title: str | None=None,
         basis: Literal['pa', 'iq']='pa',
 ) -> Figure:
-    good_chan = np.where(chanmask == 1)[0]
+    # good_chan = np.where(chanmask == 1)[0]
     
     # Get the min, median, and max for plotting
     # psd_min = np.percentile(psd_all[:, good_chan, :], 16, axis=1)
     # psd_med = np.median(psd_all[:, good_chan, :], axis=1)
     # psd_max = np.percentile(psd_all[:, good_chan, :], 84, axis=1)
-    psd_min_clean = np.percentile(psd_all_clean[:, good_chan, :], min_percentile, axis=1)
-    psd_med_clean = np.median(psd_all_clean[:, good_chan, :], axis=1)
+    # psd_min_clean = np.percentile(psd_all_clean[:, good_chan, :], min_percentile, axis=1)
+    # psd_med_clean = np.median(psd_all_clean[:, good_chan, :], axis=1)
+    psd_min = np.percentile(noise_psd, min_percentile, axis=1)
+    psd_med = np.median(noise_psd, axis=1)
     # if psd_med_clean.max() == 0.0:
     #     psd_med_clean = np.mean(psd_all_clean[:, good_chan, :], axis=1)
-    psd_max_clean = np.percentile(psd_all_clean[:, good_chan, :], max_percentile, axis=1)
+    # psd_max_clean = np.percentile(psd_all_clean[:, good_chan, :], max_percentile, axis=1)
+    psd_max = np.percentile(noise_psd, max_percentile, axis=1)
 
     # Only use good data for plotting
     # TODO: Make complex index choice dynamic
     # good_ind = np.arange(n_good_chan)
-    plot_data_min = 10 * np.log10(psd_min_clean)
-    plot_data_med = 10 * np.log10(psd_med_clean)
-    plot_data_max = 10 * np.log10(psd_max_clean)
+    plot_data_min = 10 * np.log10(psd_min)
+    plot_data_med = 10 * np.log10(psd_med)
+    plot_data_max = 10 * np.log10(psd_max)
 
     if title is None:
         title = 'RFSoC Loopback PSD'
@@ -640,36 +637,37 @@ if __name__ == '__main__':
         # ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
         # ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
         ('default_0-256', 'RFSoC Loopback with Default Tones'),
-        # ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
-        # ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
-        # ('default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
+        ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
+        ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
+        ('default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
     ]
     for name, title in pairs:
         input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
         
-        # rotated_data = rotate_to_amplitude_and_phase(input_data)
-        save_name = f'welch_{name}'
+        rotated_data = rotate_to_amplitude_and_phase(input_data)
+        save_name = f'new_psd_{name}'
         # Do Cody's stuff with the I/Q data
-        compute_noise_psd(
-            input_data,
-            timestamp,
-            chanmask=None,
-            ds_factor=3,
-            flag_outliers=True,
-            nominal_block_length=10,
-            outlier_sigma=2,
-            cody_file=save_name,
-            cody_title=title,
-        )
-        # chanmask, freq, psd_all, psd_all_clean = compute_noise_psd(
-        #     rotated_data,
+        # compute_noise_psd(
+        #     input_data,
         #     timestamp,
         #     chanmask=None,
         #     ds_factor=3,
         #     flag_outliers=True,
         #     nominal_block_length=10,
         #     outlier_sigma=2,
+        #     cody_file=save_name,
+        #     cody_title=title,
         # )
-        # figs = plot_psd(chanmask, freq, psd_all, psd_all_clean, f'plots/{save_name}.pdf', basis='pa', title=title)
+        chanmask, freq, noise_psd = compute_noise_psd(
+            rotated_data,
+            timestamp,
+            chanmask=None,
+            ds_factor=3,
+            flag_outliers=True,
+            nominal_block_length=10,
+            outlier_sigma=2,
+        )
+        plot_psd(freq, noise_psd, f'plots/{save_name}_pa.pdf', basis='pa', title=title)
+        plt.close()
     # plt.show()
 
