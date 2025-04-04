@@ -598,7 +598,10 @@ class LoSweep:
         self._processed = False
         #    print(freqs)
         log = logging.getLogger()
-        tone_diff = np.diff(self.freqs)[0] / 1e6  # MHz
+        if len(self.freqs) > 1:
+            tone_diff = np.diff(self.freqs)[0] / 1e6  # MHz
+        else:
+            tone_diff = 0
         log.info(f"tone diff={tone_diff}")
         if freq_step > 0:
             flo_step = freq_step

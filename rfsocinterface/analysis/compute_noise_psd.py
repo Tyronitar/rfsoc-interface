@@ -338,17 +338,19 @@ def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None 
 
 if __name__ == '__main__':
     pairs = [
-        ('equal_0-256', 'RFSoC Loopback with 1000 Tones Over Full Bandwidth'),
-        ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
-        ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
-        ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
-        ('default_0-256', 'RFSoC Loopback with Default Tones'),
-        ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
-        ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
-        ('default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
+        # ('equal_0-256', 'RFSoC Loopback with 1000 Tones Over Full Bandwidth'),
+        # ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
+        # ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
+        # ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
+        # ('default_0-256', 'RFSoC Loopback with Default Tones'),
+        # ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
+        # ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
+        # ('default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
+        ('/data/20250404/20250404_chan_1_TOD_set1001.h5', 'ASU Readout'),
     ]
     for name, title in pairs:
-        input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
+        # input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
+        input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'{name}')
         
         rotated_data = rotate_to_amplitude_and_phase(input_data)
         save_name = f'new_psd_{name}'
@@ -362,6 +364,6 @@ if __name__ == '__main__':
             nominal_block_length=10,
             outlier_sigma=2,
         )
-        plot_psd(freq, noise_psd, f'plots/{save_name}_pa.pdf', basis='pa', title=title)
+        plot_psd(freq, noise_psd, f'plots/asu_test.pdf', basis='pa', title=title)
         plt.close()
 

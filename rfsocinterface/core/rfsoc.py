@@ -138,6 +138,7 @@ class RFSOCWrapper:
     def set_frequency(self, channel: int, freq: float):
         valon = self.valon_a if channel == 1 else self.valon_b
         valon.set_frequency(channel, freq)
+        self.settings[f'channel{channel}']['dsp']['loFreq'] = freq
     
     def get_tone_list(self, chan: int=1) -> tuple[npt.NDArray, npt.NDArray]:
         return self.rfsoc.get_tone_list(chan)
