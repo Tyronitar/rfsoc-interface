@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QDialog,
     QMessageBox,
+    QLayout
 )
 
 from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list
@@ -30,7 +31,7 @@ from rfsocinterface.core.utils import PathLike
 
 DPI = 100
 
-EPSILON = 1e-4  # Max x difference to count as the mouse being close to the line
+EPSILON = 1e3  # Max x difference in Hz to count as the mouse being close to the line
 
 
 class ResonatorDialog(QDialog, Ui_ResonatorDialog):
@@ -52,6 +53,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         """Initialize a ResonatorWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
+        self.layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         self.resonator = resonator
         self.dragging = False
         self.error_label = None
@@ -63,7 +65,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.set_figure(fig)
         self.canvas.line.set_label('New Frequency')
         self.ax.axvline(
-            self.resonator.tone * 1e-6,
+            self.resonator.tone,
             0,
             1,
             color='gray',
@@ -73,7 +75,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.ax.legend()
 
         # Fill in the necessary values in the UI
-        self.old_freq_value_label.setText(f'{self.resonator.tone * 1e-6:.3f}')
+        self.old_freq_value_label.setText(f'{self.resonator.tone * 1e-6:.5f}')
         self.depth_value_label.setText('N/A')  # TODO: Resonance depth
 
         # Temporary values for saving / undoing changes
@@ -84,7 +86,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         # Setup text validator
         freq_range = self.ax.get_xlim()
         self.validator = QDoubleValidator(
-            freq_range[0], freq_range[1] + 0.001, 5, parent=self
+            freq_range[0] * 1e-6, freq_range[1] * 1e-6 + 0.001, 9, parent=self
         )
         self.new_freq_lineEdit.setValidator(self.validator)
 
@@ -98,10 +100,10 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             self.reject_changes
         )
         self.refit_pushButton.clicked.connect(self.refit)
-        self.new_freq_lineEdit.textChanged.connect(self.change_freq)
+        self.new_freq_lineEdit.textEdited.connect(self.change_freq)
 
         # This line will call change_freq since the signal has been connected
-        self.new_freq_lineEdit.setText(f'{self.resonator.fit_f0 * 1e-6:.3f}')
+        self.new_freq_lineEdit.setText(f'{self.resonator.fit_f0 * 1e-6:.9f}')
 
     def accept_changes(self):
         """Handle accepting changes."""
@@ -113,6 +115,24 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     def reject_changes(self):
         """Handle rejecting changes."""
         self.reject()
+    
+    def move_line(self, x: float):
+        """Move the line to the specified x value."""
+        self.canvas.line.set_xdata([x, x])
+        self.temp_fit_f0 = x
+        self.new_freq_lineEdit.setText(f'{x * 1e-6:.9f}')
+        self.delta_value_label.setText(
+            f'{(x - self.resonator.tone) * 1e-3:.3f}'
+        )
+        self.figcanvas.draw_idle()
+
+        new_freq = float(new_freq) * 1e6  # Convert MHz to Hz
+        self.temp_fit_f0 = new_freq 
+        self.canvas.line.set_xdata([new_freq, new_freq])
+        self.figcanvas.draw_idle()
+        self.delta_value_label.setText(
+            f'{(new_freq - self.resonator.tone) * 1e-3:.3f}'
+        )
 
     def refit(self):
         """Refit the resonator."""
@@ -122,16 +142,18 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.temp_fit_f0 = fit_f0
         self.temp_fit_qc = fit_qc
         self.temp_fit_qi = fit_qi
-        self.new_freq_lineEdit.setText(f'{np.real(fit_f0) * 1e-6:.3f}')
+        self.new_freq_lineEdit.setText(f'{np.real(fit_f0 * 1e-6):.9f}')
+        self.canvas.line.set_xdata([fit_f0, fit_f0])
+        self.figcanvas.draw_idle()
 
     def reset_freq(self):
         """Reset the line to the initial frequency."""
-        self.new_freq_lineEdit.setText(f'{self.resonator.fit_f0 * 1e-6:.3f}')
+        self.new_freq_lineEdit.setText(f'{self.resonator.fit_f0 * 1e-6:.9f}')
 
     def change_freq(self):
         """Handle changes to the frequency in the lineEdit."""
         freq_range = self.ax.get_xlim()
-        new_freq = self.new_freq_lineEdit.text()
+        new_freq = self.new_freq_lineEdit.text() 
 
         valid = self.validator.validate(new_freq, 0)[0]
 
@@ -145,7 +167,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             if self.error_label is None:
                 self.error_label = QLabel(self)
                 self.error_label.setText(
-                    f'New frequency must be in the range [{freq_range[0]:.3f}, {freq_range[1]:.3f}]'
+                    f'New frequency must be in the range [{freq_range[0] * 1e-6:.3f}, {freq_range[1] * 1e-6:.3f}] MHz'
                 )
                 self.error_label.setStyleSheet('color: red;')
                 self.formLayout.insertRow(2, None, self.error_label)
@@ -158,12 +180,12 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             self.new_freq_lineEdit.setStyleSheet('')
 
             # Update the line's position
-            new_freq = float(new_freq)
-            self.temp_fit_f0 = new_freq * 1e6
+            new_freq = float(new_freq) * 1e6  # Convert MHz to Hz
+            self.temp_fit_f0 = new_freq 
             self.canvas.line.set_xdata([new_freq, new_freq])
             self.figcanvas.draw_idle()
             self.delta_value_label.setText(
-                f'{(new_freq - self.resonator.tone * 1e-6) * 1e3:.3f}'
+                f'{(new_freq - self.resonator.tone) * 1e-3:.3f}'
             )
 
     def set_figure(self, fig: Figure):
@@ -193,9 +215,9 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             # Stop dragging and update the line's position
             self.dragging = False
             self.setCursor(Qt.CursorShape.OpenHandCursor)
-            self.new_freq_lineEdit.setText(f'{event.xdata:.5f}')
+            self.new_freq_lineEdit.setText(f'{event.xdata * 1e-6:.9f}')
             self.canvas.line.set_xdata([event.xdata, event.xdata])
-            self.temp_fit_f0 = event.xdata * 1e6
+            self.temp_fit_f0 = event.xdata
             self.figcanvas.draw_idle()
 
     def mouse_press(self, event: MouseEvent):
@@ -233,9 +255,9 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             return  # Not left clicking
 
         # Moving while holding left mouse and dragging, so update the line's position
-        self.new_freq_lineEdit.setText(f'{event.xdata:.5f}')
+        self.new_freq_lineEdit.setText(f'{event.xdata * 1e-6:.9f}')
         self.canvas.line.set_xdata([event.xdata, event.xdata])
-        self.temp_fit_f0 = event.xdata * 1e6
+        self.temp_fit_f0 = event.xdata 
         self.figcanvas.draw_idle()
 
 
