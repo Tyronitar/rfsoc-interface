@@ -217,10 +217,15 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         show_changed = self.tone_list_equal_label.isVisible() != show_label
         self.tone_list_equal_label.setVisible(show_label)
         if show_label:
-            self.tone_list_equal_label.setText(
-                f'Generating {n / 2} tones from {-max_base} MHz to {-min_base} MHz'
-                f' and {n / 2} tones from {min_base} MHz to {max_base} MHz'
-            )
+            if min_base > 0:
+                self.tone_list_equal_label.setText(
+                    f'Generating {n // 2} tones from {-max_base} MHz to {-min_base} MHz'
+                    f' and {n // 2} tones from {min_base} MHz to {max_base} MHz'
+                )
+            else:
+                self.tone_list_equal_label.setText(
+                    f'Generating {n} tones from {-max_base} MHz to {max_base} MHz'
+                )
         if show_changed:
             self.height_updated.emit()
     
@@ -244,8 +249,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.tone_list_ntones_lineEdit.setStyleSheet('')
         self.tone_list_ntones_lineEdit.setVisible(checked)
 
-        self.tone_list_equal_label.setVisible(checked)
         self.update_tone_list_equal_label('')
+        self.tone_list_equal_label.setVisible(checked)
         self.height_updated.emit()
 
     @Slot(int)
@@ -433,9 +438,14 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                     # tone_list = np.load('Default_tone_list.npy')
                     # tone_list = tone_list[(bb_min <= np.abs(tone_list)) & (np.abs(tone_list) <= bb_max)]
 
-                    freq_low = np.linspace(-bb_max, -bb_min, n // 2)
-                    freq_hi = np.linspace(bb_min, bb_max, n // 2)
-                    tone_list = np.append(freq_low, freq_hi)
+                    if bb_min == 0:
+                        # Generate n tones from -bb_max to bb_max
+                        tone_list = np.linspace(-bb_max, bb_max, n)
+                    else:
+                        # Generate n / 2 tones from -bb_max to -bb_min and n / 2 from bb_min to bb_max
+                        freq_low = np.linspace(-bb_max, -bb_min, n // 2)
+                        freq_hi = np.linspace(bb_min, bb_max, n // 2)
+                        tone_list = np.append(freq_low, freq_hi)
             # TODO: Ask Cody about this
             # Cody's code for equally spaced tones
             # Nover2 = 500 # number of tones to make  
