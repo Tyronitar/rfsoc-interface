@@ -105,6 +105,12 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         # This line will call change_freq since the signal has been connected
         self.move_line(self.resonator.fit_f0)
 
+    
+    @property
+    def _editing(self) -> bool:
+        """Return whether the plot is in editing mode."""
+        return self.canvas.manager.toolmanager.active_toggle['default'] == 'edit'
+
     def accept_changes(self):
         """Handle accepting changes."""
         self.resonator.fit_f0 = self.temp_fit_f0
@@ -192,6 +198,8 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     
     def mouse_release(self, event: MouseEvent):
         """Handle releasing a mouse button."""
+        if not self._editing:
+            return 
         if event.button != 1:
             return  # Not left click
         if event.inaxes != self.ax:
@@ -205,6 +213,8 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
 
     def mouse_press(self, event: MouseEvent):
         """Handle left clicking."""
+        if not self._editing:
+            return 
         if event.button != 1:
             return  # Not left button
         if event.inaxes != self.ax:
@@ -221,6 +231,8 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
 
     def mouse_move(self, event: MouseEvent):
         """Handle mouse movement."""
+        if not self._editing:
+            return 
         # If mouse moves out of plot, unhighlight the line and stop dragging
         if event.inaxes != self.ax:
             self.canvas.line.set_linewidth('1.5')
