@@ -31,7 +31,7 @@ from rfsocinterface.core.utils import PathLike
 
 DPI = 100
 
-EPSILON = 1e3  # Max x difference in Hz to count as the mouse being close to the line
+EPSILON = 1e-6  # Max x difference in Hz to count as the mouse being close to the line
 
 
 class ResonatorDialog(QDialog, Ui_ResonatorDialog):
@@ -188,7 +188,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
 
     def close_to_line(self, xdata: float, epsilon: float = EPSILON) -> bool:
         """Return whether a value is close to the line."""
-        return np.allclose(self.canvas.line.get_xdata()[0], xdata, atol=epsilon)
+        return np.allclose(self.canvas.line.get_xdata()[0], xdata, rtol=epsilon)
     
     def mouse_release(self, event: MouseEvent):
         """Handle releasing a mouse button."""
@@ -222,8 +222,6 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     def mouse_move(self, event: MouseEvent):
         """Handle mouse movement."""
         # If mouse moves out of plot, unhighlight the line and stop dragging
-        if event.button != 1:
-            return  # Not left clicking
         if event.inaxes != self.ax:
             self.canvas.line.set_linewidth('1.5')
             self.setCursor(Qt.CursorShape.ArrowCursor)

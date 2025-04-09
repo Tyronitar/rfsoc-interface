@@ -14,10 +14,22 @@ mpl.use('QtAgg')
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt import FigureManagerQT
+from matplotlib.backend_tools import ToolToggleBase
 from matplotlib.figure import Figure
 
 from rfsocinterface.gui.blit_manager import BlitManager
 
+plt.rcParams['toolbar'] = 'toolmanager'
+
+
+class EditTool(ToolToggleBase):
+    default_keymap = 'e'
+    description = 'Edit the plot'
+    default_toggled = False
+    image = '../../../ui_resources/edit_icon'
+    radio_group = 'default'
+    cursor = 'hand'
 
 class ScrollableCanvas(QScrollArea):
     """Widget for displating a Matplotlib canvas in a scroll area."""
@@ -77,13 +89,20 @@ class ResonatorCanvas(QWidget):
             fig = Figure(figsize=(8, 5))
         self.canvas = FigureCanvas(fig)
         self.canvas.figure = fig
-        # self.nav = NavigationToolbar(self.canvas, self)
+
+        self.manager = FigureManagerQT(self.canvas, 1)
+        self.canvas.manager = self.manager
+        self.nav = self.manager.toolbar
+
+        # Add an edit option to the tool bar, in the same group as zoom and pan
+        self.manager.toolmanager.add_tool('edit', EditTool)
+        self.manager.toolbar.add_tool('edit', 'zoompan')
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
-        # self.layout().addWidget(self.nav)
-        self.layout().addWidget(self.canvas)
+        layout.addWidget(self.nav)
+        layout.addWidget(self.canvas)
 
     def update_figure(self):
         """Update the figure of this widget."""
@@ -163,3 +182,20 @@ class DiagnosticsCanvas(ScrollableCanvas):
         self.selected_axes = axes
         self.canvas.blit()
         self.canvas.flush_events()
+
+
+if __name__ == '__main__':
+    from PySide6.QtWidgets import QApplication, QMainWindow
+    import sys
+
+    app = QApplication(sys.argv)
+    fig = plt.figure()
+    ax = plt.subplot()
+    canvas = ResonatorCanvas()
+    ax.plot(np.random.rand(10))
+    ax.axvline(0.5, color='red')
+    canvas.set_figure(fig)
+    win = QMainWindow()
+    win.setCentralWidget(canvas)
+    win.show()
+    sys.exit(app.exec())
