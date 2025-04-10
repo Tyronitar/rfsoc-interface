@@ -34,7 +34,7 @@ def load_time_ordered_IQ_data(path: Path, normalize: bool=True) -> tuple[npt.NDA
         chanmask = f['global_data/chanmask'][:]
     return input_data, timestamp, chanmask
 
-def df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, detector_f, dfoverf_per_mK):
+def compute_df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, detector_f, dfoverf_per_mK):
     valid_index = np.ndarray.flatten(np.argwhere(beam_pol >= 1))
     valid_amp = detector_beam_amp[valid_index]
 
@@ -199,7 +199,7 @@ class ProcessedData(DetectorData):
             detector_beam_ampl = f.detector_beam_ampl[:]
             dfoverf_per_mK = f.dfoverf_per_mK[:]
             detector_f = f.baseband_freqs[:] + f.lo_freq[:]
-            this_df_per_mK = self.df_per_mK(self.detector_pol, detector_beam_ampl, detector_f, dfoverf_per_mK) 
+            this_df_per_mK = compute_df_per_mK(self.detector_pol, detector_beam_ampl, detector_f, dfoverf_per_mK) 
             self.df_per_mK = np.concatenate((self.df_per_mK,this_df_per_mK))
 
             #create the calibrated datastreams-----------------------------------------------------------
@@ -208,9 +208,10 @@ class ProcessedData(DetectorData):
             data_Q = np.ndarray.astype(f.adc_q[:], np.float64)
             nsamples = f.n_sample[0]
             ntones = f.n_tones[0]
-            valid_tone_index = np.ndarray.flatten(np.argwhere(data_IQ[0, :, 0] != 0.))
+            # valid_tone_index = np.ndarray.flatten(np.argwhere(data_IQ[0, :, 0] != 0.))
+            valid_tone_index = np.ndarray.flatten(np.argwhere(data_I[:, 0] != 0.))
             valid_tone_index = valid_tone_index[:ntones]
-            data_IQ = data_IQ[:, valid_tone_index, :]
+            # data_IQ = data_IQ[:, valid_tone_index, :]
             data_I = data_I[valid_tone_index,:]
             data_Q = data_Q[valid_tone_index,:]
             data_I = data_I - np.outer(np.mean(data_I, axis = 1), np.ones(nsamples))
