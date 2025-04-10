@@ -144,12 +144,12 @@ class ResonatorData:
     @property
     def baseband_tone(self) -> float:
         """float: The tone for this resonator relative to the f center, in Hz."""
-        return self.data.tone_list[self.idx]
+        return self.data.tone_list[self.idx] - self.data.f_center
 
     @property
     def tone(self) -> float:
         """float: The absolute tone for this resonator, in Hz."""
-        return self.data.tone_list[self.idx] + self.data.f_center
+        return self.data.tone_list[self.idx]
 
     @property
     def freq(self) -> npt.NDArray:
@@ -163,7 +163,7 @@ class ResonatorData:
 
     @property
     def difference(self) -> float:
-        """float: The difference in the fitted value and the original tone, in Hz."""
+        """float: The absolute difference in the fitted value and the original tone, in Hz."""
         return np.abs(self.data.fit_f0[self.idx] - self.data.tone_list[self.idx])
 
     @property
@@ -174,7 +174,7 @@ class ResonatorData:
     @property
     def freq_ratio(self) -> float:
         """float: The ratio of the original tone and the maximum tone in the sweep."""
-        return self.tone / (self.data.tone_list.max() + self.data.f_center)
+        return self.tone / self.data.tone_list.max()
 
     @property
     def fit_f0(self) -> float:
@@ -247,8 +247,8 @@ class LoSweepData:
     ) -> None:
         """Initialize a LoSweepData object."""
         self.data = sweep_data
-        self.tone_list = tone_list  # Baseband frequencies in Hz
         self.f_center = f_center  # Center frequency of the sweep in Hz
+        self.tone_list = tone_list + f_center  # Frequencies in Hz
         self.freq = np.real(self.data[0, :, :])
         self.s21 = np.real(10.0 * np.log10(np.abs(self.data[1, :, :])))
         self.chanmask = chanmask
@@ -266,7 +266,7 @@ class LoSweepData:
         Arguments:
             val (float): The minimumum difference to flag in KHz. (defaults to 3.0)
         """
-        self.diff_to_flag = (val * 1e3 / 200.0) * self.tone_list
+        self.diff_to_flag = (val * 1e3 / 2e8) * self.tone_list
     
     @classmethod
     @ensure_path(1, 2, 3)
@@ -297,8 +297,8 @@ class LoSweepData:
 
     @property
     def difference(self) -> npt.NDArray:
-        """The difference of the fitted frequencies and the provided tones, in Hz."""
-        return (self.fit_f0 - self.tone_list)
+        """The absolute difference of the fitted frequencies and the provided tones, in Hz."""
+        return np.abs(self.fit_f0 - self.tone_list)
 
     @property
     def nchan(self) -> int:
@@ -420,7 +420,7 @@ class LoSweepData:
             fh.create_dataset('global_data/lo_sweep', data=self.data)
             # fh.create_dataset('global_data/s21', data=self.s21)
             # fh.create_dataset('global_data/freq', data=self.freq)
-            fh.create_dataset('global_data/baseband_freqs', data=self.tone_list)
+            fh.create_dataset('global_data/baseband_freqs', data=self.tone_list - self.f_center)
             fh.create_dataset('global_data/chanmask', data=self.chanmask)
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
