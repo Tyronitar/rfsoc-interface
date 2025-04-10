@@ -38,10 +38,10 @@ def compute_df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, det
     valid_index = np.ndarray.flatten(np.argwhere(beam_pol >= 1))
     valid_amp = detector_beam_amp[valid_index]
 
-    min_amp = np.percentile(valid_amp, 10)
-    valid_amp[valid_amp < min_amp] = min_amp
-
-    valid_amp /= np.median(valid_amp)
+    if np.size(valid_amp) > 1:
+        min_amp = np.percentile(valid_amp, 10)
+        valid_amp[valid_amp < min_amp] = min_amp
+        valid_amp /= np.median(valid_amp)
     amps = np.where(beam_pol >= 1, valid_amp, detector_beam_amp)
     return dfoverf_per_mK * detector_f * amps
 
@@ -103,8 +103,7 @@ class ProcessedData(DetectorData):
     dI_df: npt.NDArray
     dQ_df: npt.NDArray
     df_per_mK: npt.NDArray
-    data_f: npt.NDArray
-    data_diss: npt.NDArray
+    data: npt.NDArray
     data_mK: npt.NDArray
     chanmask: npt.NDArray
     detector_pol: npt.NDArray
@@ -127,6 +126,14 @@ class ProcessedData(DetectorData):
     @property
     def file_template(self) -> str:
         return f'/data/{self.date}/{self.date}_processed_data_set{self.setnum}.h5'
+
+    @property
+    def data_f(self) -> npt.NDArray:
+        return self.data[0]
+
+    @property
+    def data_diss(self) -> npt.NDArray:
+        return self.data[1]
 
     def __init__(self, date: str, setnum: int, losweep: str | None):
         #20230803_rfsoc1_TOD_set1012
@@ -173,8 +180,7 @@ class ProcessedData(DetectorData):
         self.dI_df = np.array([])
         self.dQ_df = np.array([])
         self.df_per_mK = np.array([])
-        self.data_f = 0
-        self.data_diss = 0
+        self.data = np.array([])
         self.data_mK = 0
         self.chanmask = np.array([], dtype=np.int32)
         self.detector_pol = np.array([])
@@ -233,12 +239,11 @@ class ProcessedData(DetectorData):
             this_data_diss = ( (data_I / np.outer(-this_dQ_df, np.ones(nsamples)) ) / eqiv_var_Q + \
                             (data_Q / np.outer(this_dI_df, np.ones(nsamples)) ) / eqiv_var_I ) / \
                         (1./eqiv_var_I + 1./eqiv_var_Q)
-            if np.size(self.data_f) != 1:
-                self.data_f = np.concatenate((self.data_f, this_data_f), axis=0)
-                self.data_diss = np.concatenate((self.data_diss, this_data_diss), axis=0)
+            combined_data = np.stack((this_data_f, this_data_diss))
+            if np.size(self.data) > 0:
+                self.data = np.concatenate((self.data, combined_data), axis=0)
             else:
-                self.data_f = np.copy(this_data_f)
-                self.data_diss = np.copy(this_data_diss)
+                self.data = np.copy(combined_data)
     #        del eqiv_var_I, eqiv_var_Q, data_I, data_Q
 
             #finally, we need to get data_mK
@@ -307,8 +312,3 @@ class ProcessedData(DetectorData):
             pfile.create_dataset("timestamp", data=self.timestamp)
             pfile.create_dataset("optical_visibility", data=self.vis)
     
-
-if __name__ == '__main__':
-    import pdb
-    p = ProcessedData('20250409', 1001, losweep='/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
-    pdb.set_trace()

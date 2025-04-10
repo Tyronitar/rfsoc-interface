@@ -40,11 +40,9 @@ def compute_noise_psd(
     ds_factor: int=1,
     nominal_block_length: float=1e100,
     cut_time: float=0.0,
-    hp_filter_template: float=0.05,
-    lp_filter_template: float=115.,
-    lp_filter_template2: float=25.,
     flag_outliers: bool=True,
     outlier_sigma: float=4,
+    remove_noise: bool=True,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Compute noise PSD.
 
@@ -101,9 +99,11 @@ def compute_noise_psd(
         n_blocks = 1
         n_samples_per_block = n_samples
     
-    data_clean = remove_correlatred_noise(new_input_data[:, np.where(chanmask == 1)[0], :])
+    if remove_noise:
+        data_clean = remove_correlatred_noise(new_input_data[:, np.where(chanmask == 1)[0], :])
+    else:
+        data_clean = new_input_data[:, np.where(chanmask == 1)[0], :]
     freq, psd = _compute_psd(data_clean, fs, n_samples_per_block)
-    # pdb.set_trace()
     return chanmask, freq, psd
 
 
@@ -203,12 +203,17 @@ def plot_psd(
         ValueError: If `basis` is not 'iq' or 'pa'.
     """
    
-    psd_min = np.percentile(psd, min_percentile, axis=1)
+
     psd_med = np.median(psd, axis=1)
-    psd_max = np.percentile(psd, max_percentile, axis=1)
+    plot_data_med = 10 * np.log10(psd_med)
+    psd_min = psd_med[:]
+    psd_max = psd_med[:]
+
+    if psd.shape[1] > 1:
+        psd_min = np.percentile(psd, min_percentile, axis=1)
+        psd_max = np.percentile(psd, max_percentile, axis=1)
 
     plot_data_min = 10 * np.log10(psd_min)
-    plot_data_med = 10 * np.log10(psd_med)
     plot_data_max = 10 * np.log10(psd_max)
 
     if title is None:
@@ -276,7 +281,8 @@ def create_plot(
     )
     ax.set_xscale('log')
     ax.set_xlim(0.1,100.)
-    # ax.set_ylim(-110, -60)
+    if np.median(ydata_min) > -110 and np.median(ydata_max) < -60:
+        ax.set_ylim(-110, -60)
     ax.set_xlabel('Frequency (Hz)', fontsize=16)
     ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
     ax.tick_params(labelsize=14)
@@ -344,17 +350,16 @@ if __name__ == '__main__':
         # ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
         # ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
         # ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
-        # ('data/default_0-256.hdf5', 'RFSoC Loopback with Default Tones'),
+        ('data/default_0-256.hdf5', 'RFSoC Loopback with Default Tones'),
         # ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
         # ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
         # ('./data/default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
         # ('/data/20250404/20250404_chan_1_TOD_set1001.h5', 'ASU Readout'),
-        ('/data/20250409/20250409_chan_1_TOD_set1001.h5', 'Single Tone')
+        # ('/data/20250409/20250409_chan_1_TOD_set1001.h5', 'Single Tone')
     ]
     for name, title in pairs:
         # input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
         input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'{name}')
-        # pdb.set_trace()
         input_data = input_data[:, :-5, :]
         
         rotated_data = rotate_to_amplitude_and_phase(input_data)
@@ -371,6 +376,22 @@ if __name__ == '__main__':
             outlier_sigma=2,
         )
         plot_psd(freq, noise_psd, f'plots/{save_name}.pdf', basis='pa', title=title)
-        plt.show()
         plt.close()
 
+
+# if __name__ == '__main__':
+#     from rfsocinterface.core.data import ProcessedData
+#     p = ProcessedData('20250409', 1001, losweep='/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
+#     p.chanmask = np.array([1])
+#     rotated_data = rotate_to_amplitude_and_phase(p.data)
+#     chanmask, freq, noise_psd = compute_noise_psd(
+#         rotated_data,
+#         p.timestamp,
+#         chanmask=p.chanmask,
+#         ds_factor=3,
+#         flag_outliers=False,
+#         nominal_block_length=10,
+#         outlier_sigma=4,
+#         remove_noise=False,
+#     )
+#     plot_psd(freq, noise_psd, 'plots/20250409.pdf', basis='pa', title='Single Tone')
