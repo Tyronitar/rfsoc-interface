@@ -128,7 +128,7 @@ class ProcessedData(DetectorData):
     def file_template(self) -> str:
         return f'/data/{self.date}/{self.date}_processed_data_set{self.setnum}.h5'
 
-    def __init__(self, date: str, setnum: int):
+    def __init__(self, date: str, setnum: int, losweep: str | None):
         #20230803_rfsoc1_TOD_set1012
         self.date = date
         self.setnum = setnum
@@ -185,10 +185,14 @@ class ProcessedData(DetectorData):
 
             #compute the derivatives to obtain frequency direction
             f = RawDataFile(file, 'r')
-            sweep = LoSweepData(f.baseband_freqs[:], f.lo_sweep[:], f.chanmask[:])
-            this_dI_df, this_dQ_df = sweep.freq_direction()
-            self.dI_df = np.concatenate((self.dI_df, this_dI_df))
-            self.dQ_df = np.concatenate((self.dQ_df, this_dQ_df))
+            if losweep:
+                # f.append_lo_sweep(losweep)
+                with h5py.File(losweep, 'r') as sweep_file:
+                    sweep_data = sweep_file['global_data/lo_sweep'][:]
+                sweep = LoSweepData(f.baseband_freqs[:], f.lo_freq[()], sweep_data, f.chanmask[:])
+                this_dI_df, this_dQ_df = sweep.freq_direction()
+                self.dI_df = np.concatenate((self.dI_df, this_dI_df))
+                self.dQ_df = np.concatenate((self.dQ_df, this_dQ_df))
         
             #compute the calibration factor from dfoverf to mK
             self.detector_pol = f.detector_pol[:]
@@ -304,4 +308,6 @@ class ProcessedData(DetectorData):
     
 
 if __name__ == '__main__':
-    ProcessedData('20230803', 1012)
+    import pdb
+    p = ProcessedData('20250409', 1001, losweep='/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
+    pdb.set_trace()

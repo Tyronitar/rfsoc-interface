@@ -289,7 +289,9 @@ class LoSweepData:
             fit_f0 = f['global_data/fit_f0'][:]
             fit_qi = f['global_data/fit_qi'][:]
             fit_qc = f['global_data/fit_qc'][:]
-        sweep = cls(tone_list, data, chanmask)
+            f_center = f['global_data/lo_freq'][()]
+        print(type(f_center), f_center)
+        sweep = cls(tone_list, f_center, data, chanmask)
         sweep.fit_f0 = fit_f0
         sweep.fit_qi = fit_qi
         sweep.fit_qc = fit_qc
@@ -419,7 +421,7 @@ class LoSweepData:
         with h5py.File(path, 'w') as fh:
             fh.create_dataset('global_data/lo_sweep', data=self.data)
             # fh.create_dataset('global_data/s21', data=self.s21)
-            # fh.create_dataset('global_data/freq', data=self.freq)
+            fh.create_dataset('global_data/lo_freq', data=self.f_center)
             fh.create_dataset('global_data/baseband_freqs', data=self.tone_list - self.f_center)
             fh.create_dataset('global_data/chanmask', data=self.chanmask)
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
@@ -685,3 +687,10 @@ class LoSweep:
         self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), chanmask)
         self._processed = True
         print("LO Sweep s21 file saved.")
+
+
+if __name__ == '__main__':
+    import pdb
+
+    data = LoSweepData.from_h5('/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
+    pdb.set_trace()
