@@ -119,7 +119,7 @@ class Settings(dict):
         self._path = user_settings_path
         with user_settings_path.expanduser().open('r') as f:
             user_settings = json.load(f)
-            self['defaults'].update(user_settings['defaults'])
+            self['defaults'].update(user_settings.get('defaults', {}))
             if 'rfsocs' in user_settings:
                 user_settings['rfsocs'] = self._load_rfsocs(user_settings.pop('rfsocs'))
             self.update(user_settings)

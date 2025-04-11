@@ -148,7 +148,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # For running on ONR Computer
         # TODO: Fix this
-        lo_freq = channel_settings['dsp']['loFreq']
+        lo_freq = channel_settings['dsp']['loFreq']  # MHz
         valon.set_frequency(2, lo_freq)
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3  # KHz to Hz
         if tone_shift != 0:
@@ -225,7 +225,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             QApplication.processEvents()
             time.sleep(0.1)
         self.sweep_data = sweep.data
-        self.sweep_data.set_diff_to_flag(get_num_value(self.flagging_lineEdit))
+        self.sweep_data.set_diff_to_flag(get_num_value(self.flagging_lineEdit, float) * 1e3)
         self.dw.sweep = self.sweep_data
 
         # pb = SequentialProgressBarDialog(parent=self)

@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 from matplotlib.figure import Figure
+from matplotlib.ticker import FormatStrFormatter, EngFormatter, FuncFormatter
 import h5py
 
 from onr_fit_lo_sweeps import simple_derivative_fits
@@ -28,6 +29,19 @@ from kidpy3.data_handler import Rfchan
 
 
 BAD_RFSOC_TONE_START_INDEX = 8  # First 8 ones are bad...
+
+
+def resonator_plot_formatter(x: float, pos: int) -> str:
+    """Format the x-axis labels for the resonator plot, converting to MHz.
+
+    Arguments:
+        x (float): The x value to format.
+        pos (int): The position of the tick.
+
+    Returns:
+        str: The formatted string for the x-axis label.
+    """
+    return f'{x * 1e-6:.3f}'
 
 
 class ResonatorData:
@@ -69,22 +83,24 @@ class ResonatorData:
             return_fig = True
             ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
             ax.set_xlabel('Frequency (MHz)')
-            ax.ticklabel_format(useOffset=False, style='plain')
+            # ax.ticklabel_format(useOffset=False, style='plain')
             ax.set_ylabel(r'$|S_{21}|$')
+            # ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+            ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
         # Otherwise, just plot inside the existing axes
         else:
             ax.set_facecolor('white')
             ax.set_yticks([])
             ax.set_xticks([])
 
-        ax.plot(self.freq * 1e-6, self.s21)
-        ax.axvline(x=self.fit_f0 * 1e-6, color='r', animated=animated)
+        ax.plot(self.freq, self.s21)
+        ax.axvline(x=self.fit_f0, color='r', animated=animated)
 
         # Scale the span of the plot based on the frequency ratio
-        new_span = self.span * 1e-6 * self.freq_ratio
+        new_span = self.span * self.freq_ratio
         ax.set_xlim(
-            np.mean(self.freq * 1e-6 - new_span / 2.0),
-            np.mean(self.freq * 1e-6 + new_span / 2.0),
+            np.mean(self.freq - new_span / 2.0),
+            np.mean(self.freq + new_span / 2.0),
         )
 
         # Add a label showing the resonator number
@@ -108,7 +124,7 @@ class ResonatorData:
                 [
                     f'{self.idx:d}'
                     + ', dS21='
-                    + f'{np.max(self.s21) - np.min(self.s21):4.1f}'
+                    + f'{np.ptp(self.s21):4.1f}'
                 ],
                 fontsize=6,
                 loc=3,
@@ -126,8 +142,13 @@ class ResonatorData:
         return None
 
     @property
+    def baseband_tone(self) -> float:
+        """float: The tone for this resonator relative to the f center, in Hz."""
+        return self.data.tone_list[self.idx] - self.data.f_center
+
+    @property
     def tone(self) -> float:
-        """float: The original tone for this resonator from the tone list, in Hz."""
+        """float: The absolute tone for this resonator, in Hz."""
         return self.data.tone_list[self.idx]
 
     @property
@@ -142,8 +163,8 @@ class ResonatorData:
 
     @property
     def difference(self) -> float:
-        """float: The difference in the fitted value and the original tone, in KHz."""
-        return (self.data.fit_f0[self.idx] - self.data.tone_list[self.idx]) * 1e-3
+        """float: The absolute difference in the fitted value and the original tone, in Hz."""
+        return np.abs(self.data.fit_f0[self.idx] - self.data.tone_list[self.idx])
 
     @property
     def is_onres(self) -> bool:
@@ -157,17 +178,17 @@ class ResonatorData:
 
     @property
     def fit_f0(self) -> float:
-        """float: The fitted value for the resonance frequency."""
+        """float: The fitted value for the resonance frequency, in Hz."""
         return self.data.fit_f0[self.idx]
 
     @fit_f0.setter
     def fit_f0(self, val: float):
         self.data.fit_f0[self.idx] = val
-        self.flagged = np.abs(self.difference) > self.data.diff_to_flag[self.idx]
+        self.flagged = self.difference > self.data.diff_to_flag[self.idx]
 
     @property
     def fit_qi(self) -> float:
-        """float: The qi factor for the fitted resonance."""
+        """float: The qi factor for the fitted resonance, in Hz."""
         return self.data.fit_qi[self.idx]
 
     @fit_qi.setter
@@ -176,7 +197,7 @@ class ResonatorData:
 
     @property
     def fit_qc(self) -> float:
-        """float: The qc factor for the fitted resonance."""
+        """float: The qc factor for the fitted resonance, in Hz."""
         return self.data.fit_qc[self.idx]
 
     @fit_qc.setter
@@ -185,13 +206,13 @@ class ResonatorData:
 
     @property
     def span(self) -> float:
-        """float: The span of the frequency window for the resonator."""
+        """float: The span of the frequency window for the resonator, in Hz."""
         return np.ptp(self.freq)
 
     def fit(self, df: float, start: float = None) -> tuple[float, float, float]:
         """Perform a fit to find the resonance frequency."""
         if start is None:
-            start = self.tone
+            start = self.baseband_tone
         fit_f0 = simple_derivative_fits(df, self.freq, start, self.s21)
         fit_qi = 0.0
         fit_qc = 0.0
@@ -207,26 +228,27 @@ class LoSweepData:
 
     Attributes:
         data (npt.NDArray): The data from the LO sweep.
-        tone_list (npt.NDArray): The tone for each resonator.
-        freq (npt.NDArray): The full frequency sprectrum of the sweep.
-        s21 (npt.NDArray): The vlaue of S_{21} at all frequencies in `freq`.
+        tone_list (npt.NDArray): The tone for each resonator, in Hz.
+        freq (npt.NDArray): The full frequency sprectrum of the sweep, in Hz.
+        s21 (npt.NDArray): The value of S_{21} at all frequencies in `freq`.
         chanmask (npt.NDarray): A mask to determine which frequencies are on-resonance.
         resonator_data (list[ResonatorData]): List of the data for each resonator.
-        fit_f0 (npt.NDArray): The fitted resonance frequencies for each resonator.
+        fit_f0 (npt.NDArray): The fitted resonance frequencies for each resonator, in Hz.
         fit_qi (npt.NDArray): The qi factor of the fitted resonance frequency for each
-            resonator.
+            resonator, in Hz.
         fit_qc (npt.NDArray): The qc factor of the fitted resonance frequency for each
-            resonator.
+            resonator, in Hz.
         diff_to_flag (npt.NDArray): The mimimum difference in tone and fitted frequency
-            to flag for further inspection.
+            to flag for further inspection, in Hz.
     """
 
     def __init__(
-        self, tone_list: npt.NDArray, sweep_data: tuple[npt.NDArray, npt.NDArray], chanmask: npt.NDArray, 
+        self, tone_list: npt.NDArray, f_center: float, sweep_data: npt.NDArray, chanmask: npt.NDArray, 
     ) -> None:
         """Initialize a LoSweepData object."""
         self.data = sweep_data
-        self.tone_list = tone_list
+        self.f_center = f_center  # Center frequency of the sweep in Hz
+        self.tone_list = tone_list + f_center  # Frequencies in Hz
         self.freq = np.real(self.data[0, :, :])
         self.s21 = np.real(10.0 * np.log10(np.abs(self.data[1, :, :])))
         self.chanmask = chanmask
@@ -244,7 +266,7 @@ class LoSweepData:
         Arguments:
             val (float): The minimumum difference to flag in KHz. (defaults to 3.0)
         """
-        self.diff_to_flag = (val / 200.0) * self.tone_list * 1e-6
+        self.diff_to_flag = (val * 1e3 / 2e8) * self.tone_list
     
     @classmethod
     @ensure_path(1, 2, 3)
@@ -253,7 +275,7 @@ class LoSweepData:
         tone_list = get_tone_list(tone_file, lo_freq=lo_freq)
         data = np.load(sweep_file)
         chanmask = get_chanmask(chanmask_file)
-        return cls(tone_list, data, chanmask)
+        return cls(tone_list, lo_freq, data, chanmask)
 
     @classmethod
     @ensure_path(1)
@@ -267,7 +289,8 @@ class LoSweepData:
             fit_f0 = f['global_data/fit_f0'][:]
             fit_qi = f['global_data/fit_qi'][:]
             fit_qc = f['global_data/fit_qc'][:]
-        sweep = cls(tone_list, data, chanmask)
+            f_center = f['global_data/lo_freq'][()]
+        sweep = cls(tone_list, f_center, data, chanmask)
         sweep.fit_f0 = fit_f0
         sweep.fit_qi = fit_qi
         sweep.fit_qc = fit_qc
@@ -275,8 +298,8 @@ class LoSweepData:
 
     @property
     def difference(self) -> npt.NDArray:
-        """The difference of the fitted frequencies and the provided tones."""
-        return (self.fit_f0 - self.tone_list) * 1e-3
+        """The absolute difference of the fitted frequencies and the provided tones, in Hz."""
+        return np.abs(self.fit_f0 - self.tone_list)
 
     @property
     def nchan(self) -> int:
@@ -295,7 +318,7 @@ class LoSweepData:
 
     @property
     def df(self) -> float:
-        """The difference between two frequency data points."""
+        """The difference between two frequency data points, in Hz."""
         return self.freq[0, 1] - self.freq[0, 0]
 
     @property
@@ -320,6 +343,8 @@ class LoSweepData:
 
     def fit(self, do_print=False, pd: QThreadJobProgressDialog | None=None) -> Future:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
+        if pd is None:
+            pd = QThreadJobPool(parent=self)
         return pd.map(self._fit_i, np.argwhere(self.chanmask == 1))
         for i_chan in np.argwhere(self.chanmask == 1):
             self._fit_i(i_chan)
@@ -343,9 +368,9 @@ class LoSweepData:
                         'tone index =',
                         f'{i:4d}',
                         '|| new tone =',
-                        f'{self.fit_f0[i] * 1.0e-6:9.5f}',
+                        f'{self.fit_f0[i] * 1.0e-6:9.5f} MHz',
                         '|| old tone =',
-                        f'{self.tone_list[i] * 1.0e-6:9.5f}',
+                        f'{self.tone_list[i] * 1.0e-6:9.5f} MHz',
                         '|| difference (kHz) =',
                         f'{diff:+5.3f}',
                     )
@@ -379,6 +404,8 @@ class LoSweepData:
                 (nrows, ncols), (counter // ncols, np.mod(counter, ncols))
             )
             subplots.append(subplot)
+        if pd is None:
+            pd = QThreadJobPool(parent=self)
         return fig, pd.map(ResonatorData.plot, self.resonator_data, subplots)
         resonator.plot(subplot)
 
@@ -397,8 +424,8 @@ class LoSweepData:
         with h5py.File(path, 'w') as fh:
             fh.create_dataset('global_data/lo_sweep', data=self.data)
             # fh.create_dataset('global_data/s21', data=self.s21)
-            # fh.create_dataset('global_data/freq', data=self.freq)
-            fh.create_dataset('global_data/baseband_freqs', data=self.tone_list)
+            fh.create_dataset('global_data/lo_freq', data=self.f_center)
+            fh.create_dataset('global_data/baseband_freqs', data=self.tone_list - self.f_center)
             fh.create_dataset('global_data/chanmask', data=self.chanmask)
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
@@ -429,12 +456,12 @@ def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
 class LoSweep:
     """Class for performing an LO Sweep"""
 
-    def __init__(self, valon: Valon5009, chan: Rfchan, freqs: npt.NDArray, f_center: float=400.0):
+    def __init__(self, valon: Valon5009, chan: Rfchan, freqs: npt.NDArray, f_center: float=400e6):
         """Initialize an LoSweep"""
         self.valon = valon
         self.chan = chan
-        self.freqs = freqs
-        self.f_center = f_center
+        self.freqs = freqs  # Hz
+        self.f_center = f_center  # Hz
         self._processed = False
 
     def _get_data(self, N_steps=500, freq_step=0.0, pd: QProgressDialog | None=None):
@@ -458,7 +485,7 @@ class LoSweep:
         Credit: Dr. Adrian Sinclair (adriankaisinclair@gmail.com)
         """
         log = logging.getLogger()
-        tone_diff = np.diff(self.freqs)[0] / 1e6  # MHz
+        tone_diff = np.diff(self.freqs)[0] * 1e-6  # MHz
         log.info(f"tone diff={tone_diff}")
         if freq_step > 0:
             flo_step = freq_step
@@ -469,7 +496,7 @@ class LoSweep:
         flo_start = self.f_center - flo_step * N_steps / 2.0  # 256
         flo_stop = self.f_center + flo_step * N_steps / 2.0  # 256
 
-        flos = np.arange(flo_start, flo_stop, flo_step) #+1e-6
+        flos = np.arange(flo_start, flo_stop, flo_step) # MHz
         if pd is not None:
             pd.setMaximum(len(flos))
             pd.setLabelText('Performing LO Sweep...')
@@ -524,7 +551,7 @@ class LoSweep:
         f = np.zeros([np.size(self.freqs), np.size(flos)])
         log.info(f"shape of f = {f.shape}")
         for itone, ftone in enumerate(self.freqs):
-            f[itone, :] = flos * 1.0e6 + ftone
+            f[itone, :] = flos * 1.0e6 + ftone  # Convert back to Hz before adding
         #    f = np.array([flos * 1e6 + ftone for ftone in freqs]).flatten()
         sweep_Z_f = sweep_Z.T
         #    sweep_Z_f = sweep_Z.T.flatten()
@@ -588,7 +615,7 @@ class LoSweep:
         return Z
 
 
-    def run_sweep(self, chanmask_file: Path, tone_list: npt.NDArray, N_steps=500, freq_step=1.0, pd: QThreadJobProgressDialog | None=None) -> Future[LoSweepData]:
+    def run_sweep(self, chanmask_file: Path, tone_list: npt.NDArray, N_steps=500, freq_step=1e3, pd: QThreadJobProgressDialog | None=None) -> Future[LoSweepData]:
         """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file
 
         f_center: center frequency for sweep in [MHz], default is 400
@@ -599,20 +626,20 @@ class LoSweep:
         #    print(freqs)
         log = logging.getLogger()
         if len(self.freqs) > 1:
-            tone_diff = np.diff(self.freqs)[0] / 1e6  # MHz
+            tone_diff = np.diff(self.freqs)[0] * 1e-6  # MHz
         else:
             tone_diff = 0
         log.info(f"tone diff={tone_diff}")
         if freq_step > 0:
-            flo_step = freq_step
+            flo_step = freq_step * 1e-6  # MHz
         else:
             flo_step = tone_diff / N_steps
 
         log.info(f"lo step size={flo_step}")
-        flo_start = self.f_center - flo_step * N_steps / 2.0  # 256
-        flo_stop = self.f_center + flo_step * N_steps / 2.0  # 256
+        flo_start = self.f_center * 1e-6 - flo_step * N_steps / 2.0  # MHz
+        flo_stop = self.f_center * 1e-6  + flo_step * N_steps / 2.0  # MHz
 
-        self.flos = np.arange(flo_start, flo_stop, flo_step) #+1e-6
+        self.flos = np.arange(flo_start, flo_stop, flo_step)  # MHz
         if pd is not None:
             pd.setMaximum(len(self.flos))
             pd.setLabelText('Performing LO Sweep...')
@@ -644,7 +671,7 @@ class LoSweep:
         f = np.zeros([np.size(self.freqs), np.size(self.flos)])
         log.info(f"shape of f = {f.shape}")
         for itone, ftone in enumerate(self.freqs):
-            f[itone, :] = self.flos * 1.0e6 + ftone
+            f[itone, :] = self.flos * 1e6 + ftone
         #    f = np.array([flos * 1e6 + ftone for ftone in freqs]).flatten()
         sweep_Z_f = sweep_Z.T
         #    sweep_Z_f = sweep_Z.T.flatten()
@@ -654,12 +681,19 @@ class LoSweep:
         # WITH TIMESTAMP
 
         # set the LO back to the original frequency
-        self.valon.set_frequency(valon5009.SYNTH_B, self.f_center)
+        self.valon.set_frequency(valon5009.SYNTH_B, self.f_center * 1e-6)
 
         # return (f, sweep_Z_f)
         # TODO: Fix this
         # chanmask = get_chanmask(chanmask_file)
         chanmask = np.ones_like(self.tone_list)
-        self.data = LoSweepData(self.tone_list, np.array((f, sweep_Z_f)), chanmask)
+        self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), chanmask)
         self._processed = True
         print("LO Sweep s21 file saved.")
+
+
+if __name__ == '__main__':
+    import pdb
+
+    data = LoSweepData.from_h5('/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
+    pdb.set_trace()
