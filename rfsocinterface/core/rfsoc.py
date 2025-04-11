@@ -157,7 +157,7 @@ class RFSOCWrapper:
         self.settings['chanmask'] = fname
     
     def channel_as_text(self, channel: int) -> str:
-        return f'{self.settings['name']} - Channel {channel}'
+        return f'{self.settings["name"]} - Channel {channel}'
     
     def get_channel(self, channel: int) -> Rfchan:
         match channel:

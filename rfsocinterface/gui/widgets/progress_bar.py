@@ -1,4 +1,3 @@
-from typing import override
 from PySide6.QtWidgets import QWidget, QProgressDialog, QErrorMessage
 from PySide6.QtCore import Qt, Slot
 from typing import Callable, Any, Iterable

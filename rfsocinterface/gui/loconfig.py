@@ -22,7 +22,6 @@ from rfsocinterface.gui.initialization import InitializationWidget
 from rfsocinterface.core.utils import get_num_value, ensure_path
 from rfsocinterface.gui.main_widget import MainWidget
 
-from kidpy import kidpy
 # from kidpy3 import RFSOC
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 import time

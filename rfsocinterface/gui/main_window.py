@@ -1,4 +1,3 @@
-import tomllib
 from pathlib import Path
 import yaml
 
@@ -7,7 +6,6 @@ from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtGui import QScreen
 import PySide6.QtGui as QtGui
 
-from kidpy import kidpy, testConnection, wait_for_reply, wait_for_free
 # from kidpy3 import RFSOC
 from rfsocinterface.core.settings import Settings, SettingsError, convert_to_kidy_format
 from rfsocinterface.gui.uic.full_ui_ui import Ui_MainWindow

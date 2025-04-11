@@ -14,7 +14,6 @@ import copy
 
 import numpy as np
 import numpy.typing as npt
-from kidpy import wait_for_free, wait_for_reply, kidpy
 import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QPoint, QSize, QCoreApplication
 from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QToolTip, QLabel
