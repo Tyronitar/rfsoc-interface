@@ -20,7 +20,9 @@ from PySide6.QtWidgets import (
     QWidget,
     QDialog,
     QMessageBox,
-    QLayout
+    QLayout,
+    QPushButton,
+    QSizeGrip,
 )
 
 from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list
@@ -53,6 +55,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         """Initialize a ResonatorWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
+        self.layout().addWidget(QSizeGrip(self))
         self.layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         self.resonator = resonator
         self.dragging = False
@@ -372,16 +375,48 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
 
 if __name__ == '__main__':
+    from concurrent.futures import wait
     app = QApplication()
+    sweep = LoSweepData.from_h5('/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
 
-    sweep = LoSweepData(
-        get_tone_list('Default_tone_list.npy'),
-        '20240822_rfsoc2_LO_Sweep_hour16p3294.npy',
-        chanmask_file='chanmask.npy',
-    )
-    sweep.fit(do_print=False)
 
-    w = DiagnosticsDialog(sweep)
+    win = QMainWindow()
+    pbutt = QPushButton('Start', parent=win)
+    win.setCentralWidget(pbutt)
 
-    w.show()
+    def fit(sweep):
+        pd = QThreadJobProgressDialog(labelText='Fitting LO Sweep...',  maximum=sweep.ngoodchan, parent=win)
+        pd.setAutoClose(False)
+        pd.show()
+        QApplication.processEvents()
+
+        future = sweep.fit(pd=pd)
+        # wait([future])
+        future.result()
+        plot(sweep, pd)
+        # future.add_done_callback(lambda _: plot(sweep, pd))
+    
+    def plot(sweep, pd):
+        pd.setValue(0)
+        pd.setLabelText('Plotting fit results...')
+        pd.setMaximum(sweep.nchan)
+        pd.setAutoClose(True)
+        QApplication.processEvents()
+        dw = DiagnosticsDialog(sweep, 'test.h5', parent=win)
+        fig, future = dw.plot(pd=pd)
+        dw.set_figure(fig)
+        future.result()
+        plt.tight_layout()
+        QApplication.processEvents()
+        dw.show()
+        # future.add_done_callback(lambda _: dw.show())
+    
+
+    # pd.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
+    # pd.move(self.geometry().center() - pd.geometry().center())
+    pbutt.clicked.connect(lambda: fit(sweep))
+
+
+
+    win.show()
     app.exec()

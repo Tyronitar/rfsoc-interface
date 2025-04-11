@@ -290,7 +290,6 @@ class LoSweepData:
             fit_qi = f['global_data/fit_qi'][:]
             fit_qc = f['global_data/fit_qc'][:]
             f_center = f['global_data/lo_freq'][()]
-        print(type(f_center), f_center)
         sweep = cls(tone_list, f_center, data, chanmask)
         sweep.fit_f0 = fit_f0
         sweep.fit_qi = fit_qi
@@ -344,6 +343,8 @@ class LoSweepData:
 
     def fit(self, do_print=False, pd: QThreadJobProgressDialog | None=None) -> Future:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
+        if pd is None:
+            pd = QThreadJobPool(parent=self)
         return pd.map(self._fit_i, np.argwhere(self.chanmask == 1))
         for i_chan in np.argwhere(self.chanmask == 1):
             self._fit_i(i_chan)
@@ -403,6 +404,8 @@ class LoSweepData:
                 (nrows, ncols), (counter // ncols, np.mod(counter, ncols))
             )
             subplots.append(subplot)
+        if pd is None:
+            pd = QThreadJobPool(parent=self)
         return fig, pd.map(ResonatorData.plot, self.resonator_data, subplots)
         resonator.plot(subplot)
 
