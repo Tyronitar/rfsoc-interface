@@ -145,6 +145,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # self.adjustSize()
     
     def closeEvent(self, event):
+        for tab in self.tabs.values():
+            tab.close()
         return super().closeEvent(event)
 
 def move_to_center(win: QMainWindow, screen: QScreen):

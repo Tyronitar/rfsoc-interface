@@ -33,3 +33,6 @@ class MainWidget(QWidget):
         if not checked_text:
             raise SettingsError('No channel selected')
         return map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text)
+    
+    def closeEvent(self, event):
+        return super().closeEvent(event)

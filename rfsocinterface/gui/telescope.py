@@ -7,7 +7,7 @@ from rfsocinterface.gui.uic.telescope_control_ui import Ui_TelescopeControlWidge
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from rfsocinterface.core.camera import SKPR_Camera_Control
-from rfsocinterface.core.utils import analog_to_digital, digital_to_analog, P, R
+from rfsocinterface.core.utils import analog_to_digital, digital_to_analog, P, R, get_num_value
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.main_widget import MainWidget
 from typing import Callable, Concatenate, Any, TYPE_CHECKING
@@ -16,6 +16,7 @@ import time
 
 from multiprocessing import Process, Pipe
 from multiprocessing.connection import Connection
+from threading import Thread
 
 import uldaq as ul
 import numpy as np
@@ -97,6 +98,8 @@ class TelescopeMotionJob(QThread):
         res = self.func(*self.args, **self.kwargs)
         self.returned.emit(res)
 
+def make_controller(conn: Connection):
+    ctrl = TelescopeMotorController(conn)
 
 class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
@@ -106,14 +109,15 @@ class TelescopeMotorController:
         self.run = False
         self.az_mutex = QMutex()
         self.ze_mutex = QMutex()
-        self._active_jobs: list[TelescopeMotionJob] = []
+        self._active_jobs: list[Thread] = []
         self._initialize_system()
         self.conn = conn
         self._listener_loop()
     
-    def listener_loop(self):
+    def _listener_loop(self):
         while True:
             command, *args = self.conn.recv()
+            print(f'Got command: {command}, args: {args}')
             match command.lower():
                 case 'get_ser_az_pos':
                     pfb = self.get_ser_az_pos()
@@ -125,12 +129,17 @@ class TelescopeMotorController:
                     self.conn.send(['ze_pos', pos])
                 case 'set_ze_pos':
                     self.set_ze_pos(*args)
-                case 'stop':
+                case 'set_voltage':
+                    self.run = True
+                    self.set_ao_value(*args)
+                case 'stop_telescope':
+                    self.run = False
                     self.set_ao_zero()
+                case 'terminate':
+                    self.close()
                     break
                 case _:
-                    self.conn.send(['err', 'Unknown command "{command}" received.'])
-
+                    self.conn.send(['err', f'Unknown command "{command}" received.'])
     
     def test_init(self):
         if not self._initialized:
@@ -201,13 +210,20 @@ class TelescopeMotorController:
         self.ze_vel = 0
     
     def close(self):
+        self.run = False
+        self.set_ao_zero()
+        for job in self._active_jobs:
+            job.join()
         self.ser_az.close()
         self.ser_ze.close()
+        self.conn.send(['done'])
 
     def set_ao_value(self, data: float, channel: int):
+        return
         self.ao_device.a_out(channel, self.ul_range_out, self.ao_flags, data)
     
     def set_ao_zero(self):
+        return
         self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
         self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
 
@@ -240,22 +256,23 @@ class TelescopeMotorController:
                 self.ser_az.reset_input_buffer()
                 self.ser_az.reset_output_buffer()
                 self.az_pos = pfb
+                if self._initialized:
+                    self.conn.send(['az_pos', pfb])
                 return pfb
         except ValueError:
-            print(
+            self.conn.send([
+                'err',
                 'Error communicating with AZ controller; '
-                'position set to most recent read.'
-            )
+                'position set to most recent read.',
+            ])
             return old_pfb
 
     def set_az_pos(self, new_pos: int, scan_mode: bool=False):
-        # self.azimuthCommanded.emit(new_pos)
-        self.conn.send(['az_poz_comm', new_pos])
+        self.conn.send(['az_pos_comm', new_pos])
         self.run = True
-        # worker = TelescopeMotionJob(self._set_az_pos, new_pos, scan_mode)
-        # self._active_jobs.append(worker)
-        # worker.start()
-        self._set_az_pos(new_pos, scan_mode)
+        worker_thread = Thread(target=self._set_az_pos, args=(new_pos, scan_mode))
+        self._active_jobs.append(worker_thread)
+        worker_thread.start()
     
     def _set_az_pos(self, new_pos: int, scan_mode: bool=False):
         # I want to accept a number in degrees, but put the number in the integer value desired by S700 controller
@@ -444,7 +461,6 @@ class TelescopeMotorController:
             self.ze_pos = pos
             if self._initialized:
                 self.conn.send(['ze_pos', pos])
-                # self.zenithUpdated.emit(pos)
             return pos
         except ValueError:
             print(
@@ -457,25 +473,23 @@ class TelescopeMotorController:
         # self.zenithCommanded.emit(new_pos)
         self.conn.send(['ze_pos_comm', new_pos])
         self.run = True
-        # worker = TelescopeMotionJob(self._set_ze_pos, new_pos, scan_mode)
-        # self._active_jobs.append(worker)
-        # worker.start()
-        self._set_ze_pos(new_pos, scan_mode)
+        worker_thread = Thread(target=self._set_ze_pos, args=(new_pos, scan_mode))
+        self._active_jobs.append(worker_thread)
+        worker_thread.start()
 
     def _set_ze_pos(self, new_pos: float, scan_mode: bool=False):
         # new_pos = float(new_pos)
         self.set_ao_zero()
 
-        ##confirm position
+        # confirm position
         pos = self.get_ser_ze_pos()
-        # self.zenithUpdated.emit(pos)
         self.conn.send(['ze_pos', pos])
         if scan_mode:
             this_az = self.get_ser_az_pos()
             position_data = []
         counter = 0
 
-        ##Run loop
+        # Run loop
         while abs(pos - new_pos) > ZE_POS_TOL_DEG and self.run:
             try:
                 # Choose direction of motion
@@ -501,7 +515,6 @@ class TelescopeMotorController:
 
                 self.set_ao_value(data_value, ZE_OUT_CHANNEL)
                 pos = self.get_ser_ze_pos()
-                # self.zenithUpdated.emit(pos)
                 self.conn.send(['ze_pos', pos])
                 if scan_mode:
                     position_data = np.append(
@@ -526,7 +539,6 @@ class TelescopeMotorController:
         ## Read position again
         time.sleep(0.1)
         pos = self.get_ser_ze_pos()
-        # self.zenithUpdated.emit(pos)
         self.conn.send(['ze_pos', pos])
         #        print ('EL Set to position: ', str(pos))
         #        print ('Position Set!')
@@ -603,31 +615,42 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
 
         # self.ctrl = TelescopeMotorController(parent=self)
         self.conn_parent, self.conn_child = Pipe(duplex=True)
-        self.ctrl_process = Process(target=TelescopeMotorController.__init__, args=(self.conn_child,))
+        self.ctrl_process = Process(target=make_controller, args=(self.conn_child,))
         self.ctrl_process.start()
+        self.listener_thread = Thread(target=self._connection_loop)
 
-        # Update Timer
-        self.last_az = self.ctrl.az_pos
-        self.last_ze = self.ctrl.ze_pos
+        # Initialize the numbers in the GUI
+        self.conn_parent.send(['get_ser_az_pos'])
+        command, az_pos = self.conn_parent.recv()
+        if command != 'az_pos':
+            print('Error getting initial azimuth position. Setting to 0.')
+            self.az_pos = self.last_az = 0
+        else:
+            self.az_pos = self.last_az = az_pos
+
+        self.conn_parent.send(['get_ser_ze_pos'])
+        command, ze_pos = self.conn_parent.recv()
+        if command != 'ze_pos':
+            print('Error getting initial zenith position. Setting to 0.')
+            self.ze_pos = self.last_ze = 0
+        else:
+            self.ze_pos = self.last_ze = ze_pos
+
+        self.listener_thread.start()
+
         self.last_az_commanded = self.last_az
         self.last_ze_commanded = self.last_ze
         self.update_az_cmd(self.last_az_commanded)
         self.update_ze_cmd(self.last_ze_commanded)
+
+        # Update Timer
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_ui)
         self.timer.start(500)
 
-        # Signal connections
-        self.ctrl.azimuthUpdated.connect(self.update_az_pos)
-        self.ctrl.azimuthCommanded.connect(self.update_az_cmd)
-        self.ctrl.azimuthVelocityChanged.connect(self.update_az_vel)
-        self.ctrl.zenithUpdated.connect(self.update_ze_pos)
-        self.ctrl.zenithCommanded.connect(self.update_ze_cmd)
-        self.ctrl.zenithVelocityChanged.connect(self.update_ze_vel)
 
     def stop_motion(self):
-        self.ctrl.run = False
-        self.ctrl.set_ao_zero()
+        self.conn_parent.send(['stop_telescope'])
     
     def take_pic(self):
         pic_data = self.cam_ctrl.take_pic(show=False)
@@ -651,49 +674,49 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
             self.controller.setEnabled(False)
     
     def jog(self, btn: QAbstractButton): 
-        self.ctrl.run = True
         match btn:
             case self.controller.up_toolButton:
-                self.ctrl.set_ao_value(-self.ze_jog_voltage, ZE_OUT_CHANNEL)
+                self.conn_parent.send(['set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL])
             case self.controller.down_toolButton:
-                self.ctrl.set_ao_value(self.ze_jog_voltage, ZE_OUT_CHANNEL)
+                self.conn_parent.send(['set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL])
             case self.controller.left_toolButton:
-                self.ctrl.set_ao_value(self.az_jog_voltage, AZ_OUT_CHANNEL)
+                self.conn_parent.send(['set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL])
             case self.controller.right_toolButton:
-                self.ctrl.set_ao_value(-self.az_jog_voltage, AZ_OUT_CHANNEL)
+                self.conn_parent.send(['set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL])
     
-    def connection_loop(self):
-        response, *data = self.conn_parent.recv()
-        match response.lower():
-            case 'az_pos':
-                self.update_az_pos(data)
-            case 'ze_pos':
-                self.update_ze_pos(data)
-            case 'az_pos_comm':
-                self.update_az_cmd(data)
-            case 'ze_pos_comm':
-                self.update_ze_cmd(data)
+    def _connection_loop(self):
+        while True:
+            response, *data = self.conn_parent.recv()
+            print(f'Got response: {response}, data: {data}')
+            match response.lower():
+                case 'az_pos':
+                    self.update_az_pos(*data)
+                case 'ze_pos':
+                    self.update_ze_pos(*data)
+                case 'az_pos_comm':
+                    self.update_az_cmd(*data)
+                case 'ze_pos_comm':
+                    self.update_ze_cmd(*data)
+                case 'err':
+                    raise RuntimeError(f'Error from telescope controller: {data}')
+                case 'done':
+                    break 
+                case _:
+                    raise RuntimeError(f'Unknown response from telescope controller: {response}')
 
 
     def set_az_pos(self):
-        new_pos = float(self.azimuth_setlineEdit.text())
+        new_pos = get_num_value(self.azimuth_setlineEdit)
         self.conn_parent.send(['set_az_pos', new_pos])
-        # self.ctrl.set_az_pos(new_pos)
-        # TODO: Actually handle waiting for it
-    
-    def get_az_pos(self) -> float:
-        self.conn_parent.send(['get_ser_az_pos'])
-        pfb = self.conn_parent.recv()
-        return pfb
-
     
     def set_ze_pos(self):
-        new_pos = float(self.zenith_setlineEdit.text())
-        self.ctrl.set_ze_pos(new_pos)
+        new_pos = get_num_value(self.zenith_setlineEdit)
+        self.conn_parent.send(['set_ze_pos', new_pos])
     
     @Slot(float)
     def update_az_pos(self, new_pos: float):
         self.azimuth_actual_valLabel.setText(f'{new_pos:.3f}°')
+        self.az_pos = new_pos
     
     @Slot(float)
     def update_az_cmd(self, new_pos: float):
@@ -711,6 +734,7 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
     @Slot(float)
     def update_ze_pos(self, new_pos: float):
         self.zenith_actual_valLabel.setText(f'{new_pos:.3f}°')
+        self.ze_pos = new_pos
 
     @Slot(float)
     def update_ze_cmd(self, new_pos: float):
@@ -726,24 +750,26 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
         self.zenith_error_valLabel.setText(f'{new_err:.3f}°')
     
     def update_ui(self):
-        new_az = self.ctrl.get_ser_az_pos()
-        new_ze = self.ctrl.get_ser_ze_pos()
-        az_velocity = (new_az - self.last_az) / self.interval * 1000
-        ze_velocity = (new_ze - self.last_ze) / self.interval * 1000
-        self.update_az_pos(new_az)
-        self.update_ze_pos(new_ze)
-        self.last_az = new_az
-        self.last_ze = new_ze
+        az_velocity = (self.az_pos - self.last_az) / self.interval * 1000
+        ze_velocity = (self.ze_pos - self.last_ze) / self.interval * 1000
+        self.update_az_pos(self.az_pos)
+        self.update_ze_pos(self.ze_pos)
+        self.last_az = self.az_pos
+        self.last_ze = self.ze_pos
         self.update_az_vel(az_velocity)
         self.update_ze_vel(ze_velocity)
-        az_err = new_az - self.last_az_commanded
-        ze_err = new_ze - self.last_ze_commanded
+        az_err = self.az_pos - self.last_az_commanded
+        ze_err = self.ze_pos - self.last_ze_commanded
         self.update_az_err(az_err)
         self.update_ze_err(ze_err)
     
     def closeEvent(self, event):
         self.timer.stop()
-        self.ctrl.close()
+        self.conn_parent.send(['terminate'])
+        self.ctrl_process.join()
+        self.listener_thread.join()
+        self.conn_parent.close()
+        self.conn_child.close()
         return super().closeEvent(event)
     
 
