@@ -53,7 +53,11 @@ ADDR_PL_FB = 588  ##This is the position loop feedback. Includes some offset par
 ADDR_FB1_P = 1610  ##This is the absolute position from the FB1 (resolver).
 ZERO_DATA = analog_to_digital(0, -10, 10, 16)
 
-SPEED_MULTIPLIER = 0.1
+ZE_POS_TOL_DEG = .05
+AZ_POS_TOL_DEG = .02
+SPEED_MULTIPLIER = 0.35
+FAR_APPROACH_SEPARATION_DEG = 15
+ZE_APPROACH_SEPARATION_DEG = 0.5
 AZ_BASE_SPEED = 1.5
 ZE_BASE_SPEED = 0.3
 
@@ -269,58 +273,33 @@ class TelescopeMotorController:
         pfb_time = time.time()
 
         while (
-            np.abs(pfb - new_pos) > 0.016 ##currently overshoots by .018 degrees on average
+            np.abs(pfb - new_pos) > AZ_POS_TOL_DEG
             and pfb > NEG_SW_LIM
             and pfb < POS_SW_LIM
             and self.run
         ):
             try:
-                #get start time
-                
-                # Choose direction of motion. Negative Voltage goes clockwise when looking down at the telesecope from the sky!!
-                #                if keyboard.is_pressed("space"):
-                #                    print("User terminated motion!")
-                #                   break
                 if new_pos > pfb:
                     direction = -1
                 else:
                     direction = 1
-                # I still need to double check motion direction for accuracy
-                ##Set Speed faster if more travel needed
+                # Set speed faster if more travel needed
                 if scan_mode:
-                    # data_value = direction*self.convert_A_to_D(3.,[-10,10],16)
-                    if (
-                        abs(pfb - new_pos) > 0.5
-                    ):  ##If we are far from the setpoint, go at max speed
+                    if abs(pfb - new_pos) > 0.5:
+                        # If we are far from the setpoint, go at max speed
                         data_value = direction * analog_to_digital(6.0, -10, 10, 16)
-                        #print(data_value)
-                        #print("This is the voltage output")
                     else:
                         data_value = direction * analog_to_digital(2.0, -10, 10, 16)
+                elif abs(pfb - new_pos) > FAR_APPROACH_SEPARATION_DEG:
+                    # If we are far from the setpoint, go at max speed
+                    data_value = direction * analog_to_digital(7.25, -10, 10, 16)
                 else:
-                    if (
-                        abs(pfb - new_pos) > 15
-                    ):  ##If we are far from the setpoint, go at max speed
-                        data_value = direction * analog_to_digital(7.25, -10, 10, 16)
-                    elif (
-                        abs(pfb - new_pos) < 15
-                    ):  ##If we are far from the setpoint, go at max speed
-                        this_speed = SPEED_MULTIPLIER * abs(pfb - new_pos) + AZ_BASE_SPEED
-                        data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
+                    this_speed = SPEED_MULTIPLIER * abs(pfb - new_pos) + AZ_BASE_SPEED
+                    data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
-                # elif abs(pfb-az_set_pos) < 1.:##set to slower speed as approaching setpoint
-                # data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
-                # elif abs(pfb-az_set_pos) < .200:##set to slower speed as approaching setpoint
-                # self.set_AZ_speedrelation(10)##Not sure about this one yet. Need to test!
-                # data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
-                #            else:##else: set to slowest speed
-                #                data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
                 if counter % 50 == 0:
                     print(pfb, data_value)
-                # time.sleep(.3)
-                # self.azimuthVelocityChanged.emit(data_value)
                 self.set_ao_value(data_value, AZ_OUT_CHANNEL)
-                #pdb.set_trace()
                 this_dt = time.time() - pfb_time
                 while this_dt < 0.02:
                    this_dt = time.time() - pfb_time
@@ -344,11 +323,9 @@ class TelescopeMotorController:
                 break
         self.set_ao_zero()
         self.run = False
-        # self.azimuthVelocityChanged.emit(0)
         ## Read position again
         time.sleep(1)
         pfb = self.get_ser_az_pos()
-        #        print ('Set to position: ', pfb)
         if scan_mode:
             return position_data
 
@@ -499,7 +476,7 @@ class TelescopeMotorController:
         counter = 0
 
         ##Run loop
-        while abs(pos - new_pos) > 0.003 and self.run:
+        while abs(pos - new_pos) > ZE_POS_TOL_DEG and self.run:
             try:
                 # Choose direction of motion
                 if pos > new_pos:
@@ -507,34 +484,21 @@ class TelescopeMotorController:
                 else:
                     direction = 1
 
-                #                if keyboard.is_pressed("space"): ###DOES THIS WORK IN UBUNTU?
-                #                    print("User terminated motion!")
-                #                    break
-                #"I still need to double check motion direction for accuracy"
-                ##Set Speed faster if more travel needed
                 if scan_mode:
                     data_value = direction * analog_to_digital(1.0, -10, 10, 16)
+                elif abs(pos - new_pos) > FAR_APPROACH_SEPARATION_DEG:
+                    # If we are far from the setpoint, go at max speed
+                    data_value = direction * analog_to_digital(7.25, -10, 10, 16)
+                elif abs(pos - new_pos) > ZE_APPROACH_SEPARATION_DEG:
+                    # If we are semifar from the setpoint, start slowing down
+                    this_speed = SPEED_MULTIPLIER * abs(pos - new_pos) + ZE_BASE_SPEED
+                    data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
                 else:
-                    if (
-                        abs(pos - new_pos) > 15
-                    ):  ##If we are far from the setpoint, go at max speed
-                        data_value = direction * analog_to_digital(7.25, -10, 10, 16)
-                    elif (
-                        abs(pos - new_pos) < 15
-                    ):  ##If we are far from the setpoint, go at max speed
-                        # print(f'Pos: {pos}, New Pos: {new_pos}, Difference: {abs(pos - new_pos)}')
-                        this_speed = SPEED_MULTIPLIER * abs(pos - new_pos) + ZE_BASE_SPEED
-                        data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
+                    # If we are close to the setpoint, slow down a lot
+                    this_speed = SPEED_MULTIPLIER * abs(pos - new_pos)**2 \
+                        / ZE_APPROACH_SEPARATION_DEG + ZE_BASE_SPEED
+                    data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
-                # elif abs(pos-el_set_pos) < 5:##set to slower speed as approaching setpoint
-                # data_value = direction*self.convert_A_to_D(2,[-10,10],16)
-                # elif abs(pos-el_set_pos) < 1:##set to slower speed as approaching setpoint
-                # self.set_EL_speedrelation(10)
-                # data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
-                # else:##else: set to slowest speed
-                #    data_value = direction*self.convert_A_to_D(.35,[-10,10],16)
-
-                # self.zenithVelocityChanged.emit(data_value)
                 self.set_ao_value(data_value, ZE_OUT_CHANNEL)
                 pos = self.get_ser_ze_pos()
                 # self.zenithUpdated.emit(pos)
@@ -546,7 +510,6 @@ class TelescopeMotorController:
                 counter = counter + 1
                 if counter % 500 == 0:
                     print(pos, data_value)
-                # time.sleep(.3)
             except KeyboardInterrupt:
                 print("User terminated motion!")
                 break
