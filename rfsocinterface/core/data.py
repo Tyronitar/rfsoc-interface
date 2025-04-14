@@ -135,7 +135,7 @@ class ProcessedData(DetectorData):
     def data_diss(self) -> npt.NDArray:
         return self.data[1]
 
-    def __init__(self, date: str, setnum: int, losweep: str | None):
+    def __init__(self, date: str, setnum: int, losweep: str | None=None):
         #20230803_rfsoc1_TOD_set1012
         self.date = date
         self.setnum = setnum

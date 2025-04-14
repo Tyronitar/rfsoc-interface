@@ -77,18 +77,18 @@ class CleanTOD(DataRoutine):
         self.lp_filt_freq = lp_filt_freq
         self.ds_factor = ds_factor
 
-    def forward(self, data_raw: ProcessedData) -> MapData:
+    def forward(self, processed_data: ProcessedData) -> MapData:
             #Setup filters that will be used later
         #get the sampling frequency and make a window that can be
         #used later for the power spectrum computation
 
-        data_raw = data_raw.data_mK
-        chanmask = data_raw.chanmask
-        detector_az = data_raw.detector_az
-        detector_za = data_raw.detector_za
-        detector_pol = data_raw.detector_pol
+        data_raw = processed_data.data_mK
+        chanmask = processed_data.chanmask
+        detector_az = processed_data.detector_az
+        detector_za = processed_data.detector_za
+        detector_pol = processed_data.detector_pol
 
-        timestamp = timestamp - timestamp[0]
+        timestamp = processed_data.timestamp - processed_data.timestamp[0]
         dtime = timestamp - np.roll(timestamp, 1)
         
         fs = float(1./np.median(dtime))
@@ -122,7 +122,7 @@ class CleanTOD(DataRoutine):
             detector_za_ds,
             detector_pol,
             time_ds,
-            chanmask=data_raw.chanmask,
+            chanmask=processed_data.chanmask,
         )
 
 
@@ -198,7 +198,7 @@ class BinTODIntoMap(DataRoutine):
         fs = map_data.fs
         data_clean = map_data.data
 
-        print(get_map_size(map_data, self.az_trim, self.el_trim, self.map_dpix))
+        print(get_map_size(map_data, self.az_trim, self.za_trim, self.map_dpix))
         exit()
 
         if np.size(pickup_good_index) == 0:
@@ -443,7 +443,7 @@ def outlier_removal(data):
     return final_pixels, np.array(outlier_pixels)
 
 if __name__ == '__main__':
-    data = ProcessedData('20250401', 1003)
+    data = ProcessedData('20250414', 1001, losweep="/data/20250414/20250414_rfsoc2_LO_Sweep_hour16p3303.h5")
     cleaner = CleanTOD()
     map = cleaner.forward(data)
 
