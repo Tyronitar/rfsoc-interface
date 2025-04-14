@@ -11,6 +11,7 @@ from matplotlib.pyplot import Figure
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog, QTabWidget, QDialogButtonBox, QPushButton
 from PySide6.QtCore import Qt, Signal, Slot
 
+from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.core.losweep import LoSweepData, get_tone_list, LoSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
@@ -18,10 +19,9 @@ from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
 from rfsocinterface.gui.initialization import InitializationWidget
-from rfsocinterface.core.utils import get_num_value, ensure_path, SettingsError
+from rfsocinterface.core.utils import get_num_value, ensure_path
 from rfsocinterface.gui.main_widget import MainWidget
 
-from kidpy import kidpy
 # from kidpy3 import RFSOC
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 import time
@@ -81,18 +81,18 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.channel_toolButton.clicked.connect(self.open_channel_in_initialization_tab)    
     
     def set_defaults(self):
-        defaults = self.settings['defaults']['losweep']
-        self.global_shift_lineEdit.setText(str(defaults['global_shift']))
+        defaults = self.settings['defaults']['loSweep']
+        self.global_shift_lineEdit.setText(str(defaults['globalShift']))
         self.df_lineEdit.setText(str(defaults['df']))
         self.deltaf_lineEdit.setText(str(defaults['deltaf']))
-        self.flagging_lineEdit.setText(str(defaults['flagging_threshold']))
+        self.flagging_lineEdit.setText(str(defaults['flaggingThreshold']))
 
         file_suffix = defaults.get('file_suffix', 'none')
         if  file_suffix not in FILE_SUFFIXES:
             raise SettingsError(f'Invalid value for defaults.losweep.file_suffix: "{file_suffix}; valid values are: {FILE_SUFFIXES}')
         self.active_suffix: Literal['none', 'temperature', 'elevation'] = file_suffix
 
-        self.second_sweep_df_lineEdit.setText(str(defaults['second_sweep']['df']))
+        self.second_sweep_df_lineEdit.setText(str(defaults['secondSweep']['df']))
 
         self.channel_comboBox.deselect_all()
 
@@ -147,19 +147,17 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # For running on ONR Computer
         # TODO: Fix this
-        lo_freq = channel_settings['dsp']['lo_freq']
+        lo_freq = channel_settings['dsp']['loFreq']  # MHz
         valon.set_frequency(2, lo_freq)
-        tone_shift = get_num_value(self.global_shift_lineEdit)
+        tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3  # KHz to Hz
         if tone_shift != 0:
-            lo_freq = valon.get_frequency(SYNTH_B)
+            lo_freq = valon.get_frequency(SYNTH_B) * 1e6  # MHz to Hz
             curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
             new_tones = np.ndarray.tolist(
                 curr_tone_list
                 + float(tone_shift)
-                * curr_tone_list
-                / np.median(curr_tone_list)
-                * 1.0e3
-                - lo_freq * 1.0e6
+                * (curr_tone_list + lo_freq)
+                / np.median(curr_tone_list + lo_freq)
             )
             print(
                 "Waiting for the RFSOC to finish writing the updated frequency list"
@@ -189,13 +187,13 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             valon,
             rfchan,
             rfsoc.get_tone_list()[0],
-            valon.get_frequency(SYNTH_B),
+            valon.get_frequency(SYNTH_B) * 1e6,  # MHZ to Hz
         )
         tone_list = rfsoc.get_tone_list()[0]
         chanmask = DEFAULT_CHANMASK
         # chanmask = rfsoc.settings['chanmask']
-        freq_step = get_num_value(self.df_lineEdit)
-        full_span = get_num_value(self.deltaf_lineEdit)
+        freq_step = get_num_value(self.df_lineEdit)  * 1e3  # KHz to Hz
+        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3  # KHz to Hz
         n_steps = full_span / freq_step
 
         pd = QThreadJobProgressDialog(labelText='Running LO Sweep...',  maximum=n_steps, max_workers=1, parent=self)
@@ -226,6 +224,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             QApplication.processEvents()
             time.sleep(0.1)
         self.sweep_data = sweep.data
+        self.sweep_data.set_diff_to_flag(get_num_value(self.flagging_lineEdit, float) * 1e3)
         self.dw.sweep = self.sweep_data
 
         # pb = SequentialProgressBarDialog(parent=self)
@@ -254,9 +253,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         fig, future = self.dw.plot(pd=pd)
         self.dw.set_figure(fig)
         future.add_done_callback(lambda _: self._show_diagnostics())
+        # future.add_done_callback(lambda _: pd.close())
     
     def _show_diagnostics(self):
         plt.tight_layout()
+        QApplication.processEvents()
         # self.dw.set_figure(fig)
         self.dw.show()
 

@@ -7,7 +7,6 @@ from rfsocinterface.gui.uic.telescope_control_ui import Ui_TelescopeControlWidge
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from rfsocinterface.core.camera import SKPR_Camera_Control
-from kidpy import kidpy
 from rfsocinterface.core.utils import analog_to_digital, digital_to_analog, P, R
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.main_widget import MainWidget

@@ -10,10 +10,10 @@ import logging
 from concurrent.futures import Future, CancelledError
 import itertools
 from numbers import Number
+import copy
 
 import numpy as np
 import numpy.typing as npt
-from kidpy import wait_for_free, wait_for_reply, kidpy
 import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QPoint, QSize, QCoreApplication
 from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QToolTip, QLabel
@@ -172,28 +172,6 @@ def digital_to_analog(d: int, min: float, max: float, bits: int) -> int:
     vals = np.linspace(min, max, (2**bits) - 1)
     a = vals[d]
     return a
-
-class SettingsError(Exception):
-    def __init__(self, message: str):
-        super().__init__("Error in settings file: " + message)
-    
-
-def convert_to_kidy_format(rfsoc_config: dict) -> dict:
-    kidpy_config = {}
-    kidpy_config['rfsoc_name'] = rfsoc_config['name']
-    kidpy_config['bitstream'] = rfsoc_config['bitstream']
-    kidpy_config['redis_ip'] = rfsoc_config['redis']['ip']
-    kidpy_config['redis_port'] = rfsoc_config['redis']['port']
-    kidpy_config['ethernet_config'] = {
-        'udp_data_a_sourceip': rfsoc_config['channel1']['sourceip'],
-        'udp_data_b_sourceip': rfsoc_config['channel2']['sourceip'],
-        'udp_data_a_destip': rfsoc_config['channel1']['destip'],
-        'udp_data_b_destip': rfsoc_config['channel2']['destip'],
-        'port_a': rfsoc_config['channel1']['port'],
-        'port_b': rfsoc_config['channel2']['port'],
-    }
-    return {'rfsoc_config': kidpy_config}
-
 
 def recursive_update(d: Mapping, u: Mapping):
     for k, v in u.items():
@@ -421,7 +399,3 @@ class CombinedFuture(Future[Iterable[R]]):
     def _coallesce_results(self):
         self._results = itertools.chain.from_iterable(self._results)
         self.set_result(self._results)
-
-
-        # self.set_result(r.value for r in self._results)
-

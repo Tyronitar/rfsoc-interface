@@ -1,0 +1,76 @@
+{
+    "app": {
+        "tabs": [
+            "initialization",
+            "losweep",
+            "data",
+            "telescope",
+            "imaging"
+        ],
+        "activeTab": "initialization"
+    },
+    "telescope": {
+        "jogVoltage": {
+            "azimuth": 5,
+            "zenith": 1
+        },
+        "controller": {
+            "class": "TelescopeMotorController",
+            "path": "./telescope.py"
+        }
+    },
+    "defaults": {
+        "loSweep": {
+            "globalShift": 0,
+            "df": 1.0,
+            "deltaf": 100.0,
+            "flaggingThreshold": 3.0,
+            "fileSuffix": "none",
+            "secondSweep": {
+                "df": 1.0
+            }
+        },
+        "data": {
+            "useDefaultFilename": true,
+            "directory": "/data/"
+        },
+        "rfsoc": {
+            "bitstream": "/home/xilinx/dualchan_v2.bit",
+            "channel": {
+                "toneList": "/home/nia/Documents/rfsoc-interface/Default_tone_list.npy",
+                "dsp": {
+                    "loFreq": 400e6,
+                    "nAverages": 524288
+                },
+                "rfin": 0.0,
+                "rfout": 0.0
+            }
+        }
+    },
+    "rfsocs": [
+        {
+            "name": "devrfsoc",
+            "redis": {
+                "IP": "192.168.1.10",
+                "port": 6379
+            },
+            "attenComport": "/dev/IF2Attenuators",
+            "channels": [
+                {
+                    "loComport": "/dev/IF2System1LO",
+                    "sourceIP": "192.168.3.40",
+                    "destIP": "192.168.3.41",
+                    "destMAC": "98B78520C5C0",
+                    "port": 4096
+                },
+                {
+                    "loComport": "/dev/IF2System2LO",
+                    "sourceIP": "192.168.4.4",
+                    "destIP": "192.168.4.40",
+                    "destMAC": "681CA2123652",
+                    "port": 4096
+                }
+            ]
+        }
+    ]
+}

@@ -9,13 +9,15 @@ from kidpy3.rfsoc import RedisConnection
 from kidpy3.data_handler import Rfchan
 from kidpy3.hardware import Valon5009, Transceiver320d
 
-from rfsocinterface.core.utils import convert_to_kidy_format, convert_path, recursive_update, ensure_path, SettingsError
+from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
+from rfsocinterface.core.utils import convert_path, recursive_update, ensure_path
 
-PATH_SETTINGS = ['tone_list', 'tone_powers', 'chanmask', 'lo_comport', 'atten_comport', 'bitstream']
+PATH_SETTINGS = ['toneList', 'tonePowers', 'chanmask', 'loComport', 'attenComport', 'bitstream']
 
 class RFSOCWrapper:
-    def __init__(self, default_settings: dict, rfsoc_settings: dict):
-        self.settings = recursive_update(default_settings['rfsoc'], rfsoc_settings)
+    def __init__(self, rfsoc_settings: dict):
+        # self.settings = recursive_update(default_settings['rfsoc'], rfsoc_settings)
+        self.settings = rfsoc_settings
 
         # self.name: str = combined_settings['name']
         # self.redis_ip: str = combined_settings['redis']['ip']
@@ -26,10 +28,12 @@ class RFSOCWrapper:
         # self.lo_comport_b: Path = convert_path(combined_settings['lo_comport_b'])
         # self.settings = combined_settings
 
-        chan_settings_a: dict[str, Any] = recursive_update({}, default_settings['channel'])
-        chan_settings_a = recursive_update(chan_settings_a, rfsoc_settings['channel1'])
-        chan_settings_b: dict[str, Any] = recursive_update({}, default_settings['channel'])
-        chan_settings_b = recursive_update(chan_settings_b, rfsoc_settings['channel2'])
+        # chan_settings_a: dict[str, Any] = recursive_update({}, default_settings['channel'])
+        # chan_settings_a = recursive_update(chan_settings_a, rfsoc_settings['channel1'])
+        # chan_settings_b: dict[str, Any] = recursive_update({}, default_settings['channel'])
+        # chan_settings_b = recursive_update(chan_settings_b, rfsoc_settings['channel2'])
+        chan_settings_a = rfsoc_settings['channels'][0]
+        chan_settings_b = rfsoc_settings['channels'][1]
         # Convert correct settings to Path
         for k in PATH_SETTINGS:
             if k in self.settings:
@@ -55,21 +59,21 @@ class RFSOCWrapper:
     
     @ensure_path(1)
     def set_atten_comport(self, comport: Path):
-        self.settings['atten_comport'] = comport
+        self.settings['attenComport'] = comport
         if self.atten_transceiver is not None:
             self.atten_transceiver.close()
         self.connect_to_atten_comport()
     
     def connect_to_atten_comport(self):
-        self.atten_transceiver = Transceiver320d(str(self.settings['atten_comport']))
+        self.atten_transceiver = Transceiver320d(str(self.settings['attenComport']))
     
     @ensure_path(2)
     def set_lo_comport(self, addr: int, comport: Path):
         match addr:
             case 0:
-                self.settings['channel1']['lo_comport'] = str(comport)
+                self.settings['channel1']['loComport'] = str(comport)
             case 1:
-                self.settings['channel2']['lo_comport'] = str(comport)
+                self.settings['channel2']['loComport'] = str(comport)
             case _:
                 raise ValueError(f'Invalid address {addr}. Must be 0 or 1.')
         self.connect_to_lo_comport(addr)
@@ -77,9 +81,9 @@ class RFSOCWrapper:
     def connect_to_lo_comport(self, addr: int):
         match addr:
             case 0:
-                self.valon_a = Valon5009(str(self.settings['channel1']['lo_comport']))
+                self.valon_a = Valon5009(str(self.settings['channel1']['loComport']))
             case 1:
-                self.valon_b = Valon5009(str(self.settings['channel2']['lo_comport']))
+                self.valon_b = Valon5009(str(self.settings['channel2']['loComport']))
             case _:
                 raise ValueError(f'Invalid address {addr}. Must be 0 or 1.')
     
@@ -87,15 +91,15 @@ class RFSOCWrapper:
         kidpy_config = {}
         kidpy_config['rfsoc_name'] = self.settings['name']
         kidpy_config['bitstream'] = str(self.settings['bitstream'])
-        kidpy_config['redis_ip'] = self.settings['redis']['ip']
+        kidpy_config['redis_ip'] = self.settings['redis']['IP']
         kidpy_config['redis_port'] = self.settings['redis']['port']
         kidpy_config['ethernet_config'] = {
-            'udp_data_a_sourceip': self.settings['channel1']['sourceip'],
-            'udp_data_b_sourceip': self.settings['channel2']['sourceip'],
-            'udp_data_a_destip': self.settings['channel1']['destip'],
-            'udp_data_b_destip': self.settings['channel2']['destip'],
-            'destmac_a': self.settings['channel1']['destmac'],
-            'destmac_b': self.settings['channel2']['destmac'],
+            'udp_data_a_sourceip': self.settings['channel1']['sourceIP'],
+            'udp_data_b_sourceip': self.settings['channel2']['sourceIP'],
+            'udp_data_a_destip': self.settings['channel1']['destIP'],
+            'udp_data_b_destip': self.settings['channel2']['destIP'],
+            'destmac_a': self.settings['channel1']['destMAC'],
+            'destmac_b': self.settings['channel2']['destMAC'],
             'port_a': self.settings['channel1']['port'],
             'port_b': self.settings['channel2']['port'],
         }
@@ -105,7 +109,7 @@ class RFSOCWrapper:
         data = self.to_kidpy()
         self.rfsoc.read_config(data)
         self.rfsoc.rcon = RedisConnection(
-            self.settings['redis']['ip'],
+            self.settings['redis']['IP'],
             self.settings['redis']['port'],
         )
 
@@ -134,6 +138,7 @@ class RFSOCWrapper:
     def set_frequency(self, channel: int, freq: float):
         valon = self.valon_a if channel == 1 else self.valon_b
         valon.set_frequency(channel, freq)
+        self.settings[f'channel{channel}']['dsp']['loFreq'] = freq
     
     def get_tone_list(self, chan: int=1) -> tuple[npt.NDArray, npt.NDArray]:
         return self.rfsoc.get_tone_list(chan)
@@ -152,7 +157,7 @@ class RFSOCWrapper:
         self.settings['chanmask'] = fname
     
     def channel_as_text(self, channel: int) -> str:
-        return f'{self.settings['name']} - Channel {channel}'
+        return f'{self.settings["name"]} - Channel {channel}'
     
     def get_channel(self, channel: int) -> Rfchan:
         match channel:

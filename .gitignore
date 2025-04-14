@@ -181,3 +181,4 @@ data/
 *.yml
 *.yaml
 *.json
+!*example*.json

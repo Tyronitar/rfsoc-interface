@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt
 
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
-from rfsocinterface.core.utils import SettingsError
+from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow

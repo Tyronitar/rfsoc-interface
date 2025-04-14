@@ -18,7 +18,6 @@ import time
 import json
 import redis
 import configparser
-from kidpy import checkBlastCli, wait_for_free, wait_for_reply, kidpy
 from kidpy3.hardware import Transceiver321, Transceiver320d, Valon5009
 import numpy as np
 from transceiver import Transceiver
@@ -130,13 +129,13 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
         self.bitstream_fileUploadWidget.lineEdit.setText(str(settings['bitstream']))
 
         # Redis
-        self.redis_ip_lineEdit.setText(settings['redis']['ip'])
+        self.redis_ip_lineEdit.setText(settings['redis']['IP'])
         self.redis_port_lineEdit.setText(str(settings['redis']['port']))
 
         # Comports
-        self.comport_atten_fileUploadWidget.lineEdit.setText(str(settings['atten_comport']))
-        self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channel1']['lo_comport']))
-        self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channel2']['lo_comport']))
+        self.comport_atten_fileUploadWidget.lineEdit.setText(str(settings['attenComport']))
+        self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channel1']['loComport']))
+        self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channel2']['loComport']))
 
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     height_updated = Signal()
@@ -217,32 +216,37 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         show_changed = self.tone_list_equal_label.isVisible() != show_label
         self.tone_list_equal_label.setVisible(show_label)
         if show_label:
-            self.tone_list_equal_label.setText(
-                f'Generating {n / 2} tones from {-max_base} MHz to {-min_base} MHz'
-                f' and {n / 2} tones from {min_base} MHz to {max_base} MHz'
-            )
+            if min_base > 0:
+                self.tone_list_equal_label.setText(
+                    f'Generating {n // 2} tones from {-max_base} MHz to {-min_base} MHz'
+                    f' and {n // 2} tones from {min_base} MHz to {max_base} MHz'
+                )
+            else:
+                self.tone_list_equal_label.setText(
+                    f'Generating {n} tones from {-max_base} MHz to {max_base} MHz'
+                )
         if show_changed:
             self.height_updated.emit()
     
     @Slot(int)
     def check_equal_tones(self, state: int):
         checked = Qt.CheckState(state) == Qt.CheckState.Checked
-        self.tone_list_lineEdit.setVisible(not checked)
         self.tone_list_lineEdit.setStyleSheet('')
+        self.tone_list_lineEdit.setVisible(not checked)
         self.tone_list_error_label.setVisible(False)
         self.tone_list_pushButton.setVisible(not checked)
 
         self.tone_list_baseband_max_label.setVisible(checked)
-        self.tone_list_baseband_max_lineEdit.setVisible(checked)
         self.tone_list_baseband_max_lineEdit.setStyleSheet('')
+        self.tone_list_baseband_max_lineEdit.setVisible(checked)
 
         self.tone_list_baseband_min_label.setVisible(checked)
-        self.tone_list_baseband_min_lineEdit.setVisible(checked)
         self.tone_list_baseband_min_lineEdit.setStyleSheet('')
+        self.tone_list_baseband_min_lineEdit.setVisible(checked)
 
         self.tone_list_ntones_label.setVisible(checked)
-        self.tone_list_ntones_lineEdit.setVisible(checked)
         self.tone_list_ntones_lineEdit.setStyleSheet('')
+        self.tone_list_ntones_lineEdit.setVisible(checked)
 
         self.update_tone_list_equal_label('')
         self.tone_list_equal_label.setVisible(checked)
@@ -251,8 +255,8 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     @Slot(int)
     def check_equal_power(self, state: int):
         checked = Qt.CheckState(state) == Qt.CheckState.Checked
-        self.tone_power_lineEdit.setVisible(not checked)
         self.tone_power_lineEdit.setStyleSheet('')
+        self.tone_power_lineEdit.setVisible(not checked)
         self.tone_power_pushButton.setVisible(not checked)
         self.tone_power_error_label.setVisible(False)
         self.height_updated.emit()
@@ -383,9 +387,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     @Slot()
     def update_ethernet_config(self):
         chan_settings = self.rfsoc.settings[f'channel{self.channel}']
-        chan_settings['sourceip'] = get_lineEdit_text(self.eth_source_lineEdit)
-        chan_settings['destip'] = get_lineEdit_text(self.eth_dest_lineEdit)
-        chan_settings['destmac'] = get_lineEdit_text(self.eth_mac_lineEdit)
+        chan_settings['sourceIP'] = get_lineEdit_text(self.eth_source_lineEdit)
+        chan_settings['destIP'] = get_lineEdit_text(self.eth_dest_lineEdit)
+        chan_settings['destMAC'] = get_lineEdit_text(self.eth_mac_lineEdit)
         chan_settings['port'] = get_num_value(self.eth_port_lineEdit, int)
         self.rfsoc.update_kidpy_rfsoc()
 
@@ -422,6 +426,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             tones_valid &= bb_max_valid
             if tones_valid:
                 n = get_num_value(self.tone_list_ntones_lineEdit, int)
+                # Get baseband frequencies in Hz
                 bb_min = get_num_value(self.tone_list_baseband_min_lineEdit) * 1e6
                 bb_max = get_num_value(self.tone_list_baseband_max_lineEdit) * 1e6
                 if bb_max <= bb_min:
@@ -429,12 +434,17 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                     highlight_error_line_edit(self.tone_list_baseband_max_lineEdit)
                 else:
                     # Only for testing purposes
-                    tone_list = np.load('Default_tone_list.npy')
-                    tone_list = tone_list[(bb_min <= np.abs(tone_list)) & (np.abs(tone_list) <= bb_max)]
+                    # tone_list = np.load('Default_tone_list.npy')
+                    # tone_list = tone_list[(bb_min <= np.abs(tone_list)) & (np.abs(tone_list) <= bb_max)]
 
-                    # freq_low = np.linspace(-bb_max, -bb_min, n // 2)
-                    # freq_hi = np.linspace(bb_min, bb_max, n // 2)
-                    # tone_list = np.append(freq_low, freq_hi)
+                    if bb_min == 0:
+                        # Generate n tones from -bb_max to bb_max
+                        tone_list = np.linspace(-bb_max, bb_max, n)
+                    else:
+                        # Generate n / 2 tones from -bb_max to -bb_min and n / 2 from bb_min to bb_max
+                        freq_low = np.linspace(-bb_max, -bb_min, n // 2)
+                        freq_hi = np.linspace(bb_min, bb_max, n // 2)
+                        tone_list = np.append(freq_low, freq_hi)
             # TODO: Ask Cody about this
             # Cody's code for equally spaced tones
             # Nover2 = 500 # number of tones to make  
@@ -491,7 +501,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             print('Succesfully set attenuation')
     
     def set_lo_freq(self):
-        lo_freq = get_num_value(self.lo_freq_lineEdit)
+        lo_freq = get_num_value(self.lo_freq_lineEdit) * 1e6  # MHz to Hz
         self.setCursor(Qt.CursorShape.WaitCursor)
         self.rfsoc.set_frequency(self.channel, lo_freq)
         self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -500,25 +510,25 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         chan_settings = self.rfsoc.settings[f'channel{self.channel}']
 
         # Resonator Settings
-        self.tone_list_lineEdit.setText(str(chan_settings['tone_list']))
+        self.tone_list_lineEdit.setText(str(chan_settings['toneList']))
         # self.tone_list_lineEdit.setPlaceholderText(self.rfsoc.settings['tone_list'])
-        if 'tone_powers' in chan_settings:
-            self.tone_power_lineEdit.setText(str(chan_settings['tone_powers']))
+        if 'tonePowers' in chan_settings:
+            self.tone_power_lineEdit.setText(str(chan_settings['tonePowers']))
         # self.tone_power_lineEdit.setPlaceholderText(self.rfsoc.settings['tone_powers'])
         if 'chanmask' in chan_settings:
             self.chanmask_lineEdit.setText(str(chan_settings['chanmask']))
             # self.chanmask_lineEdit.setPlaceholderText(self.settings['chanmask'])
 
         # Ethernet Settings
-        self.eth_source_lineEdit.setText(chan_settings['sourceip'])
-        self.eth_dest_lineEdit.setText(chan_settings['destip'])
-        self.eth_mac_lineEdit.setText(chan_settings['destmac'])
+        self.eth_source_lineEdit.setText(chan_settings['sourceIP'])
+        self.eth_dest_lineEdit.setText(chan_settings['destIP'])
+        self.eth_mac_lineEdit.setText(chan_settings['destMAC'])
         self.eth_port_lineEdit.setText(str(chan_settings['port']))
 
         # IF Settings
         self.rfin_lineEdit.setText(str(chan_settings['rfin']))
         self.rfout_lineEdit.setText(str(chan_settings['rfout']))
-        self.lo_freq_lineEdit.setText(f'{chan_settings['dsp']['lo_freq']:e}')
+        self.lo_freq_lineEdit.setText(f'{chan_settings["dsp"]["loFreq"]}')
     
     @Slot(QAbstractButton)
     def restore_defaults(self, button: QAbstractButton):

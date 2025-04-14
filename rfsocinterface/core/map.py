@@ -15,6 +15,24 @@ from rfsocinterface.core.data import ProcessedData, MapData
 
 DECIMATE_ORDER = 5
 BUTTER_ORDER = 6
+AZ_TRIM = 2.3
+ZA_TRIM = 0.2
+
+
+def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float) -> npt.NDArray:
+
+    max_az = np.max(map.azimuth) - az_trim
+    min_az = np.min(map.azimuth) + az_trim
+    max_za = np.max(map.zenith_angle) - za_trim
+    min_za = np.min(map.zenith_angle) + za_trim
+    n_pix_x = int(np.ceil((max_az - min_az) / map_dpix))
+    n_pix_y = int(np.ceil((max_za - min_za) / map_dpix))
+    map_coords = np.mgrid[0:n_pix_x, 0:n_pix_y]
+    map_x = np.arange(n_pix_x) * map_dpix + min_az + map_dpix / 2.
+    map_y = np.arange(n_pix_x) * map_dpix + min_za + map_dpix / 2. + 0.1  # 0.1 accounts for assymmetry in array
+
+    return n_pix_x, n_pix_y, map_x, map_y
+
 
 def _unimplemented_forward(self, *args):
     raise NotImplementedError(
@@ -156,14 +174,18 @@ class RemovePointLomaPickup(DataRoutine):
 class BinTODIntoMap(DataRoutine):
     def __init__(
             self,
-            map_dpix: float=0.04,
             hp_filter_freq: float=0.5,
             lp_filter_freq: float=10.,
+            az_trim: float=2.3,
+            za_trim: float=0.2,
+            map_dpix: float=0.04,
     ):
         super().__init__()
-        self.map_dpix = map_dpix
         self.hp_filter_freq = hp_filter_freq
         self.lp_filter_freq = lp_filter_freq
+        self.az_trim = az_trim
+        self.za_trim = za_trim
+        self.map_dpix = map_dpix
     
     def forward(
             self,
@@ -176,16 +198,67 @@ class BinTODIntoMap(DataRoutine):
         fs = map_data.fs
         data_clean = map_data.data
 
+        print(get_map_size(map_data, self.az_trim, self.el_trim, self.map_dpix))
+        exit()
+
         if np.size(pickup_good_index) == 0:
-            pickup_good_index = np.arange(np.size(data_clean))
+            pickup_good_index = np.arange(data_clean.shape[1])
 
         for i, pol in enumerate([1, 2]):
             channel_index = np.argwhere(detector_pol == 1)
             NETD = np.zeros((np.size(channel_index)))
             for index, i_chan in enumerate(channel_index):
-                # TODO: fix this entire thing I guess
-                pass
+                this_clean_data = data_clean[i_chan,:]
+                this_detector_az = detector_az[i_chan,:]
+                this_detector_za = detector_za[i_chan,:]
+                wind = signal.get_window('hamming', data_clean.shape[1])
+                this_freq, this_psd = signal.periodogram(this_clean_data, fs, window=wind)
+                valid_freq = np.where(this_freq > self.hp_filter_freq and this_freq < self.lp_filter_freq)
+                NETD[index] = np.sqrt(np.median(this_psd[valid_freq]))
+            #    NETD[index] = np.sqrt(np.median(this_psd[-int(np.size(this_psd)/2):]*30.))
+                weight = 1./NETD[index]**2.
 
+                #get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+                x_ind = np.round((detector_az-map_az[0])/map_dpix)
+                x_ind = x_ind.astype('int64')
+                y_ind = np.round((detector_el-map_el[0])/map_dpix)
+                y_ind = y_ind.astype('int64')
+            
+    
+    def _inner(self, sum_map, hits_map, NETD, map_dpix, index, data_cleaned, detector_az, detector_el, fs, map_az, map_el, hp_filt_freq, lp_filt_freq, pickup_good_index = []):
+
+        #get the good samples if they haven't been specified
+        if np.size(pickup_good_index) == 0:
+            pickup_good_index = np.arange(np.size(data_cleaned))
+
+        #compute NETD in white noise regime
+        wind = signal.get_window('hamming', np.size(data_cleaned))
+        this_freq, this_psd = signal.periodogram(data_cleaned, fs, window=wind)
+        valid_freq = np.where(np.logical_and(this_freq>hp_filt_freq,this_freq<lp_filt_freq))
+        NETD[index] = np.sqrt(np.median(this_psd[valid_freq]))
+    #    NETD[index] = np.sqrt(np.median(this_psd[-int(np.size(this_psd)/2):]*30.))
+        weight = 1./NETD[index]**2.
+    
+        #get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+        x_ind = np.round((detector_az-map_az[0])/map_dpix)
+        x_ind = x_ind.astype('int64')
+        y_ind = np.round((detector_el-map_el[0])/map_dpix)
+        y_ind = y_ind.astype('int64')
+
+        #eliminate samples outside the map
+        valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
+            np.logical_and(x_ind[pickup_good_index] >= 0, x_ind[pickup_good_index] < np.size(sum_map[:,0])), \
+            np.logical_and(y_ind[pickup_good_index] >= 0, y_ind[pickup_good_index] < np.size(sum_map[0,:])))))
+        pickup_good_index = pickup_good_index[valid_index]
+
+    #    pdb.set_trace()
+        #loop over samples to create sum and hits maps
+        for time_sample in pickup_good_index:
+            sum_map[x_ind[time_sample],y_ind[time_sample]] += data_cleaned[time_sample] * weight
+            hits_map[x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+
+        return sum_map, hits_map, NETD
+            
 
 class Smooth(DataRoutine):
     def __init__(self, gaussian_sigma: tuple[float, float]=(0.5, 0.33)):
@@ -368,3 +441,11 @@ def outlier_removal(data):
         outlier_pixels = map_pixels[0:1].tolist()
         final_pixels = map_pixels[1:]
     return final_pixels, np.array(outlier_pixels)
+
+if __name__ == '__main__':
+    data = ProcessedData('20250401', 1003)
+    cleaner = CleanTOD()
+    map = cleaner.forward(data)
+
+    binner = BinTODIntoMap()
+    map1 = binner.forward(map)
