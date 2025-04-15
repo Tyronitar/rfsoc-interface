@@ -443,7 +443,7 @@ def outlier_removal(data):
     return final_pixels, np.array(outlier_pixels)
 
 if __name__ == '__main__':
-    data = ProcessedData('20250414', 1001, losweep="/data/20250414/20250414_rfsoc2_LO_Sweep_hour16p3303.h5")
+    data = ProcessedData('20250320', 1001, losweep='20250320_rfsoc2_LO_Sweep_hour13p0367.npy')
     cleaner = CleanTOD()
     map = cleaner.forward(data)
 

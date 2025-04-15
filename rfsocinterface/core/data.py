@@ -6,6 +6,7 @@ import glob
 from typing import Callable
 from dataclasses import dataclass, field
 import copy
+import pdb
 
 import h5py
 import numpy as np
@@ -15,6 +16,8 @@ from kidpy3 import RawDataFile
 from rfsocinterface.core.utils import ensure_path, get_filename
 from rfsocinterface.core.losweep import LoSweepData
 
+# DATA_DIRECTORY = '/data'
+DATA_DIRECTORY = 'reference_data'  # For testing with local data files
 
 @ensure_path(0)
 def load_time_ordered_IQ_data(path: Path, normalize: bool=True) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
@@ -42,7 +45,9 @@ def compute_df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, det
         min_amp = np.percentile(valid_amp, 10)
         valid_amp[valid_amp < min_amp] = min_amp
         valid_amp /= np.median(valid_amp)
-    amps = np.where(beam_pol >= 1, valid_amp, detector_beam_amp)
+
+    amps = detector_beam_amp[:]
+    amps[valid_index] = valid_amp
     return dfoverf_per_mK * detector_f * amps
 
 
@@ -113,19 +118,23 @@ class ProcessedData(DetectorData):
 
     @property
     def tod_template(self) -> str:
-        return f'/data/{self.date}/{self.date}_*_TOD_set{self.setnum}.h5'
+        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_*_TOD_set{self.setnum}.h5'
 
     @property
     def azel_template(self) -> str:
-        return f'/data/{self.date}/{self.date}_AZEL_set{self.setnum}.h5'
+        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_AZEL_set{self.setnum}.h5'
 
     @property
     def optcam_template(self) -> str:
-        return f'/data/{self.date}/{self.date}_optcam_set{self.setnum}.h5'
+        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_optcam_set{self.setnum}.h5'
     
     @property
     def file_template(self) -> str:
-        return f'/data/{self.date}/{self.date}_processed_data_set{self.setnum}.h5'
+        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_processed_data_set{self.setnum}.h5'
+
+    @property
+    def folder(self) -> Path:
+        return Path(f'{DATA_DIRECTORY}/{self.date}')
 
     @property
     def data_f(self) -> npt.NDArray:
@@ -192,9 +201,13 @@ class ProcessedData(DetectorData):
             #compute the derivatives to obtain frequency direction
             f = RawDataFile(file, 'r')
             if losweep:
+                losweep = Path(losweep)
                 # f.append_lo_sweep(losweep)
-                with h5py.File(losweep, 'r') as sweep_file:
-                    sweep_data = sweep_file['global_data/lo_sweep'][:]
+                if losweep.suffix == '.npy':
+                    sweep_data = np.load(self.folder / losweep)
+                else:
+                    with h5py.File(self.folder / losweep, 'r') as sweep_file:
+                        sweep_data = sweep_file['global_data/lo_sweep'][:]
                 sweep = LoSweepData(f.baseband_freqs[:], f.lo_freq[()], sweep_data, f.chanmask[:])
                 this_dI_df, this_dQ_df = sweep.freq_direction()
                 self.dI_df = np.concatenate((self.dI_df, this_dI_df))
