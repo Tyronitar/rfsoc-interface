@@ -219,11 +219,9 @@ class TelescopeMotorController:
         self.conn.send(['done'])
 
     def set_ao_value(self, data: float, channel: int):
-        return
         self.ao_device.a_out(channel, self.ul_range_out, self.ao_flags, data)
     
     def set_ao_zero(self):
-        return
         self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
         self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
 
