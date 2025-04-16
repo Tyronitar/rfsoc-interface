@@ -212,7 +212,7 @@ class ResonatorData:
     def fit(self, df: float, start: float = None) -> tuple[float, float, float]:
         """Perform a fit to find the resonance frequency."""
         if start is None:
-            start = self.baseband_tone
+            start = self.tone
         fit_f0 = simple_derivative_fits(df, self.freq, start, self.s21)
         fit_qi = 0.0
         fit_qc = 0.0
@@ -349,7 +349,7 @@ class LoSweepData:
         for i_chan in np.argwhere(self.chanmask == 1):
             self._fit_i(i_chan)
     
-    def _fit_i(self, i_chan, do_print: bool=False):
+    def _fit_i(self, i_chan, do_print: bool=True):
             # pull in the sweep data for this tone
             i = i_chan[0]
             resonator = self.resonator_data[i]

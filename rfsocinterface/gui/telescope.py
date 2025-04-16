@@ -161,7 +161,8 @@ class TelescopeMotorController:
             # Set output to zero
             self.set_ao_zero()
         except OSError as e:
-            raise OSError('DAQ could nto be initialized; Check comport and power supply') from e
+            self.conn.send(['err', 'DAQ could not be initialized; Check comport and power supply'])
+            return
         
         # Init serial communication with S700 for high res positioning of AZ monitors
         comports = serial.tools.list_ports.comports()

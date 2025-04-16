@@ -9,8 +9,10 @@ from datetime import datetime
 import logging
 from concurrent.futures import Future, CancelledError
 import itertools
+from itertools import islice
 from numbers import Number
 import copy
+import sys
 
 import numpy as np
 import numpy.typing as npt
@@ -343,9 +345,22 @@ class Result:
     value: Any
 
 
+def batched(iterable, n):
+    "Batch data into lists of length n. The last batch may be shorter."
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if n < 1:
+        raise ValueError('n must be >= 1')
+    it = iter(iterable)
+    while (batch := list(islice(it, n))):
+        yield batch
+
+
 def iter_chunks(iterable: iter, chunksize: int) -> iter:
     """Iterates over zipped iterables in chunks."""
-    yield from itertools.batched(iterable, chunksize)
+    if sys.version_info < (3, 12):
+        yield from batched(iterable, chunksize)
+    else:
+        yield from itertools.batched(iterable, chunksize)
 
 # End Pebble code
 
