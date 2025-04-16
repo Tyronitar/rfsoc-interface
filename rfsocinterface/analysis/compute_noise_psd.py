@@ -344,54 +344,54 @@ def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None 
         ind = ind[good_ind]
     return data[ind], ind, np.setdiff1d(np.arange(np.size(data)), ind)
 
-if __name__ == '__main__':
-    pairs = [
-        # ('equal_0-256', 'RFSoC Loopback with 1000 Tones Over Full Bandwidth'),
-        # ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
-        # ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
-        # ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
-        ('data/default_0-256.hdf5', 'RFSoC Loopback with Default Tones'),
-        # ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
-        # ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
-        # ('./data/default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
-        # ('/data/20250404/20250404_chan_1_TOD_set1001.h5', 'ASU Readout'),
-        # ('/data/20250409/20250409_chan_1_TOD_set1001.h5', 'Single Tone')
-    ]
-    for name, title in pairs:
-        # input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
-        input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'{name}')
-        input_data = input_data[:, :-5, :]
-        
-        rotated_data = rotate_to_amplitude_and_phase(input_data)
-        # save_name = f'new_psd_{name}'
-        save_name = Path(name).name
-
-        chanmask, freq, noise_psd = compute_noise_psd(
-            rotated_data,
-            timestamp,
-            chanmask=None,
-            ds_factor=3,
-            flag_outliers=True,
-            nominal_block_length=10,
-            outlier_sigma=2,
-        )
-        plot_psd(freq, noise_psd, f'plots/{save_name}.pdf', basis='pa', title=title)
-        plt.close()
-
-
 # if __name__ == '__main__':
-#     from rfsocinterface.core.data import ProcessedData
-#     p = ProcessedData('20250409', 1001, losweep='/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
-#     p.chanmask = np.array([1])
-#     rotated_data = rotate_to_amplitude_and_phase(p.data)
-#     chanmask, freq, noise_psd = compute_noise_psd(
-#         rotated_data,
-#         p.timestamp,
-#         chanmask=p.chanmask,
-#         ds_factor=3,
-#         flag_outliers=False,
-#         nominal_block_length=10,
-#         outlier_sigma=4,
-#         remove_noise=False,
-#     )
-#     plot_psd(freq, noise_psd, 'plots/20250409.pdf', basis='pa', title='Single Tone')
+#     pairs = [
+#         # ('equal_0-256', 'RFSoC Loopback with 1000 Tones Over Full Bandwidth'),
+#         # ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
+#         # ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
+#         # ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
+#         # ('data/default_0-256.hdf5', 'RFSoC Loopback with Default Tones'),
+#         # ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
+#         # ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
+#         # ('./data/default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
+#         # ('/data/20250404/20250404_chan_1_TOD_set1001.h5', 'ASU Readout'),
+#         ('/data/20250415/20250415_chan_1_TOD_set1004.h5', 'Loopback')
+#     ]
+#     for name, title in pairs:
+#         # input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
+#         input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'{name}')
+#         # input_data = input_data[:, :-5, :]
+#         rotated_data = rotate_to_amplitude_and_phase(input_data)
+#         # save_name = f'new_psd_{name}'
+#         save_name = Path(name).name
+
+#         chanmask, freq, noise_psd = compute_noise_psd(
+#             rotated_data,
+#             timestamp,
+#             chanmask=None,
+#             ds_factor=3,
+#             flag_outliers=True,
+#             nominal_block_length=10,
+#             outlier_sigma=2,
+#         )
+#         plot_psd(freq, noise_psd, f'plots/{save_name}.pdf', basis='pa', title=title)
+#         plt.close()
+
+
+if __name__ == '__main__':
+    from rfsocinterface.core.data import ProcessedData
+    p = ProcessedData('20250415', 1004, losweep='20250415_rfsoc2_LO_Sweep_hour16p1919.h5')
+    # pdb.set_trace()
+    p.chanmask = np.ones_like(p.chanmask)
+    rotated_data = rotate_to_amplitude_and_phase(p.data)
+    chanmask, freq, noise_psd = compute_noise_psd(
+        rotated_data,
+        p.timestamp,
+        chanmask=p.chanmask,
+        ds_factor=3,
+        flag_outliers=True,
+        nominal_block_length=10,
+        outlier_sigma=2,
+        remove_noise=True,
+    )
+    plot_psd(freq, noise_psd, 'plots/20250415.pdf', basis='pa', title='Loopback')

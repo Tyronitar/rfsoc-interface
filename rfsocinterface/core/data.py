@@ -16,26 +16,27 @@ from kidpy3 import RawDataFile
 from rfsocinterface.core.utils import ensure_path, get_filename
 from rfsocinterface.core.losweep import LoSweepData
 
-# DATA_DIRECTORY = '/data'
-DATA_DIRECTORY = 'reference_data'  # For testing with local data files
+DATA_DIRECTORY = '/data'
+# DATA_DIRECTORY = 'reference_data'  # For testing with local data files
 
 @ensure_path(0)
 def load_time_ordered_IQ_data(path: Path, normalize: bool=True) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-    with h5py.File(path, 'r') as f:
-        data_i = f['time_ordered_data/adc_i'][:]
-        data_q = f['time_ordered_data/adc_q'][:]
-        input_data = np.empty((2, *data_i.shape))
-        if normalize:
-            amp = np.sqrt(data_i ** 2. + data_q ** 2.)
-            amp = np.nanmedian(amp, axis=1)
-            input_data[0, :, :] = data_i / np.outer(amp, np.ones(data_i.shape[1]))
-            input_data[1, :, :] = data_q / np.outer(amp, np.ones(data_q.shape[1]))
-        else:
-            input_data[0, :, :] = data_i
-            input_data[1, :, :] = data_q
-        timestamp = f['time_ordered_data/timestamp'][:]
-        chanmask = f['global_data/chanmask'][:]
-    return input_data, timestamp, chanmask
+    f = RawDataFile(path, 'r')
+    data_i = f.adc_i[:]
+    data_q = f.adc_q[:]
+    input_data = np.empty((2, *data_i.shape))
+    if normalize:
+        amp = np.sqrt(data_i ** 2. + data_q ** 2.)
+        amp = np.nanmedian(amp, axis=1)
+        input_data[0, :, :] = data_i / np.outer(amp, np.ones(data_i.shape[1]))
+        input_data[1, :, :] = data_q / np.outer(amp, np.ones(data_q.shape[1]))
+    else:
+        input_data[0, :, :] = data_i
+        input_data[1, :, :] = data_q
+    timestamp = f.timestamp[:]
+    chanmask = f.chanmask[:]
+    ntones = f.n_tones[0]
+    return input_data[:, :ntones], timestamp, chanmask[:ntones]
 
 def compute_df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, detector_f, dfoverf_per_mK):
     valid_index = np.ndarray.flatten(np.argwhere(beam_pol >= 1))
@@ -236,8 +237,6 @@ class ProcessedData(DetectorData):
             data_I = data_I - np.outer(np.mean(data_I, axis = 1), np.ones(nsamples))
             data_Q = data_Q - np.outer(np.mean(data_Q, axis = 1), np.ones(nsamples))
             
-            #pdb.set_trace()
-
             #now use the derivatives to convert to a frequency shift
             #need to optimally weight the data based on the response
             #in each direction (assuming the noise is identical in I and Q)
