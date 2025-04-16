@@ -348,7 +348,7 @@ class TelescopeMotorController:
     def az_scan_mode(
             self,
             file: str,
-            az_start: float,
+            az_start: float,  # relative to current positions
             az_stop: float,
             n_repeats: int=1,
             ze_dither: float=0.04,

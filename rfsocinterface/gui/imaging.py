@@ -67,8 +67,16 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         self.pushButton.clicked.connect(self.run)
         self.choose_pattern(0)
     
-    def get_file(self) -> Path:
-        return self.save_location_widget.get_chosen_save_location()
+    def get_file(self, chan_name: str='') -> Path:
+        return self.save_location_widget.get_chosen_save_location(chan_name=chan_name)
+    
+    def get_tele_file(self) -> Path:
+        return self.convert_to_telescope_file(self.get_file())
+
+    def convert_to_telescope_file(self, path: Path) -> Path:
+        todfilename = str(path)
+        todfilename.replace('TOD', 'AZEL')
+        return Path(todfilename)
     
     def add_dither_pattern(self, label: str, fn: Callable, args: list[tuple[str, ArgumentType]]):
         pattern = DitherPatternWidget(fn, self.get_file, args=args, parent=self)
