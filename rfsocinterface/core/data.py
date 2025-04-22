@@ -102,6 +102,8 @@ class ProcessedData(DetectorData):
     vis: float
     dI_df: npt.NDArray
     dQ_df: npt.NDArray
+    carrier_amp_I: npt.NDArray
+    carrier_amp_Q: npt.NDArray
     df_per_mK: npt.NDArray
     data: npt.NDArray
     data_mK: npt.NDArray
@@ -179,6 +181,8 @@ class ProcessedData(DetectorData):
 
         self.dI_df = np.array([])
         self.dQ_df = np.array([])
+        self.carrier_amp_I = np.array([])
+        self.carrier_amp_Q = np.array([])
         self.df_per_mK = np.array([])
         self.data = np.array([])
         self.data_mK = 0
@@ -220,8 +224,10 @@ class ProcessedData(DetectorData):
             # data_IQ = data_IQ[:, valid_tone_index, :]
             data_I = data_I[valid_tone_index,:]
             data_Q = data_Q[valid_tone_index,:]
-            data_I = data_I - np.outer(np.mean(data_I, axis = 1), np.ones(nsamples))
-            data_Q = data_Q - np.outer(np.mean(data_Q, axis = 1), np.ones(nsamples))
+            self.carrier_amp_I = np.mean(data_I, axis=1)
+            self.carrier_amp_Q = np.mean(data_Q, axis=1)
+            data_I = data_I - np.outer(self.carrier_amp_I, np.ones(nsamples))
+            data_Q = data_Q - np.outer(self.carrier_amp_Q, np.ones(nsamples))
             
             #pdb.set_trace()
 
