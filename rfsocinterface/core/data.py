@@ -12,6 +12,7 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 from kidpy3 import RawDataFile
+from scipy import signal
 
 from rfsocinterface.core.utils import ensure_path, get_filename
 from rfsocinterface.core.losweep import LoSweepData
@@ -106,8 +107,7 @@ class ProcessedData(DetectorData):
     date: str
     setnum: int
     vis: float
-    dI_df: npt.NDArray
-    dQ_df: npt.NDArray
+    dIQ_df: npt.NDArray
     carrier_amp_I: npt.NDArray
     carrier_amp_Q: npt.NDArray
     df_per_mK: npt.NDArray
@@ -146,6 +146,18 @@ class ProcessedData(DetectorData):
     @property
     def data_diss(self) -> npt.NDArray:
         return self.data[1]
+
+    @property
+    def dI_df(self) -> npt.NDArray:
+        return self.dIQ_df[0]
+
+    @property
+    def dQ_df(self) -> npt.NDArray:
+        return self.dIQ_df[1]
+
+    def carrier_amplitude_norm(self) -> npt.NDArray:
+        Z = self.carrier_amp_I + 1j*self.carrier_amp_Q
+        return np.mean(np.abs(Z), axis=1)
 
     def __init__(self, date: str, setnum: int, losweep: str | None=None):
         #20230803_rfsoc1_TOD_set1012
@@ -189,8 +201,7 @@ class ProcessedData(DetectorData):
             self.optical_image = None
 
 
-        self.dI_df = np.array([])
-        self.dQ_df = np.array([])
+        self.dIQ_df = np.array([])
         self.carrier_amp_I = np.array([])
         self.carrier_amp_Q = np.array([])
         self.df_per_mK = np.array([])
@@ -214,9 +225,11 @@ class ProcessedData(DetectorData):
                     with h5py.File(self.folder / losweep, 'r') as sweep_file:
                         sweep_data = sweep_file['global_data/lo_sweep'][:]
                 sweep = LoSweepData(f.baseband_freqs[:], f.lo_freq[()], sweep_data, f.chanmask[:])
-                this_dI_df, this_dQ_df = sweep.freq_direction()
-                self.dI_df = np.concatenate((self.dI_df, this_dI_df))
-                self.dQ_df = np.concatenate((self.dQ_df, this_dQ_df))
+                this_dIQ_df = sweep.freq_direction()
+                if np.size(self.dIQ_df) > 0:
+                    self.dIQ_df = np.concatenate((self.dIQ_df, this_dIQ_df), axis=0)
+                else:
+                    self.dIQ_df = np.copy(this_dIQ_df)
         
             #compute the calibration factor from dfoverf to mK
             self.detector_pol = f.detector_pol[:]
@@ -247,33 +260,22 @@ class ProcessedData(DetectorData):
             #need to optimally weight the data based on the response
             #in each direction (assuming the noise is identical in I and Q)
             #this will then yield data_f
-            this_dI_df = np.array(this_dI_df)
-            this_dQ_df = np.array(this_dQ_df)
-            eqiv_var_I = np.outer((1. / this_dI_df)**2., np.ones(nsamples))
-            eqiv_var_Q = np.outer((1. / this_dQ_df)**2., np.ones(nsamples))
-            this_data_f = ( (data_I / np.outer(this_dI_df, np.ones(nsamples)) ) / eqiv_var_I + \
-                            (data_Q / np.outer(this_dQ_df, np.ones(nsamples)) ) / eqiv_var_Q ) / \
-                        (1./eqiv_var_I + 1./eqiv_var_Q)
-            this_data_diss = ( (data_I / np.outer(-this_dQ_df, np.ones(nsamples)) ) / eqiv_var_Q + \
-                            (data_Q / np.outer(this_dI_df, np.ones(nsamples)) ) / eqiv_var_I ) / \
-                        (1./eqiv_var_I + 1./eqiv_var_Q)
-            combined_data = np.stack((this_data_f, this_data_diss))
+            this_data = rotate_to_frequency_dissipation(
+                np.stack((data_I, data_Q)),
+                this_dIQ_df,
+            )
             if np.size(self.data) > 0:
-                self.data = np.concatenate((self.data, combined_data), axis=0)
+                self.data = np.concatenate((self.data, this_data), axis=0)
             else:
-                self.data = np.copy(combined_data)
-    #        del eqiv_var_I, eqiv_var_Q, data_I, data_Q
+                self.data = np.copy(this_data)
 
             #finally, we need to get data_mK
             this_df_per_mK = np.array(this_df_per_mK)
-            this_data_mK = np.divide(this_data_f, np.outer(this_df_per_mK, np.ones(nsamples)))
+            this_data_mK = np.divide(this_data[0], np.outer(this_df_per_mK, np.ones(nsamples)))
             if np.size(self.data_mK) != 1:
                 self.data_mK = np.concatenate((self.data_mK, this_data_mK), axis=0)
             else:
                 self.data_mK = np.copy(this_data_mK)
-    #        del this_data_f, this_data_mK
-    #        import matplotlib.pyplot as plt
-    #        pdb.set_trace()
 
             #now the telescope data to get coordinates
             time = f.timestamp[:]
@@ -329,4 +331,155 @@ class ProcessedData(DetectorData):
             pfile.create_dataset("detector_za", data=self.detector_za)
             pfile.create_dataset("timestamp", data=self.timestamp)
             pfile.create_dataset("optical_visibility", data=self.vis)
+
+
+def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None | int | tuple[int, ...]=None):
+    """Repeatedly perform outlier rejection until there are no more outliers.
+
+    Args:
+        data (npt.ArrayLike): Input data (expected to be 1 dimensional)
+        sigma (float, optional): The standard deviation cutoff for outliers. Defaults
+            to 2.
+        axis (None or int or tuple of ints, optional): The axis or axes to perform the
+            outlier rejection along. Deafults to None.
+
+    Returns:
+        (npt.NDArray, npt.NDArray, npt.NDArray): `data` with the outliers removed,
+        indices in `data` of the inliers, and indices in `data` of the outliers .
+    """
+    ind = np.arange(np.size(data))
+    # ind = np.ones_like(data, dtype=int)
+    # ind = get_all_indices(data)
+    if np.ndim(data) != 1:
+        data = np.flatten(data)
+    while True:
+        good_data, good_ind = reject_outliers(data[ind], sigma=sigma, axis=axis)
+        if np.size(ind) == np.size(good_ind):
+            break
+        ind = ind[good_ind]
+    return data[ind], ind, np.setdiff1d(np.arange(np.size(data)), ind)
+
+
+def flag(data: npt.NDArray, fs: float, sigma: float=2):
+    """Flag data outliers."""
+    first_dimension, n_chan, _ = data.shape
+    n_flag = np.zeros((first_dimension, n_chan))
+
+    filt_cut = 1. / (0.5 * fs)
+    b, a = signal.butter(5, filt_cut, btype='high', analog=False)
+    hpf_data = signal.filtfilt(b, a, data)
+    for i_complex in range(first_dimension):
+        for i_res in range(n_chan):
+            inliers, _, _ = iteratively_reject_outliers(hpf_data[i_complex, i_res, :], sigma=sigma)
+            n_flag[i_complex, i_res] = hpf_data.shape[-1] - np.size(inliers)
+    return n_flag, np.std(hpf_data, axis=-1)
+
+
+def flag_outliers(data: npt.NDArray, fs: float, chanmask: npt.NDArray, sigma: float=2) -> npt.NDArray:
+    good_channels = np.where(chanmask == 1)[0]
+    n_flag, timestream_rms = flag(data[:, good_channels], fs, sigma=sigma)
+    med_flag = np.median(n_flag)
+    chanmask[np.where(np.any(n_flag > 2. * med_flag, axis=0))] = -1
+    _, _, bad_indices_0 = iteratively_reject_outliers(timestream_rms[0], sigma=sigma)
+    if np.ndim(timestream_rms) == 3:
+        _, _, bad_indices_1 = iteratively_reject_outliers(timestream_rms[1], sigma=sigma)
+        bad_indices = np.union1d(bad_indices_0, bad_indices_1)
+    else:
+        bad_indices = bad_indices_0
+    chanmask[bad_indices] = -1
+    return chanmask
+
+
+def rotate_to_amplitude_and_phase(input_IQ_data: npt.NDArray) -> npt.NDArray:
+    """Compute chnage of basis to amplitude/phase."""
+    assert input_IQ_data.ndim == 3
+    assert input_IQ_data.shape[0] == 2
+    atan = np.atan2(input_IQ_data[1, :, :], input_IQ_data[0, :, :])
+    rotation_angle = np.nanmedian(atan, axis=-1)
+
+    amp = np.cos(rotation_angle)[:, np.newaxis] * input_IQ_data[0, :, :] + np.sin(rotation_angle)[:, np.newaxis] * input_IQ_data[1, :, :]
+    phase = -np.sin(rotation_angle)[:, np.newaxis] * input_IQ_data[0, :, :] + np.cos(rotation_angle)[:, np.newaxis] * input_IQ_data[1, :, :]
+    new_data = np.zeros(shape=input_IQ_data.shape)
+    new_data[0] = amp
+    new_data[1] = phase
+    return new_data
+
+def rotate_to_frequency_dissipation(input_IQ_data: npt.NDArray, dIQ_df: npt.NDArray) -> npt.NDArray:
+    """Compute chnage of basis to frequency/dissipation."""
+    data_I = input_IQ_data[0]
+    data_Q = input_IQ_data[1]
+    nsamples = input_IQ_data.shape[2]
+
+    dI_df = dIQ_df[0]
+    dQ_df = dIQ_df[1]
+    eqiv_var_I = np.outer((1. / dI_df)**2., np.ones(nsamples))
+    eqiv_var_Q = np.outer((1. / dQ_df)**2., np.ones(nsamples))
+
+    data_f = ( (data_I / np.outer(dI_df, np.ones(nsamples)) ) / eqiv_var_I + \
+                    (data_Q / np.outer(dQ_df, np.ones(nsamples)) ) / eqiv_var_Q ) / \
+                (1./eqiv_var_I + 1./eqiv_var_Q)
+    data_diss = ( (data_I / np.outer(-dQ_df, np.ones(nsamples)) ) / eqiv_var_Q + \
+                    (data_Q / np.outer(dI_df, np.ones(nsamples)) ) / eqiv_var_I ) / \
+                (1./eqiv_var_I + 1./eqiv_var_Q)
+    return np.stack((data_f, data_diss))
+
+
+def compute_templates(data: npt.NDArray) -> npt.NDArray:
+    """Compute templates for correlated noise removal.
+
+    Args:
+        data (npt.NDArray): Input data (N_chan x N_detector x N_samples).
+
+    Returns:
+        (npt.NDarray): Templates for noise removal (N_chan x 2 x N_samples).
+            Computed using the first two eigenmodes of the correlation matrix.
+    """
+        # subtract the mean from each detector
+    data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
+
+    # select only the middle few detectors
+    deproj = data_meansub[:, 8:1008, :]
+
+    # create a separate correlation matrix for all data channels
+    correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
+    # calculate the eigenmodes of the correlation matrices
+    _, v = np.linalg.eig(correlation_matrices)
+
+    # create templates based on the 2 largest eigenmodes of each
+    templates = np.einsum('ijk,ijl->ikl', v[:,:,0:2], deproj)
+
+    # subtract the mean again to be sure
+    templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
+    return templates
+
+
+def remove_electronics_noise(data: npt.NDArray) -> npt.NDArray:
+    """Remove correlated electronics noise templates from the data.
+
+    Args:
+        data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
+            be in the amplitude/phase basis.
+
+    Returns:
+        npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
+    """
+    templates = compute_templates(data)  # N_chan x 2 x N_samples
+
+    denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
+    numerator0 = np.einsum('ijk,ik->ij', data, templates[:, 0])  # N_chan x N_detector
+    corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
+    deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
+
+    numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
+    corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+    clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
+    return clean_data
+
+
+def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[int, ...]=None):
+    """Return the data without outliers and the rejected indices."""
+    d = np.abs(data - np.median(data, axis=axis))
+    std = np.std(data, axis=axis)
+    ind = np.where(d < sigma * std)
+    return data[ind], ind
     
