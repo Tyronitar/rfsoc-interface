@@ -60,64 +60,23 @@ class Updateable:
                 setattr(self, k, v)
 
 @dataclass
-class DetectorData(Updateable):
-    """Base class for storing data from a detector."""
-
-@dataclass
-class MapData(DetectorData):
-    """Class for storingvalues for generating maps."""
-    data: npt.NDArray 
-    azimuth: npt.NDArray
-    zenith_angle: npt.NDArray
-    polarization: npt.NDArray
-    timestamp: npt.NDArray
-    flagged_values: npt.NDArray = field(default_factory=lambda: np.array([]))
-    integration_time: npt.NDArray = field(default_factory=lambda: np.array([]))
-    NETD: npt.NDArray = field(default_factory=lambda: np.array([]))
-    chanmask: npt.NDArray = field(default_factory=lambda: np.array([]))
-
-    @property
-    def fs(self) -> float:
-        return 1 / self.timestamp[1]
-    
-    def __copy__(self) -> MapData:
-        return MapData(
-            data=self.data[:],
-            azimuth=self.azimuth[:],
-            zenith_angle=self.zenith_angle[:],
-            polarization=self.polarization[:],
-            timestamp=self.timestam[:],
-            flagged_values=self.flagged_values[:],
-            integration_time=self.integration_time[:],
-            NETD=self.NETD[:],
-            chanmask=self.chanmask[:],
-        )
-    
-    def with_values(self, **kwargs) -> MapData:
-        new_map = copy.copy(self)
-        new_map.update(kwargs)
-        return new_map
-
-
-
-@dataclass(init=False)
-class ProcessedData(DetectorData):
+class ProcessedData(Updateable):
     """Class contianing data from processed TOD files."""
-    optical_image: npt.NDArray | None
     date: str
     setnum: int
-    vis: float
+    optical_image: npt.NDArray | None
     dIQ_df: npt.NDArray
     carrier_amp_I: npt.NDArray
     carrier_amp_Q: npt.NDArray
     df_per_mK: npt.NDArray
     data: npt.NDArray
     data_mK: npt.NDArray
+    timestamp: npt.NDArray
     chanmask: npt.NDArray
     detector_pol: npt.NDArray
     detector_az: float | npt.NDArray
     detector_za: float | npt.NDArray
-    timestamp: npt.NDArray
+    vis: float | npt.NDArray
 
     @property
     def tod_template(self) -> str:
@@ -132,7 +91,7 @@ class ProcessedData(DetectorData):
         return f'{DATA_DIRECTORY}/{self.date}/{self.date}_optcam_set{self.setnum}.h5'
     
     @property
-    def file_template(self) -> str:
+    def processed_file_template(self) -> str:
         return f'{DATA_DIRECTORY}/{self.date}/{self.date}_processed_data_set{self.setnum}.h5'
 
     @property
@@ -159,14 +118,21 @@ class ProcessedData(DetectorData):
         Z = self.carrier_amp_I + 1j*self.carrier_amp_Q
         return np.mean(np.abs(Z), axis=1)
 
-    def __init__(self, date: str, setnum: int, losweep: str | None=None):
+    @property
+    def fs(self) -> float:
+        return 1 / self.timestamp[1]
+
+    @classmethod
+    def from_tod(cls, date: str, setnum: int, losweep: str | None=None) -> ProcessedData:
         #20230803_rfsoc1_TOD_set1012
-        self.date = date
-        self.setnum = setnum
+        date = date
+        setnum = setnum
     
-        todtemplate = self.tod_template
-        tele_template = Path(self.azel_template)
-        optcam_template = Path(self.optcam_template)
+
+        folder = Path(f'{DATA_DIRECTORY}/{date}')
+        todtemplate = f'{DATA_DIRECTORY}/{date}/{date}_*_TOD_set{setnum}.h5'
+        tele_template = Path(f'{DATA_DIRECTORY}/{date}/{date}_AZEL_set{setnum}.h5')
+        optcam_template = Path(f'{DATA_DIRECTORY}/{date}/{date}_optcam_set{setnum}.h5')
 
         azel_exists = tele_template.exists()
         optcam_exists = optcam_template.exists()
@@ -190,27 +156,27 @@ class ProcessedData(DetectorData):
             az_tel = azel_file['az_tel'][:]
             el_tel = azel_file['el_tel'][:]
             timestamp_tel = azel_file['timestamp_tel'][:]
-            self.vis = azel_file['optical_visibility'][:]
+            vis = azel_file['optical_visibility'][:]
         else:
-            self.vis=0.
+            vis=0.
         
         
         if optcam_exists:
-            self.optical_image = optcam_file['optical_image'][:]
+            optical_image = optcam_file['optical_image'][:]
         else:
-            self.optical_image = None
+            optical_image = None
 
 
-        self.dIQ_df = np.array([])
-        self.carrier_amp_I = np.array([])
-        self.carrier_amp_Q = np.array([])
-        self.df_per_mK = np.array([])
-        self.data = np.array([])
-        self.data_mK = 0
-        self.chanmask = np.array([], dtype=np.int32)
-        self.detector_pol = np.array([])
-        self.detector_az = 0
-        self.detector_za = 0
+        dIQ_df = np.array([])
+        carrier_amp_I = np.array([])
+        carrier_amp_Q = np.array([])
+        df_per_mK = np.array([])
+        data = np.array([])
+        data_mK = 0
+        chanmask = np.array([], dtype=np.int32)
+        detector_pol = np.array([])
+        detector_az = 0
+        detector_za = 0
         # Iterate over the TOD Files
         for i, file in enumerate(todlist):
 
@@ -220,24 +186,24 @@ class ProcessedData(DetectorData):
                 losweep = Path(losweep)
                 # f.append_lo_sweep(losweep)
                 if losweep.suffix == '.npy':
-                    sweep_data = np.load(self.folder / losweep)
+                    sweep_data = np.load(folder / losweep)
                 else:
-                    with h5py.File(self.folder / losweep, 'r') as sweep_file:
+                    with h5py.File(folder / losweep, 'r') as sweep_file:
                         sweep_data = sweep_file['global_data/lo_sweep'][:]
                 sweep = LoSweepData(f.baseband_freqs[:], f.lo_freq[()], sweep_data, f.chanmask[:])
                 this_dIQ_df = sweep.freq_direction()
-                if np.size(self.dIQ_df) > 0:
-                    self.dIQ_df = np.concatenate((self.dIQ_df, this_dIQ_df), axis=0)
+                if np.size(dIQ_df) > 0:
+                    dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
                 else:
-                    self.dIQ_df = np.copy(this_dIQ_df)
+                    dIQ_df = np.copy(this_dIQ_df)
         
             #compute the calibration factor from dfoverf to mK
-            self.detector_pol = f.detector_pol[:]
+            detector_pol = f.detector_pol[:]
             detector_beam_ampl = f.detector_beam_ampl[:]
             dfoverf_per_mK = f.dfoverf_per_mK[:]
             detector_f = f.baseband_freqs[:] + f.lo_freq[:]
-            this_df_per_mK = compute_df_per_mK(self.detector_pol, detector_beam_ampl, detector_f, dfoverf_per_mK) 
-            self.df_per_mK = np.concatenate((self.df_per_mK,this_df_per_mK))
+            this_df_per_mK = compute_df_per_mK(detector_pol, detector_beam_ampl, detector_f, dfoverf_per_mK) 
+            df_per_mK = np.concatenate((df_per_mK,this_df_per_mK))
 
             #create the calibrated datastreams-----------------------------------------------------------
             #first get the I and Q data
@@ -251,10 +217,10 @@ class ProcessedData(DetectorData):
             # data_IQ = data_IQ[:, valid_tone_index, :]
             data_I = data_I[valid_tone_index,:]
             data_Q = data_Q[valid_tone_index,:]
-            self.carrier_amp_I = np.mean(data_I, axis=1)
-            self.carrier_amp_Q = np.mean(data_Q, axis=1)
-            data_I = data_I - np.outer(self.carrier_amp_I, np.ones(nsamples))
-            data_Q = data_Q - np.outer(self.carrier_amp_Q, np.ones(nsamples))
+            carrier_amp_I = np.mean(data_I, axis=1)
+            carrier_amp_Q = np.mean(data_Q, axis=1)
+            data_I = data_I - np.outer(carrier_amp_I, np.ones(nsamples))
+            data_Q = data_Q - np.outer(carrier_amp_Q, np.ones(nsamples))
             
             #now use the derivatives to convert to a frequency shift
             #need to optimally weight the data based on the response
@@ -264,18 +230,18 @@ class ProcessedData(DetectorData):
                 np.stack((data_I, data_Q)),
                 this_dIQ_df,
             )
-            if np.size(self.data) > 0:
-                self.data = np.concatenate((self.data, this_data), axis=0)
+            if np.size(data) > 0:
+                data = np.concatenate((data, this_data), axis=0)
             else:
-                self.data = np.copy(this_data)
+                data = np.copy(this_data)
 
             #finally, we need to get data_mK
             this_df_per_mK = np.array(this_df_per_mK)
             this_data_mK = np.divide(this_data[0], np.outer(this_df_per_mK, np.ones(nsamples)))
-            if np.size(self.data_mK) != 1:
-                self.data_mK = np.concatenate((self.data_mK, this_data_mK), axis=0)
+            if np.size(data_mK) != 1:
+                data_mK = np.concatenate((data_mK, this_data_mK), axis=0)
             else:
-                self.data_mK = np.copy(this_data_mK)
+                data_mK = np.copy(this_data_mK)
 
             #now the telescope data to get coordinates
             time = f.timestamp[:]
@@ -283,11 +249,11 @@ class ProcessedData(DetectorData):
             total_time = np.max(time_0)
             n_samples = np.size(time)
             if i == 0:  # Only should make this once, since it's never changed
-                self.timestamp = np.arange(0,total_time,total_time/n_samples) + time[0]
+                timestamp = np.arange(0,total_time,total_time/n_samples) + time[0]
             if azel_exists:
                 detector_dx_dy_elevation_angle = f.detector_dx_dy_elevation_angle[0]
-                this_az_tel = np.interp(self.timestamp, timestamp_tel, az_tel)
-                this_el_tel = np.interp(self.timestamp, timestamp_tel, el_tel)
+                this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
+                this_el_tel = np.interp(timestamp, timestamp_tel, el_tel)
                 this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_el_tel)
                 this_detector_delta_x = f.detector_delta_x[:]
                 this_detector_delta_y = f.detector_delta_y[:]
@@ -299,26 +265,43 @@ class ProcessedData(DetectorData):
                             np.outer(np.ones(ntones), this_el_tel)
             
                 #save the az/el information to the file
-                if np.size(self.detector_az) != 1:
-                    self.detector_az = np.concatenate((self.detector_az, this_det_az), axis=0)
+                if np.size(detector_az) != 1:
+                    detector_az = np.concatenate((detector_az, this_det_az), axis=0)
                 else:
-                    self.detector_az = np.copy(this_det_az)
-                if np.size(self.detector_za) != 1:
-                    self.detector_za = np.concatenate((self.detector_za, this_det_el), axis=0)
+                    detector_az = np.copy(this_det_az)
+                if np.size(detector_za) != 1:
+                    detector_za = np.concatenate((detector_za, this_det_el), axis=0)
                 else:
-                    self.detector_za = np.copy(this_det_el)
+                    detector_za = np.copy(this_det_el)
 
             #also save the chanmask and detector polarization information
-            self.chanmask = np.concatenate((self.chanmask, f.chanmask[:]))
-            no_pol = np.ndarray.flatten(np.argwhere(self.detector_pol < 1))
+            chanmask = np.concatenate((chanmask, f.chanmask[:]))
+            no_pol = np.ndarray.flatten(np.argwhere(detector_pol < 1))
             if np.size(no_pol > 0):
-                self.chanmask[no_pol] = -1
+                chanmask[no_pol] = -1
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
+        return cls(
+            date,
+            setnum,
+            optical_image,
+            dIQ_df,
+            carrier_amp_I,
+            carrier_amp_Q,
+            df_per_mK,
+            data,
+            data_mK,
+            timestamp,
+            chanmask,
+            detector_pol,
+            detector_az,
+            detector_za,
+            vis
+        )
 
     #    print(dI_df.shape, dQ_df.shape, df_per_mK.shape, data_f.shape, data_mK.shape)
     def save(self):
 
-        with h5py.File(self.file_template, 'w') as pfile:
+        with h5py.File(self.processed_file_template, 'w') as pfile:
             pfile.create_dataset("dI_df", data=self.dI_df)
             pfile.create_dataset("dQ_df", data=self.dQ_df)
             pfile.create_dataset("df_per_mK", data=self.df_per_mK)
@@ -331,6 +314,83 @@ class ProcessedData(DetectorData):
             pfile.create_dataset("detector_za", data=self.detector_za)
             pfile.create_dataset("timestamp", data=self.timestamp)
             pfile.create_dataset("optical_visibility", data=self.vis)
+    
+    def __copy__(self) -> ProcessedData:
+        return ProcessedData(
+            self.date,
+            self.setnum,
+            np.copy(self.optical_image),
+            np.copy(self.dIQ_df),
+            np.copy(self.carrier_amp_I),
+            np.copy(self.carrier_amp_Q),
+            np.copy(self.df_per_mK),
+            np.copy(self.data),
+            np.copy(self.data_mK),
+            np.copy(self.timestamp),
+            np.copy(self.chanmask),
+            np.copy(self.detector_pol),
+            np.copy(self.detector_az),
+            np.copy(self.detector_za),
+            np.copy(self.vis),
+        )
+
+
+@dataclass
+class MapData(ProcessedData):
+    """Class for storing values for generating maps."""
+    flagged_values: npt.NDArray = field(default_factory=lambda: np.array([]))
+    integration_time: npt.NDArray = field(default_factory=lambda: np.array([]))
+    NETD: npt.NDArray = field(default_factory=lambda: np.array([]))
+
+    @classmethod
+    def from_processed_data(cls, pd: ProcessedData) -> MapData:
+        """Create a MapData object from a ProcessedData object."""
+        return cls(
+            pd.date,
+            pd.setnum,
+            np.copy(pd.optical_image),
+            np.copy(pd.dIQ_df),
+            np.copy(pd.carrier_amp_I),
+            np.copy(pd.carrier_amp_Q),
+            np.copy(pd.df_per_mK),
+            np.copy(pd.data),
+            np.copy(pd.data_mK),
+            np.copy(pd.timestamp),
+            np.copy(pd.chanmask),
+            np.copy(pd.detector_pol),
+            np.copy(pd.detector_az),
+            np.copy(pd.detector_za),
+            np.copy(pd.vis),
+        )
+
+    def __copy__(self) -> MapData:
+        return MapData(
+            self.date,
+            self.setnum,
+            np.copy(self.optical_image),
+            np.copy(self.dIQ_df),
+            np.copy(self.carrier_amp_I),
+            np.copy(self.carrier_amp_Q),
+            np.copy(self.df_per_mK),
+            np.copy(self.data),
+            np.copy(self.data_mK),
+            np.copy(self.timestamp),
+            np.copy(self.chanmask),
+            np.copy(self.detector_pol),
+            np.copy(self.detector_az),
+            np.copy(self.detector_za),
+            np.copy(self.vis),
+            np.copy(self.flagged_values),
+            np.copy(self.integration_time),
+            np.copy(self.NETD),
+        )
+    
+    def with_values(self, **kwargs) -> MapData:
+        new_map = copy.copy(self)
+        new_map.update(kwargs)
+        return new_map
+
+
 
 
 def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None | int | tuple[int, ...]=None):
@@ -483,3 +543,7 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[
     ind = np.where(d < sigma * std)
     return data[ind], ind
     
+if __name__ == "__main__":
+    p = ProcessedData.from_tod('20250415', 1004, losweep='20250415_rfsoc2_LO_Sweep_hour16p1919.h5')
+    m = MapData.from_processed_data(p)
+    pdb.set_trace()

@@ -247,7 +247,7 @@ if __name__ == '__main__':
     # set_num = 1001
     # p = ProcessedData('20250409', set_num, losweep='20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
     # p = ProcessedData('20250415', set_num, losweep='20250415_rfsoc2_LO_Sweep_hour16p1919.npy')
-    p = ProcessedData('20250422', set_num, losweep='/data/20250422/20250422_rfsoc2_LO_Sweep_hour16p2775.h5')
+    p = ProcessedData.from_tod('20250422', set_num, losweep='/data/20250422/20250422_rfsoc2_LO_Sweep_hour16p2775.h5')
     # pdb.set_trace()
     chanmask = np.ones_like(p.chanmask)
     # input_data = p.data_mK

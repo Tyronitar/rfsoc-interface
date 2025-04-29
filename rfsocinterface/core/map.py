@@ -21,10 +21,10 @@ ZA_TRIM = 0.2
 
 def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float) -> npt.NDArray:
 
-    max_az = np.max(map.azimuth) - az_trim
-    min_az = np.min(map.azimuth) + az_trim
-    max_za = np.max(map.zenith_angle) - za_trim
-    min_za = np.min(map.zenith_angle) + za_trim
+    max_az = np.max(map.detector_az) - az_trim
+    min_az = np.min(map.detector_az) + az_trim
+    max_za = np.max(map.detector_za) - za_trim
+    min_za = np.min(map.detector_za) + za_trim
     n_pix_x = int(np.ceil((max_az - min_az) / map_dpix))
     n_pix_y = int(np.ceil((max_za - min_za) / map_dpix))
     map_coords = np.mgrid[0:n_pix_x, 0:n_pix_y]
@@ -192,11 +192,11 @@ class BinTODIntoMap(DataRoutine):
             map_data: MapData,
             pickup_good_index: npt.NDArray=[],
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-        detector_pol = map_data.polarization
-        detector_az = map_data.azimuth
-        detector_za = map_data.zenith_angle
+        detector_pol = map_data.detector_pol
+        detector_az = map_data.detector_az
+        detector_za = map_data.detector_za
         fs = map_data.fs
-        data_clean = map_data.data
+        data_clean = map_data.data_mK
 
         print(get_map_size(map_data, self.az_trim, self.za_trim, self.map_dpix))
         exit()
@@ -277,7 +277,7 @@ class Smooth(DataRoutine):
 
 class BasicMapRemoval(DataRoutine):
     def forward(self, map: MapData) -> MapData:
-        map_data = map.data
+        map_data = map.data_mK
         nans_removed = map_data[np.isnan(map_data)]
         map_values = map_data[~np.isnan(map_data)]
         _, outlier_pixels = outlier_removal(map_values)
@@ -303,7 +303,7 @@ class DBSCANMapRemoval(DataRoutine):
         self.dbscan = DBSCAN(eps=eps, min_samples=min_samples)
 
     def forward(self, map: MapData) -> MapData:
-        dbscan_map = map.data[:]
+        dbscan_map = map.data_mK[:]
         flagged_values = map.flagged_values
 
         # Find the indices of the flagged pixels
@@ -344,7 +344,7 @@ class NeighborRemoval(DataRoutine):
         self.dist_threshold = dist_threshold
     
     def forward(self, map: MapData) -> MapData:
-        new_map = map.data[:]
+        new_map = map.data_mK[:]
         flagged_values = map.flagged_values
 
         # empty list to store the indices of flagged pixels
@@ -390,7 +390,7 @@ class NeighborFlagging(DataRoutine):
         self.radius = radius
     
     def forward(self, map: MapData) -> MapData:
-        new_map = map.data[:]
+        new_map = map.data_mK[:]
         flagged_values = map.flagged_values
 
         # Iterate over all flagged values
@@ -443,7 +443,7 @@ def outlier_removal(data):
     return final_pixels, np.array(outlier_pixels)
 
 if __name__ == '__main__':
-    data = ProcessedData('20250320', 1001, losweep='20250320_rfsoc2_LO_Sweep_hour13p0367.npy')
+    data = ProcessedData.from_tod('20250320', 1001, losweep='20250320_rfsoc2_LO_Sweep_hour13p0367.npy')
     cleaner = CleanTOD()
     map = cleaner.forward(data)
 
