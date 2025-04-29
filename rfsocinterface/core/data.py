@@ -69,13 +69,15 @@ class ProcessedData(Updateable):
     carrier_amp_I: npt.NDArray
     carrier_amp_Q: npt.NDArray
     df_per_mK: npt.NDArray
-    data: npt.NDArray
+    data_gain_phase: npt.NDArray
+    gain_phase_angle: npt.NDArray
+    data_freq_diss: npt.NDArray
     data_mK: npt.NDArray
     timestamp: npt.NDArray
     chanmask: npt.NDArray
     detector_pol: npt.NDArray
-    detector_az: float | npt.NDArray
-    detector_za: float | npt.NDArray
+    detector_az: npt.NDArray
+    detector_za: npt.NDArray
     vis: float | npt.NDArray
 
     @property
@@ -95,16 +97,20 @@ class ProcessedData(Updateable):
         return f'{DATA_DIRECTORY}/{self.date}/{self.date}_processed_data_set{self.setnum}.h5'
 
     @property
+    def cleaned_file_template(self) -> str:
+        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_cleaned_data_set{self.setnum}.h5'
+
+    @property
     def folder(self) -> Path:
         return Path(f'{DATA_DIRECTORY}/{self.date}')
 
     @property
     def data_f(self) -> npt.NDArray:
-        return self.data[0]
+        return self.data_freq_diss[0]
 
     @property
     def data_diss(self) -> npt.NDArray:
-        return self.data[1]
+        return self.data_freq_diss[1]
 
     @property
     def dI_df(self) -> npt.NDArray:
@@ -149,12 +155,11 @@ class ProcessedData(Updateable):
         todlist = glob.glob(todtemplate)
 
         if len(todlist) == 0:
-            print("no TOD files found")
-            return
+            raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
 
         if azel_exists:
             az_tel = azel_file['az_tel'][:]
-            el_tel = azel_file['el_tel'][:]
+            za_tel = azel_file['el_tel'][:]
             timestamp_tel = azel_file['timestamp_tel'][:]
             vis = azel_file['optical_visibility'][:]
         else:
@@ -171,12 +176,14 @@ class ProcessedData(Updateable):
         carrier_amp_I = np.array([])
         carrier_amp_Q = np.array([])
         df_per_mK = np.array([])
-        data = np.array([])
+        data_freq_diss = np.array([])
+        data_gain_phase = np.array([])
+        gain_phase_angle = np.array([])
         data_mK = 0
         chanmask = np.array([], dtype=np.int32)
         detector_pol = np.array([])
-        detector_az = 0
-        detector_za = 0
+        detector_az = np.array([[]])
+        detector_za = np.array([[]])
         # Iterate over the TOD Files
         for i, file in enumerate(todlist):
 
@@ -199,9 +206,23 @@ class ProcessedData(Updateable):
         
             #compute the calibration factor from dfoverf to mK
             detector_pol = f.detector_pol[:]
+            if np.count_nonzero(detector_pol) == 0:
+                detector_pol = np.ones_like(detector_pol)
+
             detector_beam_ampl = f.detector_beam_ampl[:]
+            if np.count_nonzero(detector_beam_ampl) == 0:
+                detector_beam_ampl= np.ones_like(detector_beam_ampl)
+
             dfoverf_per_mK = f.dfoverf_per_mK[:]
+            if np.count_nonzero(dfoverf_per_mK) == 0:
+                dfoverf_per_mK = np.ones_like(dfoverf_per_mK)
+
             detector_f = f.baseband_freqs[:] + f.lo_freq[:]
+
+            # NOTE: Temporary fix: create dummy frequencies if they don't exist
+            if np.count_nonzero(detector_f) == 0:  
+                detector_f = np.linspace(0, 250e6, detector_f.size)
+
             this_df_per_mK = compute_df_per_mK(detector_pol, detector_beam_ampl, detector_f, dfoverf_per_mK) 
             df_per_mK = np.concatenate((df_per_mK,this_df_per_mK))
 
@@ -222,22 +243,33 @@ class ProcessedData(Updateable):
             data_I = data_I - np.outer(carrier_amp_I, np.ones(nsamples))
             data_Q = data_Q - np.outer(carrier_amp_Q, np.ones(nsamples))
             
+            # Rotate to Gain / Phase
+            this_data_gain_phase, this_gain_phase_angle = rotate_to_amplitude_and_phase(
+                np.stack((data_I, data_Q)),
+            )
+            if np.size(data_gain_phase) > 0:
+                data_gain_phase = np.concatenate((data_gain_phase, this_data_gain_phase), axis=0)
+                gain_phase_angle = np.concatenate((gain_phase_angle, this_gain_phase_angle), axis=0)
+            else:
+                data_gain_phase= np.copy(this_data_gain_phase)
+                gain_phase_angle = np.copy(this_gain_phase_angle)
+
             #now use the derivatives to convert to a frequency shift
             #need to optimally weight the data based on the response
             #in each direction (assuming the noise is identical in I and Q)
             #this will then yield data_f
-            this_data = rotate_to_frequency_dissipation(
+            this_data_freq_diss = rotate_to_frequency_dissipation(
                 np.stack((data_I, data_Q)),
                 this_dIQ_df,
             )
-            if np.size(data) > 0:
-                data = np.concatenate((data, this_data), axis=0)
+            if np.size(data_freq_diss) > 0:
+                data_freq_diss = np.concatenate((data_freq_diss, this_data_freq_diss), axis=0)
             else:
-                data = np.copy(this_data)
+                data_freq_diss = np.copy(this_data_freq_diss)
 
             #finally, we need to get data_mK
             this_df_per_mK = np.array(this_df_per_mK)
-            this_data_mK = np.divide(this_data[0], np.outer(this_df_per_mK, np.ones(nsamples)))
+            this_data_mK = np.divide(this_data_freq_diss[0], np.outer(this_df_per_mK, np.ones(nsamples)))
             if np.size(data_mK) != 1:
                 data_mK = np.concatenate((data_mK, this_data_mK), axis=0)
             else:
@@ -253,16 +285,16 @@ class ProcessedData(Updateable):
             if azel_exists:
                 detector_dx_dy_elevation_angle = f.detector_dx_dy_elevation_angle[0]
                 this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
-                this_el_tel = np.interp(timestamp, timestamp_tel, el_tel)
-                this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_el_tel)
+                this_za_tel = np.interp(timestamp, timestamp_tel, za_tel)
+                this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
                 this_detector_delta_x = f.detector_delta_x[:]
                 this_detector_delta_y = f.detector_delta_y[:]
                 this_det_az = np.outer(this_detector_delta_x, np.cos(this_ang)) - \
                             np.outer(this_detector_delta_y,np.sin(this_ang)) + \
                             np.outer(np.ones(ntones), this_az_tel)
-                this_det_el = np.outer(this_detector_delta_y, np.cos(this_ang)) + \
+                this_det_za = np.outer(this_detector_delta_y, np.cos(this_ang)) + \
                             np.outer(this_detector_delta_x, np.sin(this_ang)) + \
-                            np.outer(np.ones(ntones), this_el_tel)
+                            np.outer(np.ones(ntones), this_za_tel)
             
                 #save the az/el information to the file
                 if np.size(detector_az) != 1:
@@ -270,9 +302,9 @@ class ProcessedData(Updateable):
                 else:
                     detector_az = np.copy(this_det_az)
                 if np.size(detector_za) != 1:
-                    detector_za = np.concatenate((detector_za, this_det_el), axis=0)
+                    detector_za = np.concatenate((detector_za, this_det_za), axis=0)
                 else:
-                    detector_za = np.copy(this_det_el)
+                    detector_za = np.copy(this_det_za)
 
             #also save the chanmask and detector polarization information
             chanmask = np.concatenate((chanmask, f.chanmask[:]))
@@ -288,7 +320,9 @@ class ProcessedData(Updateable):
             carrier_amp_I,
             carrier_amp_Q,
             df_per_mK,
-            data,
+            data_gain_phase,
+            gain_phase_angle,
+            data_freq_diss,
             data_mK,
             timestamp,
             chanmask,
@@ -324,7 +358,9 @@ class ProcessedData(Updateable):
             np.copy(self.carrier_amp_I),
             np.copy(self.carrier_amp_Q),
             np.copy(self.df_per_mK),
-            np.copy(self.data),
+            np.copy(self.data_gain_phase),
+            np.copy(self.gain_phase_angle),
+            np.copy(self.data_freq_diss),
             np.copy(self.data_mK),
             np.copy(self.timestamp),
             np.copy(self.chanmask),
@@ -334,6 +370,11 @@ class ProcessedData(Updateable):
             np.copy(self.vis),
         )
 
+    def with_values(self, **kwargs) -> ProcessedData:
+        new_data = copy.copy(self)
+        new_data.update(kwargs)
+        return new_data
+
 
 @dataclass
 class MapData(ProcessedData):
@@ -341,6 +382,8 @@ class MapData(ProcessedData):
     flagged_values: npt.NDArray = field(default_factory=lambda: np.array([]))
     integration_time: npt.NDArray = field(default_factory=lambda: np.array([]))
     NETD: npt.NDArray = field(default_factory=lambda: np.array([]))
+    sum_map: npt.NDArray = field(default_factory=lambda: np.array([]))
+    hits_map: npt.NDArray = field(default_factory=lambda: np.array([]))
 
     @classmethod
     def from_processed_data(cls, pd: ProcessedData) -> MapData:
@@ -353,7 +396,9 @@ class MapData(ProcessedData):
             np.copy(pd.carrier_amp_I),
             np.copy(pd.carrier_amp_Q),
             np.copy(pd.df_per_mK),
-            np.copy(pd.data),
+            np.copy(pd.data_gain_phase),
+            np.copy(pd.gain_phase_angle),
+            np.copy(pd.data_freq_diss),
             np.copy(pd.data_mK),
             np.copy(pd.timestamp),
             np.copy(pd.chanmask),
@@ -372,7 +417,9 @@ class MapData(ProcessedData):
             np.copy(self.carrier_amp_I),
             np.copy(self.carrier_amp_Q),
             np.copy(self.df_per_mK),
-            np.copy(self.data),
+            np.copy(self.data_gain_phase),
+            np.copy(self.gain_phase_angle),
+            np.copy(self.data_freq_diss),
             np.copy(self.data_mK),
             np.copy(self.timestamp),
             np.copy(self.chanmask),
@@ -383,14 +430,10 @@ class MapData(ProcessedData):
             np.copy(self.flagged_values),
             np.copy(self.integration_time),
             np.copy(self.NETD),
+            np.copy(self.hits_map),
+            np.copy(self.sum_map),
         )
     
-    def with_values(self, **kwargs) -> MapData:
-        new_map = copy.copy(self)
-        new_map.update(kwargs)
-        return new_map
-
-
 
 
 def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None | int | tuple[int, ...]=None):
@@ -450,7 +493,7 @@ def flag_outliers(data: npt.NDArray, fs: float, chanmask: npt.NDArray, sigma: fl
     return chanmask
 
 
-def rotate_to_amplitude_and_phase(input_IQ_data: npt.NDArray) -> npt.NDArray:
+def rotate_to_amplitude_and_phase(input_IQ_data: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
     """Compute chnage of basis to amplitude/phase."""
     assert input_IQ_data.ndim == 3
     assert input_IQ_data.shape[0] == 2
@@ -462,7 +505,7 @@ def rotate_to_amplitude_and_phase(input_IQ_data: npt.NDArray) -> npt.NDArray:
     new_data = np.zeros(shape=input_IQ_data.shape)
     new_data[0] = amp
     new_data[1] = phase
-    return new_data
+    return new_data, rotation_angle
 
 def rotate_to_frequency_dissipation(input_IQ_data: npt.NDArray, dIQ_df: npt.NDArray) -> npt.NDArray:
     """Compute chnage of basis to frequency/dissipation."""

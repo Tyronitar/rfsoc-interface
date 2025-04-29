@@ -12,6 +12,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 
 from rfsocinterface.core.data import rotate_to_amplitude_and_phase, flag_outliers, rotate_to_frequency_dissipation, remove_electronics_noise
+from rfsocinterface.core.map import Downsample
 from rfsocinterface.core.utils import ensure_path, ordinal
 
 XLIM = (0.1, 100)
@@ -31,11 +32,8 @@ def compute_noise_psd(
     input_time_ordered_data: 2 x N_res x N_sample or N_res x N_sample
     timestamp: N_sample
     chanmask: N_res
-    ds_factor: Downscaling factor
     nominal_block_length: seconds
     cut_time: seconds to cut from ends of data
-    hp_filter_template: high-pass filter
-    lp_filter_template: low-pass filter
     """
     first_dimension = input_time_ordered_data.shape[0] if input_time_ordered_data.ndim == 3 else 1
     if first_dimension == 1:
@@ -249,9 +247,9 @@ if __name__ == '__main__':
     # p = ProcessedData('20250415', set_num, losweep='20250415_rfsoc2_LO_Sweep_hour16p1919.npy')
     p = ProcessedData.from_tod('20250422', set_num, losweep='/data/20250422/20250422_rfsoc2_LO_Sweep_hour16p2775.h5')
     # pdb.set_trace()
-    chanmask = np.ones_like(p.chanmask)
+    p.chanmask = np.ones_like(p.chanmask)
     # input_data = p.data_mK
-    input_data = p.data
+    input_data = p.data_gain_phase
     timestamp = p.timestamp
 
     # Fix data dimensions
@@ -263,28 +261,25 @@ if __name__ == '__main__':
     # Downsample the data
     if ds_factor != 1:
         # TODO
-        new_input_data = signal.decimate(input_data, ds_factor)
-        timestamp = timestamp[0::ds_factor]
-    else:
-        new_input_data = input_data
-
-    fs = 1. / np.median(np.diff(timestamp))
+        ds = Downsample(ds_factor=ds_factor)
+        p = ds.forward(p)
 
     # Flag outliers
     if do_flag_outliers:
-        chanmask = flag_outliers(new_input_data, fs, chanmask, sigma=outlier_sigma)
+        p.chanmask = flag_outliers(p.data_gain_phase, p.fs, p.chanmask, sigma=outlier_sigma)
 
     # Remove electronics noise
     if remove_noise:
-        pa_data = rotate_to_amplitude_and_phase(new_input_data)
-        dIQ_df = np.stack((p.dI_df, p.dQ_df))
-        cleaned_pa_data = remove_electronics_noise(pa_data)
-        new_input_data = rotate_to_frequency_dissipation(cleaned_pa_data, dIQ_df)
+        cleaned_pa_data = remove_electronics_noise(p.data_gain_phase)
+        # TODO:
+        # Rotate back to IQ
+        # Recompute all of the data
+        # Maybe, I should make RemoveElectronicsNoise a DataRoutine class that does all of this
 
     chanmask, freq, noise_psd = compute_noise_psd(
-        new_input_data,
-        timestamp,
-        chanmask=chanmask,
+        p.gain_phase_angle / p.carrier_amplitude_norm(),
+        p.timestamp,
+        chanmask=p.chanmask,
         nominal_block_length=10,
     )
     plot_psd(freq, noise_psd, f'plots/20250422_{set_num}.pdf', basis='fd', title='Loopback')

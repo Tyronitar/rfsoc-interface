@@ -3,6 +3,7 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Any
+import pdb
 
 import h5py
 import numpy as np
@@ -71,24 +72,25 @@ class CleanTOD(DataRoutine):
             ds_factor: int=6,
             hp_filt_freq: float=0.5,
             lp_filt_freq: float=10.,
+            save_file: bool=True,
     ):
         super().__init__()
         self.hp_filt_freq = hp_filt_freq
         self.lp_filt_freq = lp_filt_freq
         self.ds_factor = ds_factor
+        self.save_file = save_file
 
-    def forward(self, processed_data: ProcessedData) -> MapData:
+    def forward(self, pd: ProcessedData) -> ProcessedData:
             #Setup filters that will be used later
         #get the sampling frequency and make a window that can be
         #used later for the power spectrum computation
 
-        data_raw = processed_data.data_mK
-        chanmask = processed_data.chanmask
-        detector_az = processed_data.detector_az
-        detector_za = processed_data.detector_za
-        detector_pol = processed_data.detector_pol
+        data_raw = pd.data_mK
+        chanmask = pd.chanmask
+        detector_az = pd.detector_az
+        detector_za = pd.detector_za
 
-        timestamp = processed_data.timestamp - processed_data.timestamp[0]
+        timestamp = pd.timestamp - pd.timestamp[0]
         dtime = timestamp - np.roll(timestamp, 1)
         
         fs = float(1./np.median(dtime))
@@ -116,13 +118,20 @@ class CleanTOD(DataRoutine):
         detector_az_ds = signal.decimate(detector_az, self.ds_factor, n=DECIMATE_ORDER, axis=1)
         detector_za_ds = signal.decimate(detector_za, self.ds_factor, n=DECIMATE_ORDER, axis=1)
 
-        return MapData(
-            data_clean,
-            detector_az_ds,
-            detector_za_ds,
-            detector_pol,
-            time_ds,
-            chanmask=processed_data.chanmask,
+        if self.save_file:
+            with h5py.File(pd.cleaned_file_template, 'w') as cfile:
+                cfile.create_dataset("chanmask", data=chanmask)
+                cfile.create_dataset("detector_pol", data=pd.detector_pol)
+                cfile.create_dataset("clean_data", data=clean_data)
+                cfile.create_dataset("time", data=time_ds)
+                cfile.create_dataset("detector_az", data=detector_az_ds)    
+                cfile.create_dataset("detector_za", data=detector_za_ds)
+
+        return pd.with_values(
+            data_mK=data_clean,
+            detector_az=detector_az_ds,
+            detector_za=detector_za_ds,
+            timestamp=time_ds,
         )
 
 
@@ -132,11 +141,11 @@ class RemovePointLomaPickup(DataRoutine):
         self.ds_factor = ds_factor
         self.pickup_filter_freq = pickup_filter_freq
     
-    def forward(self, data_raw: ProcessedData) -> npt.NDArray:
+    def forward(self, pd: ProcessedData) -> MapData:
         #need to high pass filter the data to remove basline drift
-        data_raw = data_raw.data_mK
-        timestamp = data_raw.timestamp
-        chanmask = data_raw.chanmask
+        data_raw = pd.data_mK
+        timestamp = pd.timestamp
+        chanmask = pd.chanmask
 
         time = timestamp - timestamp[0]
 
@@ -168,7 +177,9 @@ class RemovePointLomaPickup(DataRoutine):
             pickup_good_index = np.divide(pickup_good_index[0::self.ds_factor], self.ds_factor)
             pickup_good_index = pickup_good_index.astype(int)
 
-        return np.array(pickup_good_index)
+        m = MapData.from_processed_data(pd)
+        m.flagged_values = np.array(pickup_good_index)
+        return m
 
 
 class BinTODIntoMap(DataRoutine):
@@ -189,16 +200,16 @@ class BinTODIntoMap(DataRoutine):
     
     def forward(
             self,
-            map_data: MapData,
-            pickup_good_index: npt.NDArray=[],
+            md: MapData,
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-        detector_pol = map_data.detector_pol
-        detector_az = map_data.detector_az
-        detector_za = map_data.detector_za
-        fs = map_data.fs
-        data_clean = map_data.data_mK
+        detector_pol = md.detector_pol
+        detector_az = md.detector_az
+        detector_za = md.detector_za
+        fs = md.fs
+        data_clean = md.data_mK
+        pickup_good_index = md.flagged_values
 
-        print(get_map_size(map_data, self.az_trim, self.za_trim, self.map_dpix))
+        print(get_map_size(md, self.az_trim, self.za_trim, self.map_dpix))
         exit()
 
         if np.size(pickup_good_index) == 0:
@@ -260,19 +271,43 @@ class BinTODIntoMap(DataRoutine):
         return sum_map, hits_map, NETD
             
 
-class Smooth(DataRoutine):
+class GaussianFilter(DataRoutine):
     def __init__(self, gaussian_sigma: tuple[float, float]=(0.5, 0.33)):
         super().__init__()
         self.gaussian_sigma = gaussian_sigma
     
-    def forward(self, data: MapData) -> npt.NDArray:
+    def forward(self, pd: ProcessedData, field: str='data_mK') -> ProcessedData:
         smoothed_data = ndimage.gaussian_filter(
-            data,
+            pd.__getattribute__(field),
             self.gaussian_sigma,
             mode='reflect',
             truncate=1. / self.gaussian_sigma[1],
         )
-        return data.with_values(data=smoothed_data)
+        return pd.with_values(**{field: smoothed_data})
+
+
+class Downsample(DataRoutine):
+    def __init__(self, ds_factor: float=6, order: int=DECIMATE_ORDER):
+        super().__init__()
+        self.ds_factor = ds_factor
+        self.order=order
+    
+    def forward(self, pd: ProcessedData) -> ProcessedData:
+        data_freq_diss_ds = signal.decimate(pd.data_freq_diss, self.ds_factor)
+        data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
+        data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
+        timestamp_ds = signal.decimate(pd.timestamp, self.ds_factor)
+        detector_az_ds = signal.decimate(pd.detector_az, self.ds_factor, n=self.order, axis=1)
+        detector_za_ds = signal.decimate(pd.detector_za, self.ds_factor, n=self.order, axis=1)
+        return pd.with_values(
+            data_freq_diss=data_freq_diss_ds,
+            data_gain_phase=data_gain_phase_ds,
+            data_mK=data_mK_ds,
+            timestamp=timestamp_ds,
+            detector_az=detector_az_ds,
+            detector_za=detector_za_ds,
+        )
+
 
 
 class BasicMapRemoval(DataRoutine):
@@ -442,10 +477,11 @@ def outlier_removal(data):
         final_pixels = map_pixels[1:]
     return final_pixels, np.array(outlier_pixels)
 
+
 if __name__ == '__main__':
-    data = ProcessedData.from_tod('20250320', 1001, losweep='20250320_rfsoc2_LO_Sweep_hour13p0367.npy')
+    data = ProcessedData.from_tod('20250422', 1001, losweep='20250422_rfsoc2_LO_Sweep_hour16p2775.h5')
     cleaner = CleanTOD()
-    map = cleaner.forward(data)
+    clean_data = cleaner.forward(data)
 
     binner = BinTODIntoMap()
-    map1 = binner.forward(map)
+    map = binner.forward(clean_data)
