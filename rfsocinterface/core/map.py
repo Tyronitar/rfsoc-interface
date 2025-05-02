@@ -10,16 +10,15 @@ import numpy as np
 import numpy.typing as npt
 from scipy import signal, ndimage
 from sklearn.cluster import DBSCAN
+import matplotlib.pyplot as plt
 
-from rfsocinterface.core.utils import ensure_path
-from rfsocinterface.core.data import ProcessedData, MapData
+from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA
+from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, MapData
 
 DECIMATE_ORDER = 5
 BUTTER_ORDER = 6
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
-
-
 def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float) -> npt.NDArray:
 
     max_az = np.max(map.detector_az) - az_trim
@@ -28,9 +27,8 @@ def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float) 
     min_za = np.min(map.detector_za) + za_trim
     n_pix_x = int(np.ceil((max_az - min_az) / map_dpix))
     n_pix_y = int(np.ceil((max_za - min_za) / map_dpix))
-    map_coords = np.mgrid[0:n_pix_x, 0:n_pix_y]
     map_x = np.arange(n_pix_x) * map_dpix + min_az + map_dpix / 2.
-    map_y = np.arange(n_pix_x) * map_dpix + min_za + map_dpix / 2. + 0.1  # 0.1 accounts for assymmetry in array
+    map_y = np.arange(n_pix_y) * map_dpix + min_za + map_dpix / 2. + 0.1  # 0.1 accounts for assymmetry in array
 
     return n_pix_x, n_pix_y, map_x, map_y
 
@@ -92,7 +90,7 @@ class CleanTOD(DataRoutine):
         template_corr = np.sum(np.multiply(data_chanmask,template), axis=1) / \
                         np.sum(np.multiply(template,template))
         data_clean_chanmask = data_chanmask - np.outer(template_corr, template)
-        data_clean = data
+        data_clean = np.copy(data)
         data_clean[goodchan,:] = data_clean_chanmask
 
         if self.save_file:
@@ -118,14 +116,9 @@ class RemovePointLomaPickup(DataRoutine):
     def forward(self, pd: ProcessedData) -> MapData:
         #need to high pass filter the data to remove basline drift
         data_raw = pd.data_mK
-        timestamp = pd.timestamp
         chanmask = pd.chanmask
 
-        time = timestamp - timestamp[0]
-
-        dtime = time - np.roll(time,1)
-        fs = float(1./np.median(dtime))
-        pickup_hpfilt_sos = signal.butter(6, self.pickup_hp_filt_freq, 'hp', fs=fs, output='sos', analog=False)
+        pickup_hpfilt_sos = signal.butter(6, self.pickup_filter_freq, 'hp', fs=pd.fs, output='sos', analog=False)
 
         #sum all the data at each time sample, then look for outliers in this sum
         data_sum_raw = np.zeros(np.size(data_raw[0,:]))
@@ -163,14 +156,12 @@ class BinTODIntoMap(DataRoutine):
             lp_filter_freq: float=10.,
             az_trim: float=2.3,
             za_trim: float=0.2,
-            map_dpix: float=0.04,
     ):
         super().__init__()
         self.hp_filter_freq = hp_filter_freq
         self.lp_filter_freq = lp_filter_freq
         self.az_trim = az_trim
         self.za_trim = za_trim
-        self.map_dpix = map_dpix
     
     def forward(
             self,
@@ -183,82 +174,69 @@ class BinTODIntoMap(DataRoutine):
         detector_za = md.detector_za
         fs = md.fs
         data_clean = md.data_mK
-        pickup_good_index = md.flagged_values
 
-        print(get_map_size(md, self.az_trim, self.za_trim, self.map_dpix))
-        exit()
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, md.map_dpix)
 
-        if np.size(pickup_good_index) == 0:
-            pickup_good_index = np.arange(data_clean.shape[1])
+        
+        NETDs = []
+        sum_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
+        hits_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
 
-        for i, pol in enumerate([1, 2]):
+        for pol in range(0, N_POLARIZATION):
             channel_index = np.argwhere(detector_pol == 1)
-            NETD = np.zeros((np.size(channel_index)))
+            NETD_i = np.zeros((np.size(channel_index)))
             for index, i_chan in enumerate(channel_index):
-                this_clean_data = data_clean[i_chan,:]
+                if md.chanmask[i_chan] != 1:
+                    continue
+
+                this_clean_data = np.squeeze(data_clean[i_chan,:])
                 this_detector_az = detector_az[i_chan,:]
                 this_detector_za = detector_za[i_chan,:]
-                wind = signal.get_window('hamming', data_clean.shape[1])
+
+                # Get the good samples if they haven't been specified
+                this_good_index = np.copy(md.flagged_values)
+                if np.size(this_good_index) == 0:
+                    this_good_index = np.arange(np.size(this_clean_data))
+
+                wind = signal.get_window('hamming', np.size(this_clean_data))
                 this_freq, this_psd = signal.periodogram(this_clean_data, fs, window=wind)
-                valid_freq = np.where(this_freq > self.hp_filter_freq and this_freq < self.lp_filter_freq)
-                NETD[index] = np.sqrt(np.median(this_psd[valid_freq]))
+                valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
+                NETD_i[index] = np.sqrt(np.median(this_psd[valid_freq]))
             #    NETD[index] = np.sqrt(np.median(this_psd[-int(np.size(this_psd)/2):]*30.))
-                weight = 1./NETD[index]**2.
+                weight = 1./NETD_i[index]**2.
 
-                #get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
-                x_ind = np.round((detector_az-map_az[0])/map_dpix)
+                # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+                x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/md.map_dpix))
                 x_ind = x_ind.astype('int64')
-                y_ind = np.round((detector_el-map_el[0])/map_dpix)
+                y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/md.map_dpix))
                 y_ind = y_ind.astype('int64')
+
+                NETDs.append(NETD_i)
+                #eliminate samples outside the map
+                valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
+                    np.logical_and(x_ind[this_good_index] >= 0, x_ind[this_good_index] < sum_map.shape[1]), \
+                    np.logical_and(y_ind[this_good_index] >= 0, y_ind[this_good_index] < sum_map.shape[2]))))
+                this_good_index = this_good_index[valid_index]
+
+                #loop over samples to create sum and hits maps
+                for time_sample in this_good_index:
+                    sum_map[pol, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                    hits_map[pol, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+        return md.with_values(
+            sum_map=sum_map,
+            hits_map=hits_map,
+            NETDs=NETDs,
+            map_x=map_az,
+            map_y=map_za,
+        )
             
-    
-    def _inner(self, sum_map, hits_map, NETD, map_dpix, index, data_cleaned, detector_az, detector_el, fs, map_az, map_el, hp_filt_freq, lp_filt_freq, pickup_good_index = []):
-
-        #get the good samples if they haven't been specified
-        if np.size(pickup_good_index) == 0:
-            pickup_good_index = np.arange(np.size(data_cleaned))
-
-        #compute NETD in white noise regime
-        wind = signal.get_window('hamming', np.size(data_cleaned))
-        this_freq, this_psd = signal.periodogram(data_cleaned, fs, window=wind)
-        valid_freq = np.where(np.logical_and(this_freq>hp_filt_freq,this_freq<lp_filt_freq))
-        NETD[index] = np.sqrt(np.median(this_psd[valid_freq]))
-    #    NETD[index] = np.sqrt(np.median(this_psd[-int(np.size(this_psd)/2):]*30.))
-        weight = 1./NETD[index]**2.
-    
-        #get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
-        x_ind = np.round((detector_az-map_az[0])/map_dpix)
-        x_ind = x_ind.astype('int64')
-        y_ind = np.round((detector_el-map_el[0])/map_dpix)
-        y_ind = y_ind.astype('int64')
-
-        #eliminate samples outside the map
-        valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
-            np.logical_and(x_ind[pickup_good_index] >= 0, x_ind[pickup_good_index] < np.size(sum_map[:,0])), \
-            np.logical_and(y_ind[pickup_good_index] >= 0, y_ind[pickup_good_index] < np.size(sum_map[0,:])))))
-        pickup_good_index = pickup_good_index[valid_index]
-
-    #    pdb.set_trace()
-        #loop over samples to create sum and hits maps
-        for time_sample in pickup_good_index:
-            sum_map[x_ind[time_sample],y_ind[time_sample]] += data_cleaned[time_sample] * weight
-            hits_map[x_ind[time_sample],y_ind[time_sample]] += 1. * weight
-
-        return sum_map, hits_map, NETD
-            
-
 class GaussianFilter(DataRoutine):
-    def __init__(self, gaussian_sigma: tuple[float, float]=(0.5, 0.33)):
+    def __init__(self, gaussian_sigma: tuple[float, float]=GAUSSIAN_SIGMA):
         super().__init__()
         self.gaussian_sigma = gaussian_sigma
     
     def forward(self, pd: ProcessedData, field: str='data_mK') -> ProcessedData:
-        smoothed_data = ndimage.gaussian_filter(
-            pd.__getattribute__(field),
-            self.gaussian_sigma,
-            mode='reflect',
-            truncate=1. / self.gaussian_sigma[1],
-        )
+        smoothed_data = gaussian_filter(pd.__getattribute__(field), self.gaussian_sigma)
         return pd.with_values(**{field: smoothed_data})
 
 
@@ -269,7 +247,6 @@ class CutoffFilter(DataRoutine):
         self.btype = btype
 
     def forward(self, pd: ProcessedData) -> ProcessedData:
-        pdb.set_trace()
         filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
 
         # Apply cutoff filter
@@ -485,21 +462,30 @@ def outlier_removal(data):
 
 
 if __name__ == '__main__':
-    data = ProcessedData.from_tod('20241017', 1001, losweep='20241017_rfsoc2_LO_Sweep_hour07p6728.npy')
+    from onr_map_observation import create_map
+    data = ProcessedData.from_tod('20241016', 1012)
+    # data = ProcessedData.from_tod('20241017', 1001, losweep='20241017_rfsoc2_LO_Sweep_hour07p6728.npy')
 
 
-    old_fs = data.fs
-    data.timestamp = data.dtime
+    # old_fs = data.fs
+    # data.timestamp = data.dtime
     ds = Downsample(6)
     hpfilt = HighPassFilter(0.5)
     lpfilt = LowPassFilter(10)
-    cleaner = CleanTOD(save_file=True)
+    cleaner = CleanTOD(save_file=False)
 
-    mapper = Mapper([ds, hpfilt, lpfilt, cleaner])
-    # binner = BinTODIntoMap()
-    # map = binner.forward(clean_data)
-    # mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
-    clean_data = mapper(data)
-    with h5py.File('/data/20241017/20241017_cleaned_data_set1001_original.h5', 'r') as f:
-        og_clean_data = f['clean_data'][:]
-    pdb.set_trace()
+    # mapper = Mapper([ds, hpfilt, lpfilt, cleaner])
+    # clean_data = mapper(data)
+    # # with h5py.File('/data/20241016/20241016_cleaned_data_set1012.h5', 'r') as f:
+    # #     og_clean_data = f['clean_data'][:]
+    # old_data = create_map('20241016', 1012)
+    # new_data = clean_data.data_mK
+    # # with h5py.File('/data/20241016/20241016_processed_data_set1012.h5', 'r') as f:
+    # #     og_data = f['data_mK'][:]
+    # pdb.set_trace()
+
+    remove_pickup = RemovePointLomaPickup()
+    binner = BinTODIntoMap()
+    mapper = Mapper([remove_pickup, ds, hpfilt, lpfilt, cleaner, binner])
+    map: MapData = mapper(data)
+    map.plot()

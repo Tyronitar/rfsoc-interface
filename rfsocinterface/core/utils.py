@@ -14,6 +14,7 @@ import copy
 
 import numpy as np
 import numpy.typing as npt
+from scipy import ndimage
 import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QPoint, QSize, QCoreApplication
 from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QToolTip, QLabel
@@ -31,6 +32,7 @@ PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 # Number = TypeVar('Number', int, float, complex, bytes)
 FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
 
+GAUSSIAN_SIGMA = (0.5, 0.33)
 class TabName(StrEnum):
     """Possible tab names for the GUI."""
     INITIALIZATION = 'initialization'
@@ -399,3 +401,11 @@ class CombinedFuture(Future[Iterable[R]]):
     def _coallesce_results(self):
         self._results = itertools.chain.from_iterable(self._results)
         self.set_result(self._results)
+
+def gaussian_filter(x: npt.NDArray, sigma: tuple[float, float]) -> npt.NDArray:
+    return ndimage.gaussian_filter(
+        x,
+        sigma,
+        mode='reflect',
+        truncate=1. / sigma[1],
+    )

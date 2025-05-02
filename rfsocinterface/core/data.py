@@ -7,14 +7,16 @@ from typing import Callable
 from dataclasses import dataclass, field
 import copy
 import pdb
+import time
 
 import h5py
 import numpy as np
 import numpy.typing as npt
 from kidpy3 import RawDataFile
 from scipy import signal
+import matplotlib.pyplot as plt
 
-from rfsocinterface.core.utils import ensure_path, get_filename
+from rfsocinterface.core.utils import ensure_path, gaussian_filter, GAUSSIAN_SIGMA
 from rfsocinterface.core.losweep import LoSweepData
 
 DATA_DIRECTORY = '/data'
@@ -99,6 +101,10 @@ class ProcessedData(Updateable):
     @property
     def cleaned_file_template(self) -> str:
         return f'{DATA_DIRECTORY}/{self.date}/{self.date}_cleaned_data_set{self.setnum}.h5'
+    
+    @property
+    def file_stub(self) -> str:
+        return f'{self.date}_set{self.setnum}'
 
     @property
     def folder(self) -> Path:
@@ -125,13 +131,16 @@ class ProcessedData(Updateable):
         return np.mean(np.abs(Z), axis=1)
 
     @property
-    def dtime(self) -> npt.NDArray:
-        pdb.set_trace()
-        return np.diff(self.timestamp)
+    def time(self) -> npt.NDArray:
+        return self.timestamp - self.timestamp[0]
+    
+    @property
+    def delta_t(self) -> float:
+        return np.median(self.time - np.roll(self.time, 1))
 
     @property
     def fs(self) -> float:
-        return 1 / np.median(self.dtime)
+        return 1 / self.delta_t
 
     @classmethod
     def from_tod(cls, date: str, setnum: int, losweep: str | None=None) -> ProcessedData:
@@ -166,7 +175,9 @@ class ProcessedData(Updateable):
             az_tel = azel_file['az_tel'][:]
             za_tel = azel_file['el_tel'][:]
             timestamp_tel = azel_file['timestamp_tel'][:]
-            vis = azel_file['optical_visibility'][:]
+            vis = azel_file['optical_visibility'][0]
+            if isinstance(vis, bytes):
+                vis = np.nan
         else:
             vis=0.
         
@@ -208,12 +219,17 @@ class ProcessedData(Updateable):
                 else:
                     with h5py.File(folder / losweep, 'r') as sweep_file:
                         sweep_data = sweep_file['global_data/lo_sweep'][:]
-                sweep = LoSweepData(f.baseband_freqs[:], f.lo_freq[()], sweep_data, f.chanmask[:])
-                this_dIQ_df = sweep.freq_direction()
-                if np.size(dIQ_df) > 0:
-                    dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
-                else:
-                    dIQ_df = np.copy(this_dIQ_df)
+            elif f.lo_sweep is not None:
+                sweep_data = f.lo_sweep[:]
+            else:
+                raise RuntimeError('No LO sweep provided. Canceliing processing of file.')
+
+            sweep = LoSweepData(f.baseband_freqs[:], f.lo_freq[()], sweep_data, f.chanmask[:])
+            this_dIQ_df = sweep.freq_direction()
+            if np.size(dIQ_df) > 0:
+                dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
+            else:
+                dIQ_df = np.copy(this_dIQ_df)
         
             #compute the calibration factor from dfoverf to mK
             detector_pol = f.detector_pol[:]
@@ -392,10 +408,75 @@ class ProcessedData(Updateable):
 class MapData(ProcessedData):
     """Class for storing values for generating maps."""
     flagged_values: npt.NDArray = field(default_factory=lambda: np.array([]))
-    integration_time: npt.NDArray = field(default_factory=lambda: np.array([]))
-    NETD: npt.NDArray = field(default_factory=lambda: np.array([]))
+    NETDs: list[npt.NDArray] = field(default_factory=lambda: [])
     sum_map: npt.NDArray = field(default_factory=lambda: np.array([]))
     hits_map: npt.NDArray = field(default_factory=lambda: np.array([]))
+    map_x: npt.NDArray = field(default_factory=lambda: np.array([]))
+    map_y: npt.NDArray = field(default_factory=lambda: np.array([]))
+    map_dpix: float=0.04
+
+    @property
+    def map(self) -> npt.NDArray:
+        return self.sum_map / self.hits_map
+
+    @property
+    def total_map(self) -> npt.NDArray:
+        return np.sum(self.sum_map, axis=0) / np.sum(self.hits_map, axis=0)
+    
+    @property
+    def integration_time(self) -> npt.NDArray:
+        integration_times = [
+            np.flip(np.transpose(self.hits_map[i,::-1])*np.median(self.NETDs[i])**2./self.fs,1)
+            for i in range(N_POLARIZATION)
+        ]
+        return integration_times
+    
+    def get_combined_map(self) -> npt.NDArray:
+        flagged_map_1 = gaussian_filter(self.map[0], GAUSSIAN_SIGMA)
+        flagged_map_2 = gaussian_filter(self.map[1], GAUSSIAN_SIGMA)
+        flagged_map_3 = gaussian_filter(self.total_map, GAUSSIAN_SIGMA)
+
+        final_final_map1= np.copy(flagged_map_1)
+        final_final_map2= np.copy(flagged_map_2)
+        final_final_map3= np.copy(flagged_map_3)
+
+        # Convert all nans to boolean True
+        nan_map_1 = np.isnan(flagged_map_1)
+        nan_map_2 = np.isnan(flagged_map_2)
+        nan_map_3 = np.isnan(flagged_map_3)
+
+        # Combine the boolean maps such that if any pixel is flagged in any map, it is flagged in the combined map
+        combined_nan_map = np.logical_or(np.logical_or(nan_map_1, nan_map_2), nan_map_3)
+        
+        # Get the coordinates of True values in the combined_nan_map
+        flagged_positions = np.where(combined_nan_map)
+        final_flagged_coords = list(zip(flagged_positions[0], flagged_positions[1]))
+
+        # Apply this combined map to each of the final maps
+        flagged_map_1[combined_nan_map] = 1
+        flagged_map_2[combined_nan_map] = 1
+        flagged_map_3[combined_nan_map] = 1
+
+        flagged_map_1[flagged_map_1 != 1] = 0
+        flagged_map_2[flagged_map_2 != 1] = 0
+        flagged_map_3[flagged_map_3 != 1] = 0
+
+        final_final_map1[combined_nan_map] = np.nan
+        final_final_map2[combined_nan_map] = np.nan
+        final_final_map3[combined_nan_map] = np.nan
+
+        contour_levels = [1]
+
+        final_final_map1= final_final_map1.flatten()
+        final_final_map2= final_final_map2.flatten()
+        final_final_map3= final_final_map3.flatten()
+
+        final_final_map1 = [x for x in final_final_map1 if not np.isnan(x)]
+        final_final_map2 = [x for x in final_final_map2 if not np.isnan(x)]
+        final_final_map3 = [x for x in final_final_map3 if not np.isnan(x)]
+        return flagged_map_1, flagged_map_2, flagged_map_3, contour_levels
+
+
 
     @classmethod
     def from_processed_data(cls, pd: ProcessedData) -> MapData:
@@ -419,6 +500,101 @@ class MapData(ProcessedData):
             np.copy(pd.detector_za),
             np.copy(pd.vis),
         )
+    
+    def get_scaled_optical_image(self) -> npt.NDArray:
+        opt_npix_per_tel_npix = self.map_dpix/0.0104
+        opt_npix_az = int(np.size(self.map_x)*opt_npix_per_tel_npix/2)*2
+        opt_npix_el = int(np.size(self.map_y)*opt_npix_per_tel_npix/2)*2
+        opt_center_az = int(2592/2)+70
+        opt_center_el = int(1944/2)+10
+        return self.optical_image[opt_center_el-int(opt_npix_el/2):opt_center_el+int(opt_npix_el/2),\
+                                    opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
+    
+    def plot(self):
+
+        valid_cov_1 = np.argwhere(self.hits_map[0] > 0.5 * np.median(self.hits_map[0]))
+        map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
+        for i_cov in np.arange(np.size(valid_cov_1[:,0])):
+            map_goodcov_1[i_cov] = self.map[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
+        valid_cov_2 = np.argwhere(self.hits_map[1] > 0.5 * np.median(self.hits_map[1]))
+        map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
+        for i_cov in np.arange(np.size(valid_cov_1[:,0])):
+            map_goodcov_2[i_cov] = self.map[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
+
+        cb_shrink = 0.95
+        this_xlim = min(self.map_x),max(self.map_x)
+        this_ylim = max(self.map_y),min(self.map_y)
+        max_abs = np.max(np.abs(np.append(map_goodcov_1,map_goodcov_2)))*0.75
+        valid_netd_1 = np.argwhere(self.NETDs[0] > 0)
+        med_NETD_1 = 1./np.sqrt(np.sum(1./self.NETDs[0][valid_netd_1]**2)/np.size(valid_netd_1))
+        valid_netd_2 = np.argwhere(self.NETDs[1] > 0)
+        med_NETD_2 = 1./np.sqrt(np.sum(1./self.NETDs[1][valid_netd_2]**2)/np.size(valid_netd_2))
+
+        #Sage's plotting code---------------------------------------------------------------------------------------------
+
+        # contour_levels, final_map_1_filt, final_map_2_filt, final_map_tot_filt, flagged_map_1_filt, flagged_map_2_filt, \
+        # flagged_map_tot_filt, final_flagged_coordinates = combined_map(map_1_filt_final_map, map_2_filt_final_map, map_tot_filt_final_map)
+        flagged_map_1_filt, flagged_map_2_filt, flagged_map_tot_filt, contour_levels = self.get_combined_map()
+
+    #    pw = plotWindow()
+        this_fig = plt.figure(figsize=(15,7.5))
+        plt.subplot(4,1,1)
+        plt.imshow(np.flip(np.transpose(self.map[0][::-1]),1), \
+        extent = (min(self.map_x)-self.map_dpix/2.,max(self.map_x)+self.map_dpix/2,max(self.map_y)+self.map_dpix/2.,min(self.map_y)-self.map_dpix/2.), \
+        aspect='equal', vmin=-max_abs, vmax=max_abs, cmap='Blues_r')
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
+        plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+        extent=(min(self.map_x)-self.map_dpix/2.,max(self.map_x)+self.map_dpix/2,max(self.map_y)+self.map_dpix/2.,min(self.map_y)-self.map_dpix/2.), colors='red')
+        plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
+        ', Optical Visibility = ' + str(self.vis) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_NETD_1) + \
+        ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_NETD_2) + ' mK')
+        plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+
+        plt.subplot(4,1,2)
+        plt.imshow(np.flip(np.transpose(self.map[1][::-1]),1), \
+        extent = (min(self.map_x)-self.map_dpix/2.,max(self.map_x)+self.map_dpix/2,max(self.map_y)+self.map_dpix/2.,min(self.map_y)-self.map_dpix/2.), \
+        aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Reds_r')
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
+        plt.contour(np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+        extent=(min(self.map_x)-self.map_dpix/2.,max(self.map_x)+self.map_dpix/2,max(self.map_y)+self.map_dpix/2.,min(self.map_y)-self.map_dpix/2.), colors='black')
+        plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+
+        plt.subplot(4,1,3)
+        plt.imshow(np.flip(np.transpose(self.total_map[::-1]),1), \
+        extent = (min(self.map_x)-self.map_dpix/2.,max(self.map_x)+self.map_dpix/2,max(self.map_y)+self.map_dpix/2.,min(self.map_y)-self.map_dpix/2.), \
+        aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Greys_r')
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
+        plt.contour(np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+        extent=(min(self.map_x)-self.map_dpix/2.,max(self.map_x)+self.map_dpix/2,max(self.map_y)+self.map_dpix/2.,min(self.map_y)-self.map_dpix/2.), colors='red')
+        plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+        
+        plt.subplot(4,1,4)
+        optical_image = self.get_scaled_optical_image()
+        valid_opt_pix = np.where(optical_image < 240)
+        opt_vmax = 255. #np.percentile(optical_image[valid_opt_pix], 90)
+        opt_vmin = -255. #np.percentile(optical_image[valid_opt_pix], 10)
+        plt.imshow(optical_image, \
+                extent = (min(self.map_x)-self.map_dpix/2.,max(self.map_x)+self.map_dpix/2,max(self.map_y)+self.map_dpix/2.,min(self.map_y)-self.map_dpix/2.), \
+                aspect='equal', vmax=255, vmin=-255)
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
+        ##Need to match aspect ratio of plots (and get rid of colorbar).
+        plt.xlabel('Azimuth (degrees)'), plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+            
+        this_fig.subplots_adjust(wspace=0, hspace=0)
+        plt.show()
+    #    pw.addPlot("Raw Image", this_fig)
+        # plt.savefig(self.folder + self.file_stub + '_Source_Finder_Image.png', bbox_inches='tight')
+
+
+
 
     def __copy__(self) -> MapData:
         return MapData(
@@ -440,10 +616,12 @@ class MapData(ProcessedData):
             np.copy(self.detector_za),
             np.copy(self.vis),
             np.copy(self.flagged_values),
-            np.copy(self.integration_time),
-            np.copy(self.NETD),
+            self.NETDs.copy(),
             np.copy(self.hits_map),
             np.copy(self.sum_map),
+            np.copy(self.map_x),
+            np.copy(self.map_y),
+            self.map_dpix,
         )
     
 
@@ -599,6 +777,10 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[
     return data[ind], ind
     
 if __name__ == "__main__":
-    p = ProcessedData.from_tod('20250415', 1004, losweep='20250415_rfsoc2_LO_Sweep_hour16p1919.h5')
-    m = MapData.from_processed_data(p)
+
+    data = ProcessedData.from_tod('20241017', 1001)
+    with h5py.File('/data/20241017/20241017_processed_data_set1001.h5', 'r') as f:
+        og_data = f['data_mK'][:]
     pdb.set_trace()
+
+N_POLARIZATION = 2
