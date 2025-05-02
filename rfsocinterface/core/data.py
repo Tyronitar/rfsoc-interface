@@ -125,8 +125,13 @@ class ProcessedData(Updateable):
         return np.mean(np.abs(Z), axis=1)
 
     @property
+    def dtime(self) -> npt.NDArray:
+        pdb.set_trace()
+        return np.diff(self.timestamp)
+
+    @property
     def fs(self) -> float:
-        return 1 / self.timestamp[1]
+        return 1 / np.median(self.dtime)
 
     @classmethod
     def from_tod(cls, date: str, setnum: int, losweep: str | None=None) -> ProcessedData:
@@ -172,6 +177,7 @@ class ProcessedData(Updateable):
             optical_image = None
 
 
+
         dIQ_df = np.array([])
         carrier_amp_I = np.array([])
         carrier_amp_Q = np.array([])
@@ -189,6 +195,11 @@ class ProcessedData(Updateable):
 
             #compute the derivatives to obtain frequency direction
             f = RawDataFile(file, 'r')
+
+            # # Temporary fix for testing code:
+            # f.baseband_freqs = np.load('/data/20250422/20250422_tone_list.npy')
+            # f.lo_freq = np.array([4e8])
+
             if losweep:
                 losweep = Path(losweep)
                 # f.append_lo_sweep(losweep)
@@ -267,13 +278,14 @@ class ProcessedData(Updateable):
             else:
                 data_freq_diss = np.copy(this_data_freq_diss)
 
-            #finally, we need to get data_mK
+            # Finally, we need to get data_mK
             this_df_per_mK = np.array(this_df_per_mK)
             this_data_mK = np.divide(this_data_freq_diss[0], np.outer(this_df_per_mK, np.ones(nsamples)))
             if np.size(data_mK) != 1:
                 data_mK = np.concatenate((data_mK, this_data_mK), axis=0)
             else:
                 data_mK = np.copy(this_data_mK)
+
 
             #now the telescope data to get coordinates
             time = f.timestamp[:]
@@ -297,11 +309,11 @@ class ProcessedData(Updateable):
                             np.outer(np.ones(ntones), this_za_tel)
             
                 #save the az/el information to the file
-                if np.size(detector_az) != 1:
+                if np.size(detector_az) > 0:
                     detector_az = np.concatenate((detector_az, this_det_az), axis=0)
                 else:
                     detector_az = np.copy(this_det_az)
-                if np.size(detector_za) != 1:
+                if np.size(detector_za) > 0:
                     detector_za = np.concatenate((detector_za, this_det_za), axis=0)
                 else:
                     detector_za = np.copy(this_det_za)

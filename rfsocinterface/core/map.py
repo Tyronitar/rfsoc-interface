@@ -57,6 +57,11 @@ class Mapper:
     def __init__(self, routines: list[DataRoutine]):
         self._routines = routines
     
+    def add_routine(self, routine: DataRoutine):
+        if not isinstance(routine, DataRoutine):
+            raise TypeError(f'Expected DataRoutine, got {type(routine)}')
+        self._routines.append(routine)
+    
     def __call__(self, input: ProcessedData):
 
         output = input
@@ -69,69 +74,38 @@ class CleanTOD(DataRoutine):
 
     def __init__(
             self,
-            ds_factor: int=6,
-            hp_filt_freq: float=0.5,
-            lp_filt_freq: float=10.,
             save_file: bool=True,
     ):
         super().__init__()
-        self.hp_filt_freq = hp_filt_freq
-        self.lp_filt_freq = lp_filt_freq
-        self.ds_factor = ds_factor
         self.save_file = save_file
 
     def forward(self, pd: ProcessedData) -> ProcessedData:
-            #Setup filters that will be used later
-        #get the sampling frequency and make a window that can be
-        #used later for the power spectrum computation
 
-        data_raw = pd.data_mK
+        data = pd.data_mK
         chanmask = pd.chanmask
-        detector_az = pd.detector_az
-        detector_za = pd.detector_za
-
-        timestamp = pd.timestamp - pd.timestamp[0]
-        dtime = timestamp - np.roll(timestamp, 1)
         
-        fs = float(1./np.median(dtime))
-        hpfilt_sos = signal.butter(BUTTER_ORDER, self.hp_filt_freq, 'hp', fs=fs/self.ds_factor, output='sos', analog=False)
-        lpfilt_sos = signal.butter(BUTTER_ORDER, self.lp_filt_freq, 'lp', fs=fs/self.ds_factor, output='sos', analog=False)
-
-        #downsample the data and apply hp filter
-        data_ds = signal.decimate(data_raw, self.ds_factor)
-        data_filt_1 = signal.sosfiltfilt(hpfilt_sos, data_ds)
-        data_filt = signal.sosfiltfilt(lpfilt_sos, data_filt_1)
-
         #average template subtraction
         goodchan = np.ndarray.flatten(np.argwhere(chanmask == 1))
-        data_filt_chanmask = data_filt[goodchan,:]
-        template = np.sum(data_filt_chanmask, axis=0)
+        data_chanmask = data[goodchan,:]
+        template = np.sum(data_chanmask, axis=0)
         template = template - np.mean(template)
-        template_corr = np.sum(np.multiply(data_filt_chanmask,template), axis=1) / \
+        template_corr = np.sum(np.multiply(data_chanmask,template), axis=1) / \
                         np.sum(np.multiply(template,template))
-        data_clean_chanmask = data_filt_chanmask - np.outer(template_corr, template)
-        data_clean = data_filt
+        data_clean_chanmask = data_chanmask - np.outer(template_corr, template)
+        data_clean = data
         data_clean[goodchan,:] = data_clean_chanmask
-
-        #downsample ancillary data
-        time_ds = signal.decimate(timestamp, self.ds_factor)
-        detector_az_ds = signal.decimate(detector_az, self.ds_factor, n=DECIMATE_ORDER, axis=1)
-        detector_za_ds = signal.decimate(detector_za, self.ds_factor, n=DECIMATE_ORDER, axis=1)
 
         if self.save_file:
             with h5py.File(pd.cleaned_file_template, 'w') as cfile:
                 cfile.create_dataset("chanmask", data=chanmask)
                 cfile.create_dataset("detector_pol", data=pd.detector_pol)
-                cfile.create_dataset("clean_data", data=clean_data)
-                cfile.create_dataset("time", data=time_ds)
-                cfile.create_dataset("detector_az", data=detector_az_ds)    
-                cfile.create_dataset("detector_za", data=detector_za_ds)
+                cfile.create_dataset("clean_data", data=data_clean)
+                cfile.create_dataset("time", data=pd.timestamp)
+                cfile.create_dataset("detector_az", data=pd.detector_az)    
+                cfile.create_dataset("detector_za", data=pd.detector_za)
 
         return pd.with_values(
             data_mK=data_clean,
-            detector_az=detector_az_ds,
-            detector_za=detector_za_ds,
-            timestamp=time_ds,
         )
 
 
@@ -200,8 +174,10 @@ class BinTODIntoMap(DataRoutine):
     
     def forward(
             self,
-            md: MapData,
+            md: ProcessedData,
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        if not isinstance(md, MapData):
+            md = MapData.from_processed_data(md)
         detector_pol = md.detector_pol
         detector_az = md.detector_az
         detector_za = md.detector_za
@@ -284,6 +260,36 @@ class GaussianFilter(DataRoutine):
             truncate=1. / self.gaussian_sigma[1],
         )
         return pd.with_values(**{field: smoothed_data})
+
+
+class CutoffFilter(DataRoutine):
+    def __init__(self, filter_freq: float, btype: str):
+        super().__init__()
+        self.filter_freq = filter_freq
+        self.btype = btype
+
+    def forward(self, pd: ProcessedData) -> ProcessedData:
+        pdb.set_trace()
+        filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
+
+        # Apply cutoff filter
+        data_gain_phase_filt = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
+        data_freq_diss_filt = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
+        data_mK_filt = signal.sosfiltfilt(filt_sos, pd.data_mK)
+        return pd.with_values(
+            data_gain_phase=data_gain_phase_filt,
+            data_freq_diss=data_freq_diss_filt,
+            data_mK=data_mK_filt,
+        )
+
+class LowPassFilter(CutoffFilter):
+    def __init__(self, filter_freq: float):
+        super().__init__(filter_freq, btype='lowpass')
+
+
+class HighPassFilter(CutoffFilter):
+    def __init__(self, filter_freq: float):
+        super().__init__(filter_freq, btype='highpass')
 
 
 class Downsample(DataRoutine):
@@ -479,9 +485,21 @@ def outlier_removal(data):
 
 
 if __name__ == '__main__':
-    data = ProcessedData.from_tod('20250422', 1001, losweep='20250422_rfsoc2_LO_Sweep_hour16p2775.h5')
-    cleaner = CleanTOD()
-    clean_data = cleaner.forward(data)
+    data = ProcessedData.from_tod('20241017', 1001, losweep='20241017_rfsoc2_LO_Sweep_hour07p6728.npy')
 
-    binner = BinTODIntoMap()
-    map = binner.forward(clean_data)
+
+    old_fs = data.fs
+    data.timestamp = data.dtime
+    ds = Downsample(6)
+    hpfilt = HighPassFilter(0.5)
+    lpfilt = LowPassFilter(10)
+    cleaner = CleanTOD(save_file=True)
+
+    mapper = Mapper([ds, hpfilt, lpfilt, cleaner])
+    # binner = BinTODIntoMap()
+    # map = binner.forward(clean_data)
+    # mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
+    clean_data = mapper(data)
+    with h5py.File('/data/20241017/20241017_cleaned_data_set1001_original.h5', 'r') as f:
+        og_clean_data = f['clean_data'][:]
+    pdb.set_trace()
