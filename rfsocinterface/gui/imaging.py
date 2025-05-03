@@ -98,7 +98,7 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
             rfchan.raw_filename = str(save_location)
             rfchans.append(rfchan)
         # Update the current save file
-        self.get_current_file()
+        self.get_file()
         print(self.get_current_file())
         return
         capture(
