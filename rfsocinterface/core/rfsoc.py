@@ -112,10 +112,21 @@ class RFSOCWrapper:
             self.settings['redis']['IP'],
             self.settings['redis']['port'],
         )
+    
+    def set_tile_number(self, num: int):
+        self.rfsoc.rf1.tile_number = num
+        self.rfsoc.rf2.tile_number = num
+
+    def set_channel_number(self, num: int):
+        self.rfsoc.rf1.chan_number = num
+        self.rfsoc.rf2.chan_number = num
 
     def make_kidpy_rfsoc(self) -> RFSOC:
         # TODO: Use a dictionary not a YAML file
-        return RFSOC(self.to_kidpy())
+        rfsoc = RFSOC(self.to_kidpy())
+        rfsoc.rf1.name = 'rfsoc2'
+        rfsoc.rf1.tile_number = 2
+        return rfsoc
         # yaml_contents = self.to_kidpy()
         # fname = f'{self.settings['name']}.yml'
         # with open(fname, 'w') as f:
@@ -138,6 +149,10 @@ class RFSOCWrapper:
     def set_frequency(self, channel: int, freq: float):
         valon = self.valon_a if channel == 1 else self.valon_b
         valon.set_frequency(channel, freq)
+        if channel == 1:
+            self.rfsoc.rf1.lo_freq = freq
+        else:
+            self.rfsoc.rf2.lo_freq = freq
         self.settings[f'channel{channel}']['dsp']['loFreq'] = freq
     
     def get_tone_list(self, chan: int=1) -> tuple[npt.NDArray, npt.NDArray]:
@@ -147,7 +162,17 @@ class RFSOCWrapper:
         self.rfsoc.set_tone_list(chan=chan, tonelist=tonelist, amplitudes=amplitudes)
     
     def set_atten(self, addr: int, value: float):
-        return self.atten_transceiver.set_atten(addr, value)
+        success, msg = self.atten_transceiver.set_atten(addr, value)
+        if success:
+            if addr < 3:
+                old_atten = list(self.rfsoc.rf1.attenuator_settings)
+                old_atten[(addr - 1) % 2] = value
+                self.rfsoc.rf1.attenuator_settings = old_atten
+            else:
+                old_atten = self.rfsoc.rf2.attenuator_settings
+                old_atten[(addr - 1) % 2] = value
+                self.rfsoc.rf2.attenuator_settings = old_atten
+        return success
     
     def configure_hardware(self):
         self.rfsoc.config_hardware()

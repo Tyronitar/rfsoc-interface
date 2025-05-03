@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Callable, Any, Concatenate
 from pathlib import Path
 
 from PySide6.QtWidgets import QWidget, QCheckBox, QComboBox, QLineEdit, QStackedLayout
+from kidpy3 import capture
 
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import MainWidget
@@ -34,6 +35,7 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
 
+        self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
         self.update_channel_choices(self.channel_comboBox)
         self.patterns: list[FunctionWidget] = []
@@ -47,9 +49,9 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
             [
                 (('Starting azimuth: ', ArgumentType.FLOAT), {}),
                 (('End azimuth: ', ArgumentType.FLOAT), {}),
-                (('N Repeats: ', ArgumentType.INT), {}),
-                (('Zenith angle dither: ', ArgumentType.FLOAT), {}),
-                (('Return to starting position', ArgumentType.BOOL), {}),
+                (('N Repeats: ', ArgumentType.INT), {'default': 1}),
+                (('Zenith angle dither: ', ArgumentType.FLOAT), {'default': 0.04}),
+                (('Return to starting position', ArgumentType.BOOL), {'default': True}),
             ],
         )
         self.add_dither_pattern(
@@ -68,10 +70,15 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         self.choose_pattern(0)
     
     def get_file(self) -> Path:
-        return self.save_location_widget.get_chosen_save_location()
+        f = self.save_location_widget.get_chosen_save_location()
+        self._file = f
+        return f
+    
+    def get_current_file(self) -> Path:
+        return self._file
     
     def add_dither_pattern(self, label: str, fn: Callable, args: list[tuple[str, ArgumentType]]):
-        pattern = DitherPatternWidget(fn, self.get_file, args=args, parent=self)
+        pattern = DitherPatternWidget(fn, self.get_current_file, args=args, parent=self)
         self.patterns.append(pattern)
         self.dither_comboBox.addItem(label)
         self.stacked_layout.addWidget(pattern)
@@ -82,7 +89,22 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         # pattern = self.patterns[index]
     
     def run(self):
-        # TODO: Start streaming data
+        chans = self.get_selected_channels(self.channel_comboBox)
+        rfchans = []
+        for rfsoc, chan in chans:
+            rfchan = rfsoc.get_channel(chan)
+            save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'chan_{chan}')
+            save_location.parent.mkdir(parents=True, exist_ok=True)
+            rfchan.raw_filename = str(save_location)
+            rfchans.append(rfchan)
+        # Update the current save file
+        self.get_current_file()
+        print(self.get_current_file())
+        return
+        capture(
+            rfchans,
+            self.active_pattern.call_function,
+        )
         
         # TODO: validate the inputs somehow...
         self.active_pattern.call_function()

@@ -345,7 +345,7 @@ class TelescopeMotorController(QObject):
             ze_dither: float=0.04,
             position_return: bool=True,
     ):
-        worker = TelescopeMotionJob(self._az_scan_mode, az_start, az_stop, file, n_repeats, ze_dither, position_return)
+        worker = TelescopeMotionJob(self._az_scan_mode, file, az_start, az_stop, n_repeats, ze_dither, position_return)
         self._active_jobs.append(worker)
         self.run = True
         worker.start()
