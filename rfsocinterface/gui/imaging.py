@@ -9,7 +9,7 @@ from rfsocinterface.gui.main_widget import MainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P
 from rfsocinterface.gui.widgets.function import FunctionWidget, ArgumentType
-from rfsocinterface.gui.telescope import TelescopeMotorController
+from rfsocinterface.core.telescope import TelescopeMotorController
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
