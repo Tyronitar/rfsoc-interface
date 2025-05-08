@@ -8,7 +8,6 @@ import serial
 import serial.tools.list_ports
 import uldaq as ul
 from Exscript.protocols.telnetlib import Telnet
-from PySide6.QtCore import QMutex
 
 
 import pdb
@@ -101,6 +100,8 @@ class TelescopeMotorController:
                 case 'set_voltage':
                     self._run = True
                     self.set_ao_value(*args)
+                case 'az_scan_mode':
+                    self.az_scan_mode(*args)
                 case 'stop_telescope':
                     self._run = False
                     self.set_ao_zero()
@@ -112,7 +113,7 @@ class TelescopeMotorController:
 
     def test_init(self):
         if not self._initialized:
-            self._initialize_system
+            self._initialize_system()
 
     def _initialize_system(self):
         try:
@@ -321,11 +322,10 @@ class TelescopeMotorController:
             ze_dither: float=0.04,
             position_return: bool=True,
     ):
-        # worker = TelescopeMotionJob(self._az_scan_mode, az_start, az_stop, file, n_repeats, ze_dither, position_return)
-        # self._active_jobs.append(worker)
         self._run = True
-        # worker.start()
-        self._az_scan_mode(file, az_start, az_stop, n_repeats, ze_dither, position_return)
+        worker_thread = Thread(target=self._az_scan_mode, args=(file, az_start, az_stop, n_repeats, ze_dither, position_return))
+        self._active_jobs.append(worker_thread)
+        worker_thread.start()
 
     def _az_scan_mode(
             self,
@@ -368,23 +368,21 @@ class TelescopeMotorController:
         # np.savez(position_data_file, az = position_data[0::3],el = position_data[1::3],time = position_data[2::3],az_start=AZ_start,
         #  az_stop=AZ_stop,el_start=np.nan,el_stop=np.nan)
         self._run = False
-        f = h5py.File(file, "a")
-        f.create_dataset("az_tel", data=position_data[0::3])
-        f.create_dataset("za_tel", data=position_data[1::3])
-        f.create_dataset("timestamp_tel", data=position_data[2::3])
-        f.create_dataset("optical_visibility", data=['****'])
-        f.close()
-        time.sleep(0.5)
+        with h5py.File(file, "a") as f:
+            f.create_dataset("az_tel", data=position_data[0::3])
+            f.create_dataset("za_tel", data=position_data[1::3])
+            f.create_dataset("timestamp_tel", data=position_data[2::3])
+            f.create_dataset("optical_visibility", data=['****'])
         if position_return:
             self._set_az_pos(current_az)
             self._set_ze_pos(current_ze)
         print("Scan Complete")
 
     def jog_az_pos(self, speed: float=1):
-        pass
+        raise NotImplementedError("Jogging not implemented yet.")
 
     def az_oscillate(self, total_t: float, freq: float, deg: float):
-        pass
+        raise NotImplementedError("Oscillation not implemented yet.")
 
     def set_az_speed_relation(self, voltage: float):
         # Set the speed of the motor in RPM/10V. Default is 500, which would roughly turn the telescope 2.5 degree/second for 10 V input. ASCII code for serial is VSCALE1. AZ VALUE IS PER 10 VOLTS AND EL VALUE IS PER 1 VOLT! Needs more testing from Ubuntu, I think there is a lower limit set in the S700.
