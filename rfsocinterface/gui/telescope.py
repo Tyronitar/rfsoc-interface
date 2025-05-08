@@ -2,9 +2,9 @@ from __future__ import annotations
 from PySide6.QtWidgets import QWidget, QMainWindow, QApplication, QAbstractButton, QDialog, QVBoxLayout
 from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread, QTimer, QMutexLocker
 import serial.tools
-from rfsocinterface.core.telescope import TelescopeMotorController
 from rfsocinterface.core.telescope import ZE_OUT_CHANNEL
 from rfsocinterface.core.telescope import AZ_OUT_CHANNEL
+from rfsocinterface.core.telescope import make_controller
 from rfsocinterface.gui.uic.telescope_control_ui import Ui_TelescopeControlWidget as Ui_TelescopeControlWidget
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -16,10 +16,8 @@ from typing import Callable, Concatenate, Any, TYPE_CHECKING
 import functools
 
 from multiprocessing import Process, Pipe, Queue
-from multiprocessing.connection import Connection
 from threading import Thread
 
-import numpy.typing as npt
 import matplotlib.pyplot as plt
 import sys
 import os
@@ -50,11 +48,6 @@ class TelescopeMotionJob(QThread):
         self.returned.emit(res)
 
 
-@classmethod
-def make_controller(queue: Queue, client_id: str, conn: Connection) -> TelescopeMotorController:
-    return TelescopeMotorController(queue, client_id, conn)
-
-
 class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None):
@@ -77,31 +70,28 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
         self.cam_ctrl = SKPR_Camera_Control()
         self.optical_pushButton.clicked.connect(self.take_pic)
 
-        # self.ctrl = TelescopeMotorController(parent=self)
-        queue = Queue()
-        self.conn_parent, self.conn_child = Pipe(duplex=True)
-        self.ctrl_process = Process(target=make_controller, args=(queue, self.conn_child,))
-        self.ctrl_process.start()
-        self.listener_thread = Thread(target=self._connection_loop)
+        self._conn_parent, self._conn_child = Pipe(duplex=False)
+        self._telescope_queue.put(['telescope_tab', 'add_connection', self._conn_child])
+        self._listener_thread = Thread(target=self._connection_loop)
 
         # Initialize the numbers in the GUI
-        self.conn_parent.send(['get_ser_az_pos'])
-        command, az_pos = self.conn_parent.recv()
+        self._telescope_queue.put(['telescope_tab', 'get_ser_az_pos'])
+        command, az_pos = self._conn_parent.recv()
         if command != 'az_pos':
             print('Error getting initial azimuth position. Setting to 0.')
             self.az_pos = self.last_az = 0
         else:
             self.az_pos = self.last_az = az_pos
 
-        self.conn_parent.send(['get_ser_ze_pos'])
-        command, ze_pos = self.conn_parent.recv()
+        self._telescope_queue.put(['telescope_tab', 'get_ser_ze_pos'])
+        command, ze_pos = self._conn_parent.recv()
         if command != 'ze_pos':
             print('Error getting initial zenith position. Setting to 0.')
             self.ze_pos = self.last_ze = 0
         else:
             self.ze_pos = self.last_ze = ze_pos
 
-        self.listener_thread.start()
+        self._listener_thread.start()
 
         self.last_az_commanded = self.last_az
         self.last_ze_commanded = self.last_ze
@@ -115,7 +105,7 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
 
 
     def stop_motion(self):
-        self.conn_parent.send(['stop_telescope'])
+        self._telescope_queue.put(['telescope_tab', 'stop_telescope'])
     
     def take_pic(self):
         pic_data = self.cam_ctrl.take_pic(show=False)
@@ -141,17 +131,17 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
     def jog(self, btn: QAbstractButton): 
         match btn:
             case self.controller.up_toolButton:
-                self.conn_parent.send(['set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL])
+                self._telescope_queue.put(['telescope_tab', 'set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL])
             case self.controller.down_toolButton:
-                self.conn_parent.send(['set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL])
+                self._telescope_queue.put(['telescope_tab', 'set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL])
             case self.controller.left_toolButton:
-                self.conn_parent.send(['set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL])
+                self._telescope_queue.put(['telescope_tab', 'set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL])
             case self.controller.right_toolButton:
-                self.conn_parent.send(['set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL])
+                self._telescope_queue.put(['telescope_tab', 'set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL])
     
     def _connection_loop(self):
         while True:
-            response, *data = self.conn_parent.recv()
+            response, *data = self._conn_parent.recv()
             print(f'Got response: {response}, data: {data}')
             match response.lower():
                 case 'az_pos':
@@ -171,11 +161,11 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
 
     def set_az_pos(self):
         new_pos = get_num_value(self.azimuth_setlineEdit)
-        self.conn_parent.send(['set_az_pos', new_pos])
+        self._telescope_queue.put(['telescope_tab', 'set_az_pos', new_pos])
     
     def set_ze_pos(self):
         new_pos = get_num_value(self.zenith_setlineEdit)
-        self.conn_parent.send(['set_ze_pos', new_pos])
+        self._telescope_queue.put(['telescope_tab', 'set_ze_pos', new_pos])
     
     @Slot(float)
     def update_az_pos(self, new_pos: float):
@@ -194,7 +184,7 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
     @Slot(float)
     def update_az_err(self, new_err: float):
         self.azimuth_error_valLabel.setText(f'{new_err:.3f}°')
-    
+
     @Slot(float)
     def update_ze_pos(self, new_pos: float):
         self.zenith_actual_valLabel.setText(f'{new_pos:.3f}°')
@@ -229,11 +219,11 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
     
     def closeEvent(self, event):
         self.timer.stop()
-        self.conn_parent.send(['terminate'])
-        self.ctrl_process.join()
-        self.listener_thread.join()
-        self.conn_parent.close()
-        self.conn_child.close()
+        # self.conn_parent.send(['terminate'])
+        self._listener_thread.join()
+        self._conn_parent.close()
+        self._conn_child.close()
+        self._telescope_queue.put(['telescope_tab', 'remove_connection'])
         return super().closeEvent(event)
     
 

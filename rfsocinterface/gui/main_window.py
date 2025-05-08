@@ -1,5 +1,7 @@
 from pathlib import Path
 import yaml
+from multiprocessing import Queue, Process, Pipe
+from multiprocessing.connection import Connection
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QGridLayout, QTabWidget
 from PySide6.QtCore import Qt, QCoreApplication
@@ -29,6 +31,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.settings = Settings()
         self.settings.load_settings()
+
+        self.telescope_queue: Queue = None
+        self.telescope_conn: Connection = None
+        self.telescope_controller_process: Process = None
         
         self.tabs: dict[TabName, MainWidget] = {}
         self.rfsocs: list[RFSOCWrapper] = []
@@ -39,6 +45,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabWidget.currentChanged.connect(self.resize_to_current)
         self.tabWidget.setCurrentIndex(0)
         self.resize_to_current(0)
+    
+    def _make_telescope_controller(self):
+        from rfsocinterface.core.telescope import make_controller
+        if self.telescope_queue is not None:
+            return
+        self.telescope_queue = Queue()
+        self.telescope_parent_conn, self.telescope_child_conn = Pipe(duplex=False)
+        self.telescope_controller_process = Process(target=make_controller, args=(self.telescope_queue,))
+        self.telescope_controller_process.start()
+        self.telescope_queue.put(['MAIN', 'add_connection', self.telescope_child_conn])
 
     def _make_initialization_tab(self):
         self.initialization_tab = QWidget()
@@ -66,6 +82,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     
     def _make_telescope_tab(self):
         from rfsocinterface.gui.telescope import TelescopeControlWidget
+        self._make_telescope_controller()
         self.telescope_tab = QWidget()
         self.telescope_tab.setObjectName(u"telescope_tab")
         self.gridLayout = QGridLayout(self.telescope_tab)
@@ -147,6 +164,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def closeEvent(self, event):
         for tab in self.tabs.values():
             tab.close()
+
+        if self.telescope_controller_process is not None:
+            self.telescope_queue.put(['terminate'])
+        while self.telescope_parent_conn.poll():
+            command, *data = self.telescope_parent_conn.recv()
+            if command == 'done':
+                break
+        self.telescope_controller_process.join()
         return super().closeEvent(event)
 
 def move_to_center(win: QMainWindow, screen: QScreen):

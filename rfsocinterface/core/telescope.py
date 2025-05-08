@@ -51,18 +51,21 @@ POS_ZE_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
 class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
 
-    def __init__(self, queue: Queue, client_id: str, conn: Connection):
+    def __init__(self, queue: Queue):
         self._initialized = False
         self._run = False
         self.queue = queue
         self.connections: dict[str, Connection] = {}
-        self.add_connection(client_id, conn)
+        self._active_jobs: list[Thread] = []
         self.test_init()
         self._listener_loop()
     
     def add_connection(self, client_id: str, conn: Connection):
-        """Add a connection to teh telescope controleer"""
+        """Add a connection to the telescope controller"""
         self.connections[client_id] = conn
+    
+    def remove_connection(self, client_id: str):
+        del self.connections[client_id]
     
     def send_all(self, command: str, *args):
         for conn in self.connections.values():
@@ -81,14 +84,18 @@ class TelescopeMotorController:
             # command, *args = self.conn.recv()
             print(f'Client "{client_id}" sent command: "{command}", args: {args}')
             match command.lower():
+                case 'add_connection':
+                    self.add_connection(client_id, *args)
+                case 'remove_connection':
+                    self.remove_connection(client_id)
                 case 'get_ser_az_pos':
                     pfb = self.get_ser_az_pos()
-                    # self.send(client_id, 'az_pos', pfb)
+                    self.send(client_id, 'az_pos', pfb)  # Is this necessary since it sends to all inside the method?
                 case 'set_az_pos':
                     self.set_az_pos(*args)
                 case 'get_ser_ze_pos':
                     pos = self.get_ser_ze_pos()
-                    # self.send(client_id, 'ze_pos', pos)
+                    self.send(client_id, 'ze_pos', pos)
                 case 'set_ze_pos':
                     self.set_ze_pos(*args)
                 case 'set_voltage':
@@ -101,7 +108,7 @@ class TelescopeMotorController:
                     self.close()
                     break
                 case _:
-                    self.send_all('err', f'Unknown command "{command}" received from client "{client_id}".')
+                    self.send(client_id, 'err', f'Unknown command "{command}" received.')
 
     def test_init(self):
         if not self._initialized:
@@ -149,7 +156,6 @@ class TelescopeMotorController:
         self.az_pos = 0
         self.az_pos = self.get_ser_az_pos()
         print(f'Telescope AZ position is: {self.az_pos}')
-        self.az_vel = 0
 
         # Zenith Angle
         self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
@@ -170,7 +176,6 @@ class TelescopeMotorController:
         self.ze_pos = self.get_ser_ze_pos()
         print(f'Telescope ZA position is: {self.ze_pos}')
         self._initialized = True
-        self.ze_vel = 0
 
     def close(self):
         self._run = False
@@ -550,4 +555,8 @@ class TelescopeMotorController:
             print(response)
             self.ser_az.reset_input_buffer()
             self.ser_az.reset_output_buffer()
+
+
+def make_controller(queue: Queue, client_id: str, conn: Connection) -> TelescopeMotorController:
+    return TelescopeMotorController(queue, client_id, conn)
 
