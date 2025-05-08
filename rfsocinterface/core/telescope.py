@@ -1,3 +1,4 @@
+from __future__ import annotations
 from rfsocinterface.core.utils import analog_to_digital
 
 
@@ -13,64 +14,94 @@ from PySide6.QtCore import QMutex
 import pdb
 import time
 from multiprocessing.connection import Connection
+from multiprocessing import Queue
 from threading import Thread
+
+
+ZEPORT = 23
+AKD1 = "169.254.250.165"
+AKD2 = "169.254.250.166"  ##switches back and forth between these two channels when faults occur.
+TIMEOUT = 2
+BAUDRATE = 38400
+ADDR_FB1_P = 1610  ##This is the absolute position from the FB1 (resolver).
+ADDR_PL_FB = 588  ##This is the position loop feedback. Includes some offset parameter and error based on homing position. Appropriate for this application, though I need to figure out the resolution.
+GEAR_RATIO = 258
+
+AZ_OUT_CHANNEL = 1
+ZE_OUT_CHANNEL = 0
+
+ZERO_DATA = analog_to_digital(0, -10, 10, 16)
+
+AZ_BASE_SPEED = 1.5
+AZ_POS_TOL_DEG = .02
+AZ_HOME = 0
 ZE_BASE_SPEED = 0.3
 ZE_POS_TOL_DEG = .05
-AZ_POS_TOL_DEG = .02
+
 SPEED_MULTIPLIER = 0.35
 FAR_APPROACH_SEPARATION_DEG = 15
 ZE_APPROACH_SEPARATION_DEG = 0.5
-AZ_BASE_SPEED = 1.5
-ZERO_DATA = analog_to_digital(0, -10, 10, 16)
-ZEPORT = 23
-AKD1 = "169.254.250.165"
-TIMEOUT = 2
-BAUDRATE = 38400
+
 NEG_SW_LIM = -181.000
 POS_SW_LIM = 181.000
-ZE_OUT_CHANNEL = 0
-AZ_OUT_CHANNEL = 1
+NEG_ZE_SW_LIM = -np.inf
+POS_ZE_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
 
 
 class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
 
-    def __init__(self, conn: Connection):
+    def __init__(self, queue: Queue, client_id: str, conn: Connection):
         self._initialized = False
-        self.run = False
-        self.az_mutex = QMutex()
-        self.ze_mutex = QMutex()
-        self._active_jobs: list[Thread] = []
-        self._initialize_system()
-        self.conn = conn
+        self._run = False
+        self.queue = queue
+        self.connections: dict[str, Connection] = {}
+        self.add_connection(client_id, conn)
+        self.test_init()
         self._listener_loop()
+    
+    def add_connection(self, client_id: str, conn: Connection):
+        """Add a connection to teh telescope controleer"""
+        self.connections[client_id] = conn
+    
+    def send_all(self, command: str, *args):
+        for conn in self.connections.values():
+            conn.send([command, *args])
+    
+    def send(self, client_id: str, command: str, *args):
+        """Send a command to the telescope controller"""
+        if client_id in self.connections:
+            self.connections[client_id].send([command, *args])
+        else:
+            self.send_all('err', f'Unknown client "{client_id}".')
 
     def _listener_loop(self):
         while True:
-            command, *args = self.conn.recv()
-            print(f'Got command: {command}, args: {args}')
+            client_id, command, *args = self.queue.get()
+            # command, *args = self.conn.recv()
+            print(f'Client "{client_id}" sent command: "{command}", args: {args}')
             match command.lower():
                 case 'get_ser_az_pos':
                     pfb = self.get_ser_az_pos()
-                    self.conn.send(['az_pos', pfb])
+                    # self.send(client_id, 'az_pos', pfb)
                 case 'set_az_pos':
                     self.set_az_pos(*args)
                 case 'get_ser_ze_pos':
                     pos = self.get_ser_ze_pos()
-                    self.conn.send(['ze_pos', pos])
+                    # self.send(client_id, 'ze_pos', pos)
                 case 'set_ze_pos':
                     self.set_ze_pos(*args)
                 case 'set_voltage':
-                    self.run = True
+                    self._run = True
                     self.set_ao_value(*args)
                 case 'stop_telescope':
-                    self.run = False
+                    self._run = False
                     self.set_ao_zero()
                 case 'terminate':
                     self.close()
                     break
                 case _:
-                    self.conn.send(['err', f'Unknown command "{command}" received.'])
+                    self.send_all('err', f'Unknown command "{command}" received from client "{client_id}".')
 
     def test_init(self):
         if not self._initialized:
@@ -92,7 +123,7 @@ class TelescopeMotorController:
             # Set output to zero
             self.set_ao_zero()
         except OSError as e:
-            self.conn.send(['err', 'DAQ could not be initialized; Check comport and power supply'])
+            self.send_all('err', 'DAQ could not be initialized; Check comport and power supply')
             return
 
         # Init serial communication with S700 for high res positioning of AZ monitors
@@ -142,13 +173,13 @@ class TelescopeMotorController:
         self.ze_vel = 0
 
     def close(self):
-        self.run = False
+        self._run = False
         self.set_ao_zero()
         for job in self._active_jobs:
             job.join()
         self.ser_az.close()
         self.ser_ze.close()
-        self.conn.send(['done'])
+        self.send_all('done')
 
     def set_ao_value(self, data: float, channel: int):
         self.ao_device.a_out(channel, self.ul_range_out, self.ao_flags, data)
@@ -187,19 +218,19 @@ class TelescopeMotorController:
                 self.ser_az.reset_output_buffer()
                 self.az_pos = pfb
                 if self._initialized:
-                    self.conn.send(['az_pos', pfb])
+                    self.send_all('az_pos', pfb)
                 return pfb
         except ValueError:
-            self.conn.send([
+            self.send_all(
                 'err',
                 'Error communicating with AZ controller; '
                 'position set to most recent read.',
-            ])
+            )
             return old_pfb
 
     def set_az_pos(self, new_pos: int, scan_mode: bool=False):
-        self.conn.send(['az_pos_comm', new_pos])
-        self.run = True
+        self.send_all('az_pos_comm', new_pos)
+        self._run = True
         worker_thread = Thread(target=self._set_az_pos, args=(new_pos, scan_mode))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
@@ -223,7 +254,7 @@ class TelescopeMotorController:
             np.abs(pfb - new_pos) > AZ_POS_TOL_DEG
             and pfb > NEG_SW_LIM
             and pfb < POS_SW_LIM
-            and self.run
+            and self._run
         ):
             try:
                 if new_pos > pfb:
@@ -254,7 +285,7 @@ class TelescopeMotorController:
                 pfb_time = time.time()
                 pfb = self.get_ser_az_pos()
                 # self.azimuthUpdated.emit(pfb)
-                self.conn.send(['az_pos', pfb])
+                # self.conn.send(['az_pos', pfb])
 
                 if scan_mode:
                     position_data = np.append(position_data, [pfb, this_ze, pfb_time])
@@ -269,7 +300,7 @@ class TelescopeMotorController:
                 print("caught an exception regarding Float conversion")
                 break
         self.set_ao_zero()
-        self.run = False
+        self._run = False
         ## Read position again
         time.sleep(1)
         pfb = self.get_ser_az_pos()
@@ -287,7 +318,7 @@ class TelescopeMotorController:
     ):
         # worker = TelescopeMotionJob(self._az_scan_mode, az_start, az_stop, file, n_repeats, ze_dither, position_return)
         # self._active_jobs.append(worker)
-        self.run = True
+        self._run = True
         # worker.start()
         self._az_scan_mode(file, az_start, az_stop, n_repeats, ze_dither, position_return)
 
@@ -311,7 +342,7 @@ class TelescopeMotorController:
         self._set_az_pos(az_start - az_start_buffer)
 
         for i_rep in np.arange(n_repeats):
-            if not self.run:
+            if not self._run:
                 break
             if np.mod(i_rep, 2) == 0:
                 self._set_ze_pos(current_ze)
@@ -331,7 +362,7 @@ class TelescopeMotorController:
 
         # np.savez(position_data_file, az = position_data[0::3],el = position_data[1::3],time = position_data[2::3],az_start=AZ_start,
         #  az_stop=AZ_stop,el_start=np.nan,el_stop=np.nan)
-        self.run = False
+        self._run = False
         f = h5py.File(file, "a")
         f.create_dataset("az_tel", data=position_data[0::3])
         f.create_dataset("za_tel", data=position_data[1::3])
@@ -360,7 +391,7 @@ class TelescopeMotorController:
             az_speed = self.ser_az.read_until(b"\r\n")
             print("AZ speed set to: ", az_speed)  ###THIS MAY BREAK
             # self.azimuthVelocityChanged(az_speed)
-            self.conn.send(['az_vel', az_speed])
+            # self.send_all('az_vel', az_speed)
             self.ser_az.reset_input_buffer()
             self.ser_az.reset_output_buffer()
 
@@ -390,7 +421,7 @@ class TelescopeMotorController:
             pos = float(pos_str.split(' ')[0].split('>')[-1])
             self.ze_pos = pos
             if self._initialized:
-                self.conn.send(['ze_pos', pos])
+                self.send_all('ze_pos', pos)
             return pos
         except ValueError:
             print(
@@ -401,8 +432,8 @@ class TelescopeMotorController:
 
     def set_ze_pos(self, new_pos: int, scan_mode: bool=False):
         # self.zenithCommanded.emit(new_pos)
-        self.conn.send(['ze_pos_comm', new_pos])
-        self.run = True
+        self.send_all('ze_pos_comm', new_pos)
+        self._run = True
         worker_thread = Thread(target=self._set_ze_pos, args=(new_pos, scan_mode))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
@@ -413,14 +444,14 @@ class TelescopeMotorController:
 
         # confirm position
         pos = self.get_ser_ze_pos()
-        self.conn.send(['ze_pos', pos])
+        # self.conn.send(['ze_pos', pos])
         if scan_mode:
             this_az = self.get_ser_az_pos()
             position_data = []
         counter = 0
 
         # Run loop
-        while abs(pos - new_pos) > ZE_POS_TOL_DEG and self.run:
+        while abs(pos - new_pos) > ZE_POS_TOL_DEG and self._run:
             try:
                 # Choose direction of motion
                 if pos > new_pos:
@@ -445,7 +476,7 @@ class TelescopeMotorController:
 
                 self.set_ao_value(data_value, ZE_OUT_CHANNEL)
                 pos = self.get_ser_ze_pos()
-                self.conn.send(['ze_pos', pos])
+                # self.conn.send(['ze_pos', pos])
                 if scan_mode:
                     position_data = np.append(
                         position_data, [this_az, pos, time.time()]
@@ -463,13 +494,13 @@ class TelescopeMotorController:
                 # This code always executes after leaving the try statement
                 pass
 
-        self.run = False
+        self._run = False
         self.set_ao_zero()
         # self.zenithVelocityChanged.emit(0)
         ## Read position again
         time.sleep(0.1)
         pos = self.get_ser_ze_pos()
-        self.conn.send(['ze_pos', pos])
+        # self.conn.send(['ze_pos', pos])
         #        print ('EL Set to position: ', str(pos))
         #        print ('Position Set!')
         if scan_mode:
@@ -502,7 +533,7 @@ class TelescopeMotorController:
             self.ser_ze.readline()
             ze_speed = self.ser_ze.read_until(b"\r\n")
             print("ZA speed set to: ", ze_speed)  ###THIS MAY BREAK
-            self.zenithVelocityChanged(ze_speed)
+            # self.zenithVelocityChanged(ze_speed)
             self.ser_ze.reset_input_buffer()
             self.ser_ze.reset_output_buffer()
 
@@ -520,11 +551,3 @@ class TelescopeMotorController:
             self.ser_az.reset_input_buffer()
             self.ser_az.reset_output_buffer()
 
-
-ADDR_FB1_P = 1610  ##This is the absolute position from the FB1 (resolver).
-ADDR_PL_FB = 588  ##This is the position loop feedback. Includes some offset parameter and error based on homing position. Appropriate for this application, though I need to figure out the resolution.
-GEAR_RATIO = 258
-AKD2 = "169.254.250.166"  ##switches back and forth between these two channels when faults occur.
-AZ_HOME = 0
-NEG_ZE_SW_LIM = -np.inf
-POS_ZE_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?

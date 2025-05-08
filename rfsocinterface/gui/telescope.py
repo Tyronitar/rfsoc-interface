@@ -15,7 +15,7 @@ from rfsocinterface.gui.main_widget import MainWidget
 from typing import Callable, Concatenate, Any, TYPE_CHECKING
 import functools
 
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, Queue
 from multiprocessing.connection import Connection
 from threading import Thread
 
@@ -50,6 +50,11 @@ class TelescopeMotionJob(QThread):
         self.returned.emit(res)
 
 
+@classmethod
+def make_controller(queue: Queue, client_id: str, conn: Connection) -> TelescopeMotorController:
+    return TelescopeMotorController(queue, client_id, conn)
+
+
 class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None):
@@ -73,8 +78,9 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
         self.optical_pushButton.clicked.connect(self.take_pic)
 
         # self.ctrl = TelescopeMotorController(parent=self)
+        queue = Queue()
         self.conn_parent, self.conn_child = Pipe(duplex=True)
-        self.ctrl_process = Process(target=make_controller, args=(self.conn_child,))
+        self.ctrl_process = Process(target=make_controller, args=(queue, self.conn_child,))
         self.ctrl_process.start()
         self.listener_thread = Thread(target=self._connection_loop)
 
