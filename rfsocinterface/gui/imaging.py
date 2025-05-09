@@ -7,9 +7,9 @@ from PySide6.QtWidgets import QWidget, QCheckBox, QComboBox, QLineEdit, QStacked
 from kidpy3 import capture
 
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
-from rfsocinterface.gui.main_widget import MainWidget
+from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import PathLike, P
+from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command
 from rfsocinterface.gui.widgets.function import FunctionWidget, ArgumentType
 from rfsocinterface.core.telescope import TelescopeMotorController
 
@@ -34,9 +34,9 @@ class DitherPatternWidget(FunctionWidget):
         file = self.file_func()
         self.fn(self.command, file, *values)
 
-class ImagingWidget(MainWidget, Ui_ImagingWidget):
-    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
-        super().__init__(main_window, rfsocs, settings, parent=parent)
+class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
+    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None) -> None:
+        super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
 
         self._file =  '.'
@@ -73,32 +73,12 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         self.pushButton.clicked.connect(self.run)
         self.choose_pattern(0)
         
-        # Telescope Connection
-        self._conn_parent, self._conn_child = Pipe(duplex=False)
-        self._client_id = 'imaging_tab'
-        self._telescope_queue.put([self._client_id, 'add_connection', self._conn_child])
-        self.wait_for_command(
-            'add_connection_succesful',
-            err_msg=f'Unexpected response from telescope controller when adding connection {self._client_id}',
-        )
-    
-    def wait_for_command(self, command: str, err_msg: str=''):
-        if not err_msg:
-            err_msg = f'Error occured while waiting for command "{command}": '
-        while True:
-            response, *data = self._conn_parent.recv()
-            print(f'{self._client_id} got response: {response}, data: {data}')
-            if response.lower() == f'{command}':
-                break
-            elif response.lower() == 'err':
-                raise RuntimeError(f'{err_msg}: {data}')
-    
-    def issue_telescope_command(self, command: str, *args):
+    def run_telescope_scan(self, command: str, *args):
         # Tell the controller to start moving the telescope according to the scan type
         self._telescope_queue.put([self._client_id, command, *args])
 
         # Wait until the motor controller indicates the scan is complete
-        self.wait_for_command(
+        self.wait_for_telescope_command(
             f'{command}_complete',
             err_msg=f'Error occured while running command "{command}"',
         )
@@ -113,7 +93,7 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         return self._file
     
     def add_dither_pattern(self, label: str, command: str, args: list[tuple[str, ArgumentType]]):
-        pattern = DitherPatternWidget(self.issue_telescope_command, command, self.get_current_file, args=args, parent=self)
+        pattern = DitherPatternWidget(self.run_telescope_scan, command, self.get_current_file, args=args, parent=self)
         self.patterns.append(pattern)
         self.dither_comboBox.addItem(label)
         self.stacked_layout.addWidget(pattern)
@@ -139,12 +119,6 @@ class ImagingWidget(MainWidget, Ui_ImagingWidget):
         capture_thread = Thread(target=capture, args=(rfchans, self.active_pattern.call_function))
         capture_thread.start()
 
-    def closeEvent(self, event):
-        self._telescope_queue.put([self._client_id, 'remove_connection'])
-        self.wait_for_command('remove_connection_succesful')
-        self._conn_parent.close()
-        self._conn_child.close()
-        return super().closeEvent(event)
     
         
 

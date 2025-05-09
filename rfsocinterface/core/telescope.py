@@ -91,12 +91,10 @@ class TelescopeMotorController:
                     self.remove_connection(client_id)
                 case 'get_ser_az_pos':
                     pfb = self.get_ser_az_pos()
-                    self.send(client_id, 'az_pos', pfb)  # Is this necessary since it sends to all inside the method?
                 case 'set_az_pos':
                     self.set_az_pos(*args)
                 case 'get_ser_ze_pos':
                     pos = self.get_ser_ze_pos()
-                    self.send(client_id, 'ze_pos', pos)
                 case 'set_ze_pos':
                     self.set_ze_pos(*args)
                 case 'set_voltage':

@@ -13,6 +13,7 @@ from itertools import islice
 from numbers import Number
 import copy
 import sys
+from multiprocessing.connection import Connection
 
 import numpy as np
 import numpy.typing as npt
@@ -424,3 +425,14 @@ def gaussian_filter(x: npt.NDArray, sigma: tuple[float, float]) -> npt.NDArray:
         mode='reflect',
         truncate=1. / sigma[1],
     )
+
+def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg: str=''):
+    if not err_msg:
+        err_msg = f'Error occured while waiting for command "{command}": '
+    while True:
+        response, *data = conn.recv()
+        print(f'{id} got response: {response}, data: {data}')
+        if response.lower() == f'{command}':
+            break
+        elif response.lower() == 'err':
+            raise RuntimeError(f'{err_msg}: {data}')
