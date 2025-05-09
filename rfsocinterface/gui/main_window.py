@@ -1,7 +1,9 @@
 from pathlib import Path
 import yaml
 from multiprocessing import Queue, Process, Pipe
+
 from multiprocessing.connection import Connection
+from threading import Thread
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QGridLayout, QTabWidget
 from PySide6.QtCore import Qt, QCoreApplication
@@ -62,6 +64,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             'add_connection_succesful',
             err_msg=f'Error received from telescope controller when adding connection {self._client_id}',
         )
+        self._listener_thread = Thread(target=self._listener_loop)
+        self._listener_thread.start()
 
     def _make_initialization_tab(self):
         self.initialization_tab = QWidget()
@@ -124,7 +128,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.verticalLayout_6 = QVBoxLayout(self.imaging_tab)
         self.verticalLayout_6.setObjectName(u"verticalLayout_6")
         self.verticalLayout_6.addWidget(self.imaging_widget)
-        self.tabs[TabName.IMAGING] = self.imaging_tab
+        self.tabs[TabName.IMAGING] = self.imaging_widget
     
     def _additional_ui_setup(self):
         self.tabWidget = QTabWidget(self.centralwidget)
@@ -169,18 +173,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # curr_tab.adjustSize()
         # self.resize(self.minimumSizeHint())
         # self.adjustSize()
+    
+    def _listener_loop(self):
+        self.wait_for_telescope_command('done')
 
     def wait_for_telescope_command(self, command: str, err_msg: str=''):
         wait_for_telescope_command(self.telescope_parent_conn, self._client_id, command, err_msg=err_msg)
 
     def closeEvent(self, event):
+        self.hide()
         for tab in self.tabs.values():
             tab.close()
 
         if self.telescope_controller_process is not None:
             self.telescope_queue.put([self._client_id, 'terminate'])
-        self.wait_for_telescope_command('done')
-        self.telescope_controller_process.join()
+            self._listener_thread.join()
+            self.telescope_controller_process.join()
         return super().closeEvent(event)
 
 def move_to_center(win: QMainWindow, screen: QScreen):

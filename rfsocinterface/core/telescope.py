@@ -90,11 +90,11 @@ class TelescopeMotorController:
                 case 'remove_connection':
                     self.remove_connection(client_id)
                 case 'get_ser_az_pos':
-                    pfb = self.get_ser_az_pos()
+                    self.get_ser_az_pos()
                 case 'set_az_pos':
                     self.set_az_pos(*args)
                 case 'get_ser_ze_pos':
-                    pos = self.get_ser_ze_pos()
+                    self.get_ser_ze_pos()
                 case 'set_ze_pos':
                     self.set_ze_pos(*args)
                 case 'set_voltage':

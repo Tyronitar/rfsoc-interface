@@ -231,17 +231,6 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.update_az_err(az_err)
         self.update_ze_err(ze_err)
 
-    def wait_for_command(self, command: str, err_msg: str=''):
-        if not err_msg:
-            err_msg = f'Error occured while waiting for command "{command}": '
-        while True:
-            response, *data = self._conn_parent.recv()
-            print(f'{self._client_id} got response: {response}, data: {data}')
-            if response.lower() == f'{command}':
-                break
-            elif response.lower() == 'err':
-                raise RuntimeError(f'{err_msg}: {data}')
-    
     def closeEvent(self, event):
         self.timer.stop()
         self._telescope_queue.put([self._client_id, 'remove_connection'])
