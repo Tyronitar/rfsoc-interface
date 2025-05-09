@@ -192,6 +192,10 @@ class RFSOCWrapper:
                 return self.rfsoc.rf2
             case _:
                 raise ValueError(f'Invalid channel {channel}. Must be 1 or 2.')
+    
+    def get_channel_name(self, channel: int) -> str:
+        rfchan = self.get_channel(channel)
+        return f'{self.settings["name"]}_{rfchan.name}'
 
 def get_channel_from_text(text: str, rfsocs: list[RFSOCWrapper]) -> tuple[RFSOCWrapper, int]:
     if text == '':
