@@ -173,7 +173,10 @@ class ProcessedData(Updateable):
 
         if azel_exists:
             az_tel = azel_file['az_tel'][:]
-            za_tel = azel_file['el_tel'][:]
+            try:
+                za_tel = azel_file['el_tel'][:]
+            except:
+                za_tel = azel_file['za_tel'][:]
             timestamp_tel = azel_file['timestamp_tel'][:]
             vis = azel_file['optical_visibility'][0]
             if isinstance(vis, bytes):
@@ -340,7 +343,7 @@ class ProcessedData(Updateable):
             if np.size(no_pol > 0):
                 chanmask[no_pol] = -1
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
-        return cls(
+        pdata = cls(
             date,
             setnum,
             optical_image,
@@ -359,6 +362,8 @@ class ProcessedData(Updateable):
             detector_za,
             vis
         )
+        pdata.save()
+        return pdata
 
     #    print(dI_df.shape, dQ_df.shape, df_per_mK.shape, data_f.shape, data_mK.shape)
     def save(self):
@@ -591,7 +596,7 @@ class MapData(ProcessedData):
         this_fig.subplots_adjust(wspace=0, hspace=0)
         plt.show()
     #    pw.addPlot("Raw Image", this_fig)
-        # plt.savefig(self.folder + self.file_stub + '_Source_Finder_Image.png', bbox_inches='tight')
+        plt.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
 
 
 

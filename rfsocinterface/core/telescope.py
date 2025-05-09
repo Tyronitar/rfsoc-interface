@@ -234,14 +234,14 @@ class TelescopeMotorController:
             )
             return old_pfb
 
-    def set_az_pos(self, new_pos: int, scan_mode: bool=False):
+    def set_az_pos(self, new_pos: int, scan_mode: bool=False, stop_run: bool=True):
         self.send_all('az_pos_comm', new_pos)
         self._run = True
-        worker_thread = Thread(target=self._set_az_pos, args=(new_pos, scan_mode))
+        worker_thread = Thread(target=self._set_az_pos, args=(new_pos, scan_mode, stop_run))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
-    def _set_az_pos(self, new_pos: int, scan_mode: bool=False):
+    def _set_az_pos(self, new_pos: int, scan_mode: bool=False, stop_run: bool=True):
         # I want to accept a number in degrees, but put the number in the integer value desired by S700 controller
         # AZ controlled by 2 motors, the first to actually move the telescope, the second to put some tension on the gear for avoiding any backlash. Currently the secondary motor is disabled, probably providing little to no torque, but given the huge gearing ratio, it probably helps with backlash. The next easiest technique would be to run the secondary in "analog torque" mode, setting the zero value to some small torque. This could be improved by increasing the torque during motion and reducing when the first motor is not moving (probably by changing the zero value torque, since both analog outs are already in use). The proper way to do it, and the reason we were sold these S700 controllers is called RDP per the kollmorgen tech guy but my guess is he meant prd cogging mode.
         self.set_ao_zero()
@@ -306,7 +306,8 @@ class TelescopeMotorController:
                 print("caught an exception regarding Float conversion")
                 break
         self.set_ao_zero()
-        self._run = False
+        if stop_run:
+            self._run = False
         ## Read position again
         time.sleep(1)
         pfb = self.get_ser_az_pos()
@@ -334,7 +335,7 @@ class TelescopeMotorController:
             file: str,
             az_start: float,
             az_stop: float,
-            n_repeats: int=1,
+            n_repeats: int=2,
             ze_dither: float=0.04,
             position_return: bool=True,
     ):
@@ -346,24 +347,24 @@ class TelescopeMotorController:
         az_stop += current_az
 
         # Set start position in current thread
-        self._set_az_pos(az_start - az_start_buffer)
+        self._set_az_pos(az_start - az_start_buffer, stop_run=False)
 
         for i_rep in np.arange(n_repeats):
             if not self._run:
                 break
             if np.mod(i_rep, 2) == 0:
-                self._set_ze_pos(current_ze)
+                self._set_ze_pos(current_ze, stop_run=False)
                 this_position_data = self._set_az_pos(
-                    az_stop + az_end_buffer + 0.5, scan_mode=True
+                    az_stop + az_end_buffer + 0.5, scan_mode=True, stop_run=False
                 )
                 if i_rep == 0:
                     position_data = this_position_data
                 else:
                     position_data = np.append(position_data, this_position_data)
             if np.mod(i_rep, 2) == 1:
-                self._set_ze_pos(current_ze + ze_dither)
+                self._set_ze_pos(current_ze + ze_dither, stop_run=False)
                 this_position_data = self._set_az_pos(
-                    az_start - az_start_buffer - 0.5, scan_mode=True
+                    az_start - az_start_buffer - 0.5, scan_mode=True, stop_run=False,
                 )
                 position_data = np.append(position_data, this_position_data)
 
@@ -378,10 +379,10 @@ class TelescopeMotorController:
             f.create_dataset("za_tel", data=position_data[1::3])
             f.create_dataset("timestamp_tel", data=position_data[2::3])
             f.create_dataset("optical_visibility", data=['****'])
-        self._run = False
         if position_return:
-            self._set_az_pos(current_az)
-            self._set_ze_pos(current_ze)
+            self._set_az_pos(current_az, stop_run=False)
+            self._set_ze_pos(current_ze, stop_run=False)
+        self._run = False
         print("Scan Complete")
         self.send(client_id, 'az_scan_mode_complete', 0)
 
@@ -440,15 +441,15 @@ class TelescopeMotorController:
             )
             return old_pos
 
-    def set_ze_pos(self, new_pos: int, scan_mode: bool=False):
+    def set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True):
         # self.zenithCommanded.emit(new_pos)
         self.send_all('ze_pos_comm', new_pos)
         self._run = True
-        worker_thread = Thread(target=self._set_ze_pos, args=(new_pos, scan_mode))
+        worker_thread = Thread(target=self._set_ze_pos, args=(new_pos, scan_mode, stop_run))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
-    def _set_ze_pos(self, new_pos: float, scan_mode: bool=False):
+    def _set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True):
         # new_pos = float(new_pos)
         self.set_ao_zero()
 
@@ -504,7 +505,8 @@ class TelescopeMotorController:
                 # This code always executes after leaving the try statement
                 pass
 
-        self._run = False
+        if stop_run:
+            self._run = False
         self.set_ao_zero()
         # self.zenithVelocityChanged.emit(0)
         ## Read position again

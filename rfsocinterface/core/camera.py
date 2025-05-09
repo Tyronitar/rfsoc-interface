@@ -4,8 +4,7 @@ import h5py
 import cv2
 import matplotlib.pyplot as plt
 from vmbpy import VmbSystem
-from onrkidpy import get_filename
-from vimba_camera_control import SKPR_Camera_Control
+from rfsocinterface.core.utils import get_filename
 from rfsocinterface.core.utils import ensure_path
 
 class SKPR_Camera_Control:
@@ -25,16 +24,16 @@ class SKPR_Camera_Control:
             pic_data = np.flip(np.flip(frame.as_numpy_ndarray(),0),1)
 
             if save:
-                savefile = get_filename(type='optcam') + '.h5'
+                savefile = get_filename(file_type='optcam').with_suffix('.h5')
                 f = h5py.File(savefile, 'a')
                 f.create_dataset('optical_image', data=pic_data)
                 f.close()
 
-            im_hsv = cv2.cvtColor(pic_data,cv2.COLOR_RGB2HSV)
-            im_hsv[..., 1] = im_hsv[..., 1] * 2.
-            pic_data = cv2.cvtColor(im_hsv,cv2.COLOR_HSV2RGB)
-
             if show:
+                im_hsv = cv2.cvtColor(pic_data,cv2.COLOR_RGB2HSV)
+                im_hsv[..., 1] = im_hsv[..., 1] * 2.
+                pic_data = cv2.cvtColor(im_hsv,cv2.COLOR_HSV2RGB)
+
                 plt.imshow(pic_data)
                 plt.show()
             

@@ -2,6 +2,7 @@ import yaml
 from pathlib import Path
 from re import match
 from typing import Any
+import numpy as np
 import numpy.typing as npt
 
 from kidpy3 import RFSOC
@@ -149,10 +150,7 @@ class RFSOCWrapper:
     def set_frequency(self, channel: int, freq: float):
         valon = self.valon_a if channel == 1 else self.valon_b
         valon.set_frequency(channel, freq)
-        if channel == 1:
-            self.rfsoc.rf1.lo_freq = freq
-        else:
-            self.rfsoc.rf2.lo_freq = freq
+        self.get_channel(channel).lo_freq = freq
         self.settings[f'channel{channel}']['dsp']['loFreq'] = freq
     
     def get_tone_list(self, chan: int=1) -> tuple[npt.NDArray, npt.NDArray]:
@@ -160,6 +158,7 @@ class RFSOCWrapper:
     
     def set_tone_list(self, chan: int=1, tonelist: npt.ArrayLike=[], amplitudes: npt.ArrayLike=[]):
         self.rfsoc.set_tone_list(chan=chan, tonelist=tonelist, amplitudes=amplitudes)
+        self.get_channel(chan).n_tones = np.size(tonelist)
     
     def set_atten(self, addr: int, value: float):
         success, msg = self.atten_transceiver.set_atten(addr, value)

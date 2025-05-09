@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Callable, Any, Concatenate
 from pathlib import Path
 from threading import Thread
 from multiprocessing import Pipe
+import h5py
 
 from PySide6.QtWidgets import QWidget, QCheckBox, QComboBox, QLineEdit, QStackedLayout
 from kidpy3 import capture
@@ -9,9 +10,10 @@ from kidpy3 import capture
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command
+from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, get_filename
 from rfsocinterface.gui.widgets.function import FunctionWidget, ArgumentType
 from rfsocinterface.core.telescope import TelescopeMotorController
+from rfsocinterface.core.camera import SKPR_Camera_Control
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -38,6 +40,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None) -> None:
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
+        self.cam_ctrl = SKPR_Camera_Control()
 
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
@@ -51,9 +54,9 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
             'AZ Scan Mode',
             'az_scan_mode',
             [
-                (('Starting azimuth: ', ArgumentType.FLOAT), {}),
-                (('End azimuth: ', ArgumentType.FLOAT), {}),
-                (('N Repeats: ', ArgumentType.INT), {'default': 1}),
+                (('Starting azimuth: ', ArgumentType.FLOAT), {'default': -5}),
+                (('End azimuth: ', ArgumentType.FLOAT), {'default': 5}),
+                (('N Repeats: ', ArgumentType.INT), {'default': 2}),
                 (('Zenith angle dither: ', ArgumentType.FLOAT), {'default': 0.04}),
                 (('Return to starting position', ArgumentType.BOOL), {'default': True}),
             ],
@@ -93,7 +96,13 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         return self._file
     
     def add_dither_pattern(self, label: str, command: str, args: list[tuple[str, ArgumentType]]):
-        pattern = DitherPatternWidget(self.run_telescope_scan, command, self.get_current_file, args=args, parent=self)
+        pattern = DitherPatternWidget(
+            self.run_telescope_scan,
+            command,
+            lambda: get_filename(file_type='azel').with_suffix('.h5'),
+            args=args,
+            parent=self,
+        )
         self.patterns.append(pattern)
         self.dither_comboBox.addItem(label)
         self.stacked_layout.addWidget(pattern)
@@ -110,12 +119,19 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
             rfchan = rfsoc.get_channel(chan)
             save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'chan_{chan}')
             save_location.parent.mkdir(parents=True, exist_ok=True)
+            # Ensure the TOD file exists before getting the AZEL and optcam filenames
+            with h5py.File(save_location, 'w'):
+                pass
             rfchan.raw_filename = str(save_location)
             rfchans.append(rfchan)
         # Update the current save file
         self.get_file()
-        print(self.get_current_file())
+        # print(self.get_current_file())
         # TODO: validate the inputs somehow...
+        # Take optical image
+        self.cam_ctrl.take_pic(save=True)
+
+        # Dither telescope in separate thread
         capture_thread = Thread(target=capture, args=(rfchans, self.active_pattern.call_function))
         capture_thread.start()
 
