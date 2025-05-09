@@ -64,6 +64,7 @@ class TelescopeMotorController:
         self.connections[client_id] = conn
     
     def remove_connection(self, client_id: str):
+        self.send(client_id, 'remove_connection_succesful')
         del self.connections[client_id]
     
     def send_all(self, command: str, *args):
@@ -85,6 +86,7 @@ class TelescopeMotorController:
             match command.lower():
                 case 'add_connection':
                     self.add_connection(client_id, *args)
+                    self.send(client_id, 'add_connection_succesful')
                 case 'remove_connection':
                     self.remove_connection(client_id)
                 case 'get_ser_az_pos':
@@ -101,7 +103,7 @@ class TelescopeMotorController:
                     self._run = True
                     self.set_ao_value(*args)
                 case 'az_scan_mode':
-                    self.az_scan_mode(*args)
+                    self.az_scan_mode(client_id, *args)
                 case 'stop_telescope':
                     self._run = False
                     self.set_ao_zero()
@@ -315,6 +317,7 @@ class TelescopeMotorController:
 
     def az_scan_mode(
             self,
+            client_id: str,
             file: str,
             az_start: float,  # relative to current positions
             az_stop: float,
@@ -323,12 +326,13 @@ class TelescopeMotorController:
             position_return: bool=True,
     ):
         self._run = True
-        worker_thread = Thread(target=self._az_scan_mode, args=(file, az_start, az_stop, n_repeats, ze_dither, position_return))
+        worker_thread = Thread(target=self._az_scan_mode, args=(client_id, file, az_start, az_stop, n_repeats, ze_dither, position_return))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
     def _az_scan_mode(
             self,
+            client_id: str,
             file: str,
             az_start: float,
             az_stop: float,
@@ -365,18 +369,23 @@ class TelescopeMotorController:
                 )
                 position_data = np.append(position_data, this_position_data)
 
-        # np.savez(position_data_file, az = position_data[0::3],el = position_data[1::3],time = position_data[2::3],az_start=AZ_start,
-        #  az_stop=AZ_stop,el_start=np.nan,el_stop=np.nan)
-        self._run = False
+        # self._run is only changed if the telescope was stopped mid scan
+        # Don't save the telescope data in that case
+        if not self._run:
+            self.send(client_id, 'az_scan_mode_complete', 1)
+            return
+        
         with h5py.File(file, "a") as f:
             f.create_dataset("az_tel", data=position_data[0::3])
             f.create_dataset("za_tel", data=position_data[1::3])
             f.create_dataset("timestamp_tel", data=position_data[2::3])
             f.create_dataset("optical_visibility", data=['****'])
+        self._run = False
         if position_return:
             self._set_az_pos(current_az)
             self._set_ze_pos(current_ze)
         print("Scan Complete")
+        self.send(client_id, 'az_scan_mode_complete', 0)
 
     def jog_az_pos(self, speed: float=1):
         raise NotImplementedError("Jogging not implemented yet.")
@@ -555,6 +564,6 @@ class TelescopeMotorController:
             self.ser_az.reset_output_buffer()
 
 
-def make_controller(queue: Queue, client_id: str, conn: Connection) -> TelescopeMotorController:
-    return TelescopeMotorController(queue, client_id, conn)
+def make_controller(queue: Queue) -> TelescopeMotorController:
+    return TelescopeMotorController(queue)
 

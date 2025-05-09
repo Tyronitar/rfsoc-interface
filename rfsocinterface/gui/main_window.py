@@ -54,7 +54,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.telescope_parent_conn, self.telescope_child_conn = Pipe(duplex=False)
         self.telescope_controller_process = Process(target=make_controller, args=(self.telescope_queue,))
         self.telescope_controller_process.start()
-        self.telescope_queue.put(['MAIN', 'add_connection', self.telescope_child_conn])
+
+        self._client_id = 'MAIN'
+
+        self.telescope_queue.put([self._client_id, 'add_connection', self.telescope_child_conn])
+        response, *data = self.telescope_parent_conn.recv()
+        match response:
+            case 'add_connection_succesful':
+                pass
+            case 'err':
+                raise RuntimeError(f'Error from telescope controller: {data}')
+            case _:
+                raise RuntimeError(f'Unexpected response from telescope controller when adding connection {self._client_id}: {response}')
+
+        # Set up Optical Camera
 
     def _make_initialization_tab(self):
         self.initialization_tab = QWidget()
@@ -107,6 +120,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     
     def _make_imaging_tab(self):
         from rfsocinterface.gui.imaging import ImagingWidget
+        self._make_telescope_controller()
         self.imaging_tab = QWidget()
         self.imaging_tab.setObjectName(u"imaging_tab")
         self.tabWidget.addTab(self.imaging_tab, "")
@@ -160,17 +174,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # curr_tab.adjustSize()
         # self.resize(self.minimumSizeHint())
         # self.adjustSize()
+
+    def wait_for_command(self, command: str, err_msg: str=''):
+        if not err_msg:
+            err_msg = f'Error occured while waiting for command "{command}": '
+        while True:
+            response, *data = self.telescope_parent_conn.recv()
+            print(f'{self._client_id} got response: {response}, data: {data}')
+            if response.lower() == f'{command}':
+                break
+            elif response.lower() == 'err':
+                raise RuntimeError(f'{err_msg}: {data}')
     
     def closeEvent(self, event):
         for tab in self.tabs.values():
             tab.close()
 
         if self.telescope_controller_process is not None:
-            self.telescope_queue.put(['terminate'])
-        while self.telescope_parent_conn.poll():
-            command, *data = self.telescope_parent_conn.recv()
-            if command == 'done':
-                break
+            self.telescope_queue.put([self._client_id, 'terminate'])
+        self.wait_for_command('done')
         self.telescope_controller_process.join()
         return super().closeEvent(event)
 

@@ -66,16 +66,23 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
         self.controller.buttonGroup.buttonReleased.connect(self.stop_motion)
         self.manual_controlcheckBox.toggled.connect(self.toggle_jogging)
 
+        self._client_id = 'telescope_tab'
+        self._conn_parent, self._conn_child = Pipe(duplex=False)
+        self._listener_thread = Thread(target=self._connection_loop)
+
+        self._telescope_queue.put([self._client_id, 'add_connection', self._conn_child])
+        self.wait_for_command(
+            'add_connection_succesful',
+            err_msg=f'Unexpected response from telescope controller when adding connection {self._client_id}',
+        )
+
         # Set up Optical Camera
         self.cam_ctrl = SKPR_Camera_Control()
         self.optical_pushButton.clicked.connect(self.take_pic)
 
-        self._conn_parent, self._conn_child = Pipe(duplex=False)
-        self._telescope_queue.put(['telescope_tab', 'add_connection', self._conn_child])
-        self._listener_thread = Thread(target=self._connection_loop)
 
         # Initialize the numbers in the GUI
-        self._telescope_queue.put(['telescope_tab', 'get_ser_az_pos'])
+        self._telescope_queue.put([self._client_id, 'get_ser_az_pos'])
         command, az_pos = self._conn_parent.recv()
         if command != 'az_pos':
             print('Error getting initial azimuth position. Setting to 0.')
@@ -83,7 +90,7 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
         else:
             self.az_pos = self.last_az = az_pos
 
-        self._telescope_queue.put(['telescope_tab', 'get_ser_ze_pos'])
+        self._telescope_queue.put([self._client_id, 'get_ser_ze_pos'])
         command, ze_pos = self._conn_parent.recv()
         if command != 'ze_pos':
             print('Error getting initial zenith position. Setting to 0.')
@@ -105,7 +112,7 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
 
 
     def stop_motion(self):
-        self._telescope_queue.put(['telescope_tab', 'stop_telescope'])
+        self._telescope_queue.put([self._client_id, 'stop_telescope'])
     
     def take_pic(self):
         pic_data = self.cam_ctrl.take_pic(show=False)
@@ -131,18 +138,18 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
     def jog(self, btn: QAbstractButton): 
         match btn:
             case self.controller.up_toolButton:
-                self._telescope_queue.put(['telescope_tab', 'set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL])
+                self._telescope_queue.put([self._client_id, 'set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL])
             case self.controller.down_toolButton:
-                self._telescope_queue.put(['telescope_tab', 'set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL])
+                self._telescope_queue.put([self._client_id, 'set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL])
             case self.controller.left_toolButton:
-                self._telescope_queue.put(['telescope_tab', 'set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL])
+                self._telescope_queue.put([self._client_id, 'set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL])
             case self.controller.right_toolButton:
-                self._telescope_queue.put(['telescope_tab', 'set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL])
+                self._telescope_queue.put([self._client_id, 'set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL])
     
     def _connection_loop(self):
         while True:
             response, *data = self._conn_parent.recv()
-            print(f'Got response: {response}, data: {data}')
+            print(f'{self._client_id} got response: {response}, data: {data}')
             match response.lower():
                 case 'az_pos':
                     self.update_az_pos(*data)
@@ -154,18 +161,18 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
                     self.update_ze_cmd(*data)
                 case 'err':
                     raise RuntimeError(f'Error from telescope controller: {data}')
-                case 'done':
+                case 'done' | 'remove_connection_succesful':
                     break 
                 case _:
                     raise RuntimeError(f'Unknown response from telescope controller: {response}')
 
     def set_az_pos(self):
         new_pos = get_num_value(self.azimuth_setlineEdit)
-        self._telescope_queue.put(['telescope_tab', 'set_az_pos', new_pos])
+        self._telescope_queue.put([self._client_id, 'set_az_pos', new_pos])
     
     def set_ze_pos(self):
         new_pos = get_num_value(self.zenith_setlineEdit)
-        self._telescope_queue.put(['telescope_tab', 'set_ze_pos', new_pos])
+        self._telescope_queue.put([self._client_id, 'set_ze_pos', new_pos])
     
     @Slot(float)
     def update_az_pos(self, new_pos: float):
@@ -216,14 +223,25 @@ class TelescopeControlWidget(MainWidget, Ui_TelescopeControlWidget):
         ze_err = self.ze_pos - self.last_ze_commanded
         self.update_az_err(az_err)
         self.update_ze_err(ze_err)
+
+    def wait_for_command(self, command: str, err_msg: str=''):
+        if not err_msg:
+            err_msg = f'Error occured while waiting for command "{command}": '
+        while True:
+            response, *data = self._conn_parent.recv()
+            print(f'{self._client_id} got response: {response}, data: {data}')
+            if response.lower() == f'{command}':
+                break
+            elif response.lower() == 'err':
+                raise RuntimeError(f'{err_msg}: {data}')
     
     def closeEvent(self, event):
         self.timer.stop()
-        # self.conn_parent.send(['terminate'])
+        self._telescope_queue.put([self._client_id, 'remove_connection'])
+        # don't need to wait for success msg, since listener thread will eat the message
         self._listener_thread.join()
         self._conn_parent.close()
         self._conn_child.close()
-        self._telescope_queue.put(['telescope_tab', 'remove_connection'])
         return super().closeEvent(event)
     
 

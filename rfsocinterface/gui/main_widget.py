@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Iterator
 from functools import partial
+from multiprocessing import Queue
 
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt
@@ -9,7 +10,6 @@ from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
-    from multiprocessing import Queue
     from threading import Thread
 
 class MainWidget(QWidget):
@@ -21,7 +21,7 @@ class MainWidget(QWidget):
         self.settings = settings
     
     @property
-    def _telescope_queue(self) -> Queue | None:
+    def _telescope_queue(self) -> Queue:
         """Return the telescope queue for communication with the telescope controller."""
         return self.main_window.telescope_queue
 
