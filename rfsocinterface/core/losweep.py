@@ -267,7 +267,7 @@ class LoSweepData:
             val (float): The minimumum difference to flag in Hz. (defaults to 3000.0)
         """
         # self.diff_to_flag = (val * 1e3 / 2e8) * self.tone_list
-        self.diff_to_flag = (val / self.f_center) * self.tone_list
+        self.diff_to_flag = np.abs(val / self.f_center * self.tone_list)
     
     @classmethod
     @ensure_path(1, 2, 3)
@@ -378,7 +378,7 @@ class LoSweepData:
                         '|| old tone =',
                         f'{self.tone_list[i] * 1.0e-6:9.5f} MHz',
                         '|| difference (kHz) =',
-                        f'{diff:+5.3f}',
+                        f'{diff * 1e-3:+5.3f}',
                     )
             # if signal:
             #     signal.emit()
@@ -652,8 +652,6 @@ class LoSweep:
         self.flos = np.arange(flo_start, flo_stop, flo_step)  # MHz
         if pd is not None:
             pd.setMaximum(len(self.flos))
-            pd.setLabelText('Performing LO Sweep...')
-            # QApplication.processEvents()
         # flos = np.round(flos * 1e3)*1e-3
         log.info(f"len flos {self.flos.shape}")
         if pd is not None:

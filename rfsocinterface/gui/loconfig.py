@@ -19,7 +19,7 @@ from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
 from rfsocinterface.gui.initialization import InitializationWidget
-from rfsocinterface.core.utils import get_num_value, ensure_path, get_filename
+from rfsocinterface.core.utils import get_num_value, ensure_path, get_filename, PathLike
 from rfsocinterface.gui.main_widget import MainWidget
 
 # from kidpy3 import RFSOC
@@ -49,8 +49,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             or 'elevation'.
         tone_path (Path): The path to the selected tone list file.
     """
-    start_fit = Signal(object, QThreadJobProgressDialog)
-    start_plot = Signal(QThreadJobProgressDialog)
+    start_fit = Signal(object, QThreadJobProgressDialog, object, object, int, bool)
+    start_plot = Signal(object, DiagnosticsDialog, QThreadJobProgressDialog)
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
@@ -195,7 +195,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         QApplication.processEvents()
 
         sweep_data_future = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
-        sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan))
+        sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan, False))
 
         # For running on local computer
         # sweep_file = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
@@ -205,10 +205,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         # sweep_data = LoSweepData.from_file(tone_list, sweep_file, chanmask)
 
     @ensure_path(3)
-    def _save_and_fit_sweep(self, sweep: LoSweep, pd: QThreadJobProgressDialog, savefile: Path, rfsoc: RFSOCWrapper, chan: int):
+    def _save_and_fit_sweep(self, sweep: LoSweep, pd: QThreadJobProgressDialog, savefile: Path, rfsoc: RFSOCWrapper, chan: int, second_sweep: bool=False):
         sweep_data = self._wait_and_save(sweep, savefile, rfsoc, chan)
         dw = DiagnosticsDialog(None, savefile, parent=self)
-        dw.finished.connect(lambda result: self._finish_sweep(result, savefile, rfsoc, chan))
+        dw.finished.connect(lambda result: self._finish_sweep(result, savefile, sweep_data, rfsoc, chan, second_sweep))
+        dw.sweep = sweep_data
 
         pd.setValue(0)
         pd.setLabelText('Fitting sweep results...')
@@ -226,19 +227,21 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         QApplication.processEvents()
         fig, future = dw.plot(pd=pd)
         dw.set_figure(fig)
+        future.add_done_callback(lambda _: fig.tight_layout())
         future.add_done_callback(lambda _: dw.show())
     
-    @ensure_path(1)
-    def _finish_sweep(self, result: int, savefile: Path, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int):
+    @ensure_path(2)
+    def _finish_sweep(self, result: int, savefile: Path, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int, second_sweep: bool=False):
         if result == QDialog.DialogCode.Accepted:
             self.save_sweep(savefile, sweep_data, rfsoc, chan)
-        if self.second_sweep_checkBox.isChecked():
+        if self.second_sweep_checkBox.isChecked() and not second_sweep:
             self.second_sweep(savefile, rfsoc, chan)
     
     @ensure_path(1)
     def second_sweep(self, first_sweep_savefile: Path, rfsoc: RFSOCWrapper, chan: int):
         """Perform second LO sweep."""
-        savefile = first_sweep_savefile.with_suffix('_high_res.h5')
+        filename = first_sweep_savefile.stem + '_high_res.h5'
+        savefile = first_sweep_savefile.with_name(filename)
 
         channel_settings = rfsoc.settings[f'channel{chan}']
         valon = rfsoc.get_valon(chan)
@@ -261,12 +264,12 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         n_steps = full_span / freq_step
 
         pd = QThreadJobProgressDialog(labelText='Running Second LO Sweep...',  maximum=n_steps, max_workers=1, parent=self)
-        pd.setAutoClose(True)
+        pd.setAutoClose(False)
         pd.show()
         QApplication.processEvents()
 
         sweep_data_future = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
-        sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan))
+        sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan, True))
 
     def _wait_and_save(self, sweep: LoSweep, savefile: Path, rfsoc: RFSOCWrapper, chan: int):
         while not sweep._processed:

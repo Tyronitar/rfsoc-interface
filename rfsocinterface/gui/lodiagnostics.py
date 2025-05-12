@@ -119,10 +119,16 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.resonator.fit_f0 = self.temp_fit_f0
         self.resonator.fit_qc = self.temp_fit_qc
         self.resonator.fit_qi = self.temp_fit_qi
+        plt.close(self.canvas.canvas.figure)
+        # self.ax.clear()
+        # self.canvas.close()
         self.accept()
 
     def reject_changes(self):
         """Handle rejecting changes."""
+        plt.close(self.canvas.canvas.figure)
+        # self.ax.clear()
+        # self.canvas.close()
         self.reject()
     
     def move_line(self, x: float, update_line_edit: bool=True):
