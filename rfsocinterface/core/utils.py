@@ -9,11 +9,15 @@ from datetime import datetime
 import logging
 from concurrent.futures import Future, CancelledError
 import itertools
+from itertools import islice
 from numbers import Number
 import copy
+import sys
+from multiprocessing.connection import Connection
 
 import numpy as np
 import numpy.typing as npt
+from scipy import ndimage
 import redis
 from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QPoint, QSize, QCoreApplication
 from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QToolTip, QLabel
@@ -31,6 +35,7 @@ PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 # Number = TypeVar('Number', int, float, complex, bytes)
 FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
 
+GAUSSIAN_SIGMA = (0.5, 0.33)
 class TabName(StrEnum):
     """Possible tab names for the GUI."""
     INITIALIZATION = 'initialization'
@@ -226,7 +231,7 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
                     strings = [yymmdd, chan_name, 'LO_Sweep', hour_str]
                 case 'tonelist':
                     strings = [yymmdd, chan_name, 'tone_list', hour_str]
-        case 'tod' | 'azel':
+        case 'tod' | 'azel' | 'optcam':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:
                 setnum = 1001
@@ -234,7 +239,10 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
                 this_dir_files.sort()
                 offset = 1 if file_type == 'tod' else 0
                 setnum = int(this_dir_files[-1].name[-7:-3]) + offset
-            strings = [yymmdd, chan_name, file_type.upper(), f'set{setnum}']
+            if file_type.lower() == 'optcam':
+                strings = [yymmdd, 'optcam', f'set{setnum}']
+            else:
+                strings = [yymmdd, chan_name, file_type.upper(), f'set{setnum}']
         case 'attenuator':
             strings = [yymmdd, chan_name, f'attenuator{attenuation:02d}']
         case _:
@@ -343,9 +351,22 @@ class Result:
     value: Any
 
 
+def batched(iterable, n):
+    "Batch data into lists of length n. The last batch may be shorter."
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if n < 1:
+        raise ValueError('n must be >= 1')
+    it = iter(iterable)
+    while (batch := list(islice(it, n))):
+        yield batch
+
+
 def iter_chunks(iterable: iter, chunksize: int) -> iter:
     """Iterates over zipped iterables in chunks."""
-    yield from itertools.batched(iterable, chunksize)
+    if sys.version_info < (3, 12):
+        yield from batched(iterable, chunksize)
+    else:
+        yield from itertools.batched(iterable, chunksize)
 
 # End Pebble code
 
@@ -399,3 +420,22 @@ class CombinedFuture(Future[Iterable[R]]):
     def _coallesce_results(self):
         self._results = itertools.chain.from_iterable(self._results)
         self.set_result(self._results)
+
+def gaussian_filter(x: npt.NDArray, sigma: tuple[float, float]) -> npt.NDArray:
+    return ndimage.gaussian_filter(
+        x,
+        sigma,
+        mode='reflect',
+        truncate=1. / sigma[1],
+    )
+
+def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg: str=''):
+    if not err_msg:
+        err_msg = f'Error occured while waiting for command "{command}": '
+    while True:
+        response, *data = conn.recv()
+        print(f'{id} got response: "{response}", data: {data}')
+        if response.lower() == f'{command}':
+            break
+        elif response.lower() == 'err':
+            raise RuntimeError(f'{err_msg}: {data}')

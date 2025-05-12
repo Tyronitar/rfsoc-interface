@@ -19,7 +19,7 @@ from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
 from rfsocinterface.gui.initialization import InitializationWidget
-from rfsocinterface.core.utils import get_num_value, ensure_path
+from rfsocinterface.core.utils import get_num_value, ensure_path, get_filename
 from rfsocinterface.gui.main_widget import MainWidget
 
 # from kidpy3 import RFSOC
@@ -205,7 +205,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         # pd.canceled.connect(self.cancel_sweep)
 
         self.dw = DiagnosticsDialog(None, self.savefile, parent=self)
-        self.dw.accepted.connect(lambda: self.save_sweep(self.savefile))
+        self.dw.accepted.connect(lambda: self.save_sweep(self.savefile, rfsoc, chan))
         self.dw.setWindowModality(Qt.WindowModality.WindowModal)
 
         sweep_data_future = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
@@ -271,9 +271,16 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         # pb.start()
     
     @ensure_path(1)
-    def save_sweep(self, savefile: Path):
+    def save_sweep(self, savefile: Path, rfsoc: RFSOCWrapper, chan: int):
+        # Save sweep
         self.sweep_data.saveh5(savefile)
         self.sweep_data.savenp(savefile)
+
+        # Save new tones
+        tone_file = get_filename(file_type='tonelist', chan_name=rfsoc.get_channel_name(chan))
+        self.sweep_data.save_new_tone_list(tone_file)
+        _, curr_amp_list = rfsoc.get_tone_list(chan)
+        rfsoc.set_tone_list(chan, self.sweep_data.new_tone_list, amplitudes=curr_amp_list)
     
     # def plot_sweep(self, sweep: LoSweepData, dw: DiagnosticsDialog, pb: SequentialProgressBarDialog):
     #     pb.setLabelText('Plotting fit results...')

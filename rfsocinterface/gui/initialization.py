@@ -85,7 +85,8 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
             self.active_section.set_active('false')
 
         self.active_section = rfsoc_section
-        self.active_section.set_active('true')
+        if self.active_section is not None:
+            self.active_section.set_active('true')
 
     def section_clicked(self):
         section: Section = self.sender()

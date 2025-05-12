@@ -212,7 +212,7 @@ class ResonatorData:
     def fit(self, df: float, start: float = None) -> tuple[float, float, float]:
         """Perform a fit to find the resonance frequency."""
         if start is None:
-            start = self.baseband_tone
+            start = self.tone
         fit_f0 = simple_derivative_fits(df, self.freq, start, self.s21)
         fit_qi = 0.0
         fit_qc = 0.0
@@ -340,6 +340,11 @@ class LoSweepData:
     def flagged(self) -> npt.NDArray:
         """The indices of the resonators which are flagged."""
         return np.argwhere(np.abs(self.difference) > self.diff_to_flag)
+    
+    @property
+    def new_tone_list(self) -> npt.NDArray:
+        """The new base band frequencies, based on the fit"""
+        return self.fit_f0 - self.f_center
 
     def fit(self, do_print=False, pd: QThreadJobProgressDialog | None=None) -> Future:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
@@ -349,7 +354,7 @@ class LoSweepData:
         for i_chan in np.argwhere(self.chanmask == 1):
             self._fit_i(i_chan)
     
-    def _fit_i(self, i_chan, do_print: bool=False):
+    def _fit_i(self, i_chan, do_print: bool=True):
             # pull in the sweep data for this tone
             i = i_chan[0]
             resonator = self.resonator_data[i]
@@ -416,6 +421,10 @@ class LoSweepData:
     def savenp(self, fname: Path):
         path = fname.with_suffix('.npy')
         np.save(path, self.data)
+    
+    @ensure_path(1)
+    def save_new_tone_list(self, fname: Path):
+        np.save(fname, self.new_tone_list)
 
     @ensure_path(1)
     def saveh5(self, fname: Path):

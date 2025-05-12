@@ -11,85 +11,49 @@ from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 
 
-from rfsocinterface.core.data import load_time_ordered_IQ_data
+from rfsocinterface.core.data import rotate_to_amplitude_and_phase, flag_outliers, rotate_to_frequency_dissipation, remove_electronics_noise
+from rfsocinterface.core.map import Downsample
 from rfsocinterface.core.utils import ensure_path, ordinal
 
 XLIM = (0.1, 100)
 YLIM = (-110, -60)
-
-
-def rotate_to_amplitude_and_phase(input_IQ_data: npt.NDArray):
-    """Compute chnage of basis to amplitude/phase."""
-    assert input_IQ_data.ndim == 3
-    assert input_IQ_data.shape[0] == 2
-    atan = np.atan2(input_IQ_data[1, :, :], input_IQ_data[0, :, :])
-    rotation_angle = np.nanmedian(atan, axis=-1)
-
-    amp = np.cos(rotation_angle)[:, np.newaxis] * input_IQ_data[0, :, :] + np.sin(rotation_angle)[:, np.newaxis] * input_IQ_data[1, :, :]
-    phase = -np.sin(rotation_angle)[:, np.newaxis] * input_IQ_data[0, :, :] + np.cos(rotation_angle)[:, np.newaxis] * input_IQ_data[1, :, :]
-    new_data = np.zeros(shape=input_IQ_data.shape)
-    new_data[0] = amp
-    new_data[1] = phase
-    return new_data
+VALID_BASES = ['pa', 'iq', 'fd']
 
 
 def compute_noise_psd(
     input_time_ordered_data: npt.NDArray,
     timestamp: npt.NDArray,
     chanmask: npt.NDArray | None=None,
-    ds_factor: int=1,
     nominal_block_length: float=1e100,
     cut_time: float=0.0,
-    flag_outliers: bool=True,
-    outlier_sigma: float=4,
-    remove_noise: bool=True,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Compute noise PSD.
 
     input_time_ordered_data: 2 x N_res x N_sample or N_res x N_sample
     timestamp: N_sample
     chanmask: N_res
-    ds_factor: Downscaling factor
     nominal_block_length: seconds
     cut_time: seconds to cut from ends of data
-    hp_filter_template: high-pass filter
-    lp_filter_template: low-pass filter
     """
-    first_dimension = 2 if input_time_ordered_data.ndim == 3 else 1
+    first_dimension = input_time_ordered_data.shape[0] if input_time_ordered_data.ndim == 3 else 1
     if first_dimension == 1:
         input_data = input_time_ordered_data.reshape((1, *input_time_ordered_data.shape))
     else:
         input_data = input_time_ordered_data
     if chanmask is None:
         chanmask = np.ones_like(input_time_ordered_data[0, :, 0], dtype=int)
-        chanmask[1000:] = 0  # This is a fix since these channels seem to be bad
+        # chanmask[1000:] = 0  # This is a fix since these channels seem to be bad
 
     timestamp -= timestamp[0]
-
-    if ds_factor != 1:
-        new_input_data = signal.decimate(input_data, ds_factor)
-    else:
-        new_input_data = input_data
-
-    timestamp = timestamp[0::ds_factor]
     fs = 1. / np.median(np.diff(timestamp))
-
-    # Flag Outliers
-    if flag_outliers:
-        good_channels = np.where(chanmask == 1)[0]
-        n_flag, timestream_rms = flag(new_input_data[:, good_channels], fs, sigma=outlier_sigma)
-        med_flag = np.median(n_flag)
-        chanmask[np.where(np.any(n_flag > 2. * med_flag, axis=0))] = -1
-        _, _, bad_indices_0 = iteratively_reject_outliers(timestream_rms[0], sigma=outlier_sigma)
-        _, _, bad_indices_1 = iteratively_reject_outliers(timestream_rms[1], sigma=outlier_sigma)
-        bad_indices = np.union1d(bad_indices_0, bad_indices_1)
-        chanmask[bad_indices] = -1
 
     # Cut data at start and end
     if cut_time > 0:
         n_samples_to_cut = np.round(cut_time * fs).astype(int)
-        new_input_data = new_input_data[:, :, n_samples_to_cut:-n_samples_to_cut]
+        new_input_data = input_data[:, :, n_samples_to_cut:-n_samples_to_cut]
         timestamp = timestamp[n_samples_to_cut:-n_samples_to_cut]
+    else:
+        new_input_data = input_data
 
     # Determine the number of blocks for computing the PSD
     n_samples = np.size(timestamp)
@@ -99,63 +63,8 @@ def compute_noise_psd(
         n_blocks = 1
         n_samples_per_block = n_samples
     
-    if remove_noise:
-        data_clean = remove_correlatred_noise(new_input_data[:, np.where(chanmask == 1)[0], :])
-    else:
-        data_clean = new_input_data[:, np.where(chanmask == 1)[0], :]
-    freq, psd = _compute_psd(data_clean, fs, n_samples_per_block)
+    freq, psd = _compute_psd(new_input_data[:, np.where(chanmask == 1)[0], :], fs, n_samples_per_block)
     return chanmask, freq, psd
-
-
-def compute_templates(data: npt.NDArray) -> npt.NDArray:
-    """Compute templates for correlated noise removal.
-    
-    Args:
-        data (npt.NDArray): Input data (N_chan x N_detector x N_samples).
-    
-    Returns:
-        (npt.NDarray): Templates for noise removal (N_chan x 2 x N_samples).
-            Computed using the first two eigenmodes of the correlation matrix.
-    """
-        # subtract the mean from each detector
-    data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
-    
-    # select only the middle few detectors
-    deproj = data_meansub[:, 8:1008, :]
-
-    # create a separate correlation matrix for all data channels
-    correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
-    # calculate the eigenmodes of the correlation matrices
-    _, v = np.linalg.eig(correlation_matrices)
-
-    # create templates based on the 2 largest eigenmodes of each
-    templates = np.einsum('ijk,ijl->ikl', v[:,:,0:2], deproj)
-
-    # subtract the mean again to be sure
-    templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
-    return templates
-
-
-def remove_correlatred_noise(data: npt.NDArray) -> npt.NDArray:
-    """Remove correlated noise templates from the data.
-    
-    Args:
-        data (npt.NDArray): Input data (N_chan x N_detector x N_samples).
-    
-    Returns:
-        npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
-    """
-    templates = compute_templates(data)  # N_chan x 2 x N_samples
-
-    denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
-    numerator0 = np.einsum('ijk,ik->ij', data, templates[:, 0])  # N_chan x N_detector
-    corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
-    deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
-
-    numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
-    corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
-    clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
-    return clean_data
 
 
 def _compute_psd(
@@ -164,11 +73,7 @@ def _compute_psd(
         n_samples_per_block: int,
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """Compute the PSD."""
-    Z = data[0] + 1j*data[1]
-    norm = np.mean(np.abs(Z), axis=1)[:, np.newaxis]
-
-    f, psd = signal.welch(data / norm, fs, nperseg=n_samples_per_block)
-    return f, psd
+    return signal.welch(data, fs, nperseg=n_samples_per_block)
 
 
 @ensure_path(2)
@@ -179,31 +84,32 @@ def plot_psd(
         min_percentile: float=16,
         max_percentile: float=84,
         title: str | None=None,
-        basis: Literal['pa', 'iq']='pa',
-) -> tuple[Figure, Figure, Figure]:
+        basis: Literal['pa', 'iq', 'fd']='pa',
+) -> list[Figure]:
     """Create plots for the psd.
     
     Args:
         freq (npt.NDArray): Array of frequencies (N_freq).
-        psd: (npt.NDArray): PSD (2 x N_resonators x N_freq).
+        psd: (npt.NDArray): PSD (N_chan x N_resonators x N_freq).
         filename (Path): PDF filename to save the  plots to.
         min_perncentile (float, optional): Percentile of lower error bound for the plot.
             Defaults to 16.
         max_perncentile (float, optional): Percentile of upper error bound for the plot
             Defaults to 84.
         title (str, optional): Title to give to each plot. Defaults to None.
-        basis (str, optional): The basis of the data. Either IQ ('iq') or 
-            Phase/Amplitude ('pa'). Defaults to 'pa'.
+        basis (str, optional): The basis of the data. Either IQ ('iq'), 
+            Phase/Amplitude ('pa'), or Frequency/Dissipation ('fd'). Defaults to 'pa.'
     
     Returns:
-        (Figure, Figure, Figure): Three plots corresponding to the PSD along the
+        (list[Figure]): N_chan + 1 plots corresponding to the PSD along the
             first basis direction, second direction, and mean across both directions.
     
     Raises:
-        ValueError: If `basis` is not 'iq' or 'pa'.
+        ValueError: If `basis` is not a valid basis (see `VALID_BASES`).
     """
    
 
+    n_plots = psd.shape[0]
     psd_med = np.median(psd, axis=1)
     plot_data_med = 10 * np.log10(psd_med)
     psd_min = psd_med[:]
@@ -223,40 +129,36 @@ def plot_psd(
             titles = [title + ' - Phase', title + ' - Amplitude']
         case 'iq':
             titles = [title + ' - I', title + ' - Q']
+        case 'fd':
+            titles = [title + ' - Frequency', title + ' - Dissipation']
         case _:
-            raise ValueError(f'Invalid basis {basis}; must be one of ["pa", "iq"]')
+            raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
 
-    # Plot the data
-    fig0 = create_plot(
-        freq,
-        plot_data_min[0],
-        plot_data_med[0],
-        plot_data_max[0],
-        percentiles=(min_percentile, max_percentile),
-        title=titles[0],
-    )
-    fig1 = create_plot(
-        freq,
-        plot_data_min[1],
-        plot_data_med[1],
-        plot_data_max[1],
-        percentiles=(min_percentile, max_percentile),
-        title=titles[1],
-    )
-    fig2 = create_plot(
-        freq,
-        (plot_data_min[0] + plot_data_min[1]) / 2,
-        (plot_data_med[0] + plot_data_med[1]) / 2,
-        (plot_data_max[0] + plot_data_max[1]) / 2,
-        percentiles=(min_percentile, max_percentile),
-        title= title + ' - Combined',
-    )
+    # Plot 
+    figs = []
     with PdfPages(filename) as pdf:
-        pdf.savefig(fig0)
-        pdf.savefig(fig1)
-        pdf.savefig(fig2)
+        for i in range(n_plots):
+            fig = create_plot(
+                freq,
+                plot_data_min[i],
+                plot_data_med[i],
+                plot_data_max[i],
+                percentiles=(min_percentile, max_percentile),
+                title=titles[i],
+            )
+            pdf.savefig(fig)
+            figs.append(fig)
+        average_fig = create_plot(
+            freq,
+            np.sum(plot_data_min, axis=0) / n_plots,
+            np.sum(plot_data_med, axis=0) / n_plots,
+            np.sum(plot_data_max, axis=0) / n_plots,
+            percentiles=(min_percentile, max_percentile),
+            title= title + ' - Averaged',
+        )
+        pdf.savefig(average_fig)
 
-    return fig0, fig1, fig2
+    return figs
 
 def create_plot(
         xdata: npt.ArrayLike,
@@ -283,10 +185,13 @@ def create_plot(
     ax.set_xlim(0.1,100.)
     if np.median(ydata_min) > -110 and np.median(ydata_max) < -60:
         ax.set_ylim(-110, -60)
+        loc = 'upper right'
+    else:
+        loc = 'best'
     ax.set_xlabel('Frequency (Hz)', fontsize=16)
     ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
     ax.tick_params(labelsize=14)
-    ax.legend(fontsize=14, loc = 'upper right')
+    ax.legend(fontsize=14, loc=loc)
     if title is None:
         title = 'RFSoC Loopback PSD'
     ax.set_title(title, fontsize=16)
@@ -295,103 +200,86 @@ def create_plot(
     return fig
 
 
-def flag(data: npt.NDArray, fs: float, sigma: float=2):
-    """Flag data outliers."""
-    first_dimension, n_chan, _ = data.shape
-    n_flag = np.zeros((first_dimension, n_chan))
+# if __name__ == '__main__':
+#     pairs = [
+#         # ('equal_0-256', 'RFSoC Loopback with 1000 Tones Over Full Bandwidth'),
+#         # ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
+#         # ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
+#         # ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
+#         # ('data/default_0-256.hdf5', 'RFSoC Loopback with Default Tones'),
+#         # ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
+#         # ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
+#         # ('./data/default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
+#         # ('/data/20250404/20250404_chan_1_TOD_set1001.h5', 'ASU Readout'),
+#         ('/data/20250415/20250415_chan_1_TOD_set1004.h5', 'Loopback')
+#     ]
+#     for name, title in pairs:
+#         # input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
+#         input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'{name}')
+#         # input_data = input_data[:, :-5, :]
+#         rotated_data = rotate_to_amplitude_and_phase(input_data)
+#         # save_name = f'new_psd_{name}'
+#         save_name = Path(name).name
 
-    filt_cut = 1. / (0.5 * fs)
-    b, a = signal.butter(5, filt_cut, btype='high', analog=False)
-    hpf_data = signal.filtfilt(b, a, data)
-    for i_complex in range(first_dimension):
-        for i_res in range(n_chan):
-            inliers, _, _ = iteratively_reject_outliers(hpf_data[i_complex, i_res, :], sigma=sigma)
-            n_flag[i_complex, i_res] = hpf_data.shape[-1] - np.size(inliers)
-    return n_flag, np.std(hpf_data, axis=-1)
+#         chanmask, freq, noise_psd = compute_noise_psd(
+#             rotated_data,
+#             timestamp,
+#             chanmask=None,
+#             ds_factor=3,
+#             flag_outliers=True,
+#             nominal_block_length=10,
+#             outlier_sigma=2,
+#         )
+#         plot_psd(freq, noise_psd, f'plots/{save_name}.pdf', basis='pa', title=title)
+#         plt.close()
 
-
-def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[int, ...]=None):
-    """Return the data without outliers and the rejected indices."""
-    d = np.abs(data - np.median(data, axis=axis))
-    std = np.std(data, axis=axis)
-    ind = np.where(d < sigma * std)
-    return data[ind], ind
-
-
-def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None | int | tuple[int, ...]=None):
-    """Repeatedly perform outlier rejection until there are no more outliers.
-    
-    Args:
-        data (npt.ArrayLike): Input data (expected to be 1 dimensional)
-        sigma (float, optional): The standard deviation cutoff for outliers. Defaults
-            to 2.
-        axis (None or int or tuple of ints, optional): The axis or axes to perform the
-            outlier rejection along. Deafults to None.
-    
-    Returns:
-        (npt.NDArray, npt.NDArray, npt.NDArray): `data` with the outliers removed,
-        indices in `data` of the inliers, and indices in `data` of the outliers .
-    """
-    ind = np.arange(np.size(data))
-    # ind = np.ones_like(data, dtype=int)
-    # ind = get_all_indices(data)
-    if np.ndim(data) != 1:
-        data = np.flatten(data)
-    while True:
-        good_data, good_ind = reject_outliers(data[ind], sigma=sigma, axis=axis)
-        if np.size(ind) == np.size(good_ind):
-            break
-        ind = ind[good_ind]
-    return data[ind], ind, np.setdiff1d(np.arange(np.size(data)), ind)
 
 if __name__ == '__main__':
-    pairs = [
-        # ('equal_0-256', 'RFSoC Loopback with 1000 Tones Over Full Bandwidth'),
-        # ('equal_1-255', 'RFSoC Loopback with 1000 Tones in Range +/-[1, 255] MHz'),
-        # ('equal_5-251', 'RFSoC Loopback with 1000 Tones in Range +/-[5, 251] MHz'),
-        # ('equal_10-246', 'RFSoC Loopback with 1000 Tones in Range +/-[10, 246] MHz'),
-        ('data/default_0-256.hdf5', 'RFSoC Loopback with Default Tones'),
-        # ('default_1-255', 'RFSoC Loopback with Default Tones in Range +/-[1, 255] MHz'),
-        # ('default_5-251', 'RFSoC Loopback with Default Tones in Range +/-[5, 251] MHz'),
-        # ('./data/default_10-246', 'RFSoC Loopback with Default Tones in Range +/-[10, 246] MHz'),
-        # ('/data/20250404/20250404_chan_1_TOD_set1001.h5', 'ASU Readout'),
-        # ('/data/20250409/20250409_chan_1_TOD_set1001.h5', 'Single Tone')
-    ]
-    for name, title in pairs:
-        # input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'data/{name}.hdf5')
-        input_data, timestamp, chanmask = load_time_ordered_IQ_data(f'{name}')
-        input_data = input_data[:, :-5, :]
-        
-        rotated_data = rotate_to_amplitude_and_phase(input_data)
-        # save_name = f'new_psd_{name}'
-        save_name = Path(name).name
+    from rfsocinterface.core.data import ProcessedData
+    set_num = 1001
+    outlier_sigma = 2
+    ds_factor = 3
+    do_flag_outliers = True
+    remove_noise = False
 
-        chanmask, freq, noise_psd = compute_noise_psd(
-            rotated_data,
-            timestamp,
-            chanmask=None,
-            ds_factor=3,
-            flag_outliers=True,
-            nominal_block_length=10,
-            outlier_sigma=2,
-        )
-        plot_psd(freq, noise_psd, f'plots/{save_name}.pdf', basis='pa', title=title)
-        plt.close()
+    # set_num = 1001
+    # p = ProcessedData('20250409', set_num, losweep='20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
+    # p = ProcessedData('20250415', set_num, losweep='20250415_rfsoc2_LO_Sweep_hour16p1919.npy')
+    p = ProcessedData.from_tod('20250422', set_num, losweep='/data/20250422/20250422_rfsoc2_LO_Sweep_hour16p2775.h5')
+    # pdb.set_trace()
+    p.chanmask = np.ones_like(p.chanmask)
+    # input_data = p.data_mK
+    input_data = p.data_gain_phase
+    timestamp = p.timestamp
+
+    # Fix data dimensions
+    first_dimension = input_data.shape[0] if input_data.ndim == 3 else 1
+    if first_dimension == 1:
+        input_data = input_data.reshape((1, *input_data.shape))
 
 
-# if __name__ == '__main__':
-#     from rfsocinterface.core.data import ProcessedData
-#     p = ProcessedData('20250409', 1001, losweep='/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
-#     p.chanmask = np.array([1])
-#     rotated_data = rotate_to_amplitude_and_phase(p.data)
-#     chanmask, freq, noise_psd = compute_noise_psd(
-#         rotated_data,
-#         p.timestamp,
-#         chanmask=p.chanmask,
-#         ds_factor=3,
-#         flag_outliers=False,
-#         nominal_block_length=10,
-#         outlier_sigma=4,
-#         remove_noise=False,
-#     )
-#     plot_psd(freq, noise_psd, 'plots/20250409.pdf', basis='pa', title='Single Tone')
+    # Downsample the data
+    if ds_factor != 1:
+        # TODO
+        ds = Downsample(ds_factor=ds_factor)
+        p = ds.forward(p)
+
+    # Flag outliers
+    if do_flag_outliers:
+        p.chanmask = flag_outliers(p.data_gain_phase, p.fs, p.chanmask, sigma=outlier_sigma)
+
+    # Remove electronics noise
+    if remove_noise:
+        cleaned_pa_data = remove_electronics_noise(p.data_gain_phase)
+        # TODO:
+        # Rotate back to IQ
+        # Recompute all of the data
+        # Maybe, I should make RemoveElectronicsNoise a DataRoutine class that does all of this
+
+    chanmask, freq, noise_psd = compute_noise_psd(
+        p.gain_phase_angle / p.carrier_amplitude_norm(),
+        p.timestamp,
+        chanmask=p.chanmask,
+        nominal_block_length=10,
+    )
+    plot_psd(freq, noise_psd, f'plots/20250422_{set_num}.pdf', basis='fd', title='Loopback')
