@@ -254,19 +254,20 @@ class LoSweepData:
         self.chanmask = chanmask
         self.resonator_data = [ResonatorData(self, i) for i in range(self.nchan)]
 
-        self.fit_f0 = np.zeros(self.nchan)
+        self.fit_f0 = self.tone_list.copy()
         self.fit_qi = np.zeros(self.nchan)
         self.fit_qc = np.zeros(self.nchan)
         self.fit_f0[self.offres_ind] = tone_list[self.offres_ind]
         self.set_diff_to_flag()
     
-    def set_diff_to_flag(self, val: float=3.0):
+    def set_diff_to_flag(self, val: float=3e3):
         """Set the flagging threshold.
         
         Arguments:
-            val (float): The minimumum difference to flag in KHz. (defaults to 3.0)
+            val (float): The minimumum difference to flag in Hz. (defaults to 3000.0)
         """
-        self.diff_to_flag = (val * 1e3 / 2e8) * self.tone_list
+        # self.diff_to_flag = (val * 1e3 / 2e8) * self.tone_list
+        self.diff_to_flag = (val / self.f_center) * self.tone_list
     
     @classmethod
     @ensure_path(1, 2, 3)
@@ -698,7 +699,6 @@ class LoSweep:
         chanmask = np.ones_like(self.tone_list)
         self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), chanmask)
         self._processed = True
-        print("LO Sweep s21 file saved.")
 
 
 if __name__ == '__main__':

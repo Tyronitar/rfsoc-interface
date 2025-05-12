@@ -191,6 +191,15 @@ class RFSOCWrapper:
                 return self.rfsoc.rf2
             case _:
                 raise ValueError(f'Invalid channel {channel}. Must be 1 or 2.')
+
+    def get_valon(self, channel: int) -> Valon5009:
+        match channel:
+            case 1:
+                return self.valon_a
+            case 2:
+                return self.valon_b
+            case _:
+                raise ValueError(f'Invalid channel {channel}. Must be 1 or 2.')
     
     def get_channel_name(self, channel: int) -> str:
         rfchan = self.get_channel(channel)
