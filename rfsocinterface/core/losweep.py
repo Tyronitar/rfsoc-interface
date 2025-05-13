@@ -112,26 +112,19 @@ class ResonatorData:
                 frameon=False,
                 framealpha=0,
                 handlelength=0,
-                bbox_to_anchor=(0.01, 0.02),
                 alignment='center',
                 edgecolor='black',
-                # bbox_to_anchor=(-0.2,-0.15)
             )
             if self.flagged:
                 ax.set_facecolor('yellow')
         else:
             ax.legend(
-                [
-                    f'{self.idx:d}'
-                    + ', dS21='
-                    + f'{np.ptp(self.s21):4.1f}'
-                ],
+                [f'{self.idx:d}, dS21={np.ptp(self.s21):4.1f}'],
                 fontsize=6,
                 loc=3,
                 frameon=False,
                 framealpha=0,
                 handlelength=0,
-                bbox_to_anchor=(0.01, 0.02),
                 alignment='center',
                 edgecolor='black',
             )
@@ -321,6 +314,11 @@ class LoSweepData:
     def df(self) -> float:
         """The difference between two frequency data points, in Hz."""
         return self.freq[0, 1] - self.freq[0, 0]
+
+    @property
+    def onres_ind(self) -> npt.NDArray:
+        """The indices of frequencies that are on-resonance."""
+        return np.argwhere(self.chanmask == 1)
 
     @property
     def offres_ind(self) -> npt.NDArray:
@@ -691,10 +689,7 @@ class LoSweep:
         # set the LO back to the original frequency
         self.valon.set_frequency(valon5009.SYNTH_B, self.f_center * 1e-6)
 
-        # return (f, sweep_Z_f)
-        # TODO: Fix this
-        # chanmask = get_chanmask(chanmask_file)
-        chanmask = np.ones_like(self.tone_list)
+        chanmask = np.load(self.chanmask_file)
         self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), chanmask)
         self._processed = True
 

@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizeGrip,
     QFileDialog,
+    QAbstractButton
 )
 
 from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list
@@ -276,16 +277,22 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.set_sweep(sweep)
         self.savefile = Path(savefile)
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
-        self.buttonBox.accepted.connect(self.accept)
-        self.buttonBox.rejected.connect(self.close_without_saving)
+        self.buttonBox.clicked.connect(self.click_button_box)
         self.save_plots_pushButton.clicked.connect(self.save_plots_as)
 
         self.edited = False
     
+    def click_button_box(self, button: QAbstractButton):
+        if self.buttonBox.buttonRole(button) == QDialogButtonBox.ButtonRole.DestructiveRole:
+            self.close_without_saving()
+        elif self.buttonBox.buttonRole(button) == QDialogButtonBox.ButtonRole.AcceptRole:
+            self.accept()
+    
     def set_sweep(self, sweep: LoSweepData):
         self.sweep = sweep
         self.median_shift_label.setText(
-            f'Median shift (KHz): {np.median(self.sweep.difference) * 1e-3:.2f}')
+            f'Median shift (KHz): {np.median(self.sweep.difference[self.sweep.onres_ind]) * 1e-3:.2f}'
+        )
     
     def save_plots(self):
         savefile = self.savefile.with_suffix('.png')
@@ -308,7 +315,6 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
             else:
                 fig.savefig(fname)
     
-    
     def closeEvent(self, event: QCloseEvent):
         if self.edited:
             if not self.close_without_saving():
@@ -328,16 +334,16 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
             parent=self
         )
         msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
-        msg.setDefaultButton(QMessageBox.StandardButton.Discard)
+        msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
         ret = msg.exec()
         match ret:
             case QMessageBox.StandardButton.Save:
                 self.accept()
                 return True
             case QMessageBox.StandardButton.Cancel:
-                return False# Don't close
+                return False  # Don't close
             case QMessageBox.StandardButton.Discard:
-                self.destroy()
+                self.reject()
                 return True
             case _:
                 raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
@@ -365,7 +371,8 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.get_figure().draw_artist(ax)
         self.canvas.select_axis(self.canvas.selected_axes)
         self.median_shift_label.setText(
-            f'Median shift (KHz): {np.median(self.sweep.difference) * 1e-3:.2f}')
+            f'Median shift (KHz): {np.median(self.sweep.difference[self.sweep.onres_ind]) * 1e-3:.2f}'
+        )
     
     def set_edited(self):
         self.edited = True
@@ -454,3 +461,14 @@ if __name__ == '__main__':
 
     win.show()
     app.exec()
+
+if __name__ == '__main__':
+    app = QApplication()
+
+    sweep = LoSweepData.from_h5('/data/20250509/20250509_rfsoc2_LO_Sweep_hour13p8025.h5')
+    dw = DiagnosticsDialog(sweep, '')
+    dw.show()
+
+    app.exec()
+
+
