@@ -226,11 +226,11 @@ class Ui_LoConfigWidget(object):
 
         self.lo_gridLayout.addWidget(self.groupBox, 6, 0, 1, 3)
 
-        self.reveiw_tones_checkbox = QCheckBox(self.lo_settings_groupBox)
-        self.reveiw_tones_checkbox.setObjectName(u"reveiw_tones_checkbox")
-        self.reveiw_tones_checkbox.setChecked(True)
+        self.review_tones_checkbox = QCheckBox(self.lo_settings_groupBox)
+        self.review_tones_checkbox.setObjectName(u"review_tones_checkbox")
+        self.review_tones_checkbox.setChecked(True)
 
-        self.lo_gridLayout.addWidget(self.reveiw_tones_checkbox, 8, 1, 1, 1)
+        self.lo_gridLayout.addWidget(self.review_tones_checkbox, 8, 1, 1, 1)
 
         self.upload_checkBox = QCheckBox(self.lo_settings_groupBox)
         self.upload_checkBox.setObjectName(u"upload_checkBox")
@@ -366,12 +366,12 @@ class Ui_LoConfigWidget(object):
         self.filename_example_label.setText(QCoreApplication.translate("LoConfigWidget", u"Example:", None))
         self.filename_example_lineEdit.setText(QCoreApplication.translate("LoConfigWidget", u"YYYYMMDD_rfsocN_LO_Sweep_hourHH", None))
 #if QT_CONFIG(tooltip)
-        self.reveiw_tones_checkbox.setToolTip(QCoreApplication.translate("LoConfigWidget", u"Review the new tone list after the sweep", None))
+        self.review_tones_checkbox.setToolTip(QCoreApplication.translate("LoConfigWidget", u"Review the new tone list after the sweep", None))
 #endif // QT_CONFIG(tooltip)
 #if QT_CONFIG(whatsthis)
-        self.reveiw_tones_checkbox.setWhatsThis(QCoreApplication.translate("LoConfigWidget", u"Review the new tone list after the sweep. Unchecking this box will accept the input tone list", None))
+        self.review_tones_checkbox.setWhatsThis(QCoreApplication.translate("LoConfigWidget", u"Review the new tone list after the sweep. Unchecking this box will accept the input tone list", None))
 #endif // QT_CONFIG(whatsthis)
-        self.reveiw_tones_checkbox.setText(QCoreApplication.translate("LoConfigWidget", u"Review new tones", None))
+        self.review_tones_checkbox.setText(QCoreApplication.translate("LoConfigWidget", u"Review new tones", None))
         self.upload_checkBox.setText(QCoreApplication.translate("LoConfigWidget", u"Write new tone list to RFSoC", None))
         self.second_sweep_save_plots_checkBox.setText(QCoreApplication.translate("LoConfigWidget", u"Save resonator plots", None))
         self.restore_defaults_pushButton.setText(QCoreApplication.translate("LoConfigWidget", u"Restore Defaults", None))

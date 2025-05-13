@@ -311,11 +311,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         """Callback for when the "show diagnostics" box is clicked."""
         if self.show_diagnostics_checkBox.isChecked():
             self.only_flag_checkBox.show()
-            self.reveiw_tones_checkbox.show()
+            self.review_tones_checkbox.show()
             self.save_plots_CheckBox.show()
         else:
             self.only_flag_checkBox.hide()
-            self.reveiw_tones_checkbox.hide()
+            self.review_tones_checkbox.hide()
             self.save_plots_CheckBox.hide()
 
     def check_second_sweep(self):

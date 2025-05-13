@@ -411,7 +411,7 @@
            </widget>
           </item>
           <item row="8" column="1">
-           <widget class="QCheckBox" name="reveiw_tones_checkbox">
+           <widget class="QCheckBox" name="review_tones_checkbox">
             <property name="toolTip">
              <string>Review the new tone list after the sweep</string>
             </property>
