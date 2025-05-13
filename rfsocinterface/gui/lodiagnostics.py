@@ -9,6 +9,7 @@ from concurrent.futures import Future
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backend_bases import MouseButton, MouseEvent
+from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, SignalInstance
 from PySide6.QtGui import QDoubleValidator, QCloseEvent
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
     QLayout,
     QPushButton,
     QSizeGrip,
+    QFileDialog,
 )
 
 from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list
@@ -271,13 +273,34 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
-        self.sweep = sweep
+        self.set_sweep(sweep)
         self.savefile = Path(savefile)
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.close_without_saving)
+        self.save_plots_pushButton.clicked.connect(self.save_plots)
 
         self.edited = False
+    
+    def set_sweep(self, sweep: LoSweepData):
+        self.sweep = sweep
+        self.median_shift_label.setText(
+            f'Median shift (KHz): {self.sweep.difference * 1e-3:.2f}')
+    
+    def save_plots(self):
+        folder = self.savefile.parent
+        fname, _ = QFileDialog.getSaveFileName(
+            parent=self,
+            dir=folder,
+            caption='Save Plot',
+            filter='Images (*.png *.jpg *.xpm);;PDF (*.pdf);;All Files (*)'
+        )
+        if fname:
+            if Path(fname).suffix == 'pdf':
+                with PdfPages(fname) as pdf:
+                    pdf.savefig(self.canvas.canvas.figure, dpi=DPI)
+            else:
+                plt.savefig(fname, self.canvas.canvas.figure, dpi=DPI)
     
     def closeEvent(self, event: QCloseEvent):
         if self.edited:

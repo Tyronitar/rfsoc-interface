@@ -19,7 +19,7 @@ from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
 from rfsocinterface.gui.initialization import InitializationWidget
-from rfsocinterface.core.utils import get_num_value, ensure_path, get_filename, PathLike
+from rfsocinterface.core.utils import get_num_value, ensure_path, get_filename, PathLike, TabName
 from rfsocinterface.gui.main_widget import MainWidget
 
 # from kidpy3 import RFSOC
@@ -76,9 +76,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             self.update_filename_example
         )
         
-        self.dialog_button_box.accepted.connect(self.run_sweeps)
-        self.dialog_button_box.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self.set_defaults)   
-        self.channel_toolButton.clicked.connect(self.open_channel_in_initialization_tab)    
+        self.run_pushButton.clicked.connect(self.run_sweeps)
+        self.restore_defaults_pushButton.clicked.connect(self.set_defaults)
+        self.channel_toolButton.clicked.connect(self.open_channels_in_initialization_tab)    
     
     def set_defaults(self):
         defaults = self.settings['defaults']['loSweep']
@@ -106,27 +106,25 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.lo_gridLayout.addWidget(self.channel_error_label, 1, 1)
         self.channel_error_label.hide()
     
-    def open_channel_in_initialization_tab(self):
-        # TODO: Fix this
-        channels = self.get_selected_channels(self.channel_comboBox)
-        rfsoc, chan = self.get_selected_channels(self.channel_comboBox)
-        tab_idx = self.main_window.tabWidget.indexOf(self.main_window.initialization_tab)
-        if 'initialization' in self.main_window.tabs:
-            init_tab: InitializationWidget = self.main_window.tabs['initialization']
-            tab_idx = self.main_window.index('initialization')
+    def open_channels_in_initialization_tab(self):
+        try:
+            init_tab = self.main_window.tabs[TabName.INITIALIZATION]
+        except KeyError:
+            return
         init_tab.collapse_all(recursive=True)
-        rfsoc_idx = self.rfsocs.index(rfsoc)
-        rfsoc_section, rfsoc_wid = init_tab.items[rfsoc_idx]
-        rfsoc_section.expand()
-        match chan:
-            case 1:
-                rfsoc_wid.channel1_section.expand()
-            case 2:
-                rfsoc_wid.channel2_section.expand()
-            case _:
-                raise ValueError(f'Invalid channel number: {chan}')
+        for rfsoc, chan in self.get_selected_channels(self.channel_comboBox)
+            rfsoc_idx = self.rfsocs.index(rfsoc)
+            rfsoc_section, rfsoc_wid = init_tab.items[rfsoc_idx]
+            rfsoc_section.expand()
+            match chan:
+                case 1:
+                    rfsoc_wid.channel1_section.expand()
+                case 2:
+                    rfsoc_wid.channel2_section.expand()
+                case _:
+                    raise ValueError(f'Invalid channel number: {chan}')
         init_tab.set_active_section(rfsoc_section)
-        self.main_window.tabWidget.setCurrentIndex(tab_idx)
+        self.main_window.set_active_tab(TabName.INITIALIZATION)
     
     def run_sweeps(self):
         try:
@@ -207,9 +205,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     @ensure_path(3)
     def _save_and_fit_sweep(self, sweep: LoSweep, pd: QThreadJobProgressDialog, savefile: Path, rfsoc: RFSOCWrapper, chan: int, second_sweep: bool=False):
         sweep_data = self._wait_and_save(sweep, savefile, rfsoc, chan)
-        dw = DiagnosticsDialog(None, savefile, parent=self)
-        dw.finished.connect(lambda result: self._finish_sweep(result, savefile, sweep_data, rfsoc, chan, second_sweep))
-        dw.sweep = sweep_data
+        
+        # Make diagnostics window and setup connections
+        dw = DiagnosticsDialog(sweep_data, savefile, parent=self)
+        dw.finished.connect(lambda result: self._finish_sweep(result, savefile, sweep_data, rfsoc, chan, dw, second_sweep))
+        dw.upload_pushButton.connect(lambda: self._write_new_tones(sweep_data, rfsoc, chan))
 
         pd.setValue(0)
         pd.setLabelText('Fitting sweep results...')
@@ -231,12 +231,26 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         future.add_done_callback(lambda _: dw.show())
     
     @ensure_path(2)
-    def _finish_sweep(self, result: int, savefile: Path, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int, second_sweep: bool=False):
-        if result == QDialog.DialogCode.Accepted:
-            self.save_sweep(savefile, sweep_data, rfsoc, chan)
-        if self.second_sweep_checkBox.isChecked() and not second_sweep:
-            self.second_sweep(savefile, rfsoc, chan)
-    
+    def _finish_sweep(self, result: int, savefile: Path, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int, dw: DiagnosticsDialog, second_sweep: bool=False):
+        # If the sweep was discarded, close without saving anything
+        if result == QDialog.DialogCode.Rejected:
+            return
+        self.save_sweep(savefile, sweep_data, rfsoc, chan)
+        if not second_sweep:
+            if self.second_sweep_checkBox.isChecked():
+                self._write_new_tones(sweep_data, rfsoc, chan)
+                self.second_sweep(savefile, rfsoc, chan)
+                return
+            if self.upload_checkBox.isChecked():
+                self._write_new_tones(sweep_data, rfsoc, chan)
+            if self.save_plots_CheckBox.isChecked():
+                dw.save_plots()
+                plt.close('all')
+        else:
+            if self.second_sweep_save_plots_checkBox.isChecked():
+                dw.save_plots()
+                plt.close('all')
+            
     @ensure_path(1)
     def second_sweep(self, first_sweep_savefile: Path, rfsoc: RFSOCWrapper, chan: int):
         """Perform second LO sweep."""
@@ -279,18 +293,20 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         sweep_data.set_diff_to_flag(get_num_value(self.flagging_lineEdit, float) * 1e3)
         self.save_sweep(savefile, sweep_data, rfsoc, chan)
         return sweep_data
-
-    @ensure_path(1)
-    def save_sweep(self, savefile: Path, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int):
-        # Save sweep
-        sweep_data.saveh5(savefile)
-        sweep_data.savenp(savefile)
-
-        # Save new tones
+    
+    def _write_new_tones(self, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int):
+        """Write the new tones from fitting an LO Sweep to the RFSoC"""
         tone_file = get_filename(file_type='tonelist', chan_name=rfsoc.get_channel_name(chan))
         sweep_data.save_new_tone_list(tone_file)
-        _, curr_amp_list = rfsoc.get_tone_list(chan)
+        _, curr_amp_list = rfsoc.get_tone_list(chan)  # Keep current amplitudes
         rfsoc.set_tone_list(chan, sweep_data.new_tone_list, amplitudes=curr_amp_list)
+        print('Wrote new tone list to RFSoC')
+
+    @ensure_path(1)
+    def save_sweep(self, savefile: Path, sweep_data: LoSweepData):
+        sweep_data.saveh5(savefile)
+        sweep_data.savenp(savefile)
+        print(f'Saved LO sweep data to {savefile}')
     
     def check_diagnostics(self):
         """Callback for when the "show diagnostics" box is clicked."""
