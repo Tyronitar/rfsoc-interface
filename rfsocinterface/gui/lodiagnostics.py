@@ -278,29 +278,36 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.close_without_saving)
-        self.save_plots_pushButton.clicked.connect(self.save_plots)
+        self.save_plots_pushButton.clicked.connect(self.save_plots_as)
 
         self.edited = False
     
     def set_sweep(self, sweep: LoSweepData):
         self.sweep = sweep
         self.median_shift_label.setText(
-            f'Median shift (KHz): {self.sweep.difference * 1e-3:.2f}')
+            f'Median shift (KHz): {np.median(self.sweep.difference) * 1e-3:.2f}')
     
     def save_plots(self):
+        savefile = self.savefile.with_suffix('.png')
+        self.get_figure().savefig(savefile)
+        print(f'Saved plots to {savefile}')
+
+    def save_plots_as(self):
         folder = self.savefile.parent
         fname, _ = QFileDialog.getSaveFileName(
             parent=self,
-            dir=folder,
             caption='Save Plot',
+            dir=str(folder),
             filter='Images (*.png *.jpg *.xpm);;PDF (*.pdf);;All Files (*)'
         )
         if fname:
+            fig = self.get_figure()
             if Path(fname).suffix == 'pdf':
                 with PdfPages(fname) as pdf:
-                    pdf.savefig(self.canvas.canvas.figure, dpi=DPI)
+                    pdf.savefig(fig)
             else:
-                plt.savefig(fname, self.canvas.canvas.figure, dpi=DPI)
+                fig.savefig(fname)
+    
     
     def closeEvent(self, event: QCloseEvent):
         if self.edited:
@@ -357,6 +364,8 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.get_figure().draw_artist(ax.patch)
         self.get_figure().draw_artist(ax)
         self.canvas.select_axis(self.canvas.selected_axes)
+        self.median_shift_label.setText(
+            f'Median shift (KHz): {np.median(self.sweep.difference) * 1e-3:.2f}')
     
     def set_edited(self):
         self.edited = True

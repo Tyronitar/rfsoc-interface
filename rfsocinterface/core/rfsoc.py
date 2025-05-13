@@ -125,8 +125,12 @@ class RFSOCWrapper:
     def make_kidpy_rfsoc(self) -> RFSOC:
         # TODO: Use a dictionary not a YAML file
         rfsoc = RFSOC(self.to_kidpy())
-        rfsoc.rf1.name = 'rfsoc2'
-        rfsoc.rf1.tile_number = 2
+        rfsoc.rf1.name = self.settings['channel1'].get('name', 'chan1')
+        rfsoc.rf2.name = self.settings['channel2'].get('name', 'chan2')
+        tones1, _ = rfsoc.get_tone_list(1)
+        tones2, _ = rfsoc.get_tone_list(2)
+        rfsoc.rf1.ntones = np.size(tones1)
+        rfsoc.rf2.ntones = np.size(tones2)
         return rfsoc
         # yaml_contents = self.to_kidpy()
         # fname = f'{self.settings['name']}.yml'

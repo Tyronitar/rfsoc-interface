@@ -163,8 +163,8 @@ class ResonatorData:
 
     @property
     def difference(self) -> float:
-        """float: The absolute difference in the fitted value and the original tone, in Hz."""
-        return np.abs(self.data.fit_f0[self.idx] - self.data.tone_list[self.idx])
+        """float: The difference in the fitted value and the original tone, in Hz."""
+        return self.data.fit_f0[self.idx] - self.data.tone_list[self.idx]
 
     @property
     def is_onres(self) -> bool:
@@ -184,7 +184,7 @@ class ResonatorData:
     @fit_f0.setter
     def fit_f0(self, val: float):
         self.data.fit_f0[self.idx] = val
-        self.flagged = self.difference > self.data.diff_to_flag[self.idx]
+        self.flagged = np.abs(self.difference) > self.data.diff_to_flag[self.idx]
 
     @property
     def fit_qi(self) -> float:

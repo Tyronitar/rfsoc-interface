@@ -112,7 +112,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         except KeyError:
             return
         init_tab.collapse_all(recursive=True)
-        for rfsoc, chan in self.get_selected_channels(self.channel_comboBox)
+        for rfsoc, chan in self.get_selected_channels(self.channel_comboBox):
             rfsoc_idx = self.rfsocs.index(rfsoc)
             rfsoc_section, rfsoc_wid = init_tab.items[rfsoc_idx]
             rfsoc_section.expand()
@@ -209,7 +209,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         # Make diagnostics window and setup connections
         dw = DiagnosticsDialog(sweep_data, savefile, parent=self)
         dw.finished.connect(lambda result: self._finish_sweep(result, savefile, sweep_data, rfsoc, chan, dw, second_sweep))
-        dw.upload_pushButton.connect(lambda: self._write_new_tones(sweep_data, rfsoc, chan))
+        dw.upload_pushButton.clicked.connect(lambda: self._write_new_tones(sweep_data, rfsoc, chan))
 
         pd.setValue(0)
         pd.setLabelText('Fitting sweep results...')
@@ -235,17 +235,16 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         # If the sweep was discarded, close without saving anything
         if result == QDialog.DialogCode.Rejected:
             return
-        self.save_sweep(savefile, sweep_data, rfsoc, chan)
+        self.save_sweep(savefile, sweep_data)
         if not second_sweep:
-            if self.second_sweep_checkBox.isChecked():
-                self._write_new_tones(sweep_data, rfsoc, chan)
-                self.second_sweep(savefile, rfsoc, chan)
-                return
-            if self.upload_checkBox.isChecked():
-                self._write_new_tones(sweep_data, rfsoc, chan)
             if self.save_plots_CheckBox.isChecked():
                 dw.save_plots()
                 plt.close('all')
+            if self.second_sweep_checkBox.isChecked():
+                self._write_new_tones(sweep_data, rfsoc, chan)
+                self.second_sweep(savefile, rfsoc, chan)
+            elif self.upload_checkBox.isChecked():
+                self._write_new_tones(sweep_data, rfsoc, chan)
         else:
             if self.second_sweep_save_plots_checkBox.isChecked():
                 dw.save_plots()
@@ -291,7 +290,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             time.sleep(0.1)
         sweep_data = sweep.data
         sweep_data.set_diff_to_flag(get_num_value(self.flagging_lineEdit, float) * 1e3)
-        self.save_sweep(savefile, sweep_data, rfsoc, chan)
+        self.save_sweep(savefile, sweep_data)
         return sweep_data
     
     def _write_new_tones(self, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int):
@@ -312,17 +311,23 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         """Callback for when the "show diagnostics" box is clicked."""
         if self.show_diagnostics_checkBox.isChecked():
             self.only_flag_checkBox.show()
+            self.reveiw_tones_checkbox.show()
+            self.save_plots_CheckBox.show()
         else:
             self.only_flag_checkBox.hide()
+            self.reveiw_tones_checkbox.hide()
+            self.save_plots_CheckBox.hide()
 
     def check_second_sweep(self):
         """Callback for when the "perform second sweep" box is clicked."""
         if self.second_sweep_checkBox.isChecked():
             self.second_sweep_df_label.show()
             self.second_sweep_df_lineEdit.show()
+            self.second_sweep_save_plots_checkBox.show()
         else:
             self.second_sweep_df_label.hide()
             self.second_sweep_df_lineEdit.hide()
+            self.second_sweep_save_plots_checkBox.hide()
 
     def swap_filename_suffix(self, button: QRadioButton):
         """Callback for when the filename suffix is changed."""
