@@ -78,14 +78,22 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         
     def run_telescope_scan(self, command: str, *args):
         # Tell the controller to start moving the telescope according to the scan type
-        self._telescope_queue.put([self._client_id, command, *args])
+        self.make_map()
+        # self._telescope_queue.put([self._client_id, command, *args])
 
-        # Wait until the motor controller indicates the scan is complete
-        self.wait_for_telescope_command(
-            f'{command}_complete',
-            err_msg=f'Error occured while running command "{command}"',
-        )
-        print(f'{command} completed.')
+        # # Wait until the motor controller indicates the scan is complete
+        # self.wait_for_telescope_command(
+        #     f'{command}_complete',
+        #     err_msg=f'Error occured while running command "{command}"',
+        # )
+        # print(f'{command} completed.')
+    
+    def make_map(self):
+        print('Generating map...')
+        current_file = str(self.get_current_file())
+        date = current_file[:8]
+        setnum = current_file[-4:]
+        print(date, setnum)
     
     def get_file(self) -> Path:
         f = self.save_location_widget.get_chosen_save_location()
