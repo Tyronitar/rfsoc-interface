@@ -65,8 +65,8 @@ class Mapper:
 
         output = input
         for routine in self._routines:
-            if isinstance(routine, BinTODIntoMap):
-                pdb.set_trace()
+            # if isinstance(routine, BinTODIntoMap):
+            #     pdb.set_trace()
             output = routine(output)
         output.save()
         return output
@@ -466,16 +466,18 @@ def outlier_removal(data):
 
 
 if __name__ == '__main__':
-    from onr_map_observation import create_map
-    # data = ProcessedData.from_tod('20241016', 1012)
-    old_data = h5py.File('/data/20241016/20241016_processed_data_set1014.h5')
-    old_raw_data = RawDataFile('/data/20241016/20241016_rfsoc2_TOD_set1014.h5', 'r')
+    # from onr_map_observation import create_map
+    # # data = ProcessedData.from_tod('20241016', 1012)
+    # old_data = h5py.File('/data/20241016/20241016_processed_data_set1014.h5')
+    # old_raw_data = RawDataFile('/data/20241016/20241016_rfsoc2_TOD_set1014.h5', 'r')
 
     # new_raw_data = RawDataFile('/data/20250509/20250509_chan_1_TOD_set1014.h5', 'r')
     # data = ProcessedData.from_tod('20250509', 1014)
-    data = ProcessedData.from_tod('20250509', 1014, losweep='20250509_rfsoc2_LO_Sweep_hour13p8025.h5')
-    pdb.set_trace()
+    # data = ProcessedData.from_tod('20250509', 1014, losweep='20250509_rfsoc2_LO_Sweep_hour13p8025.h5')
+    # pdb.set_trace()
     # data = ProcessedData.from_tod('20241017', 1001, losweep='20241017_rfsoc2_LO_Sweep_hour07p6728.npy')
+    # data = ProcessedData.from_tod('20250513', 1005, losweep='20250513_devrfsoc_rfsoc2_LO_Sweep_hour15p6778_high_res.h5')
+    data = ProcessedData.from_tod('20250513', 1005)
 
 
     # old_fs = data.fs
@@ -484,7 +486,7 @@ if __name__ == '__main__':
     hpfilt = HighPassFilter(0.5)
     lpfilt = LowPassFilter(10)
     # cleaner = CleanTOD(save_file=True)
-    cleaner = CleanTOD(save_file=False)
+    cleaner = CleanTOD(save_file=True)
 
     # mapper = Mapper([ds, hpfilt, lpfilt, cleaner])
     # clean_data = mapper(data)

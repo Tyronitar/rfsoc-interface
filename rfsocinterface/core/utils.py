@@ -434,7 +434,7 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
         err_msg = f'Error occured while waiting for command "{command}": '
     while True:
         response, *data = conn.recv()
-        print(f'{id} got response: "{response}", data: {data}')
+        # print(f'{id} got response: "{response}", data: {data}')
         if response.lower() == f'{command}':
             break
         elif response.lower() == 'err':

@@ -250,7 +250,7 @@ class LoSweepData:
         self.fit_f0 = self.tone_list.copy()
         self.fit_qi = np.zeros(self.nchan)
         self.fit_qc = np.zeros(self.nchan)
-        self.fit_f0[self.offres_ind] = tone_list[self.offres_ind]
+        self.fit_f0[self.offres_ind] = self.tone_list[self.offres_ind]
         self.set_diff_to_flag()
     
     def set_diff_to_flag(self, val: float=3e3):

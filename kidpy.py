@@ -46,8 +46,8 @@ logging.basicConfig(format=__LOGFMT, level=logging.INFO)
 logger = logging.getLogger(__name__+"-kidpy")
 __logh = logging.FileHandler("./kidpy.log")
 logging.root.addHandler(__logh)
-# logger.log(100, __LOGFMT)
-# __logh.flush()
+logger.log(100, __LOGFMT)
+__logh.flush()
 __logh.setFormatter(logging.Formatter(__LOGFMT))
 ################
 
@@ -66,10 +66,12 @@ if onr_flag:
     import onrkidpy
     import onr_fit_lo_sweeps as fit_lo
     import onr_motor_control
+    import vimba_camera_control
     import subprocess
     import onr_process_observation as onrp
     import onr_map_observation as onrm
     motor = onr_motor_control.SKPR_Motor_Control()
+    camera = vimba_camera_control.SKPR_Camera_Control()
     import onr_analyze_noise_data as onrn
 
 def testConnection(r):
@@ -273,6 +275,7 @@ class kidpy:
 
         self.__main_opts = [
             "Upload firmware",
+
             "Initialize system & UDP conn",
             "Write test comb (single or multitone)",
             "Write stored comb from config file",
@@ -442,10 +445,12 @@ class kidpy:
                             "Get Cooridinates",
                             "Set AZ Position",
                             "Set EL Position",
-                            "Motor Test for Data Acquisition",
-                            "Exit",
                             "Tone Powers",
-                            "LO Sweep to Calibrate Readout Power"
+                            "Exit",
+                            "LO Sweep to Calibrate Readout Power",
+                            "Single Dither Image",
+                            "Multi Dither Image", 
+                            "Camera Test"
                         ]
                         onr_opt = menu(onr_caption, onr_options)
 
@@ -495,7 +500,7 @@ class kidpy:
                                 print(
                                     "Waiting for the RFSOC to finish writing the updated frequency list"
                                 )
-                                fAmps = self.get_last_alist()
+                                fAmps = self.get_last_alist() #amplitudes
                                 write_fList(self, fList, np.ndarray.tolist(fAmps))
 #                                write_fList(self, fList, [])
 
@@ -612,7 +617,7 @@ class kidpy:
                             )
                             yymmdd = onrkidpy.get_yymmdd()
                             setnum = rfsocfile[-7:-3]
-                            onrp.create_processed_file(yymmdd,setnum,azel=False)
+                            onrp.create_processed_file(yymmdd,setnum,azel=False,optcam=False)
 #                            onrn.main(yymmdd,setnum,'Device_aSi1_Channel2')
 
 #                             os.system("clear")
@@ -670,9 +675,64 @@ class kidpy:
                                     "\033[93m UnboundLocalError: DAQ could not be initialized: Check comm port and power supply\033[0m"
                                 )
 
-                        if onr_opt == 6:
+                        if onr_opt == 6:  # Tone Powers
+                            fList = self.get_last_flist()
+                            max_power_file = input('Filename with max power values? e.g., Device_aSi1_Channel2 (default is uniform power)') or ''
+                            if max_power_file != '':
+                                power_dB = np.load(onr_repo_dir + '/params/' + max_power_file + '_max_readout_power_dB.npy')
+                                fAmps = np.exp(power_dB/10.)
+                            else:
+                                fAmps = np.ones(np.size(fList))
+                            write_fList(
+                                self, np.ndarray.tolist(fList), np.ndarray.tolist(fAmps)
+                            )
+
+                        if onr_opt == 7:  # Exit
+                            onr_loop = False
+                            
+                        if onr_opt == 8:  # LO Sweep to calibrate readout power
+                            # see if the user wants to shift all the tones (e.g., due to change in loading)
+                            atten_out = (
+                                input(
+                                    "What is the attenuation of the IF output (in dB)?"))
+                            self.valon.set_frequency(2, default_f_center)
+                            chan_name = 'rfsoc2'
+                            lo_freq = valon5009.Synthesizer.get_frequency(
+                                self.valon, valon5009.SYNTH_B)
+
+                            # first the low resolution initial sweep
+                            os.system("clear")
+                            print(
+                                "Taking initial sweep with df = 1 kHz and Deltaf = 100 kHz"
+                            )
+                            savefile = onrkidpy.get_filename(
+                                type="LO", chan_name=chan_name
+                            )
+                            sweeps.loSweep(
+                                self.valon,
+                                self.__udp,
+                                self.get_last_flist(),
+                                valon5009.Synthesizer.get_frequency(
+                                    self.valon, valon5009.SYNTH_B
+                                ),
+                                N_steps=200,
+                                freq_step=0.001,
+                                savefile=savefile,
+                            )
+
+                            # then fit the resonances from that sweep
+                            fit_f0, fit_qi, fit_qc = fit_lo.main(
+                                self.get_tone_list(),
+                                savefile + ".npy",
+                                quickPlot=False,
+                                printFlag=False,
+                            )
+                            np.save(onrkidpy.get_filename(type='attenuator',attenuation=atten_out), fit_f0)
+
+                        if onr_opt == 9:
                             # then collect the KID data
                             os.system("clear")
+                            optpic = camera.take_pic(save_file = True)
                             motor.init_test()
                             rfsocfile = (
                                 onrkidpy.get_filename(type="TOD", chan_name="channame")
@@ -716,62 +776,63 @@ class kidpy:
                             onrp.create_processed_file(yymmdd,setnum)
                             onrm.create_map(yymmdd,setnum)
 
-                        if onr_opt == 7:  # Exit
-                            onr_loop = False
-
-                        if onr_opt == 8:  # Tone Powers
-                            fList = self.get_last_flist()
-                            max_power_file = input('Filename with max power values? e.g., Device_aSi1_Channel2 (default is uniform power)') or ''
-                            if max_power_file != '':
-                                power_dB = np.load(onr_repo_dir + '/params/' + max_power_file + '_max_readout_power_dB.npy')
-                                fAmps = np.exp(power_dB/10.)
-                            else:
-                                fAmps = np.ones(np.size(fList))
-                            write_fList(
-                                self, np.ndarray.tolist(fList), np.ndarray.tolist(fAmps)
-                            )
-                            
-                        if onr_opt == 9:  # LO Sweep to calibrate readout power
-                            # see if the user wants to shift all the tones (e.g., due to change in loading)
-                            atten_out = (
-                                input(
-                                    "What is the attenuation of the IF output (in dB)?"))
-                            self.valon.set_frequency(2, default_f_center)
-                            chan_name = 'rfsoc2'
-                            lo_freq = valon5009.Synthesizer.get_frequency(
-                                self.valon, valon5009.SYNTH_B)
-
-                            # first the low resolution initial sweep
-                            os.system("clear")
-                            print(
-                                "Taking initial sweep with df = 1 kHz and Deltaf = 100 kHz"
-                            )
-                            savefile = onrkidpy.get_filename(
-                                type="LO", chan_name=chan_name
-                            )
-                            sweeps.loSweep(
-                                self.valon,
-                                self.__udp,
-                                self.get_last_flist(),
-                                valon5009.Synthesizer.get_frequency(
-                                    self.valon, valon5009.SYNTH_B
-                                ),
-                                N_steps=200,
-                                freq_step=0.001,
-                                savefile=savefile,
-                            )
-
-                            # then fit the resonances from that sweep
-                            fit_f0, fit_qi, fit_qc = fit_lo.main(
-                                self.get_tone_list(),
-                                savefile + ".npy",
-                                quickPlot=False,
-                                printFlag=False,
-                            )
-                            np.save(onrkidpy.get_filename(type='attenuator',attenuation=atten_out), fit_f0)
-
                         if onr_opt == 10:
-                            sweeps.plot_sweep_hdf(data_handler.get_last_rdf("rfsoc2"))
+                            # then collect the KID data
+                            os.system("clear")
+                            optpic = camera.take_pic(save_file = True)
+                            motor.init_test()
+                            rfsocfile = (
+                                onrkidpy.get_filename(type="TOD", chan_name="channame")
+                                + ".h5"
+                            )
+                            telefile = rfsocfile.replace('TOD', 'AZEL')
+                            telefile = telefile.replace("_channame", "")
+                            rfsocfile = rfsocfile.replace("channame", "rfsoc2")
+                            # Populate the rfchannel with all the relevent details
+                            bb = self.get_last_flist()
+                            rfsoc2 = data_handler.RFChannel(
+                                rfsocfile,
+                                "192.168.5.40",
+                                bb,
+                                self.get_last_alist(),
+                                port=4096,
+                                name="rfsoc2",
+                                n_tones=len(bb),
+                                attenuator_settings=np.array([20.0, 10.0]),
+                                tile_number=2,
+                                rfsoc_number=2,
+                                lo_sweep_filename=data_handler.get_last_lo("rfsoc2"),
+                                lo_freq=self.valon.get_frequency(valon5009.SYNTH_B)*1e6
+                            )
+#                             udp2.capture(
+#                                 [rfsoc2],
+#                                 time.sleep,
+#                                 10
+#                             )
+                            udp2.capture(
+                                [rfsoc2],
+                                motor.AZ_scan_mode,
+                                -5.0,
+                                5.0,
+                                telefile,
+                                n_repeats=8,
+                                position_return=True,
+                            )
+                            yymmdd = onrkidpy.get_yymmdd()
+                            setnum = rfsocfile[-7:-3]
+                            onrp.create_processed_file(yymmdd,setnum)
+                            onrm.create_map(yymmdd,setnum)
+
+#                        if onr_opt == 10:
+#                            sweeps.plot_sweep_hdf(data_handler.get_last_rdf("rfsoc2"))
+                            
+                            
+                        if onr_opt == 11:
+                            #cams = camera.init_cam()
+                            optpic = camera.take_pic(save_file = False,show = True)
+                            
+                            
+
 
                 else:
                     print("ONR repository does not exist")
