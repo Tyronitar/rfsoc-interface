@@ -16,7 +16,7 @@ from kidpy3 import RawDataFile
 from scipy import signal
 import matplotlib.pyplot as plt
 
-from rfsocinterface.core.utils import ensure_path, gaussian_filter, GAUSSIAN_SIGMA
+from rfsocinterface.core.utils import ensure_path, gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX
 from rfsocinterface.core.losweep import LoSweepData
 
 DATA_DIRECTORY = '/data'
@@ -263,8 +263,8 @@ class ProcessedData(Updateable):
             nsamples = f.n_sample[0]
             ntones = f.n_tones[0]
             # valid_tone_index = np.ndarray.flatten(np.argwhere(data_IQ[0, :, 0] != 0.))
-            valid_tone_index = np.ndarray.flatten(np.argwhere(data_I[:, 0] != 0.))
-            valid_tone_index = valid_tone_index[:ntones]
+            valid_tone_index = np.arange(ntones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
+            # valid_tone_index = valid_tone_index + BAD_RFSOC_TONE_START_INDEX
             # data_IQ = data_IQ[:, valid_tone_index, :]
             data_I = data_I[valid_tone_index,:]
             data_Q = data_Q[valid_tone_index,:]

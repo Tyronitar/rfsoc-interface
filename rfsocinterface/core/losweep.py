@@ -17,7 +17,7 @@ import h5py
 from onr_fit_lo_sweeps import simple_derivative_fits
 from onrkidpy import get_chanmask
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import ensure_path
+from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 import valon5009
@@ -26,9 +26,6 @@ import udpcap
 from kidpy3 import RFSOC, capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 from kidpy3.data_handler import Rfchan
-
-
-BAD_RFSOC_TONE_START_INDEX = 8  # First 8 ones are bad...
 
 
 def resonator_plot_formatter(x: float, pos: int) -> str:

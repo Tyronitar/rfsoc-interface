@@ -467,7 +467,7 @@ def outlier_removal(data):
 
 if __name__ == '__main__':
     # from onr_map_observation import create_map
-    # # data = ProcessedData.from_tod('20241016', 1012)
+    # old_data = ProcessedData.from_tod('20241016', 1012)
     # old_data = h5py.File('/data/20241016/20241016_processed_data_set1014.h5')
     # old_raw_data = RawDataFile('/data/20241016/20241016_rfsoc2_TOD_set1014.h5', 'r')
 
@@ -477,7 +477,8 @@ if __name__ == '__main__':
     # pdb.set_trace()
     # data = ProcessedData.from_tod('20241017', 1001, losweep='20241017_rfsoc2_LO_Sweep_hour07p6728.npy')
     # data = ProcessedData.from_tod('20250513', 1005, losweep='20250513_devrfsoc_rfsoc2_LO_Sweep_hour15p6778_high_res.h5')
-    data = ProcessedData.from_tod('20250513', 1005)
+    data = ProcessedData.from_tod('20250513', 1008)
+    # new_raw_data = RawDataFile('/data/20250513/20250513_chan_1_TOD_set1006.h5', 'r')
 
 
     # old_fs = data.fs
