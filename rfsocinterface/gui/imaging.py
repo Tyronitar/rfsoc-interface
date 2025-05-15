@@ -16,7 +16,7 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, get_filename
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
 from rfsocinterface.gui.widgets.function import FunctionWidget
-from rfsocinterface.core.camera import SKPR_Camera_Control
+# from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.data import ProcessedData, MapData
 from rfsocinterface.core.map import Mapper, DataRoutine
 
@@ -59,8 +59,9 @@ class MappingDialog(QDialog, Ui_MappingDialog):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setupUi(self)
-        self.add_toolButton.clicked.connect(self.select_and_add_routine)
-        self.remove_toolButton.clicked.connect(self.remove_routine)
+        # self.add_toolButton.clicked.connect(self.select_and_add_routine)
+        self.add_toolButton.clicked.connect(lambda _: self.select_and_add_routine())
+        self.remove_toolButton.clicked.connect(lambda _: self.remove_routine())
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
 
@@ -96,9 +97,8 @@ class MappingDialog(QDialog, Ui_MappingDialog):
         args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type_name]
         item = self.drag_function_widget.add_item(*args)
         item.clicked.emit()  # Set active itme and display the function's aruments
-        self._current_items.append(item)
     
-    def remove_routine(self, item: FunctionDragItem | None):
+    def remove_routine(self, item: FunctionDragItem | None=None):
         if item is None:
             item = self.drag_function_widget.active_item
         if item is not None:
