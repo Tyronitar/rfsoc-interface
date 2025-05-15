@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit
 from PySide6.QtWidgets import (QApplication, QGridLayout, QScrollArea, QSizePolicy,
     QVBoxLayout, QWidget)
 
-from rfsocinterface.core.utils import get_num_value
+from rfsocinterface.gui.utils import get_num_value
 from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.gui.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper

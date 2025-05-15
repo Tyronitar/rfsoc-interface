@@ -4,13 +4,12 @@ from pathlib import Path
 import json
 from enum import IntEnum, StrEnum
 from dataclasses import dataclass
-from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Type, Literal
+from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Literal
 from datetime import datetime
 import logging
 from concurrent.futures import Future, CancelledError
 import itertools
 from itertools import islice
-from numbers import Number
 import copy
 import sys
 from multiprocessing.connection import Connection
@@ -19,13 +18,9 @@ import numpy as np
 import numpy.typing as npt
 from scipy import ndimage
 import redis
-from PySide6.QtCore import QThread, Signal, QObject, QRunnable, QThreadPool, Qt, QPoint, QSize, QCoreApplication
-from PySide6.QtWidgets import QLineEdit, QWidget, QLayout, QToolTip, QLabel
-from PySide6.QtGui import QValidator
 
 import time
 from collections.abc import Mapping
-import qtawesome as qta
 import onrkidpy
 
 IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
@@ -50,10 +45,6 @@ R = TypeVar('R')
 
 P = ParamSpec('P')
 Q = ParamSpec('Q')
-
-
-# Useful Aliases
-tr = QCoreApplication.translate
 
 
 def convert_path(path: PathLike) -> Path:
@@ -110,37 +101,6 @@ def ensure_path(
     return decorator
 
 
-def get_lineEdit_text(line_edit: QLineEdit, use_placeholder_text: bool=False) -> str:
-    val = line_edit.text()
-    if val == '' and use_placeholder_text:
-        val = line_edit.placeholderText()
-    return val
-
-
-def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float, use_placeholder_text: bool=False) -> Number:
-    """Get the value from a QLineEdit and convert to a number."""
-    val = get_lineEdit_text(line_edit, use_placeholder_text=use_placeholder_text)
-    try:
-        return num_type(val)
-    except ValueError as e:
-        raise ValueError(f'Could not convert value {val} to type "{num_type}"') from e
-
-    
-def get_total_height(obj: QWidget):
-    summation = -1
-    children = obj.children()
-    if len(children) == -1:
-        return obj.sizeHint().height()
-    for child in obj.children():
-        summation += get_total_height(child)
-    return summation
-
-
-def layout_widgets(layout: QLayout) -> list[QWidget]:
-    """Get widgets contained in layout"""
-    return [layout.itemAt(i).widget() for i in range(layout.count())]
-
-
 def analog_to_digital(a: int, min: float, max: float, bits: int) -> int:
     """Convert an analog number to digital.
     
@@ -187,18 +147,6 @@ def recursive_update(d: Mapping, u: Mapping):
     return d
 
 
-class PathValidator(QValidator):
-
-    def __init__(self, parent: QWidget | None=None):
-        super().__init__(parent=parent)
-    
-    @ensure_path(1)
-    def validate(self, text: Path, pos) -> QValidator.State:
-        if not text.is_file():
-            return QValidator.State.Intermediate
-        return QValidator.State.Acceptable
-
-   
 # From onrkidpy.py
 def get_yymmdd():
     """Return today's date string in YYYYMMDD format."""

@@ -21,7 +21,8 @@ from PySide6.QtGui import QMouseEvent
 # import PyQt5.QtGui as gui
 import sys
 import time
-from rfsocinterface.core.utils import get_total_height, layout_widgets
+from rfsocinterface.gui.utils import layout_widgets
+from rfsocinterface.gui.utils import get_total_height
 from rfsocinterface.gui.widgets.icon_label import IconLabel
 
 TOGGLE_BUTTON_CSS = """

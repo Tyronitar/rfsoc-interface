@@ -4,7 +4,8 @@ from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import QWidget
 
 from rfsocinterface.gui.uic.save_location_ui import Ui_SaveLocationWidget
-from rfsocinterface.core.utils import get_filename, get_lineEdit_text
+from rfsocinterface.core.utils import get_filename
+from rfsocinterface.gui.utils import get_lineEdit_text
 
 
 class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):

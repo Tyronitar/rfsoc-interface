@@ -9,7 +9,7 @@ from rfsocinterface.gui.uic.telescope_control_ui import Ui_TelescopeControlWidge
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from rfsocinterface.core.camera import SKPR_Camera_Control
-from rfsocinterface.core.utils import P, R, get_num_value
+from rfsocinterface.core.utils import P, R
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from typing import Callable, Concatenate, Any, TYPE_CHECKING
@@ -26,6 +26,8 @@ from pyModbusTCP.client import ModbusClient
 # from telnetlib import Telnet
 import glob
 from pathlib import Path
+
+from rfsocinterface.gui.utils import get_num_value
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow

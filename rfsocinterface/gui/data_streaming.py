@@ -9,8 +9,9 @@ from kidpy3 import capture
 
 from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
-from rfsocinterface.core.utils import get_num_value, get_lineEdit_text, PathValidator, get_filename
+from rfsocinterface.core.utils import get_filename
 from rfsocinterface.gui.main_widget import MainWidget
+from rfsocinterface.gui.utils import PathValidator, get_lineEdit_text, get_num_value
 
 
 if TYPE_CHECKING:

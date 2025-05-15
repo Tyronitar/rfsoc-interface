@@ -20,6 +20,8 @@ DECIMATE_ORDER = 5
 BUTTER_ORDER = 6
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
+
+
 def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float) -> npt.NDArray:
 
     max_az = np.max(map.detector_az) - az_trim

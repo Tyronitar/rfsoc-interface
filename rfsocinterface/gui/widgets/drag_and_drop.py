@@ -192,6 +192,10 @@ class DragWidget(QWidget):
     def add_item(self, item: DragItem):
         self.blayout.addWidget(item)
         item.setParent(self)
+    
+    def remove_item(self, item: DragItem):
+        self.blayout.removeWidget(item)
+        item.setParent(None)
 
     def get_item_data(self):
         data = []
@@ -220,6 +224,10 @@ class ClickableDragWidget(DragWidget):
     def add_item(self, item: ClickableDragItem):
         super().add_item(item)
         item.clicked.connect(self.item_clicked)
+
+    def remove_item(self, item: ClickableDragItem):
+        super().remove_item(item)
+        self.set_active_item(None)
 
     def set_active_item(self, item: ClickableDragItem):
         if self.active_item is not None:
