@@ -11,12 +11,12 @@ from kidpy3 import capture
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.gui.uic.mapping_ui import Ui_MappingDialog
+from rfsocinterface.gui.widgets.function import FunctionDragItem
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, get_filename
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
 from rfsocinterface.gui.widgets.function import FunctionWidget
-# from rfsocinterface.core.telescope import TelescopeMotorController
-# from rfsocinterface.core.camera import SKPR_Camera_Control
+from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.data import ProcessedData, MapData
 from rfsocinterface.core.map import Mapper, DataRoutine
 
@@ -42,8 +42,6 @@ class RoutineSelectionDialog(QDialog):
         self.setWindowTitle('Select Mapping Routine')
         self.setModal(True)
         layout = QFormLayout()
-        self.setMinimumWidth(300)
-        self.setMinimumHeight(200)
 
         self.combo_box = QComboBox(self)
         self.combo_box.addItems(DATA_ROUTINE_FUNCTION_WIDGET_ARGS.keys())
@@ -66,6 +64,20 @@ class MappingDialog(QDialog, Ui_MappingDialog):
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
 
+        self._current_items: list[FunctionDragItem] = []
+    
+    def reject(self):
+        if self.drag_function_widget.items() != self._current_items:
+            self.drag_function_widget.clear()
+            for item in self._current_items:
+                self.drag_function_widget.add_item(item)
+        super().reject()
+    
+    def accept(self):
+        if self.drag_function_widget.items() != self._current_items:
+            self._current_items = self.drag_function_widget.items()
+        super().accept()
+
     def select_and_add_routine(self):
         routine_type = self.select_routine()
         if routine_type is None:
@@ -84,9 +96,11 @@ class MappingDialog(QDialog, Ui_MappingDialog):
         args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type_name]
         item = self.drag_function_widget.add_item(*args)
         item.clicked.emit()  # Set active itme and display the function's aruments
+        self._current_items.append(item)
     
-    def remove_routine(self):
-        item = self.drag_function_widget.active_item
+    def remove_routine(self, item: FunctionDragItem | None):
+        if item is None:
+            item = self.drag_function_widget.active_item
         if item is not None:
             self.drag_function_widget.remove_item(item)
 
@@ -107,6 +121,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.setupUi(self)
         self.cam_ctrl = SKPR_Camera_Control()
         self.dial = MappingDialog(self)
+        self.routines = []
 
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
@@ -190,7 +205,10 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
     def choose_mapping_routines(self):
         if self.dial.exec():
             # TODO: Get the selected routines, instantiate them, and store in the class
-            pass
+            self.routines = []
+            for item in self.dial.drag_function_widget.items():
+                self.routines.append(item.func_widget.call_function())
+        print(self.routines)
     
     def run(self):
         chans = self.get_selected_channels(self.channel_comboBox)

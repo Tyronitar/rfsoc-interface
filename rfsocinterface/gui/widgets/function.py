@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, Slot, Signal
 from PySide6.QtWidgets import QFormLayout, QWidget, QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedWidget, QScrollArea, QLabel
 
 
-from typing import Any, Callable, Concatenate
+from typing import Any, Callable, Concatenate, overload
 
 import numpy as np
 
@@ -153,20 +153,41 @@ class DragFunctionWidget(QWidget):
     @property
     def active_item(self) -> FunctionDragItem | None:
         return self.drag.active_item
+
+    @overload
+    def add_item(self, item: FunctionDragItem) -> FunctionDragItem:
+        pass
     
+    @overload
     def add_item(self, label: str, fn: Callable, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]) -> FunctionDragItem:
-        item = FunctionDragItem(fn, args, label=label, parent=self)
-        item.set_data(fn.__name__)
+        pass
+
+    def add_item(self, *data):
+        if not isinstance(data, FunctionDragItem):
+            label, fn, args = data
+            item = FunctionDragItem(fn, args, label=label, parent=self)
+            item.set_data(fn.__name__)
+        else:
+            item = data
         self.drag.add_item(item)
         item.clicked.connect(self.display_args)
         self.func_container.addWidget(item.func_widget)
         return item
+    
+    def clear(self):
+        for item in self.drag.items():
+            self.drag.remove_item(item)
+            self.func_container.removeWidget(item.func_widget)
+        self.func_container.setCurrentIndex(0)
     
     def remove_item(self, item: FunctionDragItem):
         self.drag.remove_item(item)
         self.func_container.removeWidget(item.func_widget)
         item.deleteLater()
         self.func_container.setCurrentIndex(0)
+    
+    def items(self) -> list[FunctionDragItem]:
+        return self.drag.items()
     
     @Slot()
     def display_args(self):
@@ -175,7 +196,7 @@ class DragFunctionWidget(QWidget):
     
     def mousePressEvent(self, event):
         child = self.childAt(event.pos())
-        print(child)
+        # print(child)
         # Clicking off of the list items or parameters should deselect
         if child is None or child == self.drop_container or child == self.drag:
             self.drag.set_active_item(None)

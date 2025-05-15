@@ -206,8 +206,11 @@ class DragWidget(QWidget):
                 # The target indicator has no data.
                 data.append(w.data)
         return data
-
-
+    
+    def items(self) -> list[DragItem]:
+        all_items = [self.blayout.itemAt(i).widget() for i in range(self.blayout.count())]
+        # print(all_items)
+        return list(filter(lambda item: isinstance(item, DragItem), all_items))
 
     # def mousePressEvent(self, event):
     #     widget = self.childAt(event.pos())
@@ -227,7 +230,8 @@ class ClickableDragWidget(DragWidget):
 
     def remove_item(self, item: ClickableDragItem):
         super().remove_item(item)
-        self.set_active_item(None)
+        if item == self.active_item:
+            self.set_active_item(None)
 
     def set_active_item(self, item: ClickableDragItem):
         if self.active_item is not None:
