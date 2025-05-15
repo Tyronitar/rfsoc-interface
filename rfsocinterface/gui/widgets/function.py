@@ -154,12 +154,13 @@ class DragFunctionWidget(QWidget):
     def active_item(self) -> FunctionDragItem | None:
         return self.drag.active_item
     
-    def add_item(self, label: str, fn: Callable, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]):
+    def add_item(self, label: str, fn: Callable, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]) -> FunctionDragItem:
         item = FunctionDragItem(fn, args, label=label, parent=self)
         item.set_data(fn.__name__)
         self.drag.add_item(item)
         item.clicked.connect(self.display_args)
         self.func_container.addWidget(item.func_widget)
+        return item
     
     def remove_item(self, item: FunctionDragItem):
         self.drag.remove_item(item)

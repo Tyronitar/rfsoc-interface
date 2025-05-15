@@ -82,7 +82,8 @@ class MappingDialog(QDialog, Ui_MappingDialog):
         if routine_type_name not in DATA_ROUTINE_FUNCTION_WIDGET_ARGS:
             raise ValueError(f'Routine type {routine_type_name} not in DATA_ROUTINE_FUNCTION_WIDGET_ARGS')
         args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type_name]
-        self.drag_function_widget.add_item(*args)
+        item = self.drag_function_widget.add_item(*args)
+        item.clicked.emit()  # Set active itme and display the function's aruments
     
     def remove_routine(self):
         item = self.drag_function_widget.active_item
