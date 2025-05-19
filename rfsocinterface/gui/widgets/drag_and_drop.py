@@ -195,7 +195,6 @@ class DragWidget(QWidget):
     
     def remove_item(self, item: DragItem):
         self.blayout.removeWidget(item)
-        item.setParent(None)
 
     def get_item_data(self):
         data = []

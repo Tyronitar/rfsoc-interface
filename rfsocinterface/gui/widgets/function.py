@@ -163,12 +163,12 @@ class DragFunctionWidget(QWidget):
         pass
 
     def add_item(self, *data):
-        if not isinstance(data, FunctionDragItem):
+        if not isinstance(data[0], FunctionDragItem):
             label, fn, args = data
             item = FunctionDragItem(fn, args, label=label, parent=self)
             item.set_data(fn.__name__)
         else:
-            item = data
+            item = data[0]
         self.drag.add_item(item)
         item.clicked.connect(self.display_args)
         self.func_container.addWidget(item.func_widget)

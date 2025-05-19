@@ -16,7 +16,7 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, get_filename
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
 from rfsocinterface.gui.widgets.function import FunctionWidget
-# from rfsocinterface.core.camera import SKPR_Camera_Control
+from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.data import ProcessedData, MapData
 from rfsocinterface.core.map import Mapper, DataRoutine
 
@@ -71,6 +71,7 @@ class MappingDialog(QDialog, Ui_MappingDialog):
         if self.drag_function_widget.items() != self._current_items:
             self.drag_function_widget.clear()
             for item in self._current_items:
+                item.parent = self
                 self.drag_function_widget.add_item(item)
         super().reject()
     
