@@ -131,6 +131,8 @@ class RFSOCWrapper:
         tones2, _ = rfsoc.get_tone_list(2)
         rfsoc.rf1.ntones = np.size(tones1)
         rfsoc.rf2.ntones = np.size(tones2)
+        rfsoc.rf1.tile_number = self.settings.get('tileNumber', 2)
+        rfsoc.rf2.tile_number = self.settings.get('tileNumber', 2)
         return rfsoc
         # yaml_contents = self.to_kidpy()
         # fname = f'{self.settings['name']}.yml'
@@ -181,7 +183,7 @@ class RFSOCWrapper:
         self.rfsoc.config_hardware()
     
     @ensure_path(1)
-    def set_chanmask(self, fname: Path):
+    def set_chanmask(self, fname: Path, chan: int):
         self.settings['chanmask'] = fname
     
     def channel_as_text(self, channel: int) -> str:

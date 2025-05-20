@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from kidpy3 import RawDataFile
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA
-from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, MapData
+from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
 
 DECIMATE_ORDER = 5
 BUTTER_ORDER = 6
@@ -63,15 +63,37 @@ class Mapper:
             raise TypeError(f'Expected DataRoutine, got {type(routine)}')
         self._routines.append(routine)
     
-    def __call__(self, input: ProcessedData):
+    def __call__(self, input: ProcessedData, save: bool=True):
 
         output = input
         for routine in self._routines:
-            if isinstance(routine, BinTODIntoMap):
-                pdb.set_trace()
+            # if isinstance(routine, BinTODIntoMap):
+            #     pdb.set_trace()
             output = routine(output)
-        output.save()
+        if save:
+            output.save()
         return output
+
+
+class RemoveElectronicsNoise(DataRoutine):
+    def __init__(self):
+        super().__init__()
+    
+    def forward(pd: ProcessedData) -> ProcessedData:
+        gain_phase_data = pd.data_gain_phase
+        clean_gain_phase_data = remove_electronics_noise(gain_phase_data)
+
+        new_data_freq_diss, new_data_mK = generate_calibrated_data(
+            clean_gain_phase_data,
+            pd.IQ_to_gain_phase_angle,
+            pd.dIQ_df,
+            pd.df_per_mK
+        )
+        return pd.with_values(
+            data_gain_phase=clean_gain_phase_data,
+            data_freq_diss=new_data_freq_diss,
+            data_mK=new_data_mK,
+        )
 
 
 class CleanTOD(DataRoutine):
@@ -83,32 +105,37 @@ class CleanTOD(DataRoutine):
         super().__init__()
         self.save_file = save_file
 
-    def forward(self, pd: ProcessedData) -> ProcessedData:
+    def forward(self, md: MapData) -> MapData:
 
-        data = pd.data_mK
-        chanmask = pd.chanmask
+        if not isinstance(md, MapData):
+            md = MapData.from_processed_data(md)
+        data = md.data_mK
+        chanmask = md.chanmask
+        data_clean = np.copy(data)
+        good_samples = md.get_good_samples()
         
         #average template subtraction
         goodchan = np.ndarray.flatten(np.argwhere(chanmask == 1))
-        data_chanmask = data[goodchan,:]
-        template = np.sum(data_chanmask, axis=0)
+        # pdb.set_trace()
+        data_good = data[goodchan][:, good_samples]
+        template = np.sum(data_good, axis=0)
         template = template - np.mean(template)
-        template_corr = np.sum(np.multiply(data_chanmask,template), axis=1) / \
+        template_corr = np.sum(np.multiply(data_good,template), axis=1) / \
                         np.sum(np.multiply(template,template))
-        data_clean_chanmask = data_chanmask - np.outer(template_corr, template)
-        data_clean = np.copy(data)
-        data_clean[goodchan,:] = data_clean_chanmask
+        data_clean_good = data_good - np.outer(template_corr, template)
+        data_clean[goodchan][:, good_samples] = data_clean_good
 
         if self.save_file:
-            with h5py.File(pd.cleaned_file_template, 'w') as cfile:
+            with h5py.File(md.cleaned_file_template, 'w') as cfile:
                 cfile.create_dataset("chanmask", data=chanmask)
-                cfile.create_dataset("detector_pol", data=pd.detector_pol)
+                cfile.create_dataset("detector_pol", data=md.detector_pol)
                 cfile.create_dataset("clean_data", data=data_clean)
-                cfile.create_dataset("time", data=pd.timestamp)
-                cfile.create_dataset("detector_az", data=pd.detector_az)    
-                cfile.create_dataset("detector_za", data=pd.detector_za)
+                cfile.create_dataset("time", data=md.timestamp)
+                cfile.create_dataset("detector_az", data=md.detector_az)    
+                cfile.create_dataset("detector_za", data=md.detector_za)
 
-        return pd.with_values(
+
+        return md.with_values(
             data_mK=data_clean,
         )
 
@@ -151,7 +178,8 @@ class RemovePointLomaPickup(DataRoutine):
             pickup_good_index = pickup_good_index.astype(int)
 
         m = MapData.from_processed_data(pd)
-        m.flagged_values = np.array(pickup_good_index)
+        m.good_samples = np.array(pickup_good_index)
+        # pdb.set_trace()
         return m
 
 
@@ -162,10 +190,12 @@ class BinTODIntoMap(DataRoutine):
             lp_filter_freq: float=10.,
             az_trim: float=2.3,
             za_trim: float=0.2,
+            med_netd_cut_threshold: float=3.,
     ):
         super().__init__()
         self.hp_filter_freq = hp_filter_freq
         self.lp_filter_freq = lp_filter_freq
+        self.med_netd_cut_threshold = med_netd_cut_threshold
         self.az_trim = az_trim
         self.za_trim = za_trim
     
@@ -184,56 +214,75 @@ class BinTODIntoMap(DataRoutine):
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, md.map_dpix)
 
         
-        NETDs = []
+        netd = np.zeros(md.nchan)
         sum_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
         hits_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
+        wind = signal.get_window('hamming', data_clean.shape[-1])
 
-        for pol in range(0, N_POLARIZATION):
-            channel_index = np.argwhere(detector_pol == 1)
-            NETD_i = np.zeros((np.size(channel_index)))
-            for index, i_chan in enumerate(channel_index):
-                if md.chanmask[i_chan] != 1:
-                    continue
+        # Compute NETD values
+        for i_chan in np.where(md.chanmask == 1)[0]:
+            this_clean_data = np.squeeze(data_clean[i_chan,:])
 
-                this_clean_data = np.squeeze(data_clean[i_chan,:])
-                this_detector_az = detector_az[i_chan,:]
-                this_detector_za = detector_za[i_chan,:]
+            this_freq, this_psd = signal.periodogram(this_clean_data, fs, window=wind)
+            valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
+            this_netd = np.sqrt(np.median(this_psd[valid_freq]))
+            netd[i_chan] = this_netd
 
-                # Get the good samples if they haven't been specified
-                this_good_index = np.copy(md.flagged_values)
-                if np.size(this_good_index) == 0:
-                    this_good_index = np.arange(np.size(this_clean_data))
+        # Get rid of channels with bad weights
+        new_chanmask = np.copy(md.chanmask)
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = netd[good_idx]
+        new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
 
-                wind = signal.get_window('hamming', np.size(this_clean_data))
-                this_freq, this_psd = signal.periodogram(this_clean_data, fs, window=wind)
-                valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
-                NETD_i[index] = np.sqrt(np.median(this_psd[valid_freq]))
-            #    NETD[index] = np.sqrt(np.median(this_psd[-int(np.size(this_psd)/2):]*30.))
-                weight = 1./NETD_i[index]**2.
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = netd[good_idx]
+        netd_med = np.median(np.log10(good_netd))
+        netd_std = np.std(np.log10(good_netd))
+        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
+        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
 
-                # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
-                x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/md.map_dpix))
-                x_ind = x_ind.astype('int64')
-                y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/md.map_dpix))
-                y_ind = y_ind.astype('int64')
+        netd[new_chanmask != 1] = 0
+        pdb.set_trace()
 
-                NETDs.append(NETD_i)
-                #eliminate samples outside the map
-                valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
-                    np.logical_and(x_ind[this_good_index] >= 0, x_ind[this_good_index] < sum_map.shape[1]), \
-                    np.logical_and(y_ind[this_good_index] >= 0, y_ind[this_good_index] < sum_map.shape[2]))))
-                this_good_index = this_good_index[valid_index]
+        # Create map
+        for i_chan in np.where(new_chanmask == 1)[0]:
+            weight = 1./ netd[i_chan] ** 2.
+            i_pol = detector_pol[i_chan] - 1
 
-                #loop over samples to create sum and hits maps
-                for time_sample in this_good_index:
-                    sum_map[pol, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
-                    hits_map[pol, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+            this_detector_az = detector_az[i_chan,:]
+            this_detector_za = detector_za[i_chan,:]
+
+            # Get the good samples if they haven't been specified
+            this_good_index = md.get_good_samples()
+            this_clean_data = np.squeeze(data_clean[i_chan,:])
+
+            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/md.map_dpix))
+            x_ind = x_ind.astype('int64')
+            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/md.map_dpix))
+            y_ind = y_ind.astype('int64')
+
+            #eliminate samples outside the map
+            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
+                np.logical_and(x_ind[this_good_index] >= 0, x_ind[this_good_index] < sum_map.shape[1]), \
+                np.logical_and(y_ind[this_good_index] >= 0, y_ind[this_good_index] < sum_map.shape[2]))))
+            this_good_index = this_good_index[valid_index]
+
+            #loop over samples to create sum and hits maps
+            for time_sample in this_good_index:
+                sum_map[i_pol, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                hits_map[i_pol, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+        # weights = 1 / netd[md.chanmask==1]**2
+        # np.save('weight.npy', 1/all_NETDs**2)
+        # plt.show()
+        # pdb.set_trace()
         return md.with_values(
             sum_map=sum_map,
             hits_map=hits_map,
-            NETDs=NETDs,
+            netd=netd,
             map_x=map_az,
             map_y=map_za,
+            chanmask=new_chanmask,
         )
             
 class GaussianFilter(DataRoutine):
@@ -328,7 +377,7 @@ class DBSCANMapRemoval(DataRoutine):
 
     def forward(self, map: MapData) -> MapData:
         dbscan_map = map.data_mK[:]
-        flagged_values = map.flagged_values
+        flagged_values = map.good_samples
 
         # Find the indices of the flagged pixels
         flagged_indices = np.where(np.isin(dbscan_map, flagged_values))
@@ -369,7 +418,7 @@ class NeighborRemoval(DataRoutine):
     
     def forward(self, map: MapData) -> MapData:
         new_map = map.data_mK[:]
-        flagged_values = map.flagged_values
+        flagged_values = map.good_samples
 
         # empty list to store the indices of flagged pixels
         flagged_indices = []
@@ -415,7 +464,7 @@ class NeighborFlagging(DataRoutine):
     
     def forward(self, map: MapData) -> MapData:
         new_map = map.data_mK[:]
-        flagged_values = map.flagged_values
+        flagged_values = map.good_samples
 
         # Iterate over all flagged values
         for value in flagged_values:
@@ -468,25 +517,36 @@ def outlier_removal(data):
 
 
 if __name__ == '__main__':
-    from onr_map_observation import create_map
-    # data = ProcessedData.from_tod('20241016', 1012)
-    old_data = h5py.File('/data/20241016/20241016_processed_data_set1014.h5')
-    old_raw_data = RawDataFile('/data/20241016/20241016_rfsoc2_TOD_set1014.h5', 'r')
+    # from onr_map_observation import create_map
+    # data = ProcessedData.from_tod('20241016', 1015)
+    # old_data = h5py.File('/data/20241016/20241016_processed_data_set1014.h5')
+
+    # old_raw_data = RawDataFile('/data/20241016/20241016_rfsoc2_TOD_set1014.h5', 'r')
+    # new_raw_data = RawDataFile('/data/20250513/20250513_chan_1_TOD_set1008.h5', 'r')
+    # pdb.set_trace()
 
     # new_raw_data = RawDataFile('/data/20250509/20250509_chan_1_TOD_set1014.h5', 'r')
     # data = ProcessedData.from_tod('20250509', 1014)
-    data = ProcessedData.from_tod('20250509', 1014, losweep='20250509_rfsoc2_LO_Sweep_hour13p8025.h5')
-    pdb.set_trace()
+    # data = ProcessedData.from_tod('20250509', 1014, losweep='20250509_rfsoc2_LO_Sweep_hour13p8025.h5')
+    # pdb.set_trace()
     # data = ProcessedData.from_tod('20241017', 1001, losweep='20241017_rfsoc2_LO_Sweep_hour07p6728.npy')
+    # data = ProcessedData.from_tod('20250513', 1005, losweep='20250513_devrfsoc_rfsoc2_LO_Sweep_hour15p6778_high_res.h5')
+    # data = ProcessedData.from_tod('20250513', 1007)
+
+    # old_data = ProcessedData.from_tod('20241016', 1008, save=False)
+    # new_data = ProcessedData.from_tod('20250513', 1008)
+    # pdb.set_trace()
+
 
 
     # old_fs = data.fs
     # data.timestamp = data.dtime
+    hp_filt_freq = 1
+    lp_filt_freq = 10
+
     ds = Downsample(6)
-    hpfilt = HighPassFilter(0.5)
-    lpfilt = LowPassFilter(10)
-    # cleaner = CleanTOD(save_file=True)
-    cleaner = CleanTOD(save_file=False)
+    hpfilt = HighPassFilter(hp_filt_freq)
+    lpfilt = LowPassFilter(lp_filt_freq)
 
     # mapper = Mapper([ds, hpfilt, lpfilt, cleaner])
     # clean_data = mapper(data)
@@ -499,7 +559,18 @@ if __name__ == '__main__':
     # pdb.set_trace()
 
     remove_pickup = RemovePointLomaPickup()
-    binner = BinTODIntoMap()
+    binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
+    # mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
+    
+
+
+    # cleaner = CleanTOD(save_file=False)
+    # data = ProcessedData.from_tod('20241016', 1008, save=False)
+
+    cleaner = CleanTOD(save_file=True)
+    data = ProcessedData.from_tod('20250513', 1008)
+
     mapper = Mapper([remove_pickup, ds, hpfilt, lpfilt, cleaner, binner])
-    map: MapData = mapper(data)
-    map.plot()
+
+    map: MapData = mapper(data, save=False)
+    map.plot(save=False)
