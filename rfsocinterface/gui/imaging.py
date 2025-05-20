@@ -16,7 +16,7 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, get_filename
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
 from rfsocinterface.gui.widgets.function import FunctionWidget
-# from rfsocinterface.core.camera import SKPR_Camera_Control
+from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.data import ProcessedData, MapData
 from rfsocinterface.core.map import Mapper, DataRoutine
 
@@ -153,7 +153,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
         self.cam_ctrl = SKPR_Camera_Control()
-        self.dial = MappingDialog(self)
+        self.mapping_dialog = MappingDialog(self)
         self.routines = []
 
         self._file =  '.'
@@ -209,6 +209,10 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         date = current_file[:8]
         setnum = int(current_file[-4:])
         p = ProcessedData.from_tod(date, setnum)
+
+        routine_widgets = self.mapping_dialog.drag_function_widget.items()
+        routines = [widget.call_function() for widget in routine_widgets]
+        print(routines)
     
     def get_file(self) -> Path:
         f = self.save_location_widget.get_chosen_save_location()
@@ -236,10 +240,10 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         # pattern = self.patterns[index]
     
     def choose_mapping_routines(self):
-        if self.dial.exec():
+        if self.mapping_dialog.exec():
             # TODO: Get the selected routines, instantiate them, and store in the class
             self.routines = []
-            for item in self.dial.drag_function_widget.items():
+            for item in self.mapping_dialog.drag_function_widget.items():
                 self.routines.append(item.func_widget.call_function())
         print(self.routines)
     
