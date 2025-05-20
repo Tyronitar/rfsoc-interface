@@ -228,6 +228,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         fig, future = dw.plot(pd=pd)
         dw.set_figure(fig)
         future.add_done_callback(lambda _: fig.tight_layout())
+        future.add_done_callback(lambda _: dw.update_median_shift())
         future.add_done_callback(lambda _: dw.show())
     
     @ensure_path(2)

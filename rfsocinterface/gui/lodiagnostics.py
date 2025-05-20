@@ -290,9 +290,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     
     def set_sweep(self, sweep: LoSweepData):
         self.sweep = sweep
-        self.median_shift_label.setText(
-            f'Median shift (KHz): {np.median(self.sweep.difference[self.sweep.onres_ind]) * 1e-3:.2f}'
-        )
+        self.update_median_shift()
     
     def save_plots(self):
         savefile = self.savefile.with_suffix('.png')
@@ -370,6 +368,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.get_figure().draw_artist(ax.patch)
         self.get_figure().draw_artist(ax)
         self.canvas.select_axis(self.canvas.selected_axes)
+        self.update_median_shift()
+    
+    def update_median_shift(self):
         self.median_shift_label.setText(
             f'Median shift (KHz): {np.median(self.sweep.difference[self.sweep.onres_ind]) * 1e-3:.2f}'
         )
