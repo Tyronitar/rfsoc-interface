@@ -14,6 +14,8 @@ from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, g
 from rfsocinterface.gui.widgets.function import FunctionWidget, ArgumentType
 from rfsocinterface.core.telescope import TelescopeMotorController
 from rfsocinterface.core.camera import SKPR_Camera_Control
+from rfsocinterface.core.data import ProcessedData, MapData
+from rfsocinterface.core.map import Mapper
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -126,11 +128,9 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
             rfchans.append(rfchan)
         # Update the current save file
         self.get_file()
-        # print(self.get_current_file())
         # TODO: validate the inputs somehow...
         # Take optical image
         self.cam_ctrl.take_pic(save=True)
-
         # Dither telescope in separate thread
         capture_thread = Thread(target=capture, args=(rfchans, self.active_pattern.call_function))
         capture_thread.start()

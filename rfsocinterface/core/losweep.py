@@ -17,7 +17,7 @@ import h5py
 from onr_fit_lo_sweeps import simple_derivative_fits
 from onrkidpy import get_chanmask
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import ensure_path
+from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 import valon5009
@@ -26,9 +26,6 @@ import udpcap
 from kidpy3 import RFSOC, capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 from kidpy3.data_handler import Rfchan
-
-
-BAD_RFSOC_TONE_START_INDEX = 8  # First 8 ones are bad...
 
 
 def resonator_plot_formatter(x: float, pos: int) -> str:
@@ -112,26 +109,19 @@ class ResonatorData:
                 frameon=False,
                 framealpha=0,
                 handlelength=0,
-                bbox_to_anchor=(0.01, 0.02),
                 alignment='center',
                 edgecolor='black',
-                # bbox_to_anchor=(-0.2,-0.15)
             )
             if self.flagged:
                 ax.set_facecolor('yellow')
         else:
             ax.legend(
-                [
-                    f'{self.idx:d}'
-                    + ', dS21='
-                    + f'{np.ptp(self.s21):4.1f}'
-                ],
+                [f'{self.idx:d}, dS21={np.ptp(self.s21):4.1f}'],
                 fontsize=6,
                 loc=3,
                 frameon=False,
                 framealpha=0,
                 handlelength=0,
-                bbox_to_anchor=(0.01, 0.02),
                 alignment='center',
                 edgecolor='black',
             )
@@ -163,8 +153,8 @@ class ResonatorData:
 
     @property
     def difference(self) -> float:
-        """float: The absolute difference in the fitted value and the original tone, in Hz."""
-        return np.abs(self.data.fit_f0[self.idx] - self.data.tone_list[self.idx])
+        """float: The difference in the fitted value and the original tone, in Hz."""
+        return self.data.fit_f0[self.idx] - self.data.tone_list[self.idx]
 
     @property
     def is_onres(self) -> bool:
@@ -184,7 +174,7 @@ class ResonatorData:
     @fit_f0.setter
     def fit_f0(self, val: float):
         self.data.fit_f0[self.idx] = val
-        self.flagged = self.difference > self.data.diff_to_flag[self.idx]
+        self.flagged = np.abs(self.difference) > self.data.diff_to_flag[self.idx]
 
     @property
     def fit_qi(self) -> float:
@@ -254,19 +244,20 @@ class LoSweepData:
         self.chanmask = chanmask
         self.resonator_data = [ResonatorData(self, i) for i in range(self.nchan)]
 
-        self.fit_f0 = np.zeros(self.nchan)
+        self.fit_f0 = self.tone_list.copy()
         self.fit_qi = np.zeros(self.nchan)
         self.fit_qc = np.zeros(self.nchan)
-        self.fit_f0[self.offres_ind] = tone_list[self.offres_ind]
+        self.fit_f0[self.offres_ind] = self.tone_list[self.offres_ind]
         self.set_diff_to_flag()
     
-    def set_diff_to_flag(self, val: float=3.0):
+    def set_diff_to_flag(self, val: float=3e3):
         """Set the flagging threshold.
         
         Arguments:
-            val (float): The minimumum difference to flag in KHz. (defaults to 3.0)
+            val (float): The minimumum difference to flag in Hz. (defaults to 3000.0)
         """
-        self.diff_to_flag = (val * 1e3 / 2e8) * self.tone_list
+        # self.diff_to_flag = (val * 1e3 / 2e8) * self.tone_list
+        self.diff_to_flag = np.abs(val / self.f_center * self.tone_list)
     
     @classmethod
     @ensure_path(1, 2, 3)
@@ -320,6 +311,11 @@ class LoSweepData:
     def df(self) -> float:
         """The difference between two frequency data points, in Hz."""
         return self.freq[0, 1] - self.freq[0, 0]
+
+    @property
+    def onres_ind(self) -> npt.NDArray:
+        """The indices of frequencies that are on-resonance."""
+        return np.argwhere(self.chanmask == 1)
 
     @property
     def offres_ind(self) -> npt.NDArray:
@@ -377,7 +373,7 @@ class LoSweepData:
                         '|| old tone =',
                         f'{self.tone_list[i] * 1.0e-6:9.5f} MHz',
                         '|| difference (kHz) =',
-                        f'{diff:+5.3f}',
+                        f'{diff * 1e-3:+5.3f}',
                     )
             # if signal:
             #     signal.emit()
@@ -651,8 +647,6 @@ class LoSweep:
         self.flos = np.arange(flo_start, flo_stop, flo_step)  # MHz
         if pd is not None:
             pd.setMaximum(len(self.flos))
-            pd.setLabelText('Performing LO Sweep...')
-            # QApplication.processEvents()
         # flos = np.round(flos * 1e3)*1e-3
         log.info(f"len flos {self.flos.shape}")
         if pd is not None:
@@ -692,13 +686,9 @@ class LoSweep:
         # set the LO back to the original frequency
         self.valon.set_frequency(valon5009.SYNTH_B, self.f_center * 1e-6)
 
-        # return (f, sweep_Z_f)
-        # TODO: Fix this
-        # chanmask = get_chanmask(chanmask_file)
-        chanmask = np.ones_like(self.tone_list)
+        chanmask = np.load(self.chanmask_file)
         self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), chanmask)
         self._processed = True
-        print("LO Sweep s21 file saved.")
 
 
 if __name__ == '__main__':

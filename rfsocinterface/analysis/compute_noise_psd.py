@@ -11,7 +11,7 @@ from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 
 
-from rfsocinterface.core.data import rotate_to_amplitude_and_phase, flag_outliers, rotate_to_frequency_dissipation, remove_electronics_noise
+from rfsocinterface.core.data import rotate_basis, flag_outliers, IQ_to_freq_diss, remove_electronics_noise
 from rfsocinterface.core.map import Downsample
 from rfsocinterface.core.utils import ensure_path, ordinal
 
@@ -277,7 +277,7 @@ if __name__ == '__main__':
         # Maybe, I should make RemoveElectronicsNoise a DataRoutine class that does all of this
 
     chanmask, freq, noise_psd = compute_noise_psd(
-        p.gain_phase_angle / p.carrier_amplitude_norm(),
+        p.IQ_to_gain_phase_angle / p.carrier_amplitude_norm(),
         p.timestamp,
         chanmask=p.chanmask,
         nominal_block_length=10,

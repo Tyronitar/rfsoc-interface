@@ -16,7 +16,7 @@ from kidpy3 import RawDataFile
 from scipy import signal
 import matplotlib.pyplot as plt
 
-from rfsocinterface.core.utils import ensure_path, gaussian_filter, GAUSSIAN_SIGMA
+from rfsocinterface.core.utils import ensure_path, gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX
 from rfsocinterface.core.losweep import LoSweepData
 
 DATA_DIRECTORY = '/data'
@@ -54,6 +54,21 @@ def compute_df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, det
     amps[valid_index] = valid_amp
     return dfoverf_per_mK * detector_f * amps
 
+def generate_calibrated_data(clean_gain_phase_data: npt.NDArray, gain_phase_angle: npt.NDArray, dIQ_df: npt.NDArray, df_per_mK: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+    data_IQ = rotate_basis(clean_gain_phase_data, -gain_phase_angle)
+    data_IQ -= np.mean(data_IQ, axis=2, keepdims=True)
+
+
+    #now use the derivatives to convert to a frequency shift
+    #need to optimally weight the data based on the response
+    #in each direction (assuming the noise is identical in I and Q)
+    #this will then yield data_f
+    data_freq_diss = change_basis_to_frequency_dissipation(data_IQ, dIQ_df)
+
+    # Finally, we need to get data_mK
+    data_mK = np.divide(data_freq_diss[0], df_per_mK[:, np.newaxis])
+    return data_freq_diss, data_mK
+
 
 class Updateable:
     def update(self, new_vals: dict):
@@ -72,7 +87,7 @@ class ProcessedData(Updateable):
     carrier_amp_Q: npt.NDArray
     df_per_mK: npt.NDArray
     data_gain_phase: npt.NDArray
-    gain_phase_angle: npt.NDArray
+    IQ_to_gain_phase_angle: npt.NDArray
     data_freq_diss: npt.NDArray
     data_mK: npt.NDArray
     timestamp: npt.NDArray
@@ -111,7 +126,15 @@ class ProcessedData(Updateable):
         return Path(f'{DATA_DIRECTORY}/{self.date}')
 
     @property
-    def data_f(self) -> npt.NDArray:
+    def data_gain(self) -> npt.NDArray:
+        return self.data_gain_phase[0]
+
+    @property
+    def data_phase(self) -> npt.NDArray:
+        return self.data_gain_phase[1]
+
+    @property
+    def data_freq(self) -> npt.NDArray:
         return self.data_freq_diss[0]
 
     @property
@@ -141,9 +164,13 @@ class ProcessedData(Updateable):
     @property
     def fs(self) -> float:
         return 1 / self.delta_t
+    
+    @property
+    def nchan(self) -> int:
+        return np.size(self.chanmask)
 
     @classmethod
-    def from_tod(cls, date: str, setnum: int, losweep: str | None=None) -> ProcessedData:
+    def from_tod(cls, date: str, setnum: int, losweep: str | None=None, save: bool=True) -> ProcessedData:
         #20230803_rfsoc1_TOD_set1012
         date = date
         setnum = setnum
@@ -227,7 +254,10 @@ class ProcessedData(Updateable):
             else:
                 raise RuntimeError('No LO sweep provided. Canceliing processing of file.')
 
-            sweep = LoSweepData(f.baseband_freqs[:], f.lo_freq[()], sweep_data, f.chanmask[:])
+            # f.lo_freq[:] = 4e8
+            lo_freq = f.lo_freq[()]
+            lo_freq = 4e8
+            sweep = LoSweepData(f.baseband_freqs[:], lo_freq, sweep_data, f.chanmask[:])
             this_dIQ_df = sweep.freq_direction()
             if np.size(dIQ_df) > 0:
                 dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
@@ -247,7 +277,8 @@ class ProcessedData(Updateable):
             if np.count_nonzero(dfoverf_per_mK) == 0:
                 dfoverf_per_mK = np.ones_like(dfoverf_per_mK)
 
-            detector_f = f.baseband_freqs[:] + f.lo_freq[:]
+            detector_f = sweep.tone_list
+            # detector_f = f.baseband_freqs[:] + f.lo_freq[:]
 
             # NOTE: Temporary fix: create dummy frequencies if they don't exist
             if np.count_nonzero(detector_f) == 0:  
@@ -262,20 +293,23 @@ class ProcessedData(Updateable):
             data_Q = np.ndarray.astype(f.adc_q[:], np.float64)
             nsamples = f.n_sample[0]
             ntones = f.n_tones[0]
-            # valid_tone_index = np.ndarray.flatten(np.argwhere(data_IQ[0, :, 0] != 0.))
-            valid_tone_index = np.ndarray.flatten(np.argwhere(data_I[:, 0] != 0.))
-            valid_tone_index = valid_tone_index[:ntones]
-            # data_IQ = data_IQ[:, valid_tone_index, :]
+            if int(date[:4]) < 2025:
+                valid_tone_index = np.ndarray.flatten(np.argwhere(data_I[:,0] != 0.))
+                valid_tone_index = valid_tone_index[:ntones]
+            else:
+                valid_tone_index = np.arange(ntones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
             data_I = data_I[valid_tone_index,:]
             data_Q = data_Q[valid_tone_index,:]
-            carrier_amp_I = np.mean(data_I, axis=1)
-            carrier_amp_Q = np.mean(data_Q, axis=1)
-            data_I = data_I - np.outer(carrier_amp_I, np.ones(nsamples))
-            data_Q = data_Q - np.outer(carrier_amp_Q, np.ones(nsamples))
+            carrier_amp_I = np.nanmedian(data_I, axis=1)
+            carrier_amp_Q = np.nanmedian(data_Q, axis=1)
             
             # Rotate to Gain / Phase
-            this_data_gain_phase, this_gain_phase_angle = rotate_to_amplitude_and_phase(
+
+            this_gain_phase_angle = np.atan2(carrier_amp_I, carrier_amp_Q)  # N_chan
+
+            this_data_gain_phase = rotate_basis(
                 np.stack((data_I, data_Q)),
+                this_gain_phase_angle
             )
             if np.size(data_gain_phase) > 0:
                 data_gain_phase = np.concatenate((data_gain_phase, this_data_gain_phase), axis=0)
@@ -283,23 +317,22 @@ class ProcessedData(Updateable):
             else:
                 data_gain_phase= np.copy(this_data_gain_phase)
                 gain_phase_angle = np.copy(this_gain_phase_angle)
-
-            #now use the derivatives to convert to a frequency shift
-            #need to optimally weight the data based on the response
-            #in each direction (assuming the noise is identical in I and Q)
-            #this will then yield data_f
-            this_data_freq_diss = rotate_to_frequency_dissipation(
-                np.stack((data_I, data_Q)),
-                this_dIQ_df,
+            
+            # TODO: Make this optional I guess
+            clean_gain_phase_data = remove_electronics_noise(data_gain_phase)
+            # pdb.set_trace()
+            this_data_freq_diss, this_data_mK = generate_calibrated_data(
+                clean_gain_phase_data,
+                gain_phase_angle,
+                dIQ_df,
+                np.array(df_per_mK),
             )
+
             if np.size(data_freq_diss) > 0:
                 data_freq_diss = np.concatenate((data_freq_diss, this_data_freq_diss), axis=0)
             else:
                 data_freq_diss = np.copy(this_data_freq_diss)
 
-            # Finally, we need to get data_mK
-            this_df_per_mK = np.array(this_df_per_mK)
-            this_data_mK = np.divide(this_data_freq_diss[0], np.outer(this_df_per_mK, np.ones(nsamples)))
             if np.size(data_mK) != 1:
                 data_mK = np.concatenate((data_mK, this_data_mK), axis=0)
             else:
@@ -343,6 +376,7 @@ class ProcessedData(Updateable):
             if np.size(no_pol > 0):
                 chanmask[no_pol] = -1
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
+        # pdb.set_trace()
         pdata = cls(
             date,
             setnum,
@@ -351,7 +385,7 @@ class ProcessedData(Updateable):
             carrier_amp_I,
             carrier_amp_Q,
             df_per_mK,
-            data_gain_phase,
+            clean_gain_phase_data,
             gain_phase_angle,
             data_freq_diss,
             data_mK,
@@ -362,7 +396,8 @@ class ProcessedData(Updateable):
             detector_za,
             vis
         )
-        pdata.save()
+        if save:
+            pdata.save()
         return pdata
 
     #    print(dI_df.shape, dQ_df.shape, df_per_mK.shape, data_f.shape, data_mK.shape)
@@ -372,7 +407,10 @@ class ProcessedData(Updateable):
             pfile.create_dataset("dI_df", data=self.dI_df)
             pfile.create_dataset("dQ_df", data=self.dQ_df)
             pfile.create_dataset("df_per_mK", data=self.df_per_mK)
-            pfile.create_dataset("data_f", data=self.data_f)
+            pfile.create_dataset("data_gain", data=self.data_gain)
+            pfile.create_dataset("data_phase", data=self.data_phase)
+            pfile.create_dataset("IQ_to_gain_phase_angle", data=self.IQ_to_gain_phase_angle)
+            pfile.create_dataset("data_freq", data=self.data_freq)
             pfile.create_dataset("data_diss", data=self.data_diss)
             pfile.create_dataset("data_mK", data=self.data_mK)
             pfile.create_dataset("chanmask", data=self.chanmask)
@@ -392,7 +430,7 @@ class ProcessedData(Updateable):
             np.copy(self.carrier_amp_Q),
             np.copy(self.df_per_mK),
             np.copy(self.data_gain_phase),
-            np.copy(self.gain_phase_angle),
+            np.copy(self.IQ_to_gain_phase_angle),
             np.copy(self.data_freq_diss),
             np.copy(self.data_mK),
             np.copy(self.timestamp),
@@ -412,8 +450,8 @@ class ProcessedData(Updateable):
 @dataclass
 class MapData(ProcessedData):
     """Class for storing values for generating maps."""
-    flagged_values: npt.NDArray = field(default_factory=lambda: np.array([]))
-    NETDs: list[npt.NDArray] = field(default_factory=lambda: [])
+    good_samples: npt.NDArray = field(default_factory=lambda: np.array([]))
+    netd: npt.NDArray = field(default_factory=lambda: np.array([]))
     sum_map: npt.NDArray = field(default_factory=lambda: np.array([]))
     hits_map: npt.NDArray = field(default_factory=lambda: np.array([]))
     map_x: npt.NDArray = field(default_factory=lambda: np.array([]))
@@ -428,18 +466,36 @@ class MapData(ProcessedData):
     def total_map(self) -> npt.NDArray:
         return np.sum(self.sum_map, axis=0) / np.sum(self.hits_map, axis=0)
     
+    def get_good_samples(self) -> npt.NDArray:
+        if np.size(self.good_samples) > 0:
+            # Would be non-zero if it's been set somewhere (unless there are no good samples...)
+            return np.copy(self.good_samples)
+        else:
+            return np.arange(np.shape(self.data_mK)[1])
+    
+    def get_netd_pol(self, polarization: int) -> npt.NDArray:
+        return self.netd[self.detector_pol == polarization]
+    
     @property
     def integration_time(self) -> npt.NDArray:
         integration_times = [
-            np.flip(np.transpose(self.hits_map[i,::-1])*np.median(self.NETDs[i])**2./self.fs,1)
-            for i in range(N_POLARIZATION)
+            np.flip(
+                np.transpose(self.hits_map[i,::-1]) * \
+                    np.median(self.get_netd_pol(pol)) ** 2. / self.fs,
+                1,
+            )
+            for i, pol in enumerate(range(1, N_POLARIZATION + 1))
         ]
         return integration_times
     
-    def get_combined_map(self) -> npt.NDArray:
-        flagged_map_1 = gaussian_filter(self.map[0], GAUSSIAN_SIGMA)
-        flagged_map_2 = gaussian_filter(self.map[1], GAUSSIAN_SIGMA)
-        flagged_map_3 = gaussian_filter(self.total_map, GAUSSIAN_SIGMA)
+    def get_combined_map(self, sigma: tuple[float,...]=GAUSSIAN_SIGMA) -> npt.NDArray:
+        flagged_map_1 = gaussian_filter(self.map[0], sigma)
+        flagged_map_2 = gaussian_filter(self.map[1], sigma)
+        flagged_map_3 = gaussian_filter(self.total_map, sigma)
+       # pdb.set_trace()
+        # flagged_map_1 = np.copy(self.map[0])
+        # flagged_map_2 = np.copy(self.map[1])
+        # flagged_map_3 = np.copy(self.total_map)
 
         final_final_map1= np.copy(flagged_map_1)
         final_final_map2= np.copy(flagged_map_2)
@@ -481,8 +537,6 @@ class MapData(ProcessedData):
         final_final_map3 = [x for x in final_final_map3 if not np.isnan(x)]
         return flagged_map_1, flagged_map_2, flagged_map_3, contour_levels
 
-
-
     @classmethod
     def from_processed_data(cls, pd: ProcessedData) -> MapData:
         """Create a MapData object from a ProcessedData object."""
@@ -495,7 +549,7 @@ class MapData(ProcessedData):
             np.copy(pd.carrier_amp_Q),
             np.copy(pd.df_per_mK),
             np.copy(pd.data_gain_phase),
-            np.copy(pd.gain_phase_angle),
+            np.copy(pd.IQ_to_gain_phase_angle),
             np.copy(pd.data_freq_diss),
             np.copy(pd.data_mK),
             np.copy(pd.timestamp),
@@ -515,7 +569,7 @@ class MapData(ProcessedData):
         return self.optical_image[opt_center_el-int(opt_npix_el/2):opt_center_el+int(opt_npix_el/2),\
                                     opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
     
-    def plot(self):
+    def plot(self, save: bool=True):
 
         valid_cov_1 = np.argwhere(self.hits_map[0] > 0.5 * np.median(self.hits_map[0]))
         map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
@@ -523,17 +577,19 @@ class MapData(ProcessedData):
             map_goodcov_1[i_cov] = self.map[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
         valid_cov_2 = np.argwhere(self.hits_map[1] > 0.5 * np.median(self.hits_map[1]))
         map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
-        for i_cov in np.arange(np.size(valid_cov_1[:,0])):
+        for i_cov in np.arange(np.size(valid_cov_2[:,0])):
             map_goodcov_2[i_cov] = self.map[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
 
+        netd_1 = self.get_netd_pol(1)
+        netd_2 = self.get_netd_pol(2)
         cb_shrink = 0.95
         this_xlim = min(self.map_x),max(self.map_x)
         this_ylim = max(self.map_y),min(self.map_y)
         max_abs = np.max(np.abs(np.append(map_goodcov_1,map_goodcov_2)))*0.75
-        valid_netd_1 = np.argwhere(self.NETDs[0] > 0)
-        med_NETD_1 = 1./np.sqrt(np.sum(1./self.NETDs[0][valid_netd_1]**2)/np.size(valid_netd_1))
-        valid_netd_2 = np.argwhere(self.NETDs[1] > 0)
-        med_NETD_2 = 1./np.sqrt(np.sum(1./self.NETDs[1][valid_netd_2]**2)/np.size(valid_netd_2))
+        valid_netd_1 = np.argwhere(netd_1 > 0)
+        med_netd_1 = 1./np.sqrt(np.sum(1./netd_1[valid_netd_1]**2)/np.size(valid_netd_1))
+        valid_netd_2 = np.argwhere(netd_2 > 0)
+        med_netd_2 = 1./np.sqrt(np.sum(1./netd_2[valid_netd_2]**2)/np.size(valid_netd_2))
 
         #Sage's plotting code---------------------------------------------------------------------------------------------
 
@@ -552,8 +608,8 @@ class MapData(ProcessedData):
         plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
         extent=(min(self.map_x)-self.map_dpix/2.,max(self.map_x)+self.map_dpix/2,max(self.map_y)+self.map_dpix/2.,min(self.map_y)-self.map_dpix/2.), colors='red')
         plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
-        ', Optical Visibility = ' + str(self.vis) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_NETD_1) + \
-        ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_NETD_2) + ' mK')
+        ', Optical Visibility = ' + str(self.vis) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
+        ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
         plt.ylabel('ZA (degrees)')
         plt.xlim(this_xlim), plt.ylim(this_ylim)
 
@@ -596,7 +652,8 @@ class MapData(ProcessedData):
         this_fig.subplots_adjust(wspace=0, hspace=0)
         plt.show()
     #    pw.addPlot("Raw Image", this_fig)
-        plt.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
+        if save:
+            plt.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
 
 
 
@@ -611,7 +668,7 @@ class MapData(ProcessedData):
             np.copy(self.carrier_amp_Q),
             np.copy(self.df_per_mK),
             np.copy(self.data_gain_phase),
-            np.copy(self.gain_phase_angle),
+            np.copy(self.IQ_to_gain_phase_angle),
             np.copy(self.data_freq_diss),
             np.copy(self.data_mK),
             np.copy(self.timestamp),
@@ -620,8 +677,8 @@ class MapData(ProcessedData):
             np.copy(self.detector_az),
             np.copy(self.detector_za),
             np.copy(self.vis),
-            np.copy(self.flagged_values),
-            self.NETDs.copy(),
+            np.copy(self.good_samples),
+            np.copy(self.netd),
             np.copy(self.hits_map),
             np.copy(self.sum_map),
             np.copy(self.map_x),
@@ -688,22 +745,18 @@ def flag_outliers(data: npt.NDArray, fs: float, chanmask: npt.NDArray, sigma: fl
     return chanmask
 
 
-def rotate_to_amplitude_and_phase(input_IQ_data: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
-    """Compute chnage of basis to amplitude/phase."""
-    assert input_IQ_data.ndim == 3
-    assert input_IQ_data.shape[0] == 2
-    atan = np.atan2(input_IQ_data[1, :, :], input_IQ_data[0, :, :])
-    rotation_angle = np.nanmedian(atan, axis=-1)
+def rotate_basis(input_data: npt.NDArray, rotation_angle: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+    """Compute change of basis, rotating with the specified angle."""
+    assert input_data.ndim == 3
+    assert input_data.shape[0] == 2
 
-    amp = np.cos(rotation_angle)[:, np.newaxis] * input_IQ_data[0, :, :] + np.sin(rotation_angle)[:, np.newaxis] * input_IQ_data[1, :, :]
-    phase = -np.sin(rotation_angle)[:, np.newaxis] * input_IQ_data[0, :, :] + np.cos(rotation_angle)[:, np.newaxis] * input_IQ_data[1, :, :]
-    new_data = np.zeros(shape=input_IQ_data.shape)
-    new_data[0] = amp
-    new_data[1] = phase
-    return new_data, rotation_angle
+    new_data = np.zeros(shape=input_data.shape)
+    new_data[0] = np.cos(rotation_angle)[:, np.newaxis] * input_data[0, :, :] + np.sin(rotation_angle)[:, np.newaxis] * input_data[1, :, :]
+    new_data[1] = -np.sin(rotation_angle)[:, np.newaxis] * input_data[0, :, :] + np.cos(rotation_angle)[:, np.newaxis] * input_data[1, :, :]
+    return new_data 
 
-def rotate_to_frequency_dissipation(input_IQ_data: npt.NDArray, dIQ_df: npt.NDArray) -> npt.NDArray:
-    """Compute chnage of basis to frequency/dissipation."""
+def change_basis_to_frequency_dissipation(input_IQ_data: npt.NDArray, dIQ_df: npt.NDArray) -> npt.NDArray:
+    """Compute change of basis from IQ to frequency/dissipation."""
     data_I = input_IQ_data[0]
     data_Q = input_IQ_data[1]
     nsamples = input_IQ_data.shape[2]

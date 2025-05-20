@@ -82,7 +82,7 @@ class TelescopeMotorController:
         while True:
             client_id, command, *args = self.queue.get()
             # command, *args = self.conn.recv()
-            print(f'Client "{client_id}" sent command: "{command}", args: {args}')
+            # print(f'Client "{client_id}" sent command: "{command}", args: {args}')
             match command.lower():
                 case 'add_connection':
                     self.add_connection(client_id, *args)

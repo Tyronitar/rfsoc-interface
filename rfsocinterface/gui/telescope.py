@@ -156,7 +156,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def _connection_loop(self):
         while True:
             response, *data = self._conn_parent.recv()
-            print(f'{self._client_id} got response: {response}, data: {data}')
+            # print(f'{self._client_id} got response: {response}, data: {data}')
             match response.lower():
                 case 'az_pos':
                     self.update_az_pos(*data)

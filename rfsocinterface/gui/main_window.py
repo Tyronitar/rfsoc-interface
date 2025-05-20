@@ -152,7 +152,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     raise SettingsError(f'Invalid name "{tab}" in general.tabs; valid options are {[name.value for name in TabName]}')
 
         active_tab = self.settings['app'].get('activeTab', TabName.INITIALIZATION)
-        self.tabWidget.setCurrentIndex(self.index(active_tab))
+        self.set_active_tab(active_tab)
 
     def index(self, tab_name: TabName) -> int:
         return list(self.tabs.keys()).index(tab_name)
@@ -179,6 +179,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def wait_for_telescope_command(self, command: str, err_msg: str=''):
         wait_for_telescope_command(self.telescope_parent_conn, self._client_id, command, err_msg=err_msg)
+    
+    def set_active_tab(self, tab: TabName):
+        if tab in self.tabs:
+            self.tabWidget.setCurrentIndex(self.index(tab))
 
     def closeEvent(self, event):
         self.hide()
