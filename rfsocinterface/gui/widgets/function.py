@@ -196,7 +196,6 @@ class DragFunctionWidget(QWidget):
         self.func_container.setCurrentIndex(self.func_container.indexOf(item.func_widget))
     
     def mousePressEvent(self, event: QMouseEvent):
-        event.posdd
         child = self.childAt(event.position())
         # print(child)
         # Clicking off of the list items or parameters should deselect

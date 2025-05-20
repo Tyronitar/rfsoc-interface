@@ -193,14 +193,14 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         
     def run_telescope_scan(self, command: str, *args):
         # Tell the controller to start moving the telescope according to the scan type
-        # self._telescope_queue.put([self._client_id, command, *args])
+        self._telescope_queue.put([self._client_id, command, *args])
 
-        # # Wait until the motor controller indicates the scan is complete
-        # self.wait_for_telescope_command(
-        #     f'{command}_complete',
-        #     err_msg=f'Error occured while running command "{command}"',
-        # )
-        # print(f'{command} completed.')
+        # Wait until the motor controller indicates the scan is complete
+        self.wait_for_telescope_command(
+            f'{command}_complete',
+            err_msg=f'Error occured while running command "{command}"',
+        )
+        print(f'{command} completed.')
         self.make_map()
     
     def make_map(self):
@@ -210,11 +210,13 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         setnum = int(current_file[-4:])
         p = ProcessedData.from_tod(date, setnum)
 
-        routine_widgets = self.mapping_dialog.drag_function_widget.items()
-        routines = [widget.call_function() for widget in routine_widgets]
-        print(routines)
+        # TODO: Make Qt widget for mapping , so signals can be emitted after completing 
+        # each routine. Needed for showing progress
+        mapper = Mapper(self.routines)
+        map_data: MapData = mapper(p)
+        map_data.plot()
     
-    def get_file(self) -> Path:
+    def update_current_file(self) -> Path:
         f = self.save_location_widget.get_chosen_save_location()
         self._file = f
         return f
@@ -237,14 +239,13 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
     def choose_pattern(self, index: int):
         self.stacked_layout.setCurrentIndex(index)
         self.active_pattern = self.patterns[index]
-        # pattern = self.patterns[index]
     
     def choose_mapping_routines(self):
         if self.mapping_dialog.exec():
-            # TODO: Get the selected routines, instantiate them, and store in the class
-            self.routines = []
-            for item in self.mapping_dialog.drag_function_widget.items():
-                self.routines.append(item.func_widget.call_function())
+            # Get the selected routines, instantiate them, and store in the class
+            routine_widgets = self.mapping_dialog.drag_function_widget.items()
+            # TODO: validate the inputs somehow...
+            self.routines = [item.func_widget.call_function() for item in routine_widgets]
         print(self.routines)
     
     def run(self):
@@ -260,16 +261,14 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
             rfchan.raw_filename = str(save_location)
             rfchans.append(rfchan)
         # Update the current save file
-        self.get_file()
-        # print(self.get_current_file())
-        # TODO: validate the inputs somehow...
-        self.make_map()
+        self.update_current_file()
 
         # Take optical image
-        # self.cam_ctrl.take_pic(save=True)
-        # Dither telescope in separate thread
-        # capture_thread = Thread(target=capture, args=(rfchans, self.active_pattern.call_function))
-        # capture_thread.start()
+        self.cam_ctrl.take_pic(save=True)
+
+        # Dither telescope and collect data in separate thread
+        capture_thread = Thread(target=capture, args=(rfchans, self.active_pattern.call_function))
+        capture_thread.start()
 
     
         
