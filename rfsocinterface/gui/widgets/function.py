@@ -2,6 +2,7 @@
 
 from email.mime import application
 from PySide6.QtCore import Qt, Slot, Signal
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QFormLayout, QWidget, QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedWidget, QScrollArea, QLabel
 
 
@@ -194,8 +195,9 @@ class DragFunctionWidget(QWidget):
         item: FunctionDragItem = self.sender()
         self.func_container.setCurrentIndex(self.func_container.indexOf(item.func_widget))
     
-    def mousePressEvent(self, event):
-        child = self.childAt(event.pos())
+    def mousePressEvent(self, event: QMouseEvent):
+        event.posdd
+        child = self.childAt(event.position())
         # print(child)
         # Clicking off of the list items or parameters should deselect
         if child is None or child == self.drop_container or child == self.drag:

@@ -16,7 +16,7 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, get_filename
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
 from rfsocinterface.gui.widgets.function import FunctionWidget
-from rfsocinterface.core.camera import SKPR_Camera_Control
+# from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.data import ProcessedData, MapData
 from rfsocinterface.core.map import Mapper, DataRoutine
 
@@ -61,25 +61,44 @@ class MappingDialog(QDialog, Ui_MappingDialog):
         self.setupUi(self)
         # self.add_toolButton.clicked.connect(self.select_and_add_routine)
         self.add_toolButton.clicked.connect(lambda _: self.select_and_add_routine())
-        self.remove_toolButton.clicked.connect(lambda _: self.remove_routine())
-        self.buttonBox.accepted.connect(self.accept)
-        self.buttonBox.rejected.connect(self.reject)
+        self.remove_toolButton.clicked.connect(lambda _: self._temp_remove_item())
+        # self.buttonBox.accepted.connect(self.accept)
+        # self.buttonBox.rejected.connect(self.reject)
 
         self._current_items: list[FunctionDragItem] = []
+        self._new_items: list[FunctionDragItem] = []
+        self._removed_items: list[FunctionDragItem] = []
+    
+    def exec(self):
+        self._current_items = self.drag_function_widget.items()
+        return super().exec()
     
     def reject(self):
-        if self.drag_function_widget.items() != self._current_items:
-            self.drag_function_widget.clear()
-            for item in self._current_items:
-                item.parent = self
-                self.drag_function_widget.add_item(item)
+        # Un-remove any items that were removed
+        for item in self._removed_items:
+            item.show()
+        self._removed_items.clear()
+
+        # Delete new items
+        for item in self._new_items:
+            self.remove_routine(item)
+        self._new_items.clear()
+
+        # Restore the order of the original items
+        for i, item in enumerate(self._current_items):
+            self.drag_function_widget.drag.blayout.insertWidget(i, item)
+
         super().reject()
     
     def accept(self):
-        if self.drag_function_widget.items() != self._current_items:
-            self._current_items = self.drag_function_widget.items()
-        super().accept()
+        # Actually remove items
+        for item in self._removed_items:
+            self.remove_routine(item)
+        self._removed_items.clear()
+        self._new_items.clear()  # New items were already added
 
+        super().accept()
+    
     def select_and_add_routine(self):
         routine_type = self.select_routine()
         if routine_type is None:
@@ -98,12 +117,25 @@ class MappingDialog(QDialog, Ui_MappingDialog):
         args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type_name]
         item = self.drag_function_widget.add_item(*args)
         item.clicked.emit()  # Set active itme and display the function's aruments
+        self._new_items.append(item)
     
     def remove_routine(self, item: FunctionDragItem | None=None):
         if item is None:
             item = self.drag_function_widget.active_item
         if item is not None:
             self.drag_function_widget.remove_item(item)
+    
+    def _temp_remove_item(self):
+        item = self.drag_function_widget.active_item
+        # No need to keep track of new items that are then removed
+        if item in self._new_items:  
+            self.remove_routine(item)
+        else:
+            # Hide the item to look like it was removed...
+            item.hide()
+            # ...but keep track of it in case changes are discarded
+            self._removed_items.append(item)
+
 
 class DitherPatternWidget(FunctionWidget):
     def __init__(self, fn: Callable[Concatenate[str, PathLike, P], Any], command: str, file_func: Callable[[], PathLike], args: list[tuple]=[], parent=None):
@@ -238,11 +270,16 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
     
         
 if __name__ == '__main__':
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton
 
     app = QApplication()
 
-    d = MappingDialog()
-    d.show()
+    w = QMainWindow()
+    butt = QPushButton('Click me')
+    d = MappingDialog(w)
+    butt.clicked.connect(d.exec)
+    w.setCentralWidget(butt)
+
+    w.show()
     app.exec()
 

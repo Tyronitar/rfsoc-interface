@@ -57,7 +57,6 @@ class DragItem(QLabel):
         self.setStyleSheet("border: 1px solid black;")
         # Store data separately from display label, but use label for default.
         self.data = self.text()
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def set_data(self, data):
         self.data = data
@@ -71,6 +70,7 @@ class DragItem(QLabel):
 
             # TODO: Change the mouse cursor when dragging
             drag = QDrag(self)
+            drag.setDragCursor
             mime = QMimeData()
             drag.setMimeData(mime)
 
@@ -244,7 +244,6 @@ class ClickableDragWidget(DragWidget):
         item: ClickableDragItem = self.sender()
         if self.blayout.indexOf(item) != -1:
             self.set_active_item(item)
-
 
 
 class MainWindow(QMainWindow):
