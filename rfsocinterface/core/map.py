@@ -55,7 +55,7 @@ class DataRoutine:
 
 
 class Mapper:
-    def __init__(self, routines: list[DataRoutine]):
+    def __init__(self, routines: list[DataRoutine]=[]):
         self._routines = routines
     
     def add_routine(self, routine: DataRoutine):
@@ -242,7 +242,6 @@ class BinTODIntoMap(DataRoutine):
         new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
 
         netd[new_chanmask != 1] = 0
-        pdb.set_trace()
 
         # Create map
         for i_chan in np.where(new_chanmask == 1)[0]:
@@ -331,6 +330,7 @@ class Downsample(DataRoutine):
         self.order=order
     
     def forward(self, pd: ProcessedData) -> ProcessedData:
+        pdb.set_trace()
         data_freq_diss_ds = signal.decimate(pd.data_freq_diss, self.ds_factor)
         data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
         data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
@@ -541,10 +541,11 @@ if __name__ == '__main__':
 
     # old_fs = data.fs
     # data.timestamp = data.dtime
-    hp_filt_freq = 1
+    hp_filt_freq = 0.5
     lp_filt_freq = 10
+    ds_factor = 10
 
-    ds = Downsample(6)
+    ds = Downsample(ds_factor)
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
 
@@ -558,7 +559,7 @@ if __name__ == '__main__':
     # #     og_data = f['data_mK'][:]
     # pdb.set_trace()
 
-    remove_pickup = RemovePointLomaPickup()
+    remove_pickup = RemovePointLomaPickup(ds_factor=ds_factor)
     binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
     # mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
     
@@ -568,9 +569,9 @@ if __name__ == '__main__':
     # data = ProcessedData.from_tod('20241016', 1008, save=False)
 
     cleaner = CleanTOD(save_file=True)
-    data = ProcessedData.from_tod('20250513', 1008)
+    data = ProcessedData.from_tod('20250522', 1008)
 
     mapper = Mapper([remove_pickup, ds, hpfilt, lpfilt, cleaner, binner])
 
-    map: MapData = mapper(data, save=False)
-    map.plot(save=False)
+    map: MapData = mapper(data, save=True)
+    map.plot()

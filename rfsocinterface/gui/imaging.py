@@ -3,8 +3,9 @@ from pathlib import Path
 from threading import Thread
 from multiprocessing import Pipe
 import h5py
+import copy
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget, QCheckBox, QComboBox, QLineEdit, QStackedLayout, QDialog, QVBoxLayout, QFormLayout, QDialogButtonBox
 from kidpy3 import capture
 
@@ -59,6 +60,8 @@ class MappingDialog(QDialog, Ui_MappingDialog):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setupUi(self)
+        self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
         # self.add_toolButton.clicked.connect(self.select_and_add_routine)
         self.add_toolButton.clicked.connect(lambda _: self.select_and_add_routine())
         self.remove_toolButton.clicked.connect(lambda _: self._temp_remove_item())
@@ -149,12 +152,15 @@ class DitherPatternWidget(FunctionWidget):
         self.fn(self.command, file, *values)
 
 class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
+    startMapping = Signal()
+
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None) -> None:
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
         self.cam_ctrl = SKPR_Camera_Control()
         self.mapping_dialog = MappingDialog(self)
         self.routines = []
+        self._add_default_routines()
 
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
@@ -163,6 +169,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
 
         self.stacked_layout = QStackedLayout(parent=self)
         self.dither_groupBox.layout().addLayout(self.stacked_layout, 2, 0, 1, 2)
+        self.startMapping.connect(self.make_map)
 
         self.add_dither_pattern(
             'AZ Scan Mode',
@@ -173,6 +180,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
                 (('N Repeats: ', ArgumentType.INT), {'default': 2}),
                 (('Zenith angle dither: ', ArgumentType.FLOAT), {'default': 0.04}),
                 (('Return to starting position', ArgumentType.BOOL), {'default': True}),
+                (('Large Map Mode', ArgumentType.BOOL), {'default': False}),
             ],
         )
         # self.add_dither_pattern(
@@ -190,6 +198,21 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.start_pushButton.clicked.connect(self.run)
         self.mapping_pushButton.clicked.connect(self.choose_mapping_routines)
         self.choose_pattern(0)
+    
+    def _add_default_routines(self):
+        default_routines = self.settings['defaults']['imaging']['mappingRoutines']
+        for routine_dict in default_routines:
+            routine_type = routine_dict['type']
+            base_args = copy.copy(DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type])
+            if 'defaults' in routine_dict:
+                default_args_dict = routine_dict['defaults']
+                for base_arg in base_args[2]:
+                    base_arg_name = base_arg[0][0].strip(': ')
+                    if base_arg_name in default_args_dict:
+                        base_arg[1]['default'] = default_args_dict[base_arg_name]
+            self.mapping_dialog.drag_function_widget.add_item(*base_args)
+        routine_widgets = self.mapping_dialog.drag_function_widget.items()
+        self.routines = [item.func_widget.call_function() for item in routine_widgets]
         
     def run_telescope_scan(self, command: str, *args):
         # Tell the controller to start moving the telescope according to the scan type
@@ -201,7 +224,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
             err_msg=f'Error occured while running command "{command}"',
         )
         print(f'{command} completed.')
-        self.make_map()
+        self.startMapping.emit()
     
     def make_map(self):
         print('Generating map...')
@@ -214,7 +237,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         # each routine. Needed for showing progress
         mapper = Mapper(self.routines)
         map_data: MapData = mapper(p)
-        map_data.plot()
+        map_data.plot(self.show_checkBox.isChecked())
     
     def update_current_file(self) -> Path:
         f = self.save_location_widget.get_chosen_save_location()
@@ -224,11 +247,15 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
     def get_current_file(self) -> Path:
         return self._file
     
+    def get_azel_file(self) -> Path:
+        return Path(str(self._file).replace('TOD', 'AZEL'))
+    
     def add_dither_pattern(self, label: str, command: str, args: list[tuple[str, ArgumentType]]):
         pattern = DitherPatternWidget(
             self.run_telescope_scan,
             command,
-            lambda: get_filename(file_type='azel').with_suffix('.h5'),
+            # lambda: get_filename(file_type='azel').with_suffix('.h5'),
+            self.get_azel_file,
             args=args,
             parent=self,
         )
@@ -251,17 +278,17 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
     def run(self):
         chans = self.get_selected_channels(self.channel_comboBox)
         rfchans = []
-        for rfsoc, chan in chans:
-            rfchan = rfsoc.get_channel(chan)
-            save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'chan_{chan}')
-            save_location.parent.mkdir(parents=True, exist_ok=True)
-            # Ensure the TOD file exists before getting the AZEL and optcam filenames
-            with h5py.File(save_location, 'w'):
-                pass
-            rfchan.raw_filename = str(save_location)
-            rfchans.append(rfchan)
         # Update the current save file
         self.update_current_file()
+        for rfsoc, chan in chans:
+            rfchan = rfsoc.get_channel(chan)
+            save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'{rfsoc.name}_{rfchan.name}', mkdir=True, touch_file=True)
+            # save_location.parent.mkdir(parents=True, exist_ok=True)
+            # Ensure the TOD file exists before getting the AZEL and optcam filenames
+            # with h5py.File(save_location, 'w'):
+            #     pass
+            rfchan.raw_filename = str(save_location)
+            rfchans.append(rfchan)
 
         # Take optical image
         self.cam_ctrl.take_pic(save=True)

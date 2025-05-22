@@ -65,7 +65,7 @@ DATA_ROUTINE_FUNCTION_WIDGET_ARGS = {
         'Remove Point Loma Pickup',
         RemovePointLomaPickup,
         [
-            (('Downsample Factor: ', ArgumentType.FLOAT), {'default': 5}),
+            (('Downsample Factor: ', ArgumentType.FLOAT), {'default': 6}),
             (('Pickup Filter Frequency: ', ArgumentType.FLOAT), {'default': 0}),
         ],
     ),

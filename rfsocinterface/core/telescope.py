@@ -323,9 +323,10 @@ class TelescopeMotorController:
             n_repeats: int=1,
             ze_dither: float=0.04,
             position_return: bool=True,
+            large_map_mode: bool=False,
     ):
         self._run = True
-        worker_thread = Thread(target=self._az_scan_mode, args=(client_id, file, az_start, az_stop, n_repeats, ze_dither, position_return))
+        worker_thread = Thread(target=self._az_scan_mode, args=(client_id, file, az_start, az_stop, n_repeats, ze_dither, position_return, large_map_mode))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
@@ -338,13 +339,22 @@ class TelescopeMotorController:
             n_repeats: int=2,
             ze_dither: float=0.04,
             position_return: bool=True,
+            large_map_mode: bool=False,
     ):
+        """Dither the telescope...
+        
+        Arguments:
+            large_map_mode (bool): If True, the telescoep will continue to step in ZE in
+                the same direction between each dither, to create a larger map in the ZE
+                direction. Defaults to False.
+        
+        """
         az_start_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         az_end_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
-        current_az = self.get_ser_az_pos()
-        current_ze = self.get_ser_ze_pos()
-        az_start += current_az
-        az_stop += current_az
+        initial_az = self.get_ser_az_pos()
+        initial_ze = self.get_ser_ze_pos()
+        az_start += initial_az
+        az_stop += initial_az
 
         # Set start position in current thread
         self._set_az_pos(az_start - az_start_buffer, stop_run=False)
@@ -352,8 +362,13 @@ class TelescopeMotorController:
         for i_rep in np.arange(n_repeats):
             if not self._run:
                 break
+            if large_map_mode:
+                new_ze = initial_ze + (i_rep - (n_repeats - 1) / 2) * ze_dither
+            else:
+                new_ze = initial_ze + (i_rep % 2) * ze_dither
+            self._set_ze_pos(new_ze, stop_run=False)
+
             if np.mod(i_rep, 2) == 0:
-                self._set_ze_pos(current_ze, stop_run=False)
                 this_position_data = self._set_az_pos(
                     az_stop + az_end_buffer + 0.5, scan_mode=True, stop_run=False
                 )
@@ -362,7 +377,6 @@ class TelescopeMotorController:
                 else:
                     position_data = np.append(position_data, this_position_data)
             if np.mod(i_rep, 2) == 1:
-                self._set_ze_pos(current_ze + ze_dither, stop_run=False)
                 this_position_data = self._set_az_pos(
                     az_start - az_start_buffer - 0.5, scan_mode=True, stop_run=False,
                 )
@@ -380,8 +394,8 @@ class TelescopeMotorController:
             f.create_dataset("timestamp_tel", data=position_data[2::3])
             f.create_dataset("optical_visibility", data=['****'])
         if position_return:
-            self._set_az_pos(current_az, stop_run=False)
-            self._set_ze_pos(current_ze, stop_run=False)
+            self._set_az_pos(initial_az, stop_run=False)
+            self._set_ze_pos(initial_ze, stop_run=False)
         self._run = False
         print("Scan Complete")
         self.send(client_id, 'az_scan_mode_complete', 0)

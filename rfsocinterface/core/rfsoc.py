@@ -53,6 +53,14 @@ class RFSOCWrapper:
         # self.valon_a = None
         # self.valon_b = None
     
+    @property
+    def name(self) -> str:
+        return self.settings['name']
+
+    @name.setter
+    def name(self, name: str):
+        self.settings['name'] = name
+    
     def connect_to_comports(self):
         self.connect_to_atten_comport()
         self.connect_to_lo_comport(0)
@@ -209,6 +217,7 @@ class RFSOCWrapper:
     
     def get_channel_name(self, channel: int) -> str:
         rfchan = self.get_channel(channel)
+        # return rfchan.name
         return f'{self.settings["name"]}_{rfchan.name}'
 
 def get_channel_from_text(text: str, rfsocs: list[RFSOCWrapper]) -> tuple[RFSOCWrapper, int]:

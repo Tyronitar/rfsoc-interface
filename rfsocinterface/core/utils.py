@@ -162,11 +162,12 @@ def get_chanmask(chanmask_file=''):
     return chanmask
 
 
-def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', attenuation=0.):
+def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', attenuation=0., mkdir: bool=False):
     #see if we already have the parent folder for today's date
     yymmdd = get_yymmdd()
     date_folder = base_dir / yymmdd
-    date_folder.mkdir(exist_ok=True)
+    if mkdir:
+        date_folder.mkdir(exist_ok=True)
 
     #provide the name of the file
     match file_type.lower():

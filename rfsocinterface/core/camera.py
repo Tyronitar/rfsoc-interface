@@ -3,8 +3,8 @@ import numpy as np
 import h5py
 import cv2
 import matplotlib.pyplot as plt
-from vmbpy import VmbSystem
-from rfsocinterface.core.utils import get_filename
+from vmbpy import VmbSystem, PixelFormat
+from rfsocinterface.core.utils import get_filename, PathLike
 from rfsocinterface.core.utils import ensure_path
 
 class SKPR_Camera_Control:
@@ -14,9 +14,11 @@ class SKPR_Camera_Control:
             with cams[0] as cam:
                 cam.AcquisitionMode.set('SingleFrame')
                 cam.ExposureAuto.set('Continuous')
+                # cam.ExposureTimeAbs.set(1000)
                 cam.Gamma.set = 1
+                cam.set_pixel_format(PixelFormat.Rgb8)
     
-    def take_pic(self, save: bool=False, show: bool=False) -> cv2.typing.MatLike:
+    def take_pic(self, savefile: PathLike=None, save: bool=False, show: bool=False) -> cv2.typing.MatLike:
         with VmbSystem.get_instance() as vmb:
             cams = vmb.get_all_cameras()
             with cams[0] as cam:
@@ -24,7 +26,8 @@ class SKPR_Camera_Control:
             pic_data = np.flip(np.flip(frame.as_numpy_ndarray(),0),1)
 
             if save:
-                savefile = get_filename(file_type='optcam').with_suffix('.h5')
+                if not savefile:
+                    savefile = get_filename(file_type='optcam').with_suffix('.h5')
                 f = h5py.File(savefile, 'a')
                 f.create_dataset('optical_image', data=pic_data)
                 f.close()

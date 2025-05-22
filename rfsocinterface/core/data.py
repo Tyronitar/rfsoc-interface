@@ -20,6 +20,11 @@ from rfsocinterface.core.utils import ensure_path, gaussian_filter, GAUSSIAN_SIG
 from rfsocinterface.core.losweep import LoSweepData
 
 DATA_DIRECTORY = '/data'
+
+OPTCAM_OFFSET_AZ_PIX = 57
+OPTCAM_OFFSET_ZA_PIX = 49
+OPTCAM_PIX_SIZE_DEGREES = 0.0104
+DEFAULT_MAP_DPIX = 0.03
 # DATA_DIRECTORY = 'reference_data'  # For testing with local data files
 
 @ensure_path(0)
@@ -442,9 +447,11 @@ class ProcessedData(Updateable):
         )
 
     def with_values(self, **kwargs) -> ProcessedData:
-        new_data = copy.copy(self)
-        new_data.update(kwargs)
-        return new_data
+        new_params = {
+            key: np.copy(self.__getattribute__(key)) if key not in kwargs else kwargs[key]
+            for key in vars(self).keys()
+        }
+        return ProcessedData(**new_params)
 
 
 @dataclass
@@ -456,7 +463,7 @@ class MapData(ProcessedData):
     hits_map: npt.NDArray = field(default_factory=lambda: np.array([]))
     map_x: npt.NDArray = field(default_factory=lambda: np.array([]))
     map_y: npt.NDArray = field(default_factory=lambda: np.array([]))
-    map_dpix: float=0.04
+    map_dpix: float=DEFAULT_MAP_DPIX
 
     @property
     def map(self) -> npt.NDArray:
@@ -561,15 +568,15 @@ class MapData(ProcessedData):
         )
     
     def get_scaled_optical_image(self) -> npt.NDArray:
-        opt_npix_per_tel_npix = self.map_dpix/0.0104
+        opt_npix_per_tel_npix = self.map_dpix/OPTCAM_PIX_SIZE_DEGREES
         opt_npix_az = int(np.size(self.map_x)*opt_npix_per_tel_npix/2)*2
-        opt_npix_el = int(np.size(self.map_y)*opt_npix_per_tel_npix/2)*2
-        opt_center_az = int(2592/2)+70
-        opt_center_el = int(1944/2)+10
-        return self.optical_image[opt_center_el-int(opt_npix_el/2):opt_center_el+int(opt_npix_el/2),\
+        opt_npix_za = int(np.size(self.map_y)*opt_npix_per_tel_npix/2)*2
+        opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
+        opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
+        return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
                                     opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
     
-    def plot(self, save: bool=True):
+    def plot(self, show: bool=True, save: bool=True):
 
         valid_cov_1 = np.argwhere(self.hits_map[0] > 0.5 * np.median(self.hits_map[0]))
         map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
@@ -650,13 +657,11 @@ class MapData(ProcessedData):
         plt.xlim(this_xlim), plt.ylim(this_ylim)
             
         this_fig.subplots_adjust(wspace=0, hspace=0)
-        plt.show()
     #    pw.addPlot("Raw Image", this_fig)
         if save:
-            plt.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
-
-
-
+            this_fig.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
+        if show:
+            plt.show()
 
     def __copy__(self) -> MapData:
         return MapData(
@@ -686,6 +691,12 @@ class MapData(ProcessedData):
             self.map_dpix,
         )
     
+    def with_values(self, **kwargs) -> MapData:
+        new_params = {
+            key: np.copy(self.__getattribute__(key)) if key not in kwargs else kwargs[key]
+            for key in vars(self).keys()
+        }
+        return MapData(**new_params)
 
 
 def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None | int | tuple[int, ...]=None):
