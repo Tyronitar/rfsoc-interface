@@ -1,14 +1,12 @@
 """Module for handling of settings files."""
+from rfsocinterface import GLOBAL_SETTINGS_PATH
+from rfsocinterface import USER_SETTINGS_PATH
 from rfsocinterface.core.utils import ensure_path
 
 
 import copy
 import json
 from pathlib import Path
-# TODO: Global settings need sudo privelige to be created.
-# Although, when installing, that shouldn't be an issue
-GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
-USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
 DEFAULT_SETTINGS = {
     "app": {
         "tabs": [
@@ -68,6 +66,8 @@ class Settings(dict):
         super().__init__(*args, **kwargs)
         self._path = None
 
+    # TODO: Global settings need sudo privelige to be created.
+    # Although, when installing, that shouldn't be an issue
     @staticmethod
     @ensure_path(0)
     def _create_settings(path: Path):
