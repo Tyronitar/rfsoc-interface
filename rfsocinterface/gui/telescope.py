@@ -1,4 +1,8 @@
 from __future__ import annotations
+
+import logging
+_logger = logging.getLogger(__name__)
+
 from PySide6.QtWidgets import QWidget, QMainWindow, QApplication, QAbstractButton, QDialog, QVBoxLayout
 from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread, QTimer, QMutexLocker
 import serial.tools
@@ -156,7 +160,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def _connection_loop(self):
         while True:
             response, *data = self._conn_parent.recv()
-            # print(f'{self._client_id} got response: {response}, data: {data}')
+            _logger.debug(f'{self._client_id} got response: {response}, data: {data}')
             match response.lower():
                 case 'az_pos':
                     self.update_az_pos(*data)

@@ -1,6 +1,8 @@
 """Main entry point for the rfsocinterface package."""
 
 import logging
+_logger = logging.getLogger(__name__)
+
 from argparse import ArgumentParser
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QGridLayout, QTabWidget
@@ -9,7 +11,6 @@ from PySide6.QtGui import QScreen
 from rfsocinterface.gui.main_window import MainWindow
 from rfsocinterface import BAD_LOGGERS
 
-_logger = logging.getLogger(__name__)
 
 def move_to_center(win: QMainWindow, screen: QScreen):
     win.move(screen.geometry().center() - win.geometry().center())
@@ -40,7 +41,11 @@ if __name__ == '__main__':
     # logging.root.setLevel(log_level)  # Updating root affects all children
     # print(logging.root.handlers)
     # print(_logger.level)
-    logging.root.handlers[0].setLevel(log_level)  # Update the level of the console handler
+
+    # Update the level of the console handlers
+    logging.root.handlers[0].setLevel(log_level)
+    logging.getLogger('telescopeControl').handlers[0].setLevel(log_level)
+
     # print(logging.root.handlers)
     # print(_logger.level)
     # exit()

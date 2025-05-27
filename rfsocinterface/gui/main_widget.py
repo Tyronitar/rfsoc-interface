@@ -1,3 +1,6 @@
+import logging
+_logger = logging.getLogger(__name__)
+
 from typing import TYPE_CHECKING, Iterator
 from functools import partial
 from multiprocessing import Queue, Pipe

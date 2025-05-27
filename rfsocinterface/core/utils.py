@@ -1,3 +1,7 @@
+import logging
+_logger = logging.getLogger(__name__)
+_tele_logger = logging.getLogger('telescopeControl')
+
 import functools
 import os
 from pathlib import Path
@@ -435,7 +439,7 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
         err_msg = f'Error occured while waiting for command "{command}": '
     while True:
         response, *data = conn.recv()
-        # print(f'{id} got response: "{response}", data: {data}')
+        _logger.debug(f'{id} got response: "{response}", data: {data}')
         if response.lower() == f'{command}':
             break
         elif response.lower() == 'err':
