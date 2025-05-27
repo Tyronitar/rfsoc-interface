@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, Q
 from PySide6.QtCore import Qt, QCoreApplication
 from PySide6.QtGui import QScreen
 from rfsocinterface.gui.main_window import MainWindow
+from rfsocinterface import BAD_LOGGERS
 
 _logger = logging.getLogger(__name__)
 
@@ -34,7 +35,27 @@ if __name__ == '__main__':
         log_level = logging.INFO
     else:
         log_level = logging.WARNING
-    logging.root.setLevel(log_level)  # Updating root affects all children
+    # print(logging.root.handlers)
+    # print(_logger.level)
+    # logging.root.setLevel(log_level)  # Updating root affects all children
+    # print(logging.root.handlers)
+    # print(_logger.level)
+    logging.root.handlers[0].setLevel(log_level)  # Update the level of the console handler
+    # print(logging.root.handlers)
+    # print(_logger.level)
+    # exit()
+    # print(logging.Logger.manager.loggerDict)
+    # for logger in loggers:
+    #     logger.setLevel(logging.INFO)
+
+    loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
+    for name in logging.root.manager.loggerDict:
+        if any(name.startswith(prefix) for prefix in BAD_LOGGERS):
+            logger = logging.getLogger(name)
+            # logger.disabled = True
+            # print(f'disabled {logger}')
+            logger.setLevel(logging.WARNING)
+            # logger.setLevel(logging.WARNING)
 
     _logger.debug('DEBUG message')
     _logger.info('INFO message')
