@@ -91,6 +91,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self._telescope_queue.put([self._client_id, 'get_ser_az_pos'])
         self._telescope_queue.put([self._client_id, 'get_ser_ze_pos'])
 
+
         # command, az_pos = self._conn_parent.recv()
         # print(command, az_pos)
         # if command != 'az_pos':

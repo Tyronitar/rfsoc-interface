@@ -22,7 +22,7 @@ AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
 
-def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float) -> npt.NDArray:
+def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, beam_map_mode: bool=False) -> npt.NDArray:
 
     max_az = np.max(map.detector_az) - az_trim
     min_az = np.min(map.detector_az) + az_trim
@@ -31,7 +31,9 @@ def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float) 
     n_pix_x = int(np.ceil((max_az - min_az) / map_dpix))
     n_pix_y = int(np.ceil((max_za - min_za) / map_dpix))
     map_x = np.arange(n_pix_x) * map_dpix + min_az + map_dpix / 2.
-    map_y = np.arange(n_pix_y) * map_dpix + min_za + map_dpix / 2. + 0.1  # 0.1 accounts for assymmetry in array
+    map_y = np.arange(n_pix_y) * map_dpix + min_za + map_dpix / 2.
+    if not beam_map_mode:
+        map_y += 0.1  # 0.1 accounts for assymmetry in array
 
     return n_pix_x, n_pix_y, map_x, map_y
 
@@ -191,13 +193,19 @@ class BinTODIntoMap(DataRoutine):
             az_trim: float=2.3,
             za_trim: float=0.2,
             med_netd_cut_threshold: float=3.,
+            beam_map_mode: bool=False,
     ):
         super().__init__()
         self.hp_filter_freq = hp_filter_freq
         self.lp_filter_freq = lp_filter_freq
         self.med_netd_cut_threshold = med_netd_cut_threshold
-        self.az_trim = az_trim
-        self.za_trim = za_trim
+        self.beam_map_mode = beam_map_mode
+        if beam_map_mode:
+            self.az_trim = 0.
+            self.za_trim = 0.
+        else:
+            self.az_trim = az_trim
+            self.za_trim = za_trim
     
     def forward(
             self,
@@ -211,12 +219,12 @@ class BinTODIntoMap(DataRoutine):
         fs = md.fs
         data_clean = md.data_mK
 
-        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, md.map_dpix)
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, md.map_dpix, self.beam_map_mode)
+
+
 
         
         netd = np.zeros(md.nchan)
-        sum_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
-        hits_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
         wind = signal.get_window('hamming', data_clean.shape[-1])
 
         # Compute NETD values
@@ -243,10 +251,23 @@ class BinTODIntoMap(DataRoutine):
 
         netd[new_chanmask != 1] = 0
 
+        if self.beam_map_mode:
+            channels_to_map = np.where(md.chanmask != 0)[0]
+            sum_map = np.zeros((md.nchan, n_pix_x, n_pix_y))
+            hits_map = np.zeros((md.nchan, n_pix_x, n_pix_y))
+        else:
+            sum_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
+            hits_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
+            channels_to_map = np.where(new_chanmask == 1)[0]
+
         # Create map
-        for i_chan in np.where(new_chanmask == 1)[0]:
-            weight = 1./ netd[i_chan] ** 2.
-            i_pol = detector_pol[i_chan] - 1
+        for i_chan in channels_to_map[:10]:
+            if self.beam_map_mode:
+                map_idx = i_chan
+                weight = 1.
+            else:
+                map_idx = detector_pol[i_chan] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
+                weight = 1./ netd[i_chan] ** 2.
 
             this_detector_az = detector_az[i_chan,:]
             this_detector_za = detector_za[i_chan,:]
@@ -261,6 +282,9 @@ class BinTODIntoMap(DataRoutine):
             y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/md.map_dpix))
             y_ind = y_ind.astype('int64')
 
+            pdb.set_trace()
+
+
             #eliminate samples outside the map
             valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
                 np.logical_and(x_ind[this_good_index] >= 0, x_ind[this_good_index] < sum_map.shape[1]), \
@@ -269,8 +293,8 @@ class BinTODIntoMap(DataRoutine):
 
             #loop over samples to create sum and hits maps
             for time_sample in this_good_index:
-                sum_map[i_pol, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
-                hits_map[i_pol, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+                sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
         # weights = 1 / netd[md.chanmask==1]**2
         # np.save('weight.npy', 1/all_NETDs**2)
         # plt.show()
@@ -559,7 +583,8 @@ if __name__ == '__main__':
     # pdb.set_trace()
 
     remove_pickup = RemovePointLomaPickup(ds_factor=ds_factor)
-    binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
+    # binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
+    binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq, beam_map_mode=True)
     # mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
     
 
@@ -568,9 +593,13 @@ if __name__ == '__main__':
     # data = ProcessedData.from_tod('20241016', 1008, save=False)
 
     cleaner = CleanTOD(save_file=True)
-    data = ProcessedData.from_tod('20250522', 1008)
+    data = ProcessedData.from_tod('20250529', 1011, beam_map_mode=True)
 
-    mapper = Mapper([remove_pickup, ds, hpfilt, lpfilt, cleaner, binner])
+    mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
 
     map: MapData = mapper(data, save=True)
+    extent = (min(map.map_x)-map.map_dpix/2.,max(map.map_x)+map.map_dpix/2,max(map.map_y)+map.map_dpix/2.,min(map.map_y)-map.map_dpix/2.)
+    from rfsocinterface.core.data import plot_map
+    # idx = 0; plot_map(map.map[idx], map.map_x, map.map_y, extent, max_abs=np.nanmax(np.abs(map.map[idx]))); plt.show()
+    pdb.set_trace()
     map.plot()

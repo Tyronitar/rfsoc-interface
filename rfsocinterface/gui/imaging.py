@@ -132,6 +132,7 @@ class MappingDialog(QDialog, Ui_MappingDialog):
         item = self.drag_function_widget.active_item
         # No need to keep track of new items that are then removed
         if item in self._new_items:  
+            self._new_items.remove(item)
             self.remove_routine(item)
         else:
             # Hide the item to look like it was removed...

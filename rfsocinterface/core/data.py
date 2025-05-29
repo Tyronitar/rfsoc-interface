@@ -175,7 +175,7 @@ class ProcessedData(Updateable):
         return np.size(self.chanmask)
 
     @classmethod
-    def from_tod(cls, date: str, setnum: int, losweep: str | None=None, save: bool=True) -> ProcessedData:
+    def from_tod(cls, date: str, setnum: int, losweep: str | None=None, save: bool=True, beam_map_mode: bool=False) -> ProcessedData:
         #20230803_rfsoc1_TOD_set1012
         date = date
         setnum = setnum
@@ -358,6 +358,9 @@ class ProcessedData(Updateable):
                 this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
                 this_detector_delta_x = f.detector_delta_x[:]
                 this_detector_delta_y = f.detector_delta_y[:]
+                if beam_map_mode:
+                    this_detector_delta_x *= 0
+                    this_detector_delta_y *= 0
                 this_det_az = np.outer(this_detector_delta_x, np.cos(this_ang)) - \
                             np.outer(this_detector_delta_y,np.sin(this_ang)) + \
                             np.outer(np.ones(ntones), this_az_tel)
@@ -452,6 +455,29 @@ class ProcessedData(Updateable):
             for key in vars(self).keys()
         }
         return ProcessedData(**new_params)
+    
+    @classmethod
+    @ensure_path(1)
+    def from_file(cls, file: Path) -> ProcessedData:
+        date = file.stem[:8]
+        setnum = file.stem[:-4]
+        with h5py.File(file, 'r') as pfile:
+            dI_df = pfile["dI_df"][:]
+            dQ_df = pfile["dQ_df"][:]
+            df_per_mK = pfile['df_per_mK'][:]
+            data_gain = pfile['data_gain'][:]
+            data_phase = pfile['data_phase'][:]
+            IQ_to_gain_phase_angle = pfile['IQ_to_gain_phase_angle']
+            data_freq = pfile['data_freq']
+            data_diss = pfile['data_diss'][:]
+            data_mK = pfile['data_mK'][:]
+            chanmask = pfile['chanmask'][:]
+            detector_pol = pfile['detector_pol'][:]
+            detector_az = pfile['detector_az'][:]
+            detector_za = pfile['detector_za'][:]
+            timestamp = pfile['timestamp'][:]
+            optical_visibility = pfile['optical_visibility'][:]
+
 
 
 @dataclass
@@ -576,6 +602,8 @@ class MapData(ProcessedData):
         return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
                                     opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
     
+ 
+    
     def plot(self, show: bool=True, save: bool=True):
 
         valid_cov_1 = np.argwhere(self.hits_map[0] > 0.5 * np.median(self.hits_map[0]))
@@ -605,6 +633,7 @@ class MapData(ProcessedData):
         flagged_map_1_filt, flagged_map_2_filt, flagged_map_tot_filt, contour_levels = self.get_combined_map()
 
     #    pw = plotWindow()
+        # TODO: Make figure size change based on the size of the map
         this_fig = plt.figure(figsize=(15,7.5))
         plt.subplot(4,1,1)
         plt.imshow(np.flip(np.transpose(self.map[0][::-1]),1), \
@@ -697,6 +726,52 @@ class MapData(ProcessedData):
             for key in vars(self).keys()
         }
         return MapData(**new_params)
+
+
+def plot_map(
+        map: npt.NDArray,
+        map_x: npt.NDArray,
+        map_y: npt.NDArray,
+        extent: tuple[float, float, float, float],
+        max_abs: float=None,
+        flagged_map: npt.NDArray=None,
+        contour_levels: npt.NDArray=None,
+        cb_shrink: float=0.95,
+        cb_label: str='Signal (mK)',
+        cmap: str='Greys_r',
+        title: str='',
+        add_x_label: bool=True,
+):
+    xlim = min(map_x),max(map_x)
+    ylim = max(map_y),min(map_y)
+
+    if max_abs is None:
+        max_abs = np.nanmax(np.abs(map))
+
+    plt.figure()
+    plt.imshow(
+        np.flip(np.transpose(map[::-1]),1),
+        aspect='equal',
+        extent=extent,
+        vmin=-max_abs,
+        vmax=max_abs,
+        cmap=cmap,
+    )
+    cb = plt.colorbar(shrink=cb_shrink)
+    cb.set_label(cb_label, rotation=270, labelpad=15)
+    if flagged_map:
+        plt.contour(
+            np.flip(np.flip(np.transpose(flagged_map[::-1]), axis=1), axis=0),
+            levels=contour_levels,
+            extent=extent,
+            colors='red',
+        )
+    plt.title(title)
+    if add_x_label:
+        plt.xlabel('Azimuth (degrees)')
+    plt.ylabel('ZA (degrees)')
+    plt.xlim(xlim), plt.ylim(ylim)
+
 
 
 def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None | int | tuple[int, ...]=None):
