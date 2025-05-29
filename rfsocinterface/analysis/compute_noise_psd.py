@@ -11,13 +11,13 @@ from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 
 
-from rfsocinterface.core.data import rotate_basis, flag_outliers, IQ_to_freq_diss, remove_electronics_noise
-from rfsocinterface.core.map import Downsample
+from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise
+from rfsocinterface.core.map import Downsample, RemoveElectronicsNoise
 from rfsocinterface.core.utils import ensure_path, ordinal
 
 XLIM = (0.1, 100)
 YLIM = (-110, -60)
-VALID_BASES = ['pa', 'iq', 'fd']
+VALID_BASES = ['gp', 'iq', 'fd']
 
 
 def compute_noise_psd(
@@ -84,7 +84,7 @@ def plot_psd(
         min_percentile: float=16,
         max_percentile: float=84,
         title: str | None=None,
-        basis: Literal['pa', 'iq', 'fd']='pa',
+        basis: Literal['gp', 'iq', 'fd']='gp',
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -98,7 +98,7 @@ def plot_psd(
             Defaults to 84.
         title (str, optional): Title to give to each plot. Defaults to None.
         basis (str, optional): The basis of the data. Either IQ ('iq'), 
-            Phase/Amplitude ('pa'), or Frequency/Dissipation ('fd'). Defaults to 'pa.'
+            Gain/Phase ('gp'), or Frequency/Dissipation ('fd'). Defaults to 'pa.'
     
     Returns:
         (list[Figure]): N_chan + 1 plots corresponding to the PSD along the
@@ -125,7 +125,7 @@ def plot_psd(
     if title is None:
         title = 'RFSoC Loopback PSD'
     match basis.lower():
-        case 'pa':
+        case 'gp':
             titles = [title + ' - Phase', title + ' - Amplitude']
         case 'iq':
             titles = [title + ' - I', title + ' - Q']
@@ -230,13 +230,15 @@ def create_plot(
 #             nominal_block_length=10,
 #             outlier_sigma=2,
 #         )
-#         plot_psd(freq, noise_psd, f'plots/{save_name}.pdf', basis='pa', title=title)
+#         plot_psd(freq, noise_psd, f'plots/{save_name}.pdf', basis='gp', title=title)
 #         plt.close()
 
 
 if __name__ == '__main__':
     from rfsocinterface.core.data import ProcessedData
-    set_num = 1001
+    date = '20250522'
+    set_num = 1008
+    basis = 'gp'
     outlier_sigma = 2
     ds_factor = 3
     do_flag_outliers = True
@@ -245,9 +247,10 @@ if __name__ == '__main__':
     # set_num = 1001
     # p = ProcessedData('20250409', set_num, losweep='20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
     # p = ProcessedData('20250415', set_num, losweep='20250415_rfsoc2_LO_Sweep_hour16p1919.npy')
-    p = ProcessedData.from_tod('20250422', set_num, losweep='/data/20250422/20250422_rfsoc2_LO_Sweep_hour16p2775.h5')
+    p = ProcessedData.from_tod(date, set_num)
+    # p = ProcessedData.from_tod('20250422', set_num, losweep='/data/20250422/20250422_rfsoc2_LO_Sweep_hour16p2775.h5')
     # pdb.set_trace()
-    p.chanmask = np.ones_like(p.chanmask)
+    # p.chanmask = np.ones_like(p.chanmask)
     # input_data = p.data_mK
     input_data = p.data_gain_phase
     timestamp = p.timestamp
@@ -270,16 +273,18 @@ if __name__ == '__main__':
 
     # Remove electronics noise
     if remove_noise:
-        cleaned_pa_data = remove_electronics_noise(p.data_gain_phase)
+        cleaner = RemoveElectronicsNoise()
+        p = cleaner.forward(p)
+        # cleaned_pa_data = remove_electronics_noise(p.data_gain_phase)
         # TODO:
         # Rotate back to IQ
         # Recompute all of the data
         # Maybe, I should make RemoveElectronicsNoise a DataRoutine class that does all of this
 
     chanmask, freq, noise_psd = compute_noise_psd(
-        p.IQ_to_gain_phase_angle / p.carrier_amplitude_norm(),
+        p.data_gain_phase,
         p.timestamp,
         chanmask=p.chanmask,
         nominal_block_length=10,
     )
-    plot_psd(freq, noise_psd, f'plots/20250422_{set_num}.pdf', basis='fd', title='Loopback')
+    plot_psd(freq, noise_psd, f'plots/{date}_{set_num}_{basis}.pdf', basis=basis, title='Loopback')

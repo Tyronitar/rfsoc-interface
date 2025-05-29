@@ -79,7 +79,7 @@ class RemoveElectronicsNoise(DataRoutine):
     def __init__(self):
         super().__init__()
     
-    def forward(pd: ProcessedData) -> ProcessedData:
+    def forward(self, pd: ProcessedData) -> ProcessedData:
         gain_phase_data = pd.data_gain_phase
         clean_gain_phase_data = remove_electronics_noise(gain_phase_data)
 
@@ -330,7 +330,6 @@ class Downsample(DataRoutine):
         self.order=order
     
     def forward(self, pd: ProcessedData) -> ProcessedData:
-        pdb.set_trace()
         data_freq_diss_ds = signal.decimate(pd.data_freq_diss, self.ds_factor)
         data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
         data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
