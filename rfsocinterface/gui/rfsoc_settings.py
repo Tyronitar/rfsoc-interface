@@ -1,33 +1,24 @@
 from pathlib import Path
 import logging
 
-from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot, Signal
-from PySide6.QtGui import QDoubleValidator, QIcon, QRegularExpressionValidator, QIntValidator
+from PySide6.QtCore import Qt, Slot, Signal
+from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIntValidator
 from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
 from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import Ui_RFSOCAdvancedSettingsWidget
 from rfsocinterface.gui.utils import PathValidator, get_lineEdit_text, get_num_value
 from rfsocinterface.gui.widgets.icon_label import IconLabel
-from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QVBoxLayout, QSizePolicy, QGroupBox, QGridLayout
+from PySide6.QtWidgets import QWidget, QFileDialog, QVBoxLayout
 
-from PySide6.QtWidgets import (QFormLayout,
-    QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QAbstractButton, QDialogButtonBox,
-    QWidget)
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QDialogButtonBox,
+    QWidget,
+)
 
-import numpy.typing as npt
 
-import time
-import json
-import redis
-import configparser
-from kidpy3.hardware import Transceiver321, Transceiver320d, Valon5009
 import numpy as np
-from transceiver import Transceiver
-import yaml
 
-from rfsocinterface.gui.widgets.file_select import FileUploadWidget
 from rfsocinterface.gui.widgets.section import Section
-from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from rfsocinterface.core.utils import IPV4_REGEX, MAC_REGEX
 from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper

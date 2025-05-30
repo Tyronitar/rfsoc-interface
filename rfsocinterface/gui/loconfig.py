@@ -1,37 +1,27 @@
 """GUI Elements dealing with Configuring the LO Sweep."""
 
 from pathlib import Path
-from typing import Literal, Type, Callable, TYPE_CHECKING, Iterator
-from functools import partial
-from concurrent.futures import Future
+from typing import Literal, TYPE_CHECKING
 import logging
 
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import Figure
 
-from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog, QTabWidget, QDialogButtonBox, QPushButton, QDialog
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog
+from PySide6.QtCore import Signal
 
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
-from rfsocinterface.core.losweep import LoSweepData, get_tone_list, LoSweep
+from rfsocinterface.core.losweep import LoSweepData, LoSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
 from rfsocinterface.gui.utils import get_num_value
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
-from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
+from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
-from rfsocinterface.gui.initialization import InitializationWidget
-from rfsocinterface.core.utils import ensure_path, get_filename, PathLike, TabName
+from rfsocinterface.core.utils import ensure_path, get_filename, TabName
 from rfsocinterface.gui.main_widget import MainWidget
 
-# from kidpy3 import RFSOC
-from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 import time
-# import valon5009
 import numpy as np
-import onrkidpy
-import sweeps
-import h5py
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -167,8 +157,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             )
             rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
             
-        savefile = onrkidpy.get_filename(
-            type="LO", chan_name=chan_name
+        savefile = get_filename(
+            file_type="LO", chan_name=chan_name
         )
         match self.buttonGroup.checkedButton():
             case self.filename_elevation_radioButton:

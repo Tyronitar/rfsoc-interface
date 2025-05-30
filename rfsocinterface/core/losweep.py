@@ -1,30 +1,23 @@
 from __future__ import annotations
-from typing import Callable, Iterable
 import logging
 
 from concurrent.futures import Future
 
 from pathlib import Path
-from PySide6.QtCore import SignalInstance
 from PySide6.QtWidgets import QProgressDialog
 
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 from matplotlib.figure import Figure
-from matplotlib.ticker import FormatStrFormatter, EngFormatter, FuncFormatter
+from matplotlib.ticker import FuncFormatter
 import h5py
 
-from onr_fit_lo_sweeps import simple_derivative_fits
-from onrkidpy import get_chanmask
 from PySide6.QtWidgets import QApplication
 from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
-import valon5009
-import time
-import udpcap
-from kidpy3 import RFSOC, capture_packets
+from kidpy3 import capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 from kidpy3.data_handler import Rfchan
 

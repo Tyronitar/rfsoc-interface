@@ -23,7 +23,6 @@ import redis
 
 import time
 from collections.abc import Mapping
-import onrkidpy
 
 _tele_logger = logging.getLogger('telescopeControl')
 
