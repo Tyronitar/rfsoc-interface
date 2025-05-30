@@ -1,7 +1,8 @@
 """Main entry point for the rfsocinterface package."""
 
 import logging
-_logger = logging.getLogger('rfsocinterface')
+import logging.config
+
 
 from argparse import ArgumentParser
 
@@ -14,6 +15,10 @@ def move_to_center(win: QMainWindow, screen: QScreen):
     win.move(screen.geometry().center() - win.geometry().center())
 
 if __name__ == '__main__':
+
+    logging.config.fileConfig('rfsocinterface/logging.conf')
+    _logger = logging.getLogger('rfsocinterface')
+
     parser = ArgumentParser(
         prog='rfsocinterface',
         description='A user-friendly GUI for configuring and monitoring MKID readout software.',

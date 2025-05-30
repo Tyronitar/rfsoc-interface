@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-_logger = logging.getLogger(__name__)
-_tele_logger = logging.getLogger('telescopeControl')
 
 import pdb
 import time
@@ -18,6 +16,9 @@ import uldaq as ul
 from Exscript.protocols.telnetlib import Telnet
 
 from rfsocinterface.core.utils import analog_to_digital
+
+_logger = logging.getLogger(__name__)
+_tele_logger = logging.getLogger('telescopeControl')
 
 
 ZEPORT = 23
@@ -84,7 +85,6 @@ class TelescopeMotorController:
     def _listener_loop(self):
         while True:
             client_id, command, *args = self.queue.get()
-            # command, *args = self.conn.recv()
             _tele_logger.debug(f'Client "{client_id}" sent command: "{command}", args: {args}')
             match command.lower():
                 case 'add_connection':
@@ -141,7 +141,7 @@ class TelescopeMotorController:
         comports = serial.tools.list_ports.comports()
         for dev in comports:
             # port_array[dev] = str(ports[dev].manufacturer)
-            # print('dev #: ', dev)
+            # _tele_logger.debug('dev #: ', dev)
             if dev.manufacturer == "Prolific Technology Inc.":
                 az_port = dev.device
         ser_az = serial.Serial(
@@ -168,7 +168,7 @@ class TelescopeMotorController:
         self.ser_ze.open(host=AKD1, port=ZEPORT)
         self.ser_ze.write(b'DRV.ACTIVE\r\n')
         status_string = self.ser_ze.read_until(b'\r', 0.1)
-        # print(status_string, type(status_string))
+        # _tele_logger.debug(status_string, type(status_string))
         # status_string = self.ser_ze.read_until(b'\r', 0.1).decode()
         status = float(status_string.split('\r')[0])
 
@@ -517,9 +517,6 @@ class TelescopeMotorController:
         ## Read position again
         time.sleep(0.1)
         pos = self.get_ser_ze_pos()
-        # self.conn.send(['ze_pos', pos])
-        #        print ('EL Set to position: ', str(pos))
-        #        print ('Position Set!')
         if scan_mode:
             return position_data
 

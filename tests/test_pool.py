@@ -68,7 +68,6 @@ def test_qthread_job_pool_exception(qtbot):
     pool.close()
     pool.join()
     with pytest.raises(ValueError, match='Four is unlucky'):
-        print(future.exception())
         raise future.exception()
 
 #
@@ -103,7 +102,6 @@ def test_qprocess_job_pool_exception(qtbot):
     pool.close()
     pool.join()
     with pytest.raises(ValueError, match='Four is unlucky'):
-        print(future.exception())
         raise future.exception()
 
 #

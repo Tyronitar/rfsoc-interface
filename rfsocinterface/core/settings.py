@@ -1,12 +1,16 @@
 """Module for handling of settings files."""
+import copy
+import json
+from pathlib import Path
+import logging
+
 from rfsocinterface.core.utils import GLOBAL_SETTINGS_PATH
 from rfsocinterface.core.utils import USER_SETTINGS_PATH
 from rfsocinterface.core.utils import ensure_path
 
+_logger = logging.getLogger(__name__)
 
-import copy
-import json
-from pathlib import Path
+
 DEFAULT_SETTINGS = {
     "app": {
         "tabs": [
@@ -74,7 +78,7 @@ class Settings(dict):
         path.expanduser().parent.mkdir(exist_ok=True)
         with path.expanduser().open('w') as f:
             json.dump(DEFAULT_SETTINGS, f, indent=4)
-        print(f'Created default settings file at {path}')
+        _logger.info(f'Created default settings file at {path}')
 
     def _load_global_settings(self):
         self.clear()
@@ -108,7 +112,6 @@ class Settings(dict):
 
             new_rfsoc_dict['channels'] = new_channel_dicts
             new_rfsocs.append(new_rfsoc_dict)
-        print(new_rfsocs)
         return new_rfsocs
 
     @ensure_path(1)

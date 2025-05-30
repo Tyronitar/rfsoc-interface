@@ -2,6 +2,4 @@
 
 __version__ = '0.1.0'
 
-import logging.config
-logging.config.fileConfig('rfsocinterface/logging.conf')
 

@@ -11,7 +11,7 @@ class CustomConsoleFormatter(logging.Formatter):
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
     debug_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
-    info_format = "%(levelname)s - %(message)s"
+    info_format = "%(message)s"
     warning_format = "%(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
 
     FORMATS = {

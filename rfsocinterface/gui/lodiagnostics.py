@@ -5,6 +5,7 @@ mpl.use('QtAgg')
 from typing import Callable
 from pathlib import Path
 from concurrent.futures import Future
+import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,6 +34,8 @@ from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsD
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from rfsocinterface.core.utils import PathLike
+
+_logger = logging.getLogger(__name__)
 
 DPI = 100
 
@@ -295,7 +298,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def save_plots(self):
         savefile = self.savefile.with_suffix('.png')
         self.get_figure().savefig(savefile)
-        print(f'Saved plots to {savefile}')
+        _logger.info(f'Saved plots to {savefile}')
 
     def save_plots_as(self):
         folder = self.savefile.parent

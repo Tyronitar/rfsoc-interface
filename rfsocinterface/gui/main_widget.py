@@ -1,6 +1,3 @@
-import logging
-_logger = logging.getLogger(__name__)
-
 from typing import TYPE_CHECKING, Iterator
 from functools import partial
 from multiprocessing import Queue, Pipe
@@ -14,7 +11,6 @@ from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from rfsocinterface.core.utils import wait_for_telescope_command
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
-    from threading import Thread
 
 class MainWidget(QWidget):
 
