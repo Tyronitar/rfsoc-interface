@@ -47,6 +47,7 @@ class RFSOCWrapper:
         self.settings['channel2'] = chan_settings_b
 
         self.rfsoc = self.make_kidpy_rfsoc()
+        self.get_last_tone_lists()
         self.connect_to_comports()
         # self.rfsoc = None
         # self.atten_transceiver = None
@@ -129,20 +130,21 @@ class RFSOCWrapper:
     def set_channel_number(self, num: int):
         self.rfsoc.rf1.chan_number = num
         self.rfsoc.rf2.chan_number = num
+    
+    def get_last_tone_lists(self) -> npt.NDArray | None:
+        for chan in [1, 2]:
+            tones_and_pow = self.rfsoc.get_tone_list(chan)
+            if tones_and_pow is not None:
+                tones = tones_and_pow[0]
+                chanmask = np.ones(np.size(tones), dtype=int)
+                self.get_channel(chan).ntones = np.size(tones)
+                self.get_channel(chan).chanmask = chanmask
 
     def make_kidpy_rfsoc(self) -> RFSOC:
         # TODO: Use a dictionary not a YAML file
         rfsoc = RFSOC(self.to_kidpy())
         rfsoc.rf1.name = self.settings['channel1'].get('name', 'chan1')
         rfsoc.rf2.name = self.settings['channel2'].get('name', 'chan2')
-        tones1, _ = rfsoc.get_tone_list(1)
-        tones2, _ = rfsoc.get_tone_list(2)
-        chanmask1 = np.ones(np.size(tones1), dtype=int)
-        chanmask2 = np.ones(np.size(tones2), dtype=int)
-        rfsoc.rf1.ntones = np.size(tones1)
-        rfsoc.rf2.ntones = np.size(tones2)
-        rfsoc.rf1.chanmask = chanmask1
-        rfsoc.rf2.chanmask = chanmask2
         rfsoc.rf1.tile_number = self.settings.get('tileNumber', 2)
         rfsoc.rf2.tile_number = self.settings.get('tileNumber', 2)
         return rfsoc
