@@ -79,7 +79,7 @@ class RemoveElectronicsNoise(DataRoutine):
     def __init__(self):
         super().__init__()
     
-    def forward(pd: ProcessedData) -> ProcessedData:
+    def forward(self, pd: ProcessedData) -> ProcessedData:
         gain_phase_data = pd.data_gain_phase
         clean_gain_phase_data = remove_electronics_noise(gain_phase_data)
 
@@ -330,20 +330,19 @@ class Downsample(DataRoutine):
         self.order=order
     
     def forward(self, pd: ProcessedData) -> ProcessedData:
-        pdb.set_trace()
         data_freq_diss_ds = signal.decimate(pd.data_freq_diss, self.ds_factor)
         data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
         data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
         timestamp_ds = signal.decimate(pd.timestamp, self.ds_factor)
-        detector_az_ds = signal.decimate(pd.detector_az, self.ds_factor, n=self.order, axis=1)
-        detector_za_ds = signal.decimate(pd.detector_za, self.ds_factor, n=self.order, axis=1)
+        # detector_az_ds = signal.decimate(pd.detector_az, self.ds_factor, n=self.order, axis=1)
+        # detector_za_ds = signal.decimate(pd.detector_za, self.ds_factor, n=self.order, axis=1)
         return pd.with_values(
             data_freq_diss=data_freq_diss_ds,
             data_gain_phase=data_gain_phase_ds,
             data_mK=data_mK_ds,
             timestamp=timestamp_ds,
-            detector_az=detector_az_ds,
-            detector_za=detector_za_ds,
+            # detector_az=detector_az_ds,
+            # detector_za=detector_za_ds,
         )
 
 

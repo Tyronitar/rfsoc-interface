@@ -183,7 +183,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             tone_list,
             valon.get_frequency(SYNTH_B) * 1e6,  # MHZ to Hz
         )
-        chanmask = rfsoc.settings.get('chanmask', DEFAULT_CHANMASK)
+        chanmask_file = rfsoc.get_chanmask_file(chan)
         freq_step = get_num_value(self.df_lineEdit)  * 1e3  # KHz to Hz
         full_span = get_num_value(self.deltaf_lineEdit)  * 1e3  # KHz to Hz
         n_steps = full_span / freq_step
@@ -193,7 +193,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         pd.show()
         QApplication.processEvents()
 
-        sweep_data_future = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
+        sweep_data_future = sweep.run_sweep(chanmask_file, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
         sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan, False))
 
         # For running on local computer
@@ -273,9 +273,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             tone_list,
             valon.get_frequency(SYNTH_B) * 1e6,  # MHZ to Hz
         )
-        chanmask = rfsoc.settings.get('chanmask', DEFAULT_CHANMASK)
+        chanmask_file = rfsoc.get_chanmask_file(chan)
         freq_step = get_num_value(self.second_sweep_df_lineEdit)  * 1e3  # KHz to Hz
-        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3  # KHz to Hz
+        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3 / 5  # KHz to Hz
         n_steps = full_span / freq_step
 
         pd = QThreadJobProgressDialog(labelText='Running Second LO Sweep...',  maximum=n_steps, max_workers=1, parent=self)
@@ -283,7 +283,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         pd.show()
         QApplication.processEvents()
 
-        sweep_data_future = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
+        sweep_data_future = sweep.run_sweep(chanmask_file, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
         sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan, True))
 
     def _wait_and_save(self, sweep: LoSweep, savefile: Path, rfsoc: RFSOCWrapper, chan: int):

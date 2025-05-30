@@ -431,6 +431,7 @@ class LoSweepData:
             # fh.create_dataset('global_data/s21', data=self.s21)
             fh.create_dataset('global_data/lo_freq', data=self.f_center)
             fh.create_dataset('global_data/baseband_freqs', data=self.tone_list - self.f_center)
+            print(type(self.chanmask), self.chanmask)
             fh.create_dataset('global_data/chanmask', data=self.chanmask)
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
@@ -626,7 +627,14 @@ class LoSweep:
         f_center: center frequency for sweep in [MHz], default is 400
         """
         self.tone_list = tone_list
-        self.chanmask_file = chanmask_file
+        if chanmask_file is not None:
+            chanmask = np.load(chanmask_file)
+        else:
+            if np.size(self.chan.chanmask) == 0:  # Chanmask hasn't been set, so use all ones
+                chanmask = np.ones(np.size(tone_list), dtype=int)
+            else:
+                chanmask = self.chan.chanmask
+        self.chanmask = chanmask
         self._processed = False
         #    print(freqs)
         log = logging.getLogger()
@@ -686,8 +694,7 @@ class LoSweep:
         # set the LO back to the original frequency
         self.valon.set_frequency(valon5009.SYNTH_B, self.f_center * 1e-6)
 
-        chanmask = np.load(self.chanmask_file)
-        self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), chanmask)
+        self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), self.chanmask)
         self._processed = True
 
 

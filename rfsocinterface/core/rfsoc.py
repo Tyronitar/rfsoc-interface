@@ -137,8 +137,12 @@ class RFSOCWrapper:
         rfsoc.rf2.name = self.settings['channel2'].get('name', 'chan2')
         tones1, _ = rfsoc.get_tone_list(1)
         tones2, _ = rfsoc.get_tone_list(2)
+        chanmask1 = np.ones(np.size(tones1), dtype=int)
+        chanmask2 = np.ones(np.size(tones2), dtype=int)
         rfsoc.rf1.ntones = np.size(tones1)
         rfsoc.rf2.ntones = np.size(tones2)
+        rfsoc.rf1.chanmask = chanmask1
+        rfsoc.rf2.chanmask = chanmask2
         rfsoc.rf1.tile_number = self.settings.get('tileNumber', 2)
         rfsoc.rf2.tile_number = self.settings.get('tileNumber', 2)
         return rfsoc
@@ -191,8 +195,18 @@ class RFSOCWrapper:
         self.rfsoc.config_hardware()
     
     @ensure_path(1)
-    def set_chanmask(self, fname: Path, chan: int):
-        self.settings['chanmask'] = fname
+    def set_chanmask_file(self, fname: Path, chan: int):
+        self.settings[f'channel{chan}']['chanmask'] = fname
+        self.get_channel(chan).chanmask = np.load(fname)
+
+    def get_chanmask_file(self, chan: int) -> Path | None:
+        return self.settings[f'channel{chan}'].get('chanmask', None)
+
+    def get_chanmask(self, chan: int) -> npt.ArrayLike:
+        return self.get_channel(chan).chanmask 
+
+    def set_chanmask(self, chanmask: npt.NDArray, chan: int):
+        self.get_channel(chan).chanmask = np.copy(chanmask)
     
     def channel_as_text(self, channel: int) -> str:
         return f'{self.settings["name"]} - Channel {channel}'

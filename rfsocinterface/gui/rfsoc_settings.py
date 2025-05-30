@@ -376,7 +376,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         )
         if fname:
             self.chanmask_lineEdit.setText(fname)
-            self.rfsoc.set_chanmask(fname, self.channel)
+            self.rfsoc.set_chanmask_file(fname, self.channel)
             # TODO: Add updating for when the file is typed in manually
     
     @Slot(str)
@@ -519,7 +519,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         if 'chanmask' in chan_settings:
             fname = str(chan_settings['chanmask'])
             self.chanmask_lineEdit.setText(fname)
-            self.rfsoc.set_chanmask(fname, self.channel)
+            self.rfsoc.set_chanmask_file(fname, self.channel)
             # self.chanmask_lineEdit.setPlaceholderText(self.settings['chanmask'])
 
         # Ethernet Settings
