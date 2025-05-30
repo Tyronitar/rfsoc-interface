@@ -77,6 +77,7 @@ DATA_ROUTINE_FUNCTION_WIDGET_ARGS = {
             (('Low Pass Filter Frequency: ', ArgumentType.FLOAT), {'default': 10}),
             (('Azimuth Trim: ', ArgumentType.FLOAT), {'default': 2.3}),
             (('Zenith Angle Trim: ', ArgumentType.FLOAT), {'default': 0.2}),
+            (('Beam Map Mode', ArgumentType.BOOL), {'default': False}),
         ],
     ),
     'GaussianFilter': (

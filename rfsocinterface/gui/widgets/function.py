@@ -46,6 +46,7 @@ class FunctionWidget(QWidget):
 
     def add_argument(self, label: str, arg_types: ArgumentType | tuple[ArgumentType], *args: Q.args, **kwargs: Q.kwargs):
 
+        label = label.strip(': ')
         has_default = False
         if 'default' in kwargs:
             has_default = True
@@ -62,7 +63,7 @@ class FunctionWidget(QWidget):
             widget = self.arg_to_widget(label, arg_type, *args, default_val=default_vals[i] if has_default else None, **kwargs)
             new_row.addWidget(widget)
         if any(arg_type != ArgumentType.BOOL for arg_type in arg_types):
-            self.form_layout.addRow(label, new_row)
+            self.form_layout.addRow(label + ':', new_row)
         else:
             self.form_layout.addRow(new_row)
     

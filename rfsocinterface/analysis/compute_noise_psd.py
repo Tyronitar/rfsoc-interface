@@ -15,6 +15,8 @@ from kidpy3 import RawDataFile
 
 from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise
 from rfsocinterface.core.map import Downsample, RemoveElectronicsNoise
+from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise
+from rfsocinterface.core.map import Downsample, RemoveElectronicsNoise
 from rfsocinterface.core.utils import ensure_path, ordinal
 
 XLIM = (0.1, 100)
@@ -100,7 +102,7 @@ def plot_psd(
             Defaults to 84.
         title (str, optional): Title to give to each plot. Defaults to None.
         basis (str, optional): The basis of the data. Either IQ ('iq'), 
-            Gain/Phase('gp'), or Frequency/Dissipation ('fd'). Defaults to 'gp.'
+            Gain/Phase ('gp'), or Frequency/Dissipation ('fd'). Defaults to 'gp.'
     
     Returns:
         (list[Figure]): N_chan + 1 plots corresponding to the PSD along the
@@ -238,8 +240,9 @@ def create_plot(
 
 if __name__ == '__main__':
     from rfsocinterface.core.data import ProcessedData
-    date = '20250527'
-    set_num = 1010
+    date = '20250522'
+    set_num = 1008
+    basis = 'gp'
     outlier_sigma = 2
     ds_factor = 3
     do_flag_outliers = True
@@ -251,7 +254,7 @@ if __name__ == '__main__':
     p = ProcessedData.from_tod(date, set_num)
     # p = ProcessedData.from_tod(date, set_num, losweep='20250527_devrfsoc_chan1_LO_Sweep_hour15p8372_high_res.h5')
     # pdb.set_trace()
-    p.chanmask = np.ones_like(p.chanmask)
+    # p.chanmask = np.ones_like(p.chanmask)
     # input_data = p.data_mK
     input_data = p.data_gain_phase
     timestamp = p.timestamp
@@ -295,4 +298,4 @@ if __name__ == '__main__':
         chanmask=p.chanmask,
         nominal_block_length=10,
     )
-    plot_psd(freq, noise_psd, f'plots/20250422_{set_num}.pdf', basis='fd', title='Loopback')
+    plot_psd(freq, noise_psd, f'plots/{date}_{set_num}_{basis}.pdf', basis=basis, title='Loopback')

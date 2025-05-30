@@ -35,7 +35,9 @@ AZ_BASE_SPEED = 1.5
 AZ_POS_TOL_DEG = .02
 AZ_HOME = 0
 ZE_BASE_SPEED = 0.3
-ZE_POS_TOL_DEG = .05
+ZE_POS_TOL_DEG = .01
+ZE_DEAFULT_RPM_PER_VOLT = 40
+ZE_SCAN_RPM_PER_VOLT = 4
 
 SPEED_MULTIPLIER = 0.35
 FAR_APPROACH_SEPARATION_DEG = 15
@@ -100,6 +102,10 @@ class TelescopeMotorController:
                 case 'set_voltage':
                     self._run = True
                     self.set_ao_value(*args)
+                case 'set_az_speed_relation':
+                    self.set_az_speed_relation(*args)
+                case 'set_ze_speed_relation':
+                    self.set_ze_speed_relation(*args)
                 case 'az_scan_mode':
                     self.az_scan_mode(client_id, *args)
                 case 'stop_telescope':
@@ -241,7 +247,7 @@ class TelescopeMotorController:
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
-    def _set_az_pos(self, new_pos: int, scan_mode: bool=False, stop_run: bool=True):
+    def _set_az_pos(self, new_pos: int, scan_mode: bool=False, stop_run: bool=True, speed_factor: float=1.):
         # I want to accept a number in degrees, but put the number in the integer value desired by S700 controller
         # AZ controlled by 2 motors, the first to actually move the telescope, the second to put some tension on the gear for avoiding any backlash. Currently the secondary motor is disabled, probably providing little to no torque, but given the huge gearing ratio, it probably helps with backlash. The next easiest technique would be to run the secondary in "analog torque" mode, setting the zero value to some small torque. This could be improved by increasing the torque during motion and reducing when the first motor is not moving (probably by changing the zero value torque, since both analog outs are already in use). The proper way to do it, and the reason we were sold these S700 controllers is called RDP per the kollmorgen tech guy but my guess is he meant prd cogging mode.
         self.set_ao_zero()
@@ -271,9 +277,9 @@ class TelescopeMotorController:
                 if scan_mode:
                     if abs(pfb - new_pos) > 0.5:
                         # If we are far from the setpoint, go at max speed
-                        data_value = direction * analog_to_digital(6.0, -10, 10, 16)
+                        data_value = direction * analog_to_digital(6.0 * speed_factor, -10, 10, 16)
                     else:
-                        data_value = direction * analog_to_digital(2.0, -10, 10, 16)
+                        data_value = direction * analog_to_digital(2.0 * speed_factor, -10, 10, 16)
                 elif abs(pfb - new_pos) > FAR_APPROACH_SEPARATION_DEG:
                     # If we are far from the setpoint, go at max speed
                     data_value = direction * analog_to_digital(7.25, -10, 10, 16)
@@ -281,8 +287,8 @@ class TelescopeMotorController:
                     this_speed = SPEED_MULTIPLIER * abs(pfb - new_pos) + AZ_BASE_SPEED
                     data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
-                if counter % 50 == 0:
-                    print(pfb, data_value)
+                # if counter % 50 == 0:
+                #     print(pfb, data_value)
                 self.set_ao_value(data_value, AZ_OUT_CHANNEL)
                 this_dt = time.time() - pfb_time
                 while this_dt < 0.02:
@@ -290,6 +296,8 @@ class TelescopeMotorController:
                    time.sleep(1.e-4)
                 pfb_time = time.time()
                 pfb = self.get_ser_az_pos()
+                if np.abs(pfb - new_pos) <= AZ_POS_TOL_DEG:
+                    self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
                 # self.azimuthUpdated.emit(pfb)
                 # self.conn.send(['az_pos', pfb])
 
@@ -305,7 +313,7 @@ class TelescopeMotorController:
             except ValueError:
                 print("caught an exception regarding Float conversion")
                 break
-        self.set_ao_zero()
+        self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
         if stop_run:
             self._run = False
         ## Read position again
@@ -358,6 +366,9 @@ class TelescopeMotorController:
 
         # Set start position in current thread
         self._set_az_pos(az_start - az_start_buffer, stop_run=False)
+        self.set_ze_speed_relation(ZE_SCAN_RPM_PER_VOLT)
+
+        speed_factor = 1/3 if large_map_mode else 1.
 
         for i_rep in np.arange(n_repeats):
             if not self._run:
@@ -366,11 +377,13 @@ class TelescopeMotorController:
                 new_ze = initial_ze + (i_rep - (n_repeats - 1) / 2) * ze_dither
             else:
                 new_ze = initial_ze + (i_rep % 2) * ze_dither
+            print(new_ze)
             self._set_ze_pos(new_ze, stop_run=False)
+
 
             if np.mod(i_rep, 2) == 0:
                 this_position_data = self._set_az_pos(
-                    az_stop + az_end_buffer + 0.5, scan_mode=True, stop_run=False
+                    az_stop + az_end_buffer + 0.5, scan_mode=True, stop_run=False, speed_factor=speed_factor,
                 )
                 if i_rep == 0:
                     position_data = this_position_data
@@ -378,7 +391,7 @@ class TelescopeMotorController:
                     position_data = np.append(position_data, this_position_data)
             if np.mod(i_rep, 2) == 1:
                 this_position_data = self._set_az_pos(
-                    az_start - az_start_buffer - 0.5, scan_mode=True, stop_run=False,
+                    az_start - az_start_buffer - 0.5, scan_mode=True, stop_run=False, speed_factor=speed_factor,
                 )
                 position_data = np.append(position_data, this_position_data)
 
@@ -396,6 +409,8 @@ class TelescopeMotorController:
         if position_return:
             self._set_az_pos(initial_az, stop_run=False)
             self._set_ze_pos(initial_ze, stop_run=False)
+
+        self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         self._run = False
         print("Scan Complete")
         self.send(client_id, 'az_scan_mode_complete', 0)
@@ -406,10 +421,10 @@ class TelescopeMotorController:
     def az_oscillate(self, total_t: float, freq: float, deg: float):
         raise NotImplementedError("Oscillation not implemented yet.")
 
-    def set_az_speed_relation(self, voltage: float):
+    def set_az_speed_relation(self, rpm_per_ten_volt: float):
         # Set the speed of the motor in RPM/10V. Default is 500, which would roughly turn the telescope 2.5 degree/second for 10 V input. ASCII code for serial is VSCALE1. AZ VALUE IS PER 10 VOLTS AND EL VALUE IS PER 1 VOLT! Needs more testing from Ubuntu, I think there is a lower limit set in the S700.
         if self.ser_az.is_open:
-            command = "VSCALE1 " + str(voltage) + "\r\n"
+            command = "VSCALE1 " + str(rpm_per_ten_volt) + "\r\n"
             command = command.encode()
             self.ser_az.write(command)
             self.ser_az.readline()
@@ -476,6 +491,10 @@ class TelescopeMotorController:
         counter = 0
 
         # Run loop
+        print(f'Pos: {pos}, New pos: {new_pos}, tolerance: {ZE_POS_TOL_DEG}, diff: {pos - new_pos}')
+        # start_time = time.time()
+        # profiler = cProfile.Profile()
+        # profiler.enable()
         while abs(pos - new_pos) > ZE_POS_TOL_DEG and self._run:
             try:
                 # Choose direction of motion
@@ -501,14 +520,16 @@ class TelescopeMotorController:
 
                 self.set_ao_value(data_value, ZE_OUT_CHANNEL)
                 pos = self.get_ser_ze_pos()
+                if abs(pos - new_pos) <= ZE_POS_TOL_DEG:
+                    self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
                 # self.conn.send(['ze_pos', pos])
                 if scan_mode:
                     position_data = np.append(
                         position_data, [this_az, pos, time.time()]
                     )
                 counter = counter + 1
-                if counter % 500 == 0:
-                    print(pos, data_value)
+                # if counter % 500 == 0:
+                #     print(pos, data_value)
             except KeyboardInterrupt:
                 print("User terminated motion!")
                 break
@@ -521,11 +542,16 @@ class TelescopeMotorController:
 
         if stop_run:
             self._run = False
-        self.set_ao_zero()
+        self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
+        # stop_time = time.time()
+        # print(f'Average time per loop: {(stop_time - start_time) / counter}')
+        # profiler.disable()
+        # profiler.print_stats()
         # self.zenithVelocityChanged.emit(0)
         ## Read position again
         time.sleep(0.1)
         pos = self.get_ser_ze_pos()
+        print(f'After loop zenith pos: {pos}')
         # self.conn.send(['ze_pos', pos])
         #        print ('EL Set to position: ', str(pos))
         #        print ('Position Set!')
@@ -550,18 +576,19 @@ class TelescopeMotorController:
             time=position_data[2::3],
         )
 
-    def set_ze_speed_relation(self, voltage: float):
+    def set_ze_speed_relation(self, rpm_per_volt: float):
         # Set the speed of the motor in RPM/1V. Default is 40, which would roughly turn the telescope 1 degree/second. ASCII code for serial is AIN.VSCALE. NOTE: AZ VALUE IS PER 10 VOLTS AND EL VALUE IS PER 1 VOLT!
-        if self.ser_ze.is_open:
-            command = "AIN.VCALE " + str(voltage) + "\r\n"
-            command = command.encode()
+        if self._initialized:
+            command = "AIN.VSCALE " + str(rpm_per_volt) + "\r\n"
+            command = command.encode('ASCII')
             self.ser_ze.write(command)
-            self.ser_ze.readline()
-            ze_speed = self.ser_ze.read_until(b"\r\n")
+            # self.ser_ze.readline()
+            # ze_speed = self.ser_ze.read_until(b']', 0.1)
+            ze_speed = self.ser_ze.read_until(b'\r\n', 0.1)
             print("ZA speed set to: ", ze_speed)  ###THIS MAY BREAK
             # self.zenithVelocityChanged(ze_speed)
-            self.ser_ze.reset_input_buffer()
-            self.ser_ze.reset_output_buffer()
+            # self.ser_ze.reset_input_buffer()
+            # self.ser_ze.reset_output_buffer()
 
     # Misc
     def talk_to_az(self, command: str):
