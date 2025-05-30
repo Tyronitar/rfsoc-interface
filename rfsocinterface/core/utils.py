@@ -444,3 +444,10 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
             break
         elif response.lower() == 'err':
             raise RuntimeError(f'{err_msg}: {data}')
+
+
+# Disable logging for imported modules
+
+
+GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
+USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')

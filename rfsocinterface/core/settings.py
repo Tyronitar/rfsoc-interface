@@ -1,6 +1,6 @@
 """Module for handling of settings files."""
-from rfsocinterface import GLOBAL_SETTINGS_PATH
-from rfsocinterface import USER_SETTINGS_PATH
+from rfsocinterface.core.utils import GLOBAL_SETTINGS_PATH
+from rfsocinterface.core.utils import USER_SETTINGS_PATH
 from rfsocinterface.core.utils import ensure_path
 
 

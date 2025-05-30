@@ -1,15 +1,13 @@
 """Main entry point for the rfsocinterface package."""
 
 import logging
-_logger = logging.getLogger(__name__)
+_logger = logging.getLogger('rfsocinterface')
 
 from argparse import ArgumentParser
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QGridLayout, QTabWidget
-from PySide6.QtCore import Qt, QCoreApplication
+from PySide6.QtWidgets import QApplication, QMainWindow
 from PySide6.QtGui import QScreen
 from rfsocinterface.gui.main_window import MainWindow
-from rfsocinterface import BAD_LOGGERS
 
 
 def move_to_center(win: QMainWindow, screen: QScreen):
@@ -36,43 +34,22 @@ if __name__ == '__main__':
         log_level = logging.INFO
     else:
         log_level = logging.WARNING
-    # print(logging.root.handlers)
-    # print(_logger.level)
-    # logging.root.setLevel(log_level)  # Updating root affects all children
-    # print(logging.root.handlers)
-    # print(_logger.level)
 
-    # Update the level of the console handlers
-    logging.root.handlers[0].setLevel(log_level)
-    logging.getLogger('telescopeControl').handlers[0].setLevel(log_level)
+    _logger.handlers[0].setLevel(log_level)  # Update the level for the console handler
 
-    # print(logging.root.handlers)
-    # print(_logger.level)
-    # exit()
-    # print(logging.Logger.manager.loggerDict)
-    # for logger in loggers:
-    #     logger.setLevel(logging.INFO)
+    # NOTE: Testing logging output
+    # _logger.debug('DEBUG message')
+    # _logger.info('INFO message')
+    # _logger.warning('WARNING message')
+    # _logger.error('ERROR message')
+    # _logger.critical('CRITICAL message')
 
-    loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
-    for name in logging.root.manager.loggerDict:
-        if any(name.startswith(prefix) for prefix in BAD_LOGGERS):
-            logger = logging.getLogger(name)
-            # logger.disabled = True
-            # print(f'disabled {logger}')
-            logger.setLevel(logging.WARNING)
-            # logger.setLevel(logging.WARNING)
+    app = QApplication()
+    screen = app.primaryScreen()
 
-    _logger.debug('DEBUG message')
-    _logger.info('INFO message')
-    _logger.warning('WARNING message')
-    _logger.error('ERROR message')
-    # app = QApplication()
-    # screen = app.primaryScreen()
+    w = MainWindow()
+    w.setScreen(screen)
+    move_to_center(w, screen)
+    w.show()
 
-    # # w = MainWindow("settings.toml")
-    # w = MainWindow()
-    # w.setScreen(screen)
-    # move_to_center(w, screen)
-    # w.show()
-
-    # app.exec()
+    app.exec()
