@@ -29,8 +29,6 @@ def assert_equal_dict(result: dict, expected: dict) -> bool:
     except KeyError:
         # assert False
         pytest.fail('Dictionaries do not contain the same keys')
-    # print(list(vals))
-    # assert False
     assert all(list(vals))
 
 

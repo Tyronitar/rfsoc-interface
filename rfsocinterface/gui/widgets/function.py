@@ -174,7 +174,6 @@ class DragFunctionWidget(QWidget):
     
     def mousePressEvent(self, event):
         child = self.childAt(event.pos())
-        print(child)
         # Clicking off of the list items or parameters should deselect
         if child is None or child == self.drop_container or child == self.drag:
             self.drag.set_active_item(None)

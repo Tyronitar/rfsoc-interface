@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal, Type, Callable, TYPE_CHECKING, Iterator
 from functools import partial
 from concurrent.futures import Future
+import logging
 
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import Figure
@@ -33,6 +34,8 @@ import h5py
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
+
+_logger = logging.getLogger(__name__)
 
 DEFAULT_FILENAME = 'YYYYMMDD_rfsocN_LO_Sweep_hourHH'
 DEFAULT_F_CENTER = 400.0
@@ -157,7 +160,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 * (curr_tone_list + lo_freq)
                 / np.median(curr_tone_list + lo_freq)
             )
-            print(
+            _logger.info(
                 "Waiting for the RFSOC to finish writing the updated frequency list"
             )
             rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
@@ -300,13 +303,13 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         sweep_data.save_new_tone_list(tone_file)
         _, curr_amp_list = rfsoc.get_tone_list(chan)  # Keep current amplitudes
         rfsoc.set_tone_list(chan, sweep_data.new_tone_list, amplitudes=curr_amp_list)
-        print('Wrote new tone list to RFSoC')
+        _logger.info('Wrote new tone list to RFSoC')
 
     @ensure_path(1)
     def save_sweep(self, savefile: Path, sweep_data: LoSweepData):
         sweep_data.saveh5(savefile)
         sweep_data.savenp(savefile)
-        print(f'Saved LO sweep data to {savefile}')
+        _logger.info(f'Saved LO sweep data to {savefile}')
     
     def check_diagnostics(self):
         """Callback for when the "show diagnostics" box is clicked."""

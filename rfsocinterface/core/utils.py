@@ -1,3 +1,5 @@
+import logging
+
 import functools
 import os
 from pathlib import Path
@@ -27,6 +29,8 @@ import time
 from collections.abc import Mapping
 import qtawesome as qta
 import onrkidpy
+
+_tele_logger = logging.getLogger('telescopeControl')
 
 IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
 MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
@@ -435,8 +439,15 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
         err_msg = f'Error occured while waiting for command "{command}": '
     while True:
         response, *data = conn.recv()
-        # print(f'{id} got response: "{response}", data: {data}')
+        _tele_logger.debug(f'{id} got response: "{response}", data: {data}')
         if response.lower() == f'{command}':
             break
         elif response.lower() == 'err':
             raise RuntimeError(f'{err_msg}: {data}')
+
+
+# Disable logging for imported modules
+
+
+GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
+USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
