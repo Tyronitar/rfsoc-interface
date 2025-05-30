@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+import logging
+
 from PySide6.QtWidgets import QWidget, QMainWindow, QApplication, QAbstractButton, QDialog, QVBoxLayout
 from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread, QTimer, QMutexLocker
 import serial.tools
@@ -32,23 +35,7 @@ from rfsocinterface.gui.utils import get_num_value
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
-class TelescopeMotionJob(QThread):
-    updateProgress = Signal()
-    returned = Signal(Any)
-    canceled = Signal()
-
-    #You can do any extra things in this init you need, but for this example
-    #nothing else needs to be done expect call the super's init
-    def __init__(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs):
-        super().__init__()
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
-
-    def run(self):
-        res = self.func(*self.args, **self.kwargs)
-        self.returned.emit(res)
-
+_tele_logger = logging.getLogger('rfsocinterface.telescope')
 
 class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
@@ -68,15 +55,8 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.controller.buttonGroup.buttonReleased.connect(self.stop_motion)
         self.manual_controlcheckBox.toggled.connect(self.toggle_jogging)
 
-        # self._client_id = 'telescope_tab'
-        # self._conn_parent, self._conn_child = Pipe(duplex=False)
         self._listener_thread = Thread(target=self._connection_loop)
 
-        # self._telescope_queue.put([self._client_id, 'add_connection', self._conn_child])
-        # self.wait_for_command(
-        #     'add_connection_succesful',
-        #     err_msg=f'Unexpected response from telescope controller when adding connection {self._client_id}',
-        # )
 
         # Set up Optical Camera
         self.cam_ctrl = SKPR_Camera_Control()
@@ -90,24 +70,6 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
         self._telescope_queue.put([self._client_id, 'get_ser_az_pos'])
         self._telescope_queue.put([self._client_id, 'get_ser_ze_pos'])
-
-        # command, az_pos = self._conn_parent.recv()
-        # print(command, az_pos)
-        # if command != 'az_pos':
-        #     print('Error getting initial azimuth position. Setting to 0.')
-        #     self.az_pos = self.last_az = 0
-        # else:
-        #     self.az_pos = self.last_az = az_pos
-
-        # self._telescope_queue.put([self._client_id, 'get_ser_ze_pos'])
-        # command, ze_pos = self._conn_parent.recv()
-        # print(command, ze_pos)
-        # if command != 'ze_pos':
-        #     print('Error getting initial zenith position. Setting to 0.')
-        #     self.ze_pos = self.last_ze = 0
-        # else:
-        #     self.ze_pos = self.last_ze = ze_pos
-
 
         self.last_az_commanded = self.last_az
         self.last_ze_commanded = self.last_ze
@@ -158,7 +120,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def _connection_loop(self):
         while True:
             response, *data = self._conn_parent.recv()
-            # print(f'{self._client_id} got response: {response}, data: {data}')
+            _tele_logger.debug(f'{self._client_id} got response: {response}, data: {data}')
             match response.lower():
                 case 'az_pos':
                     self.update_az_pos(*data)

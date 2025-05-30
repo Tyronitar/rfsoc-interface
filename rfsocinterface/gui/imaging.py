@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Callable, Any, Concatenate, Type
+import logging
+from typing import TYPE_CHECKING, Callable, Any, Concatenate
 from pathlib import Path
 from threading import Thread
 from multiprocessing import Pipe
@@ -24,7 +25,11 @@ from rfsocinterface.core.map import Mapper, DataRoutine
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
+
+_logger = logging.getLogger(__name__)
+
 enum_choices = ['hello', 'world']
+
 
 def dummy_func(file: Path, string: str, num: float, enum: str, check: bool):
     assert enum in enum_choices
@@ -224,7 +229,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
             f'{command}_complete',
             err_msg=f'Error occured while running command "{command}"',
         )
-        print(f'{command} completed.')
+        _logger.info(f'{command} completed.')
         self.startMapping.emit()
     
     def make_map(self):

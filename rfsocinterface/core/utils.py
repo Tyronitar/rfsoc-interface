@@ -1,3 +1,5 @@
+import logging
+
 import functools
 import os
 from pathlib import Path
@@ -23,9 +25,15 @@ import time
 from collections.abc import Mapping
 import onrkidpy
 
+_tele_logger = logging.getLogger('telescopeControl')
+
 IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
 MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
+
 BAD_RFSOC_TONE_START_INDEX = 8  # First 8 ones are bad...
+
+GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
+USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
 
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 # Number = TypeVar('Number', int, float, complex, bytes)
@@ -384,7 +392,7 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
         err_msg = f'Error occured while waiting for command "{command}": '
     while True:
         response, *data = conn.recv()
-        # print(f'{id} got response: "{response}", data: {data}')
+        _tele_logger.debug(f'{id} got response: "{response}", data: {data}')
         if response.lower() == f'{command}':
             break
         elif response.lower() == 'err':

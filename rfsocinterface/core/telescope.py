@@ -1,6 +1,12 @@
 from __future__ import annotations
-from rfsocinterface.core.utils import analog_to_digital
 
+import logging
+
+import pdb
+import time
+from multiprocessing.connection import Connection
+from multiprocessing import Queue
+from threading import Thread
 
 import h5py
 import numpy as np
@@ -9,12 +15,10 @@ import serial.tools.list_ports
 import uldaq as ul
 from Exscript.protocols.telnetlib import Telnet
 
+from rfsocinterface.core.utils import analog_to_digital
 
-import pdb
-import time
-from multiprocessing.connection import Connection
-from multiprocessing import Queue
-from threading import Thread
+_logger = logging.getLogger(__name__)
+_tele_logger = logging.getLogger('telescopeControl')
 
 
 ZEPORT = 23
@@ -83,8 +87,7 @@ class TelescopeMotorController:
     def _listener_loop(self):
         while True:
             client_id, command, *args = self.queue.get()
-            # command, *args = self.conn.recv()
-            # print(f'Client "{client_id}" sent command: "{command}", args: {args}')
+            _tele_logger.debug(f'Client "{client_id}" sent command: "{command}", args: {args}')
             match command.lower():
                 case 'add_connection':
                     self.add_connection(client_id, *args)
@@ -144,7 +147,7 @@ class TelescopeMotorController:
         comports = serial.tools.list_ports.comports()
         for dev in comports:
             # port_array[dev] = str(ports[dev].manufacturer)
-            # print('dev #: ', dev)
+            # _tele_logger.debug('dev #: ', dev)
             if dev.manufacturer == "Prolific Technology Inc.":
                 az_port = dev.device
         ser_az = serial.Serial(
@@ -156,32 +159,34 @@ class TelescopeMotorController:
             stopbits=1,
         )
         if ser_az.is_open:
-            print('AZ motor connected to original port')
+            # _logger.debug('AZ motor connected to original port')
+            _tele_logger.debug('AZ motor connected to original port')
         else:
-            print('Could not communicate with AZ controller. System could not initialize.')
+            # _logger.error('Could not communicate with AZ controller. System could not initialize.')
+            _tele_logger.critical('Could not communicate with AZ controller. System could not initialize.')
         self.ser_az = ser_az
         self.az_pos = 0
         self.az_pos = self.get_ser_az_pos()
-        print(f'Telescope AZ position is: {self.az_pos}')
+        _tele_logger.info(f'Telescope AZ position is: {self.az_pos}')
 
         # Zenith Angle
         self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
         self.ser_ze.open(host=AKD1, port=ZEPORT)
         self.ser_ze.write(b'DRV.ACTIVE\r\n')
         status_string = self.ser_ze.read_until(b'\r', 0.1)
-        # print(status_string, type(status_string))
+        # _tele_logger.debug(status_string, type(status_string))
         # status_string = self.ser_ze.read_until(b'\r', 0.1).decode()
         status = float(status_string.split('\r')[0])
 
         if status == 1:
-            print('ZA motor connected and software already enabled.')
+            _tele_logger.debug('ZA motor connected and software already enabled.')
         else:
             self.ser_ze.write(b'DRV.EN\r\n')
             sw_en = self.ser_ze.read_until(b'\r', 0.1)
-            print('ZA motor connected and software enabled by Python.')
+            _tele_logger.debug('ZA motor connected and software enabled by Python.')
         self.ze_pos = 0
         self.ze_pos = self.get_ser_ze_pos()
-        print(f'Telescope ZA position is: {self.ze_pos}')
+        _tele_logger.info(f'Telescope ZA position is: {self.ze_pos}')
         self._initialized = True
 
     def close(self):
@@ -210,9 +215,9 @@ class TelescopeMotorController:
             pfb = self.ser_az.read_until(b"\r\n")
             self.ser_az.reset_input_buffer()
             self.ser_az.reset_output_buffer()
-            print("Home Set.")
+            _logger.info("Home Set.")
         else:
-            print("Home command not executed. Check connection with S700")
+            _tele_logger.error("Home command not executed. Check connection with S700")
 
     # TODO: There's also a "setAZ_home_position"...
 
@@ -287,8 +292,8 @@ class TelescopeMotorController:
                     this_speed = SPEED_MULTIPLIER * abs(pfb - new_pos) + AZ_BASE_SPEED
                     data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
-                # if counter % 50 == 0:
-                #     print(pfb, data_value)
+                if counter % 50 == 0:
+                    _tele_logger.debug(f'AZ pos: {pfb}; voltage: {data_value}')
                 self.set_ao_value(data_value, AZ_OUT_CHANNEL)
                 this_dt = time.time() - pfb_time
                 while this_dt < 0.02:
@@ -307,11 +312,11 @@ class TelescopeMotorController:
                 counter = counter + 1
 
             except KeyboardInterrupt:
-                print("User terminated motion!")
+                _tele_logger.info("User terminated motion!")
                 break
 
             except ValueError:
-                print("caught an exception regarding Float conversion")
+                _tele_logger.error("Caught an exception regarding Float conversion")
                 break
         self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
         if stop_run:
@@ -412,7 +417,7 @@ class TelescopeMotorController:
 
         self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         self._run = False
-        print("Scan Complete")
+        _logger.info("Scan Complete")
         self.send(client_id, 'az_scan_mode_complete', 0)
 
     def jog_az_pos(self, speed: float=1):
@@ -429,7 +434,7 @@ class TelescopeMotorController:
             self.ser_az.write(command)
             self.ser_az.readline()
             az_speed = self.ser_az.read_until(b"\r\n")
-            print("AZ speed set to: ", az_speed)  ###THIS MAY BREAK
+            _logger.info("AZ speed set to: ", az_speed)  ###THIS MAY BREAK
             # self.azimuthVelocityChanged(az_speed)
             # self.send_all('az_vel', az_speed)
             self.ser_az.reset_input_buffer()
@@ -449,7 +454,7 @@ class TelescopeMotorController:
         self.ser_ze.write(b"DRV.EN\r\n")
         sw_en = self.ser_ze.read_until(b"\r", 0.1)
         pdb.set_trace()
-        print("EL Home Set.")
+        _logger.info("EL Home Set.")
 
     def get_ser_ze_pos(self) -> float | None:
         old_pos = self.ze_pos
@@ -464,7 +469,7 @@ class TelescopeMotorController:
                 self.send_all('ze_pos', pos)
             return pos
         except ValueError:
-            print(
+            _tele_logger.error(
                 'Error communicating with ZA controller; '
                 'position set to most recent read.'
             )
@@ -528,13 +533,13 @@ class TelescopeMotorController:
                         position_data, [this_az, pos, time.time()]
                     )
                 counter = counter + 1
-                # if counter % 500 == 0:
-                #     print(pos, data_value)
+                if counter % 500 == 0:
+                    _tele_logger.debug(f'ZA pos: {pos}l; voltage: {data_value}')
             except KeyboardInterrupt:
-                print("User terminated motion!")
+                _tele_logger.info("User terminated motion!")
                 break
             except ValueError:
-                print("caught an exception regarding Float conversion")
+                _tele_logger.error("caught an exception regarding Float conversion")
                 break
             finally:
                 # This code always executes after leaving the try statement
@@ -551,10 +556,7 @@ class TelescopeMotorController:
         ## Read position again
         time.sleep(0.1)
         pos = self.get_ser_ze_pos()
-        print(f'After loop zenith pos: {pos}')
-        # self.conn.send(['ze_pos', pos])
-        #        print ('EL Set to position: ', str(pos))
-        #        print ('Position Set!')
+        _tele_logger.debug(f'After loop zenith pos: {pos}')
         if scan_mode:
             return position_data
 
@@ -582,10 +584,8 @@ class TelescopeMotorController:
             command = "AIN.VSCALE " + str(rpm_per_volt) + "\r\n"
             command = command.encode('ASCII')
             self.ser_ze.write(command)
-            # self.ser_ze.readline()
-            # ze_speed = self.ser_ze.read_until(b']', 0.1)
             ze_speed = self.ser_ze.read_until(b'\r\n', 0.1)
-            print("ZA speed set to: ", ze_speed)  ###THIS MAY BREAK
+            _logger.info("ZA speed set to: ", ze_speed)  ###THIS MAY BREAK
             # self.zenithVelocityChanged(ze_speed)
             # self.ser_ze.reset_input_buffer()
             # self.ser_ze.reset_output_buffer()
@@ -600,7 +600,7 @@ class TelescopeMotorController:
             self.ser_az.readline()
             response = self.ser_az.read_until(b"\r\n")
             response = str(response.decode())
-            print(response)
+            _tele_logger.debug(response)
             self.ser_az.reset_input_buffer()
             self.ser_az.reset_output_buffer()
 

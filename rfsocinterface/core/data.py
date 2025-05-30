@@ -434,7 +434,6 @@ class ProcessedData(Updateable):
             pdata.save()
         return pdata
 
-    #    print(dI_df.shape, dQ_df.shape, df_per_mK.shape, data_f.shape, data_mK.shape)
     def save(self):
 
         with h5py.File(self.processed_file_template, 'w') as pfile:

@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 
 from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot, Signal
 from PySide6.QtGui import QDoubleValidator, QIcon, QRegularExpressionValidator, QIntValidator
@@ -30,6 +31,8 @@ from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from rfsocinterface.core.utils import IPV4_REGEX, MAC_REGEX
 from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper
+
+_logger = logging.getLogger(__name__)
 
 ONR_REPO_DIR = Path('~').expanduser() / 'onrkidpy'
 DEFAULT_CONFIG = 'defaults.yaml'
@@ -499,7 +502,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.setCursor(Qt.CursorShape.WaitCursor)
             self.rfsoc.set_atten(addr, att)
             self.setCursor(Qt.CursorShape.ArrowCursor)
-            print('Succesfully set attenuation')
+            _logger.info(f'Succesfully set attenuation for channel {self.channel} to {att} dB')
     
     def set_lo_freq(self):
         lo_freq = get_num_value(self.lo_freq_lineEdit) * 1e6  # MHz to Hz

@@ -1,14 +1,16 @@
 """Module for handling of settings files."""
-from rfsocinterface.core.utils import ensure_path
-
-
 import copy
 import json
 from pathlib import Path
-# TODO: Global settings need sudo privelige to be created.
-# Although, when installing, that shouldn't be an issue
-GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
-USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
+import logging
+
+from rfsocinterface.core.utils import GLOBAL_SETTINGS_PATH
+from rfsocinterface.core.utils import USER_SETTINGS_PATH
+from rfsocinterface.core.utils import ensure_path
+
+_logger = logging.getLogger(__name__)
+
+
 DEFAULT_SETTINGS = {
     "app": {
         "tabs": [
@@ -68,13 +70,15 @@ class Settings(dict):
         super().__init__(*args, **kwargs)
         self._path = None
 
+    # TODO: Global settings need sudo privelige to be created.
+    # Although, when installing, that shouldn't be an issue
     @staticmethod
     @ensure_path(0)
     def _create_settings(path: Path):
         path.expanduser().parent.mkdir(exist_ok=True)
         with path.expanduser().open('w') as f:
             json.dump(DEFAULT_SETTINGS, f, indent=4)
-        print(f'Created default settings file at {path}')
+        _logger.info(f'Created default settings file at {path}')
 
     def _load_global_settings(self):
         self.clear()
@@ -108,7 +112,6 @@ class Settings(dict):
 
             new_rfsoc_dict['channels'] = new_channel_dicts
             new_rfsocs.append(new_rfsoc_dict)
-        print(new_rfsocs)
         return new_rfsocs
 
     @ensure_path(1)

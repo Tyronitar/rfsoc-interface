@@ -14,7 +14,7 @@ from functools import partial
 import psutil
 from PySide6.QtCore import QThread, QThreadPool, Signal, QObject, QRunnable, QEventLoop, QMutex, QMutexLocker, QCoreApplication, QTimer, Qt, Slot
 from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QProgressDialog
-from rfsocinterface.core.utils import P, R, T, print_future_result, CombinedFuture, Result, ResultStatus, iter_chunks
+from rfsocinterface.core.utils import P, R, T, CombinedFuture, Result, ResultStatus, iter_chunks
 
 
 class JobPool:
@@ -133,10 +133,10 @@ class JobPool:
 
 def execute(function: Callable, *args, **kwargs):
     try:
-        # print(f'Executing function with args: {args} and kwargs: {kwargs}')
+        # _logger.debug(f'Executing function with args: {args} and kwargs: {kwargs}')
         return Result(ResultStatus.SUCCESS, function(*args, **kwargs))
     except BaseException as error:
-        # print(error)
+        # _logger.error(error)
         try:
             error.traceback = traceback.format_exc()
         except AttributeError:  # Frozen exception

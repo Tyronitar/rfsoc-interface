@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Callable, Iterable
 import logging
+
 from concurrent.futures import Future
 
 from pathlib import Path
@@ -26,6 +27,9 @@ import udpcap
 from kidpy3 import RFSOC, capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 from kidpy3.data_handler import Rfchan
+
+
+_logger = logging.getLogger(__name__)
 
 
 def resonator_plot_formatter(x: float, pos: int) -> str:
@@ -342,7 +346,7 @@ class LoSweepData:
         """The new base band frequencies, based on the fit"""
         return self.fit_f0 - self.f_center
 
-    def fit(self, do_print=False, pd: QThreadJobProgressDialog | None=None) -> Future:
+    def fit(self, pd: QThreadJobProgressDialog | None=None) -> Future:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
         if pd is None:
             pd = QThreadJobPool(parent=self)
@@ -350,7 +354,7 @@ class LoSweepData:
         for i_chan in np.argwhere(self.chanmask == 1):
             self._fit_i(i_chan)
     
-    def _fit_i(self, i_chan, do_print: bool=True):
+    def _fit_i(self, i_chan):
             # pull in the sweep data for this tone
             i = i_chan[0]
             resonator = self.resonator_data[i]
@@ -364,17 +368,16 @@ class LoSweepData:
             diff = resonator.difference
             if np.abs(diff) > self.diff_to_flag[i]:
                 resonator.flagged = True
-                if do_print:
-                    print(
-                        'tone index =',
-                        f'{i:4d}',
-                        '|| new tone =',
-                        f'{self.fit_f0[i] * 1.0e-6:9.5f} MHz',
-                        '|| old tone =',
-                        f'{self.tone_list[i] * 1.0e-6:9.5f} MHz',
-                        '|| difference (kHz) =',
-                        f'{diff * 1e-3:+5.3f}',
-                    )
+                _logger.info(
+                    'tone index =',
+                    f'{i:4d}',
+                    '|| new tone =',
+                    f'{self.fit_f0[i] * 1.0e-6:9.5f} MHz',
+                    '|| old tone =',
+                    f'{self.tone_list[i] * 1.0e-6:9.5f} MHz',
+                    '|| difference (kHz) =',
+                    f'{diff * 1e-3:+5.3f}',
+                )
             # if signal:
             #     signal.emit()
             #     # job.updateProgress.emit()
@@ -513,7 +516,6 @@ class LoSweep:
         def temp(lofreq):
             # self.set_ValonLO function here
     
-            # print(lofreq)
             self.valon.set_frequency(SYNTH_B, lofreq)
 
             # Read values and trash initial read, suspecting linear delay is cause..
@@ -540,7 +542,6 @@ class LoSweep:
             start_ind = np.min(np.argwhere(Imed != 0.0))
             Z = Z[start_ind : start_ind + len(self.freqs)]
 
-            print(".", end="")
 
             return Z
         z = []
@@ -616,7 +617,6 @@ class LoSweep:
         Z = Imed + 1j * Qmed
         Z = Z[BAD_RFSOC_TONE_START_INDEX: BAD_RFSOC_TONE_START_INDEX + len(self.freqs)]
 
-        print(".", end="")
 
         return Z
 
@@ -636,7 +636,6 @@ class LoSweep:
                 chanmask = self.chan.chanmask
         self.chanmask = chanmask
         self._processed = False
-        #    print(freqs)
         log = logging.getLogger()
         if len(self.freqs) > 1:
             tone_diff = np.diff(self.freqs)[0] * 1e-6  # MHz

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import warnings
 
 mpl.use('QtAgg')
 
@@ -20,7 +21,10 @@ from matplotlib.figure import Figure
 
 from rfsocinterface.gui.blit_manager import BlitManager
 
-plt.rcParams['toolbar'] = 'toolmanager'
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+    # Set the default toolbar to use the tool manager
+    plt.rcParams['toolbar'] = 'toolmanager'
 
 
 class EditTool(ToolToggleBase):
