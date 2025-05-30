@@ -27,6 +27,30 @@ OPTCAM_PIX_SIZE_DEGREES = 0.0104
 DEFAULT_MAP_DPIX = 0.03
 # DATA_DIRECTORY = 'reference_data'  # For testing with local data files
 
+N_POLARIZATION = 2
+
+def get_tod_template(date: str, setnum: int) -> str:
+    return f'{DATA_DIRECTORY}/{date}/{date}_*_TOD_set{setnum}.h5'
+
+
+def get_azel_template(date: str, setnum: int) -> str:
+    return f'{DATA_DIRECTORY}/{date}/{date}_AZEL_set{setnum}.h5'
+
+
+def get_optcam_template(date: str, setnum: int) -> str:
+    return f'{DATA_DIRECTORY}/{date}/{date}_optcam_set{setnum}.h5'
+
+
+def get_processed_file_template(date: str, setnum: int) -> str:
+    return f'{DATA_DIRECTORY}/{date}/{date}_processed_data_set{setnum}.h5'
+
+
+def get_cleaned_file_template(date: str, setnum: int) -> str:
+    return f'{DATA_DIRECTORY}/{date}/{date}_cleaned_data_set{setnum}.h5'
+
+def get_file_stub(date: str, setnum: int) -> str:
+    return f'{date}_set{setnum}'
+
 @ensure_path(0)
 def load_time_ordered_IQ_data(path: Path, normalize: bool=True) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     f = RawDataFile(path, 'r')
@@ -104,27 +128,27 @@ class ProcessedData(Updateable):
 
     @property
     def tod_template(self) -> str:
-        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_*_TOD_set{self.setnum}.h5'
+        return get_tod_template(self.date, self.setnum)
 
     @property
     def azel_template(self) -> str:
-        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_AZEL_set{self.setnum}.h5'
+        return get_azel_template(self.date, self.setnum)
 
     @property
     def optcam_template(self) -> str:
-        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_optcam_set{self.setnum}.h5'
+        return get_optcam_template(self.date ,self.setnum)
     
     @property
     def processed_file_template(self) -> str:
-        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_processed_data_set{self.setnum}.h5'
+        return get_processed_file_template(self.date, self.setnum)
 
     @property
     def cleaned_file_template(self) -> str:
-        return f'{DATA_DIRECTORY}/{self.date}/{self.date}_cleaned_data_set{self.setnum}.h5'
+        return get_cleaned_file_template(self.date ,self.setnum)
     
     @property
     def file_stub(self) -> str:
-        return f'{self.date}_set{self.setnum}'
+        return get_file_stub(self.date, self.setnum)
 
     @property
     def folder(self) -> Path:
@@ -182,9 +206,9 @@ class ProcessedData(Updateable):
     
 
         folder = Path(f'{DATA_DIRECTORY}/{date}')
-        todtemplate = f'{DATA_DIRECTORY}/{date}/{date}_*_TOD_set{setnum}.h5'
-        tele_template = Path(f'{DATA_DIRECTORY}/{date}/{date}_AZEL_set{setnum}.h5')
-        optcam_template = Path(f'{DATA_DIRECTORY}/{date}/{date}_optcam_set{setnum}.h5')
+        todtemplate = get_tod_template(date, setnum)
+        tele_template = Path(get_azel_template(date, setnum))
+        optcam_template = Path(get_optcam_template(date ,setnum))
 
         azel_exists = tele_template.exists()
         optcam_exists = optcam_template.exists()
@@ -415,6 +439,7 @@ class ProcessedData(Updateable):
             pfile.create_dataset("dI_df", data=self.dI_df)
             pfile.create_dataset("dQ_df", data=self.dQ_df)
             pfile.create_dataset("df_per_mK", data=self.df_per_mK)
+            pfile.create_dataset("carrier_amplitudes", data=np.stack((self.carrier_amp_I, self.carrier_amp_Q), axis=0))
             pfile.create_dataset("data_gain", data=self.data_gain)
             pfile.create_dataset("data_phase", data=self.data_phase)
             pfile.create_dataset("IQ_to_gain_phase_angle", data=self.IQ_to_gain_phase_angle)
@@ -457,18 +482,29 @@ class ProcessedData(Updateable):
         return ProcessedData(**new_params)
     
     @classmethod
-    @ensure_path(1)
-    def from_file(cls, file: Path) -> ProcessedData:
-        date = file.stem[:8]
-        setnum = file.stem[:-4]
+    def from_file(cls, date: str, setnum: int) -> ProcessedData:
+        file = Path(get_processed_file_template(date, setnum))
+
+        if not file.exists():
+            raise FileNotFoundError(f'Could not find a processed data file on {date} with setnum {setnum}.')
+
+        # Load optical image if it exists
+        optcam_template = Path(get_optcam_template(date, setnum))
+        if optcam_template.exists():
+            optcam_file = h5py.File(optcam_template, 'r')
+            optical_image = optcam_file['optical_image'][:]
+        else:
+            optical_image = None
+        
         with h5py.File(file, 'r') as pfile:
             dI_df = pfile["dI_df"][:]
             dQ_df = pfile["dQ_df"][:]
             df_per_mK = pfile['df_per_mK'][:]
+            carrier_amp = pfile['carrier_amplitudes'][:]
             data_gain = pfile['data_gain'][:]
             data_phase = pfile['data_phase'][:]
-            IQ_to_gain_phase_angle = pfile['IQ_to_gain_phase_angle']
-            data_freq = pfile['data_freq']
+            IQ_to_gain_phase_angle = pfile['IQ_to_gain_phase_angle'][:]
+            data_freq = pfile['data_freq'][:]
             data_diss = pfile['data_diss'][:]
             data_mK = pfile['data_mK'][:]
             chanmask = pfile['chanmask'][:]
@@ -476,8 +512,29 @@ class ProcessedData(Updateable):
             detector_az = pfile['detector_az'][:]
             detector_za = pfile['detector_za'][:]
             timestamp = pfile['timestamp'][:]
-            optical_visibility = pfile['optical_visibility'][:]
-
+            if pfile['optical_visibility'].dtype == float:
+                optical_visibility = pfile['optical_visibility'][()]
+            else:
+                optical_visibility = pfile['optical_visibility'][:]
+        return cls(
+            date,
+            setnum,
+            optical_image,
+            np.stack((dI_df, dQ_df), axis=0),
+            carrier_amp[0],
+            carrier_amp[1],
+            df_per_mK,
+            np.stack((data_gain, data_phase), axis=0),
+            IQ_to_gain_phase_angle[:],
+            np.stack((data_freq, data_diss), axis=0),
+            data_mK,
+            chanmask,
+            detector_pol,
+            detector_az,
+            detector_za,
+            timestamp,
+            optical_visibility
+        )
 
 
 @dataclass
@@ -919,10 +976,10 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[
     return data[ind], ind
     
 if __name__ == "__main__":
+    date = '20250527'
+    setnum = 1010
 
-    data = ProcessedData.from_tod('20241017', 1001)
-    with h5py.File('/data/20241017/20241017_processed_data_set1001.h5', 'r') as f:
-        og_data = f['data_mK'][:]
+    data = ProcessedData.from_file(date, setnum)
+    # data = ProcessedData.from_tod(date ,setnum)
+
     pdb.set_trace()
-
-N_POLARIZATION = 2
