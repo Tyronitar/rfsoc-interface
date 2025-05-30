@@ -475,7 +475,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
 
         if tones_valid:
             self.setCursor(Qt.CursorShape.WaitCursor)
-            self.rfsoc.set_tone_list(chan=self.channel, tonelist=tone_list, amplitudes=tone_powers)
+            self.rfsoc.set_tone_list(self.channel, tonelist=tone_list, amplitudes=tone_powers)
             self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def set_attenuation(self, attenuation: str):

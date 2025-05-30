@@ -46,9 +46,8 @@ class RFSOCWrapper:
         self.settings['channel1'] = chan_settings_a
         self.settings['channel2'] = chan_settings_b
 
-        self.rfsoc = self.make_kidpy_rfsoc()
-        self.get_last_tone_lists()
         self.connect_to_comports()
+        self.make_kidpy_rfsoc()
         # self.rfsoc = None
         # self.atten_transceiver = None
         # self.valon_a = None
@@ -131,14 +130,23 @@ class RFSOCWrapper:
         self.rfsoc.rf1.chan_number = num
         self.rfsoc.rf2.chan_number = num
     
-    def get_last_tone_lists(self) -> npt.NDArray | None:
+    def get_last_tones(self):
         for chan in [1, 2]:
             tones_and_pow = self.rfsoc.get_tone_list(chan)
             if tones_and_pow is not None:
-                tones = tones_and_pow[0]
-                chanmask = np.ones(np.size(tones), dtype=int)
-                self.get_channel(chan).ntones = np.size(tones)
-                self.get_channel(chan).chanmask = chanmask
+                rfchan = self.get_channel(chan)
+                tones, powers = tones_and_pow
+                ntones = np.size(tones)
+                rfchan.baseband_freqs = tones
+                rfchan.tone_powers = powers
+                rfchan.n_tones = ntones
+                chanmask = np.ones(ntones, dtype=int)
+                rfchan.chanmask = chanmask
+    
+    def get_last_lo_freqs(self):
+        for chan in [1, 2]:
+            freq = self.get_valon(chan).get_frequency(chan)
+            self.get_channel(chan).lo_freq = freq * 1e6
 
     def make_kidpy_rfsoc(self) -> RFSOC:
         # TODO: Use a dictionary not a YAML file
@@ -147,12 +155,11 @@ class RFSOCWrapper:
         rfsoc.rf2.name = self.settings['channel2'].get('name', 'chan2')
         rfsoc.rf1.tile_number = self.settings.get('tileNumber', 2)
         rfsoc.rf2.tile_number = self.settings.get('tileNumber', 2)
-        return rfsoc
-        # yaml_contents = self.to_kidpy()
-        # fname = f'{self.settings['name']}.yml'
-        # with open(fname, 'w') as f:
-        #     yaml.dump(yaml_contents, f)
-        # return RFSOC(fname)
+        self.rfsoc = rfsoc
+        
+        # Update metadata stored in the Rfchan objects
+        self.get_last_tones()
+        self.get_last_lo_freqs()
 
     @ensure_path(1)
     def set_bitstream(self, path: Path):
@@ -168,17 +175,28 @@ class RFSOCWrapper:
         self.rfsoc.upload_bitstream(str(path))
     
     def set_frequency(self, channel: int, freq: float):
+        """Set the frequency of the specified channel in Hz."""
         valon = self.valon_a if channel == 1 else self.valon_b
-        valon.set_frequency(channel, freq)
+        valon.set_frequency(channel, freq * 1e-6)
         self.get_channel(channel).lo_freq = freq
         self.settings[f'channel{channel}']['dsp']['loFreq'] = freq
+
+    def get_frequency(self, channel: int) -> float:
+        """Get the current frequency of the specified channel in Hz."""
+        valon = self.valon_a if channel == 1 else self.valon_b
+        freq = valon.get_frequency(channel) * 1e6
+        self.get_channel(channel).lo_freq = freq 
+        self.settings[f'channel{channel}']['dsp']['loFreq'] = freq 
     
-    def get_tone_list(self, chan: int=1) -> tuple[npt.NDArray, npt.NDArray]:
+    def get_tone_list(self, chan: int) -> tuple[npt.NDArray, npt.NDArray]:
         return self.rfsoc.get_tone_list(chan)
     
-    def set_tone_list(self, chan: int=1, tonelist: npt.ArrayLike=[], amplitudes: npt.ArrayLike=[]):
+    def set_tone_list(self, chan: int, tonelist: npt.ArrayLike=[], amplitudes: npt.ArrayLike=[]):
         self.rfsoc.set_tone_list(chan=chan, tonelist=tonelist, amplitudes=amplitudes)
-        self.get_channel(chan).n_tones = np.size(tonelist)
+        rfchan = self.get_channel(chan)
+        rfchan.baseband_freqs = tonelist
+        rfchan.tone_powers = amplitudes
+        rfchan.n_tones = np.size(tonelist)
     
     def set_atten(self, addr: int, value: float):
         success, msg = self.atten_transceiver.set_atten(addr, value)

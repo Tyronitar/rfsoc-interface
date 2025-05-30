@@ -9,11 +9,12 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
+from argparse import ArgumentParser
 
 from kidpy3 import RawDataFile
 
 
-from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise
+from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise, ProcessedData
 from rfsocinterface.core.map import Downsample, RemoveElectronicsNoise
 from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise
 from rfsocinterface.core.map import Downsample, RemoveElectronicsNoise
@@ -239,30 +240,27 @@ def create_plot(
 
 
 if __name__ == '__main__':
-    from rfsocinterface.core.data import ProcessedData
-    date = '20250522'
-    set_num = 1008
-    basis = 'gp'
-    outlier_sigma = 2
-    ds_factor = 3
-    do_flag_outliers = True
-    remove_noise = False 
+    parser = ArgumentParser(description='Compute the noise PSD from RFSoC data.')
+    parser.add_argument('date', type=str, help='Date of the data in YYYYMMDD format.')
+    parser.add_argument('setnum', type=int, help='Set number of the data.')
+    parser.add_argument('--outlier_sigma', type=float, default=2.0, help='Sigma for outlier detection.')
+    parser.add_argument('--ds_factor', type=int, default=3, help='Downsampling factor.')
+    parser.add_argument('-f', '--do_flag_outliers', action='store_true', help='Flag outliers in the data.')
+    parser.add_argument('-n', '--remove_noise', action='store_true', help='Remove electronics noise from the data.')
+    parser.add_argument('-b', '--basis', type=str, choices=VALID_BASES, default='gp', help='Basis of the data (gp, iq, fd).')
+    parser.add_argument('-p', '--show_plots', action='store_true', help='Show noise plots to screen when finished.')
+    args = parser.parse_args()
 
-    # set_num = 1001
-    # p = ProcessedData('20250409', set_num, losweep='20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
-    # p = ProcessedData('20250415', set_num, losweep='20250415_rfsoc2_LO_Sweep_hour16p1919.npy')
-    p = ProcessedData.from_tod(date, set_num)
-    # p = ProcessedData.from_tod(date, set_num, losweep='20250527_devrfsoc_chan1_LO_Sweep_hour15p8372_high_res.h5')
-    # pdb.set_trace()
-    # p.chanmask = np.ones_like(p.chanmask)
-    # input_data = p.data_mK
-    input_data = p.data_gain_phase
-    timestamp = p.timestamp
+    date = args.date
+    setnum = args.setnum
+    outlier_sigma = args.outlier_sigma
+    ds_factor = args.ds_factor
+    do_flag_outliers = args.do_flag_outliers
+    remove_noise = args.remove_noise
+    basis = args.basis
 
-    # Fix data dimensions
-    first_dimension = input_data.shape[0] if input_data.ndim == 3 else 1
-    if first_dimension == 1:
-        input_data = input_data.reshape((1, *input_data.shape))
+    p = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise)
+
 
 
     # Downsample the data
@@ -271,9 +269,6 @@ if __name__ == '__main__':
         ds = Downsample(ds_factor=ds_factor)
         p = ds.forward(p)
 
-    # Flag outliers
-    if do_flag_outliers:
-        p.chanmask = flag_outliers(p.data_gain_phase, p.fs, p.chanmask, sigma=outlier_sigma)
 
     # Remove electronics noise
     if remove_noise:
@@ -286,16 +281,44 @@ if __name__ == '__main__':
         # Maybe, I should make RemoveElectronicsNoise a DataRoutine class that does all of this
 
 
-    raw_data_file = '/data/20250527/20250527_chan_1_TOD_set1010.h5'
-    fh = RawDataFile(raw_data_file, 'r')
-    freq = fh.baseband_freqs[:] + fh.lo_freq[:]
+    # pdb.set_trace()
 
+
+    match basis:
+        case 'iq':
+            # IQ basis
+            input_data = rotate_basis(p.data_gain_phase, -p.IQ_to_gain_phase_angle)
+        case 'fd':
+            # Frequency/Dissipation basis
+            # Get frequencies from the raw data file
+            raw_data_file = f'/data/{date}/{date}_chan_1_TOD_set{setnum}.h5'
+            fh = RawDataFile(raw_data_file, 'r')
+            freq = fh.baseband_freqs[:] + fh.lo_freq[:]
+
+            input_data = p.data_freq_diss / freq[np.newaxis, :, np.newaxis]
+        case 'gp':
+            # Gain/Phase basis
+            input_data = p.data_gain_phase / p.carrier_amplitude_norm()
+        case _:
+            raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
+
+    # Fix data dimensions
+    first_dimension = input_data.shape[0] if input_data.ndim == 3 else 1
+    if first_dimension == 1:
+        input_data = input_data.reshape((1, *input_data.shape))
+
+    chanmask = p.chanmask
+
+    # Flag outliers
+    if do_flag_outliers:
+        chanmask = flag_outliers(input_data, p.fs, chanmask, sigma=outlier_sigma)
+    
     chanmask, freq, noise_psd = compute_noise_psd(
-        # p.IQ_to_gain_phase_angle / p.carrier_amplitude_norm(),
-        # p.data_gain_phase,
-        p.data_freq_diss / freq[np.newaxis, :, np.newaxis],
+        input_data,
         p.timestamp,
         chanmask=p.chanmask,
         nominal_block_length=10,
     )
-    plot_psd(freq, noise_psd, f'plots/{date}_{set_num}_{basis}.pdf', basis=basis, title='Loopback')
+    plot_psd(freq, noise_psd, f'plots/{date}_{setnum}_{basis}.pdf', basis=basis, title='Loopback')
+    if args.show_plots:
+        plt.show()

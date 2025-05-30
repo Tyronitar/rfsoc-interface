@@ -146,11 +146,12 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # For running on ONR Computer
         # TODO: Fix this
-        lo_freq = channel_settings['dsp']['loFreq']  # MHz
-        valon.set_frequency(SYNTH_B, lo_freq)
+        # lo_freq = channel_settings['dsp']['loFreq']  # MHz
+        lo_freq = rfsoc.get_channel(chan).lo_freq
+        rfsoc.set_frequency(chan, lo_freq)
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3  # KHz to Hz
         if tone_shift != 0:
-            lo_freq = valon.get_frequency(SYNTH_B) * 1e6  # MHz to Hz
+            lo_freq = rfsoc.get_frequency(chan)  # Hz
             curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
             new_tones = np.ndarray.tolist(
                 curr_tone_list
@@ -176,12 +177,12 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # For running on ONR compupter
         rfchan = rfsoc.get_channel(chan)
-        tone_list = rfsoc.get_tone_list()[0]
+        tone_list = rfsoc.get_tone_list(chan)[0]
         sweep = LoSweep(
             valon,
             rfchan,
             tone_list,
-            valon.get_frequency(SYNTH_B) * 1e6,  # MHZ to Hz
+            lo_freq,
         )
         chanmask_file = rfsoc.get_chanmask_file(chan)
         freq_step = get_num_value(self.df_lineEdit)  * 1e3  # KHz to Hz
@@ -258,20 +259,19 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         filename = first_sweep_savefile.stem + '_high_res.h5'
         savefile = first_sweep_savefile.with_name(filename)
 
-        channel_settings = rfsoc.settings[f'channel{chan}']
         valon = rfsoc.get_valon(chan)
 
         # For running on ONR Computer
-        lo_freq = channel_settings['dsp']['loFreq']  # MHz
-        valon.set_frequency(SYNTH_B, lo_freq)
+        lo_freq = rfsoc.get_channel(chan).lo_freq
+        rfsoc.set_frequency(chan, lo_freq)
 
         rfchan = rfsoc.get_channel(chan)
-        tone_list = rfsoc.get_tone_list()[0]
+        tone_list = rfsoc.get_tone_list(chan)[0]
         sweep = LoSweep(
             valon,
             rfchan,
             tone_list,
-            valon.get_frequency(SYNTH_B) * 1e6,  # MHZ to Hz
+            lo_freq,
         )
         chanmask_file = rfsoc.get_chanmask_file(chan)
         freq_step = get_num_value(self.second_sweep_df_lineEdit)  * 1e3  # KHz to Hz

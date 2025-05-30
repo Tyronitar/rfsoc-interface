@@ -180,7 +180,7 @@ class ProcessedData(Updateable):
 
     def carrier_amplitude_norm(self) -> npt.NDArray:
         Z = self.carrier_amp_I + 1j*self.carrier_amp_Q
-        return np.mean(np.abs(Z), axis=1)
+        return np.mean(np.abs(Z), axis=0)
 
     @property
     def time(self) -> npt.NDArray:
@@ -199,7 +199,7 @@ class ProcessedData(Updateable):
         return np.size(self.chanmask)
 
     @classmethod
-    def from_tod(cls, date: str, setnum: int, losweep: str | None=None, save: bool=True, beam_map_mode: bool=False) -> ProcessedData:
+    def from_tod(cls, date: str, setnum: int, losweep: str | None=None, save: bool=True, beam_map_mode: bool=False, do_electronics_noise_removal: bool=True) -> ProcessedData:
         #20230803_rfsoc1_TOD_set1012
         date = date
         setnum = setnum
@@ -314,7 +314,7 @@ class ProcessedData(Updateable):
                 detector_f = np.linspace(0, 250e6, detector_f.size)
 
             this_df_per_mK = compute_df_per_mK(detector_pol, detector_beam_ampl, detector_f, dfoverf_per_mK) 
-            df_per_mK = np.concatenate((df_per_mK,this_df_per_mK))
+            df_per_mK = np.concatenate((df_per_mK,this_df_per_mK), axis=0)
 
             #create the calibrated datastreams-----------------------------------------------------------
             #first get the I and Q data
@@ -336,8 +336,9 @@ class ProcessedData(Updateable):
 
             this_gain_phase_angle = np.atan2(carrier_amp_I, carrier_amp_Q)  # N_chan
 
+            data_IQ = np.stack((data_I, data_Q), axis=0)
             this_data_gain_phase = rotate_basis(
-                np.stack((data_I, data_Q)),
+                data_IQ,
                 this_gain_phase_angle
             )
             if np.size(data_gain_phase) > 0:
@@ -348,10 +349,11 @@ class ProcessedData(Updateable):
                 gain_phase_angle = np.copy(this_gain_phase_angle)
             
             # TODO: Make this optional I guess
-            clean_gain_phase_data = remove_electronics_noise(data_gain_phase)
+            if do_electronics_noise_removal:
+                data_gain_phase = remove_electronics_noise(data_gain_phase)
             # pdb.set_trace()
             this_data_freq_diss, this_data_mK = generate_calibrated_data(
-                clean_gain_phase_data,
+                data_gain_phase,
                 gain_phase_angle,
                 dIQ_df,
                 np.array(df_per_mK),
@@ -403,7 +405,7 @@ class ProcessedData(Updateable):
                     detector_za = np.copy(this_det_za)
 
             #also save the chanmask and detector polarization information
-            chanmask = np.concatenate((chanmask, f.chanmask[:]))
+            chanmask = np.concatenate((chanmask, f.chanmask[:]), axis=0)
             no_pol = np.ndarray.flatten(np.argwhere(detector_pol < 1))
             if np.size(no_pol > 0):
                 chanmask[no_pol] = -1
@@ -417,7 +419,7 @@ class ProcessedData(Updateable):
             carrier_amp_I,
             carrier_amp_Q,
             df_per_mK,
-            clean_gain_phase_data,
+            data_gain_phase,
             gain_phase_angle,
             data_freq_diss,
             data_mK,
@@ -886,7 +888,7 @@ def flag_outliers(data: npt.NDArray, fs: float, chanmask: npt.NDArray, sigma: fl
     return chanmask
 
 
-def rotate_basis(input_data: npt.NDArray, rotation_angle: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+def rotate_basis(input_data: npt.NDArray, rotation_angle: npt.NDArray) -> npt.NDArray:
     """Compute change of basis, rotating with the specified angle."""
     assert input_data.ndim == 3
     assert input_data.shape[0] == 2
@@ -926,11 +928,12 @@ def compute_templates(data: npt.NDArray) -> npt.NDArray:
         (npt.NDarray): Templates for noise removal (N_chan x 2 x N_samples).
             Computed using the first two eigenmodes of the correlation matrix.
     """
-        # subtract the mean from each detector
-    data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    # subtract the mean from each detector
+    # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    deproj = data - np.mean(data, axis=2)[:, :, np.newaxis]
 
     # select only the middle few detectors
-    deproj = data_meansub[:, 8:1008, :]
+    # deproj = data_meansub[:, 8:1008, :]
 
     # create a separate correlation matrix for all data channels
     correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
@@ -950,7 +953,7 @@ def remove_electronics_noise(data: npt.NDArray) -> npt.NDArray:
 
     Args:
         data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
-            be in the amplitude/phase basis.
+            be in the gain/phase basis.
 
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
