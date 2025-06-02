@@ -126,9 +126,9 @@ class RFSOCWrapper:
         self.rfsoc.rf1.tile_number = num
         self.rfsoc.rf2.tile_number = num
 
-    def set_channel_number(self, num: int):
-        self.rfsoc.rf1.chan_number = num
-        self.rfsoc.rf2.chan_number = num
+    def set_channel_number(self):
+        self.rfsoc.rf1.chan_number = 1
+        self.rfsoc.rf2.chan_number = 2
     
     def get_last_tones(self):
         for chan in [1, 2]:
@@ -160,6 +160,7 @@ class RFSOCWrapper:
         # Update metadata stored in the Rfchan objects
         self.get_last_tones()
         self.get_last_lo_freqs()
+        self.set_channel_number()
 
     @ensure_path(1)
     def set_bitstream(self, path: Path):

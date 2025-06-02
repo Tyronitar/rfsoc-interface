@@ -11,6 +11,7 @@ import numpy as np
 import numpy.typing as npt
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
+from scipy.signal import savgol_filter
 import h5py
 
 from PySide6.QtWidgets import QApplication
@@ -36,6 +37,32 @@ def resonator_plot_formatter(x: float, pos: int) -> str:
         str: The formatted string for the x-axis label.
     """
     return f'{x * 1e-6:.3f}'
+
+def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
+
+    #set up some preliminary values that we'll need
+    n_freq = np.size(freq)
+    old_tone_freq = tone_list
+    center_ind = np.argwhere(abs(freq - old_tone_freq) == min(abs(freq - old_tone_freq)))[0]
+
+    #smooth the data
+    x = s21
+    s21 = savgol_filter(s21, 7, 3, mode='mirror')
+
+    #search for local minima
+    if s21[center_ind[0]] != min(s21):
+       keepgoing = True
+       while keepgoing:
+          lo_ind = int(max(center_ind-1,0))
+          hi_ind = int(min(center_ind+2,n_freq))
+          min_ind = np.argwhere(s21[lo_ind:hi_ind] == min(s21[lo_ind:hi_ind]))[0]
+          if min_ind[0] == (center_ind[0] - lo_ind):
+             keepgoing = False
+          else:
+             center_ind = lo_ind + min_ind
+
+    f0 = freq[center_ind[0]]
+    return f0
 
 
 class ResonatorData:
@@ -361,20 +388,13 @@ class LoSweepData:
             diff = resonator.difference
             if np.abs(diff) > self.diff_to_flag[i]:
                 resonator.flagged = True
-                _logger.info(
-                    'tone index =',
-                    f'{i:4d}',
-                    '|| new tone =',
-                    f'{self.fit_f0[i] * 1.0e-6:9.5f} MHz',
-                    '|| old tone =',
-                    f'{self.tone_list[i] * 1.0e-6:9.5f} MHz',
-                    '|| difference (kHz) =',
-                    f'{diff * 1e-3:+5.3f}',
-                )
-            # if signal:
-            #     signal.emit()
-            #     # job.updateProgress.emit()
-            #     QApplication.processEvents()
+                string = ' || '.join([
+                    f'tone index = {i:4d}',
+                    f'new tone = {self.fit_f0[i] * 1.0e-6:9.5f} MHz',
+                    f'old tone = {self.tone_list[i] * 1.0e-6:9.5f} MHz',
+                    f'difference (kHz) = {diff * 1e-3:+5.3f}',
+                ])
+                _logger.info(string)
 
 
     def plot(self, ncols: int = 18, pd: QThreadJobProgressDialog | None=None) -> tuple[Figure, Future]:
@@ -396,18 +416,14 @@ class LoSweepData:
 
         # loop over resonators to perform fit
         subplots = []
-        for counter, resonator in enumerate(self.resonator_data):
+        for i in range(self.nchan):
             subplot = plt.subplot2grid(
-                (nrows, ncols), (counter // ncols, np.mod(counter, ncols))
+                (nrows, ncols), (i // ncols, np.mod(i, ncols))
             )
             subplots.append(subplot)
         if pd is None:
             pd = QThreadJobPool(parent=self)
         return fig, pd.map(ResonatorData.plot, self.resonator_data, subplots)
-        resonator.plot(subplot)
-
-        plt.tight_layout()
-        return fig
     
     @ensure_path(1)
     def savenp(self, fname: Path):
@@ -427,7 +443,6 @@ class LoSweepData:
             # fh.create_dataset('global_data/s21', data=self.s21)
             fh.create_dataset('global_data/lo_freq', data=self.f_center)
             fh.create_dataset('global_data/baseband_freqs', data=self.tone_list - self.f_center)
-            print(type(self.chanmask), self.chanmask)
             fh.create_dataset('global_data/chanmask', data=self.chanmask)
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
@@ -561,7 +576,7 @@ class LoSweep:
         # WITH TIMESTAMP
 
         # set the LO back to the original frequency
-        self.valon.set_frequency(valon5009.SYNTH_B, self.f_center)
+        self.valon.set_frequency(Valon5009.SYNTH_B, self.f_center)
 
         return (f, sweep_Z_f)
 
@@ -664,7 +679,9 @@ class LoSweep:
         # )
     
     def _process_sweep_results(self, future: Future[npt.NDArray]):
+        _logger.debug('Processing sweep results')
         if future.cancelled():
+            _logger.info('Sweep cancelled. Exiting...')
             return
         sweep_Z = np.array(list(future.result()))
 
@@ -684,10 +701,11 @@ class LoSweep:
         # WITH TIMESTAMP
 
         # set the LO back to the original frequency
-        self.valon.set_frequency(valon5009.SYNTH_B, self.f_center * 1e-6)
+        self.valon.set_frequency(self.chan.chan_number, self.f_center * 1e-6)
 
         self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), self.chanmask)
         self._processed = True
+        _logger.debug('Finished processing sweep results')
 
 
 if __name__ == '__main__':

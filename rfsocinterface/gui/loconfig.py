@@ -132,10 +132,10 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             self.run_sweep(rfsoc, chan)
     
     def run_sweep(self, rfsoc: RFSOCWrapper, chan: int):
-        channel_settings = rfsoc.settings[f'channel{chan}']
         valon = rfsoc.get_valon(chan)
 
         chan_name = rfsoc.get_channel_name(chan)
+        _logger.info(f'Running LO Sweep with {chan_name}...')
 
         # For running on ONR Computer
         # TODO: Fix this
@@ -187,6 +187,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         pd.show()
         QApplication.processEvents()
 
+        _logger.debug(f'Starting LO Sweep...')
         sweep_data_future = sweep.run_sweep(chanmask_file, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
         sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan, False))
 
@@ -280,7 +281,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan, True))
 
     def _wait_and_save(self, sweep: LoSweep, savefile: Path, rfsoc: RFSOCWrapper, chan: int):
+        counter = 0
         while not sweep._processed:
+            counter += 1
+            if counter % 500 == 0:
+                _logger.debug('Waiting for sweep to finish...')
             QApplication.processEvents()
             time.sleep(0.1)
         sweep_data = sweep.data
@@ -298,6 +303,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     @ensure_path(1)
     def save_sweep(self, savefile: Path, sweep_data: LoSweepData):
+        savefile.parent.mkdir(parents=True, exist_ok=True)
         sweep_data.saveh5(savefile)
         sweep_data.savenp(savefile)
         _logger.info(f'Saved LO sweep data to {savefile}')
