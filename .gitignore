@@ -173,6 +173,10 @@ cython_debug/
 data/
 !Default_tone_list.npy
 
+# Profiling Files
+*.bin
+*.html
+
 # Plots
 *.pdf
 *.png

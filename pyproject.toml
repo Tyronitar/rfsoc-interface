@@ -37,6 +37,7 @@ pytest-xdist = "^3.6.1"
 pytest-mock = "^3.14.0"
 coverage = {extras = ["toml"], version = "^7.6.1"}
 pytest-qt = "^4.4.0"
+memray = "^1.17.2"
 
 [build-system]
 requires = ["poetry-core"]
