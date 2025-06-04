@@ -10,9 +10,10 @@ import pdb
 import time
 
 import h5py
+import tables
 import numpy as np
 import numpy.typing as npt
-from kidpy3 import RawDataFile
+# from kidpy3 import RawDataFile
 from scipy import signal
 import matplotlib.pyplot as plt
 
@@ -897,6 +898,14 @@ def rotate_basis(input_data: npt.NDArray, rotation_angle: npt.NDArray) -> npt.ND
     new_data[1] = -np.sin(rotation_angle)[:, np.newaxis] * input_data[0, :, :] + np.cos(rotation_angle)[:, np.newaxis] * input_data[1, :, :]
     return new_data 
 
+def rotate_basis2(data_1: npt.NDArray, data_2: npt.NDArray, rotation_angle: npt.NDArray, tone_index: npt.NDArray) -> npt.NDArray:
+    """Compute change of basis, rotating with the specified angle."""
+
+    new_data = np.zeros(shape=(2, np.size(tone_index), data_1.shape[-1]))
+    new_data[0] = np.cos(rotation_angle)[:, np.newaxis] * data_1[tone_index, :] + np.sin(rotation_angle)[:, np.newaxis] * data_2[tone_index, :]
+    new_data[1] = -np.sin(rotation_angle)[:, np.newaxis] * data_1[tone_index, :] + np.cos(rotation_angle)[:, np.newaxis] * data_2[tone_index, :]
+    return new_data 
+
 def change_basis_to_frequency_dissipation(input_IQ_data: npt.NDArray, dIQ_df: npt.NDArray) -> npt.NDArray:
     """Compute change of basis from IQ to frequency/dissipation."""
     data_I = input_IQ_data[0]
@@ -976,12 +985,288 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[
     std = np.std(data, axis=axis)
     ind = np.where(d < sigma * std)
     return data[ind], ind
+
+
+class PyTablesProcessedData(ProcessedData):
+
+
+    @classmethod
+    def from_tod(cls, date: str, setnum: int, losweep: str | None=None, save: bool=True, beam_map_mode: bool=False, do_electronics_noise_removal: bool=True) -> PyTablesProcessedData:
+        #20230803_rfsoc1_TOD_set1012
+        date = date
+        setnum = setnum
+    
+
+        folder = Path(f'{DATA_DIRECTORY}/{date}')
+        todtemplate = get_tod_template(date, setnum)
+        tele_template = Path(get_azel_template(date, setnum))
+        optcam_template = Path(get_optcam_template(date ,setnum))
+
+        azel_exists = tele_template.exists()
+        optcam_exists = optcam_template.exists()
+
+        if azel_exists:
+            azel_file = tables.open_file(tele_template, 'r')
+        
+        if optcam_exists:
+            optcam_file = tables.open_file(optcam_template, 'r')
+        
+
+        # Create processed data file
+
+        todlist = glob.glob(todtemplate)
+
+        if len(todlist) == 0:
+            raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
+
+        if azel_exists:
+            az_tel = azel_file.root.az_tel
+            try:
+                za_tel = azel_file.root.za_tel
+            except:
+                za_tel = azel_file.rooe.el_tel
+            timestamp_tel = azel_file.root.timestamp_tel
+            vis = azel_file.root.optical_visibility[0]
+            if isinstance(vis, bytes):
+                vis = np.nan
+        else:
+            vis=0.
+        
+        
+        if optcam_exists:
+            optical_image = optcam_file.root.optical_image
+        else:
+            optical_image = None
+
+
+
+        dIQ_df = np.array([])
+        carrier_amp_I = np.array([])
+        carrier_amp_Q = np.array([])
+        df_per_mK = np.array([])
+        data_freq_diss = np.array([])
+        data_gain_phase = np.array([])
+        gain_phase_angle = np.array([])
+        data_mK = 0
+        chanmask = np.array([], dtype=np.int32)
+        detector_pol = np.array([])
+        detector_az = np.array([[]])
+        detector_za = np.array([[]])
+        # Iterate over the TOD Files
+        for i, file in enumerate(todlist):
+
+            #compute the derivatives to obtain frequency direction
+            f = tables.open_file(file, 'r')
+            # pdb.set_trace()
+            global_data = f.root.global_data
+
+            # # Temporary fix for testing code:
+            # f.baseband_freqs = np.load('/data/20250422/20250422_tone_list.npy')
+            # f.lo_freq = np.array([4e8])
+
+            if losweep:
+                losweep = Path(losweep)
+                # f.append_lo_sweep(losweep)
+                if losweep.suffix == '.npy':
+                    sweep_data = np.load(folder / losweep)
+                else:
+                    with tables.open_file(folder / losweep, 'r') as sweep_file:
+                        sweep_data = sweep_file.root.global_data.lo_sweep
+                sweep_data = global_data.lo_sweep
+            elif global_data.lo_sweep is not None:
+                sweep_data = global_data.lo_sweep
+            else:
+                raise RuntimeError('No LO sweep provided. Canceliing processing of file.')
+
+            # f.lo_freq[:] = 4e8
+            lo_freq = global_data.lo_freq[:]
+            # lo_freq = 4e8
+            sweep = LoSweepData(global_data.baseband_freqs, lo_freq, sweep_data, global_data.chanmask[:])
+            this_dIQ_df = sweep.freq_direction()
+            if np.size(dIQ_df) > 0:
+                dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
+            else:
+                dIQ_df = np.copy(this_dIQ_df)
+        
+            #compute the calibration factor from dfoverf to mK
+            detector_pol = global_data.detector_pol
+            if np.count_nonzero(detector_pol) == 0:
+                detector_pol = np.ones_like(detector_pol)
+
+            detector_beam_ampl = global_data.detector_beam_ampl
+            if np.count_nonzero(detector_beam_ampl) == 0:
+                detector_beam_ampl= np.ones_like(detector_beam_ampl)
+
+            dfoverf_per_mK = global_data.dfoverf_per_mK
+            if np.count_nonzero(dfoverf_per_mK) == 0:
+                dfoverf_per_mK = np.ones_like(dfoverf_per_mK)
+
+            detector_f = sweep.tone_list
+            # detector_f = f.baseband_freqs[:] + f.lo_freq[:]
+
+            # NOTE: Temporary fix: create dummy frequencies if they don't exist
+            if np.count_nonzero(detector_f) == 0:  
+                detector_f = np.linspace(0, 250e6, detector_f.size)
+
+            this_df_per_mK = compute_df_per_mK(detector_pol, detector_beam_ampl, detector_f, dfoverf_per_mK) 
+            df_per_mK = np.concatenate((df_per_mK,this_df_per_mK), axis=0)
+
+            #create the calibrated datastreams-----------------------------------------------------------
+            #first get the I and Q data
+            time_ordered_data = f.root.time_ordered_data
+            # data_I = np.ndarray.astype(time_ordered_data.adc_i, np.float64)
+            # data_Q = np.ndarray.astype(time_ordered_data.adc_q, np.float64)
+            data_I = time_ordered_data.adc_i
+            data_Q = time_ordered_data.adc_q
+
+            dimension = f.root.dimension
+            n_samples = dimension.n_sample[0]
+            ntones = dimension.n_tones[0]
+            if int(date[:4]) < 2025:
+                valid_tone_index = np.ndarray.flatten(np.argwhere(data_I[:,0] != 0.))
+                valid_tone_index = valid_tone_index[:ntones]
+            else:
+                valid_tone_index = np.arange(ntones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
+            carrier_amp_I = np.nanmedian(data_I[valid_tone_index, :], axis=1)
+            carrier_amp_Q = np.nanmedian(data_Q[valid_tone_index, :], axis=1)
+            
+            # Rotate to Gain / Phase
+
+            this_gain_phase_angle = np.atan2(carrier_amp_I, carrier_amp_Q)  # N_chan
+
+            # data_IQ = np.stack((data_I[valid_tone_index, :], data_Q[valid_tone_index, :]), axis=0)
+            this_data_gain_phase = rotate_basis2(
+                data_I,
+                data_Q,
+                this_gain_phase_angle,
+                valid_tone_index
+            )
+            if np.size(data_gain_phase) > 0:
+                data_gain_phase = np.concatenate((data_gain_phase, this_data_gain_phase), axis=0)
+                gain_phase_angle = np.concatenate((gain_phase_angle, this_gain_phase_angle), axis=0)
+            else:
+                data_gain_phase= np.copy(this_data_gain_phase)
+                gain_phase_angle = np.copy(this_gain_phase_angle)
+            
+            # TODO: Make this optional I guess
+            if do_electronics_noise_removal:
+                data_gain_phase = remove_electronics_noise(data_gain_phase)
+            # pdb.set_trace()
+            this_data_freq_diss, this_data_mK = generate_calibrated_data(
+                data_gain_phase,
+                gain_phase_angle,
+                dIQ_df,
+                np.array(df_per_mK),
+            )
+
+            if np.size(data_freq_diss) > 0:
+                data_freq_diss = np.concatenate((data_freq_diss, this_data_freq_diss), axis=0)
+            else:
+                data_freq_diss = np.copy(this_data_freq_diss)
+
+            if np.size(data_mK) != 1:
+                data_mK = np.concatenate((data_mK, this_data_mK), axis=0)
+            else:
+                data_mK = np.copy(this_data_mK)
+
+
+            #now the telescope data to get coordinates
+            time = time_ordered_data.timestamp
+            time_0 = time - time[0]
+            total_time = np.max(time_0)
+            if i == 0:  # Only should make this once, since it's never changed
+                timestamp = np.arange(0,total_time,total_time/n_samples) + time[0]
+            if azel_exists:
+                detector_dx_dy_elevation_angle = f.root.detector_dx_dy_elevation_angle[0]
+                this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
+                this_za_tel = np.interp(timestamp, timestamp_tel, za_tel)
+                this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
+                this_detector_delta_x = f.root.detector_delta_x
+                this_detector_delta_y = f.root.detector_delta_y
+                if beam_map_mode:
+                    this_detector_delta_x *= 0
+                    this_detector_delta_y *= 0
+                this_det_az = np.outer(this_detector_delta_x, np.cos(this_ang)) - \
+                            np.outer(this_detector_delta_y,np.sin(this_ang)) + \
+                            np.outer(np.ones(ntones), this_az_tel)
+                this_det_za = np.outer(this_detector_delta_y, np.cos(this_ang)) + \
+                            np.outer(this_detector_delta_x, np.sin(this_ang)) + \
+                            np.outer(np.ones(ntones), this_za_tel)
+            
+                #save the az/el information to the file
+                if np.size(detector_az) > 0:
+                    detector_az = np.concatenate((detector_az, this_det_az), axis=0)
+                else:
+                    detector_az = np.copy(this_det_az)
+                if np.size(detector_za) > 0:
+                    detector_za = np.concatenate((detector_za, this_det_za), axis=0)
+                else:
+                    detector_za = np.copy(this_det_za)
+
+            #also save the chanmask and detector polarization information
+            chanmask = np.concatenate((chanmask, global_data.chanmask), axis=0)
+            no_pol = np.ndarray.flatten(np.argwhere(detector_pol < 1))
+            if np.size(no_pol > 0):
+                chanmask[no_pol] = -1
+    #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
+        # pdb.set_trace()
+            f.close()
+        pdata = cls(
+            date,
+            setnum,
+            optical_image,
+            dIQ_df,
+            carrier_amp_I,
+            carrier_amp_Q,
+            df_per_mK,
+            data_gain_phase,
+            gain_phase_angle,
+            data_freq_diss,
+            data_mK,
+            timestamp,
+            chanmask,
+            detector_pol,
+            detector_az,
+            detector_za,
+            vis
+        )
+        if save:
+            pdata.save()
+        return pdata
+
+
     
 if __name__ == "__main__":
     date = '20250527'
     setnum = 1010
 
-    data = ProcessedData.from_file(date, setnum)
-    # data = ProcessedData.from_tod(date ,setnum)
+    # data = ProcessedData.from_file(date, setnum)
+    # data = ProcessedData.from_tod(date, setnum, save=False)
+    data = PyTablesProcessedData.from_tod(date, setnum, save=False)
+    # todtemplate = get_tod_template(date, setnum)
+    # todlist = glob.glob(todtemplate)
 
-    pdb.set_trace()
+    # # h5file = RawDataFile(todlist[0], 'r')
+    # # data_I = h5file.adc_i[:]
+    # # data_Q = h5file.adc_q[:]
+
+    # h5file = tables.open_file(todlist[0], 'r')
+    # data_I = h5file.root.time_ordered_data.adc_i[:]
+    # data_Q = h5file.root.time_ordered_data.adc_q[:]
+
+    # carrier_amp_I = np.nanmedian(data_I, axis=1)
+    # carrier_amp_Q = np.nanmedian(data_Q, axis=1)
+    
+    # # Rotate to Gain / Phase
+    # this_gain_phase_angle = np.atan2(carrier_amp_I, carrier_amp_Q)  # N_chan
+
+    # data_IQ = np.stack((data_I, data_Q), axis=0)
+    # this_data_gain_phase = rotate_basis(
+    #     data_IQ,
+    #     this_gain_phase_angle
+    # )
+    # clean_data = remove_electronics_noise(this_data_gain_phase)
+
+    # # pdb.set_trace()
+    # h5file.close()
+    # # pdb.set_trace()
