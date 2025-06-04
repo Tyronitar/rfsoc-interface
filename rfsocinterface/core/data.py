@@ -1040,6 +1040,10 @@ class PyTablesProcessedData(ProcessedData):
 
 
 
+        pfile = tables.open_file(get_processed_file_template(date, setnum), 'w')
+        pfile.root._v_attrs.date = date
+        pfile.root._v_attrs.setnum = setnum
+
         dIQ_df = np.array([])
         carrier_amp_I = np.array([])
         carrier_amp_Q = np.array([])
@@ -1059,6 +1063,27 @@ class PyTablesProcessedData(ProcessedData):
             f = tables.open_file(file, 'r')
             # pdb.set_trace()
             global_data = f.root.global_data
+            dimension = f.root.dimension
+            n_samples = dimension.n_sample[0]
+            n_tones = dimension.n_tones[0]
+
+            pdb.set_trace()
+            # TODO: Change this for when there are multiple TOD files
+            data_group = pfile.create_group('/', 'detector_data')
+            global_data_group = pfile.create_group(data_group, 'global_data')
+            pfile.create_array(global_data_group, 'dIQ_df', shape=(2, n_tones, n_samples), atom=tables.Float64Atom())
+            pfile.create_array(global_data_group, 'carrier_amplitudes', shape=(2, n_tones), atom=tables.Float64Atom())
+            pfile.create_array(global_data_group, 'df_per_mK', shape=(n_tones,), atom=tables.Float64Atom())
+            pfile.create_array(global_data_group, 'chanmask', shape=(n_tones,), atom=tables.Int8Atom())
+            pfile.create_array(global_data_group, 'detector_pol', shape=(n_tones,), atom=tables.Int8Atom())
+            pfile.create_array(global_data_group, 'detector_az', shape=(n_tones,), atom=tables.Float64Atom())
+            array_group = pfile.create_group(data_group, 'arrays')
+            pfile.create_array(array_group, 'timestamp', shape=(n_samples,), atom=tables.Float64Atom())
+            pfile.create_array(array_group, 'data_gain', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+            pfile.create_array(array_group, 'data_phase', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+            pfile.create_array(array_group, 'data_freq', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+            pfile.create_array(array_group, 'data_diss', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+            pfile.create_array(array_group, 'data_mK', shape=(n_tones, n_samples), atom=tables.Float64Atom())
 
             # # Temporary fix for testing code:
             # f.baseband_freqs = np.load('/data/20250422/20250422_tone_list.npy')
@@ -1119,14 +1144,11 @@ class PyTablesProcessedData(ProcessedData):
             data_I = time_ordered_data.adc_i
             data_Q = time_ordered_data.adc_q
 
-            dimension = f.root.dimension
-            n_samples = dimension.n_sample[0]
-            ntones = dimension.n_tones[0]
             if int(date[:4]) < 2025:
                 valid_tone_index = np.ndarray.flatten(np.argwhere(data_I[:,0] != 0.))
-                valid_tone_index = valid_tone_index[:ntones]
+                valid_tone_index = valid_tone_index[:n_tones]
             else:
-                valid_tone_index = np.arange(ntones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
+                valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
             carrier_amp_I = np.nanmedian(data_I[valid_tone_index, :], axis=1)
             carrier_amp_Q = np.nanmedian(data_Q[valid_tone_index, :], axis=1)
             
@@ -1188,10 +1210,10 @@ class PyTablesProcessedData(ProcessedData):
                     this_detector_delta_y *= 0
                 this_det_az = np.outer(this_detector_delta_x, np.cos(this_ang)) - \
                             np.outer(this_detector_delta_y,np.sin(this_ang)) + \
-                            np.outer(np.ones(ntones), this_az_tel)
+                            np.outer(np.ones(n_tones), this_az_tel)
                 this_det_za = np.outer(this_detector_delta_y, np.cos(this_ang)) + \
                             np.outer(this_detector_delta_x, np.sin(this_ang)) + \
-                            np.outer(np.ones(ntones), this_za_tel)
+                            np.outer(np.ones(n_tones), this_za_tel)
             
                 #save the az/el information to the file
                 if np.size(detector_az) > 0:
