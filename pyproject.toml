@@ -8,7 +8,7 @@ authors = ["Nia McNichols <niamcnichols@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.14"
+python = ">=3.11,<3.14"
 numpy = "^2.1.0"
 scipy = "^1.14.1"
 matplotlib = "^3.9.2"
@@ -22,6 +22,7 @@ kidpy3 = {url = "https://github.com/ASU-Astronomical-Instrumentation/readout/rel
 exscript = "^2.6.28"
 psutil = "^6.1.1"
 vmbpy = "^1.1.0"
+tables = "^3.10.2"
 
 [tool.poetry.group.gui.dependencies]
 shiboken6 = "6.8.1"
