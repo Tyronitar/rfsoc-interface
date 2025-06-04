@@ -1063,6 +1063,27 @@ class PyTablesProcessedData(ProcessedData):
             with tables.open_file(file, 'r') as f:
                 # pdb.set_trace()
                 global_data = f.root.global_data
+                dimension = f.root.dimension
+                n_samples = dimension.n_sample[0]
+                n_tones = dimension.n_tones[0]
+
+                pdb.set_trace()
+                # TODO: Change this for when there are multiple TOD files
+                data_group = pfile.create_group('/', 'detector_data')
+                global_data_group = pfile.create_group(data_group, 'global_data')
+                pfile.create_array(global_data_group, 'dIQ_df', shape=(2, n_tones, n_samples), atom=tables.Float64Atom())
+                pfile.create_array(global_data_group, 'carrier_amplitudes', shape=(2, n_tones), atom=tables.Float64Atom())
+                pfile.create_array(global_data_group, 'df_per_mK', shape=(n_tones,), atom=tables.Float64Atom())
+                pfile.create_array(global_data_group, 'chanmask', shape=(n_tones,), atom=tables.Int8Atom())
+                pfile.create_array(global_data_group, 'detector_pol', shape=(n_tones,), atom=tables.Int8Atom())
+                pfile.create_array(global_data_group, 'detector_az', shape=(n_tones,), atom=tables.Float64Atom())
+                array_group = pfile.create_group(data_group, 'arrays')
+                pfile.create_array(array_group, 'timestamp', shape=(n_samples,), atom=tables.Float64Atom())
+                pfile.create_array(array_group, 'data_gain', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+                pfile.create_array(array_group, 'data_phase', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+                pfile.create_array(array_group, 'data_freq', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+                pfile.create_array(array_group, 'data_diss', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+                pfile.create_array(array_group, 'data_mK', shape=(n_tones, n_samples), atom=tables.Float64Atom())
 
                 # # Temporary fix for testing code:
                 # f.baseband_freqs = np.load('/data/20250422/20250422_tone_list.npy')
@@ -1123,9 +1144,6 @@ class PyTablesProcessedData(ProcessedData):
                 data_I = time_ordered_data.adc_i
                 data_Q = time_ordered_data.adc_q
 
-                dimension = f.root.dimension
-                n_samples = dimension.n_sample[0]
-                n_tones = dimension.n_tones[0]
                 if int(date[:4]) < 2025:
                     valid_tone_index = np.ndarray.flatten(np.argwhere(data_I[:,0] != 0.))
                     valid_tone_index = valid_tone_index[:n_tones]
@@ -1240,12 +1258,12 @@ class PyTablesProcessedData(ProcessedData):
 
     
 if __name__ == "__main__":
-    date = '20250529'
-    setnum = 1011
+    date = '20250527'
+    setnum = 1010
 
     # data = ProcessedData.from_file(date, setnum)
-    data = ProcessedData.from_tod(date, setnum, save=False)
-    # data = PyTablesProcessedData.from_tod(date, setnum, save=False)
+    # data = ProcessedData.from_tod(date, setnum, save=False)
+    data = PyTablesProcessedData.from_tod(date, setnum, save=False)
     # todtemplate = get_tod_template(date, setnum)
     # todlist = glob.glob(todtemplate)
 
