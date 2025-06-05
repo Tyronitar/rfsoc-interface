@@ -99,6 +99,21 @@ def generate_calibrated_data(clean_gain_phase_data: npt.NDArray, gain_phase_angl
     data_mK = np.divide(data_freq_diss[0], df_per_mK[:, np.newaxis])
     return data_freq_diss, data_mK
 
+def generate_calibrated_data2(clean_gain_data: npt.NDArray, clean_phase_data: npt.NDArray, gain_phase_angle: npt.NDArray, dIQ_df: npt.NDArray, df_per_mK: npt.NDArray, tone_index: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+    data_IQ = rotate_basis2(clean_gain_data, clean_phase_data, -gain_phase_angle[:], np.arange(clean_gain_data.shape[0], dtype=int))
+    data_IQ -= np.mean(data_IQ, axis=2, keepdims=True)
+
+
+    #now use the derivatives to convert to a frequency shift
+    #need to optimally weight the data based on the response
+    #in each direction (assuming the noise is identical in I and Q)
+    #this will then yield data_f
+    data_freq_diss = change_basis_to_frequency_dissipation(data_IQ, dIQ_df)
+
+    # Finally, we need to get data_mK
+    data_mK = np.divide(data_freq_diss[0], df_per_mK[:][:, np.newaxis])
+    return data_freq_diss, data_mK
+
 
 class Updateable:
     def update(self, new_vals: dict):
@@ -1084,6 +1099,7 @@ class PyTablesProcessedData(ProcessedData):
                 pfile.create_array(detector_data, 'carrier_amplitudes', shape=(2, n_tones), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'data_gain', shape=(n_tones, n_samples), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'data_phase', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'IQ_to_gain_phase_angle', shape=(n_tones,), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'data_freq', shape=(n_tones, n_samples), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'data_diss', shape=(n_tones, n_samples), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'data_mK', shape=(n_tones, n_samples), atom=tables.Float64Atom())
@@ -1165,13 +1181,13 @@ class PyTablesProcessedData(ProcessedData):
                 
                 # Rotate to Gain / Phase
 
-                this_gain_phase_angle = np.atan2(detector_data.carrier_amplitudes[0], detector_data.carrier_amplitudes[1])  # N_chan
+                detector_data.IQ_to_gain_phase_angle[:] = np.atan2(detector_data.carrier_amplitudes[0], detector_data.carrier_amplitudes[1])  # N_chan
 
                 # data_IQ = np.stack((data_I[valid_tone_index, :], data_Q[valid_tone_index, :]), axis=0)
                 detector_data.data_gain[:], detector_data.data_phase[:] = rotate_basis2(
                     data_I,
                     data_Q,
-                    this_gain_phase_angle,
+                    detector_data.IQ_to_gain_phase_angle,
                     valid_tone_index
                 )
                 # if np.size(data_gain_phase) > 0:
@@ -1180,30 +1196,33 @@ class PyTablesProcessedData(ProcessedData):
                 # else:
                 #     data_gain_phase= np.copy(this_data_gain_phase)
                 #     gain_phase_angle = np.copy(this_gain_phase_angle)
-                pdb.set_trace()
 
                 # TODO: Finish conversion to PyTables
                 
                 # TODO: Make this optional I guess
                 if do_electronics_noise_removal:
+                    data_gain_phase = np.stack((detector_data.data_gain[:], detector_data.data_phase[:]), axis=0)
                     data_gain_phase = remove_electronics_noise(data_gain_phase)
                 # pdb.set_trace()
-                this_data_freq_diss, this_data_mK = generate_calibrated_data(
-                    data_gain_phase,
-                    gain_phase_angle,
-                    dIQ_df,
-                    np.array(df_per_mK),
+                (detector_data.data_freq[:], detector_data.data_diss[:]), detector_data.data_mK[:] = generate_calibrated_data2(
+                    detector_data.data_gain,
+                    detector_data.data_phase,
+                    detector_data.IQ_to_gain_phase_angle,
+                    detector_data.dIQ_df,
+                    detector_global_data.df_per_mK,
+                    valid_tone_index,
                 )
 
-                if np.size(data_freq_diss) > 0:
-                    data_freq_diss = np.concatenate((data_freq_diss, this_data_freq_diss), axis=0)
-                else:
-                    data_freq_diss = np.copy(this_data_freq_diss)
+                # if np.size(data_freq_diss) > 0:
+                #     data_freq_diss = np.concatenate((data_freq_diss, detector_data.data_freq), axis=0)
+                # else:
+                #     data_freq_diss = np.copy(detector_data.data_freq)
 
-                if np.size(data_mK) != 1:
-                    data_mK = np.concatenate((data_mK, this_data_mK), axis=0)
-                else:
-                    data_mK = np.copy(this_data_mK)
+                # if np.size(data_mK) != 1:
+                #     data_mK = np.concatenate((data_mK, detector_data.data_mK), axis=0)
+                # else:
+                #     data_mK = np.copy(detector_data.data_mK)
+
 
 
                 #now the telescope data to get coordinates
@@ -1212,6 +1231,7 @@ class PyTablesProcessedData(ProcessedData):
                 total_time = np.max(time_0)
                 if i == 0:  # Only should make this once, since it's never changed
                     timestamp = np.arange(0,total_time,total_time/n_samples) + time[0]
+
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
                     this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
@@ -1222,30 +1242,25 @@ class PyTablesProcessedData(ProcessedData):
                     if beam_map_mode:
                         this_detector_delta_x *= 0
                         this_detector_delta_y *= 0
-                    this_det_az = np.outer(this_detector_delta_x, np.cos(this_ang)) - \
+                    #save the az/el information to the file
+                    detector_data.detector_az[:] = np.outer(this_detector_delta_x, np.cos(this_ang)) - \
                                 np.outer(this_detector_delta_y,np.sin(this_ang)) + \
                                 np.outer(np.ones(n_tones), this_az_tel)
-                    this_det_za = np.outer(this_detector_delta_y, np.cos(this_ang)) + \
+                    detector_data.detector_za[:] = np.outer(this_detector_delta_y, np.cos(this_ang)) + \
                                 np.outer(this_detector_delta_x, np.sin(this_ang)) + \
                                 np.outer(np.ones(n_tones), this_za_tel)
                 
-                    #save the az/el information to the file
-                    if np.size(detector_az) > 0:
-                        detector_az = np.concatenate((detector_az, this_det_az), axis=0)
-                    else:
-                        detector_az = np.copy(this_det_az)
-                    if np.size(detector_za) > 0:
-                        detector_za = np.concatenate((detector_za, this_det_za), axis=0)
-                    else:
-                        detector_za = np.copy(this_det_za)
 
                 #also save the chanmask and detector polarization information
-                chanmask = np.concatenate((chanmask, raw_global_data.chanmask), axis=0)
-                no_pol = np.ndarray.flatten(np.argwhere(detector_pol[:] < 1))
+                chanmask = raw_global_data.chanmask[:]
+                no_pol = np.ndarray.flatten(np.argwhere(raw_global_data.detector_pol[:] < 1))
                 if np.size(no_pol > 0):
                     chanmask[no_pol] = -1
+                detector_global_data.chanmask[:] = raw_global_data.chanmask[:]
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
-        # pdb.set_trace()
+        pfile.close()
+        return
+        pdb.set_trace()
         pdata = cls(
             date,
             setnum,
@@ -1277,7 +1292,7 @@ if __name__ == "__main__":
 
     # data = ProcessedData.from_file(date, setnum)
     # data = ProcessedData.from_tod(date, setnum, save=False)
-    data = PyTablesProcessedData.from_tod(date, setnum, save=False)
+    PyTablesProcessedData.from_tod(date, setnum, save=False)
     # todtemplate = get_tod_template(date, setnum)
     # todlist = glob.glob(todtemplate)
 
