@@ -15,7 +15,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA
-from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
+from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, PyTablesProcessedData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
 
 DECIMATE_ORDER = 5
 BUTTER_ORDER = 6
@@ -535,11 +535,17 @@ def outlier_removal(data):
 
 
 def analyze_beammap(md: MapData):
-    extent = (min(md.map_x)-md.map_dpix/2.,max(md.map_x)+md.map_dpix/2,max(md.map_y)+md.map_dpix/2.,min(md.map_y)-md.map_dpix/2.)
+    # extent = (min(md.map_x)-md.map_dpix/2.,max(md.map_x)+md.map_dpix/2,max(md.map_y)+md.map_dpix/2.,min(md.map_y)-md.map_dpix/2.)
+    extent = (min(md.map_x),max(md.map_x),max(md.map_y),min(md.map_y))
+
+    map_xpos_uniq = np.unique(md.map_x)
+    map_ypos_uniq = np.unique(md.map_y)
+    n_xpos = np.size(map_xpos_uniq)
+    n_ypos = np.size(map_ypos_uniq)
+
     nrows = 10
     ncols = 10
     pdf_file_name = md.folder / (md.file_stub + '_beammap.pdf')
-    pdb.set_trace()
     with PdfPages(pdf_file_name) as pdf:
         # for counter, i_chan in enumerate(np.argwhere(md.chanmask == 1)):
         fig = plt.figure()
@@ -554,7 +560,7 @@ def analyze_beammap(md: MapData):
                 vmin=-max_abs,
                 vmax=max_abs,
             )
-            if (counter + 1) % (nrows * ncols):
+            if (counter + 1) % (nrows * ncols) == 0:
                 plt.show()
                 pdf.savefig(fig)
                 plt.close(fig)
@@ -609,8 +615,8 @@ if __name__ == '__main__':
     # pdb.set_trace()
 
     remove_pickup = RemovePointLomaPickup(ds_factor=ds_factor)
-    binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
-    # binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq, beam_map_mode=True)
+    # binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
+    binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq, beam_map_mode=True)
     # mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
     
 
@@ -619,15 +625,19 @@ if __name__ == '__main__':
     # data = ProcessedData.from_tod('20241016', 1008, save=False)
 
     cleaner = CleanTOD(save_file=True)
-    # data = ProcessedData.from_tod('20250529', 1011, beam_map_mode=True)
-    data = ProcessedData.from_tod('20250609', 1004)
+    data = ProcessedData.from_tod('20250529', 1011, beam_map_mode=True)
+    # data = ProcessedData.from_tod('20250609', 1005)
+    # data = ProcessedData.from_tod('20250609', 1004)
+    # data = PyTablesProcessedData.from_tod('20250609', 1004)
+    # data = PyTablesProcessedData.from_file('20250609', 1004)
+    # exit()
     # data = ProcessedData.from_file('20250529', 1001)
     # data = ProcessedData.from_tod('20250529', 1001)
 
     mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
 
     map: MapData = mapper(data, save=False)
-    map.plot()
+    # map.plot()
     # from rfsocinterface.core.data import plot_map
     analyze_beammap(map)
     # extent = (min(map.map_x)-map.map_dpix/2.,max(map.map_x)+map.map_dpix/2,max(map.map_y)+map.map_dpix/2.,min(map.map_y)-map.map_dpix/2.)

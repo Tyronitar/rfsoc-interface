@@ -1030,7 +1030,6 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[
 
 class PyTablesProcessedData(ProcessedData):
 
-
     def __init__(self, file: tables.File):
         self._file = file
     
@@ -1064,6 +1063,67 @@ class PyTablesProcessedData(ProcessedData):
     @property
     def carrier_amp_Q(self) -> tables.Array:
         return self._file.root.detector_0.data.carrier_amplitudes[1]
+
+    @property
+    def df_per_mK(self) -> tables.Array:
+        return self._file.root.detector_0.global_data.df_per_mK
+
+    @property
+    def IQ_to_gain_phase_angle(self) -> tables.Array:
+        return self._file.root.detector_0.data.IQ_to_gain_phase_angle
+
+    @property
+    def dIQ_df(self) -> tables.Array:
+        return self._file.root.detector_0.data.dIQ_df
+    
+    @property
+    def data_freq(self) -> tables.Array:
+        return self._file.root.detector_0.data.data_freq
+    
+    @property
+    def data_diss(self) -> tables.Array:
+        return self._file.root.detector_0.data.data_diss
+    
+    @property
+    def data_mK(self) -> tables.Array:
+        return self._file.root.detector_0.data.data_mK
+    
+    @property
+    def data_gain(self) -> tables.Array:
+        return self._file.root.detector_0.data.data_gain
+    
+    @property
+    def data_phase(self) -> tables.Array:
+        return self._file.root.detector_0.data.data_phase
+    
+    @property
+    def data_freq(self) -> tables.Array:
+        return self._file.root.detector_0.data.data_freq
+
+    @property
+    def timestamp(self) -> tables.Array:
+        return self._file.root.detector_0.data.timestamp
+    
+    @property
+    def detector_az(self) -> tables.Array:
+        return self._file.root.detector_0.data.detector_az
+
+    @property
+    def detector_za(self) -> tables.Array:
+        return self._file.root.detector_0.data.detector_za
+
+    @property
+    def vis(self) -> tables.Array:
+        return self._file.root.detector_0.global_data.vis
+
+    @property
+    def detector_pol(self) -> tables.Array:
+        return self._file.root.detector_0.global_data.detector_pol
+    
+    @property
+    def chanmask(self) -> tables.Array:
+        return self._file.root.detector_0.global_data.chanmask
+    
     
     # @property
     # def dIQ_df(self) -> tables.Array:
@@ -1317,8 +1377,28 @@ class PyTablesProcessedData(ProcessedData):
                     chanmask[no_pol] = -1
                 detector_global_data.chanmask[:] = raw_global_data.chanmask[:]
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
-        pfile.close()
-        return
+        # pfile.close()
+        return cls(pfile)
+
+    def with_values(self, **kwargs) -> PyTablesProcessedData:
+        new_params = {
+            key: np.copy(self.__getattribute__(key)) if key not in kwargs else kwargs[key]
+            for key in vars(self).keys()
+        }
+        for key, val in kwargs.items():
+            self._file.root.detector_0.data.__getattribute__(key)[:] = val
+        return PyTablesProcessedData(self.file)
+
+    @classmethod
+    def from_file(cls, date: str, setnum: int) -> PyTablesProcessedData:
+        filename = Path(get_processed_file_template(date, setnum))
+
+        if not filename.exists():
+            raise FileNotFoundError(f'Could not find a processed data file on {date} with setnum {setnum}.')
+        
+        file = tables.open(filename)
+        return PyTablesProcessedData(file)
+
         # return pfile
         pdb.set_trace()
         pdata = cls(
