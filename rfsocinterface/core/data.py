@@ -1087,6 +1087,7 @@ class PyTablesProcessedData(ProcessedData):
         if optcam_exists:
             # optical_image = optcam_file.root.optical_image
             pfile.create_array(pfile.root, 'optical_image', obj=optcam_file.root.optical_image[:])
+            optcam_file.close()
         else:
             pfile.create_array(pfile.root, 'optical_image', obj=np.array([]))
             optical_image = None
@@ -1271,6 +1272,8 @@ class PyTablesProcessedData(ProcessedData):
                                 np.outer(this_detector_delta_x, np.sin(this_ang)) + \
                                 np.outer(np.ones(n_tones), this_za_tel)
                 
+                    # Close telescope file
+                    azel_file.close()
 
                 #also save the chanmask and detector polarization information
                 chanmask = raw_global_data.chanmask[:]
@@ -1309,8 +1312,10 @@ class PyTablesProcessedData(ProcessedData):
 
     
 if __name__ == "__main__":
-    date = '20250527'
-    setnum = 1010
+    # date = '20250527'
+    # setnum = 1010
+    date = '20250529'
+    setnum = 1011
 
     # data = ProcessedData.from_file(date, setnum)
     data = ProcessedData.from_tod(date, setnum, save=False)
