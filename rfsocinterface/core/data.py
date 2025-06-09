@@ -1031,6 +1031,44 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[
 class PyTablesProcessedData(ProcessedData):
 
 
+    def __init__(self, file: tables.File):
+        self._file = file
+    
+    def close(self):
+        self._file.close()
+    
+    @property
+    def date(self) -> str:
+        return self._file.root.attrs.date
+    
+    @date.setter
+    def date(self, date: str):
+        self._file.root.attrs.date = date
+
+    @property
+    def setnum(self) -> int:
+        return self._file.root.attrs.setnum
+    
+    @setnum.setter
+    def setnum(self, setnum: int):
+        self._file.root.attrs.setnum = setnum
+    
+    @property
+    def optical_image(self) -> tables.Array:
+        return self._file.root.optical_image
+    
+    @property
+    def carrier_amp_I(self) -> tables.Array:
+        return self._file.root.detector_0.data.carrier_amplitudes[0]
+    
+    @property
+    def carrier_amp_Q(self) -> tables.Array:
+        return self._file.root.detector_0.data.carrier_amplitudes[1]
+    
+    # @property
+    # def dIQ_df(self) -> tables.Array:
+    #     return self._file.
+
     @classmethod
     def from_tod(cls, date: str, setnum: int, losweep: str | None=None, save: bool=True, beam_map_mode: bool=False, do_electronics_noise_removal: bool=True) -> PyTablesProcessedData:
         #20230803_rfsoc1_TOD_set1012
