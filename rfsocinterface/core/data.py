@@ -118,7 +118,6 @@ def generate_calibrated_data2(data: tables.Group, global_data: tables.Group):
     change_basis_to_frequency_dissipation2(data)
 
     # Finally, we need to get data_mK
-    pdb.set_trace()
     data.data_mK[:] = np.divide(data.data_freq, global_data.df_per_mK[:][:, np.newaxis])
 
 
@@ -336,7 +335,6 @@ class ProcessedData(Updateable):
             if np.count_nonzero(detector_f) == 0:  
                 detector_f = np.linspace(0, 250e6, detector_f.size)
 
-            pdb.set_trace()
             this_df_per_mK = compute_df_per_mK(detector_pol, detector_beam_ampl, detector_f, dfoverf_per_mK) 
             df_per_mK = np.concatenate((df_per_mK,this_df_per_mK), axis=0)
 
@@ -1188,7 +1186,6 @@ class PyTablesProcessedData(ProcessedData):
                 if np.count_nonzero(detector_f) == 0:  
                     detector_f[:] = np.linspace(0, 250e6, detector_f.size)
 
-                pdb.set_trace()
                 detector_global_data.df_per_mK[:] = compute_df_per_mK(
                     detector_global_data.detector_pol,
                     detector_beam_ampl,
@@ -1318,9 +1315,8 @@ if __name__ == "__main__":
     setnum = 1011
 
     # data = ProcessedData.from_file(date, setnum)
-    data = ProcessedData.from_tod(date, setnum, save=False)
-    pfile = PyTablesProcessedData.from_tod(date, setnum, save=False)
-    pdb.set_trace()
+    # data = ProcessedData.from_tod(date, setnum, save=False)
+    # pfile = PyTablesProcessedData.from_tod(date, setnum, save=False)
     # todtemplate = get_tod_template(date, setnum)
     # todlist = glob.glob(todtemplate)
 
