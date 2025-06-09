@@ -262,7 +262,7 @@ class LoSweepData:
         """Initialize a LoSweepData object."""
         self.data = sweep_data
         self.f_center = f_center  # Center frequency of the sweep in Hz
-        self.tone_list = tone_list + f_center  # Frequencies in Hz
+        self.tone_list = tone_list[:] + f_center  # Frequencies in Hz
         self.freq = np.real(self.data[0, :, :])
         self.s21 = np.real(10.0 * np.log10(np.abs(self.data[1, :, :])))
         self.chanmask = chanmask
