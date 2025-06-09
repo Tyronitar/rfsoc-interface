@@ -167,6 +167,11 @@ cython_debug/
 # IDE
 .vscode/
 
+# Profiling files
+
+*.bin
+*.html
+
 # Data files
 *.npy
 *.h5

@@ -11,6 +11,7 @@ import numpy.typing as npt
 from scipy import signal, ndimage
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA
@@ -221,9 +222,6 @@ class BinTODIntoMap(DataRoutine):
 
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, md.map_dpix, self.beam_map_mode)
 
-
-
-        
         netd = np.zeros(md.nchan)
         wind = signal.get_window('hamming', data_clean.shape[-1])
 
@@ -261,7 +259,8 @@ class BinTODIntoMap(DataRoutine):
             channels_to_map = np.where(new_chanmask == 1)[0]
 
         # Create map
-        for i_chan in channels_to_map[:10]:
+        # for i_chan in channels_to_map[:10]:
+        for i_chan in channels_to_map:
             if self.beam_map_mode:
                 map_idx = i_chan
                 weight = 1.
@@ -295,7 +294,6 @@ class BinTODIntoMap(DataRoutine):
         # weights = 1 / netd[md.chanmask==1]**2
         # np.save('weight.npy', 1/all_NETDs**2)
         # plt.show()
-        # pdb.set_trace()
         return md.with_values(
             sum_map=sum_map,
             hits_map=hits_map,
@@ -355,15 +353,15 @@ class Downsample(DataRoutine):
         data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
         data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
         timestamp_ds = signal.decimate(pd.timestamp, self.ds_factor)
-        # detector_az_ds = signal.decimate(pd.detector_az, self.ds_factor, n=self.order, axis=1)
-        # detector_za_ds = signal.decimate(pd.detector_za, self.ds_factor, n=self.order, axis=1)
+        detector_az_ds = signal.decimate(pd.detector_az, self.ds_factor, n=self.order, axis=1)
+        detector_za_ds = signal.decimate(pd.detector_za, self.ds_factor, n=self.order, axis=1)
         return pd.with_values(
             data_freq_diss=data_freq_diss_ds,
             data_gain_phase=data_gain_phase_ds,
             data_mK=data_mK_ds,
             timestamp=timestamp_ds,
-            # detector_az=detector_az_ds,
-            # detector_za=detector_za_ds,
+            detector_az=detector_az_ds,
+            detector_za=detector_za_ds,
         )
 
 
@@ -536,6 +534,37 @@ def outlier_removal(data):
     return final_pixels, np.array(outlier_pixels)
 
 
+def analyze_beammap(md: MapData):
+    extent = (min(md.map_x)-md.map_dpix/2.,max(md.map_x)+md.map_dpix/2,max(md.map_y)+md.map_dpix/2.,min(md.map_y)-md.map_dpix/2.)
+    nrows = 10
+    ncols = 10
+    pdf_file_name = md.folder / (md.file_stub + '_beammap.pdf')
+    pdb.set_trace()
+    with PdfPages(pdf_file_name) as pdf:
+        # for counter, i_chan in enumerate(np.argwhere(md.chanmask == 1)):
+        fig = plt.figure()
+        for counter, i_chan in enumerate(np.argwhere(md.chanmask != 0)[:10]):
+            plt.subplot(nrows, ncols, counter + 1 % (nrows * ncols))
+            plt.axis('off')
+            max_abs = np.nanmax(np.abs(md.map))
+            plt.imshow(
+                np.flip(np.transpose(md.map[i_chan, ::-1]),1),
+                aspect='equal',
+                extent=extent,
+                vmin=-max_abs,
+                vmax=max_abs,
+            )
+            if (counter + 1) % (nrows * ncols):
+                plt.show()
+                pdf.savefig(fig)
+                plt.close(fig)
+                fig = plt.figure()
+    
+        plt.show()
+        pdf.savefig(fig)
+        plt.close(fig)
+
+
 if __name__ == '__main__':
     # from onr_map_observation import create_map
     # data = ProcessedData.from_tod('20241016', 1015)
@@ -580,8 +609,8 @@ if __name__ == '__main__':
     # pdb.set_trace()
 
     remove_pickup = RemovePointLomaPickup(ds_factor=ds_factor)
-    # binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
-    binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq, beam_map_mode=True)
+    binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
+    # binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq, beam_map_mode=True)
     # mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
     
 
@@ -590,13 +619,18 @@ if __name__ == '__main__':
     # data = ProcessedData.from_tod('20241016', 1008, save=False)
 
     cleaner = CleanTOD(save_file=True)
-    data = ProcessedData.from_tod('20250529', 1011, beam_map_mode=True)
+    # data = ProcessedData.from_tod('20250529', 1011, beam_map_mode=True)
+    data = ProcessedData.from_tod('20250609', 1004)
+    # data = ProcessedData.from_file('20250529', 1001)
+    # data = ProcessedData.from_tod('20250529', 1001)
 
     mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
 
-    map: MapData = mapper(data, save=True)
-    extent = (min(map.map_x)-map.map_dpix/2.,max(map.map_x)+map.map_dpix/2,max(map.map_y)+map.map_dpix/2.,min(map.map_y)-map.map_dpix/2.)
-    from rfsocinterface.core.data import plot_map
-    # idx = 0; plot_map(map.map[idx], map.map_x, map.map_y, extent, max_abs=np.nanmax(np.abs(map.map[idx]))); plt.show()
-    pdb.set_trace()
+    map: MapData = mapper(data, save=False)
     map.plot()
+    # from rfsocinterface.core.data import plot_map
+    analyze_beammap(map)
+    # extent = (min(map.map_x)-map.map_dpix/2.,max(map.map_x)+map.map_dpix/2,max(map.map_y)+map.map_dpix/2.,min(map.map_y)-map.map_dpix/2.)
+    # # idx = 0; plot_map(map.map[idx], map.map_x, map.map_y, extent, max_abs=np.nanmax(np.abs(map.map[idx]))); plt.show()
+    # pdb.set_trace()
+    # map.plot()

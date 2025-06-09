@@ -382,7 +382,6 @@ class TelescopeMotorController:
                 new_ze = initial_ze + (i_rep - (n_repeats - 1) / 2) * ze_dither
             else:
                 new_ze = initial_ze + (i_rep % 2) * ze_dither
-            print(new_ze)
             self._set_ze_pos(new_ze, stop_run=False)
 
 
@@ -496,7 +495,7 @@ class TelescopeMotorController:
         counter = 0
 
         # Run loop
-        print(f'Pos: {pos}, New pos: {new_pos}, tolerance: {ZE_POS_TOL_DEG}, diff: {pos - new_pos}')
+        _tele_logger.debug(f'Zenith Angle - Pos: {pos}, New pos: {new_pos}, tolerance: {ZE_POS_TOL_DEG}, diff: {pos - new_pos}')
         # start_time = time.time()
         # profiler = cProfile.Profile()
         # profiler.enable()
@@ -585,7 +584,7 @@ class TelescopeMotorController:
             command = command.encode('ASCII')
             self.ser_ze.write(command)
             ze_speed = self.ser_ze.read_until(b'\r\n', 0.1)
-            _logger.info("ZA speed set to: ", ze_speed)  ###THIS MAY BREAK
+            _logger.info(f'ZA speed set to: {ze_speed}')  ###THIS MAY BREAK
             # self.zenithVelocityChanged(ze_speed)
             # self.ser_ze.reset_input_buffer()
             # self.ser_ze.reset_output_buffer()
