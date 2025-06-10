@@ -101,14 +101,13 @@ def generate_calibrated_data(clean_gain_phase_data: npt.NDArray, gain_phase_angl
 
 def generate_calibrated_data2(data: tables.Group, global_data: tables.Group):
     rotate_basis2(
-        data.data_gain,
-        data.data_I,
-        data.data_phase,
-        data.data_Q,
+        data.data_gain_phase,
+        data.data_IQ,
         -data.IQ_to_gain_phase_angle[:],
     )
-    data.data_I[:] = data.data_I - np.mean(data.data_I, axis=1, keepdims=True)
-    data.data_Q[:] = data.data_Q - np.mean(data.data_Q, axis=1, keepdims=True)
+    data.data_IQ[:] = data.data_IQ - np.mean(data.data_IQ, axis=1, keepdims=True)
+    # data.data_IQ[0, :] = data.data_IQ[0, :] - np.mean(data.data_IQ[0, :], axis=1, keepdims=True)
+    # data.data_IQ[1, :] = data.data_IQ[1, :] - np.mean(data.data_IQ[1, :], axis=1, keepdims=True)
 
 
     #now use the derivatives to convert to a frequency shift
@@ -118,7 +117,7 @@ def generate_calibrated_data2(data: tables.Group, global_data: tables.Group):
     change_basis_to_frequency_dissipation2(data)
 
     # Finally, we need to get data_mK
-    data.data_mK[:] = np.divide(data.data_freq, global_data.df_per_mK[:][:, np.newaxis])
+    data.data_mK[:] = np.divide(data.data_freq_diss[0, :], global_data.df_per_mK[:][:, np.newaxis])
 
 
 class Updateable:
@@ -920,18 +919,16 @@ def rotate_basis(input_data: npt.NDArray, rotation_angle: npt.NDArray) -> npt.ND
     return new_data 
 
 def rotate_basis2(
-        in_data_1: tables.Array,
-        out_data_1: tables.Array,
-        in_data_2: tables.Array,
-        out_data_2: tables.Array,
+        in_data: tables.Array,
+        out_data: tables.Array,
         rotation_angle: tables.Array,
         ):
     """Compute change of basis, rotating with the specified angle."""
 
     # new_data = np.zeros(shape=(2, np.size(tone_index), data_1.shape[-1]))
     # pdb.set_trace()
-    out_data_1[:] = np.cos(rotation_angle)[:, np.newaxis] * in_data_1[:] + np.sin(rotation_angle)[:, np.newaxis] * in_data_2[ :]
-    out_data_2[:] = -np.sin(rotation_angle)[:, np.newaxis] * in_data_1[:] + np.cos(rotation_angle)[:, np.newaxis] * in_data_2[:]
+    out_data[0, :] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.sin(rotation_angle)[:, np.newaxis] * in_data[1, :]
+    out_data[1, :] = -np.sin(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
 
 def change_basis_to_frequency_dissipation(input_IQ_data: npt.NDArray, dIQ_df: npt.NDArray) -> npt.NDArray:
     """Compute change of basis from IQ to frequency/dissipation."""
@@ -959,11 +956,11 @@ def change_basis_to_frequency_dissipation2(data: tables.Group):
     eqiv_var_I = np.outer((1. / data.dIQ_df[0])**2., np.ones(n_samples))
     eqiv_var_Q = np.outer((1. / data.dIQ_df[1])**2., np.ones(n_samples))
 
-    data.data_freq[:] = ( (data.data_I / np.outer(data.dIQ_df[0], np.ones(n_samples)) ) / eqiv_var_I + \
-                    (data.data_Q / np.outer(data.dIQ_df[1], np.ones(n_samples)) ) / eqiv_var_Q ) / \
+    data.data_freq_diss[0, :] = ( (data.data_IQ[0, :] / np.outer(data.dIQ_df[0], np.ones(n_samples)) ) / eqiv_var_I + \
+                    (data.data_IQ[1, :] / np.outer(data.dIQ_df[1], np.ones(n_samples)) ) / eqiv_var_Q ) / \
                 (1./eqiv_var_I + 1./eqiv_var_Q)
-    data.data_diss[:] = ( (data.data_I / np.outer(-data.dIQ_df[1], np.ones(n_samples)) ) / eqiv_var_Q + \
-                    (data.data_Q / np.outer(data.dIQ_df[0], np.ones(n_samples)) ) / eqiv_var_I ) / \
+    data.data_freq_diss[1, :] = ( (data.data_IQ[0, :] / np.outer(-data.dIQ_df[1], np.ones(n_samples)) ) / eqiv_var_Q + \
+                    (data.data_IQ[1, :] / np.outer(data.dIQ_df[0], np.ones(n_samples)) ) / eqiv_var_I ) / \
                 (1./eqiv_var_I + 1./eqiv_var_Q)
 
 
@@ -1019,6 +1016,73 @@ def remove_electronics_noise(data: npt.NDArray) -> npt.NDArray:
     clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
     return clean_data
 
+def compute_templates2(data: tables.Array) -> npt.NDArray:
+    """Compute templates for correlated noise removal.
+
+    Args:
+        data (npt.NDArray): Input data (N_chan x N_detector x N_samples).
+
+    Returns:
+        (npt.NDarray): Templates for noise removal (N_chan x 2 x N_samples).
+            Computed using the first two eigenmodes of the correlation matrix.
+    """
+    # subtract the mean from each detector
+    data_meansub = data - np.mean(data, axis=1, keepdims=True)
+
+    # create a correlation matrix 
+    corr_matrix = np.matmul(data_meansub, np.conj(np.transpose(data_meansub)))
+
+    # calculate the eigenmodes of the correlation matrix
+    _, v = np.linalg.eig(corr_matrix)
+
+    # create templates based on the 2 largest eigenmodes of each
+    template0 = np.matmul(v[:, 0], data_meansub)
+    template1 = np.matmul(v[:, 1], data_meansub)
+
+    # subtract the mean again to be sure
+    template0 = np.real(template0) - np.mean(np.real(template0))
+    template1 = np.real(template1) - np.mean(np.real(template1))
+    return template0, template1
+
+
+    # select only the middle few detectors
+    # deproj = data_meansub[:, 8:1008, :]
+
+    correlation_matrices = np.matmul(data_meansub, np.conj(np.transpose(data_meansub, axes=(0, 2, 1))))
+    _, v = np.linalg.eig(correlation_matrices)
+
+    templates = np.einsum('ijk,ijl->ikl', v[:,:,0:2], data_meansub)
+
+    templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
+    return templates
+
+def remove_electronics_noise2(
+    data_gain_phase: tables.Array,
+):
+    """Remove correlated electronics noise templates from the data.
+
+    Args:
+        data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
+            be in the gain/phase basis.
+
+    Returns:
+        npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
+    """
+    for i_chan in range(data_gain_phase.shape[0]):
+        clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
+        # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
+
+        # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 1 x 2
+        # pdb.set_trace()
+        # numerator0 = np.einsum('jk,k->j', data_gain_phase[i_chan], templates[0])  # N_detector
+        # pdb.set_trace()
+        # corr0 = numerator0 / denominator[:, 0:1]  # N_detector
+        # deproj = data_gain_phase[i_chan] - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
+
+        # numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
+        # pdb.set_trace()
+        # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+        data_gain_phase[i_chan, :] = clean_data.squeeze()
 
 def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[int, ...]=None):
     """Return the data without outliers and the rejected indices."""
@@ -1130,7 +1194,17 @@ class PyTablesProcessedData(ProcessedData):
     #     return self._file.
 
     @classmethod
-    def from_tod(cls, date: str, setnum: int, losweep: str | None=None, save: bool=True, beam_map_mode: bool=False, do_electronics_noise_removal: bool=True) -> PyTablesProcessedData:
+    def from_tod(
+        cls,
+        date: str,
+        setnum: int,
+        losweep: str | None=None,
+        save: bool=True,
+        beam_map_mode: bool=False,
+        do_electronics_noise_removal: bool=True,
+        ds_factor: int=1,
+    ) -> PyTablesProcessedData:
+
         #20230803_rfsoc1_TOD_set1012
         date = date
         setnum = setnum
@@ -1208,6 +1282,7 @@ class PyTablesProcessedData(ProcessedData):
                 raw_global_data = f.root.global_data
                 raw_dimension = f.root.dimension
                 n_samples = raw_dimension.n_sample[0]
+                n_samples_ds = int(np.ceil(n_samples / ds_factor))
                 n_tones = raw_dimension.n_tones[0]
 
                 # TODO: Change this for when there are multiple TOD files
@@ -1220,19 +1295,16 @@ class PyTablesProcessedData(ProcessedData):
 
                 detector_data = pfile.create_group(detector, 'data')
                 detector_data._v_attrs.n_tones = n_tones
-                detector_data._v_attrs.n_samples = n_samples
-                pfile.create_array(detector_data, 'timestamp', shape=(n_samples,), atom=tables.Float64Atom())
+                detector_data._v_attrs.n_samples = n_samples_ds
+                pfile.create_array(detector_data, 'timestamp', shape=(n_samples_ds,), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'dIQ_df', shape=(2, n_tones), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'carrier_amplitudes', shape=(2, n_tones), atom=tables.Float64Atom())
-                pfile.create_array(detector_data, 'data_I', shape=(n_tones, n_samples), atom=tables.Float64Atom())
-                pfile.create_array(detector_data, 'data_Q', shape=(n_tones, n_samples), atom=tables.Float64Atom())
-                pfile.create_array(detector_data, 'data_gain', shape=(n_tones, n_samples), atom=tables.Float64Atom())
-                pfile.create_array(detector_data, 'data_phase', shape=(n_tones, n_samples), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'data_IQ', shape=(2, n_tones, n_samples_ds), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'data_gain_phase', shape=(2, n_tones, n_samples_ds), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'IQ_to_gain_phase_angle', shape=(n_tones,), atom=tables.Float64Atom())
-                pfile.create_array(detector_data, 'data_freq', shape=(n_tones, n_samples), atom=tables.Float64Atom())
-                pfile.create_array(detector_data, 'data_diss', shape=(n_tones, n_samples), atom=tables.Float64Atom())
-                pfile.create_array(detector_data, 'data_mK', shape=(n_tones, n_samples), atom=tables.Float64Atom())
-                azel_shape = (n_tones, n_samples) if azel_exists else (1, 0)
+                pfile.create_array(detector_data, 'data_freq_diss', shape=(2, n_tones, n_samples_ds), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'data_mK', shape=(n_tones, n_samples_ds), atom=tables.Float64Atom())
+                azel_shape = (n_tones, n_samples_ds) if azel_exists else (1, 0)
                 pfile.create_array(detector_data, 'detector_az', shape=azel_shape, atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'detector_za', shape=azel_shape, atom=tables.Float64Atom())
 
@@ -1299,15 +1371,18 @@ class PyTablesProcessedData(ProcessedData):
                 # data_Q = np.ndarray.astype(time_ordered_data.adc_q, np.float64)
 
                 if int(date[:4]) < 2025:
-                    valid_tone_index = np.ndarray.flatten(np.argwhere(time_ordered_data.adc_i[:,0] != 0.))
+                    expr = tables.Expr('time_ordered_data.adc_i[:, 0] != 0')
+                    expr.eval()
+                    valid_tone_index = np.ndarray.flatten(np.argwhere(expr))
                     valid_tone_index = valid_tone_index[:n_tones]
                 else:
                     valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
 
-                detector_data.data_I[:] = time_ordered_data.adc_i[valid_tone_index, :]
-                detector_data.data_Q[:] = time_ordered_data.adc_q[valid_tone_index, :]
-                detector_data.carrier_amplitudes[0] = np.nanmedian(detector_data.data_I, axis=1)
-                detector_data.carrier_amplitudes[1] = np.nanmedian(detector_data.data_Q, axis=1)
+                detector_data.data_IQ[0, :] = signal.decimate(time_ordered_data.adc_i[valid_tone_index, :], ds_factor)
+                detector_data.data_IQ[1, :] = signal.decimate(time_ordered_data.adc_q[valid_tone_index, :], ds_factor)
+                detector_data.carrier_amplitudes[:] = np.nanmedian(detector_data.data_IQ, axis=2)
+                # detector_data.carrier_amplitudes[0] = np.nanmedian(time_ordered_data.adc_i[valid_tone_index, :], axis=1)
+                # detector_data.carrier_amplitudes[1] = np.nanmedian(time_ordered_data.adc_q[valid_tone_index, :], axis=1)
 
                 
                 # Rotate to Gain / Phase
@@ -1315,17 +1390,17 @@ class PyTablesProcessedData(ProcessedData):
                 detector_data.IQ_to_gain_phase_angle[:] = np.atan2(detector_data.carrier_amplitudes[0], detector_data.carrier_amplitudes[1])  # N_chan
 
                 rotate_basis2(
-                    detector_data.data_I,
-                    detector_data.data_gain,
-                    detector_data.data_Q,
-                    detector_data.data_phase,
+                    detector_data.data_IQ,
+                    detector_data.data_gain_phase,
                     detector_data.IQ_to_gain_phase_angle,
                 )
 
                 # TODO: Make this optional I guess
                 if do_electronics_noise_removal:
-                    data_gain_phase = np.stack((detector_data.data_gain, detector_data.data_phase), axis=0)
-                    detector_data.data_gain[:], detector_data.data_phase[:] = remove_electronics_noise(data_gain_phase)
+                    # data_gain_phase = np.stack((detector_data.data_gain, detector_data.data_phase), axis=0)
+                    # detector_data.data_gain[:], detector_data.data_phase[:] = remove_electronics_noise2(data_gain_phase)
+                    remove_electronics_noise2(detector_data.data_gain_phase)
+                
 
                 # Create calibrated data
                 generate_calibrated_data2(detector_data, detector_global_data)
@@ -1347,7 +1422,7 @@ class PyTablesProcessedData(ProcessedData):
                 time_0 = time - time[0]
                 total_time = np.max(time_0)
                 if i == 0:  # Only should make this once, since it's never changed
-                    timestamp = np.arange(0,total_time,total_time/n_samples) + time[0]
+                    timestamp = np.arange(0,total_time,total_time/n_samples_ds) + time[0]
 
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
@@ -1427,13 +1502,15 @@ class PyTablesProcessedData(ProcessedData):
 
     
 if __name__ == "__main__":
-    # date = '20250527'
-    # setnum = 1010
-    date = '20250529'
-    setnum = 1011
+    date = '20250527'
+    setnum = 1010
+    # date = '20250529'
+    # setnum = 1011
+
+    old_data = ProcessedData.from_tod(date, setnum, save=False)
+    new_data = PyTablesProcessedData.from_tod(date, setnum)
 
     # data = ProcessedData.from_file(date, setnum)
-    # data = ProcessedData.from_tod(date, setnum, save=False)
     # pfile = PyTablesProcessedData.from_tod(date, setnum, save=False)
     # todtemplate = get_tod_template(date, setnum)
     # todlist = glob.glob(todtemplate)
