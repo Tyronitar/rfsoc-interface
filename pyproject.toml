@@ -8,9 +8,7 @@ authors = ["Nia McNichols <niamcnichols@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.14"
-numpy = "^2.1.0"
-scipy = "^1.14.1"
+python = ">=3.11,<3.13"
 matplotlib = "^3.9.2"
 redis = "^5.0.8"
 h5py = "^3.12.1"
@@ -23,6 +21,9 @@ exscript = "^2.6.28"
 psutil = "^6.1.1"
 vmbpy = "^1.1.0"
 tables = "^3.10.2"
+mkl-service = "^2.4.2"
+numpy = {version = "^2.3.0", source = "numpy-mkl"}
+scipy = {version = "^1.15.3", source = "numpy-mkl"}
 
 [tool.poetry.group.gui.dependencies]
 shiboken6 = "6.8.1"
@@ -39,6 +40,12 @@ pytest-mock = "^3.14.0"
 coverage = {extras = ["toml"], version = "^7.6.1"}
 pytest-qt = "^4.4.0"
 memray = "^1.17.2"
+
+
+[[tool.poetry.source]]
+name = "numpy-mkl"
+url = "https://urob.github.io/numpy-mkl"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
