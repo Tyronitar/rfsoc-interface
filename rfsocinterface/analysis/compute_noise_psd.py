@@ -114,9 +114,40 @@ def plot_psd(
     """
    
 
+    # cutoff = 250  # Number of data points to cut off at the end
+    # psd = psd[:, :, :-cutoff]
+    # freq = freq[:-cutoff]
+
     n_plots = psd.shape[0]
     psd_med = np.median(psd, axis=1)
+
+
+    if title is None:
+        title = 'RFSoC Loopback PSD'
+    match basis.lower():
+        case 'gp':
+            titles = [title + ' - Gain', title + ' - Phase']
+            ylabel = r'Noise PSD (dBc/Hz)'
+            yscale = 'linear'
+        case 'iq':
+            titles = [title + ' - I', title + ' - Q']
+            ylabel = r'Noise PSD (dBc/Hz)'
+            yscale = 'linear'
+        case 'fd':
+            titles = [title + ' - Frequency', title + ' - Dissipation']
+            ylabel = r'Sdf/f ($Hz^{-1}$)'
+            yscale = 'log'
+        case _:
+            raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
+
+    figs = []
+    if basis.lower() == 'fd':
+        fig = plot_df_over_f(freq, psd, n_resonators=1, ylabel=ylabel, title=title)
+        figs.append(fig)
+        return figs
+
     plot_data_med = 10 * np.log10(psd_med)
+
     psd_min = psd_med[:]
     psd_max = psd_med[:]
 
@@ -127,20 +158,7 @@ def plot_psd(
     plot_data_min = 10 * np.log10(psd_min)
     plot_data_max = 10 * np.log10(psd_max)
 
-    if title is None:
-        title = 'RFSoC Loopback PSD'
-    match basis.lower():
-        case 'gp':
-            titles = [title + ' - Gain', title + ' - Phase']
-        case 'iq':
-            titles = [title + ' - I', title + ' - Q']
-        case 'fd':
-            titles = [title + ' - Frequency', title + ' - Dissipation']
-        case _:
-            raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
-
     # Plot 
-    figs = []
     with PdfPages(filename) as pdf:
         for i in range(n_plots):
             fig = create_plot(
@@ -150,6 +168,8 @@ def plot_psd(
                 plot_data_max[i],
                 percentiles=(min_percentile, max_percentile),
                 title=titles[i],
+                ylabel=ylabel,
+                yscale=yscale,
             )
             pdf.savefig(fig)
             figs.append(fig)
@@ -160,19 +180,56 @@ def plot_psd(
             np.sum(plot_data_max, axis=0) / n_plots,
             percentiles=(min_percentile, max_percentile),
             title= title + ' - Averaged',
+            ylabel=ylabel,
+            yscale=yscale,
         )
         pdf.savefig(average_fig)
 
     return figs
 
+
+def plot_df_over_f(
+    x_data: npt.NDArray,
+    y_data: npt.ArrayLike,
+    title: str | None=None,
+    ylabel: str='Noise PSD (df / f)',
+    n_resonators: int=1,
+) -> Figure:
+    """Create a plot of the noise PSD in df/f units."""
+    fig = plt.figure(figsize=(9, 6))
+    ax = plt.subplot()
+    for i in range(n_resonators):
+        for j, label in enumerate(['Frequency', 'Dissipation']):
+            ax.plot(x_data, y_data[j, i], label=f'Resonator {i} - {label}')
+    ax.set_xscale('log')
+    ax.set_xlim(0.1,100.)
+    ax.set_yscale('log')
+    ax.set_ylim(1e-17,1e-15)
+    
+    ax.set_xlabel('Frequency (Hz)', fontsize=16)
+            
+    ax.set_ylabel(ylabel, fontsize=16)
+    ax.tick_params(labelsize=14)
+    ax.legend(fontsize=14, loc='best')
+    if title is None:
+        title = 'RFSoC Loopback PSD'
+    ax.set_title(title, fontsize=16)
+    plt.tight_layout()
+
+    return fig
+
+
 def create_plot(
-        xdata: npt.ArrayLike,
-        ydata_min: npt.ArrayLike,
-        ydata_med: npt.ArrayLike,
-        ydata_max: npt.ArrayLike,
-        percentiles: tuple[float, float]=(16., 84.),
-        label: str='Median Measured Noise',
-        title: str | None=None,
+    xdata: npt.ArrayLike,
+    ydata_min: npt.ArrayLike,
+    ydata_med: npt.ArrayLike,
+    ydata_max: npt.ArrayLike,
+    percentiles: tuple[float, float]=(16., 84.),
+    label: str='Median Measured Noise',
+    title: str | None=None,
+    xlabel: str='Frequency (Hz)',
+    ylabel: str=r'Noise PSD (dBc/Hz)',
+    yscale: str='linear',
 ) -> Figure:
     """Create a plot of the noise PSD."""
     fig = plt.figure(figsize=(9, 6))
@@ -188,13 +245,15 @@ def create_plot(
     )
     ax.set_xscale('log')
     ax.set_xlim(0.1,100.)
-    if np.median(ydata_min) > -110 and np.median(ydata_max) < -60:
+    ax.set_yscale(yscale)
+    if yscale=='linear' and np.median(ydata_min) > -110 and np.median(ydata_max) < -60:
         ax.set_ylim(-110, -60)
         loc = 'upper right'
     else:
         loc = 'best'
-    ax.set_xlabel('Frequency (Hz)', fontsize=16)
-    ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
+    
+    ax.set_xlabel(xlabel, fontsize=16)
+    ax.set_ylabel(ylabel, fontsize=16)
     ax.tick_params(labelsize=14)
     ax.legend(fontsize=14, loc=loc)
     if title is None:
@@ -317,8 +376,8 @@ if __name__ == '__main__':
         input_data,
         p.timestamp,
         chanmask=p.chanmask,
-        nominal_block_length=10,
+        nominal_block_length=1,
     )
-    plot_psd(freq, noise_psd, f'plots/{date}_{setnum}_{basis}.pdf', basis=basis, title='Loopback')
+    plot_psd(freq, noise_psd, f'plots/{date}_{setnum}_{basis}.pdf', basis=basis, title='On Resonance')
     if args.show_plots:
         plt.show()
