@@ -353,8 +353,12 @@ class Downsample(DataRoutine):
         data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
         data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
         timestamp_ds = signal.decimate(pd.timestamp, self.ds_factor)
-        detector_az_ds = signal.decimate(pd.detector_az, self.ds_factor, n=self.order, axis=1)
-        detector_za_ds = signal.decimate(pd.detector_za, self.ds_factor, n=self.order, axis=1)
+        if np.size(pd.detector_az) > 1:
+            detector_az_ds = signal.decimate(pd.detector_az, self.ds_factor, n=self.order, axis=1)
+            detector_za_ds = signal.decimate(pd.detector_za, self.ds_factor, n=self.order, axis=1)
+        else:
+            detector_az_ds = pd.detector_az
+            detector_za_ds = pd.detector_za
         return pd.with_values(
             data_freq_diss=data_freq_diss_ds,
             data_gain_phase=data_gain_phase_ds,
