@@ -52,6 +52,9 @@ def get_cleaned_file_template(date: str, setnum: int) -> str:
 def get_file_stub(date: str, setnum: int) -> str:
     return f'{date}_set{setnum}'
 
+def get_map_file_template(date: str, setnum: int) -> str:
+    return f'/{DATA_DIRECTORY}/{date}/{date}_mapped_data_set{setnum}.h5'
+
 @ensure_path(0)
 def load_time_ordered_IQ_data(path: Path, normalize: bool=True) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     f = RawDataFile(path, 'r')
@@ -166,6 +169,10 @@ class ProcessedData(Updateable):
     @property
     def cleaned_file_template(self) -> str:
         return get_cleaned_file_template(self.date ,self.setnum)
+
+    @property
+    def map_file_template(self) -> str:
+        return get_map_file_template(self.date, self.setnum)
     
     @property
     def file_stub(self) -> str:
@@ -1094,95 +1101,95 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[
 
 class PyTablesProcessedData(ProcessedData):
 
-    def __init__(self, file: tables.File):
-        self._file = file
+    def __init__(self, pfile: tables.File):
+        self._pfile = pfile
     
     def close(self):
-        self._file.close()
+        self._pfile.close()
     
     @property
     def date(self) -> str:
-        return self._file.root.attrs.date
+        return self._pfile.root.attrs.date
     
     @date.setter
     def date(self, date: str):
-        self._file.root.attrs.date = date
+        self._pfile.root.attrs.date = date
 
     @property
     def setnum(self) -> int:
-        return self._file.root.attrs.setnum
+        return self._pfile.root.attrs.setnum
     
     @setnum.setter
     def setnum(self, setnum: int):
-        self._file.root.attrs.setnum = setnum
+        self._pfile.root.attrs.setnum = setnum
     
     @property
     def optical_image(self) -> tables.Array:
-        return self._file.root.optical_image
+        return self._pfile.root.optical_image
     
     @property
     def carrier_amp_I(self) -> tables.Array:
-        return self._file.root.detector_0.data.carrier_amplitudes[0]
+        return self._pfile.root.detector_0.data.carrier_amplitudes[0]
     
     @property
     def carrier_amp_Q(self) -> tables.Array:
-        return self._file.root.detector_0.data.carrier_amplitudes[1]
+        return self._pfile.root.detector_0.data.carrier_amplitudes[1]
 
     @property
     def df_per_mK(self) -> tables.Array:
-        return self._file.root.detector_0.global_data.df_per_mK
+        return self._pfile.root.detector_0.global_data.df_per_mK
 
     @property
     def IQ_to_gain_phase_angle(self) -> tables.Array:
-        return self._file.root.detector_0.data.IQ_to_gain_phase_angle
+        return self._pfile.root.detector_0.data.IQ_to_gain_phase_angle
 
     @property
     def dIQ_df(self) -> tables.Array:
-        return self._file.root.detector_0.data.dIQ_df
+        return self._pfile.root.detector_0.data.dIQ_df
     
     @property
     def data_freq(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_freq_diss[0]
+        return self._pfile.root.detector_0.data.data_freq_diss[0]
     
     @property
     def data_diss(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_freq_diss[0]
+        return self._pfile.root.detector_0.data.data_freq_diss[0]
     
     @property
     def data_mK(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_mK
+        return self._pfile.root.detector_0.data.data_mK
     
     @property
     def data_gain(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_gain_phase[0]
+        return self._pfile.root.detector_0.data.data_gain_phase[0]
     
     @property
     def data_phase(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_gain_phase[1]
+        return self._pfile.root.detector_0.data.data_gain_phase[1]
     
     @property
     def timestamp(self) -> tables.Array:
-        return self._file.root.detector_0.data.timestamp
+        return self._pfile.root.detector_0.data.timestamp
     
     @property
     def detector_az(self) -> tables.Array:
-        return self._file.root.detector_0.data.detector_az
+        return self._pfile.root.detector_0.data.detector_az
 
     @property
     def detector_za(self) -> tables.Array:
-        return self._file.root.detector_0.data.detector_za
+        return self._pfile.root.detector_0.data.detector_za
 
     @property
     def vis(self) -> tables.Array:
-        return self._file.root.detector_0.global_data.vis
+        return self._pfile.root.detector_0.global_data.vis
 
     @property
     def detector_pol(self) -> tables.Array:
-        return self._file.root.detector_0.global_data.detector_pol
+        return self._pfile.root.detector_0.global_data.detector_pol
     
     @property
     def chanmask(self) -> tables.Array:
-        return self._file.root.detector_0.global_data.chanmask
+        return self._pfile.root.detector_0.global_data.chanmask
     
     
     # @property
@@ -1461,7 +1468,7 @@ class PyTablesProcessedData(ProcessedData):
             for key in vars(self).keys()
         }
         for key, val in kwargs.items():
-            self._file.root.detector_0.data.__getattribute__(key)[:] = val
+            self._pfile.root.detector_0.data.__getattribute__(key)[:] = val
         return PyTablesProcessedData(self.file)
 
     @classmethod
@@ -1473,32 +1480,268 @@ class PyTablesProcessedData(ProcessedData):
         
         file = tables.open(filename)
         return PyTablesProcessedData(file)
+    
+    def close(self):
+        self._pfile.close()
 
-        # return pfile
-        pdb.set_trace()
-        pdata = cls(
-            date,
-            setnum,
-            optical_image,
-            dIQ_df,
-            carrier_amp_I,
-            carrier_amp_Q,
-            df_per_mK,
-            data_gain_phase,
-            gain_phase_angle,
-            data_freq_diss,
-            data_mK,
-            timestamp,
-            chanmask,
-            detector_pol,
-            detector_az,
-            detector_za,
-            vis
-        )
+
+class PyTablesMapData(MapData):
+
+    def __init__(self, mfile: tables.File, pdata: PyTablesProcessedData):
+        self._mfile = mfile
+        self._pdata = pdata
+        self.good_samples = np.arange(self.ntones)
+    
+    def setup_mfile(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False):
+        # Create metadata
+        self.date = self._pdata.date
+        self.setnum = self._pdata.setnum
+
+        # Create empty arrays
+        n_chan = N_POLARIZATION if not beammap_mode else self._pdata.nchan
+        self._mfile.create_array(self._mfile.root, 'map_az', shape=(n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'map_za', shape=(n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'sum_map', shape=(n_chan, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'hits_map', shape=(n_chan, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'netd', shape=(self._pdata.nchan,), atom=tables.Float64Atom())
+
+    @classmethod
+    def from_processed_data(cls, pdata: PyTablesProcessedData) -> PyTablesMapData:
+        mfile = tables.File(pdata.map_file_template, 'w')
+        return PyTablesMapData(mfile, pdata)
+
+    def close(self):
+        self._mfile.close()
+
+    @property
+    def date(self) -> str:
+        return self._mfile.root.attrs.date
+    
+    @date.setter
+    def date(self, date: str):
+        self._mfile.root.attrs.date = date
+
+    @property
+    def setnum(self) -> int:
+        return self._mfile.root.attrs.setnum
+    
+    @setnum.setter
+    def setnum(self, setnum: int):
+        self._mfile.root.attrs.setnum = setnum
+
+    @property
+    def ntones(self) -> int:
+        return self._pdata.nchan
+
+    @property
+    def optical_image(self) -> tables.Array:
+        return self._pdata.optical_image
+    
+    @property
+    def carrier_amp_I(self) -> tables.Array:
+        return self._pdata.carrier_amp_I
+    
+    @property
+    def carrier_amp_Q(self) -> tables.Array:
+        return self._pdata.carrier_amp_Q
+
+    @property
+    def df_per_mK(self) -> tables.Array:
+        return self._pdata.df_per_mK
+
+    @property
+    def IQ_to_gain_phase_angle(self) -> tables.Array:
+        return self._pdata.IQ_to_gain_phase_angle
+
+    @property
+    def dIQ_df(self) -> tables.Array:
+        return self._pdata.dIQ_df
+    
+    @property
+    def data_freq(self) -> tables.Array:
+        return self._pdata.data_freq
+    
+    @property
+    def data_diss(self) -> tables.Array:
+        return self._pdata.data_diss
+    
+    @property
+    def data_mK(self) -> tables.Array:
+        return self._pdata.data_mK
+    
+    @property
+    def data_gain(self) -> tables.Array:
+        return self._pdata.data_gain
+    
+    @property
+    def data_phase(self) -> tables.Array:
+        return self._pdata.data_phase
+    
+    @property
+    def timestamp(self) -> tables.Array:
+        return self._pdata.timestamp
+    
+    @property
+    def detector_az(self) -> tables.Array:
+        return self._pdata.detector_az
+
+    @property
+    def detector_za(self) -> tables.Array:
+        return self._pdata.detector_za
+
+    @property
+    def vis(self) -> tables.Array:
+        return self._pdata.vis
+
+    @property
+    def detector_pol(self) -> tables.Array:
+        return self._pdata.detector_pol
+    
+    @property
+    def chanmask(self) -> tables.Array:
+        return self._pdata.chanmask
+    
+    @property
+    def good_samples(self) -> tables.Array:
+        return self._mfile.root.good_samples
+
+    @property
+    def netd(self) -> tables.Array:
+        return self._mfile.root.netd
+
+    @property
+    def sum_map(self) -> tables.Array:
+        return self._mfile.root.sum_map
+
+    @property
+    def hits_map(self) -> tables.Array:
+        return self._mfile.root.hits_map
+
+    @property
+    def map_x(self) -> tables.Array:
+        return self._mfile.root.map_az
+
+    @property
+    def map_y(self) -> tables.Array:
+        return self._mfile.root.map_za
+
+    @property
+    def total_map(self) -> npt.NDArray:
+        return np.sum(self.sum_map, axis=0) / np.sum(self.hits_map, axis=0)
+
+    def get_netd_pol(self, polarization: int) -> npt.NDArray:
+        return self.netd[self.detector_pol == polarization]
+
+    @property
+    def integration_time(self) -> npt.NDArray:
+        integration_times = [
+            np.flip(
+                np.transpose(self.hits_map[i,::-1]) * \
+                    np.median(self.get_netd_pol(pol)) ** 2. / self.fs,
+                1,
+            )
+            for i, pol in enumerate(range(1, N_POLARIZATION + 1))
+        ]
+        return integration_times
+
+    def get_scaled_optical_image(self) -> npt.NDArray:
+        opt_npix_per_tel_npix = DEFAULT_MAP_DPIX/OPTCAM_PIX_SIZE_DEGREES
+        opt_npix_az = int(np.size(self.map_x)*opt_npix_per_tel_npix/2)*2
+        opt_npix_za = int(np.size(self.map_y)*opt_npix_per_tel_npix/2)*2
+        opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
+        opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
+        return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
+                                    opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
+    
+    
+    def plot(self, show: bool=True, save: bool=True):
+
+        valid_cov_1 = np.argwhere(self.hits_map[0] > 0.5 * np.median(self.hits_map[0]))
+        map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
+        for i_cov in np.arange(np.size(valid_cov_1[:,0])):
+            map_goodcov_1[i_cov] = self.map[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
+        valid_cov_2 = np.argwhere(self.hits_map[1] > 0.5 * np.median(self.hits_map[1]))
+        map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
+        for i_cov in np.arange(np.size(valid_cov_2[:,0])):
+            map_goodcov_2[i_cov] = self.map[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
+
+        netd_1 = self.get_netd_pol(1)
+        netd_2 = self.get_netd_pol(2)
+        cb_shrink = 0.95
+        this_xlim = min(self.map_x),max(self.map_x)
+        this_ylim = max(self.map_y),min(self.map_y)
+        max_abs = np.max(np.abs(np.append(map_goodcov_1,map_goodcov_2)))*0.75
+        valid_netd_1 = np.argwhere(netd_1 > 0)
+        med_netd_1 = 1./np.sqrt(np.sum(1./netd_1[valid_netd_1]**2)/np.size(valid_netd_1))
+        valid_netd_2 = np.argwhere(netd_2 > 0)
+        med_netd_2 = 1./np.sqrt(np.sum(1./netd_2[valid_netd_2]**2)/np.size(valid_netd_2))
+
+        #Sage's plotting code---------------------------------------------------------------------------------------------
+
+        # contour_levels, final_map_1_filt, final_map_2_filt, final_map_tot_filt, flagged_map_1_filt, flagged_map_2_filt, \
+        # flagged_map_tot_filt, final_flagged_coordinates = combined_map(map_1_filt_final_map, map_2_filt_final_map, map_tot_filt_final_map)
+        flagged_map_1_filt, flagged_map_2_filt, flagged_map_tot_filt, contour_levels = self.get_combined_map()
+
+    #    pw = plotWindow()
+        # TODO: Make figure size change based on the size of the map
+        this_fig = plt.figure(figsize=(15,7.5))
+        plt.subplot(4,1,1)
+        plt.imshow(np.flip(np.transpose(self.map[0][::-1]),1), \
+        extent = (min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), \
+        aspect='equal', vmin=-max_abs, vmax=max_abs, cmap='Blues_r')
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
+        plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+        extent=(min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), colors='red')
+        plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
+        ', Optical Visibility = ' + str(self.vis) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
+        ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
+        plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+
+        plt.subplot(4,1,2)
+        plt.imshow(np.flip(np.transpose(self.map[1][::-1]),1), \
+        extent = (min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), \
+        aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Reds_r')
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
+        plt.contour(np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+        extent=(min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), colors='black')
+        plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+
+        plt.subplot(4,1,3)
+        plt.imshow(np.flip(np.transpose(self.total_map[::-1]),1), \
+        extent = (min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), \
+        aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Greys_r')
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
+        plt.contour(np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+        extent=(min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), colors='red')
+        plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+        
+        plt.subplot(4,1,4)
+        optical_image = self.get_scaled_optical_image()
+        valid_opt_pix = np.where(optical_image < 240)
+        opt_vmax = 255. #np.percentile(optical_image[valid_opt_pix], 90)
+        opt_vmin = -255. #np.percentile(optical_image[valid_opt_pix], 10)
+        plt.imshow(optical_image, \
+                extent = (min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), \
+                aspect='equal', vmax=255, vmin=-255)
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
+        ##Need to match aspect ratio of plots (and get rid of colorbar).
+        plt.xlabel('Azimuth (degrees)'), plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+            
+        this_fig.subplots_adjust(wspace=0, hspace=0)
+    #    pw.addPlot("Raw Image", this_fig)
         if save:
-            pdata.save()
-        return pdata
-
+            this_fig.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
+        if show:
+            plt.show()
+    
 
     
 if __name__ == "__main__":
