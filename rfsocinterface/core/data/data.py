@@ -1099,7 +1099,7 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[
     return data[ind], ind
 
 
-class PyTablesProcessedData():
+class PyTablesProcessedData:
 
     def __init__(self, pfile: tables.File):
         self._pfile = pfile
@@ -1192,11 +1192,15 @@ class PyTablesProcessedData():
         return self._pfile.root.detector_0.data.dIQ_df
     
     @property
-    def data_freq(self) -> tables.Array:
+    def data_freq_diss(self) -> tables.Array:
+        return self._pfile.root.detector_0.data.data_freq_diss
+
+    @property
+    def data_freq(self) -> npt.NDArray:
         return self._pfile.root.detector_0.data.data_freq_diss[0]
     
     @property
-    def data_diss(self) -> tables.Array:
+    def data_diss(self) -> npt.NDArray:
         return self._pfile.root.detector_0.data.data_freq_diss[0]
     
     @property
@@ -1204,11 +1208,15 @@ class PyTablesProcessedData():
         return self._pfile.root.detector_0.data.data_mK
     
     @property
-    def data_gain(self) -> tables.Array:
+    def data_gain_phase(self) -> tables.Array:
+        return self._pfile.root.detector_0.data.data_gain_phase
+    
+    @property
+    def data_gain(self) -> npt.NDArray:
         return self._pfile.root.detector_0.data.data_gain_phase[0]
     
     @property
-    def data_phase(self) -> tables.Array:
+    def data_phase(self) -> npt.NDArray:
         return self._pfile.root.detector_0.data.data_gain_phase[1]
     
     @property
@@ -1258,7 +1266,6 @@ class PyTablesProcessedData():
         date: str,
         setnum: int,
         losweep: str | None=None,
-        save: bool=True,
         beam_map_mode: bool=False,
         do_electronics_noise_removal: bool=True,
         ds_factor: int=1,
@@ -1305,9 +1312,6 @@ class PyTablesProcessedData():
         else:
             vis=0.
         
-        
-
-
 
         pfile = tables.open_file(get_processed_file_template(date, setnum), 'w')
         pfile.root._v_attrs.date = date
@@ -1552,7 +1556,6 @@ class PyTablesMapData(PyTablesProcessedData):
         self.date = super().date
         self.setnum = super().setnum
 
-
         # Create empty arrays
         n_chan = N_POLARIZATION if not beammap_mode else self.n_tones
         self._mfile.create_array(self._mfile.root, 'map_az', shape=(n_pix_x, n_pix_y), atom=tables.Float64Atom())
@@ -1572,7 +1575,6 @@ class PyTablesMapData(PyTablesProcessedData):
 
         map_data = PyTablesMapData(mfile, pfile)
         return map_data
-
 
     def close(self):
         super().close()
@@ -1643,7 +1645,6 @@ class PyTablesMapData(PyTablesProcessedData):
         opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
         return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
                                     opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
-    
     
     def plot(self, show: bool=True, save: bool=True):
 
@@ -1733,7 +1734,6 @@ class PyTablesMapData(PyTablesProcessedData):
         if show:
             plt.show()
     
-
     
 if __name__ == "__main__":
     date = '20250527'
