@@ -1099,13 +1099,45 @@ def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[
     return data[ind], ind
 
 
-class PyTablesProcessedData(ProcessedData):
+class PyTablesProcessedData():
 
     def __init__(self, pfile: tables.File):
         self._pfile = pfile
     
     def close(self):
         self._pfile.close()
+
+    @property
+    def tod_template(self) -> str:
+        return get_tod_template(self.date, self.setnum)
+
+    @property
+    def azel_template(self) -> str:
+        return get_azel_template(self.date, self.setnum)
+
+    @property
+    def optcam_template(self) -> str:
+        return get_optcam_template(self.date ,self.setnum)
+    
+    @property
+    def processed_file_template(self) -> str:
+        return get_processed_file_template(self.date, self.setnum)
+
+    @property
+    def cleaned_file_template(self) -> str:
+        return get_cleaned_file_template(self.date ,self.setnum)
+
+    @property
+    def map_file_template(self) -> str:
+        return get_map_file_template(self.date, self.setnum)
+    
+    @property
+    def file_stub(self) -> str:
+        return get_file_stub(self.date, self.setnum)
+
+    @property
+    def folder(self) -> Path:
+        return Path(f'{DATA_DIRECTORY}/{self.date}')
     
     @property
     def date(self) -> str:
@@ -1122,6 +1154,18 @@ class PyTablesProcessedData(ProcessedData):
     @setnum.setter
     def setnum(self, setnum: int):
         self._pfile.root._v_attrs.setnum = setnum
+
+    def carrier_amplitude_norm(self) -> npt.NDArray:
+        Z = self.carrier_amp_I + 1j*self.carrier_amp_Q
+        return np.mean(np.abs(Z), axis=0)
+
+    @property
+    def n_tones(self) -> int:
+        return self._pfile.root.detector_0.data._v_attrs.n_tones 
+
+    @property
+    def n_samples(self) -> int:
+        return self._pfile.root.detector_0.data._v_attrs.n_samples
     
     @property
     def optical_image(self) -> tables.Array:
@@ -1170,6 +1214,18 @@ class PyTablesProcessedData(ProcessedData):
     @property
     def timestamp(self) -> tables.Array:
         return self._pfile.root.detector_0.data.timestamp
+
+    @property
+    def time(self) -> npt.NDArray:
+        return self.timestamp - self.timestamp[0]
+    
+    @property
+    def delta_t(self) -> float:
+        return np.median(self.time - np.roll(self.time, 1))
+
+    @property
+    def fs(self) -> float:
+        return 1 / self.delta_t
     
     @property
     def detector_az(self) -> tables.Array:
@@ -1485,122 +1541,61 @@ class PyTablesProcessedData(ProcessedData):
         self._pfile.close()
 
 
-class PyTablesMapData(MapData):
+class PyTablesMapData(PyTablesProcessedData):
 
-    def __init__(self, mfile: tables.File, pdata: PyTablesProcessedData):
+    def __init__(self, mfile: tables.File, pfile: tables.File):
+        super().__init__(pfile)
         self._mfile = mfile
-        self._pdata = pdata
-        self.good_samples = np.arange(self.ntones)
+        self.good_samples = np.arange(self.n_tones)
     
     def setup_mfile(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False):
-        # Create metadata
-        self.date = self._pdata.date
-        self.setnum = self._pdata.setnum
+        self.date = super().date
+        self.setnum = super().setnum
+
 
         # Create empty arrays
-        n_chan = N_POLARIZATION if not beammap_mode else self._pdata.nchan
+        n_chan = N_POLARIZATION if not beammap_mode else self.n_tones
         self._mfile.create_array(self._mfile.root, 'map_az', shape=(n_pix_x, n_pix_y), atom=tables.Float64Atom())
         self._mfile.create_array(self._mfile.root, 'map_za', shape=(n_pix_x, n_pix_y), atom=tables.Float64Atom())
         self._mfile.create_array(self._mfile.root, 'sum_map', shape=(n_chan, n_pix_x, n_pix_y), atom=tables.Float64Atom())
         self._mfile.create_array(self._mfile.root, 'hits_map', shape=(n_chan, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self._mfile.create_array(self._mfile.root, 'netd', shape=(self._pdata.nchan,), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
 
     @classmethod
-    def from_processed_data(cls, pdata: PyTablesProcessedData) -> PyTablesMapData:
-        mfile = tables.File(pdata.map_file_template, 'w')
-        return PyTablesMapData(mfile, pdata)
+    def from_processed_data(cls, pdata: PyTablesProcessedData | tables.File) -> PyTablesMapData:
+        if isinstance(pdata, tables.File):
+            pfile = pdata
+            mfile = tables.File(PyTablesProcessedData(pfile).map_file_template(), 'w')
+        else:
+            pfile = pdata._pfile
+            mfile = tables.File(pdata.map_file_template, 'w')
+
+        map_data = PyTablesMapData(mfile, pfile)
+        return map_data
+
 
     def close(self):
+        super().close()
         self._mfile.close()
 
     @property
     def date(self) -> str:
-        return self._mfile.root.attrs.date
-    
+        return self._mfile.root._v_attrs.date
+
     @date.setter
     def date(self, date: str):
-        self._mfile.root.attrs.date = date
+        self._pfile.root._v_attrs.date = date
+        self._mfile.root._v_attrs.date = date
 
     @property
     def setnum(self) -> int:
-        return self._mfile.root.attrs.setnum
-    
+        return self._mfile.root._v_attrs.setnum
+
     @setnum.setter
     def setnum(self, setnum: int):
-        self._mfile.root.attrs.setnum = setnum
+        self._pfile.root._v_attrs.setnum = setnum
+        self._mfile.root._v_attrs.setnum = setnum
 
-    @property
-    def ntones(self) -> int:
-        return self._pdata.nchan
-
-    @property
-    def optical_image(self) -> tables.Array:
-        return self._pdata.optical_image
-    
-    @property
-    def carrier_amp_I(self) -> tables.Array:
-        return self._pdata.carrier_amp_I
-    
-    @property
-    def carrier_amp_Q(self) -> tables.Array:
-        return self._pdata.carrier_amp_Q
-
-    @property
-    def df_per_mK(self) -> tables.Array:
-        return self._pdata.df_per_mK
-
-    @property
-    def IQ_to_gain_phase_angle(self) -> tables.Array:
-        return self._pdata.IQ_to_gain_phase_angle
-
-    @property
-    def dIQ_df(self) -> tables.Array:
-        return self._pdata.dIQ_df
-    
-    @property
-    def data_freq(self) -> tables.Array:
-        return self._pdata.data_freq
-    
-    @property
-    def data_diss(self) -> tables.Array:
-        return self._pdata.data_diss
-    
-    @property
-    def data_mK(self) -> tables.Array:
-        return self._pdata.data_mK
-    
-    @property
-    def data_gain(self) -> tables.Array:
-        return self._pdata.data_gain
-    
-    @property
-    def data_phase(self) -> tables.Array:
-        return self._pdata.data_phase
-    
-    @property
-    def timestamp(self) -> tables.Array:
-        return self._pdata.timestamp
-    
-    @property
-    def detector_az(self) -> tables.Array:
-        return self._pdata.detector_az
-
-    @property
-    def detector_za(self) -> tables.Array:
-        return self._pdata.detector_za
-
-    @property
-    def vis(self) -> tables.Array:
-        return self._pdata.vis
-
-    @property
-    def detector_pol(self) -> tables.Array:
-        return self._pdata.detector_pol
-    
-    @property
-    def chanmask(self) -> tables.Array:
-        return self._pdata.chanmask
-    
     @property
     def netd(self) -> tables.Array:
         return self._mfile.root.netd
@@ -1748,6 +1743,8 @@ if __name__ == "__main__":
 
     old_data = ProcessedData.from_tod(date, setnum, save=False)
     new_data = PyTablesProcessedData.from_tod(date, setnum)
+    map = PyTablesMapData.from_processed_data(new_data)
+    map.setup_mfile(50, 50)
     pdb.set_trace()
 
     # data = ProcessedData.from_file(date, setnum)

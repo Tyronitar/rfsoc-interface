@@ -15,9 +15,10 @@ from kidpy3 import RawDataFile
 
 
 from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise, ProcessedData
-from rfsocinterface.core.data.map import Downsample, RemoveElectronicsNoise
+from rfsocinterface.core.data.routines import RemoveElectronicsNoise
 from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise
-from rfsocinterface.core.data.map import Downsample, RemoveElectronicsNoise
+from rfsocinterface.core.data.routines import RemoveElectronicsNoise
+from rfsocinterface.core.data.routines import Downsample
 from rfsocinterface.core.utils import ensure_path, ordinal
 
 XLIM = (0.1, 100)

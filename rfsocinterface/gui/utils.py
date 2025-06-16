@@ -8,7 +8,8 @@ from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QValidator
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLayout, QLineEdit, QWidget
 
-from rfsocinterface.core.data.map import DECIMATE_ORDER, BinTODIntoMap, CleanTOD, Downsample, GaussianFilter, HighPassFilter, LowPassFilter, RemovePointLomaPickup
+from rfsocinterface.core.data.map import DECIMATE_ORDER, BinTODIntoMap, RemovePointLomaPickup
+from rfsocinterface.core.data.routines import CleanTOD, Downsample, GaussianFilter, HighPassFilter, LowPassFilter
 from rfsocinterface.core.utils import GAUSSIAN_SIGMA, ensure_path
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 
