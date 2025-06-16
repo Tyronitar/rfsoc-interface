@@ -30,6 +30,12 @@ DEFAULT_MAP_DPIX = 0.03
 
 N_POLARIZATION = 2
 
+BUTTER_ORDER = 6
+DECIMATE_ORDER = 5
+AZ_TRIM = 2.3
+ZA_TRIM = 0.2
+
+
 def get_tod_template(date: str, setnum: int) -> str:
     return f'{DATA_DIRECTORY}/{date}/{date}_*_TOD_set{setnum}.h5'
 
@@ -1735,18 +1741,15 @@ class PyTablesMapData(PyTablesProcessedData):
             plt.show()
     
     
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     date = '20250527'
     setnum = 1010
     # date = '20250529'
     # setnum = 1011
 
-    old_data = ProcessedData.from_tod(date, setnum, save=False)
-    new_data = PyTablesProcessedData.from_tod(date, setnum)
-    map = PyTablesMapData.from_processed_data(new_data)
-    map.setup_mfile(50, 50)
-    pdb.set_trace()
-
+    pd = PyTablesProcessedData.from_tod(date, setnum)
+    pd.close()
     # data = ProcessedData.from_file(date, setnum)
     # pfile = PyTablesProcessedData.from_tod(date, setnum, save=False)
     # todtemplate = get_tod_template(date, setnum)

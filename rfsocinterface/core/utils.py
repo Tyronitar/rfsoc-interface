@@ -396,3 +396,6 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
             break
         elif response.lower() == 'err':
             raise RuntimeError(f'{err_msg}: {data}')
+
+
+BUTTER_ORDER = 6

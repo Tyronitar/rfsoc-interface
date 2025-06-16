@@ -2,15 +2,16 @@
 
 from typing import Any, Callable
 import abc
+import pdb
 
 import numpy as np
 from scipy import signal
 import h5py
 import tables
 
-from rfsocinterface.core.data import MapData, ProcessedData, generate_calibrated_data, remove_electronics_noise
-from rfsocinterface.core.data.map import BUTTER_ORDER, DECIMATE_ORDER
-from rfsocinterface.core.utils import GAUSSIAN_SIGMA, gaussian_filter
+from rfsocinterface.core.data.data import PyTablesProcessedData, PyTablesMapData, ProcessedData, generate_calibrated_data2, remove_electronics_noise2
+from rfsocinterface.core.data.data import DECIMATE_ORDER
+from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter
 
 
 class DataPipeline:
@@ -44,9 +45,9 @@ class DataPipeline:
     def add_to_receipt(self, entry: str):
         self._receipt.append(entry)
     
-    def run_pipeline(self, input: ProcessedData):
+    def run_pipeline(self, input: PyTablesProcessedData):
         self.pre_processor.apply_routines(input)
-        self.pre_processor.apply_routines(input)
+        self.processor.apply_routines(input)
         self.post_processor.apply_routines(input)
     
     def generate_receipt(self) -> str:
@@ -56,12 +57,10 @@ class DataPipeline:
 class DataRoutine:
     __metaclass__ = abc.ABCMeta
 
-    def __call__(self, *input, **kwargs):
-        output = self.forward(*input, **kwargs)
+    def __call__(self, input: PyTablesProcessedData):
+        self.forward(input)
 
-        return output
-    
-    def forward(self, *input, **kwargs) -> Any:
+    def forward(self, input: PyTablesProcessedData):
         raise NotImplementedError(
             f'DataRoutine [{type(self).__name__}] is missing a forward method'
         )
@@ -80,7 +79,7 @@ class RoutineApplier:
             raise TypeError(f'Expected DataRoutine, got {type(routine)}')
         self._routines.append(routine)
 
-    def apply_routines(self, input: ProcessedData, save: bool=True):
+    def apply_routines(self, input: PyTablesProcessedData, save: bool=True):
 
         output = input
         for routine in self._routines:
@@ -120,10 +119,10 @@ class GaussianFilter(DataRoutine):
         super().__init__()
         self.gaussian_sigma = gaussian_sigma
 
-    def forward(self, pd: ProcessedData, field: str='data_mK') -> ProcessedData:
-        smoothed_data = gaussian_filter(pd.__getattribute__(field), self.gaussian_sigma)
-        return pd.with_values(**{field: smoothed_data})
-
+    def forward(self, pd: PyTablesProcessedData, field: str='data_mK'):
+        array = pd._pfile.get_node('/', field)
+        smoothed_data = gaussian_filter(array, self.gaussian_sigma)
+        array[:] = smoothed_data
 
 class CutoffFilter(DataRoutine):
     def __init__(self, filter_freq: float, btype: str):
@@ -131,18 +130,13 @@ class CutoffFilter(DataRoutine):
         self.filter_freq = filter_freq
         self.btype = btype
 
-    def forward(self, pd: ProcessedData) -> ProcessedData:
+    def forward(self, pd: PyTablesProcessedData):
         filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
 
         # Apply cutoff filter
-        data_gain_phase_filt = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
-        data_freq_diss_filt = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
-        data_mK_filt = signal.sosfiltfilt(filt_sos, pd.data_mK)
-        return pd.with_values(
-            data_gain_phase=data_gain_phase_filt,
-            data_freq_diss=data_freq_diss_filt,
-            data_mK=data_mK_filt,
-        )
+        pd.data_gain_phase[:] = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
+        pd.data_freq_diss[:] = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
+        pd.data_mK[:] = signal.sosfiltfilt(filt_sos, pd.data_mK)
 
 
 class LowPassFilter(CutoffFilter):
@@ -161,8 +155,13 @@ class Downsample(DataRoutine):
         self.ds_factor = ds_factor
         self.order=order
 
-    def forward(self, pd: ProcessedData) -> ProcessedData:
+    def forward(self, pd: PyTablesProcessedData):
+        # TODO: Should this routine even still exist?
+        # Downsampling after the fact is annoying with PyTables
+
         data_freq_diss_ds = signal.decimate(pd.data_freq_diss, self.ds_factor)
+        pd._pfile.remove_node('/', 'data_freq_diss')
+        pd._pfile.create_array('/detector_0/data/', 'data_freq_diss', data_freq_diss_ds)
         data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
         data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
         timestamp_ds = signal.decimate(pd.timestamp, self.ds_factor)
@@ -186,21 +185,9 @@ class RemoveElectronicsNoise(DataRoutine):
     def __init__(self):
         super().__init__()
 
-    def forward(self, pd: ProcessedData) -> ProcessedData:
-        gain_phase_data = pd.data_gain_phase
-        clean_gain_phase_data = remove_electronics_noise(gain_phase_data)
-
-        new_data_freq_diss, new_data_mK = generate_calibrated_data(
-            clean_gain_phase_data,
-            pd.IQ_to_gain_phase_angle,
-            pd.dIQ_df,
-            pd.df_per_mK
-        )
-        return pd.with_values(
-            data_gain_phase=clean_gain_phase_data,
-            data_freq_diss=new_data_freq_diss,
-            data_mK=new_data_mK,
-        )
+    def forward(self, pd: PyTablesProcessedData):
+        remove_electronics_noise2(pd.data_gain_phase)
+        generate_calibrated_data2(pd.root.detector_0.data, pd._pfile.root.detector_0.global_data)
 
 
 class CleanTOD(DataRoutine):
@@ -212,36 +199,36 @@ class CleanTOD(DataRoutine):
         super().__init__()
         self.save_file = save_file
 
-    def forward(self, md: MapData) -> MapData:
+    def forward(self, pd: PyTablesProcessedData):
 
-        if not isinstance(md, MapData):
-            md = MapData.from_processed_data(md)
-        data = md.data_mK
-        chanmask = md.chanmask
-        data_clean = np.copy(data)
-        good_samples = md.get_good_samples()
-
+        # TODO: Does this need to still support the "good_sample" stuff?
         #average template subtraction
-        goodchan = np.ndarray.flatten(np.argwhere(chanmask == 1))
-        # pdb.set_trace()
-        data_good = data[goodchan][:, good_samples]
-        template = np.sum(data_good, axis=0)
+        goodchan = np.ndarray.flatten(np.argwhere(pd.chanmask[:] == 1))
+        template = np.sum(pd.data_mK[goodchan, :], axis=0)
         template = template - np.mean(template)
-        template_corr = np.sum(np.multiply(data_good,template), axis=1) / \
+        template_corr = np.sum(np.multiply(pd.data_mK[goodchan, :],template), axis=1) / \
                         np.sum(np.multiply(template,template))
-        data_clean_good = data_good - np.outer(template_corr, template)
-        data_clean[goodchan][:, good_samples] = data_clean_good
+        pd.data_mK[goodchan, :] = pd.data_mK[goodchan, :] - np.outer(template_corr, template)
 
         if self.save_file:
-            with h5py.File(md.cleaned_file_template, 'w') as cfile:
-                cfile.create_dataset("chanmask", data=chanmask)
-                cfile.create_dataset("detector_pol", data=md.detector_pol)
-                cfile.create_dataset("clean_data", data=data_clean)
-                cfile.create_dataset("time", data=md.timestamp)
-                cfile.create_dataset("detector_az", data=md.detector_az)
-                cfile.create_dataset("detector_za", data=md.detector_za)
+            with tables.File(pd.cleaned_file_template, 'w') as cfile:
+                cfile.create_array('/', 'chanmask', pd.chanmask[:])
+                cfile.create_array('/', 'detector_pol', pd.detector_pol[:])
+                cfile.create_array('/', 'timestamp', pd.timestamp[:])
+                cfile.create_array('/', 'detector_az', pd.detector_az[:])
+                cfile.create_array('/', 'detector_za', pd.detector_za[:])
+                cfile.create_array('/', 'clean_data', pd.data_mK[:])
 
+if __name__ == '__main__':
+    date = '20250527'
+    setnum = 1010
+    # date = '20250529'
+    # setnum = 1011
 
-        return md.with_values(
-            data_mK=data_clean,
-        )
+    pd = PyTablesProcessedData.from_tod(date, setnum)
+    md = PyTablesMapData.from_processed_data(pd)
+    md.setup_mfile(50, 50)
+
+    cleaner = CleanTOD()
+    cleaner(pd)
+    pdb.set_trace()
