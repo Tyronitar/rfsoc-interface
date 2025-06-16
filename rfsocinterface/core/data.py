@@ -105,7 +105,7 @@ def generate_calibrated_data2(data: tables.Group, global_data: tables.Group):
         data.data_IQ,
         -data.IQ_to_gain_phase_angle[:],
     )
-    data.data_IQ[:] = data.data_IQ - np.mean(data.data_IQ, axis=1, keepdims=True)
+    data.data_IQ[:] = data.data_IQ - np.mean(data.data_IQ, axis=2, keepdims=True)
     # data.data_IQ[0, :] = data.data_IQ[0, :] - np.mean(data.data_IQ[0, :], axis=1, keepdims=True)
     # data.data_IQ[1, :] = data.data_IQ[1, :] - np.mean(data.data_IQ[1, :], axis=1, keepdims=True)
 
@@ -1142,11 +1142,11 @@ class PyTablesProcessedData(ProcessedData):
     
     @property
     def data_freq(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_freq
+        return self._file.root.detector_0.data.data_freq_diss[0]
     
     @property
     def data_diss(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_diss
+        return self._file.root.detector_0.data.data_freq_diss[0]
     
     @property
     def data_mK(self) -> tables.Array:
@@ -1154,16 +1154,12 @@ class PyTablesProcessedData(ProcessedData):
     
     @property
     def data_gain(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_gain
+        return self._file.root.detector_0.data.data_gain_phase[0]
     
     @property
     def data_phase(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_phase
+        return self._file.root.detector_0.data.data_gain_phase[1]
     
-    @property
-    def data_freq(self) -> tables.Array:
-        return self._file.root.detector_0.data.data_freq
-
     @property
     def timestamp(self) -> tables.Array:
         return self._file.root.detector_0.data.timestamp
@@ -1378,8 +1374,12 @@ class PyTablesProcessedData(ProcessedData):
                 else:
                     valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
 
-                detector_data.data_IQ[0, :] = signal.decimate(time_ordered_data.adc_i[valid_tone_index, :], ds_factor)
-                detector_data.data_IQ[1, :] = signal.decimate(time_ordered_data.adc_q[valid_tone_index, :], ds_factor)
+                if ds_factor > 1:
+                    detector_data.data_IQ[0, :] = signal.decimate(time_ordered_data.adc_i[valid_tone_index, :], ds_factor)
+                    detector_data.data_IQ[1, :] = signal.decimate(time_ordered_data.adc_q[valid_tone_index, :], ds_factor)
+                else:
+                    detector_data.data_IQ[0, :] = time_ordered_data.adc_i[valid_tone_index, :]
+                    detector_data.data_IQ[1, :] = time_ordered_data.adc_q[valid_tone_index, :]
                 detector_data.carrier_amplitudes[:] = np.nanmedian(detector_data.data_IQ, axis=2)
                 # detector_data.carrier_amplitudes[0] = np.nanmedian(time_ordered_data.adc_i[valid_tone_index, :], axis=1)
                 # detector_data.carrier_amplitudes[1] = np.nanmedian(time_ordered_data.adc_q[valid_tone_index, :], axis=1)
@@ -1509,6 +1509,7 @@ if __name__ == "__main__":
 
     old_data = ProcessedData.from_tod(date, setnum, save=False)
     new_data = PyTablesProcessedData.from_tod(date, setnum)
+    pdb.set_trace()
 
     # data = ProcessedData.from_file(date, setnum)
     # pfile = PyTablesProcessedData.from_tod(date, setnum, save=False)
