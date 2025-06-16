@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QWidget, QCheckBox, QComboBox, QLineEdit, QStackedLayout, QDialog, QVBoxLayout, QFormLayout, QDialogButtonBox
 from kidpy3 import capture
 
+from rfsocinterface.core.data.routines import DataRoutine
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.gui.uic.mapping_ui import Ui_MappingDialog
@@ -20,7 +21,7 @@ from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, Argument
 from rfsocinterface.gui.widgets.function import FunctionWidget
 from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.data import ProcessedData, MapData
-from rfsocinterface.core.map import Mapper, DataRoutine
+from rfsocinterface.core.data.routines import Mapper
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow

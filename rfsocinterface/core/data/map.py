@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Callable, Any
 import pdb
 
 import h5py
@@ -14,6 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
 
+from rfsocinterface.core.data.routines import DataRoutine, Mapper
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA
 from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, PyTablesProcessedData, PyTablesMapData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
 
@@ -37,45 +37,6 @@ def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, 
         map_y += 0.1  # 0.1 accounts for assymmetry in array
 
     return n_pix_x, n_pix_y, map_x, map_y
-
-
-def _unimplemented_forward(self, *args):
-    raise NotImplementedError(
-        f'DataRoutine [{type(self).__name__}] is missing a forward method'
-    )
-  
-
-class DataRoutine:
-    forward: Callable[..., Any] = _unimplemented_forward
-
-    def __init__(self):
-        self._receipt = ''
-
-    def __call__(self, *input, **kwargs):
-        output = self.forward(*input, **kwargs)
-        # do something to the receipt...
-        return output
-
-
-class Mapper:
-    def __init__(self, routines: list[DataRoutine]=[]):
-        self._routines = routines
-    
-    def add_routine(self, routine: DataRoutine):
-        if not isinstance(routine, DataRoutine):
-            raise TypeError(f'Expected DataRoutine, got {type(routine)}')
-        self._routines.append(routine)
-    
-    def __call__(self, input: ProcessedData, save: bool=True):
-
-        output = input
-        for routine in self._routines:
-            # if isinstance(routine, BinTODIntoMap):
-            #     pdb.set_trace()
-            output = routine(output)
-        if save:
-            output.save()
-        return output
 
 
 class RemoveElectronicsNoise(DataRoutine):
