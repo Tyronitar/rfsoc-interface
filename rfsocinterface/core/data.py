@@ -1109,19 +1109,19 @@ class PyTablesProcessedData(ProcessedData):
     
     @property
     def date(self) -> str:
-        return self._pfile.root.attrs.date
+        return self._pfile.root._v_attrs.date
     
     @date.setter
     def date(self, date: str):
-        self._pfile.root.attrs.date = date
+        self._pfile.root._v_attrs.date = date
 
     @property
     def setnum(self) -> int:
-        return self._pfile.root.attrs.setnum
+        return self._pfile.root._v_attrs.setnum
     
     @setnum.setter
     def setnum(self, setnum: int):
-        self._pfile.root.attrs.setnum = setnum
+        self._pfile.root._v_attrs.setnum = setnum
     
     @property
     def optical_image(self) -> tables.Array:
@@ -1436,8 +1436,8 @@ class PyTablesProcessedData(ProcessedData):
                     this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
                     this_za_tel = np.interp(timestamp, timestamp_tel, za_tel)
                     this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
-                    this_detector_delta_x = raw_global_data.detector_delta_x
-                    this_detector_delta_y = raw_global_data.detector_delta_y
+                    this_detector_delta_x = raw_global_data.detector_delta_x[:]
+                    this_detector_delta_y = raw_global_data.detector_delta_y[:]
                     if beam_map_mode:
                         this_detector_delta_x *= 0
                         this_detector_delta_y *= 0
@@ -1601,10 +1601,6 @@ class PyTablesMapData(MapData):
     def chanmask(self) -> tables.Array:
         return self._pdata.chanmask
     
-    @property
-    def good_samples(self) -> tables.Array:
-        return self._mfile.root.good_samples
-
     @property
     def netd(self) -> tables.Array:
         return self._mfile.root.netd

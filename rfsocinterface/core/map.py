@@ -15,7 +15,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA
-from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, PyTablesProcessedData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
+from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, PyTablesProcessedData, PyTablesMapData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
 
 DECIMATE_ORDER = 5
 BUTTER_ORDER = 6
@@ -629,7 +629,7 @@ if __name__ == '__main__':
     # data = ProcessedData.from_tod('20241016', 1008, save=False)
 
     cleaner = CleanTOD(save_file=True)
-    data = ProcessedData.from_tod('20250529', 1011, beam_map_mode=True)
+    # data = ProcessedData.from_tod('20250529', 1011, beam_map_mode=True)
     # data = ProcessedData.from_tod('20250609', 1005)
     # data = ProcessedData.from_tod('20250609', 1004)
     # data = PyTablesProcessedData.from_tod('20250609', 1004)
@@ -637,6 +637,10 @@ if __name__ == '__main__':
     # exit()
     # data = ProcessedData.from_file('20250529', 1001)
     # data = ProcessedData.from_tod('20250529', 1001)
+
+    data = PyTablesProcessedData.from_tod('20250529', 1011, beam_map_mode=True, ds_factor=ds_factor)
+    map = PyTablesMapData.from_processed_data(data)
+    pdb.set_trace()
 
     mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
 
