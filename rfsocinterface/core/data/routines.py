@@ -219,6 +219,7 @@ class CleanTOD(DataRoutine):
                 cfile.create_array('/', 'detector_za', pd.detector_za[:])
                 cfile.create_array('/', 'clean_data', pd.data_mK[:])
 
+
 if __name__ == '__main__':
     date = '20250527'
     setnum = 1010

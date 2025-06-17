@@ -14,7 +14,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
 
-from rfsocinterface.core.data.data import BUTTER_ORDER, DECIMATE_ORDER
+from rfsocinterface.core.data.data import BUTTER_ORDER, DECIMATE_ORDER, PyTablesMapData, DEFAULT_MAP_DPIX, PyTablesProcessedData
+from rfsocinterface.core.data.routines import DataRoutine
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA
 from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, PyTablesProcessedData, PyTablesMapData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
 
@@ -181,122 +182,7 @@ class RemovePointLomaPickup(DataRoutine):
         return m
 
 
-class BinTODIntoMap(DataRoutine):
-    def __init__(
-            self,
-            hp_filter_freq: float=0.5,
-            lp_filter_freq: float=10.,
-            az_trim: float=2.3,
-            za_trim: float=0.2,
-            med_netd_cut_threshold: float=3.,
-            beam_map_mode: bool=False,
-    ):
-        super().__init__()
-        self.hp_filter_freq = hp_filter_freq
-        self.lp_filter_freq = lp_filter_freq
-        self.med_netd_cut_threshold = med_netd_cut_threshold
-        self.beam_map_mode = beam_map_mode
-        if beam_map_mode:
-            self.az_trim = 0.
-            self.za_trim = 0.
-        else:
-            self.az_trim = az_trim
-            self.za_trim = za_trim
-    
-    def forward(
-            self,
-            md: ProcessedData,
-    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-        if not isinstance(md, MapData):
-            md = MapData.from_processed_data(md)
-        detector_pol = md.detector_pol
-        detector_az = md.detector_az
-        detector_za = md.detector_za
-        fs = md.fs
-        data_clean = md.data_mK
 
-        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, md.map_dpix, self.beam_map_mode)
-
-        netd = np.zeros(md.nchan)
-        wind = signal.get_window('hamming', data_clean.shape[-1])
-
-        # Compute NETD values
-        for i_chan in np.where(md.chanmask == 1)[0]:
-            this_clean_data = np.squeeze(data_clean[i_chan,:])
-
-            this_freq, this_psd = signal.periodogram(this_clean_data, fs, window=wind)
-            valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
-            this_netd = np.sqrt(np.median(this_psd[valid_freq]))
-            netd[i_chan] = this_netd
-
-        # Get rid of channels with bad weights
-        new_chanmask = np.copy(md.chanmask)
-        good_idx = np.where(new_chanmask == 1)[0]
-        good_netd = netd[good_idx]
-        new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
-
-        good_idx = np.where(new_chanmask == 1)[0]
-        good_netd = netd[good_idx]
-        netd_med = np.median(np.log10(good_netd))
-        netd_std = np.std(np.log10(good_netd))
-        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
-        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
-
-        netd[new_chanmask != 1] = 0
-
-        if self.beam_map_mode:
-            channels_to_map = np.where(md.chanmask != 0)[0]
-            sum_map = np.zeros((md.nchan, n_pix_x, n_pix_y))
-            hits_map = np.zeros((md.nchan, n_pix_x, n_pix_y))
-        else:
-            sum_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
-            hits_map = np.zeros((N_POLARIZATION, n_pix_x, n_pix_y))
-            channels_to_map = np.where(new_chanmask == 1)[0]
-
-        # Create map
-        # for i_chan in channels_to_map[:10]:
-        for i_chan in channels_to_map:
-            if self.beam_map_mode:
-                map_idx = i_chan
-                weight = 1.
-            else:
-                map_idx = detector_pol[i_chan] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
-                weight = 1./ netd[i_chan] ** 2.
-
-            this_detector_az = detector_az[i_chan,:]
-            this_detector_za = detector_za[i_chan,:]
-
-            # Get the good samples if they haven't been specified
-            this_good_index = md.get_good_samples()
-            this_clean_data = np.squeeze(data_clean[i_chan,:])
-
-            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
-            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/md.map_dpix))
-            x_ind = x_ind.astype('int64')
-            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/md.map_dpix))
-            y_ind = y_ind.astype('int64')
-
-            #eliminate samples outside the map
-            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
-                np.logical_and(x_ind[this_good_index] >= 0, x_ind[this_good_index] < sum_map.shape[1]), \
-                np.logical_and(y_ind[this_good_index] >= 0, y_ind[this_good_index] < sum_map.shape[2]))))
-            this_good_index = this_good_index[valid_index]
-
-            #loop over samples to create sum and hits maps
-            for time_sample in this_good_index:
-                sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
-                hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
-        # weights = 1 / netd[md.chanmask==1]**2
-        # np.save('weight.npy', 1/all_NETDs**2)
-        # plt.show()
-        return md.with_values(
-            sum_map=sum_map,
-            hits_map=hits_map,
-            netd=netd,
-            map_x=map_az,
-            map_y=map_za,
-            chanmask=new_chanmask,
-        )
             
 class GaussianFilter(DataRoutine):
     def __init__(self, gaussian_sigma: tuple[float, float]=GAUSSIAN_SIGMA):
@@ -643,7 +529,119 @@ if __name__ == '__main__':
     # map.plot()
     # from rfsocinterface.core.data import plot_map
     analyze_beammap(map)
+
+
+class BinTODIntoMap(DataRoutine):
+    def __init__(
+            self,
+            hp_filter_freq: float=0.5,
+            lp_filter_freq: float=10.,
+            az_trim: float=2.3,
+            za_trim: float=0.2,
+            med_netd_cut_threshold: float=3.,
+            beam_map_mode: bool=False,
+    ):
+        super().__init__()
+        self.hp_filter_freq = hp_filter_freq
+        self.lp_filter_freq = lp_filter_freq
+        self.med_netd_cut_threshold = med_netd_cut_threshold
+        self.beam_map_mode = beam_map_mode
+        if beam_map_mode:
+            self.az_trim = 0.
+            self.za_trim = 0.
+        else:
+            self.az_trim = az_trim
+            self.za_trim = za_trim
+
+    def forward(
+            self,
+            md: PyTablesMapData,
+    ):
+
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, md.map_dpix, self.beam_map_mode)
+        md.setup_mfile(n_pix_x, n_pix_y, beammap_mode=self.beam_map_mode)
+        md.map_az[:] = map_az
+        md.map_za[:] = map_za
+
+        wind = signal.get_window('hamming', md.n_samples)
+
+        # Compute NETD values
+        for i_chan in np.where(md.chanmask == 1)[0]:
+            this_freq, this_psd = signal.periodogram(md.data_mK[i_chan, :], md.fs, window=wind)
+            valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
+            this_netd = np.sqrt(np.median(this_psd[valid_freq]))
+            md.netd[i_chan] = this_netd
+
+        # Get rid of channels with bad weights
+        new_chanmask = np.copy(md.chanmask)
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = md.netd[good_idx]
+        new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
+
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = md.netd[good_idx]
+        netd_med = np.median(np.log10(good_netd))
+        netd_std = np.std(np.log10(good_netd))
+        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
+        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
+
+        md.netd[new_chanmask != 2] = 0
+
+        if self.beam_map_mode:
+            channels_to_map = np.where(md.chanmask != 0)[0]
+        else:
+            channels_to_map = np.where(new_chanmask == 1)[0]
+
+        # Create map
+        # for i_chan in channels_to_map[:10]:
+        for i_chan in channels_to_map:
+            if self.beam_map_mode:
+                map_idx = i_chan
+                weight = 1.
+            else:
+                map_idx = md.detector_pol[i_chan] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
+                weight = 1./ md.netd[i_chan] ** 2.
+
+            this_detector_az = md.detector_az[i_chan,:]
+            this_detector_za = md.detector_za[i_chan,:]
+
+            # Get the good samples if they haven't been specified
+            this_clean_data = np.squeeze(md.data_mK[i_chan,:])
+
+            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/DEFAULT_MAP_DPIX))
+            x_ind = x_ind.astype('int64')
+            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/DEFAULT_MAP_DPIX))
+            y_ind = y_ind.astype('int64')
+
+            #eliminate samples outside the map
+            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
+                np.logical_and(x_ind[md.good_samples] >= 0, x_ind[md.good_samples] < n_pix_x), \
+                np.logical_and(y_ind[md.good_samples] >= 0, y_ind[md.good_samples] < n_pix_y))))
+            md.good_samples = md.good_samples[valid_index]
+
+            #loop over samples to create sum and hits maps
+            for time_sample in md.good_samples:
+                md.sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                md.hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+        # weights = 1 / netd[md.chanmask==1]**2
+        # np.save('weight.npy', 1/all_NETDs**2)
+        # plt.show()
+        md.chanmask[:] = new_chanmask
+
     # extent = (min(map.map_x)-map.map_dpix/2.,max(map.map_x)+map.map_dpix/2,max(map.map_y)+map.map_dpix/2.,min(map.map_y)-map.map_dpix/2.)
     # # idx = 0; plot_map(map.map[idx], map.map_x, map.map_y, extent, max_abs=np.nanmax(np.abs(map.map[idx]))); plt.show()
     # pdb.set_trace()
     # map.plot()
+
+if __name__ == '__main__':
+    date = '20250529'
+    setnum = 1011
+
+    pd = PyTablesProcessedData.from_tod(date, setnum)
+    md = PyTablesMapData.from_processed_data(pd)
+
+    cleaner = CleanTOD()
+    binner = BinTODIntoMap()
+    binner(md)
+    pdb.set_trace()

@@ -1556,7 +1556,7 @@ class PyTablesMapData(PyTablesProcessedData):
     def __init__(self, mfile: tables.File, pfile: tables.File):
         super().__init__(pfile)
         self._mfile = mfile
-        self.good_samples = np.arange(self.n_tones)
+        self.good_samples = np.arange(self.n_samples, dtype=int)
     
     def setup_mfile(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False):
         self.date = super().date
@@ -1617,11 +1617,11 @@ class PyTablesMapData(PyTablesProcessedData):
         return self._mfile.root.hits_map
 
     @property
-    def map_x(self) -> tables.Array:
+    def map_az(self) -> tables.Array:
         return self._mfile.root.map_az
 
     @property
-    def map_y(self) -> tables.Array:
+    def map_za(self) -> tables.Array:
         return self._mfile.root.map_za
 
     @property
@@ -1645,8 +1645,8 @@ class PyTablesMapData(PyTablesProcessedData):
 
     def get_scaled_optical_image(self) -> npt.NDArray:
         opt_npix_per_tel_npix = DEFAULT_MAP_DPIX/OPTCAM_PIX_SIZE_DEGREES
-        opt_npix_az = int(np.size(self.map_x)*opt_npix_per_tel_npix/2)*2
-        opt_npix_za = int(np.size(self.map_y)*opt_npix_per_tel_npix/2)*2
+        opt_npix_az = int(np.size(self.map_az)*opt_npix_per_tel_npix/2)*2
+        opt_npix_za = int(np.size(self.map_za)*opt_npix_per_tel_npix/2)*2
         opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
         opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
         return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
@@ -1666,8 +1666,8 @@ class PyTablesMapData(PyTablesProcessedData):
         netd_1 = self.get_netd_pol(1)
         netd_2 = self.get_netd_pol(2)
         cb_shrink = 0.95
-        this_xlim = min(self.map_x),max(self.map_x)
-        this_ylim = max(self.map_y),min(self.map_y)
+        this_xlim = min(self.map_az),max(self.map_az)
+        this_ylim = max(self.map_za),min(self.map_za)
         max_abs = np.max(np.abs(np.append(map_goodcov_1,map_goodcov_2)))*0.75
         valid_netd_1 = np.argwhere(netd_1 > 0)
         med_netd_1 = 1./np.sqrt(np.sum(1./netd_1[valid_netd_1]**2)/np.size(valid_netd_1))
@@ -1685,12 +1685,12 @@ class PyTablesMapData(PyTablesProcessedData):
         this_fig = plt.figure(figsize=(15,7.5))
         plt.subplot(4,1,1)
         plt.imshow(np.flip(np.transpose(self.map[0][::-1]),1), \
-        extent = (min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), \
+        extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
         aspect='equal', vmin=-max_abs, vmax=max_abs, cmap='Blues_r')
         cb = plt.colorbar(shrink=cb_shrink)
         cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
         plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-        extent=(min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), colors='red')
+        extent=(min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), colors='red')
         plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
         ', Optical Visibility = ' + str(self.vis) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
         ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
@@ -1699,23 +1699,23 @@ class PyTablesMapData(PyTablesProcessedData):
 
         plt.subplot(4,1,2)
         plt.imshow(np.flip(np.transpose(self.map[1][::-1]),1), \
-        extent = (min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), \
+        extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Reds_r')
         cb = plt.colorbar(shrink=cb_shrink)
         cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
         plt.contour(np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-        extent=(min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), colors='black')
+        extent=(min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), colors='black')
         plt.ylabel('ZA (degrees)')
         plt.xlim(this_xlim), plt.ylim(this_ylim)
 
         plt.subplot(4,1,3)
         plt.imshow(np.flip(np.transpose(self.total_map[::-1]),1), \
-        extent = (min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), \
+        extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Greys_r')
         cb = plt.colorbar(shrink=cb_shrink)
         cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
         plt.contour(np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-        extent=(min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), colors='red')
+        extent=(min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), colors='red')
         plt.ylabel('ZA (degrees)')
         plt.xlim(this_xlim), plt.ylim(this_ylim)
         
@@ -1725,7 +1725,7 @@ class PyTablesMapData(PyTablesProcessedData):
         opt_vmax = 255. #np.percentile(optical_image[valid_opt_pix], 90)
         opt_vmin = -255. #np.percentile(optical_image[valid_opt_pix], 10)
         plt.imshow(optical_image, \
-                extent = (min(self.map_x)-DEFAULT_MAP_DPIX /2.,max(self.map_x)+DEFAULT_MAP_DPIX /2,max(self.map_y)+DEFAULT_MAP_DPIX /2.,min(self.map_y)-DEFAULT_MAP_DPIX /2.), \
+                extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
                 aspect='equal', vmax=255, vmin=-255)
         cb = plt.colorbar(shrink=cb_shrink)
         cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
