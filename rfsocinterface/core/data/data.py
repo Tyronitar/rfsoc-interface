@@ -1358,7 +1358,7 @@ class PyTablesProcessedData:
                 detector = pfile.create_group('/', f'detector_{i}')
                 detector_global_data = pfile.create_group(detector, 'global_data')
                 pfile.create_array(detector_global_data, 'df_per_mK', shape=(n_tones,), atom=tables.Float64Atom())
-                pfile.create_array(detector_global_data, 'chanmask', shape=(n_tones,), atom=tables.Int8Atom())
+                pfile.create_array(detector_global_data, 'chanmask', shape=(n_tones,), atom=tables.Int8Atom(dflt=1))
                 pfile.create_array(detector_global_data, 'detector_pol', shape=(n_tones,), atom=tables.UInt8Atom())
                 pfile.create_array(detector_global_data, 'optical_visibility', shape=(1,), atom=tables.Float64Atom())
 
@@ -1495,12 +1495,12 @@ class PyTablesProcessedData:
                 time_0 = time - time[0]
                 total_time = np.max(time_0)
                 if i == 0:  # Only should make this once, since it's never changed
-                    timestamp = np.arange(0,total_time,total_time/n_samples_ds) + time[0]
+                    detector_data.timestamp[:] = np.arange(0,total_time,total_time/n_samples_ds) + time[0]
 
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
-                    this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
-                    this_za_tel = np.interp(timestamp, timestamp_tel, za_tel)
+                    this_az_tel = np.interp(detector_data.timestamp, timestamp_tel, az_tel)
+                    this_za_tel = np.interp(detector_data.timestamp, timestamp_tel, za_tel)
                     this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
                     this_detector_delta_x = raw_global_data.detector_delta_x[:]
                     this_detector_delta_y = raw_global_data.detector_delta_y[:]
@@ -1538,13 +1538,13 @@ class PyTablesProcessedData:
         return PyTablesProcessedData(self.file)
 
     @classmethod
-    def from_file(cls, date: str, setnum: int) -> PyTablesProcessedData:
+    def from_file(cls, date: str, setnum: int, mode: str='r') -> PyTablesProcessedData:
         filename = Path(get_processed_file_template(date, setnum))
 
         if not filename.exists():
             raise FileNotFoundError(f'Could not find a processed data file on {date} with setnum {setnum}.')
         
-        file = tables.open(filename)
+        file = tables.File(filename, mode)
         return PyTablesProcessedData(file)
     
     def close(self):
@@ -1556,35 +1556,48 @@ class PyTablesMapData(PyTablesProcessedData):
     def __init__(self, mfile: tables.File, pfile: tables.File):
         super().__init__(pfile)
         self._mfile = mfile
-        self.good_samples = np.arange(self.n_samples, dtype=int)
     
     def setup_mfile(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False):
         self.date = super().date
         self.setnum = super().setnum
 
         # Create empty arrays
-        n_chan = N_POLARIZATION if not beammap_mode else self.n_tones
-        self._mfile.create_array(self._mfile.root, 'map_az', shape=(n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self._mfile.create_array(self._mfile.root, 'map_za', shape=(n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self._mfile.create_array(self._mfile.root, 'sum_map', shape=(n_chan, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self._mfile.create_array(self._mfile.root, 'hits_map', shape=(n_chan, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
+        self._mfile.create_array(self._mfile.root, 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
         self._mfile.create_array(self._mfile.root, 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
+        good_samples = self._mfile.create_earray(self._mfile.root, 'good_samples', shape=(0,), expectedrows=self.n_samples, atom=tables.UInt32Atom())
+        good_samples.append(np.arange(self.n_samples))
 
     @classmethod
-    def from_processed_data(cls, pdata: PyTablesProcessedData | tables.File) -> PyTablesMapData:
+    def from_processed_data(cls, pdata: PyTablesProcessedData | tables.File, mode='w') -> PyTablesMapData:
         if isinstance(pdata, tables.File):
             pfile = pdata
-            mfile = tables.File(PyTablesProcessedData(pfile).map_file_template(), 'w')
+            mfile = tables.File(PyTablesProcessedData(pfile).map_file_template(), mode)
         else:
             pfile = pdata._pfile
-            mfile = tables.File(pdata.map_file_template, 'w')
+            mfile = tables.File(pdata.map_file_template, mode)
 
         map_data = PyTablesMapData(mfile, pfile)
+        chanmask = pfile.root.detector_0.global_data.chanmask
+        # chanmask_node = map_data._mfile.create_array('/', 'chanmask', shape=chanmask.shape, atom=tables.Int8Atom(dflt=1))
+        chanmask.copy(map_data._mfile.root, 'chanmask')
         return map_data
+    
+    @classmethod
+    def from_file(cls, date: str, setnum: int, mode: str='r') -> PyTablesMapData:
+        pd = super().from_file(date, setnum, mode=mode)
+        return cls.from_processed_data(pd, mode=mode)
 
     def close(self):
         super().close()
         self._mfile.close()
+    
+    @property
+    def chanmask(self) -> tables.Array:
+        return self._mfile.root.chanmask
 
     @property
     def date(self) -> str:
@@ -1592,7 +1605,6 @@ class PyTablesMapData(PyTablesProcessedData):
 
     @date.setter
     def date(self, date: str):
-        self._pfile.root._v_attrs.date = date
         self._mfile.root._v_attrs.date = date
 
     @property
@@ -1601,12 +1613,15 @@ class PyTablesMapData(PyTablesProcessedData):
 
     @setnum.setter
     def setnum(self, setnum: int):
-        self._pfile.root._v_attrs.setnum = setnum
         self._mfile.root._v_attrs.setnum = setnum
-
+    
     @property
     def netd(self) -> tables.Array:
         return self._mfile.root.netd
+
+    @property
+    def good_samples(self) -> tables.EArray:
+        return self._mfile.root.good_samples
 
     @property
     def sum_map(self) -> tables.Array:
@@ -1615,6 +1630,13 @@ class PyTablesMapData(PyTablesProcessedData):
     @property
     def hits_map(self) -> tables.Array:
         return self._mfile.root.hits_map
+    
+    @property
+    def map(self) -> npt.NDArray:
+        div = tables.Expr('sum_map / hits_map', {'sum_map': self.sum_map, 'hits_map': self.hits_map})
+        d = div.eval()
+        print('Division done')
+        return d
 
     @property
     def map_az(self) -> tables.Array:
@@ -1679,6 +1701,7 @@ class PyTablesMapData(PyTablesProcessedData):
         # contour_levels, final_map_1_filt, final_map_2_filt, final_map_tot_filt, flagged_map_1_filt, flagged_map_2_filt, \
         # flagged_map_tot_filt, final_flagged_coordinates = combined_map(map_1_filt_final_map, map_2_filt_final_map, map_tot_filt_final_map)
         flagged_map_1_filt, flagged_map_2_filt, flagged_map_tot_filt, contour_levels = self.get_combined_map()
+        pdb.set_trace()
 
     #    pw = plotWindow()
         # TODO: Make figure size change based on the size of the map

@@ -134,8 +134,8 @@ class CutoffFilter(DataRoutine):
         filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
 
         # Apply cutoff filter
-        pd.data_gain_phase[:] = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
-        pd.data_freq_diss[:] = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
+        # pd.data_gain_phase[:] = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
+        # pd.data_freq_diss[:] = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
         pd.data_mK[:] = signal.sosfiltfilt(filt_sos, pd.data_mK)
 
 

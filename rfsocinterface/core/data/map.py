@@ -15,9 +15,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
 
 from rfsocinterface.core.data.data import BUTTER_ORDER, DECIMATE_ORDER, PyTablesMapData, DEFAULT_MAP_DPIX, PyTablesProcessedData
-from rfsocinterface.core.data.routines import DataRoutine
+from rfsocinterface.core.data.routines import DataRoutine, CleanTOD, HighPassFilter, LowPassFilter
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA
-from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, PyTablesProcessedData, PyTablesMapData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
+# from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, PyTablesProcessedData, PyTablesMapData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
 
 def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, beam_map_mode: bool=False) -> npt.NDArray:
 
@@ -72,72 +72,6 @@ class Mapper:
         if save:
             output.save()
         return output
-
-
-class RemoveElectronicsNoise(DataRoutine):
-    def __init__(self):
-        super().__init__()
-    
-    def forward(self, pd: ProcessedData) -> ProcessedData:
-        gain_phase_data = pd.data_gain_phase
-        clean_gain_phase_data = remove_electronics_noise(gain_phase_data)
-
-        new_data_freq_diss, new_data_mK = generate_calibrated_data(
-            clean_gain_phase_data,
-            pd.IQ_to_gain_phase_angle,
-            pd.dIQ_df,
-            pd.df_per_mK
-        )
-        return pd.with_values(
-            data_gain_phase=clean_gain_phase_data,
-            data_freq_diss=new_data_freq_diss,
-            data_mK=new_data_mK,
-        )
-
-
-class CleanTOD(DataRoutine):
-
-    def __init__(
-            self,
-            save_file: bool=True,
-    ):
-        super().__init__()
-        self.save_file = save_file
-
-    def forward(self, md: MapData) -> MapData:
-
-        if not isinstance(md, MapData):
-            md = MapData.from_processed_data(md)
-        data = md.data_mK
-        chanmask = md.chanmask
-        data_clean = np.copy(data)
-        good_samples = md.get_good_samples()
-        
-        #average template subtraction
-        goodchan = np.ndarray.flatten(np.argwhere(chanmask == 1))
-        # pdb.set_trace()
-        data_good = data[goodchan][:, good_samples]
-        template = np.sum(data_good, axis=0)
-        template = template - np.mean(template)
-        template_corr = np.sum(np.multiply(data_good,template), axis=1) / \
-                        np.sum(np.multiply(template,template))
-        data_clean_good = data_good - np.outer(template_corr, template)
-        data_clean[goodchan][:, good_samples] = data_clean_good
-
-        if self.save_file:
-            with h5py.File(md.cleaned_file_template, 'w') as cfile:
-                cfile.create_dataset("chanmask", data=chanmask)
-                cfile.create_dataset("detector_pol", data=md.detector_pol)
-                cfile.create_dataset("clean_data", data=data_clean)
-                cfile.create_dataset("time", data=md.timestamp)
-                cfile.create_dataset("detector_az", data=md.detector_az)    
-                cfile.create_dataset("detector_za", data=md.detector_za)
-
-
-        return md.with_values(
-            data_mK=data_clean,
-        )
-
 
 class RemovePointLomaPickup(DataRoutine):
     def __init__(self, ds_factor: int=6, pickup_filter_freq: float=1):
@@ -194,33 +128,33 @@ class GaussianFilter(DataRoutine):
         return pd.with_values(**{field: smoothed_data})
 
 
-class CutoffFilter(DataRoutine):
-    def __init__(self, filter_freq: float, btype: str):
-        super().__init__()
-        self.filter_freq = filter_freq
-        self.btype = btype
+# class CutoffFilter(DataRoutine):
+#     def __init__(self, filter_freq: float, btype: str):
+#         super().__init__()
+#         self.filter_freq = filter_freq
+#         self.btype = btype
 
-    def forward(self, pd: ProcessedData) -> ProcessedData:
-        filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
+#     def forward(self, pd: ProcessedData) -> ProcessedData:
+#         filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
 
-        # Apply cutoff filter
-        data_gain_phase_filt = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
-        data_freq_diss_filt = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
-        data_mK_filt = signal.sosfiltfilt(filt_sos, pd.data_mK)
-        return pd.with_values(
-            data_gain_phase=data_gain_phase_filt,
-            data_freq_diss=data_freq_diss_filt,
-            data_mK=data_mK_filt,
-        )
+#         # Apply cutoff filter
+#         data_gain_phase_filt = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
+#         data_freq_diss_filt = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
+#         data_mK_filt = signal.sosfiltfilt(filt_sos, pd.data_mK)
+#         return pd.with_values(
+#             data_gain_phase=data_gain_phase_filt,
+#             data_freq_diss=data_freq_diss_filt,
+#             data_mK=data_mK_filt,
+#         )
 
-class LowPassFilter(CutoffFilter):
-    def __init__(self, filter_freq: float):
-        super().__init__(filter_freq, btype='lowpass')
+# class LowPassFilter(CutoffFilter):
+#     def __init__(self, filter_freq: float):
+#         super().__init__(filter_freq, btype='lowpass')
 
 
-class HighPassFilter(CutoffFilter):
-    def __init__(self, filter_freq: float):
-        super().__init__(filter_freq, btype='highpass')
+# class HighPassFilter(CutoffFilter):
+#     def __init__(self, filter_freq: float):
+#         super().__init__(filter_freq, btype='highpass')
 
 
 class Downsample(DataRoutine):
@@ -456,7 +390,136 @@ def analyze_beammap(md: MapData):
         plt.close(fig)
 
 
+class BinTODIntoMap(DataRoutine):
+    def __init__(
+            self,
+            hp_filter_freq: float=0.5,
+            lp_filter_freq: float=10.,
+            az_trim: float=2.3,
+            za_trim: float=0.2,
+            med_netd_cut_threshold: float=3.,
+            beam_map_mode: bool=False,
+    ):
+        super().__init__()
+        self.hp_filter_freq = hp_filter_freq
+        self.lp_filter_freq = lp_filter_freq
+        self.med_netd_cut_threshold = med_netd_cut_threshold
+        self.beam_map_mode = beam_map_mode
+        if beam_map_mode:
+            self.az_trim = 0.
+            self.za_trim = 0.
+        else:
+            self.az_trim = az_trim
+            self.za_trim = za_trim
+
+    def forward(
+            self,
+            md: PyTablesMapData,
+    ):
+
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, DEFAULT_MAP_DPIX, self.beam_map_mode)
+        md.setup_mfile(n_pix_x, n_pix_y, beammap_mode=self.beam_map_mode)
+        md.map_az[:] = map_az
+        md.map_za[:] = map_za
+
+        wind = signal.get_window('hamming', md.n_samples)
+
+        # Compute NETD values
+        for i_chan in np.where(md.chanmask[:] == 1)[0]:
+            this_freq, this_psd = signal.periodogram(md.data_mK[i_chan, :], md.fs, window=wind)
+            valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
+            this_netd = np.sqrt(np.median(this_psd[valid_freq]))
+            md.netd[i_chan] = this_netd
+
+        # Get rid of channels with bad weights
+        new_chanmask = np.copy(md.chanmask)
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = md.netd[good_idx]
+        new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
+        pdb.set_trace()
+
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = md.netd[good_idx]
+        netd_med = np.median(np.log10(good_netd))
+        netd_std = np.std(np.log10(good_netd))
+        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
+        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
+
+        md.netd[new_chanmask != 1] = 0
+
+        if self.beam_map_mode:
+            channels_to_map = np.where(md.chanmask != 0)[0]
+        else:
+            channels_to_map = np.where(new_chanmask == 1)[0]
+
+        # Create map
+        # for i_chan in channels_to_map[:10]:
+        for i_chan in channels_to_map:
+            if self.beam_map_mode:
+                map_idx = i_chan
+                weight = 1.
+            else:
+                map_idx = md.detector_pol[i_chan] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
+                weight = 1./ md.netd[i_chan] ** 2.
+
+            this_detector_az = md.detector_az[i_chan,:]
+            this_detector_za = md.detector_za[i_chan,:]
+
+            # Get the good samples if they haven't been specified
+            this_clean_data = np.squeeze(md.data_mK[i_chan,:])
+
+            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/DEFAULT_MAP_DPIX))
+            x_ind = x_ind.astype('int64')
+            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/DEFAULT_MAP_DPIX))
+            y_ind = y_ind.astype('int64')
+
+            #eliminate samples outside the map
+            good_samples = md.good_samples[:]
+            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
+                np.logical_and(x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x), \
+                np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
+            md.good_samples.truncate(np.size(valid_index))
+            md.good_samples[:] = good_samples[valid_index]
+
+            #loop over samples to create sum and hits maps
+            for time_sample in md.good_samples:
+                md.sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                md.hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+        # weights = 1 / netd[md.chanmask==1]**2
+        # np.save('weight.npy', 1/all_NETDs**2)
+        # plt.show()
+        md.chanmask[:] = new_chanmask
+
+
 if __name__ == '__main__':
+
+    date = '20250529'
+    setnum = 1011
+
+    ds_factor = 10
+    hp_filt_freq = 0.5
+    lp_filt_freq = 10
+
+    pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
+    # pd = PyTablesProcessedData.from_file(date, setnum)
+
+    hpfilt = HighPassFilter(hp_filt_freq)
+    lpfilt = LowPassFilter(lp_filt_freq)
+    pdb.set_trace()
+    hpfilt(pd)
+    lpfilt(pd)
+
+    cleaner = CleanTOD()
+    cleaner(pd)
+    pdb.set_trace()
+
+    md = PyTablesMapData.from_processed_data(pd)
+    binner = BinTODIntoMap()
+    binner(md)
+
+    # md = PyTablesMapData.from_file(date, setnum)
+    pdb.set_trace()
     # from onr_map_observation import create_map
     # data = ProcessedData.from_tod('20241016', 1015)
     # old_data = h5py.File('/data/20241016/20241016_processed_data_set1014.h5')
@@ -531,117 +594,8 @@ if __name__ == '__main__':
     analyze_beammap(map)
 
 
-class BinTODIntoMap(DataRoutine):
-    def __init__(
-            self,
-            hp_filter_freq: float=0.5,
-            lp_filter_freq: float=10.,
-            az_trim: float=2.3,
-            za_trim: float=0.2,
-            med_netd_cut_threshold: float=3.,
-            beam_map_mode: bool=False,
-    ):
-        super().__init__()
-        self.hp_filter_freq = hp_filter_freq
-        self.lp_filter_freq = lp_filter_freq
-        self.med_netd_cut_threshold = med_netd_cut_threshold
-        self.beam_map_mode = beam_map_mode
-        if beam_map_mode:
-            self.az_trim = 0.
-            self.za_trim = 0.
-        else:
-            self.az_trim = az_trim
-            self.za_trim = za_trim
-
-    def forward(
-            self,
-            md: PyTablesMapData,
-    ):
-
-        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, md.map_dpix, self.beam_map_mode)
-        md.setup_mfile(n_pix_x, n_pix_y, beammap_mode=self.beam_map_mode)
-        md.map_az[:] = map_az
-        md.map_za[:] = map_za
-
-        wind = signal.get_window('hamming', md.n_samples)
-
-        # Compute NETD values
-        for i_chan in np.where(md.chanmask == 1)[0]:
-            this_freq, this_psd = signal.periodogram(md.data_mK[i_chan, :], md.fs, window=wind)
-            valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
-            this_netd = np.sqrt(np.median(this_psd[valid_freq]))
-            md.netd[i_chan] = this_netd
-
-        # Get rid of channels with bad weights
-        new_chanmask = np.copy(md.chanmask)
-        good_idx = np.where(new_chanmask == 1)[0]
-        good_netd = md.netd[good_idx]
-        new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
-
-        good_idx = np.where(new_chanmask == 1)[0]
-        good_netd = md.netd[good_idx]
-        netd_med = np.median(np.log10(good_netd))
-        netd_std = np.std(np.log10(good_netd))
-        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
-        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
-
-        md.netd[new_chanmask != 2] = 0
-
-        if self.beam_map_mode:
-            channels_to_map = np.where(md.chanmask != 0)[0]
-        else:
-            channels_to_map = np.where(new_chanmask == 1)[0]
-
-        # Create map
-        # for i_chan in channels_to_map[:10]:
-        for i_chan in channels_to_map:
-            if self.beam_map_mode:
-                map_idx = i_chan
-                weight = 1.
-            else:
-                map_idx = md.detector_pol[i_chan] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
-                weight = 1./ md.netd[i_chan] ** 2.
-
-            this_detector_az = md.detector_az[i_chan,:]
-            this_detector_za = md.detector_za[i_chan,:]
-
-            # Get the good samples if they haven't been specified
-            this_clean_data = np.squeeze(md.data_mK[i_chan,:])
-
-            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
-            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/DEFAULT_MAP_DPIX))
-            x_ind = x_ind.astype('int64')
-            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/DEFAULT_MAP_DPIX))
-            y_ind = y_ind.astype('int64')
-
-            #eliminate samples outside the map
-            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
-                np.logical_and(x_ind[md.good_samples] >= 0, x_ind[md.good_samples] < n_pix_x), \
-                np.logical_and(y_ind[md.good_samples] >= 0, y_ind[md.good_samples] < n_pix_y))))
-            md.good_samples = md.good_samples[valid_index]
-
-            #loop over samples to create sum and hits maps
-            for time_sample in md.good_samples:
-                md.sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
-                md.hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
-        # weights = 1 / netd[md.chanmask==1]**2
-        # np.save('weight.npy', 1/all_NETDs**2)
-        # plt.show()
-        md.chanmask[:] = new_chanmask
 
     # extent = (min(map.map_x)-map.map_dpix/2.,max(map.map_x)+map.map_dpix/2,max(map.map_y)+map.map_dpix/2.,min(map.map_y)-map.map_dpix/2.)
     # # idx = 0; plot_map(map.map[idx], map.map_x, map.map_y, extent, max_abs=np.nanmax(np.abs(map.map[idx]))); plt.show()
     # pdb.set_trace()
     # map.plot()
-
-if __name__ == '__main__':
-    date = '20250529'
-    setnum = 1011
-
-    pd = PyTablesProcessedData.from_tod(date, setnum)
-    md = PyTablesMapData.from_processed_data(pd)
-
-    cleaner = CleanTOD()
-    binner = BinTODIntoMap()
-    binner(md)
-    pdb.set_trace()
