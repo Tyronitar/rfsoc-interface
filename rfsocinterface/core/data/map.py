@@ -429,6 +429,7 @@ class BinTODIntoMap(DataRoutine):
             this_freq, this_psd = signal.periodogram(md.data_mK[i_chan, :], md.fs, window=wind)
             valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
             this_netd = np.sqrt(np.median(this_psd[valid_freq]))
+            pdb.set_trace()
             md.netd[i_chan] = this_netd
 
         # Get rid of channels with bad weights
@@ -495,7 +496,7 @@ class BinTODIntoMap(DataRoutine):
 if __name__ == '__main__':
 
     date = '20250529'
-    setnum = 1011
+    setnum = 1008
 
     ds_factor = 10
     hp_filt_freq = 0.5
@@ -506,11 +507,10 @@ if __name__ == '__main__':
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
-    pdb.set_trace()
+    cleaner = CleanTOD()
+
     hpfilt(pd)
     lpfilt(pd)
-
-    cleaner = CleanTOD()
     cleaner(pd)
     pdb.set_trace()
 

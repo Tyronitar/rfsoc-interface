@@ -127,6 +127,7 @@ def generate_calibrated_data2(data: tables.Group, global_data: tables.Group):
 
     # Finally, we need to get data_mK
     data.data_mK[:] = np.divide(data.data_freq_diss[0, :], global_data.df_per_mK[:][:, np.newaxis])
+    data.data_mK[:] = np.where(np.isinf(data.data_mK), np.nan, data.data_mK)
 
 
 class Updateable:
