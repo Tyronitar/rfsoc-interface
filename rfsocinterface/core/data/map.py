@@ -431,7 +431,6 @@ class BinTODIntoMap(DataRoutine):
             this_netd = np.sqrt(np.median(this_psd[valid_freq]))
             md.netd[i_chan] = this_netd
 
-        pdb.set_trace()
         # Get rid of channels with bad weights
         new_chanmask = np.copy(md.chanmask)
         good_idx = np.where(new_chanmask == 1)[0]
@@ -446,7 +445,6 @@ class BinTODIntoMap(DataRoutine):
         new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
 
         md.netd[new_chanmask != 1] = 0
-        pdb.set_trace()
 
         if self.beam_map_mode:
             channels_to_map = np.where(md.chanmask != 0)[0]
@@ -480,13 +478,15 @@ class BinTODIntoMap(DataRoutine):
             valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
                 np.logical_and(x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x), \
                 np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
-            md.good_samples.truncate(np.size(valid_index))
-            md.good_samples[:] = good_samples[valid_index]
+            good_samples = good_samples[valid_index]
 
-            pdb.set_trace()
+            # pdb.set_trace()
             #loop over samples to create sum and hits maps
-            for time_sample in md.good_samples:
-                md.sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+            for time_sample in good_samples:
+                try:
+                    md.sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                except:
+                    pdb.set_trace()
                 md.hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
         # weights = 1 / netd[md.chanmask==1]**2
         # np.save('weight.npy', 1/all_NETDs**2)
@@ -519,6 +519,7 @@ if __name__ == '__main__':
     binner(md)
 
     # md = PyTablesMapData.from_file(date, setnum)
+    md.plot()
     pdb.set_trace()
     # from onr_map_observation import create_map
     # data = ProcessedData.from_tod('20241016', 1015)

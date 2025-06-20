@@ -1111,6 +1111,14 @@ class PyTablesProcessedData:
     def __init__(self, pfile: tables.File):
         self._pfile = pfile
     
+    def test_node(self, name: str) -> bool:
+        try:
+            self._pfile.get_node('/', name)
+            return True
+        except tables.exceptions.NosuchNodeError:
+            return False
+
+    
     def close(self):
         self._pfile.close()
 
@@ -1358,6 +1366,7 @@ class PyTablesProcessedData:
                 # TODO: Change this for when there are multiple TOD files
                 detector = pfile.create_group('/', f'detector_{i}')
                 detector_global_data = pfile.create_group(detector, 'global_data')
+                pfile.create_array(detector_global_data, 'vis', vis)
                 pfile.create_array(detector_global_data, 'df_per_mK', shape=(n_tones,), atom=tables.Float64Atom())
                 pfile.create_array(detector_global_data, 'chanmask', shape=(n_tones,), atom=tables.Int8Atom(dflt=1))
                 pfile.create_array(detector_global_data, 'detector_pol', shape=(n_tones,), atom=tables.UInt8Atom())
@@ -1572,6 +1581,13 @@ class PyTablesMapData(PyTablesProcessedData):
         good_samples = self._mfile.create_earray(self._mfile.root, 'good_samples', shape=(0,), expectedrows=self.n_samples, atom=tables.UInt32Atom())
         good_samples.append(np.arange(self.n_samples))
 
+    def test_node(self, name: str) -> bool:
+        try:
+            self._mfile.get_node('/', name)
+            return True
+        except tables.exceptions.NoSuchNodeError:
+            return False
+
     @classmethod
     def from_processed_data(cls, pdata: PyTablesProcessedData | tables.File, mode='w') -> PyTablesMapData:
         if isinstance(pdata, tables.File):
@@ -1584,7 +1600,8 @@ class PyTablesMapData(PyTablesProcessedData):
         map_data = PyTablesMapData(mfile, pfile)
         chanmask = pfile.root.detector_0.global_data.chanmask
         # chanmask_node = map_data._mfile.create_array('/', 'chanmask', shape=chanmask.shape, atom=tables.Int8Atom(dflt=1))
-        chanmask.copy(map_data._mfile.root, 'chanmask')
+        if not map_data.test_node('chanmask'):
+            chanmask.copy(map_data._mfile.root, 'chanmask')
         return map_data
     
     @classmethod
@@ -1636,7 +1653,6 @@ class PyTablesMapData(PyTablesProcessedData):
     def map(self) -> npt.NDArray:
         div = tables.Expr('sum_map / hits_map', {'sum_map': self.sum_map, 'hits_map': self.hits_map})
         d = div.eval()
-        print('Division done')
         return d
 
     @property
@@ -1652,7 +1668,7 @@ class PyTablesMapData(PyTablesProcessedData):
         return np.sum(self.sum_map, axis=0) / np.sum(self.hits_map, axis=0)
 
     def get_netd_pol(self, polarization: int) -> npt.NDArray:
-        return self.netd[self.detector_pol == polarization]
+        return self.netd[self.detector_pol[:] == polarization]
 
     @property
     def integration_time(self) -> npt.NDArray:
@@ -1674,6 +1690,56 @@ class PyTablesMapData(PyTablesProcessedData):
         opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
         return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
                                     opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
+    
+    def get_combined_map(self, sigma: tuple[float,...]=GAUSSIAN_SIGMA) -> npt.NDArray:
+        flagged_map_1 = gaussian_filter(self.map[0], sigma)
+        flagged_map_2 = gaussian_filter(self.map[1], sigma)
+        flagged_map_3 = gaussian_filter(self.total_map, sigma)
+       # pdb.set_trace()
+        # flagged_map_1 = np.copy(self.map[0])
+        # flagged_map_2 = np.copy(self.map[1])
+        # flagged_map_3 = np.copy(self.total_map)
+
+        final_final_map1= np.copy(flagged_map_1)
+        final_final_map2= np.copy(flagged_map_2)
+        final_final_map3= np.copy(flagged_map_3)
+
+        # Convert all nans to boolean True
+        nan_map_1 = np.isnan(flagged_map_1)
+        nan_map_2 = np.isnan(flagged_map_2)
+        nan_map_3 = np.isnan(flagged_map_3)
+
+        # Combine the boolean maps such that if any pixel is flagged in any map, it is flagged in the combined map
+        combined_nan_map = np.logical_or(np.logical_or(nan_map_1, nan_map_2), nan_map_3)
+        
+        # Get the coordinates of True values in the combined_nan_map
+        flagged_positions = np.where(combined_nan_map)
+        final_flagged_coords = list(zip(flagged_positions[0], flagged_positions[1]))
+
+        # Apply this combined map to each of the final maps
+        flagged_map_1[combined_nan_map] = 1
+        flagged_map_2[combined_nan_map] = 1
+        flagged_map_3[combined_nan_map] = 1
+
+        flagged_map_1[flagged_map_1 != 1] = 0
+        flagged_map_2[flagged_map_2 != 1] = 0
+        flagged_map_3[flagged_map_3 != 1] = 0
+
+        final_final_map1[combined_nan_map] = np.nan
+        final_final_map2[combined_nan_map] = np.nan
+        final_final_map3[combined_nan_map] = np.nan
+
+        contour_levels = [1]
+
+        final_final_map1= final_final_map1.flatten()
+        final_final_map2= final_final_map2.flatten()
+        final_final_map3= final_final_map3.flatten()
+
+        final_final_map1 = [x for x in final_final_map1 if not np.isnan(x)]
+        final_final_map2 = [x for x in final_final_map2 if not np.isnan(x)]
+        final_final_map3 = [x for x in final_final_map3 if not np.isnan(x)]
+        return flagged_map_1, flagged_map_2, flagged_map_3, contour_levels
+
     
     def plot(self, show: bool=True, save: bool=True):
 
