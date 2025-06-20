@@ -1768,7 +1768,6 @@ class PyTablesMapData(PyTablesProcessedData):
         # contour_levels, final_map_1_filt, final_map_2_filt, final_map_tot_filt, flagged_map_1_filt, flagged_map_2_filt, \
         # flagged_map_tot_filt, final_flagged_coordinates = combined_map(map_1_filt_final_map, map_2_filt_final_map, map_tot_filt_final_map)
         flagged_map_1_filt, flagged_map_2_filt, flagged_map_tot_filt, contour_levels = self.get_combined_map()
-        pdb.set_trace()
 
     #    pw = plotWindow()
         # TODO: Make figure size change based on the size of the map
@@ -1782,7 +1781,7 @@ class PyTablesMapData(PyTablesProcessedData):
         plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
         extent=(min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), colors='red')
         plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
-        ', Optical Visibility = ' + str(self.vis) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
+        ', Optical Visibility = ' + str(self.vis[()]) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
         ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
         plt.ylabel('ZA (degrees)')
         plt.xlim(this_xlim), plt.ylim(this_ylim)

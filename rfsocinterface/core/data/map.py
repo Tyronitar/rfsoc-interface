@@ -499,27 +499,26 @@ if __name__ == '__main__':
     date = '20250529'
     setnum = 1008
 
-    ds_factor = 10
-    hp_filt_freq = 0.5
-    lp_filt_freq = 10
+    # ds_factor = 10
+    # hp_filt_freq = 0.5
+    # lp_filt_freq = 10
 
-    pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
-    # pd = PyTablesProcessedData.from_file(date, setnum)
+    # pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
+    # # pd = PyTablesProcessedData.from_file(date, setnum)
 
-    hpfilt = HighPassFilter(hp_filt_freq)
-    lpfilt = LowPassFilter(lp_filt_freq)
-    cleaner = CleanTOD()
+    # hpfilt = HighPassFilter(hp_filt_freq)
+    # lpfilt = LowPassFilter(lp_filt_freq)
+    # cleaner = CleanTOD()
 
-    hpfilt(pd)
-    lpfilt(pd)
-    cleaner(pd)
+    # hpfilt(pd)
+    # lpfilt(pd)
+    # cleaner(pd)
 
-    md = PyTablesMapData.from_processed_data(pd)
-    binner = BinTODIntoMap()
-    binner(md)
+    # md = PyTablesMapData.from_processed_data(pd)
+    # binner = BinTODIntoMap()
+    # binner(md)
 
-    # md = PyTablesMapData.from_file(date, setnum)
-    md.plot()
+    md = PyTablesMapData.from_file(date, setnum)
     pdb.set_trace()
     # from onr_map_observation import create_map
     # data = ProcessedData.from_tod('20241016', 1015)
