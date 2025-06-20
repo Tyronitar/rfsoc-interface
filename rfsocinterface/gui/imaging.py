@@ -20,7 +20,7 @@ from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, g
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
 from rfsocinterface.gui.widgets.function import FunctionWidget
 from rfsocinterface.core.camera import SKPR_Camera_Control
-from rfsocinterface.core.data import ProcessedData, MapData
+from rfsocinterface.core.data.data import PyTablesProcessedData, PyTablesMapData
 from rfsocinterface.core.data.routines import Mapper
 
 if TYPE_CHECKING:
@@ -235,15 +235,16 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
     
     def make_map(self):
         print('Generating map...')
+        return
         current_file = self.get_current_file().stem
         date = current_file[:8]
         setnum = int(current_file[-4:])
-        p = ProcessedData.from_tod(date, setnum)
+        p = PyTablesProcessedData.from_tod(date, setnum)
 
         # TODO: Make Qt widget for mapping , so signals can be emitted after completing 
         # each routine. Needed for showing progress
         mapper = Mapper(self.routines)
-        map_data: MapData = mapper(p)
+        map_data: PyTablesMapData = mapper(p)
         map_data.plot(self.show_checkBox.isChecked())
     
     def update_current_file(self) -> Path:

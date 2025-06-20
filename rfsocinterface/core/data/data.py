@@ -1743,14 +1743,18 @@ class PyTablesMapData(PyTablesProcessedData):
     
     def plot(self, show: bool=True, save: bool=True):
 
-        valid_cov_1 = np.argwhere(self.hits_map[0] > 0.5 * np.median(self.hits_map[0]))
+        hits_map = self.hits_map[:]
+        mapp = self.map[:]
+        total_map = self.total_map[:]
+
+        valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
         map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
         for i_cov in np.arange(np.size(valid_cov_1[:,0])):
-            map_goodcov_1[i_cov] = self.map[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
-        valid_cov_2 = np.argwhere(self.hits_map[1] > 0.5 * np.median(self.hits_map[1]))
+            map_goodcov_1[i_cov] = mapp[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
+        valid_cov_2 = np.argwhere(hits_map[1] > 0.5 * np.median(hits_map[1]))
         map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
         for i_cov in np.arange(np.size(valid_cov_2[:,0])):
-            map_goodcov_2[i_cov] = self.map[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
+            map_goodcov_2[i_cov] = mapp[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
 
         netd_1 = self.get_netd_pol(1)
         netd_2 = self.get_netd_pol(2)
@@ -1773,7 +1777,7 @@ class PyTablesMapData(PyTablesProcessedData):
         # TODO: Make figure size change based on the size of the map
         this_fig = plt.figure(figsize=(15,7.5))
         plt.subplot(4,1,1)
-        plt.imshow(np.flip(np.transpose(self.map[0][::-1]),1), \
+        plt.imshow(np.flip(np.transpose(mapp[0][::-1]),1), \
         extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
         aspect='equal', vmin=-max_abs, vmax=max_abs, cmap='Blues_r')
         cb = plt.colorbar(shrink=cb_shrink)
@@ -1787,7 +1791,7 @@ class PyTablesMapData(PyTablesProcessedData):
         plt.xlim(this_xlim), plt.ylim(this_ylim)
 
         plt.subplot(4,1,2)
-        plt.imshow(np.flip(np.transpose(self.map[1][::-1]),1), \
+        plt.imshow(np.flip(np.transpose(mapp[1][::-1]),1), \
         extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Reds_r')
         cb = plt.colorbar(shrink=cb_shrink)
@@ -1798,7 +1802,7 @@ class PyTablesMapData(PyTablesProcessedData):
         plt.xlim(this_xlim), plt.ylim(this_ylim)
 
         plt.subplot(4,1,3)
-        plt.imshow(np.flip(np.transpose(self.total_map[::-1]),1), \
+        plt.imshow(np.flip(np.transpose(total_map[::-1]),1), \
         extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Greys_r')
         cb = plt.colorbar(shrink=cb_shrink)

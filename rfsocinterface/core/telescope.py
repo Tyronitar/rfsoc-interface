@@ -246,13 +246,13 @@ class TelescopeMotorController:
             return old_pfb
 
     def set_az_pos(self, new_pos: int, scan_mode: bool=False, stop_run: bool=True):
-        self.send_all('az_pos_comm', new_pos)
         self._run = True
         worker_thread = Thread(target=self._set_az_pos, args=(new_pos, scan_mode, stop_run))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
     def _set_az_pos(self, new_pos: int, scan_mode: bool=False, stop_run: bool=True, speed_factor: float=1.):
+        self.send_all('az_pos_comm', new_pos)
         # I want to accept a number in degrees, but put the number in the integer value desired by S700 controller
         # AZ controlled by 2 motors, the first to actually move the telescope, the second to put some tension on the gear for avoiding any backlash. Currently the secondary motor is disabled, probably providing little to no torque, but given the huge gearing ratio, it probably helps with backlash. The next easiest technique would be to run the secondary in "analog torque" mode, setting the zero value to some small torque. This could be improved by increasing the torque during motion and reducing when the first motor is not moving (probably by changing the zero value torque, since both analog outs are already in use). The proper way to do it, and the reason we were sold these S700 controllers is called RDP per the kollmorgen tech guy but my guess is he meant prd cogging mode.
         self.set_ao_zero()
@@ -376,6 +376,7 @@ class TelescopeMotorController:
         speed_factor = 1/3 if large_map_mode else 1.
 
         for i_rep in np.arange(n_repeats):
+            _logger.info(f'AZ Scan Mode: Starting repeat {i_rep} of {n_repeats}')
             if not self._run:
                 break
             if large_map_mode:
@@ -476,13 +477,13 @@ class TelescopeMotorController:
 
     def set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True):
         # self.zenithCommanded.emit(new_pos)
-        self.send_all('ze_pos_comm', new_pos)
         self._run = True
         worker_thread = Thread(target=self._set_ze_pos, args=(new_pos, scan_mode, stop_run))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
     def _set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True):
+        self.send_all('ze_pos_comm', new_pos)
         # new_pos = float(new_pos)
         self.set_ao_zero()
 

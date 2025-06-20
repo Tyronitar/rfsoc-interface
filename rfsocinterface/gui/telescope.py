@@ -35,7 +35,7 @@ from rfsocinterface.gui.utils import get_num_value
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
-_tele_logger = logging.getLogger('rfsocinterface.telescope')
+_tele_logger = logging.getLogger('telescopeControl')
 
 class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""

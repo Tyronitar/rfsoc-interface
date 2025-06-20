@@ -424,12 +424,19 @@ class BinTODIntoMap(DataRoutine):
 
         wind = signal.get_window('hamming', md.n_samples)
 
+        data = md.data_mK[:]
+        sum_map = np.zeros(md.sum_map.shape)
+        hits_map = np.zeros(md.hits_map.shape)
+
+        print('computing netd...')
         # Compute NETD values
         for i_chan in np.where(md.chanmask[:] == 1)[0]:
-            this_freq, this_psd = signal.periodogram(md.data_mK[i_chan, :], md.fs, window=wind)
+            this_freq, this_psd = signal.periodogram(data[i_chan, :], md.fs, window=wind)
             valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
             this_netd = np.sqrt(np.median(this_psd[valid_freq]))
             md.netd[i_chan] = this_netd
+        
+        print('netd done!')
 
         # Get rid of channels with bad weights
         new_chanmask = np.copy(md.chanmask)
@@ -447,13 +454,16 @@ class BinTODIntoMap(DataRoutine):
         md.netd[new_chanmask != 1] = 0
 
         if self.beam_map_mode:
-            channels_to_map = np.where(md.chanmask != 0)[0]
+            channels_to_map = np.where(md.chanmask[:] != 0)[0]
         else:
             channels_to_map = np.where(new_chanmask == 1)[0]
 
         # Create map
         # for i_chan in channels_to_map[:10]:
-        for i_chan in channels_to_map:
+        print('creating map...')
+        for n_loop, i_chan in enumerate(channels_to_map):
+            if n_loop == np.size(channels_to_map) // 2:
+                print('halfway done...')
             if self.beam_map_mode:
                 map_idx = i_chan
                 weight = 1.
@@ -465,7 +475,7 @@ class BinTODIntoMap(DataRoutine):
             this_detector_za = md.detector_za[i_chan,:]
 
             # Get the good samples if they haven't been specified
-            this_clean_data = np.squeeze(md.data_mK[i_chan,:])
+            this_clean_data = np.squeeze(data[i_chan,:])
 
             # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
             x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/DEFAULT_MAP_DPIX))
@@ -483,119 +493,38 @@ class BinTODIntoMap(DataRoutine):
             # pdb.set_trace()
             #loop over samples to create sum and hits maps
             for time_sample in good_samples:
-                try:
-                    md.sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
-                except:
-                    pdb.set_trace()
-                md.hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+                sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
         # weights = 1 / netd[md.chanmask==1]**2
         # np.save('weight.npy', 1/all_NETDs**2)
         # plt.show()
         md.chanmask[:] = new_chanmask
+        md.sum_map[:] = sum_map
+        md.hits_map[:] = hits_map
 
 
 if __name__ == '__main__':
 
-    date = '20250529'
-    setnum = 1008
+    date = '20250620'
+    setnum = 1006
 
-    # ds_factor = 10
-    # hp_filt_freq = 0.5
-    # lp_filt_freq = 10
-
-    # pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
-    # # pd = PyTablesProcessedData.from_file(date, setnum)
-
-    # hpfilt = HighPassFilter(hp_filt_freq)
-    # lpfilt = LowPassFilter(lp_filt_freq)
-    # cleaner = CleanTOD()
-
-    # hpfilt(pd)
-    # lpfilt(pd)
-    # cleaner(pd)
-
-    # md = PyTablesMapData.from_processed_data(pd)
-    # binner = BinTODIntoMap()
-    # binner(md)
-
-    md = PyTablesMapData.from_file(date, setnum)
-    pdb.set_trace()
-    # from onr_map_observation import create_map
-    # data = ProcessedData.from_tod('20241016', 1015)
-    # old_data = h5py.File('/data/20241016/20241016_processed_data_set1014.h5')
-
-    # old_raw_data = RawDataFile('/data/20241016/20241016_rfsoc2_TOD_set1014.h5', 'r')
-    # new_raw_data = RawDataFile('/data/20250513/20250513_chan_1_TOD_set1008.h5', 'r')
-    # pdb.set_trace()
-
-    # new_raw_data = RawDataFile('/data/20250509/20250509_chan_1_TOD_set1014.h5', 'r')
-    # data = ProcessedData.from_tod('20250509', 1014)
-    # data = ProcessedData.from_tod('20250509', 1014, losweep='20250509_rfsoc2_LO_Sweep_hour13p8025.h5')
-    # pdb.set_trace()
-    # data = ProcessedData.from_tod('20241017', 1001, losweep='20241017_rfsoc2_LO_Sweep_hour07p6728.npy')
-    # data = ProcessedData.from_tod('20250513', 1005, losweep='20250513_devrfsoc_rfsoc2_LO_Sweep_hour15p6778_high_res.h5')
-    # data = ProcessedData.from_tod('20250513', 1007)
-
-    # old_data = ProcessedData.from_tod('20241016', 1008, save=False)
-    # new_data = ProcessedData.from_tod('20250513', 1008)
-    # pdb.set_trace()
-
-
-
-    # old_fs = data.fs
-    # data.timestamp = data.dtime
+    ds_factor = 10
     hp_filt_freq = 0.5
     lp_filt_freq = 10
-    ds_factor = 10
 
-    ds = Downsample(ds_factor)
+    pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
+    # pd = PyTablesProcessedData.from_file(date, setnum)
+
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
+    cleaner = CleanTOD()
 
-    # mapper = Mapper([ds, hpfilt, lpfilt, cleaner])
-    # clean_data = mapper(data)
-    # # with h5py.File('/data/20241016/20241016_cleaned_data_set1012.h5', 'r') as f:
-    # #     og_clean_data = f['clean_data'][:]
-    # old_data = create_map('20241016', 1012)
-    # new_data = clean_data.data_mK
-    # # with h5py.File('/data/20241016/20241016_processed_data_set1012.h5', 'r') as f:
-    # #     og_data = f['data_mK'][:]
-    # pdb.set_trace()
+    hpfilt(pd)
+    lpfilt(pd)
+    cleaner(pd)
 
-    remove_pickup = RemovePointLomaPickup(ds_factor=ds_factor)
-    # binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
-    binner = BinTODIntoMap(hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq, beam_map_mode=True)
-    # mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
-    
-
-
-    # cleaner = CleanTOD(save_file=False)
-    # data = ProcessedData.from_tod('20241016', 1008, save=False)
-
-    cleaner = CleanTOD(save_file=True)
-    # data = ProcessedData.from_tod('20250529', 1011, beam_map_mode=True)
-    # data = ProcessedData.from_tod('20250609', 1005)
-    # data = ProcessedData.from_tod('20250609', 1004)
-    # data = PyTablesProcessedData.from_tod('20250609', 1004)
-    # data = PyTablesProcessedData.from_file('20250609', 1004)
-    # exit()
-    # data = ProcessedData.from_file('20250529', 1001)
-    # data = ProcessedData.from_tod('20250529', 1001)
-
-    data = PyTablesProcessedData.from_tod('20250529', 1011, beam_map_mode=True, ds_factor=ds_factor)
-    map = PyTablesMapData.from_processed_data(data)
-    pdb.set_trace()
-
-    mapper = Mapper([ds, hpfilt, lpfilt, cleaner, binner])
-
-    map: MapData = mapper(data, save=False)
-    # map.plot()
-    # from rfsocinterface.core.data import plot_map
-    analyze_beammap(map)
-
-
-
-    # extent = (min(map.map_x)-map.map_dpix/2.,max(map.map_x)+map.map_dpix/2,max(map.map_y)+map.map_dpix/2.,min(map.map_y)-map.map_dpix/2.)
-    # # idx = 0; plot_map(map.map[idx], map.map_x, map.map_y, extent, max_abs=np.nanmax(np.abs(map.map[idx]))); plt.show()
-    # pdb.set_trace()
-    # map.plot()
+    md = PyTablesMapData.from_processed_data(pd)
+    binner = BinTODIntoMap()
+    binner(md)
+    md.plot()
+    md.close()
