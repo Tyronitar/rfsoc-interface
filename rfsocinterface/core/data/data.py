@@ -1524,7 +1524,7 @@ class PyTablesProcessedData:
                 no_pol = np.ndarray.flatten(np.argwhere(raw_global_data.detector_pol[:] < 1))
                 if np.size(no_pol > 0):
                     chanmask[no_pol] = -1
-                detector_global_data.chanmask[:] = raw_global_data.chanmask[:]
+                detector_global_data.chanmask[:] = chanmask
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
         # pfile.close()
         return cls(pfile)

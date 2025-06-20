@@ -203,7 +203,6 @@ class CleanTOD(DataRoutine):
 
         # TODO: Does this need to still support the "good_sample" stuff?
         #average template subtraction
-        pdb.set_trace()
         goodchan = np.ndarray.flatten(np.argwhere(pd.chanmask[:] == 1))
         template = np.sum(pd.data_mK[goodchan, :], axis=0)
         template = template - np.mean(template)

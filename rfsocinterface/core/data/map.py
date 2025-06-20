@@ -429,15 +429,14 @@ class BinTODIntoMap(DataRoutine):
             this_freq, this_psd = signal.periodogram(md.data_mK[i_chan, :], md.fs, window=wind)
             valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
             this_netd = np.sqrt(np.median(this_psd[valid_freq]))
-            pdb.set_trace()
             md.netd[i_chan] = this_netd
 
+        pdb.set_trace()
         # Get rid of channels with bad weights
         new_chanmask = np.copy(md.chanmask)
         good_idx = np.where(new_chanmask == 1)[0]
         good_netd = md.netd[good_idx]
         new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
-        pdb.set_trace()
 
         good_idx = np.where(new_chanmask == 1)[0]
         good_netd = md.netd[good_idx]
@@ -447,6 +446,7 @@ class BinTODIntoMap(DataRoutine):
         new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
 
         md.netd[new_chanmask != 1] = 0
+        pdb.set_trace()
 
         if self.beam_map_mode:
             channels_to_map = np.where(md.chanmask != 0)[0]
@@ -483,6 +483,7 @@ class BinTODIntoMap(DataRoutine):
             md.good_samples.truncate(np.size(valid_index))
             md.good_samples[:] = good_samples[valid_index]
 
+            pdb.set_trace()
             #loop over samples to create sum and hits maps
             for time_sample in md.good_samples:
                 md.sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
@@ -512,7 +513,6 @@ if __name__ == '__main__':
     hpfilt(pd)
     lpfilt(pd)
     cleaner(pd)
-    pdb.set_trace()
 
     md = PyTablesMapData.from_processed_data(pd)
     binner = BinTODIntoMap()
