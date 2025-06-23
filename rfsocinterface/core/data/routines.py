@@ -51,7 +51,8 @@ class DataPipeline:
         self.post_processor.apply_routines(input)
     
     def generate_receipt(self) -> str:
-        return '\n'.join(self._receipt)
+        sttart = ''
+        entries = '\n'.join(self._receipt)
 
 
 class DataRoutine:
@@ -123,6 +124,9 @@ class GaussianFilter(DataRoutine):
         array = pd._pfile.get_node('/', field)
         smoothed_data = gaussian_filter(array, self.gaussian_sigma)
         array[:] = smoothed_data
+    
+    def get_receipt_entry(self) -> str:
+        return f'GaussianFilter: {{\n\tsigma = {self.gaussian_sigma}\n}}'
 
 class CutoffFilter(DataRoutine):
     def __init__(self, filter_freq: float, btype: str):
@@ -143,10 +147,16 @@ class LowPassFilter(CutoffFilter):
     def __init__(self, filter_freq: float):
         super().__init__(filter_freq, btype='lowpass')
 
+    def get_receipt_entry(self) -> str:
+        return f'LowPassFilter: {{\n\tfreq= {self.filter_freq}\n}}'
+
 
 class HighPassFilter(CutoffFilter):
     def __init__(self, filter_freq: float):
         super().__init__(filter_freq, btype='highpass')
+
+    def get_receipt_entry(self) -> str:
+        return f'HighPassFilter: {{\n\tfreq= {self.filter_freq}\n}}'
 
 
 class Downsample(DataRoutine):
@@ -180,6 +190,9 @@ class Downsample(DataRoutine):
             detector_za=detector_za_ds,
         )
 
+    def get_receipt_entry(self) -> str:
+        return f'Downsample: {{\n\tds_factor = {self.ds_factor}\n\torder = {self.order}\n}}'
+
 
 class RemoveElectronicsNoise(DataRoutine):
     def __init__(self):
@@ -188,6 +201,9 @@ class RemoveElectronicsNoise(DataRoutine):
     def forward(self, pd: PyTablesProcessedData):
         remove_electronics_noise2(pd.data_gain_phase)
         generate_calibrated_data2(pd.root.detector_0.data, pd._pfile.root.detector_0.global_data)
+
+    def get_receipt_entry(self) -> str:
+        return f'RemoveElectronicsNoise: {{\n}}'
 
 
 class CleanTOD(DataRoutine):
@@ -218,6 +234,9 @@ class CleanTOD(DataRoutine):
                 cfile.create_array('/', 'detector_az', pd.detector_az[:])
                 cfile.create_array('/', 'detector_za', pd.detector_za[:])
                 cfile.create_array('/', 'clean_data', pd.data_mK[:])
+
+    def get_receipt_entry(self) -> str:
+        return f'CleanTOD: {{\n}}'
 
 
 if __name__ == '__main__':
