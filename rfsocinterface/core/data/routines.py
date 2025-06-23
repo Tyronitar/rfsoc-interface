@@ -214,12 +214,8 @@ class RemoveElectronicsNoise(DataRoutine):
 
 class CleanTOD(DataRoutine):
 
-    def __init__(
-            self,
-            save_file: bool=True,
-    ):
+    def __init__(self):
         super().__init__()
-        self.save_file = save_file
 
     def forward(self, pd: PyTablesProcessedData):
 
@@ -232,14 +228,13 @@ class CleanTOD(DataRoutine):
                         np.sum(np.multiply(template,template))
         pd.data_mK[goodchan, :] = pd.data_mK[goodchan, :] - np.outer(template_corr, template)
 
-        if self.save_file:
-            with tables.File(pd.cleaned_file_template, 'w') as cfile:
-                cfile.create_array('/', 'chanmask', pd.chanmask[:])
-                cfile.create_array('/', 'detector_pol', pd.detector_pol[:])
-                cfile.create_array('/', 'timestamp', pd.timestamp[:])
-                cfile.create_array('/', 'detector_az', pd.detector_az[:])
-                cfile.create_array('/', 'detector_za', pd.detector_za[:])
-                cfile.create_array('/', 'clean_data', pd.data_mK[:])
+        with tables.File(pd.cleaned_file_template, 'w') as cfile:
+            cfile.create_array('/', 'chanmask', pd.chanmask[:])
+            cfile.create_array('/', 'detector_pol', pd.detector_pol[:])
+            cfile.create_array('/', 'timestamp', pd.timestamp[:])
+            cfile.create_array('/', 'detector_az', pd.detector_az[:])
+            cfile.create_array('/', 'detector_za', pd.detector_za[:])
+            cfile.create_array('/', 'clean_data', pd.data_mK[:])
 
     def get_receipt_entry(self) -> str:
         return f'CleanTOD: {{\n}}'

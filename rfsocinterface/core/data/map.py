@@ -501,6 +501,15 @@ class BinTODIntoMap(DataRoutine):
         md.chanmask[:] = new_chanmask
         md.sum_map[:] = sum_map
         md.hits_map[:] = hits_map
+    
+    def get_receipt_entry(self) -> str:
+        return f'BinTODIntoMap: {{\n' \
+               f'  hp_filter_freq: {self.hp_filter_freq},\n' \
+               f'  lp_filter_freq: {self.lp_filter_freq},\n' \
+               f'  az_trim: {self.az_trim},\n' \
+               f'  za_trim: {self.za_trim},\n' \
+               f'  med_netd_cut_threshold: {self.med_netd_cut_threshold},\n' \
+               f'}}'
 
 
 if __name__ == '__main__':
