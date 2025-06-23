@@ -3,12 +3,14 @@
 from typing import Any, Callable
 import abc
 import pdb
+import git
 
 import numpy as np
 from scipy import signal
 import h5py
 import tables
 
+import rfsocinterface
 from rfsocinterface.core.data.data import PyTablesProcessedData, PyTablesMapData, ProcessedData, generate_calibrated_data2, remove_electronics_noise2
 from rfsocinterface.core.data.data import DECIMATE_ORDER
 from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter
@@ -51,8 +53,12 @@ class DataPipeline:
         self.post_processor.apply_routines(input)
     
     def generate_receipt(self) -> str:
-        sttart = ''
+        start = f"""Rfsocinterface Version {rfsocinterface.__version__}
+                Git Hash: {git.Repo(search_parent_directories=True).head.object.hexsha}
+                Routines: 
+                """
         entries = '\n'.join(self._receipt)
+        return f'{start}\n{entries}'
 
 
 class DataRoutine:
