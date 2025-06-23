@@ -3,12 +3,13 @@
 from typing import Any, Callable
 import abc
 import pdb
-import git
+from datetime import datetime, timezone
 
 import numpy as np
 from scipy import signal
 import h5py
 import tables
+import git
 
 import rfsocinterface
 from rfsocinterface.core.data.data import PyTablesProcessedData, PyTablesMapData, ProcessedData, generate_calibrated_data2, remove_electronics_noise2
@@ -53,12 +54,13 @@ class DataPipeline:
         self.post_processor.apply_routines(input)
     
     def generate_receipt(self) -> str:
-        start = f"""Rfsocinterface Version {rfsocinterface.__version__}
-                Git Hash: {git.Repo(search_parent_directories=True).head.object.hexsha}
-                Routines: 
-                """
-        entries = '\n'.join(self._receipt)
-        return f'{start}\n{entries}'
+        preamble = f'Rfsocinterface Version {rfsocinterface.__version__}\n' \
+            f'Git Hash: {git.Repo(search_parent_directories=True).head.object.hexsha}\n' \
+            f'Date and Time of Processing (UTC): {datetime.now(timezone.utc).replace(microsecond=0).isoformat()}\n' \
+            f'Routines: ['
+        entries = ',\n'.join(self._receipt)
+        formatted_entries = '\t'.join(('\n' + entries.lstrip()).splitlines(True))
+        return preamble + formatted_entries + '\n]'
 
 
 class DataRoutine:
@@ -86,16 +88,11 @@ class RoutineApplier:
             raise TypeError(f'Expected DataRoutine, got {type(routine)}')
         self._routines.append(routine)
 
-    def apply_routines(self, input: PyTablesProcessedData, save: bool=True):
-
-        output = input
+    def apply_routines(self, input: PyTablesProcessedData):
         for routine in self._routines:
-            output = routine(output)
+            routine(input)
             # do something to the pipeline's receipt...
             self.pipeline.add_to_receipt(routine.get_receipt_entry())
-        if save:
-            output.save()
-        return output
 
 
 class Mapper:
@@ -241,15 +238,25 @@ class CleanTOD(DataRoutine):
 
 
 if __name__ == '__main__':
-    date = '20250527'
-    setnum = 1010
-    # date = '20250529'
-    # setnum = 1011
+    date = '20250620'
+    setnum = 1006
 
-    pd = PyTablesProcessedData.from_tod(date, setnum)
-    md = PyTablesMapData.from_processed_data(pd)
-    md.setup_mfile(50, 50)
+    ds_factor = 10
+    hp_filt_freq = 0.5
+    lp_filt_freq = 10
 
+    pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
+    # pd = PyTablesProcessedData.from_file(date, setnum)
+
+    hpfilt = HighPassFilter(hp_filt_freq)
+    lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
-    cleaner(pd)
+
+    pipeline = DataPipeline()
+    pipeline.processor.add_routine(hpfilt)
+    pipeline.processor.add_routine(lpfilt)
+    pipeline.processor.add_routine(cleaner)
+
+
+    pipeline.run_pipeline(pd)
     pdb.set_trace()
