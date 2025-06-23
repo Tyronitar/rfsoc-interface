@@ -434,9 +434,7 @@ class TelescopeMotorController:
             self.ser_az.write(command)
             self.ser_az.readline()
             az_speed = self.ser_az.read_until(b"\r\n")
-            _logger.info("AZ speed set to: ", az_speed)  ###THIS MAY BREAK
-            # self.azimuthVelocityChanged(az_speed)
-            # self.send_all('az_vel', az_speed)
+            _logger.info(f'AZ speed set to: {rpm_per_ten_volt * 10} RPM / V')
             self.ser_az.reset_input_buffer()
             self.ser_az.reset_output_buffer()
 
@@ -585,10 +583,7 @@ class TelescopeMotorController:
             command = command.encode('ASCII')
             self.ser_ze.write(command)
             ze_speed = self.ser_ze.read_until(b'\r\n', 0.1)
-            _logger.info(f'ZA speed set to: {ze_speed}')  ###THIS MAY BREAK
-            # self.zenithVelocityChanged(ze_speed)
-            # self.ser_ze.reset_input_buffer()
-            # self.ser_ze.reset_output_buffer()
+            _logger.info(f'ZA speed replation set to: {rpm_per_volt} RPM / V')
 
     # Misc
     def talk_to_az(self, command: str):
