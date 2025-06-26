@@ -403,20 +403,53 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
 #
 # Scipy signal processing utils
 #
-def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1):
+def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.NDArray, npt.NDArray] | None=None):
     """
     Apply a second-order section filter to data in chunks.
     
     Parameters:
     """
-    y = np.empty_like(x)
-    if zi is None:
-        n_sections = sos.shape[0]
-        zi_shape = list(x.shape)
-        zi_shape[axis] = 2
-        zf = np.zeros([n_sections] + zi_shape)
+    do_return = True
+    return_zi = False
+    n_sections = sos.shape[0]
+    zi_shape = list(x.shape)
+    zi_shape[axis] = 2
+    zi_shape = tuple([n_sections] + zi_shape)
+
+    return_zi = zi is not None
+    do_return = out is None
+
+    if out is not None:
+        if isinstance(out, tuple):
+            if out[0].shape != x.shape:
+                raise ValueError(f"Output array must have shape {x.shape}, but got {out[0].shape}.")
+            if return_zi:
+                if len(out) != 2:
+                    raise ValueError("Output array must be a tuple of two arrays if zi is provided.")
+                if out[1].shape != zi_shape:
+                    print(f"zi_shape: {zi_shape}, out[1].shape: {out[1].shape}")
+                    raise ValueError('Invalid zi output array shape. With axis=%r, an input with '
+                                    'shape %r, and an sos array with %d sections, zi '
+                                    'must have shape %r, got %r.' %
+                                    (axis, x.shape, n_sections, zi_shape, out[1].shape))
+        elif return_zi:
+            raise ValueError("Output array must be a tuple of two arrays if zi is provided.")
+        elif out.shape != x.shape:
+            raise ValueError(f"Output array must have shape {x.shape}, but got {out.shape}.")
+        else:  # Provided output array, and no zi provided
+            out = (out, np.zeros(zi_shape))
     else:
-        zf = zi
+        out = (np.empty_like(x), np.zeros(zi_shape))
+
+    if zi is None:
+        out[1][:] = np.zeros(zi_shape)
+    elif zi.shape != zi_shape:
+        raise ValueError('Invalid zi shape. With axis=%r, an input with '
+                        'shape %r, and an sos array with %d sections, zi '
+                        'must have shape %r, got %r.' %
+                        (axis, x.shape, n_sections, zi_shape, zi.shape))
+    else:
+        out[1][:] = zi
 
     chunk_size = x.shape[axis] // n_chunks
     for i_chunk in range(n_chunks):
@@ -430,12 +463,16 @@ def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1):
         chunk_slice = [slice(None)] * x.ndim
         chunk_slice[axis] = slice(start, stop)
         chunk_slice = tuple(chunk_slice)
-        y[chunk_slice], zf = sosfilt(sos, x[chunk_slice], axis=axis, zi=zf)
+        out[0][chunk_slice], out[1][:] = sosfilt(sos, x[chunk_slice], axis=axis, zi=out[1])
     
-    if zi is not None:
-        return y, zf
-    else:
-        return y
+    if do_return and return_zi:
+        return out
+    elif do_return:
+        return out[0]
+    # if zi is not None:
+    #     return out, zf
+    # else:
+    #     return out
 
 def axis_slice(a, start=None, stop=None, step=None, axis=-1):
     """Take a slice along axis 'axis' from 'a'.
@@ -560,9 +597,23 @@ def _validate_pad(padlen, x, axis, ntaps):
     return edge, ext
 
 
-def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | None=None) -> npt.NDArray:
+def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | None=None, out: npt.NDArray | None=None) -> npt.NDArray:
     sos = cheby1(8, 0.05, 0.8 / q, output='sos')
     n_sections = sos.shape[0]
+    do_return = False
+    out_shape = list(x.shape)
+    out_shape[axis] = x.shape[axis] // q
+    out_shape = tuple(out_shape)
+
+    # Handle output array
+    if out is None:
+        out = np.zeros(out_shape, dtype=x.dtype)
+        do_return = True
+    elif out.shape != out_shape:
+        raise ValueError(
+            f"Output array must have shape {out_shape}, "
+            f"but got {out.shape}."
+        )
 
     # NOTE: `y` and `ext` need to be stored in temporary arrays on disk.
     # Keeping them in memory is too large
@@ -585,8 +636,9 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
 
     # Forward pass...
     x0 = axis_slice(ext, stop=1, axis=axis)
-    # zf = x0 * zi
-    y, _ = sosfilt_in_chunks(sos, ext, n_chunks=q, zi=zi * x0, axis=axis)
+    zf = x0 * zi
+    sosfilt_in_chunks(sos, ext, n_chunks=q, zi=zf, axis=axis, out=(y, zf))
+    # y, _ = sosfilt_in_chunks(sos, ext, n_chunks=q, zi=zi * x0, axis=axis)
     # for i_chunk in range(q):
     #     start = i_chunk * chunk_size
     #     stop = (i_chunk + 1) * chunk_size
@@ -602,9 +654,9 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
 
     # Reverse pass...
     y0 = axis_slice(y, start=-1, axis=axis)
-    # zf = y0 * zi
-    y, _ = sosfilt_in_chunks(sos, axis_reverse(y, axis=axis), n_chunks=q, zi=zi * y0, axis=axis)
-    y = axis_reverse(y, axis=axis)
+    zf = y0 * zi
+    sosfilt_in_chunks(sos, axis_reverse(y, axis=axis), n_chunks=q, zi=zf, axis=axis, out=(axis_reverse(y, axis=axis), zf))
+    # y = axis_reverse(z, axis=axis)
     # for i_chunk in range(q, 0, -1):
     #     start = i_chunk * chunk_size
     #     stop = (i_chunk - 1) * chunk_size
@@ -621,7 +673,18 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
     # Remove edge padding
     if edge > 0:
         y = axis_slice(y, start=edge, stop=-edge, axis=axis)
-    return axis_slice(y, step=q, axis=axis)
+    if do_return:
+        return axis_slice(y, step=q, axis=axis)
+    else:
+        out[...] = axis_slice(y, step=q, axis=axis)
 
 
+if __name__ == '__main__':
+    # Test the odd_ext function
+    a = np.array([[1, 2, 3, 4, 5], [0, 1, 4, 9, 16]])
+    print(odd_ext(a, 2))
 
+    # Test the decimate_in_chunks function
+    x = np.random.randn(10, 100, 1000)
+    y = decimate_in_chunks(x, q=10, axis=-1)
+    print(y.shape)  # Should be (10, 100, 100)
