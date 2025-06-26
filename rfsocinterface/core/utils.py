@@ -19,6 +19,7 @@ from multiprocessing.connection import Connection
 import numpy as np
 import numpy.typing as npt
 from scipy import ndimage
+from scipy.signal import sosfilt, sosfilt_zi, cheby1
 import redis
 
 import time
@@ -39,6 +40,7 @@ PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
 
 GAUSSIAN_SIGMA = (0.5, 0.33)
+BUTTER_ORDER = 6
 class TabName(StrEnum):
     """Possible tab names for the GUI."""
     INITIALIZATION = 'initialization'
@@ -398,4 +400,228 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
             raise RuntimeError(f'{err_msg}: {data}')
 
 
-BUTTER_ORDER = 6
+#
+# Scipy signal processing utils
+#
+def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1):
+    """
+    Apply a second-order section filter to data in chunks.
+    
+    Parameters:
+    """
+    y = np.empty_like(x)
+    if zi is None:
+        n_sections = sos.shape[0]
+        zi_shape = list(x.shape)
+        zi_shape[axis] = 2
+        zf = np.zeros([n_sections] + zi_shape)
+    else:
+        zf = zi
+
+    chunk_size = x.shape[axis] // n_chunks
+    for i_chunk in range(n_chunks):
+        start = i_chunk * chunk_size
+        stop = (i_chunk + 1) * chunk_size
+
+        # Account for rounding errors in the chunk size
+        if i_chunk == n_chunks - 1:
+            stop = x.shape[axis]
+
+        chunk_slice = [slice(None)] * x.ndim
+        chunk_slice[axis] = slice(start, stop)
+        chunk_slice = tuple(chunk_slice)
+        y[chunk_slice], zf = sosfilt(sos, x[chunk_slice], axis=axis, zi=zf)
+    
+    if zi is not None:
+        return y, zf
+    else:
+        return y
+
+def axis_slice(a, start=None, stop=None, step=None, axis=-1):
+    """Take a slice along axis 'axis' from 'a'.
+
+    Parameters
+    ----------
+    a : numpy.ndarray
+        The array to be sliced.
+    start, stop, step : int or None
+        The slice parameters.
+    axis : int, optional
+        The axis of `a` to be sliced.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from scipy.signal._arraytools import axis_slice
+    >>> a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> axis_slice(a, start=0, stop=1, axis=1)
+    array([[1],
+           [4],
+           [7]])
+    >>> axis_slice(a, start=1, axis=0)
+    array([[4, 5, 6],
+           [7, 8, 9]])
+
+    Notes
+    -----
+    The keyword arguments start, stop and step are used by calling
+    slice(start, stop, step). This implies axis_slice() does not
+    handle its arguments the exactly the same as indexing. To select
+    a single index k, for example, use
+        axis_slice(a, start=k, stop=k+1)
+    In this case, the length of the axis 'axis' in the result will
+    be 1; the trivial dimension is not removed. (Use numpy.squeeze()
+    to remove trivial axes.)
+    """
+    a_slice = [slice(None)] * a.ndim
+    a_slice[axis] = slice(start, stop, step)
+    b = a[tuple(a_slice)]
+    return b
+
+def axis_reverse(a, axis=-1):
+    """Reverse the 1-D slices of `a` along axis `axis`.
+
+    Returns axis_slice(a, step=-1, axis=axis).
+    """
+    return axis_slice(a, step=-1, axis=axis)
+
+def odd_ext(x, n, axis=-1):
+    """
+    Odd extension at the boundaries of an array
+
+    Generate a new ndarray by making an odd extension of `x` along an axis.
+
+    Parameters
+    ----------
+    x : ndarray
+        The array to be extended.
+    n : int
+        The number of elements by which to extend `x` at each end of the axis.
+    axis : int, optional
+        The axis along which to extend `x`. Default is -1.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from scipy.signal._arraytools import odd_ext
+    >>> a = np.array([[1, 2, 3, 4, 5], [0, 1, 4, 9, 16]])
+    >>> odd_ext(a, 2)
+    array([[-1,  0,  1,  2,  3,  4,  5,  6,  7],
+           [-4, -1,  0,  1,  4,  9, 16, 23, 28]])
+
+    Odd extension is a "180 degree rotation" at the endpoints of the original
+    array:
+
+    >>> t = np.linspace(0, 1.5, 100)
+    >>> a = 0.9 * np.sin(2 * np.pi * t**2)
+    >>> b = odd_ext(a, 40)
+    >>> import matplotlib.pyplot as plt
+    >>> plt.plot(np.arange(-40, 140), b, 'b', lw=1, label='odd extension')
+    >>> plt.plot(np.arange(100), a, 'r', lw=2, label='original')
+    >>> plt.legend(loc='best')
+    >>> plt.show()
+    """
+    if n < 1:
+        return x
+    if n > x.shape[axis] - 1:
+        raise ValueError(("The extension length n (%d) is too big. " +
+                         "It must not exceed x.shape[axis]-1, which is %d.")
+                         % (n, x.shape[axis] - 1))
+    left_end = axis_slice(x, start=0, stop=1, axis=axis)
+    left_ext = axis_slice(x, start=n, stop=0, step=-1, axis=axis)
+    right_end = axis_slice(x, start=-1, axis=axis)
+    right_ext = axis_slice(x, start=-2, stop=-(n + 2), step=-1, axis=axis)
+    ext = np.concatenate((2 * left_end - left_ext,
+                          x,
+                          2 * right_end - right_ext),
+                         axis=axis)
+    return ext
+
+def _validate_pad(padlen, x, axis, ntaps):
+    """Helper to validate padding for filtfilt"""
+
+    if padlen is None:
+        # Original padding; preserved for backwards compatibility.
+        edge = ntaps * 3
+    else:
+        edge = padlen
+
+    # x's 'axis' dimension must be bigger than edge.
+    if x.shape[axis] <= edge:
+        raise ValueError(
+            f"The length of the input vector x must be greater than padlen, "
+            f"which is {edge}."
+        )
+
+    if edge > 0:
+        ext = odd_ext(x, edge, axis=axis)
+    else:
+        ext = x
+    return edge, ext
+
+
+def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | None=None) -> npt.NDArray:
+    sos = cheby1(8, 0.05, 0.8 / q, output='sos')
+    n_sections = sos.shape[0]
+
+    # NOTE: `y` and `ext` need to be stored in temporary arrays on disk.
+    # Keeping them in memory is too large
+
+    # `method` is "pad"...
+    ntaps = 2 * n_sections + 1
+    ntaps -= min((sos[:, 2] == 0).sum(), (sos[:, 5] == 0).sum())
+    edge, ext = _validate_pad(padlen, x, axis,
+                              ntaps=ntaps)
+    
+    y = np.zeros_like(ext)
+
+    # Create zi
+    zi = sosfilt_zi(sos)
+    zi_shape = [1] * x.ndim
+    zi_shape[axis] = 2
+    zi.shape = [n_sections] + zi_shape
+
+    # chunk_size = ext.shape[axis] // q
+
+    # Forward pass...
+    x0 = axis_slice(ext, stop=1, axis=axis)
+    # zf = x0 * zi
+    y, _ = sosfilt_in_chunks(sos, ext, n_chunks=q, zi=zi * x0, axis=axis)
+    # for i_chunk in range(q):
+    #     start = i_chunk * chunk_size
+    #     stop = (i_chunk + 1) * chunk_size
+
+    #     # Account for rounding errors in the chunk size
+    #     if i_chunk == q - 1:
+    #         stop = ext.shape[axis]
+
+    #     chunk_slice = [slice(None)] * ext.ndim
+    #     chunk_slice[axis] = slice(start, stop)
+    #     chunk_slice = tuple(chunk_slice)
+    #     y[chunk_slice], zf = sosfilt(sos, ext[chunk_slice], axis=axis, zi=zf)
+
+    # Reverse pass...
+    y0 = axis_slice(y, start=-1, axis=axis)
+    # zf = y0 * zi
+    y, _ = sosfilt_in_chunks(sos, axis_reverse(y, axis=axis), n_chunks=q, zi=zi * y0, axis=axis)
+    y = axis_reverse(y, axis=axis)
+    # for i_chunk in range(q, 0, -1):
+    #     start = i_chunk * chunk_size
+    #     stop = (i_chunk - 1) * chunk_size
+
+    #     # Account for rounding errors in the chunk size
+    #     if i_chunk == q:
+    #         start = y.shape[axis]
+
+    #     chunk_slice = [slice(None)] * ext.ndim
+    #     chunk_slice[axis] = slice(start, stop, -1)
+    #     chunk_slice = tuple(chunk_slice)
+    #     y[chunk_slice], zf = sosfilt(sos, y[chunk_slice], axis=axis, zi=zf)
+
+    # Remove edge padding
+    if edge > 0:
+        y = axis_slice(y, start=edge, stop=-edge, axis=axis)
+    return axis_slice(y, step=q, axis=axis)
+
+
+
