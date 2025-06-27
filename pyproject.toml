@@ -21,10 +21,9 @@ exscript = "^2.6.28"
 psutil = "^6.1.1"
 vmbpy = "^1.1.0"
 tables = "^3.10.2"
-mkl-service = "^2.4.2"
-numpy = {version = "^2.3.0", source = "numpy-mkl"}
-scipy = {version = "^1.15.3", source = "numpy-mkl"}
 gitpython = "^3.1.44"
+numpy = "^2.3.1"
+scipy = "^1.16.0"
 
 [tool.poetry.group.gui.dependencies]
 shiboken6 = "6.8.1"
