@@ -59,9 +59,7 @@ DATA_ROUTINE_FUNCTION_WIDGET_ARGS = {
     'CleanTOD': (
         'CleanTOD',
         CleanTOD,
-        [
-            (('Save File: ', ArgumentType.BOOL), {'default': True}),
-        ],
+        [],
     ),
     'RemovePointLomaPickup': (
         'Remove Point Loma Pickup',
