@@ -680,11 +680,22 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
 
 
 if __name__ == '__main__':
-    # Test the odd_ext function
-    a = np.array([[1, 2, 3, 4, 5], [0, 1, 4, 9, 16]])
-    print(odd_ext(a, 2))
+    import timeit, functools
+    from scipy.signal import decimate
+    n = 100000000
+    x = np.random.randn(n)
+    q = 10
+    # y = decimate(x, q)
+    y = decimate_in_chunks(x, q)
+    # y = np.zeros(n // q)
+    # decimate_in_chunks(x, q, out=y)
 
-    # Test the decimate_in_chunks function
-    x = np.random.randn(10, 100, 1000)
-    y = decimate_in_chunks(x, q=10, axis=-1)
-    print(y.shape)  # Should be (10, 100, 100)
+    # n_repeats = 20
+    # timer = timeit.Timer(functools.partial(decimate, x, q))
+    # print(f'Time for SciPy decimate: {timer.timeit(n_repeats)}')
+
+    # timer = timeit.Timer(functools.partial(decimate_in_chunks, x, q))
+    # print(f'Time for decimate in chunks (no output array): {timer.timeit(n_repeats)}')
+
+    # timer = timeit.Timer(functools.partial(decimate_in_chunks, x, q, out=y))
+    # print(f'Time for decimate in chunks (with output array): {timer.timeit(n_repeats)}')

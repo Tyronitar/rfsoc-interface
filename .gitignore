@@ -182,6 +182,8 @@ data/
 # Profiling Files
 *.bin
 *.html
+*.prof
+*.out
 
 # Plots
 *.pdf
