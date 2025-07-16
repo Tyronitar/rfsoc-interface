@@ -1201,6 +1201,18 @@ class PyTablesProcessedData:
         return self._pfile.root.detector_0.global_data.df_per_mK
 
     @property
+    def data_IQ(self) -> tables.Array:
+        return self._pfile.root.detector_0.data.data_IQ
+    
+    @property
+    def data_I(self) -> npt.NDArray:
+        return self._pfile.root.detector_0.data.data_IQ[0]
+
+    @property
+    def data_Q(self) -> npt.NDArray:
+        return self._pfile.root.detector_0.data.data_IQ[1]
+    
+    @property
     def IQ_to_gain_phase_angle(self) -> tables.Array:
         return self._pfile.root.detector_0.data.IQ_to_gain_phase_angle
 
