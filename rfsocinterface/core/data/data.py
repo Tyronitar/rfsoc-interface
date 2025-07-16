@@ -123,7 +123,9 @@ def generate_calibrated_data2(data: tables.Group, global_data: tables.Group):
     #need to optimally weight the data based on the response
     #in each direction (assuming the noise is identical in I and Q)
     #this will then yield data_f
-    change_basis_to_frequency_dissipation2(data)
+
+    rotate_basis2(data.data_IQ / data.adc_units_to_hz[:][:, np.newaxis], data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
+    # change_basis_to_frequency_dissipation2(data)
 
     # Finally, we need to get data_mK
     data.data_mK[:] = np.divide(data.data_freq_diss[0, :], global_data.df_per_mK[:][:, np.newaxis])
@@ -967,15 +969,15 @@ def change_basis_to_frequency_dissipation2(data: tables.Group):
     """Compute change of basis from IQ to frequency/dissipation."""
     n_samples = data._v_attrs.n_samples
 
-    eqiv_var_I = np.outer((1. / data.dIQ_df[0])**2., np.ones(n_samples))
-    eqiv_var_Q = np.outer((1. / data.dIQ_df[1])**2., np.ones(n_samples))
+    data.data_freq_diss[0, :] = data.data_IQ[0, :] / data.dIQ_df[0][:, np.newaxis] + \
+                    data.data_IQ[1, :] / data.dIQ_df[1][:, np.newaxis]
+    data.data_freq_diss[1, :] = data.data_IQ[0, :] / -data.dIQ_df[1][:, np.newaxis] + \
+                    data.data_IQ[1, :] / data.dIQ_df[0][:, np.newaxis]
 
-    data.data_freq_diss[0, :] = ( (data.data_IQ[0, :] / np.outer(data.dIQ_df[0], np.ones(n_samples)) ) / eqiv_var_I + \
-                    (data.data_IQ[1, :] / np.outer(data.dIQ_df[1], np.ones(n_samples)) ) / eqiv_var_Q ) / \
-                (1./eqiv_var_I + 1./eqiv_var_Q)
-    data.data_freq_diss[1, :] = ( (data.data_IQ[0, :] / np.outer(-data.dIQ_df[1], np.ones(n_samples)) ) / eqiv_var_Q + \
-                    (data.data_IQ[1, :] / np.outer(data.dIQ_df[0], np.ones(n_samples)) ) / eqiv_var_I ) / \
-                (1./eqiv_var_I + 1./eqiv_var_Q)
+    data.data_freq_diss[0, :] = data.data_IQ[0, :] / np.outer(data.dIQ_df[0], np.ones(n_samples)) + \
+                    data.data_IQ[1, :] / np.outer(data.dIQ_df[1], np.ones(n_samples))
+    data.data_freq_diss[1, :] = data.data_IQ[0, :] / np.outer(-data.dIQ_df[1], np.ones(n_samples)) + \
+                    data.data_IQ[1, :] / np.outer(data.dIQ_df[0], np.ones(n_samples))
 
 
 def compute_templates(data: npt.NDArray) -> npt.NDArray:
@@ -1203,9 +1205,13 @@ class PyTablesProcessedData:
         return self._pfile.root.detector_0.data.IQ_to_gain_phase_angle
 
     @property
-    def dIQ_df(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.dIQ_df
+    def IQ_to_freq_diss_angle(self) -> tables.Array:
+        return self._pfile.root.detector_0.data.IQ_to_freq_diss_angle
     
+    @property
+    def adc_units_to_hz(self) -> float:
+        return self._pfile.root.detector_0.data.adc_units_to_hz
+
     @property
     def data_freq_diss(self) -> tables.Array:
         return self._pfile.root.detector_0.data.data_freq_diss
@@ -1376,7 +1382,8 @@ class PyTablesProcessedData:
                 detector_data._v_attrs.n_tones = n_tones
                 detector_data._v_attrs.n_samples = n_samples_ds
                 pfile.create_array(detector_data, 'timestamp', shape=(n_samples_ds,), atom=tables.Float64Atom())
-                pfile.create_array(detector_data, 'dIQ_df', shape=(2, n_tones), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'IQ_to_freq_diss_angle', shape=(n_tones,), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'adc_units_to_hz', shape=(n_tones,), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'carrier_amplitudes', shape=(2, n_tones), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'data_IQ', shape=(2, n_tones, n_samples_ds), atom=tables.Float64Atom())
                 pfile.create_array(detector_data, 'data_gain_phase', shape=(2, n_tones, n_samples_ds), atom=tables.Float64Atom())
@@ -1409,7 +1416,9 @@ class PyTablesProcessedData:
                 lo_freq = raw_global_data.lo_freq[:]
                 lo_freq = 4e8
                 sweep = LoSweepData(raw_global_data.baseband_freqs, lo_freq, sweep_data, raw_global_data.chanmask[:])
-                detector_data.dIQ_df[:] = sweep.freq_direction()
+                IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
+                detector_data.IQ_to_freq_diss_angle[:] = IQ_to_freq_diss_angle
+                detector_data.adc_units_to_hz[:] = adc_units_to_hz
                 # if np.size(dIQ_df) > 0:
                 #     dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
                 # else:
@@ -1836,8 +1845,8 @@ class PyTablesMapData(PyTablesProcessedData):
     
 
 if __name__ == '__main__':
-    date = '20250527'
-    setnum = 1010
+    date = '20250611'
+    setnum = 1003
     # date = '20250529'
     # setnum = 1011
 

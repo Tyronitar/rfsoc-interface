@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import pdb
 
 from concurrent.futures import Future
 
@@ -448,11 +449,15 @@ class LoSweepData:
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
             fh.create_dataset('global_data/fit_qc', data=self.fit_qc)
     
-    def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> npt.NDArray:
+    def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.nchan))
         mid_ind = self.nfreq // 2
         edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
         ind_val = np.arange(edge_indices[0], edge_indices[1])
+
+        # rotation_angle = np.zeros(self.nchan)
+        # adc_units_to_hz = np.zeros(self.nchan)
+
         for i_chan in range(0, self.nchan):
             fit_I = np.polyfit(ind_val, self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
             fit_I_deriv = np.polyder(fit_I)
@@ -460,8 +465,20 @@ class LoSweepData:
             fit_Q = np.polyfit(ind_val, self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
             fit_Q_deriv = np.polyder(fit_Q)
             dIQ_df[1, i_chan] = np.polyval(fit_Q_deriv, mid_ind) / self.df
-        return dIQ_df
 
+            # rotation_angle[i_chan] = np.atan2(dIQ_df[1, i_chan], dIQ_df[0, i_chan])
+            # adc_units_to_hz[i_chan] = np.sqrt(
+            #     (dIQ_df[0, i_chan] * np.cos(rotation_angle)) ** 2 + \
+            #     (dIQ_df[1, i_chan] * np.sin(rotation_angle)) ** 2
+            # )
+
+        # Q in y direction, I in x direction
+        rotation_angle = np.atan2(dIQ_df[1, :], dIQ_df[0, :])
+        adc_units_to_hz = np.sqrt(
+            (dIQ_df[0, :] * np.cos(rotation_angle)) ** 2 +
+            (dIQ_df[1, :] * np.sin(rotation_angle)) ** 2
+        )
+        return rotation_angle, adc_units_to_hz
 
 
 def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
