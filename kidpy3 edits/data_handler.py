@@ -29,6 +29,7 @@ import h5py
 import os
 import logging
 import numpy as np
+import numpy.typing as npt
 from datetime import date
 from pathlib import Path
 
