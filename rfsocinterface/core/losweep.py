@@ -661,18 +661,17 @@ class LoSweep:
                 chanmask = self.chan.chanmask
         self.chanmask = chanmask
         self._processed = False
-        log = logging.getLogger()
         if len(self.freqs) > 1:
             tone_diff = np.diff(self.freqs)[0] * 1e-6  # MHz
         else:
             tone_diff = 0
-        log.info(f"tone diff={tone_diff}")
+        _logger.debug(f"tone diff={tone_diff}")
         if freq_step > 0:
             flo_step = freq_step * 1e-6  # MHz
         else:
             flo_step = tone_diff / N_steps
 
-        log.info(f"lo step size={flo_step}")
+        _logger.debug(f"lo step size={flo_step}")
         flo_start = self.f_center * 1e-6 - flo_step * N_steps / 2.0  # MHz
         flo_stop = self.f_center * 1e-6  + flo_step * N_steps / 2.0  # MHz
 
@@ -680,7 +679,7 @@ class LoSweep:
         if pd is not None:
             pd.setMaximum(len(self.flos))
         # flos = np.round(flos * 1e3)*1e-3
-        log.info(f"len flos {self.flos.shape}")
+        _logger.debug(f"len flos {self.flos.shape}")
         if pd is not None:
             future = pd.map(self._get_data_at, self.flos)
         else:
@@ -696,17 +695,16 @@ class LoSweep:
         # )
     
     def _process_sweep_results(self, future: Future[npt.NDArray]):
-        _logger.debug('Processing sweep results')
+        _logger.info('Processing sweep results')
         if future.cancelled():
             _logger.info('Sweep cancelled. Exiting...')
             return
         sweep_Z = np.array(list(future.result()))
 
-        log = logging.getLogger()
-        log.info(f"sweepz.shape={sweep_Z.shape}")
+        _logger.debug(f"sweepz.shape={sweep_Z.shape}")
 
         f = np.zeros([np.size(self.freqs), np.size(self.flos)])
-        log.info(f"shape of f = {f.shape}")
+        _logger.debug(f"shape of f = {f.shape}")
         for itone, ftone in enumerate(self.freqs):
             f[itone, :] = self.flos * 1e6 + ftone
         #    f = np.array([flos * 1e6 + ftone for ftone in freqs]).flatten()
@@ -722,7 +720,7 @@ class LoSweep:
 
         self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), self.chanmask)
         self._processed = True
-        _logger.debug('Finished processing sweep results')
+        _logger.info('Finished processing sweep results')
 
 
 if __name__ == '__main__':

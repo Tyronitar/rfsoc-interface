@@ -515,7 +515,7 @@ class BinTODIntoMap(DataRoutine):
 if __name__ == '__main__':
 
     date = '20250620'
-    setnum = 1006
+    setnum = 1005
 
     ds_factor = 10
     hp_filt_freq = 0.5
@@ -536,4 +536,5 @@ if __name__ == '__main__':
     binner = BinTODIntoMap()
     binner(md)
     md.plot()
+    pdb.set_trace()
     md.close()

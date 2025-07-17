@@ -17,7 +17,7 @@ from kidpy3 import RawDataFile
 from scipy import signal
 import matplotlib.pyplot as plt
 
-from rfsocinterface.core.utils import ensure_path, gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX
+from rfsocinterface.core.utils import ensure_path, gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks
 from rfsocinterface.core.losweep import LoSweepData
 
 DATA_DIRECTORY = '/data'
@@ -1479,6 +1479,8 @@ class PyTablesProcessedData:
                     valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
 
                 if ds_factor > 1:
+                    # decimate_in_chunks(time_ordered_data.adc_i[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[0, :])
+                    # decimate_in_chunks(time_ordered_data.adc_q[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[1, :])
                     detector_data.data_IQ[0, :] = signal.decimate(time_ordered_data.adc_i[valid_tone_index, :], ds_factor)
                     detector_data.data_IQ[1, :] = signal.decimate(time_ordered_data.adc_q[valid_tone_index, :], ds_factor)
                 else:
