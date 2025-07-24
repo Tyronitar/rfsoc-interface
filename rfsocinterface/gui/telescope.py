@@ -20,6 +20,7 @@ import functools
 
 from multiprocessing import Process, Pipe, Queue
 from threading import Thread
+import time
 
 import matplotlib.pyplot as plt
 import sys
@@ -35,7 +36,7 @@ from rfsocinterface.gui.utils import get_num_value
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
-_tele_logger = logging.getLogger('telescopeControl')
+_tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
@@ -119,8 +120,10 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     
     def _connection_loop(self):
         while True:
+            if not self._conn_parent.poll(1e-2):
+                continue
             response, *data = self._conn_parent.recv()
-            _tele_logger.debug(f'{self._client_id} got response: {response}, data: {data}')
+            _tele_logger.debug(f'{self._client_id} got response: "{response}", data: {data}')
             match response.lower():
                 case 'az_pos':
                     self.update_az_pos(*data)

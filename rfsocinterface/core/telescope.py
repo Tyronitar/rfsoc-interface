@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import logging
+import signal
 
 import pdb
 import time
 from multiprocessing.connection import Connection
 from multiprocessing import Queue
+import sys
+import threading
 from threading import Thread
+from time import sleep
+try:
+    import thread
+except ImportError:
+    import _thread as thread
 
 import h5py
 import numpy as np
@@ -18,7 +26,7 @@ from Exscript.protocols.telnetlib import Telnet
 from rfsocinterface.core.utils import analog_to_digital
 
 _logger = logging.getLogger(__name__)
-_tele_logger = logging.getLogger('telescopeControl')
+_tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 
 ZEPORT = 23
@@ -53,6 +61,28 @@ NEG_ZE_SW_LIM = -np.inf
 POS_ZE_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
 
 
+def quit_function():
+    thread.interrupt_main() # raises KeyboardInterrupt
+
+
+def exit_after(timeout: int):
+    '''
+    use as decorator to exit process if 
+    function takes longer than s seconds
+    '''
+    def outer(fn):
+        def inner(*args, **kwargs):
+            timer = threading.Timer(timeout, quit_function, args=[fn.__name__, *args], kwargs=kwargs)
+            timer.start()
+            try:
+                result = fn(*args, **kwargs)
+            finally:
+                timer.cancel()
+            return result
+        return inner
+    return outer
+
+
 class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
 
@@ -68,21 +98,50 @@ class TelescopeMotorController:
     def add_connection(self, client_id: str, conn: Connection):
         """Add a connection to the telescope controller"""
         self.connections[client_id] = conn
+        _tele_logger.debug(f'Succesfully added new Client "{client_id}"')
     
     def remove_connection(self, client_id: str):
         self.send(client_id, 'remove_connection_succesful')
         del self.connections[client_id]
+        _tele_logger.debug(f'Succesfully removed Client "{client_id}"')
     
-    def send_all(self, command: str, *args):
-        for conn in self.connections.values():
-            conn.send([command, *args])
+    def send_all(self, command: str, *args, timeout: float=None):
+        if timeout:
+            timer = threading.Timer(
+                timeout,
+                quit_function,
+            )
+            timer.start()
+            try:
+                for conn in self.connections.values():
+                    conn.send([command, *args])
+            except KeyboardInterrupt:
+                _tele_logger.error(f'Timed out sending command "{command}" with args {args} to all clients')
+            finally:
+                timer.cancel()
+        else:
+            for conn in self.connections.values():
+                conn.send([command, *args])
     
-    def send(self, client_id: str, command: str, *args):
+    def send(self, client_id: str, command: str, *args, timeout: float=None):
         """Send a command to the telescope controller"""
         if client_id in self.connections:
-            self.connections[client_id].send([command, *args])
+            if timeout:
+                timer = threading.Timer(
+                    timeout,
+                    quit_function,
+                )
+                timer.start()
+                try:
+                    self.connections[client_id].send([command, *args])
+                except KeyboardInterrupt:
+                    _tele_logger.error(f'Timed out sending command "{command}" with args {args} to Client "{client_id}"')
+                finally:
+                    timer.cancel()
+            else:
+                self.connections[client_id].send([command, *args])
         else:
-            self.send_all('err', f'Unknown client "{client_id}".')
+            self.send_all('err', f'Unknown client "{client_id}".', timeout=2)
 
     def _listener_loop(self):
         while True:
@@ -204,6 +263,7 @@ class TelescopeMotorController:
     def set_ao_zero(self):
         self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
         self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
+        _tele_logger.debug('Set voltages to zero.')
 
     # Azimuth settings
     def set_az_home(self):
@@ -235,7 +295,7 @@ class TelescopeMotorController:
                 self.ser_az.reset_output_buffer()
                 self.az_pos = pfb
                 if self._initialized:
-                    self.send_all('az_pos', pfb)
+                    self.send_all('az_pos', pfb, timeout=0.25)
                 return pfb
         except ValueError:
             self.send_all(
@@ -252,7 +312,7 @@ class TelescopeMotorController:
         worker_thread.start()
 
     def _set_az_pos(self, new_pos: int, scan_mode: bool=False, stop_run: bool=True, speed_factor: float=1.):
-        self.send_all('az_pos_comm', new_pos)
+        self.send_all('az_pos_comm', new_pos, timeout=0.25)
         # I want to accept a number in degrees, but put the number in the integer value desired by S700 controller
         # AZ controlled by 2 motors, the first to actually move the telescope, the second to put some tension on the gear for avoiding any backlash. Currently the secondary motor is disabled, probably providing little to no torque, but given the huge gearing ratio, it probably helps with backlash. The next easiest technique would be to run the secondary in "analog torque" mode, setting the zero value to some small torque. This could be improved by increasing the torque during motion and reducing when the first motor is not moving (probably by changing the zero value torque, since both analog outs are already in use). The proper way to do it, and the reason we were sold these S700 controllers is called RDP per the kollmorgen tech guy but my guess is he meant prd cogging mode.
         self.set_ao_zero()
@@ -322,8 +382,9 @@ class TelescopeMotorController:
         if stop_run:
             self._run = False
         ## Read position again
-        time.sleep(1)
+        # time.sleep(1)
         pfb = self.get_ser_az_pos()
+        _tele_logger.debug(f'Finished setting az_pos to {new_pos}. Actual={pfb}, Error={pfb - new_pos:.5f}')
         if scan_mode:
             return position_data
 
@@ -375,8 +436,11 @@ class TelescopeMotorController:
 
         speed_factor = 1/3 if large_map_mode else 1.
 
+        start_time = time.time()
+        rep_times = []
         for i_rep in np.arange(n_repeats):
-            _logger.info(f'AZ Scan Mode: Starting repeat {i_rep} of {n_repeats}')
+            rep_start_time = time.time()
+            _logger.info(f'AZ Scan Mode: Starting repeat {i_rep + 1} of {n_repeats}')
             if not self._run:
                 break
             if large_map_mode:
@@ -399,6 +463,14 @@ class TelescopeMotorController:
                     az_start - az_start_buffer - 0.5, scan_mode=True, stop_run=False, speed_factor=speed_factor,
                 )
                 position_data = np.append(position_data, this_position_data)
+            rep_end_time = time.time()
+            elapsed_time = rep_end_time - rep_start_time
+            rep_times.append(elapsed_time)
+            _logger.info(f'AZ Scan Mode: Finished repeat {i_rep + 1} in {elapsed_time:.3f}s')
+            _logger.info(f'Average time per repetition is {np.mean(rep_times):.3f}s')
+
+        stop_time = time.time()
+        _logger.info(f'Finished {n_repeats} repeats in {stop_time - start_time:.3f}s')
 
         # self._run is only changed if the telescope was stopped mid scan
         # Don't save the telescope data in that case
@@ -412,6 +484,7 @@ class TelescopeMotorController:
             f.create_dataset("timestamp_tel", data=position_data[2::3])
             f.create_dataset("optical_visibility", data=['****'])
         if position_return:
+            _tele_logger.info('Resetting telescope position...')
             self._set_az_pos(initial_az, stop_run=False)
             self._set_ze_pos(initial_ze, stop_run=False)
 
@@ -434,7 +507,7 @@ class TelescopeMotorController:
             self.ser_az.write(command)
             self.ser_az.readline()
             az_speed = self.ser_az.read_until(b"\r\n")
-            _logger.info(f'AZ speed set to: {rpm_per_ten_volt * 10} RPM / V')
+            _logger.info(f'AZ speed relation set to: {rpm_per_ten_volt * 10} RPM / V')
             self.ser_az.reset_input_buffer()
             self.ser_az.reset_output_buffer()
 
@@ -464,7 +537,7 @@ class TelescopeMotorController:
             pos = float(pos_str.split(' ')[0].split('>')[-1])
             self.ze_pos = pos
             if self._initialized:
-                self.send_all('ze_pos', pos)
+                self.send_all('ze_pos', pos, timeout=0.25)
             return pos
         except ValueError:
             _tele_logger.error(
@@ -481,7 +554,7 @@ class TelescopeMotorController:
         worker_thread.start()
 
     def _set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True):
-        self.send_all('ze_pos_comm', new_pos)
+        self.send_all('ze_pos_comm', new_pos, timeout=0.25)
         # new_pos = float(new_pos)
         self.set_ao_zero()
 
@@ -554,7 +627,7 @@ class TelescopeMotorController:
         ## Read position again
         time.sleep(0.1)
         pos = self.get_ser_ze_pos()
-        _tele_logger.debug(f'After loop zenith pos: {pos}')
+        _tele_logger.debug(f'Finished setting ze_pos to {new_pos}. Actual={pos}, Error={pos - new_pos:.5f}')
         if scan_mode:
             return position_data
 
@@ -583,7 +656,7 @@ class TelescopeMotorController:
             command = command.encode('ASCII')
             self.ser_ze.write(command)
             ze_speed = self.ser_ze.read_until(b'\r\n', 0.1)
-            _logger.info(f'ZA speed replation set to: {rpm_per_volt} RPM / V')
+            _logger.info(f'ZA speed relation set to: {rpm_per_volt} RPM / V')
 
     # Misc
     def talk_to_az(self, command: str):
