@@ -1,18 +1,16 @@
 """Data proccessing routines."""
 
-from typing import Any, Callable
 import abc
 import pdb
 from datetime import datetime, timezone
 
 import numpy as np
 from scipy import signal
-import h5py
 import tables
 import git
 
 import rfsocinterface
-from rfsocinterface.core.data.data import PyTablesProcessedData, PyTablesMapData, ProcessedData, generate_calibrated_data2, remove_electronics_noise2
+from rfsocinterface.core.data.data import ProcessedData, ProcessedData, generate_calibrated_data, remove_electronics_noise_tables
 from rfsocinterface.core.data.data import DECIMATE_ORDER
 from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter
 
@@ -48,7 +46,7 @@ class DataPipeline:
     def add_to_receipt(self, entry: str):
         self._receipt.append(entry)
     
-    def run_pipeline(self, input: PyTablesProcessedData):
+    def run_pipeline(self, input: ProcessedData):
         self.pre_processor.apply_routines(input)
         self.processor.apply_routines(input)
         self.post_processor.apply_routines(input)
@@ -66,10 +64,10 @@ class DataPipeline:
 class DataRoutine:
     __metaclass__ = abc.ABCMeta
 
-    def __call__(self, input: PyTablesProcessedData):
+    def __call__(self, input: ProcessedData):
         self.forward(input)
 
-    def forward(self, input: PyTablesProcessedData):
+    def forward(self, input: ProcessedData):
         raise NotImplementedError(
             f'DataRoutine [{type(self).__name__}] is missing a forward method'
         )
@@ -88,7 +86,7 @@ class RoutineApplier:
             raise TypeError(f'Expected DataRoutine, got {type(routine)}')
         self._routines.append(routine)
 
-    def apply_routines(self, input: PyTablesProcessedData):
+    def apply_routines(self, input: ProcessedData):
         for routine in self._routines:
             routine(input)
             # do something to the pipeline's receipt...
@@ -123,7 +121,7 @@ class GaussianFilter(DataRoutine):
         super().__init__()
         self.gaussian_sigma = gaussian_sigma
 
-    def forward(self, pd: PyTablesProcessedData, field: str='data_mK'):
+    def forward(self, pd: ProcessedData, field: str='data_mK'):
         array = pd._pfile.get_node('/', field)
         smoothed_data = gaussian_filter(array, self.gaussian_sigma)
         array[:] = smoothed_data
@@ -137,7 +135,7 @@ class CutoffFilter(DataRoutine):
         self.filter_freq = filter_freq
         self.btype = btype
 
-    def forward(self, pd: PyTablesProcessedData):
+    def forward(self, pd: ProcessedData):
         filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
 
         # Apply cutoff filter
@@ -168,7 +166,7 @@ class Downsample(DataRoutine):
         self.ds_factor = ds_factor
         self.order=order
 
-    def forward(self, pd: PyTablesProcessedData):
+    def forward(self, pd: ProcessedData):
         # TODO: Should this routine even still exist?
         # Downsampling after the fact is annoying with PyTables
 
@@ -201,9 +199,9 @@ class RemoveElectronicsNoise(DataRoutine):
     def __init__(self):
         super().__init__()
 
-    def forward(self, pd: PyTablesProcessedData):
-        remove_electronics_noise2(pd.data_gain_phase)
-        generate_calibrated_data2(pd.root.detector_0.data, pd._pfile.root.detector_0.global_data)
+    def forward(self, pd: ProcessedData):
+        remove_electronics_noise_tables(pd.data_gain_phase)
+        generate_calibrated_data(pd.root.detector_0.data, pd._pfile.root.detector_0.global_data)
 
     def get_receipt_entry(self) -> str:
         return f'RemoveElectronicsNoise: {{\n}}'
@@ -214,7 +212,7 @@ class CleanTOD(DataRoutine):
     def __init__(self):
         super().__init__()
 
-    def forward(self, pd: PyTablesProcessedData):
+    def forward(self, pd: ProcessedData):
 
         # TODO: Does this need to still support the "good_sample" stuff?
         #average template subtraction
@@ -236,6 +234,48 @@ class CleanTOD(DataRoutine):
     def get_receipt_entry(self) -> str:
         return f'CleanTOD: {{\n}}'
 
+# class RemovePointLomaPickup(DataRoutine):
+#     def __init__(self, ds_factor: int=6, pickup_filter_freq: float=1):
+#         super().__init__()
+#         self.ds_factor = ds_factor
+#         self.pickup_filter_freq = pickup_filter_freq
+    
+#     def forward(self, pd: ProcessedData) -> MapData:
+#         #need to high pass filter the data to remove basline drift
+#         data_raw = pd.data_mK
+#         chanmask = pd.chanmask
+
+#         pickup_hpfilt_sos = signal.butter(6, self.pickup_filter_freq, 'hp', fs=pd.fs, output='sos', analog=False)
+
+#         #sum all the data at each time sample, then look for outliers in this sum
+#         data_sum_raw = np.zeros(np.size(data_raw[0,:]))
+#         for i_chan in range(np.size(chanmask)):
+#             if chanmask[i_chan] == 1:      
+#                 data_sum_raw += np.abs(data_raw[i_chan,:])
+#         data_sum = signal.sosfiltfilt(pickup_hpfilt_sos, data_sum_raw)
+
+#         pickup_data = np.ndarray.flatten(np.argwhere(np.abs(data_sum) > 5.*np.median(np.abs(data_sum))))
+#         pickup_good_index = []
+#         valid_time = np.arange(np.size(data_sum))
+#         if np.size(pickup_data > 0):
+#             pickup_start = pickup_data[np.argwhere(pickup_data - np.roll(pickup_data,1) != 1)]
+#             pickup_end = pickup_data[np.argwhere(np.roll(pickup_data,-1) - pickup_data != 1)]
+#             for i_start in pickup_start:
+#                 pickup_data = np.append(pickup_data, i_start - 1 - np.arange(10))
+#             for i_end in pickup_end:
+#                 pickup_data = np.append(pickup_data, i_end + 1 + np.arange(10))
+#             pickup_data.sort()
+#             valid_pickup = np.ndarray.flatten(np.argwhere(np.bitwise_and(pickup_data >= 0,pickup_data < np.size(valid_time))))
+#             pickup_data = pickup_data[valid_pickup]
+#             pickup_good_index = [element for element in np.arange(np.size(valid_time)) if element not in pickup_data]
+#             pickup_good_index = np.divide(pickup_good_index[0::self.ds_factor], self.ds_factor)
+#             pickup_good_index = pickup_good_index.astype(int)
+
+#         m = MapData.from_processed_data(pd)
+#         m.good_samples = np.array(pickup_good_index)
+#         # pdb.set_trace()
+#         return m
+
 
 if __name__ == '__main__':
     date = '20250620'
@@ -245,7 +285,7 @@ if __name__ == '__main__':
     hp_filt_freq = 0.5
     lp_filt_freq = 10
 
-    pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
+    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
     # pd = PyTablesProcessedData.from_file(date, setnum)
 
     hpfilt = HighPassFilter(hp_filt_freq)

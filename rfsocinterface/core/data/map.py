@@ -1,26 +1,15 @@
-"""Functions for creating a map from data."""
+"""Data routines for binning time-ordered data (TOD) into maps."""
 
 from __future__ import annotations
-from pathlib import Path
-from typing import Callable, Any
 import pdb
 
-import h5py
-import tables
 import numpy as np
 import numpy.typing as npt
-from scipy import signal, ndimage
-from scipy.ndimage import zoom
-from scipy.optimize import curve_fit
+from scipy import signal
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from kidpy3 import RawDataFile
 
-from rfsocinterface.core.data.data import BUTTER_ORDER, DECIMATE_ORDER, PyTablesMapData, DEFAULT_MAP_DPIX, PyTablesProcessedData
-from rfsocinterface.core.data.routines import DataRoutine, CleanTOD, HighPassFilter, LowPassFilter
-from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA
-# from rfsocinterface.core.data import N_POLARIZATION, ProcessedData, PyTablesProcessedData, PyTablesMapData, MapData, remove_electronics_noise, rotate_basis, generate_calibrated_data
+from rfsocinterface.core.data.data import MapData, DEFAULT_MAP_DPIX, ProcessedData
 
 def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, beam_map_mode: bool=False) -> npt.NDArray:
 
@@ -38,155 +27,126 @@ def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, 
     return n_pix_x, n_pix_y, map_x, map_y
 
 
-def _unimplemented_forward(self, *args):
-    raise NotImplementedError(
-        f'DataRoutine [{type(self).__name__}] is missing a forward method'
-    )
-  
-
-class DataRoutine:
-    forward: Callable[..., Any] = _unimplemented_forward
-
-    def __init__(self):
-        self._receipt = ''
-
-    def __call__(self, *input, **kwargs):
-        output = self.forward(*input, **kwargs)
-        # do something to the receipt...
-        return output
-
-
-class Mapper:
-    def __init__(self, routines: list[DataRoutine]=[]):
-        self._routines = routines
-    
-    def add_routine(self, routine: DataRoutine):
-        if not isinstance(routine, DataRoutine):
-            raise TypeError(f'Expected DataRoutine, got {type(routine)}')
-        self._routines.append(routine)
-    
-    def __call__(self, input: ProcessedData, save: bool=True):
-
-        output = input
-        for routine in self._routines:
-            # if isinstance(routine, BinTODIntoMap):
-            #     pdb.set_trace()
-            output = routine(output)
-        if save:
-            output.save()
-        return output
-
-class RemovePointLomaPickup(DataRoutine):
-    def __init__(self, ds_factor: int=6, pickup_filter_freq: float=1):
+class BinTODIntoMap(DataRoutine):
+    def __init__(
+            self,
+            hp_filter_freq: float=0.5,
+            lp_filter_freq: float=10.,
+            az_trim: float=2.3,
+            za_trim: float=0.2,
+            med_netd_cut_threshold: float=3.,
+            beam_map_mode: bool=False,
+    ):
         super().__init__()
-        self.ds_factor = ds_factor
-        self.pickup_filter_freq = pickup_filter_freq
-    
-    def forward(self, pd: ProcessedData) -> MapData:
-        #need to high pass filter the data to remove basline drift
-        data_raw = pd.data_mK
-        chanmask = pd.chanmask
-
-        pickup_hpfilt_sos = signal.butter(6, self.pickup_filter_freq, 'hp', fs=pd.fs, output='sos', analog=False)
-
-        #sum all the data at each time sample, then look for outliers in this sum
-        data_sum_raw = np.zeros(np.size(data_raw[0,:]))
-        for i_chan in range(np.size(chanmask)):
-            if chanmask[i_chan] == 1:      
-                data_sum_raw += np.abs(data_raw[i_chan,:])
-        data_sum = signal.sosfiltfilt(pickup_hpfilt_sos, data_sum_raw)
-
-        pickup_data = np.ndarray.flatten(np.argwhere(np.abs(data_sum) > 5.*np.median(np.abs(data_sum))))
-        pickup_good_index = []
-        valid_time = np.arange(np.size(data_sum))
-        if np.size(pickup_data > 0):
-            pickup_start = pickup_data[np.argwhere(pickup_data - np.roll(pickup_data,1) != 1)]
-            pickup_end = pickup_data[np.argwhere(np.roll(pickup_data,-1) - pickup_data != 1)]
-            for i_start in pickup_start:
-                pickup_data = np.append(pickup_data, i_start - 1 - np.arange(10))
-            for i_end in pickup_end:
-                pickup_data = np.append(pickup_data, i_end + 1 + np.arange(10))
-            pickup_data.sort()
-            valid_pickup = np.ndarray.flatten(np.argwhere(np.bitwise_and(pickup_data >= 0,pickup_data < np.size(valid_time))))
-            pickup_data = pickup_data[valid_pickup]
-            pickup_good_index = [element for element in np.arange(np.size(valid_time)) if element not in pickup_data]
-            pickup_good_index = np.divide(pickup_good_index[0::self.ds_factor], self.ds_factor)
-            pickup_good_index = pickup_good_index.astype(int)
-
-        m = MapData.from_processed_data(pd)
-        m.good_samples = np.array(pickup_good_index)
-        # pdb.set_trace()
-        return m
-
-
-
-            
-class GaussianFilter(DataRoutine):
-    def __init__(self, gaussian_sigma: tuple[float, float]=GAUSSIAN_SIGMA):
-        super().__init__()
-        self.gaussian_sigma = gaussian_sigma
-    
-    def forward(self, pd: ProcessedData, field: str='data_mK') -> ProcessedData:
-        smoothed_data = gaussian_filter(pd.__getattribute__(field), self.gaussian_sigma)
-        return pd.with_values(**{field: smoothed_data})
-
-
-# class CutoffFilter(DataRoutine):
-#     def __init__(self, filter_freq: float, btype: str):
-#         super().__init__()
-#         self.filter_freq = filter_freq
-#         self.btype = btype
-
-#     def forward(self, pd: ProcessedData) -> ProcessedData:
-#         filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
-
-#         # Apply cutoff filter
-#         data_gain_phase_filt = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
-#         data_freq_diss_filt = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
-#         data_mK_filt = signal.sosfiltfilt(filt_sos, pd.data_mK)
-#         return pd.with_values(
-#             data_gain_phase=data_gain_phase_filt,
-#             data_freq_diss=data_freq_diss_filt,
-#             data_mK=data_mK_filt,
-#         )
-
-# class LowPassFilter(CutoffFilter):
-#     def __init__(self, filter_freq: float):
-#         super().__init__(filter_freq, btype='lowpass')
-
-
-# class HighPassFilter(CutoffFilter):
-#     def __init__(self, filter_freq: float):
-#         super().__init__(filter_freq, btype='highpass')
-
-
-class Downsample(DataRoutine):
-    def __init__(self, ds_factor: float=6, order: int=DECIMATE_ORDER):
-        super().__init__()
-        self.ds_factor = ds_factor
-        self.order=order
-    
-    def forward(self, pd: ProcessedData) -> ProcessedData:
-        data_freq_diss_ds = signal.decimate(pd.data_freq_diss, self.ds_factor)
-        data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
-        data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
-        timestamp_ds = signal.decimate(pd.timestamp, self.ds_factor)
-        if np.size(pd.detector_az) > 1:
-            detector_az_ds = signal.decimate(pd.detector_az, self.ds_factor, n=self.order, axis=1)
-            detector_za_ds = signal.decimate(pd.detector_za, self.ds_factor, n=self.order, axis=1)
+        self.hp_filter_freq = hp_filter_freq
+        self.lp_filter_freq = lp_filter_freq
+        self.med_netd_cut_threshold = med_netd_cut_threshold
+        self.beam_map_mode = beam_map_mode
+        if beam_map_mode:
+            self.az_trim = 0.
+            self.za_trim = 0.
         else:
-            detector_az_ds = pd.detector_az
-            detector_za_ds = pd.detector_za
-        return pd.with_values(
-            data_freq_diss=data_freq_diss_ds,
-            data_gain_phase=data_gain_phase_ds,
-            data_mK=data_mK_ds,
-            timestamp=timestamp_ds,
-            detector_az=detector_az_ds,
-            detector_za=detector_za_ds,
-        )
+            self.az_trim = az_trim
+            self.za_trim = za_trim
 
+    def forward(
+            self,
+            md: MapData,
+    ):
 
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, DEFAULT_MAP_DPIX, self.beam_map_mode)
+        md.setup_mfile(n_pix_x, n_pix_y, beammap_mode=self.beam_map_mode)
+        md.map_az[:] = map_az
+        md.map_za[:] = map_za
+
+        wind = signal.get_window('hamming', md.n_samples)
+
+        data = md.data_mK[:]
+        sum_map = np.zeros(md.sum_map.shape)
+        hits_map = np.zeros(md.hits_map.shape)
+
+        print('computing netd...')
+        # Compute NETD values
+        for i_chan in np.where(md.chanmask[:] == 1)[0]:
+            this_freq, this_psd = signal.periodogram(data[i_chan, :], md.fs, window=wind)
+            valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
+            this_netd = np.sqrt(np.median(this_psd[valid_freq]))
+            md.netd[i_chan] = this_netd
+        
+        print('netd done!')
+
+        # Get rid of channels with bad weights
+        new_chanmask = np.copy(md.chanmask)
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = md.netd[good_idx]
+        new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
+
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = md.netd[good_idx]
+        netd_med = np.median(np.log10(good_netd))
+        netd_std = np.std(np.log10(good_netd))
+        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
+        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
+
+        md.netd[new_chanmask != 1] = 0
+
+        if self.beam_map_mode:
+            channels_to_map = np.where(md.chanmask[:] != 0)[0]
+        else:
+            channels_to_map = np.where(new_chanmask == 1)[0]
+
+        # Create map
+        # for i_chan in channels_to_map[:10]:
+        print('creating map...')
+        for n_loop, i_chan in enumerate(channels_to_map):
+            if n_loop == np.size(channels_to_map) // 2:
+                print('halfway done...')
+            if self.beam_map_mode:
+                map_idx = i_chan
+                weight = 1.
+            else:
+                map_idx = md.detector_pol[i_chan] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
+                weight = 1./ md.netd[i_chan] ** 2.
+
+            this_detector_az = md.detector_az[i_chan,:]
+            this_detector_za = md.detector_za[i_chan,:]
+
+            # Get the good samples if they haven't been specified
+            this_clean_data = np.squeeze(data[i_chan,:])
+
+            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/DEFAULT_MAP_DPIX))
+            x_ind = x_ind.astype('int64')
+            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/DEFAULT_MAP_DPIX))
+            y_ind = y_ind.astype('int64')
+
+            #eliminate samples outside the map
+            good_samples = md.good_samples[:]
+            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
+                np.logical_and(x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x), \
+                np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
+            good_samples = good_samples[valid_index]
+
+            # pdb.set_trace()
+            #loop over samples to create sum and hits maps
+            for time_sample in good_samples:
+                sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+        # weights = 1 / netd[md.chanmask==1]**2
+        # np.save('weight.npy', 1/all_NETDs**2)
+        # plt.show()
+        md.chanmask[:] = new_chanmask
+        md.sum_map[:] = sum_map
+        md.hits_map[:] = hits_map
+    
+    def get_receipt_entry(self) -> str:
+        return f'BinTODIntoMap: {{\n' \
+               f'  hp_filter_freq: {self.hp_filter_freq},\n' \
+               f'  lp_filter_freq: {self.lp_filter_freq},\n' \
+               f'  az_trim: {self.az_trim},\n' \
+               f'  za_trim: {self.za_trim},\n' \
+               f'  med_netd_cut_threshold: {self.med_netd_cut_threshold},\n' \
+               f'}}'
 
 class BasicMapRemoval(DataRoutine):
     def forward(self, map: MapData) -> MapData:
@@ -356,359 +316,30 @@ def outlier_removal(data):
     return final_pixels, np.array(outlier_pixels)
 
 
-def analyze_beammap(md: MapData):
-    # extent = (min(md.map_x)-md.map_dpix/2.,max(md.map_x)+md.map_dpix/2,max(md.map_y)+md.map_dpix/2.,min(md.map_y)-md.map_dpix/2.)
-    extent = (min(md.map_x),max(md.map_x),max(md.map_y),min(md.map_y))
-
-    map_xpos_uniq = np.unique(md.map_x)
-    map_ypos_uniq = np.unique(md.map_y)
-    n_xpos = np.size(map_xpos_uniq)
-    n_ypos = np.size(map_ypos_uniq)
-
-    nrows = 10
-    ncols = 10
-    pdf_file_name = md.folder / (md.file_stub + '_beammap.pdf')
-    with PdfPages(pdf_file_name) as pdf:
-        # for counter, i_chan in enumerate(np.argwhere(md.chanmask == 1)):
-        fig = plt.figure()
-        for counter, i_chan in enumerate(np.argwhere(md.chanmask != 0)[:10]):
-            plt.subplot(nrows, ncols, counter + 1 % (nrows * ncols))
-            plt.axis('off')
-            max_abs = np.nanmax(np.abs(md.map))
-            plt.imshow(
-                np.flip(np.transpose(md.map[i_chan, ::-1]),1),
-                aspect='equal',
-                extent=extent,
-                vmin=-max_abs,
-                vmax=max_abs,
-            )
-            if (counter + 1) % (nrows * ncols) == 0:
-                plt.show()
-                pdf.savefig(fig)
-                plt.close(fig)
-                fig = plt.figure()
-    
-        plt.show()
-        pdf.savefig(fig)
-        plt.close(fig)
-
-
-class BinTODIntoMap(DataRoutine):
-    def __init__(
-            self,
-            hp_filter_freq: float=0.5,
-            lp_filter_freq: float=10.,
-            az_trim: float=2.3,
-            za_trim: float=0.2,
-            med_netd_cut_threshold: float=3.,
-            beam_map_mode: bool=False,
-    ):
-        super().__init__()
-        self.hp_filter_freq = hp_filter_freq
-        self.lp_filter_freq = lp_filter_freq
-        self.med_netd_cut_threshold = med_netd_cut_threshold
-        self.beam_map_mode = beam_map_mode
-        if beam_map_mode:
-            self.az_trim = 0.
-            self.za_trim = 0.
-        else:
-            self.az_trim = az_trim
-            self.za_trim = za_trim
-
-    def forward(
-            self,
-            md: PyTablesMapData,
-    ):
-
-        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, DEFAULT_MAP_DPIX, self.beam_map_mode)
-        md.setup_mfile(n_pix_x, n_pix_y, beammap_mode=self.beam_map_mode)
-        md.map_az[:] = map_az
-        md.map_za[:] = map_za
-
-        wind = signal.get_window('hamming', md.n_samples)
-
-        data = md.data_mK[:]
-        sum_map = np.zeros(md.sum_map.shape)
-        hits_map = np.zeros(md.hits_map.shape)
-
-        print('computing netd...')
-        # Compute NETD values
-        for i_chan in np.where(md.chanmask[:] == 1)[0]:
-            this_freq, this_psd = signal.periodogram(data[i_chan, :], md.fs, window=wind)
-            valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
-            this_netd = np.sqrt(np.median(this_psd[valid_freq]))
-            md.netd[i_chan] = this_netd
-        
-        print('netd done!')
-
-        # Get rid of channels with bad weights
-        new_chanmask = np.copy(md.chanmask)
-        good_idx = np.where(new_chanmask == 1)[0]
-        good_netd = md.netd[good_idx]
-        new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
-
-        good_idx = np.where(new_chanmask == 1)[0]
-        good_netd = md.netd[good_idx]
-        netd_med = np.median(np.log10(good_netd))
-        netd_std = np.std(np.log10(good_netd))
-        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
-        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
-
-        md.netd[new_chanmask != 1] = 0
-
-        if self.beam_map_mode:
-            channels_to_map = np.where(md.chanmask[:] != 0)[0]
-        else:
-            channels_to_map = np.where(new_chanmask == 1)[0]
-
-        # Create map
-        # for i_chan in channels_to_map[:10]:
-        print('creating map...')
-        for n_loop, i_chan in enumerate(channels_to_map):
-            if n_loop == np.size(channels_to_map) // 2:
-                print('halfway done...')
-            if self.beam_map_mode:
-                map_idx = i_chan
-                weight = 1.
-            else:
-                map_idx = md.detector_pol[i_chan] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
-                weight = 1./ md.netd[i_chan] ** 2.
-
-            this_detector_az = md.detector_az[i_chan,:]
-            this_detector_za = md.detector_za[i_chan,:]
-
-            # Get the good samples if they haven't been specified
-            this_clean_data = np.squeeze(data[i_chan,:])
-
-            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
-            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/DEFAULT_MAP_DPIX))
-            x_ind = x_ind.astype('int64')
-            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/DEFAULT_MAP_DPIX))
-            y_ind = y_ind.astype('int64')
-
-            #eliminate samples outside the map
-            good_samples = md.good_samples[:]
-            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
-                np.logical_and(x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x), \
-                np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
-            good_samples = good_samples[valid_index]
-
-            # pdb.set_trace()
-            #loop over samples to create sum and hits maps
-            for time_sample in good_samples:
-                sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
-                hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
-        # weights = 1 / netd[md.chanmask==1]**2
-        # np.save('weight.npy', 1/all_NETDs**2)
-        # plt.show()
-        md.chanmask[:] = new_chanmask
-        md.sum_map[:] = sum_map
-        md.hits_map[:] = hits_map
-    
-    def get_receipt_entry(self) -> str:
-        return f'BinTODIntoMap: {{\n' \
-               f'  hp_filter_freq: {self.hp_filter_freq},\n' \
-               f'  lp_filter_freq: {self.lp_filter_freq},\n' \
-               f'  az_trim: {self.az_trim},\n' \
-               f'  za_trim: {self.za_trim},\n' \
-               f'  med_netd_cut_threshold: {self.med_netd_cut_threshold},\n' \
-               f'}}'
-
-def Gauss_2d(
-    xy_coords: tuple[npt.NDArray, npt.NDArray],
-    amp: float,
-    x0: float,
-    y0: float,
-    fwhm_x: float,
-    fwhm_y: float,
-    offset: float,
-) -> npt.NDArray:
-#  return offset + amp * np.exp(-((x-x0)**2 + (y-y0)**2)/ (2. * sigma**2))
-  (x,y) = xy_coords
-  sigma_x = fwhm_x / (2 * np.sqrt(2 * np.log(2)))
-  sigma_y = fwhm_y / (2 * np.sqrt(2 * np.log(2)))
-  return offset + amp * np.exp(-(x-x0)**2/(2.*sigma_x**2) - (y-y0)**2/(2.*sigma_y**2))
-
-
-def analyze_beammap(
-    map_data: PyTablesMapData,
-    nrows: int=10,
-    ncols: int=10,
-):
-    az = map_data.map_az[:][:, np.newaxis]
-    za = map_data.map_za[:][np.newaxis, :]
-    map_val = map_data.map  # N_resonator x X x Y
-
-    extent = map_data.extent()
-
-    # TODO: Get actual file name
-    filename = map_data.beammap_file_template
-
-    chanmask = map_data.chanmask[:]
-    chanmask[10:] = -1
-
-    beammap_file = tables.File(filename, 'w')
-    az_center = beammap_file.create_array('/', 'az_center', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    za_center =beammap_file.create_array('/', 'za_center', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    amplitude  = beammap_file.create_array('/', 'amplitude', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    snr = beammap_file.create_array('/', 'snr', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    chisq = beammap_file.create_array('/', 'chisq', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    fwhm_az = beammap_file.create_array('/', 'fwhm_az', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    fwhm_za = beammap_file.create_array('/', 'fwhm_za', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-
-    for idx in np.flatnonzero(chanmask == 1):
-        this_val = np.ndarray.flatten(map_val[idx,:])
-        this_val[np.isnan(this_val)] = 0
-
-        max_index = np.argwhere(this_val == np.max(this_val))
-        az_idx, za_idx = np.unravel_index(max_index[0], map_val[idx].shape)
-        az_max = az[az_idx, :]
-        za_max = za[:, za_idx]
-        separation = np.sqrt((az - az_max[0])**2 + (za - za_max[0])**2)
-        index = np.argwhere(separation < 0.5)
-        flat_index = np.ravel_multi_index((index[:, 0], index[:, 1]), map_val[idx].shape)
-
-        az_center[idx] = np.sum(az[index[:, 0]]*this_val[flat_index]) / np.sum(this_val[index])
-        za_center[idx] = np.sum(za[:, index[:, 1]]*this_val[flat_index]) / np.sum(this_val[index])
-        amplitude[idx] = np.max(this_val[index])
-
-        this_az = np.ndarray.flatten(az[index[:, 0], :])
-        this_za = np.ndarray.flatten(za[:, index[:, 1]])
-        this_val = this_val[flat_index]
-        sigma_z = np.full(int(np.size(this_val)), (np.percentile(this_val, 84) - np.percentile(this_val, 16)) * 0.5)
-        start_params = (
-            np.max(this_val),
-            az_center[idx],
-            za_center[idx],
-            0.1,
-            0.1,
-            np.median(this_val)
-        )  
-        bounds = (
-            (0., az_center[idx] - 0.2, za_center[idx] - 0.2, 0.01, 0.01, -np.max(np.abs(this_val))),
-            (10. * np.max(this_val), az_center[idx] + 0.2, za_center[idx] + 0.2, 1., 1., np.max(np.abs(this_val)))
-        )
-        popt, pcov = curve_fit(
-            Gauss_2d,
-            (this_az, this_za),
-            this_val,
-            p0=start_params,
-            sigma=sigma_z,
-            absolute_sigma=True,
-            maxfev=1000000,
-            bounds=bounds
-        )
-        az_center[idx] = popt[1]
-        za_center[idx] = popt[2]
-        amplitude[idx] = popt[0]
-        fwhm_az[idx] = np.abs(popt[3])
-        fwhm_za[idx] = np.abs(popt[4])
-        snr[idx] = popt[0] / np.sqrt(pcov[0, 0])
-        #if idx == 14:
-        #pdb.set_trace()  # Debugging breakpoint for channel 14
-        chisq[idx] = np.sum(
-            ((this_val - Gauss_2d(
-                (this_az, this_za),
-                popt[0], popt[1], popt[2], popt[3], popt[4], popt[5]
-                )) ** 2 / sigma_z ** 2) / (np.size(this_val) - 5.)
-        )
-
-
-    # TODO: file name
-    pdf_file_name = str(map_data.folder) + map_data.file_stub + '_beammap.pdf'
-    with PdfPages(pdf_file_name) as pdf:
-
-        FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
-        high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50))
-        plt.scatter(az_center[high_snr_ind], za_center[high_snr_ind], marker='+')
-        plt.axis('equal')
-        plt.xlim(extent[0],extent[1])
-        plt.ylim(extent[2],extent[3])
-        #  plt.hlines(extent[2:3],-1.e10,1.e10)
-        #  plt.vlines(extent[0:1],-1.e10,1.e10)
-        plt.xlabel('X Position (in)')
-        plt.ylabel('Y Position (in)')
-        pdf.savefig()
-        plt.close()
-        
-        counter = 1
-        #for idx in np.argwhere(chanmask == 1):
-        for idx in np.argwhere(chanmask == 1).flatten():
-
-            plt.subplot(nrows, ncols, counter)
-            plt.axis('off')
-        ### MAYA: Added cmap = 'jet' ###
-            #plt.imshow(this_map, extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
-            plt.imshow(map_val[idx], extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
-
-            if counter == nrows*ncols:
-                plt.gcf().set_dpi(300)  # Sharper plots
-                pdf.savefig()
-                plt.close()
-                counter = 0
-                counter +=1
-        
-        plt.gcf().set_dpi(300)  # Sharper plots  
-        pdf.savefig()
-        plt.close()
-
-        for idx in np.argwhere(chanmask == 1):
-            ### MAYA: Had to add paranthesis around idx to avoid TypeError ###
-  
-            plt.imshow(map_val[idx], extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
-            plt.xlabel('X Position (in)')
-            plt.ylabel('Y Position (in)')
-            plt.xlim(extent[0],extent[1])
-            plt.ylim(extent[2],extent[3])
-            plt.title('Resonator Number ' + str(idx[0]))
-            plt.plot(az_center[idx],za_center[idx],marker='+',color='white', markersize=10, mew=2)
-        #    pos='Center Position = (' + str(x_center[idx]) + ', ' + str(y_center[idx]) + ')' ##Added by DC 5/22/19
-        #    plt.text(28,2,pos)   ##Added by DC 5/22/19
-            #plt.text(extent[0]-0.05, extent[3]+0.05, f'Amplitude = {amplitude[idx[0]]:.2e}', color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.05, 'Amplitude = '+"{:.2f}".format(amplitude[idx[0]]),color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.15, 'SNR = '+"{:.2f}".format(snr[idx[0]]),color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.25, 'chisq = '+"{:.2f}".format(chisq[idx[0]]),color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.35, 'fwhm_az = '+"{:.2f}".format(fwhm_az[idx[0]]),color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.45, 'fwhm_za = '+"{:.2f}".format(fwhm_za[idx[0]]),color='white')
-            plt.gcf().set_dpi(300)  # Sharper plots
-            pdf.savefig()
-            plt.close()
-
-            
-
 if __name__ == '__main__':
-    from rfsocinterface.core.data.data import plot_map
-
+    from rfsocinterface.core.data.routines import DataRoutine, CleanTOD, HighPassFilter, LowPassFilter
     date = '20250724'
     setnum = 1005
 
-    # ds_factor = 10
-    # hp_filt_freq = 0.5
-    # lp_filt_freq = 10
+    ds_factor = 10
+    hp_filt_freq = 0.5
+    lp_filt_freq = 10
 
-    # # pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
-    # pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor, beam_map_mode=True)
-    # # pd = PyTablesProcessedData.from_file(date, setnum)
+    # pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
+    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor, beam_map_mode=True)
+    # pd = PyTablesProcessedData.from_file(date, setnum)
 
-    # hpfilt = HighPassFilter(hp_filt_freq)
-    # lpfilt = LowPassFilter(lp_filt_freq)
-    # cleaner = CleanTOD()
+    hpfilt = HighPassFilter(hp_filt_freq)
+    lpfilt = LowPassFilter(lp_filt_freq)
+    cleaner = CleanTOD()
 
-    # hpfilt(pd)
-    # lpfilt(pd)
-    # cleaner(pd)
+    hpfilt(pd)
+    lpfilt(pd)
+    cleaner(pd)
 
-    # md = PyTablesMapData.from_processed_data(pd)
-    # # binner = BinTODIntoMap()
-    # binner = BinTODIntoMap(beam_map_mode=True)
-    # binner(md)
-    # for i in range(md.n_tones)[:5]:
-    #     md.plot_individual(i)
-    # plt.show()
-
-    from rfsocinterface.core.data.data import plot_map
-    from rfsocinterface.core.utils import gaussian_filter
-    md = PyTablesMapData.from_file(date, setnum, 'r')
-    analyze_beammap(md)
+    md = MapData.from_processed_data(pd)
+    # binner = BinTODIntoMap()
+    binner = BinTODIntoMap(beam_map_mode=True)
+    binner(md)
+    pdb.set_trace()
     plt.show()
-    md.close()
