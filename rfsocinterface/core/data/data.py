@@ -55,11 +55,17 @@ def get_processed_file_template(date: str, setnum: int) -> str:
 def get_cleaned_file_template(date: str, setnum: int) -> str:
     return f'{DATA_DIRECTORY}/{date}/{date}_cleaned_data_set{setnum}.h5'
 
+
 def get_file_stub(date: str, setnum: int) -> str:
     return f'{date}_set{setnum}'
 
+
 def get_map_file_template(date: str, setnum: int) -> str:
-    return f'/{DATA_DIRECTORY}/{date}/{date}_mapped_data_set{setnum}.h5'
+    return f'{DATA_DIRECTORY}/{date}/{date}_mapped_data_set{setnum}.h5'
+
+
+def get_beammap_file_template(date: str, setnum: int) -> str:
+    return f'{DATA_DIRECTORY}/{date}/{date}_beammap_set{setnum}.h5'
 
 @ensure_path(0)
 def load_time_ordered_IQ_data(path: Path, normalize: bool=True) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
@@ -1147,6 +1153,10 @@ class PyTablesProcessedData:
     @property
     def map_file_template(self) -> str:
         return get_map_file_template(self.date, self.setnum)
+
+    @property
+    def beammap_file_template(self) -> str:
+        return get_beammap_file_template(self.date, self.setnum)
     
     @property
     def file_stub(self) -> str:
@@ -1762,8 +1772,18 @@ class PyTablesMapData(PyTablesProcessedData):
         final_final_map2 = [x for x in final_final_map2 if not np.isnan(x)]
         final_final_map3 = [x for x in final_final_map3 if not np.isnan(x)]
         return flagged_map_1, flagged_map_2, flagged_map_3, contour_levels
-
     
+    def extent(self) -> tuple[float, float, float, float]:
+        return (
+            min(self.map_az)-DEFAULT_MAP_DPIX /2.,
+            max(self.map_az)+DEFAULT_MAP_DPIX /2,
+            max(self.map_za)+DEFAULT_MAP_DPIX /2.,
+            min(self.map_za)-DEFAULT_MAP_DPIX /2.
+        )
+
+    def plot_individual(self, index: int):
+        plot_map(self.map[index], self.map_az, self.map_za, self.extent())
+
     def plot(self, show: bool=True, save: bool=True):
 
         hits_map = self.hits_map[:]

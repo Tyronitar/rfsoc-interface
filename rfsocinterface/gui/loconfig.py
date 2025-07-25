@@ -150,7 +150,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 curr_tone_list
                 + float(tone_shift)
                 * (curr_tone_list + lo_freq)
-                / np.median(curr_tone_list + lo_freq)
+                / lo_freq
             )
             _logger.info(
                 "Waiting for the RFSOC to finish writing the updated frequency list"

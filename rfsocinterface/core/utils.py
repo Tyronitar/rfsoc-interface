@@ -392,6 +392,8 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
     if not err_msg:
         err_msg = f'Error occured while waiting for command "{command}": '
     while True:
+        if not conn.poll(1e-2):
+            continue
         response, *data = conn.recv()
         _tele_logger.debug(f'{id} got response: "{response}", data: {data}')
         if response.lower() == f'{command}':
