@@ -463,10 +463,14 @@ class ProcessedData:
     def chanmask(self) -> tables.Array:
         return self._pfile.root.detector_0.global_data.chanmask
     
-    
-    # @property
-    # def dIQ_df(self) -> tables.Array:
-    #     return self._file.
+    @property
+    def receipt(self) -> str:
+        return self._pfile.root._v_attrs.receipt 
+
+    def add_receipt(self, receipt: str):
+        """Add a receipt entry to the processed data file."""
+        self._pfile.root._v_attrs.receipt = receipt
+        self._pfile.flush()
 
     @classmethod
     def from_tod(
@@ -524,6 +528,7 @@ class ProcessedData:
         pfile = tables.open_file(get_processed_file_template(date, setnum), 'w')
         pfile.root._v_attrs.date = date
         pfile.root._v_attrs.setnum = setnum
+        pfile.root._v_attrs.receipt = ''
 
         if optcam_exists:
             # optical_image = optcam_file.root.optical_image
@@ -731,8 +736,10 @@ class ProcessedData:
                 #also save the chanmask and detector polarization information
                 chanmask = raw_global_data.chanmask[:]
                 no_pol = np.ndarray.flatten(np.argwhere(raw_global_data.detector_pol[:] < 1))
-                if np.size(no_pol > 0):
-                    chanmask[no_pol] = -1
+                # TODO: This is a temporary fix, should be removed when the polarization
+                # is properly set up on the lab computer.
+                # if np.size(no_pol > 0):
+                #     chanmask[no_pol] = -1
                 detector_global_data.chanmask[:] = chanmask
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
         # pfile.close()

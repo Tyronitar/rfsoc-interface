@@ -1,68 +1,27 @@
 """Data proccessing routines."""
 
+from __future__ import annotations
 import abc
 import pdb
-from datetime import datetime, timezone
 
 import numpy as np
 from scipy import signal
 import tables
-import git
 
-import rfsocinterface
 from rfsocinterface.core.data.data import ProcessedData, ProcessedData, generate_calibrated_data, remove_electronics_noise_tables
 from rfsocinterface.core.data.data import DECIMATE_ORDER
 from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter
 
-
-class DataPipeline:
-    """A Pipeline of data routines from the raw data file to finished products.
-
-    The general flow of the pipeline is as follows:
-        1. Open the raw data file
-        2. Run pre-processing routines
-        3. Downsample data
-        4. Run processing routines
-        5. Run post-processing routines
-
-    Attributes:
-        _receipt (list[str]): "Receipt" for tracking which functions were run and
-            what version of the code the data is being processed with.
-        pre_processor (RoutineApplier): Wrapper for routines to apply before downsampling 
-            the data e.g. RemovePointLomaPickup.
-        processor (RoutineApplier): Wrapper for routines that are applied in processing
-            e.g. RemoveElectronicsNoise, CleanTOD, etc.
-        post_processor (RoutineApplier): Wrapper for routines to apply after processing
-            the data, like mapping, or computing the PSD.
-    """
-    _receipt: list[str]
-
-    def __init__(self):
-        self._receipt = []
-        self.pre_processor = RoutineApplier(self)
-        self.processor = RoutineApplier(self)
-        self.post_processor = RoutineApplier(self)
-    
-    def add_to_receipt(self, entry: str):
-        self._receipt.append(entry)
-    
-    def run_pipeline(self, input: ProcessedData):
-        self.pre_processor.apply_routines(input)
-        self.processor.apply_routines(input)
-        self.post_processor.apply_routines(input)
-    
-    def generate_receipt(self) -> str:
-        preamble = f'Rfsocinterface Version {rfsocinterface.__version__}\n' \
-            f'Git Hash: {git.Repo(search_parent_directories=True).head.object.hexsha}\n' \
-            f'Date and Time of Processing (UTC): {datetime.now(timezone.utc).replace(microsecond=0).isoformat()}\n' \
-            f'Routines: ['
-        entries = ',\n'.join(self._receipt)
-        formatted_entries = '\t'.join(('\n' + entries.lstrip()).splitlines(True))
-        return preamble + formatted_entries + '\n]'
+class ProcessingStage:
+    """Enum for the different stages of data processing."""
+    PRE_PROCESSING = 'pre_processing'
+    PROCESSING = 'processing'
+    POST_PROCESSING = 'post_processing'
+    MAPPING = 'mapping'
 
 
-class DataRoutine:
-    __metaclass__ = abc.ABCMeta
+class DataRoutine(abc.ABC):
+    stage: ProcessingStage
 
     def __call__(self, input: ProcessedData):
         self.forward(input)
@@ -74,23 +33,6 @@ class DataRoutine:
     
     def get_receipt_entry(self) -> str:
         raise NotImplementedError
-
-
-class RoutineApplier:
-    def __init__(self, pipeline: DataPipeline, routines: list[DataRoutine]=[]):
-        self.pipeline= pipeline
-        self._routines = routines
-
-    def add_routine(self, routine: DataRoutine):
-        if not isinstance(routine, DataRoutine):
-            raise TypeError(f'Expected DataRoutine, got {type(routine)}')
-        self._routines.append(routine)
-
-    def apply_routines(self, input: ProcessedData):
-        for routine in self._routines:
-            routine(input)
-            # do something to the pipeline's receipt...
-            self.pipeline.add_to_receipt(routine.get_receipt_entry())
 
 
 class Mapper:
@@ -112,11 +54,13 @@ class Mapper:
         if save:
             output.save()
         return output
+
 #
 # Begin Data Routine Catlog
 #
 
 class GaussianFilter(DataRoutine):
+    stage = ProcessingStage.PROCESSING
     def __init__(self, gaussian_sigma: tuple[float, float]=GAUSSIAN_SIGMA):
         super().__init__()
         self.gaussian_sigma = gaussian_sigma
@@ -129,7 +73,10 @@ class GaussianFilter(DataRoutine):
     def get_receipt_entry(self) -> str:
         return f'GaussianFilter: {{\n\tsigma = {self.gaussian_sigma}\n}}'
 
+
 class CutoffFilter(DataRoutine):
+    stage = ProcessingStage.POST_PROCESSING
+
     def __init__(self, filter_freq: float, btype: str):
         super().__init__()
         self.filter_freq = filter_freq
@@ -161,6 +108,8 @@ class HighPassFilter(CutoffFilter):
 
 
 class Downsample(DataRoutine):
+    stage = ProcessingStage.PRE_PROCESSING
+
     def __init__(self, ds_factor: float=6, order: int=DECIMATE_ORDER):
         super().__init__()
         self.ds_factor = ds_factor
@@ -196,6 +145,8 @@ class Downsample(DataRoutine):
 
 
 class RemoveElectronicsNoise(DataRoutine):
+    stage = ProcessingStage.PROCESSING
+
     def __init__(self):
         super().__init__()
 
@@ -208,6 +159,7 @@ class RemoveElectronicsNoise(DataRoutine):
 
 
 class CleanTOD(DataRoutine):
+    stage = ProcessingStage.POST_PROCESSING
 
     def __init__(self):
         super().__init__()
@@ -277,26 +229,3 @@ class CleanTOD(DataRoutine):
 #         return m
 
 
-if __name__ == '__main__':
-    date = '20250620'
-    setnum = 1006
-
-    ds_factor = 10
-    hp_filt_freq = 0.5
-    lp_filt_freq = 10
-
-    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
-    # pd = PyTablesProcessedData.from_file(date, setnum)
-
-    hpfilt = HighPassFilter(hp_filt_freq)
-    lpfilt = LowPassFilter(lp_filt_freq)
-    cleaner = CleanTOD()
-
-    pipeline = DataPipeline()
-    pipeline.processor.add_routine(hpfilt)
-    pipeline.processor.add_routine(lpfilt)
-    pipeline.processor.add_routine(cleaner)
-
-
-    pipeline.run_pipeline(pd)
-    pdb.set_trace()
