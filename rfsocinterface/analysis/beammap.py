@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.offsetbox import AnchoredText
 import numpy as np
 import numpy.typing as npt
 import tables
@@ -61,11 +62,11 @@ def analyze_beammap(
         az_max = az[az_idx, :]
         za_max = za[:, za_idx]
         separation = np.sqrt((az - az_max[0])**2 + (za - za_max[0])**2)
-        index = np.argwhere(separation < 0.5)
+        index = np.argwhere(separation < 0.1)
         flat_index = np.ravel_multi_index((index[:, 0], index[:, 1]), map_val[idx].shape)
 
-        az_center[idx] = np.sum(az[index[:, 0]]*this_val[flat_index]) / np.sum(this_val[index])
-        za_center[idx] = np.sum(za[:, index[:, 1]]*this_val[flat_index]) / np.sum(this_val[index])
+        az_center[idx] = np.sum(az[index[:, 0]].squeeze()*this_val[flat_index]) / np.sum(this_val[flat_index])
+        za_center[idx] = np.sum(za[:, index[:, 1]].squeeze()*this_val[flat_index]) / np.sum(this_val[flat_index])
         amplitude[idx] = np.max(this_val[index])
 
         this_az = np.ndarray.flatten(az[index[:, 0], :])
@@ -111,30 +112,24 @@ def analyze_beammap(
 
 
     # TODO: file name
-    pdf_file_name = str(map_data.folder) + map_data.file_stub + '_beammap.pdf'
+    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap.pdf'
     with PdfPages(pdf_file_name) as pdf:
-
         FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
-        high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50))
+        high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50)).flatten()
         plt.scatter(az_center[high_snr_ind], za_center[high_snr_ind], marker='+')
         plt.axis('equal')
         plt.xlim(extent[0],extent[1])
         plt.ylim(extent[2],extent[3])
-        #  plt.hlines(extent[2:3],-1.e10,1.e10)
-        #  plt.vlines(extent[0:1],-1.e10,1.e10)
         plt.xlabel('X Position (in)')
         plt.ylabel('Y Position (in)')
         pdf.savefig()
         plt.close()
         
         counter = 1
-        #for idx in np.argwhere(chanmask == 1):
         for idx in np.argwhere(chanmask == 1).flatten():
 
             plt.subplot(nrows, ncols, counter)
             plt.axis('off')
-        ### MAYA: Added cmap = 'jet' ###
-            #plt.imshow(this_map, extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
             plt.imshow(map_val[idx], extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
 
             if counter == nrows*ncols:
@@ -142,41 +137,48 @@ def analyze_beammap(
                 pdf.savefig()
                 plt.close()
                 counter = 0
-                counter +=1
+            counter +=1
         
         plt.gcf().set_dpi(300)  # Sharper plots  
         pdf.savefig()
         plt.close()
 
-        for idx in np.argwhere(chanmask == 1):
-            ### MAYA: Had to add paranthesis around idx to avoid TypeError ###
-  
-            plt.imshow(map_val[idx], extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
-            plt.xlabel('X Position (in)')
-            plt.ylabel('Y Position (in)')
-            plt.xlim(extent[0],extent[1])
-            plt.ylim(extent[2],extent[3])
-            plt.title('Resonator Number ' + str(idx[0]))
-            plt.plot(az_center[idx],za_center[idx],marker='+',color='white', markersize=10, mew=2)
-        #    pos='Center Position = (' + str(x_center[idx]) + ', ' + str(y_center[idx]) + ')' ##Added by DC 5/22/19
-        #    plt.text(28,2,pos)   ##Added by DC 5/22/19
-            #plt.text(extent[0]-0.05, extent[3]+0.05, f'Amplitude = {amplitude[idx[0]]:.2e}', color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.05, 'Amplitude = '+"{:.2f}".format(amplitude[idx[0]]),color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.15, 'SNR = '+"{:.2f}".format(snr[idx[0]]),color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.25, 'chisq = '+"{:.2f}".format(chisq[idx[0]]),color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.35, 'fwhm_az = '+"{:.2f}".format(fwhm_az[idx[0]]),color='white')
-            plt.text(extent[0]-0.05, extent[3]+0.45, 'fwhm_za = '+"{:.2f}".format(fwhm_za[idx[0]]),color='white')
+        for idx in np.argwhere(chanmask == 1).flatten():
+            fig, ax = plt.subplots()
+            ax.imshow(map_val[idx], extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+            ax.set_xlabel('X Position (in)')
+            ax.set_ylabel('Y Position (in)')
+            ax.set_xlim(extent[0],extent[1])
+            ax.set_ylim(extent[2],extent[3])
+            ax.set_title('Resonator Number ' + str(idx))
+            ax.plot(az_center[idx],za_center[idx],marker='+',color='white', markersize=10, mew=2)
+            bbox_pad = 0.3
+            t = AnchoredText(
+                f'Amplitude = {amplitude[idx]}\n'
+                f'SNR = {snr[idx]}\n'
+                f'chisq = {chisq[idx]}\n'
+                f'fwhm_az = {fwhm_az[idx]}\n'
+                f'fwhm_za = {fwhm_za[idx]}',
+                loc='upper left',
+                pad=bbox_pad,
+                borderpad=0,
+                prop=dict(
+                    color='white',
+                ),
+            )
+            t.patch.set_alpha(0.25)
+            t.patch.set_color('black')
+            ax.add_artist(t)
             plt.gcf().set_dpi(300)  # Sharper plots
-            pdf.savefig()
+            pdf.savefig(fig)
             plt.close()
+    beammap_file.close()
 
 
 if __name__ == '__main__':
-    import pdb
     date = '20250724'
     setnum = 1005
 
     md = MapData.from_file(date, setnum, 'r')
     analyze_beammap(md)
-    pdb.set_trace()
     md.close()
