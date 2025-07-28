@@ -187,7 +187,7 @@ def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
 
     # Finally, we need to get data_mK
     data.data_mK[:] = np.divide(data.data_freq_diss[0, :], global_data.df_per_mK[:][:, np.newaxis])
-    data.data_mK[:] = np.where(np.isinf(data.data_mK), np.nan, data.data_mK)
+    # data.data_mK[:] = np.where(np.isinf(data.data_mK), np.nan, data.data_mK)
 
 #
 # Electronics Noise Removal
@@ -567,7 +567,7 @@ class ProcessedData:
                 pfile.create_array(detector_global_data, 'vis', vis)
                 pfile.create_array(detector_global_data, 'df_per_mK', shape=(n_tones,), atom=tables.Float64Atom())
                 pfile.create_array(detector_global_data, 'chanmask', shape=(n_tones,), atom=tables.Int8Atom(dflt=1))
-                pfile.create_array(detector_global_data, 'detector_pol', shape=(n_tones,), atom=tables.UInt8Atom())
+                pfile.create_array(detector_global_data, 'detector_pol', shape=(n_tones,), atom=tables.Int8Atom())
                 pfile.create_array(detector_global_data, 'optical_visibility', shape=(1,), atom=tables.Float64Atom())
 
                 detector_data = pfile.create_group(detector, 'data')
@@ -738,8 +738,8 @@ class ProcessedData:
                 no_pol = np.ndarray.flatten(np.argwhere(raw_global_data.detector_pol[:] < 1))
                 # TODO: This is a temporary fix, should be removed when the polarization
                 # is properly set up on the lab computer.
-                # if np.size(no_pol > 0):
-                #     chanmask[no_pol] = -1
+                if np.size(no_pol > 0):
+                    chanmask[no_pol] = -1
                 detector_global_data.chanmask[:] = chanmask
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
         # pfile.close()

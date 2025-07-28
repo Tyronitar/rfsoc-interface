@@ -170,23 +170,27 @@ class DataPipeline:
 
 if __name__ == '__main__':
     import pdb
-    date = '20250611'
-    setnum = 1003
+    date = '20250728'
+    setnum = 1006
+    dataset = 'data_mK'
 
     ds_factor = 10
     hp_filt_freq = 0.5
     lp_filt_freq = 10
 
 
-    hpfilt = HighPassFilter(hp_filt_freq)
-    lpfilt = LowPassFilter(lp_filt_freq)
-    cleaner = CleanTOD()
+    hpfilt = HighPassFilter(hp_filt_freq, dataset=dataset)
+    lpfilt = LowPassFilter(lp_filt_freq, dataset=dataset)
+    cleaner = CleanTOD(dataset=dataset)
+    binner = BinTODIntoMap(dataset=dataset)
 
     pipeline = DataPipeline(ds_factor=ds_factor, hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
     pipeline.add_routine(hpfilt)
     pipeline.add_routine(lpfilt)
     pipeline.add_routine(cleaner)
+    pipeline.add_routine(binner)
 
-    pd = pipeline.run_pipeline(date, setnum)
+    data = pipeline.run_pipeline(date, setnum)
+    data.plot()
     pdb.set_trace()
-    pd.close()
+    data.close()

@@ -431,6 +431,7 @@ class TelescopeMotorController:
         az_stop += initial_az
 
         # Set start position in current thread
+        _logger.info(f'Moving telescope to initial position')
         self._set_az_pos(az_start - az_start_buffer, stop_run=False)
         self.set_ze_speed_relation(ZE_SCAN_RPM_PER_VOLT)
 

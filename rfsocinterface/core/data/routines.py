@@ -77,34 +77,36 @@ class GaussianFilter(DataRoutine):
 class CutoffFilter(DataRoutine):
     stage = ProcessingStage.POST_PROCESSING
 
-    def __init__(self, filter_freq: float, btype: str):
+    def __init__(self, filter_freq: float, btype: str, dataset: str='data_mK'):
         super().__init__()
         self.filter_freq = filter_freq
         self.btype = btype
+        self.dataset = dataset
 
     def forward(self, pd: ProcessedData):
+        data = getattr(pd, self.dataset)
         filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
 
         # Apply cutoff filter
         # pd.data_gain_phase[:] = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
         # pd.data_freq_diss[:] = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
-        pd.data_mK[:] = signal.sosfiltfilt(filt_sos, pd.data_mK)
+        data[:] = signal.sosfiltfilt(filt_sos, data)
 
 
 class LowPassFilter(CutoffFilter):
-    def __init__(self, filter_freq: float):
-        super().__init__(filter_freq, btype='lowpass')
+    def __init__(self, filter_freq: float, dataset: str='data_mK'):
+        super().__init__(filter_freq, btype='lowpass', dataset=dataset)
 
     def get_receipt_entry(self) -> str:
-        return f'LowPassFilter: {{\n\tfreq= {self.filter_freq}\n}}'
+        return f'LowPassFilter: {{\n\tfreq = {self.filter_freq},\n\tdataset = {self.dataset}\n}}'
 
 
 class HighPassFilter(CutoffFilter):
-    def __init__(self, filter_freq: float):
-        super().__init__(filter_freq, btype='highpass')
+    def __init__(self, filter_freq: float, dataset: str='data_mK'):
+        super().__init__(filter_freq, btype='highpass', dataset=dataset)
 
     def get_receipt_entry(self) -> str:
-        return f'HighPassFilter: {{\n\tfreq= {self.filter_freq}\n}}'
+        return f'HighPassFilter: {{\n\tfreq = {self.filter_freq},\n\tdataset = {self.dataset}\n}}'
 
 
 class Downsample(DataRoutine):
@@ -161,19 +163,22 @@ class RemoveElectronicsNoise(DataRoutine):
 class CleanTOD(DataRoutine):
     stage = ProcessingStage.POST_PROCESSING
 
-    def __init__(self):
+    def __init__(self, dataset: str='data_mK'):
         super().__init__()
+        self.dataset = dataset
 
     def forward(self, pd: ProcessedData):
 
         # TODO: Does this need to still support the "good_sample" stuff?
         #average template subtraction
+        data = getattr(pd, self.dataset)
         goodchan = np.ndarray.flatten(np.argwhere(pd.chanmask[:] == 1))
-        template = np.sum(pd.data_mK[goodchan, :], axis=0)
+        template = np.nansum(data[goodchan, :], axis=0)
         template = template - np.mean(template)
-        template_corr = np.sum(np.multiply(pd.data_mK[goodchan, :],template), axis=1) / \
+        template_corr = np.sum(np.multiply(data[goodchan, :],template), axis=1) / \
                         np.sum(np.multiply(template,template))
-        pd.data_mK[goodchan, :] = pd.data_mK[goodchan, :] - np.outer(template_corr, template)
+        # TODO: This edits the original processed file...
+        data[goodchan, :] = data[goodchan, :] - np.outer(template_corr, template)
 
         with tables.File(pd.cleaned_file_template, 'w') as cfile:
             cfile.create_array('/', 'chanmask', pd.chanmask[:])
@@ -181,10 +186,10 @@ class CleanTOD(DataRoutine):
             cfile.create_array('/', 'timestamp', pd.timestamp[:])
             cfile.create_array('/', 'detector_az', pd.detector_az[:])
             cfile.create_array('/', 'detector_za', pd.detector_za[:])
-            cfile.create_array('/', 'clean_data', pd.data_mK[:])
+            cfile.create_array('/', 'clean_data', data[:])
 
     def get_receipt_entry(self) -> str:
-        return f'CleanTOD: {{\n}}'
+        return f'CleanTOD: {{\n\tdataset = {self.dataset},\n}}'
 
 # class RemovePointLomaPickup(DataRoutine):
 #     def __init__(self, ds_factor: int=6, pickup_filter_freq: float=1):

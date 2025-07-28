@@ -206,12 +206,14 @@ class BinTODIntoMap(DataRoutine):
             za_trim: float=0.2,
             med_netd_cut_threshold: float=3.,
             beam_map_mode: bool=False,
+            dataset: str='data_mK',
     ):
         super().__init__()
         self.hp_filter_freq = hp_filter_freq
         self.lp_filter_freq = lp_filter_freq
         self.med_netd_cut_threshold = med_netd_cut_threshold
         self.beam_map_mode = beam_map_mode
+        self.dataset = dataset
         if beam_map_mode:
             self.az_trim = 0.
             self.za_trim = 0.
@@ -231,7 +233,11 @@ class BinTODIntoMap(DataRoutine):
 
         wind = signal.get_window('hamming', md.n_samples)
 
-        data = md.data_mK[:]
+        data = getattr(md, self.dataset)[:]
+        if self.beam_map_mode:
+            data = md.data_freq[:]
+        else:
+            data = md.data_mK[:]
         sum_map = np.zeros(md.sum_map.shape)
         hits_map = np.zeros(md.hits_map.shape)
 
@@ -316,33 +322,35 @@ class BinTODIntoMap(DataRoutine):
                f'  az_trim: {self.az_trim},\n' \
                f'  za_trim: {self.za_trim},\n' \
                f'  med_netd_cut_threshold: {self.med_netd_cut_threshold},\n' \
+               f'  dataset: {self.dataset},\n' \
                f'}}'
 
 
 if __name__ == '__main__':
     from rfsocinterface.core.data.routines import DataRoutine, CleanTOD, HighPassFilter, LowPassFilter
-    date = '20250724'
-    setnum = 1005
+    date = '20250728'
+    setnum = 1001
+    dataset = 'data_freq'
 
     ds_factor = 10
     hp_filt_freq = 0.5
     lp_filt_freq = 10
 
-    # pd = PyTablesProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
-    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor, beam_map_mode=True)
+    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
+    # pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor, beam_map_mode=True)
     # pd = PyTablesProcessedData.from_file(date, setnum)
 
-    hpfilt = HighPassFilter(hp_filt_freq)
-    lpfilt = LowPassFilter(lp_filt_freq)
-    cleaner = CleanTOD()
+    hpfilt = HighPassFilter(hp_filt_freq, dataset=dataset)
+    lpfilt = LowPassFilter(lp_filt_freq, dataset=dataset)
+    cleaner = CleanTOD(dataset=dataset)
 
     hpfilt(pd)
     lpfilt(pd)
     cleaner(pd)
 
     md = MapData.from_processed_data(pd)
-    # binner = BinTODIntoMap()
-    binner = BinTODIntoMap(beam_map_mode=True)
+    binner = BinTODIntoMap(dataset=dataset)
+    # binner = BinTODIntoMap(beam_map_mode=True)
     binner(md)
+    md.plot()
     pdb.set_trace()
-    plt.show()

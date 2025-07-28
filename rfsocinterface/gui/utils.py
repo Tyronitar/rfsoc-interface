@@ -9,7 +9,7 @@ from PySide6.QtGui import QValidator
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLayout, QLineEdit, QWidget
 
 from rfsocinterface.core.data.data import DECIMATE_ORDER
-from rfsocinterface.core.data.map import BinTODIntoMap, RemovePointLomaPickup
+from rfsocinterface.core.data.map import BinTODIntoMap
 from rfsocinterface.core.data.routines import CleanTOD, Downsample, GaussianFilter, HighPassFilter, LowPassFilter
 from rfsocinterface.core.utils import GAUSSIAN_SIGMA, ensure_path
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
@@ -60,14 +60,6 @@ DATA_ROUTINE_FUNCTION_WIDGET_ARGS = {
         'CleanTOD',
         CleanTOD,
         [],
-    ),
-    'RemovePointLomaPickup': (
-        'Remove Point Loma Pickup',
-        RemovePointLomaPickup,
-        [
-            (('Downsample Factor: ', ArgumentType.FLOAT), {'default': 6}),
-            (('Pickup Filter Frequency: ', ArgumentType.FLOAT), {'default': 0}),
-        ],
     ),
     'BinTODIntoMap': (
         'Bin TOD Into Map',
