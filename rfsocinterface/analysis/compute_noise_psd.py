@@ -14,11 +14,7 @@ from argparse import ArgumentParser
 from kidpy3 import RawDataFile
 
 
-from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise, ProcessedData
-from rfsocinterface.core.data.routines import RemoveElectronicsNoise
-from rfsocinterface.core.data import rotate_basis, flag_outliers, remove_electronics_noise
-from rfsocinterface.core.data.routines import RemoveElectronicsNoise
-from rfsocinterface.core.data.routines import Downsample
+from rfsocinterface.core.data.data import flag_outliers, ProcessedData
 from rfsocinterface.core.utils import ensure_path, ordinal
 
 XLIM = (0.1, 100)
@@ -309,6 +305,8 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--remove_noise', action='store_true', help='Remove electronics noise from the data.')
     parser.add_argument('-b', '--basis', type=str, choices=VALID_BASES, default='gp', help='Basis of the data (gp, iq, fd).')
     parser.add_argument('-p', '--show_plots', action='store_true', help='Show noise plots to screen when finished.')
+    parser.add_argument('--block_length', type=float, default=10, help='Nominal block length. Time in seconds for a single "block" of data (defaults to 10s).')
+    parser.add_argument('--title', type=str, default='Noise PSD', help='Title to use for the plots')
     args = parser.parse_args()
 
     date = args.date
@@ -318,30 +316,10 @@ if __name__ == '__main__':
     do_flag_outliers = args.do_flag_outliers
     remove_noise = args.remove_noise
     basis = args.basis
+    nominal_block_length = args.block_length
 
-    p = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise)
+    p = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise, ds_factor=ds_factor)
 
-
-
-    # Downsample the data
-    if ds_factor != 1:
-        # TODO
-        ds = Downsample(ds_factor=ds_factor)
-        p = ds.forward(p)
-
-
-    # Remove electronics noise
-    if remove_noise:
-        cleaner = RemoveElectronicsNoise()
-        p = cleaner.forward(p)
-        # cleaned_pa_data = remove_electronics_noise(p.data_gain_phase)
-        # TODO:
-        # Rotate back to IQ
-        # Recompute all of the data
-        # Maybe, I should make RemoveElectronicsNoise a DataRoutine class that does all of this
-
-
-    # pdb.set_trace()
 
 
     match basis:
@@ -378,8 +356,8 @@ if __name__ == '__main__':
         input_data,
         p.timestamp,
         chanmask=p.chanmask,
-        nominal_block_length=1,
+        nominal_block_length=nominal_block_length,
     )
-    plot_psd(freq, noise_psd, f'plots/{date}_{setnum}_{basis}.pdf', basis=basis, title='On Resonance')
+    plot_psd(freq, noise_psd, f'plots/{date}_{setnum}_{basis}_psd.pdf', basis=basis, title=args.title)
     if args.show_plots:
         plt.show()
