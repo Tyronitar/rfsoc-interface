@@ -42,7 +42,6 @@ def analyze_beammap(
     filename = map_data.beammap_file_template
 
     chanmask = map_data.chanmask[:]
-    chanmask[10:] = -1
 
     beammap_file = tables.File(filename, 'w')
     az_center = beammap_file.create_array('/', 'az_center', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
@@ -176,9 +175,14 @@ def analyze_beammap(
 
 
 if __name__ == '__main__':
-    date = '20250724'
-    setnum = 1005
+    date = '20250729'
+    setnum = 1012
 
     md = MapData.from_file(date, setnum, 'r')
+    import pdb
+    for i in range(140, 150):
+        md.plot_individual(i)
+        plt.show(block=False)
+    pdb.set_trace()
     analyze_beammap(md)
     md.close()

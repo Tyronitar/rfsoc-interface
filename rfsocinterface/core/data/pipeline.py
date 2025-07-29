@@ -81,19 +81,29 @@ class DataPipeline:
         for routine in self.all_routines():
             match routine:
                 case BinTODIntoMap():
+                    routine.beam_map_mode = self.shared_values['beam_map_mode']
                     if 'hp_filter_freq' in self.shared_values:
                         routine.hp_filter_freq = self.shared_values['hp_filter_freq']
                     if 'lp_filter_freq' in self.shared_values:
                         routine.lp_filter_freq = self.shared_values['lp_filter_freq']
+                    if 'dataset' in self.shared_values:
+                        routine.dataset = self.shared_values['dataset']
                 case Downsample():
                     if 'ds_factor' in self.shared_values:
                         routine.ds_factor = self.shared_values['ds_factor']
                 case HighPassFilter():
                     if 'hp_filter_freq' in self.shared_values:
                         routine.filter_freq = self.shared_values['hp_filter_freq']
+                    if 'dataset' in self.shared_values:
+                        routine.dataset = self.shared_values['dataset']
                 case LowPassFilter():
                     if 'lp_filter_freq' in self.shared_values:
                         routine.filter_freq = self.shared_values['lp_filter_freq']
+                    if 'dataset' in self.shared_values:
+                        routine.dataset = self.shared_values['dataset']
+                case CleanTOD():
+                    if 'dataset' in self.shared_values:
+                        routine.dataset = self.shared_values['dataset']
                 case _:
                     pass
 
@@ -150,6 +160,7 @@ class DataPipeline:
             setnum,
             beam_map_mode=self.shared_values['beam_map_mode'],
             ds_factor=self.shared_values['ds_factor'],
+            do_electronics_noise_removal=self.shared_values.get('do_electronics_noise_removal', True),
         )
         self.processor.apply_routines(pd)
         _logger.info('Running post-processing routines...')
@@ -170,27 +181,35 @@ class DataPipeline:
 
 if __name__ == '__main__':
     import pdb
-    date = '20250728'
-    setnum = 1006
+    date = '20250729'
+    setnum = 1012
     dataset = 'data_mK'
+    beam_map_mode = True
 
     ds_factor = 10
-    hp_filt_freq = 0.5
+    hp_filt_freq = 0.2
     lp_filt_freq = 10
 
 
-    hpfilt = HighPassFilter(hp_filt_freq, dataset=dataset)
-    lpfilt = LowPassFilter(lp_filt_freq, dataset=dataset)
-    cleaner = CleanTOD(dataset=dataset)
-    binner = BinTODIntoMap(dataset=dataset)
+    hpfilt = HighPassFilter(hp_filt_freq)
+    lpfilt = LowPassFilter(lp_filt_freq)
+    cleaner = CleanTOD()
+    binner = BinTODIntoMap()
 
-    pipeline = DataPipeline(ds_factor=ds_factor, hp_filter_freq=hp_filt_freq, lp_filter_freq=lp_filt_freq)
+    pipeline = DataPipeline(
+        ds_factor=ds_factor,
+        hp_filter_freq=hp_filt_freq,
+        lp_filter_freq=lp_filt_freq,
+        dataset=dataset,
+        beam_map_mode=beam_map_mode,
+        do_electronics_noise_removal=False,
+    )
     pipeline.add_routine(hpfilt)
     pipeline.add_routine(lpfilt)
-    pipeline.add_routine(cleaner)
+    # pipeline.add_routine(cleaner)
     pipeline.add_routine(binner)
 
     data = pipeline.run_pipeline(date, setnum)
-    data.plot()
+    # data.plot()
     pdb.set_trace()
     data.close()
