@@ -204,7 +204,6 @@ class RawDataFile:
         self.timestamp.resize((n_sample,))
 
     def set_global_data(self, chan: Rfchan):
-        print('Setting global data')
         self.attenuator_settings[:] = chan.attenuator_settings
         self.baseband_freqs[:] = chan.baseband_freqs
         self.sample_rate[0] = chan.sample_rate
@@ -221,34 +220,28 @@ class RawDataFile:
 
         # In kidpy, the user shall call a function along the lines of
         # "Append or include External Data".
-        # PARAMS_PATH = '/home/onrkids/readout/host/params/'
-        # chanmaskpath = f"chanmask_{chan.name}.npy"
-        # detdx = PARAMS_PATH + f"detector_delta_x_tile{chan.tile_number}.npy"
-        # detdy = PARAMS_PATH + f"detector_delta_y_tile{chan.tile_number}.npy"
-        # det_ba = PARAMS_PATH + f"detector_beam_ampl_tile{chan.tile_number}.npy"
-        # det_pol = PARAMS_PATH + f"detector_pol_tile{chan.tile_number}.npy"
-        # dfoverf_per_mK = PARAMS_PATH + f"dfoverf_per_mK_tile{chan.tile_number}.npy"
+        PARAMS_PATH = '/home/onrkids/readout/host/params/'
+        detdx = PARAMS_PATH + f"detector_delta_x_tile{chan.tile_number}.npy"
+        detdy = PARAMS_PATH + f"detector_delta_y_tile{chan.tile_number}.npy"
+        det_ba = PARAMS_PATH + f"detector_beam_ampl_tile{chan.tile_number}.npy"
+        det_pol = PARAMS_PATH + f"detector_pol_tile{chan.tile_number}.npy"
+        dfoverf_per_mK = PARAMS_PATH + f"dfoverf_per_mK_tile{chan.tile_number}.npy"
 
-        # print(self.fh['global_data/dfoverf_per_mK'])
-        # print(self.fh['global_data/dfoverf_per_mK'][:])
         chanmask = chan.chanmask
         self.chanmask[:] = chanmask
         self.fh['global_data/chanmask'][...] = chanmask
-        # self.detector_delta_x[:] = np.load(detdx)
-        # self.fh['global_data/detector_delta_x'][...] = np.load(detdx)
-        # self.detector_delta_y[:] = np.load(detdy)
-        # self.fh['global_data/detector_delta_y'][...] = np.load(detdy)
-        # self.detector_dx_dy_elevation_angle[:] = 89.0
-        # self.fh['global_data/detector_dx_dy_elevation_angle'][...] = 89.0
-        # self.detector_beam_ampl[:] = np.load(det_ba)
-        # self.fh['global_data/detector_beam_ampl'][...] = np.load(det_ba)
-        # self.detector_pol[:] = np.load(det_pol)
-        # self.fh['global_data/detector_pol'][...] = np.load(det_pol)
-        # self.dfoverf_per_mK[:] = np.load(dfoverf_per_mK)
-        # self.fh['global_data/dfoverf_per_mK'][...] = np.load(dfoverf_per_mK)
-        # print(np.load(dfoverf_per_mK))
-        # print(self.fh['global_data/dfoverf_per_mK'])
-        # print(self.fh['global_data/dfoverf_per_mK'][:])
+        self.detector_delta_x[:] = np.load(detdx)
+        self.fh['global_data/detector_delta_x'][...] = np.load(detdx)
+        self.detector_delta_y[:] = np.load(detdy)
+        self.fh['global_data/detector_delta_y'][...] = np.load(detdy)
+        self.detector_dx_dy_elevation_angle[:] = 89.0
+        self.fh['global_data/detector_dx_dy_elevation_angle'][...] = 89.0
+        self.detector_beam_ampl[:] = np.load(det_ba)
+        self.fh['global_data/detector_beam_ampl'][...] = np.load(det_ba)
+        self.detector_pol[:] = np.load(det_pol)
+        self.fh['global_data/detector_pol'][...] = np.load(det_pol)
+        self.dfoverf_per_mK[:] = np.load(dfoverf_per_mK)
+        self.fh['global_data/dfoverf_per_mK'][...] = np.load(dfoverf_per_mK)
 
         self.fh.flush()
 
