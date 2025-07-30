@@ -43,6 +43,9 @@ ZE_OUT_CHANNEL = 0
 
 ZERO_DATA = analog_to_digital(0, -10, 10, 16)
 
+AZ_SAMPLING_TIME = 0.002
+
+
 AZ_BASE_SPEED = 1.5
 AZ_POS_TOL_DEG = .02
 AZ_HOME = 0
@@ -356,7 +359,7 @@ class TelescopeMotorController:
                     _tele_logger.debug(f'AZ pos: {pfb}; voltage: {data_value}')
                 self.set_ao_value(data_value, AZ_OUT_CHANNEL)
                 this_dt = time.time() - pfb_time
-                while this_dt < 0.02:
+                while this_dt < AZ_SAMPLING_TIME:
                    this_dt = time.time() - pfb_time
                    time.sleep(1.e-4)
                 pfb_time = time.time()
@@ -476,7 +479,13 @@ class TelescopeMotorController:
         # self._run is only changed if the telescope was stopped mid scan
         # Don't save the telescope data in that case
         if not self._run:
+            _logger.info("AZ Scan Mode cancelled before completion.")
             self.send(client_id, 'az_scan_mode_complete', 1)
+            self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
+            if position_return:
+                _tele_logger.info('Resetting telescope position...')
+                self._set_az_pos(initial_az, stop_run=False)
+                self._set_ze_pos(initial_ze, stop_run=False)
             return
         
         with h5py.File(file, "a") as f:
@@ -484,12 +493,12 @@ class TelescopeMotorController:
             f.create_dataset("za_tel", data=position_data[1::3])
             f.create_dataset("timestamp_tel", data=position_data[2::3])
             f.create_dataset("optical_visibility", data=['****'])
+        self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         if position_return:
             _tele_logger.info('Resetting telescope position...')
             self._set_az_pos(initial_az, stop_run=False)
             self._set_ze_pos(initial_ze, stop_run=False)
 
-        self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         self._run = False
         _logger.info("Scan Complete")
         self.send(client_id, 'az_scan_mode_complete', 0)

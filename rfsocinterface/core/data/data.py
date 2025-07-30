@@ -1042,12 +1042,12 @@ class MapData(ProcessedData):
         this_fig = plt.figure(figsize=(15,7.5))
         plt.subplot(4,1,1)
         plt.imshow(np.flip(np.transpose(mapp[0][::-1]),1), \
-        extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
+        extent = self.extent(), \
         aspect='equal', vmin=-max_abs, vmax=max_abs, cmap='Blues_r')
         cb = plt.colorbar(shrink=cb_shrink)
         cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
         plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-        extent=(min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), colors='red')
+        extent=self.extent(), colors='red')
         plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
         ', Optical Visibility = ' + str(self.vis[()]) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
         ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
@@ -1056,23 +1056,23 @@ class MapData(ProcessedData):
 
         plt.subplot(4,1,2)
         plt.imshow(np.flip(np.transpose(mapp[1][::-1]),1), \
-        extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
+        extent = self.extent(), \
         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Reds_r')
         cb = plt.colorbar(shrink=cb_shrink)
         cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
         plt.contour(np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-        extent=(min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), colors='black')
+        extent=self.extent(), colors='black')
         plt.ylabel('ZA (degrees)')
         plt.xlim(this_xlim), plt.ylim(this_ylim)
 
         plt.subplot(4,1,3)
         plt.imshow(np.flip(np.transpose(total_map[::-1]),1), \
-        extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
+        extent = self.extent(), \
         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Greys_r')
         cb = plt.colorbar(shrink=cb_shrink)
         cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
         plt.contour(np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-        extent=(min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), colors='red')
+        extent=self.extent(), colors='red')
         plt.ylabel('ZA (degrees)')
         plt.xlim(this_xlim), plt.ylim(this_ylim)
         
@@ -1082,7 +1082,7 @@ class MapData(ProcessedData):
         opt_vmax = 255. #np.percentile(optical_image[valid_opt_pix], 90)
         opt_vmin = -255. #np.percentile(optical_image[valid_opt_pix], 10)
         plt.imshow(optical_image, \
-                extent = (min(self.map_az)-DEFAULT_MAP_DPIX /2.,max(self.map_az)+DEFAULT_MAP_DPIX /2,max(self.map_za)+DEFAULT_MAP_DPIX /2.,min(self.map_za)-DEFAULT_MAP_DPIX /2.), \
+                extent = self.extent(), \
                 aspect='equal', vmax=255, vmin=-255)
         cb = plt.colorbar(shrink=cb_shrink)
         cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)

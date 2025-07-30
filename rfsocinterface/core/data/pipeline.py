@@ -82,6 +82,9 @@ class DataPipeline:
             match routine:
                 case BinTODIntoMap():
                     routine.beam_map_mode = self.shared_values['beam_map_mode']
+                    if routine.beam_map_mode:
+                        routine.az_trim = 0
+                        routine.za_trim = 0
                     if 'hp_filter_freq' in self.shared_values:
                         routine.hp_filter_freq = self.shared_values['hp_filter_freq']
                     if 'lp_filter_freq' in self.shared_values:
@@ -181,8 +184,8 @@ class DataPipeline:
 
 if __name__ == '__main__':
     import pdb
-    date = '20250729'
-    setnum = 1012
+    date = '20250730'
+    setnum = 1006
     dataset = 'data_mK'
     beam_map_mode = True
 
