@@ -1003,7 +1003,7 @@ class MapData(ProcessedData):
         )
 
     def plot_individual(self, index: int):
-        plot_map(self.map[index], self.map_az, self.map_za, self.extent())
+        plot_map(self.map[index], self.map_az, self.map_za, self.extent(), title=f'Resonator {index}')
 
     def plot(self, show: bool=True, save: bool=True):
 

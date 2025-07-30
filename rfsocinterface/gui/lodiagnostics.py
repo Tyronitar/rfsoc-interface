@@ -442,7 +442,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 if __name__ == '__main__':
     from concurrent.futures import wait
     app = QApplication()
-    sweep = LoSweepData.from_h5('/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
+    sweep = LoSweepData.from_h5('/data/20250730/20250730_devrfsoc_rfsoc2_LO_Sweep_hour11p3667.h5')
 
 
     win = QMainWindow()
@@ -485,14 +485,3 @@ if __name__ == '__main__':
 
     win.show()
     app.exec()
-
-if __name__ == '__main__':
-    app = QApplication()
-
-    sweep = LoSweepData.from_h5('/data/20250509/20250509_rfsoc2_LO_Sweep_hour13p8025.h5')
-    dw = DiagnosticsDialog(sweep, '')
-    dw.show()
-
-    app.exec()
-
-
