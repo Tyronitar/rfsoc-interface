@@ -24,6 +24,7 @@ from __future__ import annotations
 __all__ = ['RawDataFile']
 
 from typing import Any
+from pathlib import Path
 
 import h5py
 import os
@@ -39,6 +40,8 @@ from dataclasses import dataclass, field
 import glob
 
 logger = logging.getLogger(__name__)
+
+PARAMS_PATH = Path('/home/onrkids/readout/host/params/')
 
 
 class RawDataFile:
@@ -203,7 +206,26 @@ class RawDataFile:
         self.adc_q.resize((1024, n_sample))
         self.timestamp.resize((n_sample,))
 
-    def set_global_data(self, chan: Rfchan):
+    def set_global_data(self, chan: Rfchan, params_path: Path=PARAMS_PATH):
+
+
+        params_tile_file = params_path / f'params_tile_{chan.tile_name}.h5'
+        if params_tile_file.exists():
+            log.debug(f"Found params file for tile {chan.tile_name} at {params_tile_file}")
+            with h5py.File(params_tile_file, 'r') as params_fh:
+                chanmask = params_fh['chanmask'][:]
+                tone_powers = params_fh['tone_powers'][:]
+                baseband_freqs = params_fh['baseband_freqs'][:]
+                lo_freq = params_fh['lo_freq'][:]
+                detdx = params_fh['detector_delta_x'][:]
+                detdy = params_fh['detector_delta_y'][:]
+                det_ba = params_fh['detector_beam_ampl'][:]
+                det_pol = params_fh['detector_pol'][:]
+                dfoverf_per_mK = params_fh['dfoverf_per_mK'][:]
+        else:
+            # make_file(chan)
+            # TODO: Create the parameters file
+
         self.attenuator_settings[:] = chan.attenuator_settings
         self.baseband_freqs[:] = chan.baseband_freqs
         self.sample_rate[0] = chan.sample_rate
@@ -215,21 +237,17 @@ class RawDataFile:
         self.lo_freq[0] = chan.lo_freq
         self.fh['global_data/lo_freq'][...] = chan.lo_freq
 
-        # ONR specific params below this line
-        # that appends these datafields based on file name
-
-        # In kidpy, the user shall call a function along the lines of
-        # "Append or include External Data".
-        PARAMS_PATH = '/home/onrkids/readout/host/params/'
-        detdx = PARAMS_PATH + f"detector_delta_x_tile{chan.tile_number}.npy"
-        detdy = PARAMS_PATH + f"detector_delta_y_tile{chan.tile_number}.npy"
-        det_ba = PARAMS_PATH + f"detector_beam_ampl_tile{chan.tile_number}.npy"
-        det_pol = PARAMS_PATH + f"detector_pol_tile{chan.tile_number}.npy"
-        dfoverf_per_mK = PARAMS_PATH + f"dfoverf_per_mK_tile{chan.tile_number}.npy"
+        # chanmask_file = PARAMS_PATH / f'chanmask_tile_{chan.tile_name}.npy'
+        # detdx = PARAMS_PATH + f"detector_delta_x_tile_{chan.tile_name}.npy"
+        # detdy = PARAMS_PATH + f"detector_delta_y_tile_{chan.tile_name}.npy"
+        # det_ba = PARAMS_PATH + f"detector_beam_ampl_tile_{chan.tile_name}.npy"
+        # det_pol = PARAMS_PATH + f"detector_pol_tile_{chan.tile_name}.npy"
+        # dfoverf_per_mK = PARAMS_PATH + f"dfoverf_per_mK_tile_{chan.tile_name}.npy"
 
         chanmask = chan.chanmask
         self.chanmask[:] = chanmask
         self.fh['global_data/chanmask'][...] = chanmask
+
         self.detector_delta_x[:] = np.load(detdx)
         self.fh['global_data/detector_delta_x'][...] = np.load(detdx)
         self.detector_delta_y[:] = np.load(detdy)
@@ -561,6 +579,7 @@ class Rfchan:
     
     def save(self):
         raise NotImplementedError("Planned feature; not implemented")
+
 
 
 

@@ -4,16 +4,25 @@ from re import match
 from typing import Any
 import numpy as np
 import numpy.typing as npt
+import logging
 
 from kidpy3 import RFSOC
 from kidpy3.rfsoc import RedisConnection
 from kidpy3.data_handler import Rfchan
 from kidpy3.hardware import Valon5009, Transceiver320d
+import tables
 
 from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
 from rfsocinterface.core.utils import convert_path, recursive_update, ensure_path
 
+_logger = logging.getLogger(__name__)   
+
 PATH_SETTINGS = ['toneList', 'tonePowers', 'chanmask', 'loComport', 'attenComport', 'bitstream']
+DEFAULT_PARAMS_PATH = Path('/home/onrkids/readout/host/params/')
+
+
+
+
 
 class RFSOCWrapper:
     def __init__(self, rfsoc_settings: dict):
@@ -256,6 +265,18 @@ class RFSOCWrapper:
         # return rfchan.name
         return f'{self.settings["name"]}_{rfchan.name}'
 
+    @ensure_path(2)
+    def load_params_file(self, channel: int, params_path: Path=DEFAULT_PARAMS_PATH) -> tables.File:
+        chan = self.get_channel(channel)
+
+        params_tile_file = params_path / f'params_tile_{chan.tile_name}.h5'
+        if not params_tile_file.exists():
+            self.initialize_params_file(channel, params_tile_file)
+            _logger.info(f"Created params file for tile {chan.tile_name} at {params_tile_file}")
+        return tables.open_file(params_tile_file, 'r')
+        
+        # TODO: Load the parameters into the RFChan object
+
 def get_channel_from_text(text: str, rfsocs: list[RFSOCWrapper]) -> tuple[RFSOCWrapper, int]:
     if text == '':
         raise SettingsError('No channel selected')
@@ -272,3 +293,121 @@ def get_channel_from_text(text: str, rfsocs: list[RFSOCWrapper]) -> tuple[RFSOCW
         raise SettingsError(f'Could not find a channel from text: {text}') from e
     chan = int(text.split(' - ')[1].split(' ')[-1])
     return rfsoc, chan
+
+
+def initialize_params_file(
+    tile_name: str,
+    baseband_freqs: npt.NDArray,
+    lo_freq: float,
+    params_path: Path=DEFAULT_PARAMS_PATH,
+):
+    params_tile_file = params_path / f'params_tile_{tile_name}.h5'
+    n_tones = np.size(baseband_freqs)
+    with tables.open_file(params_tile_file, 'w') as params_fh:
+        params_fh.root._v_attrs.n_tones = n_tones
+        params_fh.root._v_attrs.tile_name = tile_name
+        params_fh.root._v_attrs.tile_number = 0
+        params_fh.root._v_attrs.chan_number = 0
+        params_fh.root._v_attrs.ifslice_number = 0
+        params_fh.create_array(
+            '/',
+            'chanmask',
+            atom=tables.Int8Atom(dflt=1),
+            shape=(n_tones,),
+        )
+        params_fh.create_array(
+            '/',
+            'baseband_freqs',
+            obj=baseband_freqs,
+        )
+        params_fh.create_array(
+            '/',
+            'tone_powers',
+            obj=np.ones(n_tones, dtype=np.float32),
+        )
+        params_fh.create_array(
+            '/',
+            'lo_freq',
+            obj=lo_freq,
+        )
+        params_fh.create_array(
+            '/',
+            'detector_delta_x',
+            atom=tables.Float32Atom(dflt=0),
+            shape=(n_tones,),
+        )
+        params_fh.create_array(
+            '/',
+            'detector_delta_y',
+            atom=tables.Float32Atom(dflt=0),
+            shape=(n_tones,),
+        )
+        params_fh.create_array(
+            '/',
+            'detector_pol',
+            atom=tables.Int8Atom(dflt=1),
+            shape=(n_tones,),
+        )
+        params_fh.create_array(
+            '/',
+            'dfoverf_per_mK',
+            atom=tables.Float64Atom(dflt=1.0),
+            shape=(n_tones,),
+        )
+
+PARAM_FILE_N_TONE_ATTRIBUTES = [
+    'baseband_freqs',
+    'tone_powers',
+    'detector_delta_x',
+    'detector_delta_y',
+    'detector_pol',
+    'dfoverf_per_mK',
+    'chanmask',
+]
+
+def update_params_file(
+    self,
+    tile_name: str,
+    params_path: Path=DEFAULT_PARAMS_PATH,
+    baseband_freqs: npt.NDArray=None,
+    lo_freq: float=None,
+    det_dx: npt.NDArray=None,
+    det_dy: npt.NDArray=None,
+    det_beam_amplitude: npt.NDArray=None,
+    det_pol: npt.NDArray=None,
+    dfoverf_per_mK: npt.NDArray=None,
+    chanmask: npt.NDArray=None,
+    tone_powers: npt.NDArray=None,
+):
+    params_tile_file = params_path / f'params_tile_{tile_name}.h5'
+    if not params_tile_file.exists():
+        raise FileExistsError(f'Params file {params_tile_file} does not exist')
+
+    with tables.open_file(params_tile_file, 'a') as fh:
+        # TODO: Add checks for the size of the arrays
+        # TODO: Reduce the number of checks by using a loop
+
+
+        if baseband_freqs is not None:
+            if np.size(baseband_freqs) != self.fh.root._v_attrs.n_tones:
+                raise ValueError(
+                    f'Baseband frequencies size {np.size(baseband_freqs)} does not match n_tones {self.fh.root._v_attrs.n_tones}'
+                )
+            fh.root.baseband_freqs[:] = baseband_freqs
+        if tone_powers is not None:
+            fh.root.tone_powers[:] = tone_powers 
+        if det_dx is not None:
+            fh.root.det_dx[:] = det_dx 
+        if det_dy is not None:
+            fh.root.det_dy[:] = det_dy 
+        if det_beam_amplitude is not None:
+            fh.root.detector_beam_ampl[:] = det_beam_amplitude 
+        if det_pol is not None:
+            fh.root.detector_pol[:] = det_pol 
+        if dfoverf_per_mK is not None:
+            fh.root.dfoverf_per_mK[:] = dfoverf_per_mK 
+        if chanmask is not None:
+            fh.root.chanmask[:] = chanmask 
+        if lo_freq is not None:
+            fh.root.lo_freq[0] = lo_freq
+
