@@ -16,6 +16,7 @@ from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC
 from rfsocinterface.core.losweep import LoSweepData
 
 DATA_DIRECTORY = '/data'
+DEFAULT_PARAMS_DIRECTORY = '/home/onrkids/readout/host/params/'
 
 OPTCAM_OFFSET_AZ_PIX = 57
 OPTCAM_OFFSET_ZA_PIX = 49
@@ -30,42 +31,55 @@ DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
+PARAM_FILE_N_TONE_ATTRIBUTES = [
+    'baseband_freqs',
+    'tone_powers',
+    'detector_delta_x',
+    'detector_delta_y',
+    'detector_pol',
+    'detector_beam_ampl',
+    'dfoverf_per_mK',
+    'chanmask',
+]
+
 #
 # File Templates
 #
 
-
-def get_tod_template(date: str, setnum: int) -> str:
-    return f'{DATA_DIRECTORY}/{date}/{date}_*_TOD_set{setnum}.h5'
-
-
-def get_azel_template(date: str, setnum: int) -> str:
-    return f'{DATA_DIRECTORY}/{date}/{date}_AZEL_set{setnum}.h5'
+def get_tod_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_*_TOD_set{setnum}.h5'
 
 
-def get_optcam_template(date: str, setnum: int) -> str:
-    return f'{DATA_DIRECTORY}/{date}/{date}_optcam_set{setnum}.h5'
+def get_azel_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_AZEL_set{setnum}.h5'
 
 
-def get_processed_file_template(date: str, setnum: int) -> str:
-    return f'{DATA_DIRECTORY}/{date}/{date}_processed_data_set{setnum}.h5'
+def get_optcam_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
 
 
-def get_cleaned_file_template(date: str, setnum: int) -> str:
-    return f'{DATA_DIRECTORY}/{date}/{date}_cleaned_data_set{setnum}.h5'
+def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_processed_data_set{setnum}.h5'
+
+
+def get_cleaned_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_cleaned_data_set{setnum}.h5'
 
 
 def get_file_stub(date: str, setnum: int) -> str:
     return f'{date}_set{setnum}'
 
 
-def get_map_file_template(date: str, setnum: int) -> str:
-    return f'{DATA_DIRECTORY}/{date}/{date}_mapped_data_set{setnum}.h5'
+def get_map_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_mapped_data_set{setnum}.h5'
 
 
-def get_beammap_file_template(date: str, setnum: int) -> str:
-    return f'{DATA_DIRECTORY}/{date}/{date}_beammap_set{setnum}.h5'
+def get_beammap_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_beammap_set{setnum}.h5'
 
+
+def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
+    return f'{params_dir}/params_tile_{tile_name}.h5'
 
 #
 # Outlier Removal and Flagging
@@ -153,7 +167,6 @@ def compute_df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, det
     return dfoverf_per_mK * detector_f * amps
 
 
-
 def rotate_basis(
         in_data: tables.Array,
         out_data: tables.Array,
@@ -192,7 +205,6 @@ def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
 #
 # Electronics Noise Removal
 #
-
 
 def compute_templates(data: npt.NDArray) -> npt.NDArray:
     """Compute templates for correlated noise removal.
@@ -275,8 +287,9 @@ def remove_electronics_noise_tables(
         # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
         data_gain_phase[i_chan, :] = clean_data.squeeze()
 
-
-
+#
+# Data Classes
+#
 
 class ProcessedData:
     """Class contianing data from processed TOD files."""
@@ -1096,8 +1109,110 @@ class MapData(ProcessedData):
             this_fig.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
         if show:
             plt.show()
-    
-    
+
+#
+# Parameter Files
+#
+
+def initialize_params_file(
+    tile_name: str,
+    baseband_freqs: npt.NDArray,
+    lo_freq: float,
+    params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+):
+    params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
+    n_tones = np.size(baseband_freqs)
+    with tables.open_file(params_tile_file, 'w') as params_fh:
+        params_fh.root._v_attrs.n_tones = n_tones
+        params_fh.root._v_attrs.tile_name = tile_name
+        params_fh.root._v_attrs.tile_number = 0
+        params_fh.root._v_attrs.chan_number = 0
+        params_fh.root._v_attrs.ifslice_number = 0
+        params_fh.create_array(
+            '/',
+            'chanmask',
+            atom=tables.Int8Atom(dflt=1),
+            shape=(n_tones,),
+        )
+        params_fh.create_array(
+            '/',
+            'baseband_freqs',
+            obj=baseband_freqs,
+        )
+        params_fh.create_array(
+            '/',
+            'tone_powers',
+            obj=np.ones(n_tones, dtype=np.float32),
+        )
+        params_fh.create_array(
+            '/',
+            'lo_freq',
+            obj=lo_freq,
+        )
+        params_fh.create_array(
+            '/',
+            'detector_delta_x',
+            atom=tables.Float32Atom(dflt=0),
+            shape=(n_tones,),
+        )
+        params_fh.create_array(
+            '/',
+            'detector_delta_y',
+            atom=tables.Float32Atom(dflt=0),
+            shape=(n_tones,),
+        )
+        params_fh.create_array(
+            '/',
+            'detector_beam_ampl',
+            atom=tables.Float32Atom(),
+            shape=(n_tones,),
+        )
+        params_fh.create_array(
+            '/',
+            'detector_pol',
+            atom=tables.Int8Atom(dflt=1),
+            shape=(n_tones,),
+        )
+        params_fh.create_array(
+            '/',
+            'dfoverf_per_mK',
+            atom=tables.Float64Atom(dflt=1.0),
+            shape=(n_tones,),
+        )
+
+
+def update_params_file(
+    tile_name: str,
+    params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    baseband_freqs: npt.NDArray=None,
+    lo_freq: float=None,
+    detector_delta_dx: npt.NDArray=None,
+    detector_delta_dy: npt.NDArray=None,
+    detector_beam_ampl: npt.NDArray=None,
+    detector_pol: npt.NDArray=None,
+    dfoverf_per_mK: npt.NDArray=None,
+    chanmask: npt.NDArray=None,
+    tone_powers: npt.NDArray=None,
+):
+    params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
+    if not params_tile_file.exists():
+        raise FileExistsError(f'Params file {params_tile_file} does not exist')
+
+    with tables.open_file(params_tile_file, 'a') as fh:
+        for k in update_params_file.__kwdefaults__:  # Check all of the keyword arguments
+            if k == 'params_path':
+                continue  # We only care about the parameters
+            v = locals()[k]
+            if v is None:
+                continue  # The value is not being updated, so skip it
+            # Check the array is the correct size if needed
+            if k in PARAM_FILE_N_TONE_ATTRIBUTES:
+                if np.size(v) != fh.root._v_attrs.n_tones:
+                    raise ValueError(
+                        f'{k} size {np.size(v)} does not match n_tones {fh.root._v_attrs.n_tones}'
+                    )
+            fh.get_node('/', k)[:] = v
+
 
 if __name__ == '__main__':
     date = '20250611'

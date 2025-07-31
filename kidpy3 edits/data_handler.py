@@ -41,7 +41,7 @@ import glob
 
 logger = logging.getLogger(__name__)
 
-PARAMS_PATH = Path('/home/onrkids/readout/host/params/')
+DEFAULT_PARAMS_DIRECTORY = '/home/onrkids/readout/host/params/'
 
 
 class RawDataFile:
@@ -206,12 +206,14 @@ class RawDataFile:
         self.adc_q.resize((1024, n_sample))
         self.timestamp.resize((n_sample,))
 
-    def set_global_data(self, chan: Rfchan, params_path: Path=PARAMS_PATH):
+    def set_global_data(self, chan: Rfchan, params_dir: str=DEFAULT_PARAMS_DIRECTORY):
 
+        params_tile_file = Path(f'{params_dir}/params_tile_{chan.tile_name}.h5')
 
-        params_tile_file = params_path / f'params_tile_{chan.tile_name}.h5'
+        # Load values from params file if it exists
         if params_tile_file.exists():
-            log.debug(f"Found params file for tile {chan.tile_name} at {params_tile_file}")
+            log = logger.getChild(__name__)
+            log.debug(f"Using existing params file: {params_tile_file}")
             with h5py.File(params_tile_file, 'r') as params_fh:
                 chanmask = params_fh['chanmask'][:]
                 tone_powers = params_fh['tone_powers'][:]
@@ -222,44 +224,32 @@ class RawDataFile:
                 det_ba = params_fh['detector_beam_ampl'][:]
                 det_pol = params_fh['detector_pol'][:]
                 dfoverf_per_mK = params_fh['dfoverf_per_mK'][:]
-        else:
-            # make_file(chan)
-            # TODO: Create the parameters file
 
-        self.attenuator_settings[:] = chan.attenuator_settings
+            self.chanmask[:] = chanmask
+            self.baseband_freqs[:] = baseband_freqs
+            self.tone_powers[:] = tone_powers
+            self.lo_freq[0] = lo_freq
+            self.detector_delta_x[:] = detdx
+            self.detector_delta_y[:] = detdy
+            self.detector_beam_ampl[:] = det_ba
+            self.detector_pol[:] = det_pol
+            self.dfoverf_per_mK[:] = dfoverf_per_mK
+
+        # Use current channel attributes to set global data, taking precedence over params file
         self.baseband_freqs[:] = chan.baseband_freqs
+        self.tone_powers[:] = chan.tone_powers
+        self.lo_freq[0] = chan.lo_freq
+        self.chanmask[:] = chan.chanmask
+
+        # Update misc values
+        self.attenuator_settings[:] = chan.attenuator_settings
         self.sample_rate[0] = chan.sample_rate
         self.tile_number[:] = chan.tile_number
-        self.tone_powers[:] = chan.tone_powers
         self.chan_number[:] = chan.chan_number
         self.ifslice_number[:] = chan.ifslice_number
         self.n_attenuators[0] = chan.n_attenuators
-        self.lo_freq[0] = chan.lo_freq
-        self.fh['global_data/lo_freq'][...] = chan.lo_freq
 
-        # chanmask_file = PARAMS_PATH / f'chanmask_tile_{chan.tile_name}.npy'
-        # detdx = PARAMS_PATH + f"detector_delta_x_tile_{chan.tile_name}.npy"
-        # detdy = PARAMS_PATH + f"detector_delta_y_tile_{chan.tile_name}.npy"
-        # det_ba = PARAMS_PATH + f"detector_beam_ampl_tile_{chan.tile_name}.npy"
-        # det_pol = PARAMS_PATH + f"detector_pol_tile_{chan.tile_name}.npy"
-        # dfoverf_per_mK = PARAMS_PATH + f"dfoverf_per_mK_tile_{chan.tile_name}.npy"
-
-        chanmask = chan.chanmask
-        self.chanmask[:] = chanmask
-        self.fh['global_data/chanmask'][...] = chanmask
-
-        self.detector_delta_x[:] = np.load(detdx)
-        self.fh['global_data/detector_delta_x'][...] = np.load(detdx)
-        self.detector_delta_y[:] = np.load(detdy)
-        self.fh['global_data/detector_delta_y'][...] = np.load(detdy)
         self.detector_dx_dy_elevation_angle[:] = 89.0
-        self.fh['global_data/detector_dx_dy_elevation_angle'][...] = 89.0
-        self.detector_beam_ampl[:] = np.load(det_ba)
-        self.fh['global_data/detector_beam_ampl'][...] = np.load(det_ba)
-        self.detector_pol[:] = np.load(det_pol)
-        self.fh['global_data/detector_pol'][...] = np.load(det_pol)
-        self.dfoverf_per_mK[:] = np.load(dfoverf_per_mK)
-        self.fh['global_data/dfoverf_per_mK'][...] = np.load(dfoverf_per_mK)
 
         self.fh.flush()
 
