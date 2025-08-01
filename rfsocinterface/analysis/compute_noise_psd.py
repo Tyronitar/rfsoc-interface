@@ -10,11 +10,13 @@ from matplotlib.figure import Figure
 from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 from argparse import ArgumentParser
+import tables
 
 from kidpy3 import RawDataFile
 
 
-from rfsocinterface.core.data.data import flag_outliers, ProcessedData
+from rfsocinterface.core.data.data import flag_outliers, ProcessedData, DATA_DIRECTORY
+from rfsocinterface.core.data.routines import DataRoutine, ProcessingStage
 from rfsocinterface.core.utils import ensure_path, ordinal
 
 XLIM = (0.1, 100)
@@ -77,6 +79,26 @@ def _compute_psd(
     """Compute the PSD."""
     return signal.welch(data, fs, nperseg=n_samples_per_block)
 
+
+class ComputeNoisePSD(DataRoutine):
+    stage = ProcessingStage.POST_PROCESSING
+
+    def __init__(self, dataset: str='data_mK'):
+        # TODO: Add parameters for the PSD computation
+        super().__init__()
+        self.dataset = dataset
+    
+    def forward(self, pd: ProcessedData):
+        data = getattr(pd, self.dataset)
+        chanmask, psd, freq = compute_noise_psd(
+            data[:],
+            timestamp=pd.timestamp[:],
+            chanmask=pd.chanmask[:],
+            nominal_block_length=self.nominal_block_length,
+        )
+        with tables.File(pd.cleaned_file_template, 'a') as cfile:
+            cfile.create_array('/', 'psd', psd)
+            cfile.create_array('/', 'psd_freq', freq)
 
 @ensure_path(2)
 def plot_psd(
@@ -318,7 +340,7 @@ if __name__ == '__main__':
     basis = args.basis
     nominal_block_length = args.block_length
 
-    p = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise, ds_factor=ds_factor)
+    pd = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise, ds_factor=ds_factor)
 
 
 
@@ -326,7 +348,7 @@ if __name__ == '__main__':
         case 'iq':
             # IQ basis
             # input_data = rotate_basis(p.data_gain_phase, -p.IQ_to_gain_phase_angle)
-            input_data = p.data_IQ
+            input_data = pd.data_IQ
         case 'fd':
             # Frequency/Dissipation basis
             # Get frequencies from the raw data file
@@ -334,10 +356,10 @@ if __name__ == '__main__':
             fh = RawDataFile(raw_data_file, 'r')
             freq = fh.baseband_freqs[:] + fh.lo_freq[:]
 
-            input_data = p.data_freq_diss / freq[np.newaxis, :, np.newaxis]
+            input_data = pd.data_freq_diss / freq[np.newaxis, :, np.newaxis]
         case 'gp':
             # Gain/Phase basis
-            input_data = p.data_gain_phase / p.carrier_amplitude_norm()
+            input_data = pd.data_gain_phase / pd.carrier_amplitude_norm()
         case _:
             raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
 
@@ -346,18 +368,25 @@ if __name__ == '__main__':
     if first_dimension == 1:
         input_data = input_data.reshape((1, *input_data.shape))
 
-    chanmask = p.chanmask
+    chanmask = pd.chanmask[:]
 
     # Flag outliers
     if do_flag_outliers:
-        chanmask = flag_outliers(input_data, p.fs, chanmask, sigma=outlier_sigma)
+        chanmask = flag_outliers(input_data, pd.fs, chanmask, sigma=outlier_sigma)
     
+    pdb.set_trace()
     chanmask, freq, noise_psd = compute_noise_psd(
         input_data,
-        p.timestamp,
-        chanmask=p.chanmask,
+        pd.timestamp,
+        chanmask=chanmask,
         nominal_block_length=nominal_block_length,
     )
-    plot_psd(freq, noise_psd, f'plots/{date}_{setnum}_{basis}_psd.pdf', basis=basis, title=args.title)
+    plot_psd(
+        freq,
+        noise_psd,
+        f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_psd_{basis}.pdf',
+        basis=basis,
+        title=args.title,
+    )
     if args.show_plots:
         plt.show()

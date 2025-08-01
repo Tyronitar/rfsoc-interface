@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QCheckBox, QDialog
     QPushButton, QSizePolicy, QSpacerItem, QToolButton,
     QWidget)
 
+from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from . import icons_rc
 
@@ -27,7 +28,7 @@ class Ui_ChannelSettingsWidget(object):
     def setupUi(self, ChannelSettingsWidget):
         if not ChannelSettingsWidget.objectName():
             ChannelSettingsWidget.setObjectName(u"ChannelSettingsWidget")
-        ChannelSettingsWidget.resize(650, 728)
+        ChannelSettingsWidget.resize(650, 772)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -47,32 +48,11 @@ class Ui_ChannelSettingsWidget(object):
         self.ethernet_GroupBox.setObjectName(u"ethernet_GroupBox")
         self.eth_gridLayout = QGridLayout(self.ethernet_GroupBox)
         self.eth_gridLayout.setObjectName(u"eth_gridLayout")
-        self.eth_mac_lineEdit = ClickableLineEdit(self.ethernet_GroupBox)
-        self.eth_mac_lineEdit.setObjectName(u"eth_mac_lineEdit")
-        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        sizePolicy1.setHorizontalStretch(0)
-        sizePolicy1.setVerticalStretch(0)
-        sizePolicy1.setHeightForWidth(self.eth_mac_lineEdit.sizePolicy().hasHeightForWidth())
-        self.eth_mac_lineEdit.setSizePolicy(sizePolicy1)
+        self.eth_dest_error_label = QLabel(self.ethernet_GroupBox)
+        self.eth_dest_error_label.setObjectName(u"eth_dest_error_label")
+        self.eth_dest_error_label.setWordWrap(True)
 
-        self.eth_gridLayout.addWidget(self.eth_mac_lineEdit, 4, 1, 1, 1)
-
-        self.eth_port_label = QLabel(self.ethernet_GroupBox)
-        self.eth_port_label.setObjectName(u"eth_port_label")
-
-        self.eth_gridLayout.addWidget(self.eth_port_label, 6, 0, 1, 1)
-
-        self.eth_source_label = QLabel(self.ethernet_GroupBox)
-        self.eth_source_label.setObjectName(u"eth_source_label")
-
-        self.eth_gridLayout.addWidget(self.eth_source_label, 0, 0, 1, 1)
-
-        self.eth_source_lineEdit = ClickableLineEdit(self.ethernet_GroupBox)
-        self.eth_source_lineEdit.setObjectName(u"eth_source_lineEdit")
-        sizePolicy1.setHeightForWidth(self.eth_source_lineEdit.sizePolicy().hasHeightForWidth())
-        self.eth_source_lineEdit.setSizePolicy(sizePolicy1)
-
-        self.eth_gridLayout.addWidget(self.eth_source_lineEdit, 0, 1, 1, 1)
+        self.eth_gridLayout.addWidget(self.eth_dest_error_label, 3, 1, 1, 1)
 
         self.eth_port_error_label = QLabel(self.ethernet_GroupBox)
         self.eth_port_error_label.setObjectName(u"eth_port_error_label")
@@ -84,24 +64,38 @@ class Ui_ChannelSettingsWidget(object):
 
         self.eth_gridLayout.addWidget(self.eth_mac_label, 4, 0, 1, 1)
 
-        self.eth_dest_error_label = QLabel(self.ethernet_GroupBox)
-        self.eth_dest_error_label.setObjectName(u"eth_dest_error_label")
-        self.eth_dest_error_label.setWordWrap(True)
+        self.eth_port_label = QLabel(self.ethernet_GroupBox)
+        self.eth_port_label.setObjectName(u"eth_port_label")
 
-        self.eth_gridLayout.addWidget(self.eth_dest_error_label, 3, 1, 1, 1)
+        self.eth_gridLayout.addWidget(self.eth_port_label, 6, 0, 1, 1)
 
-        self.eth_mac_error_label = QLabel(self.ethernet_GroupBox)
-        self.eth_mac_error_label.setObjectName(u"eth_mac_error_label")
-        self.eth_mac_error_label.setWordWrap(True)
+        self.eth_port_lineEdit = ClickableLineEdit(self.ethernet_GroupBox)
+        self.eth_port_lineEdit.setObjectName(u"eth_port_lineEdit")
+        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        sizePolicy1.setHorizontalStretch(0)
+        sizePolicy1.setVerticalStretch(0)
+        sizePolicy1.setHeightForWidth(self.eth_port_lineEdit.sizePolicy().hasHeightForWidth())
+        self.eth_port_lineEdit.setSizePolicy(sizePolicy1)
 
-        self.eth_gridLayout.addWidget(self.eth_mac_error_label, 5, 1, 1, 1)
+        self.eth_gridLayout.addWidget(self.eth_port_lineEdit, 6, 1, 1, 1)
 
-        self.eth_dest_lineEdit = ClickableLineEdit(self.ethernet_GroupBox)
-        self.eth_dest_lineEdit.setObjectName(u"eth_dest_lineEdit")
-        sizePolicy1.setHeightForWidth(self.eth_dest_lineEdit.sizePolicy().hasHeightForWidth())
-        self.eth_dest_lineEdit.setSizePolicy(sizePolicy1)
+        self.eth_dest_label = QLabel(self.ethernet_GroupBox)
+        self.eth_dest_label.setObjectName(u"eth_dest_label")
 
-        self.eth_gridLayout.addWidget(self.eth_dest_lineEdit, 2, 1, 1, 1)
+        self.eth_gridLayout.addWidget(self.eth_dest_label, 2, 0, 1, 1)
+
+        self.eth_mac_lineEdit = ClickableLineEdit(self.ethernet_GroupBox)
+        self.eth_mac_lineEdit.setObjectName(u"eth_mac_lineEdit")
+        sizePolicy1.setHeightForWidth(self.eth_mac_lineEdit.sizePolicy().hasHeightForWidth())
+        self.eth_mac_lineEdit.setSizePolicy(sizePolicy1)
+
+        self.eth_gridLayout.addWidget(self.eth_mac_lineEdit, 4, 1, 1, 1)
+
+        self.eth_source_error_label = QLabel(self.ethernet_GroupBox)
+        self.eth_source_error_label.setObjectName(u"eth_source_error_label")
+        self.eth_source_error_label.setWordWrap(True)
+
+        self.eth_gridLayout.addWidget(self.eth_source_error_label, 1, 1, 1, 1)
 
         self.eth_pushButton = QPushButton(self.ethernet_GroupBox)
         self.eth_pushButton.setObjectName(u"eth_pushButton")
@@ -114,23 +108,30 @@ class Ui_ChannelSettingsWidget(object):
 
         self.eth_gridLayout.addWidget(self.eth_pushButton, 8, 1, 1, 1, Qt.AlignmentFlag.AlignRight)
 
-        self.eth_port_lineEdit = ClickableLineEdit(self.ethernet_GroupBox)
-        self.eth_port_lineEdit.setObjectName(u"eth_port_lineEdit")
-        sizePolicy1.setHeightForWidth(self.eth_port_lineEdit.sizePolicy().hasHeightForWidth())
-        self.eth_port_lineEdit.setSizePolicy(sizePolicy1)
+        self.eth_source_label = QLabel(self.ethernet_GroupBox)
+        self.eth_source_label.setObjectName(u"eth_source_label")
 
-        self.eth_gridLayout.addWidget(self.eth_port_lineEdit, 6, 1, 1, 1)
+        self.eth_gridLayout.addWidget(self.eth_source_label, 0, 0, 1, 1)
 
-        self.eth_source_error_label = QLabel(self.ethernet_GroupBox)
-        self.eth_source_error_label.setObjectName(u"eth_source_error_label")
-        self.eth_source_error_label.setWordWrap(True)
+        self.eth_dest_lineEdit = ClickableLineEdit(self.ethernet_GroupBox)
+        self.eth_dest_lineEdit.setObjectName(u"eth_dest_lineEdit")
+        sizePolicy1.setHeightForWidth(self.eth_dest_lineEdit.sizePolicy().hasHeightForWidth())
+        self.eth_dest_lineEdit.setSizePolicy(sizePolicy1)
 
-        self.eth_gridLayout.addWidget(self.eth_source_error_label, 1, 1, 1, 1)
+        self.eth_gridLayout.addWidget(self.eth_dest_lineEdit, 2, 1, 1, 1)
 
-        self.eth_dest_label = QLabel(self.ethernet_GroupBox)
-        self.eth_dest_label.setObjectName(u"eth_dest_label")
+        self.eth_source_lineEdit = ClickableLineEdit(self.ethernet_GroupBox)
+        self.eth_source_lineEdit.setObjectName(u"eth_source_lineEdit")
+        sizePolicy1.setHeightForWidth(self.eth_source_lineEdit.sizePolicy().hasHeightForWidth())
+        self.eth_source_lineEdit.setSizePolicy(sizePolicy1)
 
-        self.eth_gridLayout.addWidget(self.eth_dest_label, 2, 0, 1, 1)
+        self.eth_gridLayout.addWidget(self.eth_source_lineEdit, 0, 1, 1, 1)
+
+        self.eth_mac_error_label = QLabel(self.ethernet_GroupBox)
+        self.eth_mac_error_label.setObjectName(u"eth_mac_error_label")
+        self.eth_mac_error_label.setWordWrap(True)
+
+        self.eth_gridLayout.addWidget(self.eth_mac_error_label, 5, 1, 1, 1)
 
 
         self.gridLayout.addWidget(self.ethernet_GroupBox, 5, 0, 1, 1)
@@ -275,19 +276,10 @@ class Ui_ChannelSettingsWidget(object):
         self.resonator_GroupBox.setMinimumSize(QSize(400, 0))
         self.resonator_gridLayout = QGridLayout(self.resonator_GroupBox)
         self.resonator_gridLayout.setObjectName(u"resonator_gridLayout")
-        self.upload_tones_pushButton = QPushButton(self.resonator_GroupBox)
-        self.upload_tones_pushButton.setObjectName(u"upload_tones_pushButton")
-        sizePolicy2.setHeightForWidth(self.upload_tones_pushButton.sizePolicy().hasHeightForWidth())
-        self.upload_tones_pushButton.setSizePolicy(sizePolicy2)
-        self.upload_tones_pushButton.setIcon(icon)
+        self.params_checkBox = QCheckBox(self.resonator_GroupBox)
+        self.params_checkBox.setObjectName(u"params_checkBox")
 
-        self.resonator_gridLayout.addWidget(self.upload_tones_pushButton, 4, 1, 1, 1, Qt.AlignmentFlag.AlignRight)
-
-        self.tone_power_label = QLabel(self.resonator_GroupBox)
-        self.tone_power_label.setObjectName(u"tone_power_label")
-        self.tone_power_label.setMinimumSize(QSize(0, 0))
-
-        self.resonator_gridLayout.addWidget(self.tone_power_label, 2, 0, 1, 1)
+        self.resonator_gridLayout.addWidget(self.params_checkBox, 0, 0, 1, 2)
 
         self.gridLayout_3 = QGridLayout()
         self.gridLayout_3.setObjectName(u"gridLayout_3")
@@ -311,7 +303,111 @@ class Ui_ChannelSettingsWidget(object):
         self.gridLayout_3.addWidget(self.tone_power_checkBox, 0, 0, 1, 1)
 
 
-        self.resonator_gridLayout.addLayout(self.gridLayout_3, 2, 1, 1, 1)
+        self.resonator_gridLayout.addLayout(self.gridLayout_3, 4, 1, 1, 1)
+
+        self.tone_power_error_label = QLabel(self.resonator_GroupBox)
+        self.tone_power_error_label.setObjectName(u"tone_power_error_label")
+
+        self.resonator_gridLayout.addWidget(self.tone_power_error_label, 5, 1, 1, 1)
+
+        self.upload_tones_pushButton = QPushButton(self.resonator_GroupBox)
+        self.upload_tones_pushButton.setObjectName(u"upload_tones_pushButton")
+        sizePolicy2.setHeightForWidth(self.upload_tones_pushButton.sizePolicy().hasHeightForWidth())
+        self.upload_tones_pushButton.setSizePolicy(sizePolicy2)
+        self.upload_tones_pushButton.setIcon(icon)
+
+        self.resonator_gridLayout.addWidget(self.upload_tones_pushButton, 6, 1, 1, 1, Qt.AlignmentFlag.AlignRight)
+
+        self.params_fileSelectWidget = FileSelectWidget(self.resonator_GroupBox)
+        self.params_fileSelectWidget.setObjectName(u"params_fileSelectWidget")
+
+        self.resonator_gridLayout.addWidget(self.params_fileSelectWidget, 1, 0, 1, 2)
+
+        self.chanmask_label = QLabel(self.resonator_GroupBox)
+        self.chanmask_label.setObjectName(u"chanmask_label")
+
+        self.resonator_gridLayout.addWidget(self.chanmask_label, 7, 0, 1, 1)
+
+        self.tone_list_label = QLabel(self.resonator_GroupBox)
+        self.tone_list_label.setObjectName(u"tone_list_label")
+        self.tone_list_label.setMinimumSize(QSize(0, 0))
+        self.tone_list_label.setAlignment(Qt.AlignmentFlag.AlignLeading|Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
+
+        self.resonator_gridLayout.addWidget(self.tone_list_label, 2, 0, 1, 1)
+
+        self.gridLayout_2 = QGridLayout()
+        self.gridLayout_2.setObjectName(u"gridLayout_2")
+        self.tone_list_equal_label = QLabel(self.resonator_GroupBox)
+        self.tone_list_equal_label.setObjectName(u"tone_list_equal_label")
+
+        self.gridLayout_2.addWidget(self.tone_list_equal_label, 5, 0, 1, 2)
+
+        self.tone_list_baseband_min_label = QLabel(self.resonator_GroupBox)
+        self.tone_list_baseband_min_label.setObjectName(u"tone_list_baseband_min_label")
+
+        self.gridLayout_2.addWidget(self.tone_list_baseband_min_label, 2, 0, 1, 1)
+
+        self.tone_list_lineEdit = ClickableLineEdit(self.resonator_GroupBox)
+        self.tone_list_lineEdit.setObjectName(u"tone_list_lineEdit")
+        sizePolicy6.setHeightForWidth(self.tone_list_lineEdit.sizePolicy().hasHeightForWidth())
+        self.tone_list_lineEdit.setSizePolicy(sizePolicy6)
+
+        self.gridLayout_2.addWidget(self.tone_list_lineEdit, 6, 0, 1, 1)
+
+        self.tone_list_ntones_label = QLabel(self.resonator_GroupBox)
+        self.tone_list_ntones_label.setObjectName(u"tone_list_ntones_label")
+
+        self.gridLayout_2.addWidget(self.tone_list_ntones_label, 4, 0, 1, 1)
+
+        self.tone_list_checkBox = QCheckBox(self.resonator_GroupBox)
+        self.tone_list_checkBox.setObjectName(u"tone_list_checkBox")
+
+        self.gridLayout_2.addWidget(self.tone_list_checkBox, 1, 0, 1, 1)
+
+        self.tone_list_ntones_lineEdit = ClickableLineEdit(self.resonator_GroupBox)
+        self.tone_list_ntones_lineEdit.setObjectName(u"tone_list_ntones_lineEdit")
+        sizePolicy7 = QSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        sizePolicy7.setHorizontalStretch(0)
+        sizePolicy7.setVerticalStretch(0)
+        sizePolicy7.setHeightForWidth(self.tone_list_ntones_lineEdit.sizePolicy().hasHeightForWidth())
+        self.tone_list_ntones_lineEdit.setSizePolicy(sizePolicy7)
+
+        self.gridLayout_2.addWidget(self.tone_list_ntones_lineEdit, 4, 1, 1, 1)
+
+        self.tone_list_baseband_max_label = QLabel(self.resonator_GroupBox)
+        self.tone_list_baseband_max_label.setObjectName(u"tone_list_baseband_max_label")
+
+        self.gridLayout_2.addWidget(self.tone_list_baseband_max_label, 3, 0, 1, 1)
+
+        self.tone_list_pushButton = QPushButton(self.resonator_GroupBox)
+        self.tone_list_pushButton.setObjectName(u"tone_list_pushButton")
+        sizePolicy1.setHeightForWidth(self.tone_list_pushButton.sizePolicy().hasHeightForWidth())
+        self.tone_list_pushButton.setSizePolicy(sizePolicy1)
+
+        self.gridLayout_2.addWidget(self.tone_list_pushButton, 6, 1, 1, 1)
+
+        self.tone_list_baseband_min_lineEdit = ClickableLineEdit(self.resonator_GroupBox)
+        self.tone_list_baseband_min_lineEdit.setObjectName(u"tone_list_baseband_min_lineEdit")
+        sizePolicy7.setHeightForWidth(self.tone_list_baseband_min_lineEdit.sizePolicy().hasHeightForWidth())
+        self.tone_list_baseband_min_lineEdit.setSizePolicy(sizePolicy7)
+
+        self.gridLayout_2.addWidget(self.tone_list_baseband_min_lineEdit, 2, 1, 1, 1)
+
+        self.tone_list_baseband_max_lineEdit = ClickableLineEdit(self.resonator_GroupBox)
+        self.tone_list_baseband_max_lineEdit.setObjectName(u"tone_list_baseband_max_lineEdit")
+        sizePolicy7.setHeightForWidth(self.tone_list_baseband_max_lineEdit.sizePolicy().hasHeightForWidth())
+        self.tone_list_baseband_max_lineEdit.setSizePolicy(sizePolicy7)
+
+        self.gridLayout_2.addWidget(self.tone_list_baseband_max_lineEdit, 3, 1, 1, 1)
+
+
+        self.resonator_gridLayout.addLayout(self.gridLayout_2, 2, 1, 1, 1)
+
+        self.tone_power_label = QLabel(self.resonator_GroupBox)
+        self.tone_power_label.setObjectName(u"tone_power_label")
+        self.tone_power_label.setMinimumSize(QSize(0, 0))
+
+        self.resonator_gridLayout.addWidget(self.tone_power_label, 4, 0, 1, 1)
 
         self.horizontalLayout = QHBoxLayout()
         self.horizontalLayout.setObjectName(u"horizontalLayout")
@@ -330,97 +426,12 @@ class Ui_ChannelSettingsWidget(object):
         self.horizontalLayout.addWidget(self.chanmask_pushButton)
 
 
-        self.resonator_gridLayout.addLayout(self.horizontalLayout, 5, 1, 1, 1)
-
-        self.tone_list_label = QLabel(self.resonator_GroupBox)
-        self.tone_list_label.setObjectName(u"tone_list_label")
-        self.tone_list_label.setMinimumSize(QSize(0, 0))
-        self.tone_list_label.setAlignment(Qt.AlignmentFlag.AlignLeading|Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter)
-
-        self.resonator_gridLayout.addWidget(self.tone_list_label, 0, 0, 1, 1)
-
-        self.chanmask_label = QLabel(self.resonator_GroupBox)
-        self.chanmask_label.setObjectName(u"chanmask_label")
-
-        self.resonator_gridLayout.addWidget(self.chanmask_label, 5, 0, 1, 1)
+        self.resonator_gridLayout.addLayout(self.horizontalLayout, 7, 1, 1, 1)
 
         self.tone_list_error_label = QLabel(self.resonator_GroupBox)
         self.tone_list_error_label.setObjectName(u"tone_list_error_label")
 
-        self.resonator_gridLayout.addWidget(self.tone_list_error_label, 1, 1, 1, 1)
-
-        self.gridLayout_2 = QGridLayout()
-        self.gridLayout_2.setObjectName(u"gridLayout_2")
-        self.tone_list_baseband_min_label = QLabel(self.resonator_GroupBox)
-        self.tone_list_baseband_min_label.setObjectName(u"tone_list_baseband_min_label")
-
-        self.gridLayout_2.addWidget(self.tone_list_baseband_min_label, 1, 0, 1, 1)
-
-        self.tone_list_lineEdit = ClickableLineEdit(self.resonator_GroupBox)
-        self.tone_list_lineEdit.setObjectName(u"tone_list_lineEdit")
-        sizePolicy6.setHeightForWidth(self.tone_list_lineEdit.sizePolicy().hasHeightForWidth())
-        self.tone_list_lineEdit.setSizePolicy(sizePolicy6)
-
-        self.gridLayout_2.addWidget(self.tone_list_lineEdit, 5, 0, 1, 1)
-
-        self.tone_list_ntones_lineEdit = ClickableLineEdit(self.resonator_GroupBox)
-        self.tone_list_ntones_lineEdit.setObjectName(u"tone_list_ntones_lineEdit")
-        sizePolicy7 = QSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        sizePolicy7.setHorizontalStretch(0)
-        sizePolicy7.setVerticalStretch(0)
-        sizePolicy7.setHeightForWidth(self.tone_list_ntones_lineEdit.sizePolicy().hasHeightForWidth())
-        self.tone_list_ntones_lineEdit.setSizePolicy(sizePolicy7)
-
-        self.gridLayout_2.addWidget(self.tone_list_ntones_lineEdit, 3, 1, 1, 1)
-
-        self.tone_list_equal_label = QLabel(self.resonator_GroupBox)
-        self.tone_list_equal_label.setObjectName(u"tone_list_equal_label")
-
-        self.gridLayout_2.addWidget(self.tone_list_equal_label, 4, 0, 1, 2)
-
-        self.tone_list_baseband_min_lineEdit = ClickableLineEdit(self.resonator_GroupBox)
-        self.tone_list_baseband_min_lineEdit.setObjectName(u"tone_list_baseband_min_lineEdit")
-        sizePolicy7.setHeightForWidth(self.tone_list_baseband_min_lineEdit.sizePolicy().hasHeightForWidth())
-        self.tone_list_baseband_min_lineEdit.setSizePolicy(sizePolicy7)
-
-        self.gridLayout_2.addWidget(self.tone_list_baseband_min_lineEdit, 1, 1, 1, 1)
-
-        self.tone_list_pushButton = QPushButton(self.resonator_GroupBox)
-        self.tone_list_pushButton.setObjectName(u"tone_list_pushButton")
-        sizePolicy1.setHeightForWidth(self.tone_list_pushButton.sizePolicy().hasHeightForWidth())
-        self.tone_list_pushButton.setSizePolicy(sizePolicy1)
-
-        self.gridLayout_2.addWidget(self.tone_list_pushButton, 5, 1, 1, 1)
-
-        self.tone_list_ntones_label = QLabel(self.resonator_GroupBox)
-        self.tone_list_ntones_label.setObjectName(u"tone_list_ntones_label")
-
-        self.gridLayout_2.addWidget(self.tone_list_ntones_label, 3, 0, 1, 1)
-
-        self.tone_list_baseband_max_label = QLabel(self.resonator_GroupBox)
-        self.tone_list_baseband_max_label.setObjectName(u"tone_list_baseband_max_label")
-
-        self.gridLayout_2.addWidget(self.tone_list_baseband_max_label, 2, 0, 1, 1)
-
-        self.tone_list_checkBox = QCheckBox(self.resonator_GroupBox)
-        self.tone_list_checkBox.setObjectName(u"tone_list_checkBox")
-
-        self.gridLayout_2.addWidget(self.tone_list_checkBox, 0, 0, 1, 1)
-
-        self.tone_list_baseband_max_lineEdit = ClickableLineEdit(self.resonator_GroupBox)
-        self.tone_list_baseband_max_lineEdit.setObjectName(u"tone_list_baseband_max_lineEdit")
-        sizePolicy7.setHeightForWidth(self.tone_list_baseband_max_lineEdit.sizePolicy().hasHeightForWidth())
-        self.tone_list_baseband_max_lineEdit.setSizePolicy(sizePolicy7)
-
-        self.gridLayout_2.addWidget(self.tone_list_baseband_max_lineEdit, 2, 1, 1, 1)
-
-
-        self.resonator_gridLayout.addLayout(self.gridLayout_2, 0, 1, 1, 1)
-
-        self.tone_power_error_label = QLabel(self.resonator_GroupBox)
-        self.tone_power_error_label.setObjectName(u"tone_power_error_label")
-
-        self.resonator_gridLayout.addWidget(self.tone_power_error_label, 3, 1, 1, 1)
+        self.resonator_gridLayout.addWidget(self.tone_list_error_label, 3, 1, 1, 1)
 
 
         self.gridLayout.addWidget(self.resonator_GroupBox, 1, 0, 1, 2)
@@ -434,19 +445,19 @@ class Ui_ChannelSettingsWidget(object):
     def retranslateUi(self, ChannelSettingsWidget):
         ChannelSettingsWidget.setWindowTitle(QCoreApplication.translate("ChannelSettingsWidget", u"Form", None))
         self.ethernet_GroupBox.setTitle(QCoreApplication.translate("ChannelSettingsWidget", u"Ethernet Settings", None))
-        self.eth_mac_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"XX:XX:XX:XX:XX:XX", None))
-        self.eth_port_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Port:", None))
-        self.eth_source_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Source IP address:", None))
-        self.eth_source_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"255.255.255.255", None))
+        self.eth_dest_error_label.setText("")
         self.eth_port_error_label.setText("")
         self.eth_mac_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Destination MAC address:", None))
-        self.eth_dest_error_label.setText("")
-        self.eth_mac_error_label.setText("")
-        self.eth_dest_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"255.255.255.255", None))
-        self.eth_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Configure Hardware", None))
+        self.eth_port_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Port:", None))
         self.eth_port_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"0", None))
-        self.eth_source_error_label.setText("")
         self.eth_dest_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Destination IP address:", None))
+        self.eth_mac_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"XX:XX:XX:XX:XX:XX", None))
+        self.eth_source_error_label.setText("")
+        self.eth_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Configure Hardware", None))
+        self.eth_source_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Source IP address:", None))
+        self.eth_dest_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"255.255.255.255", None))
+        self.eth_source_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"255.255.255.255", None))
+        self.eth_mac_error_label.setText("")
         self.if_GroupBox.setTitle(QCoreApplication.translate("ChannelSettingsWidget", u"IF Settings", None))
         self.rfin_error_label.setText("")
         self.rfout_error_label.setText("")
@@ -460,13 +471,13 @@ class Ui_ChannelSettingsWidget(object):
         self.lo_freq_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"LO freq (MHz):", None))
         self.rfoutLabel.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Rfout (dB):", None))
         self.resonator_GroupBox.setTitle(QCoreApplication.translate("ChannelSettingsWidget", u"Resonator Settings", None))
-        self.upload_tones_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Upload Tones", None))
-        self.tone_power_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Tone power:", None))
+        self.params_checkBox.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Generate new parameters file", None))
         self.tone_power_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
         self.tone_power_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
         self.tone_power_checkBox.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Use equal tone powers", None))
-        self.chanmask_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
-        self.chanmask_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
+        self.tone_power_error_label.setText("")
+        self.upload_tones_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Upload tones to RFSoC", None))
+        self.chanmask_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Channel mask:", None))
 #if QT_CONFIG(tooltip)
         self.tone_list_label.setToolTip(QCoreApplication.translate("ChannelSettingsWidget", u"Choose a list of resonant frequencies", None))
 #endif // QT_CONFIG(tooltip)
@@ -474,15 +485,16 @@ class Ui_ChannelSettingsWidget(object):
         self.tone_list_label.setWhatsThis(QCoreApplication.translate("ChannelSettingsWidget", u"List of tones of resonant frequencies", None))
 #endif // QT_CONFIG(whatsthis)
         self.tone_list_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Tone list:", None))
-        self.chanmask_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Channel mask:", None))
-        self.tone_list_error_label.setText("")
+        self.tone_list_equal_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Generating tones from XXX to XXX", None))
         self.tone_list_baseband_min_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Lowest Baseband (MHz):", None))
         self.tone_list_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
-        self.tone_list_equal_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Generating tones from XXX to XXX", None))
-        self.tone_list_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
         self.tone_list_ntones_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Number of tones:", None))
-        self.tone_list_baseband_max_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Highest Baseband (MHz):", None))
         self.tone_list_checkBox.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Use equally spaced tones", None))
-        self.tone_power_error_label.setText("")
+        self.tone_list_baseband_max_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Highest Baseband (MHz):", None))
+        self.tone_list_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
+        self.tone_power_label.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Tone power:", None))
+        self.chanmask_lineEdit.setPlaceholderText(QCoreApplication.translate("ChannelSettingsWidget", u"/path/to/filename.npy", None))
+        self.chanmask_pushButton.setText(QCoreApplication.translate("ChannelSettingsWidget", u"Browse...", None))
+        self.tone_list_error_label.setText("")
     # retranslateUi
 

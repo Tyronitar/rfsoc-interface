@@ -16,7 +16,7 @@ from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC
 from rfsocinterface.core.losweep import LoSweepData
 
 DATA_DIRECTORY = '/data'
-DEFAULT_PARAMS_DIRECTORY = '/home/onrkids/readout/host/params/'
+DEFAULT_PARAMS_DIRECTORY = DATA_DIRECTORY + '/params/'
 
 OPTCAM_OFFSET_AZ_PIX = 57
 OPTCAM_OFFSET_ZA_PIX = 49
@@ -567,7 +567,6 @@ class ProcessedData:
         for i, file in enumerate(todlist):
                 #compute the derivatives to obtain frequency direction
             with tables.open_file(file, 'r') as f:
-                # pdb.set_trace()
                 raw_global_data = f.root.global_data
                 raw_dimension = f.root.dimension
                 n_samples = raw_dimension.n_sample[0]
@@ -579,7 +578,8 @@ class ProcessedData:
                 detector_global_data = pfile.create_group(detector, 'global_data')
                 pfile.create_array(detector_global_data, 'vis', vis)
                 pfile.create_array(detector_global_data, 'df_per_mK', shape=(n_tones,), atom=tables.Float64Atom())
-                pfile.create_array(detector_global_data, 'chanmask', shape=(n_tones,), atom=tables.Int8Atom(dflt=1))
+                chanmask = pfile.create_array(detector_global_data, 'chanmask', shape=(n_tones,), atom=tables.Int8Atom(dflt=1))
+                chanmask[:] = 1
                 pfile.create_array(detector_global_data, 'detector_pol', shape=(n_tones,), atom=tables.Int8Atom())
                 pfile.create_array(detector_global_data, 'optical_visibility', shape=(1,), atom=tables.Float64Atom())
 
@@ -1128,12 +1128,13 @@ def initialize_params_file(
         params_fh.root._v_attrs.tile_number = 0
         params_fh.root._v_attrs.chan_number = 0
         params_fh.root._v_attrs.ifslice_number = 0
-        params_fh.create_array(
+        chanmask = params_fh.create_array(
             '/',
             'chanmask',
-            atom=tables.Int8Atom(dflt=1),
+            atom=tables.Int8Atom(),
             shape=(n_tones,),
         )
+        chanmask[:] = 1
         params_fh.create_array(
             '/',
             'baseband_freqs',
@@ -1152,33 +1153,36 @@ def initialize_params_file(
         params_fh.create_array(
             '/',
             'detector_delta_x',
-            atom=tables.Float32Atom(dflt=0),
-            shape=(n_tones,),
-        )
-        params_fh.create_array(
-            '/',
-            'detector_delta_y',
-            atom=tables.Float32Atom(dflt=0),
-            shape=(n_tones,),
-        )
-        params_fh.create_array(
-            '/',
-            'detector_beam_ampl',
             atom=tables.Float32Atom(),
             shape=(n_tones,),
         )
         params_fh.create_array(
             '/',
-            'detector_pol',
-            atom=tables.Int8Atom(dflt=1),
+            'detector_delta_y',
+            atom=tables.Float32Atom(),
             shape=(n_tones,),
         )
-        params_fh.create_array(
+        det_beam_ampl = params_fh.create_array(
+            '/',
+            'detector_beam_ampl',
+            atom=tables.Float32Atom(),
+            shape=(n_tones,),
+        )
+        det_beam_ampl[:] = 1
+        det_pol = params_fh.create_array(
+            '/',
+            'detector_pol',
+            atom=tables.Int8Atom(),
+            shape=(n_tones,),
+        )
+        det_pol[:] = 1
+        dfoveref_per_mK = params_fh.create_array(
             '/',
             'dfoverf_per_mK',
-            atom=tables.Float64Atom(dflt=1.0),
+            atom=tables.Float64Atom(),
             shape=(n_tones,),
         )
+        dfoveref_per_mK[:] = 1
 
 
 def update_params_file(

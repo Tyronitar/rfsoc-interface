@@ -41,7 +41,7 @@ import glob
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PARAMS_DIRECTORY = '/home/onrkids/readout/host/params/'
+DEFAULT_PARAMS_DIRECTORY = '/data/params'
 
 
 class RawDataFile:
@@ -212,13 +212,14 @@ class RawDataFile:
 
         # Load values from params file if it exists
         if params_tile_file.exists():
+            print(f"Using params file: {params_tile_file}")
             log = logger.getChild(__name__)
-            log.debug(f"Using existing params file: {params_tile_file}")
+            log.debug(f"Using params file: {params_tile_file}")
             with h5py.File(params_tile_file, 'r') as params_fh:
                 chanmask = params_fh['chanmask'][:]
                 tone_powers = params_fh['tone_powers'][:]
                 baseband_freqs = params_fh['baseband_freqs'][:]
-                lo_freq = params_fh['lo_freq'][:]
+                lo_freq = params_fh['lo_freq'][()]
                 detdx = params_fh['detector_delta_x'][:]
                 detdy = params_fh['detector_delta_y'][:]
                 det_ba = params_fh['detector_beam_ampl'][:]
@@ -545,7 +546,7 @@ def get_last_rdf(name: str):
 
 @dataclass
 class Rfchan:
-    name: str = "undefined channame"
+    tile_name: str = "undefined channame"
     raw_filename: str = "./data.hdf5"
     baseband_freqs = []
     tone_powers= []
@@ -569,6 +570,8 @@ class Rfchan:
     
     def save(self):
         raise NotImplementedError("Planned feature; not implemented")
+
+
 
 
 

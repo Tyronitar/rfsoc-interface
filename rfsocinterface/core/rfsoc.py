@@ -225,17 +225,18 @@ class RFSOCWrapper:
     @ensure_path(1)
     def set_chanmask_file(self, fname: Path, chan: int):
         self.settings[f'channel{chan}']['chanmask'] = fname
-        self.get_channel(chan).chanmask = np.load(fname)
-
-    def get_chanmask_file(self, chan: int) -> Path | None:
-        return self.settings[f'channel{chan}'].get('chanmask', None)
+        chanmask = np.load(fname)
+        self.set_chanmask(chanmask, chan)
+    
+    def set_chanmask(self, chan: int, chanmask: npt.NDArray):
+        self.get_channel(chan).chanmask = chanmask
 
     def get_chanmask(self, chan: int) -> npt.ArrayLike:
         return self.get_channel(chan).chanmask 
 
-    def set_chanmask(self, chanmask: npt.NDArray, chan: int):
-        self.get_channel(chan).chanmask = np.copy(chanmask)
-    
+    def get_chanmask_file(self, chan: int) -> Path | None:
+        return self.settings[f'channel{chan}'].get('chanmask', None)
+
     def channel_as_text(self, channel: int) -> str:
         return f'{self.settings["name"]} - Channel {channel}'
     
@@ -262,17 +263,30 @@ class RFSOCWrapper:
         # return rfchan.name
         return f'{self.settings["name"]}_{rfchan.name}'
 
-    # @ensure_path(2)
-    # def load_params_file(self, channel: int, params_path: Path=DEFAULT_PARAMS_DIRECTORY) -> tables.File:
-    #     chan = self.get_channel(channel)
+    @ensure_path(2)
+    def load_params_file(self, channel: int, params_filename: Path) -> tables.File:
+        chan = self.get_channel(channel)
+        self.settings[f'channel{channel}']['paramsFile'] = params_filename
 
-    #     params_tile_file = params_path / f'params_tile_{chan.tile_name}.h5'
-    #     if not params_tile_file.exists():
-    #         self.initialize_params_file(channel, params_tile_file)
-    #         _logger.info(f"Created params file for tile {chan.tile_name} at {params_tile_file}")
-    #     return tables.open_file(params_tile_file, 'r')
+        if not params_filename.exists():
+            raise SettingsError(f'Params file {params_filename} does not exist.')
         
-    #     # TODO: Load the parameters into the RFChan object
+        with tables.File(params_filename, 'r') as fh:
+            # tone_list = fh.root.baseband_freqs[:]
+            # tone_powers = fh.root.tone_powers[:]
+            # lo_freq = fh.root.lo_freq[()]
+            chanmask = fh.root.chanmask[:]
+
+            chan.tile_name = fh.root._v_attrs.tile_name
+            # self.set_frequency(channel, lo_freq)
+            # self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
+            self.set_chanmask(channel, chanmask)
+
+        
+        # TODO: Load the parameters into the RFChan object
+    
+
+
 
 def get_channel_from_text(text: str, rfsocs: list[RFSOCWrapper]) -> tuple[RFSOCWrapper, int]:
     if text == '':

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QWidget,
 )
+import tables
 
 
 import numpy as np
@@ -22,6 +23,7 @@ from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.core.utils import IPV4_REGEX, MAC_REGEX
 from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.data.data import DEFAULT_PARAMS_DIRECTORY
 
 _logger = logging.getLogger(__name__)
 
@@ -142,6 +144,10 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.setupUi(self)
 
         # Resonator Settings Connections
+        # TODO: Make params checkbox toggle the other options
+        self.params_fileSelectWidget.set_dir(DEFAULT_PARAMS_DIRECTORY)
+        # self.params_fileSelectWidget.editingFinished.connect(self.load_params_file)
+        self.params_fileSelectWidget.textChanged.connect(self.load_params_file)
         self.tone_list_pushButton.clicked.connect(self.choose_tone_list)
         self.tone_power_pushButton.clicked.connect(self.choose_tone_powers)
         self.path_validator = PathValidator(parent=self)
@@ -198,6 +204,14 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.tone_list_baseband_min_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
         self.tone_list_baseband_max_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
         self.tone_list_ntones_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
+    
+    @Slot(str)
+    def load_params_file(self, params_file: str):
+        if Path(params_file).exists():
+            self.setCursor(Qt.CursorShape.WaitCursor)
+            self.rfsoc.load_params_file(self.channel, params_file)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            
     
     @Slot(str)
     def update_tone_list_equal_label(self, new_text: str):
