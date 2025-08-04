@@ -42,6 +42,13 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
     'chanmask',
 ]
 
+def test_node(f: tables.File, name: str) -> bool:
+    try:
+        f.get_node('/', name)
+        return True
+    except tables.exceptions.NoSuchNodeError:
+        return False
+        
 #
 # File Templates
 #
@@ -58,8 +65,8 @@ def get_optcam_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) ->
     return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
 
 
-def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_processed_data_set{setnum}.h5'
+def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
+    return f'{data_dir}/{date}/{date}_processed_data_level{level}_set{setnum}.h5'
 
 
 def get_cleaned_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
@@ -295,18 +302,18 @@ class ProcessedData:
     """Class contianing data from processed TOD files."""
 
     def __init__(self, pfile: tables.File):
-        self._pfile = pfile
+        self._l1file = pfile
     
     def test_node(self, name: str) -> bool:
         try:
-            self._pfile.get_node('/', name)
+            self._l1file.get_node('/', name)
             return True
         except tables.exceptions.NosuchNodeError:
             return False
 
     
     def close(self):
-        self._pfile.close()
+        self._l1file.close()
 
     @property
     def tod_template(self) -> str:
@@ -321,8 +328,12 @@ class ProcessedData:
         return get_optcam_template(self.date ,self.setnum)
     
     @property
-    def processed_file_template(self) -> str:
+    def processed_file_level1_template(self) -> str:
         return get_processed_file_template(self.date, self.setnum)
+
+    @property
+    def processed_file_level2_template(self) -> str:
+        return get_processed_file_template(self.date, self.setnum, level=2)
 
     @property
     def cleaned_file_template(self) -> str:
@@ -346,19 +357,19 @@ class ProcessedData:
     
     @property
     def date(self) -> str:
-        return self._pfile.root._v_attrs.date
+        return self._l1file.root._v_attrs.date
     
     @date.setter
     def date(self, date: str):
-        self._pfile.root._v_attrs.date = date
+        self._l1file.root._v_attrs.date = date
 
     @property
     def setnum(self) -> int:
-        return self._pfile.root._v_attrs.setnum
+        return self._l1file.root._v_attrs.setnum
     
     @setnum.setter
     def setnum(self, setnum: int):
-        self._pfile.root._v_attrs.setnum = setnum
+        self._l1file.root._v_attrs.setnum = setnum
 
     def carrier_amplitude_norm(self) -> npt.NDArray:
         Z = self.carrier_amp_I + 1j*self.carrier_amp_Q
@@ -366,83 +377,83 @@ class ProcessedData:
 
     @property
     def n_tones(self) -> int:
-        return self._pfile.root.detector_0.data._v_attrs.n_tones 
+        return self._l1file.root.detector_0.data._v_attrs.n_tones 
 
     @property
     def n_samples(self) -> int:
-        return self._pfile.root.detector_0.data._v_attrs.n_samples
+        return self._l1file.root.detector_0.data._v_attrs.n_samples
     
     @property
     def optical_image(self) -> tables.Array:
-        return self._pfile.root.optical_image
+        return self._l1file.root.optical_image
     
     @property
     def carrier_amp_I(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.carrier_amplitudes[0]
+        return self._l1file.root.detector_0.data.carrier_amplitudes[0]
     
     @property
     def carrier_amp_Q(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.carrier_amplitudes[1]
+        return self._l1file.root.detector_0.data.carrier_amplitudes[1]
 
     @property
     def df_per_mK(self) -> tables.Array:
-        return self._pfile.root.detector_0.global_data.df_per_mK
+        return self._l1file.root.detector_0.global_data.df_per_mK
 
     @property
     def data_IQ(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.data_IQ
+        return self._l1file.root.detector_0.data.data_IQ
     
     @property
     def data_I(self) -> npt.NDArray:
-        return self._pfile.root.detector_0.data.data_IQ[0]
+        return self._l1file.root.detector_0.data.data_IQ[0]
 
     @property
     def data_Q(self) -> npt.NDArray:
-        return self._pfile.root.detector_0.data.data_IQ[1]
+        return self._l1file.root.detector_0.data.data_IQ[1]
     
     @property
     def IQ_to_gain_phase_angle(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.IQ_to_gain_phase_angle
+        return self._l1file.root.detector_0.data.IQ_to_gain_phase_angle
 
     @property
     def IQ_to_freq_diss_angle(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.IQ_to_freq_diss_angle
+        return self._l1file.root.detector_0.data.IQ_to_freq_diss_angle
     
     @property
     def adc_units_to_hz(self) -> float:
-        return self._pfile.root.detector_0.data.adc_units_to_hz
+        return self._l1file.root.detector_0.data.adc_units_to_hz
 
     @property
     def data_freq_diss(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.data_freq_diss
+        return self._l1file.root.detector_0.data.data_freq_diss
 
     @property
     def data_freq(self) -> npt.NDArray:
-        return self._pfile.root.detector_0.data.data_freq_diss[0]
+        return self._l1file.root.detector_0.data.data_freq_diss[0]
     
     @property
     def data_diss(self) -> npt.NDArray:
-        return self._pfile.root.detector_0.data.data_freq_diss[0]
+        return self._l1file.root.detector_0.data.data_freq_diss[0]
     
     @property
     def data_mK(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.data_mK
+        return self._l1file.root.detector_0.data.data_mK
     
     @property
     def data_gain_phase(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.data_gain_phase
+        return self._l1file.root.detector_0.data.data_gain_phase
     
     @property
     def data_gain(self) -> npt.NDArray:
-        return self._pfile.root.detector_0.data.data_gain_phase[0]
+        return self._l1file.root.detector_0.data.data_gain_phase[0]
     
     @property
     def data_phase(self) -> npt.NDArray:
-        return self._pfile.root.detector_0.data.data_gain_phase[1]
+        return self._l1file.root.detector_0.data.data_gain_phase[1]
     
     @property
     def timestamp(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.timestamp
+        return self._l1file.root.detector_0.data.timestamp
 
     @property
     def time(self) -> npt.NDArray:
@@ -458,32 +469,32 @@ class ProcessedData:
     
     @property
     def detector_az(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.detector_az
+        return self._l1file.root.detector_0.data.detector_az
 
     @property
     def detector_za(self) -> tables.Array:
-        return self._pfile.root.detector_0.data.detector_za
+        return self._l1file.root.detector_0.data.detector_za
 
     @property
     def vis(self) -> tables.Array:
-        return self._pfile.root.detector_0.global_data.vis
+        return self._l1file.root.detector_0.global_data.vis
 
     @property
     def detector_pol(self) -> tables.Array:
-        return self._pfile.root.detector_0.global_data.detector_pol
+        return self._l1file.root.detector_0.global_data.detector_pol
     
     @property
     def chanmask(self) -> tables.Array:
-        return self._pfile.root.detector_0.global_data.chanmask
+        return self._l1file.root.detector_0.global_data.chanmask
     
     @property
     def receipt(self) -> str:
-        return self._pfile.root._v_attrs.receipt 
+        return self._l1file.root._v_attrs.receipt 
 
     def add_receipt(self, receipt: str):
         """Add a receipt entry to the processed data file."""
-        self._pfile.root._v_attrs.receipt = receipt
-        self._pfile.flush()
+        self._l1file.root._v_attrs.receipt = receipt
+        self._l1file.flush()
 
     @classmethod
     def from_tod(
@@ -764,7 +775,7 @@ class ProcessedData:
             for key in vars(self).keys()
         }
         for key, val in kwargs.items():
-            self._pfile.root.detector_0.data.__getattribute__(key)[:] = val
+            self._l1file.root.detector_0.data.__getattribute__(key)[:] = val
         return ProcessedData(self.file)
 
     @classmethod
@@ -778,7 +789,60 @@ class ProcessedData:
         return ProcessedData(file)
     
     def close(self):
-        self._pfile.close()
+        self._l1file.close()
+
+
+class ProcessedDataL2(ProcessedData):
+    """Class for storing level 2 processed data."""
+
+    def __init__(self, l1file: tables.File, l2file: tables.File):
+        super().__init__(l1file)
+        self._l2file = l2file
+    
+    @classmethod
+    def from_processed_data(cls, pl1: ProcessedData | tables.File, mode='w') -> ProcessedDataL2:
+        if isinstance(pl1, tables.File):
+            l1file = pl1
+            l2file = tables.File(ProcessedData(pl1).processed_file_level2_template, mode)
+        else:
+            l1file = pl1._l1file
+            l2file = tables.File(pl1.processed_file_level2_template, mode)
+
+        # Set global attributes from L1 file
+        pl2 = cls(l1file, l2file)
+        pl2.date = pl1.date
+        pl2.setnum = pl1.setnum
+        return pl2
+    
+    def setup_l2file(self):
+        """Setup the level 2 file with necessary attributes and arrays."""
+        self.date = super().date
+        self.setnum = super().setnum
+
+        psd_group = self._l2file.create_group('/', 'psd')
+        # self._l2file.create_array(psd_group, 'freq', shape=(self
+        # self._l2file.create_array(psd_group, 'psd_gain_phase', shape=(self
+
+
+    @property
+    def chanmask(self) -> tables.Array:
+        return self._l2file.root.chanmask
+
+    @property
+    def date(self) -> str:
+        return self._l2file.root._v_attrs.date
+
+    @date.setter
+    def date(self, date: str):
+        self._l2file.root._v_attrs.date = date
+
+    @property
+    def setnum(self) -> int:
+        return self._l2file.root._v_attrs.setnum
+
+    @setnum.setter
+    def setnum(self, setnum: int):
+        self._l2file.root._v_attrs.setnum = setnum
 
 
 
@@ -848,26 +912,20 @@ class MapData(ProcessedData):
         good_samples = self._mfile.create_earray(self._mfile.root, 'good_samples', shape=(0,), expectedrows=self.n_samples, atom=tables.UInt32Atom())
         good_samples.append(np.arange(self.n_samples))
 
-    def test_node(self, name: str) -> bool:
-        try:
-            self._mfile.get_node('/', name)
-            return True
-        except tables.exceptions.NoSuchNodeError:
-            return False
 
     @classmethod
     def from_processed_data(cls, pdata: ProcessedData | tables.File, mode='w') -> MapData:
         if isinstance(pdata, tables.File):
             pfile = pdata
-            mfile = tables.File(ProcessedData(pfile).map_file_template(), mode)
+            mfile = tables.File(ProcessedData(pfile).map_file_template, mode)
         else:
-            pfile = pdata._pfile
+            pfile = pdata._l1file
             mfile = tables.File(pdata.map_file_template, mode)
 
         map_data = MapData(mfile, pfile)
         chanmask = pfile.root.detector_0.global_data.chanmask
         # chanmask_node = map_data._mfile.create_array('/', 'chanmask', shape=chanmask.shape, atom=tables.Int8Atom(dflt=1))
-        if not map_data.test_node('chanmask'):
+        if not test_node(mfile, 'chanmask'):
             chanmask.copy(map_data._mfile.root, 'chanmask')
         return map_data
     

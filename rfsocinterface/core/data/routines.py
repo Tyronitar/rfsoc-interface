@@ -66,7 +66,7 @@ class GaussianFilter(DataRoutine):
         self.gaussian_sigma = gaussian_sigma
 
     def forward(self, pd: ProcessedData, field: str='data_mK'):
-        array = pd._pfile.get_node('/', field)
+        array = pd._l1file.get_node('/', field)
         smoothed_data = gaussian_filter(array, self.gaussian_sigma)
         array[:] = smoothed_data
     
@@ -122,8 +122,8 @@ class Downsample(DataRoutine):
         # Downsampling after the fact is annoying with PyTables
 
         data_freq_diss_ds = signal.decimate(pd.data_freq_diss, self.ds_factor)
-        pd._pfile.remove_node('/', 'data_freq_diss')
-        pd._pfile.create_array('/detector_0/data/', 'data_freq_diss', data_freq_diss_ds)
+        pd._l1file.remove_node('/', 'data_freq_diss')
+        pd._l1file.create_array('/detector_0/data/', 'data_freq_diss', data_freq_diss_ds)
         data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
         data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
         timestamp_ds = signal.decimate(pd.timestamp, self.ds_factor)
@@ -154,7 +154,7 @@ class RemoveElectronicsNoise(DataRoutine):
 
     def forward(self, pd: ProcessedData):
         remove_electronics_noise_tables(pd.data_gain_phase)
-        generate_calibrated_data(pd.root.detector_0.data, pd._pfile.root.detector_0.global_data)
+        generate_calibrated_data(pd.root.detector_0.data, pd._l1file.root.detector_0.global_data)
 
     def get_receipt_entry(self) -> str:
         return f'RemoveElectronicsNoise: {{\n}}'
