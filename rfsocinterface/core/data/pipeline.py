@@ -184,10 +184,10 @@ class DataPipeline:
 
 if __name__ == '__main__':
     import pdb
-    date = '20250730'
-    setnum = 1006
+    date = '20250805'
+    setnum = 1002
     dataset = 'data_mK'
-    beam_map_mode = True
+    beam_map_mode = True 
 
     ds_factor = 10
     hp_filt_freq = 0.2

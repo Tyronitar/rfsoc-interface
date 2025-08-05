@@ -328,6 +328,7 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--basis', type=str, choices=VALID_BASES, default='gp', help='Basis of the data (gp, iq, fd).')
     parser.add_argument('-p', '--show_plots', action='store_true', help='Show noise plots to screen when finished.')
     parser.add_argument('--block_length', type=float, default=10, help='Nominal block length. Time in seconds for a single "block" of data (defaults to 10s).')
+    parser.add_argument('--cut_time', type=float, default=10, help='Time in seconds to cut from teh ends of the data (defaults to 10).')
     parser.add_argument('--title', type=str, default='Noise PSD', help='Title to use for the plots')
     args = parser.parse_args()
 
@@ -339,6 +340,7 @@ if __name__ == '__main__':
     remove_noise = args.remove_noise
     basis = args.basis
     nominal_block_length = args.block_length
+    cut_time = args.cut_time
 
     pd = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise, ds_factor=ds_factor)
 
@@ -380,6 +382,7 @@ if __name__ == '__main__':
         pd.timestamp,
         chanmask=chanmask,
         nominal_block_length=nominal_block_length,
+        cut_time=cut_time,
     )
     plot_psd(
         freq,

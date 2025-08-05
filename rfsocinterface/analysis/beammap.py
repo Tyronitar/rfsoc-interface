@@ -1,5 +1,7 @@
 """Functions for analyzing beam maps."""
 
+import pdb
+
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
@@ -119,8 +121,8 @@ def analyze_beammap(
         plt.axis('equal')
         plt.xlim(extent[0],extent[1])
         plt.ylim(extent[2],extent[3])
-        plt.xlabel('X Position (in)')
-        plt.ylabel('Y Position (in)')
+        plt.xlabel('X Position (deg)')
+        plt.ylabel('Y Position (deg)')
         pdf.savefig()
         plt.close()
         
@@ -129,7 +131,7 @@ def analyze_beammap(
 
             plt.subplot(nrows, ncols, counter)
             plt.axis('off')
-            plt.imshow(map_val[idx], extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+            plt.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
 
             if counter == nrows*ncols:
                 plt.gcf().set_dpi(300)  # Sharper plots
@@ -144,9 +146,9 @@ def analyze_beammap(
 
         for idx in np.argwhere(chanmask == 1).flatten():
             fig, ax = plt.subplots()
-            ax.imshow(map_val[idx], extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
-            ax.set_xlabel('X Position (in)')
-            ax.set_ylabel('Y Position (in)')
+            ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+            ax.set_xlabel('X Position (deg)')
+            ax.set_ylabel('Y Position (deg)')
             ax.set_xlim(extent[0],extent[1])
             ax.set_ylim(extent[2],extent[3])
             ax.set_title('Resonator Number ' + str(idx))
@@ -177,14 +179,15 @@ def analyze_beammap(
 if __name__ == '__main__':
     # date = '20250729'
     # setnum = 1012
-    date = '20250730'
-    setnum = 1005
+    date = '20250805'
+
+    setnum = 1002
 
     md = MapData.from_file(date, setnum, 'r')
-    # import pdb
-    # for i in range(240, 250):
-    #     md.plot_individual(i)
-    #     plt.show(block=False)
     # pdb.set_trace()
+    for i in range(240, 250):
+        md.plot_individual(i)
+        plt.show(block=False)
+    pdb.set_trace()
     analyze_beammap(md)
     md.close()

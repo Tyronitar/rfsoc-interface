@@ -539,7 +539,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         # IF Settings
         self.rfin_lineEdit.setText(str(chan_settings['rfin']))
         self.rfout_lineEdit.setText(str(chan_settings['rfout']))
-        self.lo_freq_lineEdit.setText(f'{chan_settings["dsp"]["loFreq"]}')
+        self.lo_freq_lineEdit.setText(f'{chan_settings["dsp"]["loFreq"] * 1e-6}')
     
     @Slot(QAbstractButton)
     def restore_defaults(self, button: QAbstractButton):

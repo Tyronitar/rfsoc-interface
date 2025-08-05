@@ -182,7 +182,7 @@ class CleanTOD(DataRoutine):
         # TODO: This edits the original processed file...
         data[goodchan, :] = data[goodchan, :] - np.outer(template_corr, template)
 
-        with tables.File(pd.cleaned_file_template, 'a') as cfile:
+        with tables.File(pd.cleaned_file_template, 'w') as cfile:
             cfile.create_array('/', 'chanmask', pd.chanmask[:])
             cfile.create_array('/', 'detector_pol', pd.detector_pol[:])
             cfile.create_array('/', 'timestamp', pd.timestamp[:])

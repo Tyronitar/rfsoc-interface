@@ -65,9 +65,11 @@ def get_optcam_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) ->
     return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
 
 
-def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
-    return f'{data_dir}/{date}/{date}_processed_data_level{level}_set{setnum}.h5'
+def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_processed_data_set{setnum}.h5'
 
+def get_processed_level_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
+    return f'{data_dir}/{date}/{date}_processed_data_level{level}_set{setnum}.h5'
 
 def get_cleaned_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
     return f'{data_dir}/{date}/{date}_cleaned_data_set{setnum}.h5'
@@ -649,7 +651,7 @@ class ProcessedData:
                 if np.count_nonzero(detector_beam_ampl) == 0:
                     detector_beam_ampl = np.ones_like(detector_beam_ampl)
 
-                dfoverf_per_mK = raw_global_data.dfoverf_per_mK[:]
+                dfoverf_per_mK = raw_global_data.dfoverf_per_mK[:] * -1
                 if np.count_nonzero(dfoverf_per_mK) == 0:
                     dfoverf_per_mK = np.ones_like(dfoverf_per_mK)
 
@@ -727,15 +729,17 @@ class ProcessedData:
 
 
 
-                #now the telescope data to get coordinates
-                time = time_ordered_data.timestamp
-                time_0 = time - time[0]
-                total_time = np.max(time_0)
                 if i == 0:  # Only should make this once, since it's never changed
+                    time = time_ordered_data.timestamp
+                    med_time = np.median(time)
+                    dtime = np.median(np.diff(time))
+                    time_0 = med_time - ((n_samples_ds - 1) / 2) * dtime
+                    total_time = dtime * n_samples_ds
                     detector_data.timestamp[:] = np.linspace(
                         0, total_time, n_samples_ds
-                    ) + time[0]
+                    ) + time_0 
 
+                #now the telescope data to get coordinates
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
                     this_az_tel = np.interp(detector_data.timestamp, timestamp_tel, az_tel)
@@ -1262,7 +1266,7 @@ def update_params_file(
 
     with tables.open_file(params_tile_file, 'a') as fh:
         for k in update_params_file.__kwdefaults__:  # Check all of the keyword arguments
-            if k == 'params_path':
+            if k == 'params_dir':
                 continue  # We only care about the parameters
             v = locals()[k]
             if v is None:
