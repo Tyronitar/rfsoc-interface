@@ -731,13 +731,11 @@ class ProcessedData:
 
                 if i == 0:  # Only should make this once, since it's never changed
                     time = time_ordered_data.timestamp
-                    med_time = np.median(time)
-                    dtime = np.median(np.diff(time))
-                    time_0 = med_time - ((n_samples_ds - 1) / 2) * dtime
-                    total_time = dtime * n_samples_ds
+                    time_0 = time - time[0]
+                    total_time = np.max(time_0)
                     detector_data.timestamp[:] = np.linspace(
                         0, total_time, n_samples_ds
-                    ) + time_0 
+                    ) + time[0]
 
                 #now the telescope data to get coordinates
                 if azel_exists:

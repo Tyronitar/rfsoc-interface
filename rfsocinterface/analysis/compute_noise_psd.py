@@ -376,7 +376,6 @@ if __name__ == '__main__':
     if do_flag_outliers:
         chanmask = flag_outliers(input_data, pd.fs, chanmask, sigma=outlier_sigma)
     
-    pdb.set_trace()
     chanmask, freq, noise_psd = compute_noise_psd(
         input_data,
         pd.timestamp,
@@ -393,3 +392,4 @@ if __name__ == '__main__':
     )
     if args.show_plots:
         plt.show()
+    pd.close()

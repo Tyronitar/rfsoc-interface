@@ -231,7 +231,7 @@ class RFSOCWrapper:
         rfchan.baseband_freqs = tonelist
         rfchan.tone_powers = amplitudes
         rfchan.n_tones = np.size(tonelist)
-        _logger.info(f'RFSoC {self.name} sucessfully set tone list for channel {chan} to {(tonelist, amplitudes)}')
+        _logger.info(f'RFSoC {self.name} sucessfully set tone list for channel {chan}')
     
     def set_atten(self, addr: int, value: float) -> bool:
         response = self.atten_transceiver.set_atten(addr, value)
@@ -308,14 +308,15 @@ class RFSOCWrapper:
             raise SettingsError(f'Params file {params_filename} does not exist.')
         
         with tables.File(params_filename, 'r') as fh:
-            # tone_list = fh.root.baseband_freqs[:]
-            # tone_powers = fh.root.tone_powers[:]
-            # lo_freq = fh.root.lo_freq[()]
+            _logger.info(f'Loading parameters from "params_filename" into {self.name}')
+            tone_list = fh.root.baseband_freqs[:]
+            tone_powers = fh.root.tone_powers[:]
+            lo_freq = fh.root.lo_freq[()]
             chanmask = fh.root.chanmask[:]
 
             chan.tile_name = fh.root._v_attrs.tile_name
-            # self.set_frequency(channel, lo_freq)
-            # self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
+            self.set_frequency(channel, lo_freq)
+            self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
             self.set_chanmask(channel, chanmask)
 
         
