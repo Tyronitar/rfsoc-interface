@@ -10,6 +10,7 @@ import tables
 import numpy as np
 import numpy.typing as npt
 from scipy import signal
+from scipy.stats import linregress
 import matplotlib.pyplot as plt
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks
@@ -641,6 +642,32 @@ class ProcessedData:
                 #     dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
                 # else:
                 #     dIQ_df = np.copy(this_dIQ_df)
+                time_ordered_data = f.root.time_ordered_data
+
+                if i == 0:  # Only should make this once, since it's never changed
+                    time = time_ordered_data.timestamp
+                    # Drop first few seconds of time samples
+                    cut_time = 5  # Time in seconds to cut from the front
+                    cut_samples = cut_time // np.median(np.diff(time))
+                    good_times = time[cut_samples:]
+
+
+                    dtime = np.diff(good_times)
+                    total_time = np.ptp(good_times)
+                    timestamp = np.linspace(0, ttime + cut_time, n_samples) + np.min(good_times)
+                    good_idx = np.argwhere(np.abs(dtime - median) < 1.5*std).flatten()
+
+                    # Fit a line to the good times and generate new timestamps
+                    std = np.std(dtime)
+                    median = np.median(dtime)
+                    skip_idx = np.where(dtime > 0.1)
+                    # good_idx = np.argwhere(np.abs(dtime - median) < 0.2 * median).flatten() + 1
+                    reg = linregress(good_idx, good_times[good_idx])
+                    time_0 = reg.intercept
+                    total_time = reg.slope * n_samples
+                    detector_data.timestamp[:] = np.linspace(0, total_time, n_samples_ds) + time_0
+                pdb.set_trace()
+                    
             
                 #compute the calibration factor from dfoverf to mK
                 detector_global_data.detector_pol[:] = raw_global_data.detector_pol[:]
@@ -672,7 +699,6 @@ class ProcessedData:
 
                 #create the calibrated datastreams-----------------------------------------------------------
                 #first get the I and Q data
-                time_ordered_data = f.root.time_ordered_data
                 # data_I = np.ndarray.astype(time_ordered_data.adc_i, np.float64)
                 # data_Q = np.ndarray.astype(time_ordered_data.adc_q, np.float64)
 
@@ -727,17 +753,7 @@ class ProcessedData:
                 # else:
                 #     data_mK = np.copy(detector_data.data_mK)
 
-
-
-                if i == 0:  # Only should make this once, since it's never changed
-                    time = time_ordered_data.timestamp
-                    med_time = np.median(time)
-                    dtime = np.median(np.diff(time))
-                    time_0 = med_time - ((n_samples_ds - 1) / 2) * dtime
-                    total_time = dtime * n_samples_ds
-                    detector_data.timestamp[:] = np.linspace(
-                        0, total_time, n_samples_ds
-                    ) + time_0 
+     
 
                 #now the telescope data to get coordinates
                 if azel_exists:

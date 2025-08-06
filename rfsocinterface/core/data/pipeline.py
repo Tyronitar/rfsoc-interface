@@ -185,7 +185,7 @@ class DataPipeline:
 if __name__ == '__main__':
     import pdb
     date = '20250805'
-    setnum = 1002
+    setnum = 1001
     dataset = 'data_mK'
     beam_map_mode = True 
 
