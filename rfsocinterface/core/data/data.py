@@ -5,6 +5,7 @@ from pathlib import Path
 import glob
 import pdb
 import time
+import inspect
 
 import tables
 import numpy as np
@@ -1261,9 +1262,16 @@ def update_params_file(
     params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
     if not params_tile_file.exists():
         raise FileExistsError(f'Params file {params_tile_file} does not exist')
+    
+    signature = inspect.signature(update_params_file)
+    keyword_args = {
+        param.name: param.default
+        for param in signature.parameters.values()
+        if param.default is not inspect.Parameter.empty
+    }
 
     with tables.open_file(params_tile_file, 'a') as fh:
-        for k in update_params_file.__kwdefaults__:  # Check all of the keyword arguments
+        for k in keyword_args:  # Check all of the keyword arguments
             if k == 'params_dir':
                 continue  # We only care about the parameters
             v = locals()[k]
