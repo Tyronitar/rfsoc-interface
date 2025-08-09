@@ -26,9 +26,11 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
         self.channel_comboBox.set_default_title('Select Channels...')
         self.setup_connections()
         self.update_channel_choices(self.channel_comboBox)
+        main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
     
     def setup_connections(self):
         self.start_pushButton.clicked.connect(self.start_streaming)
+    
     
     def start_streaming(self):
         # TODO: Do this in another thread

@@ -41,6 +41,11 @@ class RFSOCSettingsWidget(QWidget):
         self.channel2_section.collapse(recursive=recursive)
         self.advanced_section.collapse(recursive=recursive)
     
+    def update_channel_names(self):
+        """Update the channel names in the sections."""
+        self.channel1_section.setTitle(self.rfsoc.get_channel_name(1))
+        self.channel2_section.setTitle(self.rfsoc.get_channel_name(2))
+    
     def setupUi(self):
         layout = QVBoxLayout(self)
 
@@ -48,7 +53,7 @@ class RFSOCSettingsWidget(QWidget):
         self.channel1_widget = ChannelSettingsWidget(self.rfsoc, 1, parent=self)
         channel1_layout.addWidget(self.channel1_widget)
         self.channel1_section = Section(self)
-        self.channel1_section.setTitle('Channel 1')
+        self.channel1_section.setTitle(self.rfsoc.get_channel_name(1))
         self.channel1_section.setContentLayout(channel1_layout)
         layout.addWidget(self.channel1_section)
         # for label in self.channel1_widget.error_labels:
@@ -60,7 +65,7 @@ class RFSOCSettingsWidget(QWidget):
         self.channel2_widget = ChannelSettingsWidget(self.rfsoc, 2, parent=self)
         channel2_layout.addWidget(self.channel2_widget)
         self.channel2_section = Section(self)
-        self.channel2_section.setTitle('Channel 2')
+        self.channel2_section.setTitle(self.rfsoc.get_channel_name(2))
         self.channel2_section.setContentLayout(channel2_layout)
         layout.addWidget(self.channel2_section)
         self.channel2_widget.height_updated.connect(self.channel2_section.height_changed)
@@ -131,8 +136,8 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
 
         # Comports
         self.comport_atten_fileUploadWidget.lineEdit.setText(str(settings['attenComport']))
-        self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channel1']['loComport']))
-        self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channel2']['loComport']))
+        self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channels'][0]['loComport']))
+        self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channels'][1]['loComport']))
 
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     height_updated = Signal()
@@ -206,11 +211,26 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.tone_list_baseband_max_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
         self.tone_list_ntones_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
     
+    @property
+    def main_window(self) -> 'MainWindow':
+        """Return the main window of the application."""
+        return self.parent().parent().parent().parent().main_window
+    
+    def get_all_parents(self) -> list[QWidget]:
+        """Return a list of all parent widgets."""
+        parents = []
+        widget = self.parent()
+        while widget:
+            parents.append(widget)
+            widget = widget.parent()
+        return parents
+    
     @Slot(str)
     def load_params_file(self, params_file: str):
         if Path(params_file).exists():
             self.setCursor(Qt.CursorShape.WaitCursor)
             self.rfsoc.load_params_file(self.channel, params_file)
+            self.get_all_parents()[-1].channelNamesUpdated.emit()
             self.setCursor(Qt.CursorShape.ArrowCursor)
             
     
@@ -517,7 +537,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.setCursor(Qt.CursorShape.ArrowCursor)
     
     def set_defaults(self):
-        chan_settings = self.rfsoc.settings[f'channel{self.channel}']
+        chan_settings = self.rfsoc.channel_settings(self.channel)
 
         # Resonator Settings
         self.tone_list_lineEdit.setText(str(chan_settings['toneList']))

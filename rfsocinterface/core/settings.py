@@ -64,6 +64,12 @@ DEFAULT_SETTINGS = {
     "rfsocs": []
 }
 
+class PathEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Path):
+            return str(obj)
+        return super().default(obj)
+
 
 class Settings(dict):
     def __init__(self, *args, **kwargs):
@@ -94,13 +100,13 @@ class Settings(dict):
 
     def _load_rfsocs(self, rfsocs: list[dict]) -> list[dict]:
         new_rfsocs = []
-        default_rfsoc_settings = self.default_rfsoc_settings()
+        default_rfsoc_settings = self.default_rfsoc_settings().copy()
         if 'channel' in default_rfsoc_settings:
-            default_channel_settings = default_rfsoc_settings.pop('channel')
+            default_channel_settings = default_rfsoc_settings.pop('channel', {})
         for rfsoc_dict in rfsocs:
             # Copy user RFSoC over defaults (minus channels)
             new_rfsoc_dict = copy.copy(default_rfsoc_settings)
-            channel_dicts = rfsoc_dict.pop('channels', [])
+            channel_dicts = rfsoc_dict.get('channels', [])
             new_rfsoc_dict.update(rfsoc_dict)
 
             # Copy user channel settings over defaults
@@ -126,6 +132,12 @@ class Settings(dict):
             if 'rfsocs' in user_settings:
                 user_settings['rfsocs'] = self._load_rfsocs(user_settings.pop('rfsocs'))
             self.update(user_settings)
+    
+    def save_settings(self, user_settings_path: Path=USER_SETTINGS_PATH):
+        self._path = user_settings_path
+        with self._path.expanduser().open('w') as f:
+            json.dump(self, f, indent=4, cls=PathEncoder)
+        _logger.info(f'Saved settings to {self._path.expanduser()}')
 
     def __str__(self):
         return json.dumps(self, indent=4)
@@ -151,3 +163,11 @@ def convert_to_kidy_format(rfsoc_config: dict) -> dict:
         'port_b': rfsoc_config['channel2']['port'],
     }
     return {'rfsoc_config': kidpy_config}
+
+
+if __name__ == "__main__":
+    settings = Settings()
+    new_path = './new_settings.json'
+    settings.load_settings(new_path)
+    settings['app']['activeTab'] = 'data'
+    settings.save_settings(Path(new_path))

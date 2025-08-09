@@ -172,6 +172,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
         self.update_channel_choices(self.channel_comboBox)
+        main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
         self.patterns: list[FunctionWidget] = []
 
         self.stacked_layout = QStackedLayout(parent=self)

@@ -59,6 +59,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.set_defaults()
         self.make_error_labels()    
         self.update_channel_choices(self.channel_comboBox)
+        main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
 
         self.buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
         self.second_sweep_checkBox.clicked.connect(self.check_second_sweep)

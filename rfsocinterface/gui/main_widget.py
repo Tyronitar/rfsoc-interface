@@ -3,7 +3,7 @@ from functools import partial
 from multiprocessing import Queue, Pipe
 
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.settings import SettingsError
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
 class MainWidget(QWidget):
+
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None = None):
         super().__init__(parent)
@@ -27,6 +28,8 @@ class MainWidget(QWidget):
 
     def update_channel_choices(self, combo_box: CheckableComboBox):
         total = 0
+        combo_box.clear()
+        combo_box.deselect_all()
         for rfsoc in self.rfsocs:
             for i in range(2):
                 combo_box.addItem(rfsoc.channel_as_text(i + 1))
