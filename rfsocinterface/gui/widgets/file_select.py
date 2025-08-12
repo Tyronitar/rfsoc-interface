@@ -80,6 +80,9 @@ class FileSelectWidget(QWidget):
     def setText(self, text: str):
         self.lineEdit.setText(text)
     
+    def clear(self):
+        self.lineEdit.clear()
+    
     def set_caption(self, caption: str):
         self.browse_dialog_options['caption'] = caption
 

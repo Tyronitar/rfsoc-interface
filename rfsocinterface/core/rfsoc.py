@@ -337,12 +337,11 @@ class RFSOCWrapper:
 
     @ensure_path(2)
     def load_params_file(self, channel: int, params_filename: Path) -> tables.File:
-        chan = self.get_channel(channel)
-        self.channel_settings(channel)['paramsFile'] = params_filename
 
         if not params_filename.exists():
             raise SettingsError(f'Params file {params_filename} does not exist.')
         
+        chan = self.get_channel(channel)
         with tables.File(params_filename, 'r') as fh:
             _logger.info(f'Loading parameters from "params_filename" into {self.name}')
             tone_list = fh.root.baseband_freqs[:]
@@ -351,9 +350,10 @@ class RFSOCWrapper:
             chanmask = fh.root.chanmask[:]
 
             chan.tile_name = fh.root._v_attrs.tile_name
-            self.set_frequency(channel, lo_freq)
-            self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
-            self.set_chanmask(channel, chanmask)
+        self.set_frequency(channel, lo_freq)
+        self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
+        self.set_chanmask(channel, chanmask)
+        self.channel_settings(channel)['paramsFile'] = params_filename
 
         
         # TODO: Load the parameters into the RFChan object
