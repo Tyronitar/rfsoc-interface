@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Iterator
-from PySide6.QtWidgets import QWidget, QCheckBox
-from PySide6.QtCore import Qt, Slot, QTimer
+from PySide6.QtWidgets import QWidget, QCheckBox, QProgressDialog
+from PySide6.QtCore import Qt, Slot, QTimer, QCoreApplication
 from functools import partial
 from pathlib import Path
 import time
@@ -31,6 +31,22 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
     def setup_connections(self):
         self.start_pushButton.clicked.connect(self.start_streaming)
     
+    def wait_for_TOD(self, duration: int):
+        """Wait for the TOD file to be created before processing."""
+        pd = QProgressDialog('Collecting data...', 'Cancel', 0, duration)
+        pd.setAutoReset(False)
+        pd.setMinimumDuration(0)
+        start = time.time()
+        now = time.time()
+        while now - start < duration:
+            if pd.wasCanceled():
+                pd.close()
+                return
+            time.sleep(0.1)
+            QCoreApplication.processEvents()
+            now = time.time()
+            pd.setValue(int((now - start) / duration * 100))
+    
     
     def start_streaming(self):
         # TODO: Do this in another thread
@@ -42,8 +58,8 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
             save_location.parent.mkdir(parents=True, exist_ok=True)
             rfchan.raw_filename = str(save_location)
             rfchans.append(rfchan)
-        duration = get_num_value(self.duration_lineEdit)
-        capture(rfchans, time.sleep, duration)
+        duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)
+        capture(rfchans, self.wait_for_TOD, duration)
     
     def stop_streaming(self):
         raise NotImplementedError('Stop streaming not implemented yet')

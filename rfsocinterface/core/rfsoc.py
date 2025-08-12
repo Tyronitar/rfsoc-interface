@@ -80,16 +80,18 @@ class RFSOCWrapper:
     
     def connect_to_atten_comport(self):
         comport_name = str(self.settings['attenComport'])
-        self.atten_transceiver = Transceiver320d(comport_name)
         try:
+            self.atten_transceiver = Transceiver320d(comport_name)
             self.atten_transceiver.open()
             _logger.debug(f'Succesfully opened serial connection to attenuation comport {comport_name}')
         except SerialException as e:
-            _logger.critical(
-                f'Unable to open serial connection to attenuation comport {comport_name}.'
+            msg = f'Unable to open serial connection to attenuation comport {comport_name}. ' \
                 'Check the file exists, or check that the connection is secure.',
+            _logger.critical(
+                msg,
                 exc_info=True,
             )
+            raise FileNotFoundError(msg) from e
     
     @ensure_path(2)
     def set_lo_comport(self, channel: int, comport: Path):
