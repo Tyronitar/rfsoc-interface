@@ -288,7 +288,7 @@ class RFSOCWrapper:
     
     @ensure_path(1)
     def set_chanmask_file(self, fname: Path, chan: int):
-        self.settings[f'channel{chan}']['chanmask'] = fname
+        self.channel_settings(chan)['chanmask'] = fname
         # chanmask = np.load(fname)
         # self.set_chanmask(chanmask, chan)
     
