@@ -139,6 +139,7 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
         self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channels'][0]['loComport']))
         self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channels'][1]['loComport']))
 
+
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     height_updated = Signal()
     def __init__(self, rfsoc: RFSOCWrapper, channel: int, parent: QWidget | None = None):
@@ -195,7 +196,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     @property
     def main_window(self) -> 'MainWindow':
         """Return the main window of the application."""
-        return self.parent().parent().parent().parent().main_window
+        return self.get_all_parents()[-1]
     
     def get_all_parents(self) -> list[QWidget]:
         """Return a list of all parent widgets."""
@@ -213,6 +214,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             try:
                 self.rfsoc.load_params_file(self.channel, params_file)
                 self.main_window.channelNamesUpdated.emit()
+                self.lo_freq_lineEdit.setText(f'{self.rfsoc.get_channel(self.channel).lo_freq / 1e6:.3f}')
             finally:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
             
@@ -287,7 +289,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
 
     @Slot()
     def update_ethernet_config(self):
-        chan_settings = self.rfsoc.settings[f'channel{self.channel}']
+        chan_settings = self.rfsoc.channel_settings(self.channel)
         chan_settings['sourceIP'] = get_lineEdit_text(self.eth_source_lineEdit)
         chan_settings['destIP'] = get_lineEdit_text(self.eth_dest_lineEdit)
         chan_settings['destMAC'] = get_lineEdit_text(self.eth_mac_lineEdit)
@@ -333,7 +335,6 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             try:
                 att = get_num_value(lineEdit)
                 self.rfsoc.set_atten(addr, att)
-                _logger.info(f'Succesfully set attenuation for channel {self.channel} to {att} dB')
             finally:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
     

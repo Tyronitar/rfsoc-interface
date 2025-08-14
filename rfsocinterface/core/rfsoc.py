@@ -185,6 +185,10 @@ class RFSOCWrapper:
         self.get_last_lo_freqs()
         self.set_channel_number()
         self.get_last_attenuations()
+        if 'paramsFile' in self.channel_settings(1):
+            self.load_params_file(1, self.channel_settings(1)['paramsFile'], upload_tones=False)
+        if 'paramsFile' in self.channel_settings(2):
+            self.load_params_file(2, self.channel_settings(2)['paramsFile'], upload_tones=False)
     
     def channel_settings(self, channel: int) -> dict:
         """Get the settings for the specified channel."""
@@ -327,6 +331,12 @@ class RFSOCWrapper:
         rfchan = self.get_channel(channel)
         return rfchan.tile_name
     
+    def set_channel_name(self, channel: int, tile_name: str):
+        rfchan = self.get_channel(channel)
+        rfchan.tile_name = tile_name
+        self.channel_settings(channel)['tile_name'] = tile_name
+        _logger.info(f'RFSoC {self.name} set channel {channel} tile name to {tile_name}')
+    
     def get_channel_from_name(self, tile_name: str) -> int:
         """Get the channel number from the tile name."""
         for i in [1, 2]:
@@ -336,12 +346,11 @@ class RFSOCWrapper:
         
 
     @ensure_path(2)
-    def load_params_file(self, channel: int, params_filename: Path) -> tables.File:
+    def load_params_file(self, channel: int, params_filename: Path, upload_tones: bool=True):
 
         if not params_filename.exists():
             raise SettingsError(f'Params file {params_filename} does not exist.')
         
-        chan = self.get_channel(channel)
         with tables.File(params_filename, 'r') as fh:
             _logger.info(f'Loading parameters from "params_filename" into {self.name}')
             tone_list = fh.root.baseband_freqs[:]
@@ -349,17 +358,15 @@ class RFSOCWrapper:
             lo_freq = fh.root.lo_freq[()]
             chanmask = fh.root.chanmask[:]
 
-            chan.tile_name = fh.root._v_attrs.tile_name
+            self.set_channel_name(channel, fh.root._v_attrs.tile_name)
         self.set_frequency(channel, lo_freq)
-        self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
+        if upload_tones:
+            self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
         self.set_chanmask(channel, chanmask)
         self.channel_settings(channel)['paramsFile'] = params_filename
 
         
-        # TODO: Load the parameters into the RFChan object
-    
-
-
+        _logger.info(f'RFSoC {self.name} loaded parameters from {params_filename} for channel {channel}')
 
 def get_channel_from_text(text: str, rfsocs: list[RFSOCWrapper]) -> tuple[RFSOCWrapper, int]:
     if text == '':

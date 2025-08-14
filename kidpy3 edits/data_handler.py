@@ -212,7 +212,6 @@ class RawDataFile:
 
         # Load values from params file if it exists
         if params_tile_file.exists():
-            print(f"Using params file: {params_tile_file}")
             log = logger.getChild(__name__)
             log.debug(f"Using params file: {params_tile_file}")
             with h5py.File(params_tile_file, 'r') as params_fh:

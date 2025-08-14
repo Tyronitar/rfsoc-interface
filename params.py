@@ -22,7 +22,10 @@ Be231102p2_LO_freq = 300e6
 if __name__ == "__main__":
     tile_name = dev_name # 'ten_tone_uniform_20250806'
     lo_freq = Be231102p2_LO_freq
-    baseband_freqs = Be231102p2_tones - lo_freq #np.linspace(10, 210, 10) * 1e6
+    # baseband_freqs = Be231102p2_tones - lo_freq #np.linspace(10, 210, 10) * 1e6
+    lo_freq = 3e8
+    baseband_freqs = np.linspace(10, 210, 1000) * 1e6 - lo_freq
+    tile_name = 'thousand_tone_uniform_300MHz'
     print(baseband_freqs)
 
     #needs to be the same length as baseband
