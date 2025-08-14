@@ -1,12 +1,13 @@
 from pathlib import Path
 import yaml
 from multiprocessing import Queue, Process, Pipe
+import logging
 
 from multiprocessing.connection import Connection
 from threading import Thread
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QGridLayout, QTabWidget
-from PySide6.QtCore import Qt, QCoreApplication
+from PySide6.QtCore import Qt, QCoreApplication, Signal, Slot
 from PySide6.QtGui import QScreen
 import PySide6.QtGui as QtGui
 
@@ -23,9 +24,12 @@ from rfsocinterface.core.utils import ensure_path, TabName, wait_for_telescope_c
 
 import json
 
+_logger = logging.getLogger(__name__)
+
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     """The Main program window."""
+    channelNamesUpdated = Signal()
 
     @ensure_path(1)
     def __init__(self, parent: QWidget | None=None):
@@ -44,9 +48,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.setupUi(self)
         self._additional_ui_setup()
-        self.tabWidget.currentChanged.connect(self.resize_to_current)
-        self.tabWidget.setCurrentIndex(0)
-        self.resize_to_current(0)
     
     def _make_telescope_controller(self):
         from rfsocinterface.core.telescope import make_controller
@@ -152,10 +153,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     raise SettingsError(f'Invalid name "{tab}" in general.tabs; valid options are {[name.value for name in TabName]}')
 
         active_tab = self.settings['app'].get('activeTab', TabName.INITIALIZATION)
+        self.tabWidget.currentChanged.connect(self.resize_to_current)
+        self.tabWidget.currentChanged.connect(self.update_active_tab)
         self.set_active_tab(active_tab)
 
     def index(self, tab_name: TabName) -> int:
         return list(self.tabs.keys()).index(tab_name)
+    
+    def tab_at(self, index: int) -> TabName:
+        """Return the tab at the given index."""
+        return list(self.tabs.keys())[index]
 
     def init_rfsocs(self):
         for rfsoc_settings in self.settings['rfsocs']:
@@ -180,8 +187,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def wait_for_telescope_command(self, command: str, err_msg: str=''):
         wait_for_telescope_command(self.telescope_parent_conn, self._client_id, command, err_msg=err_msg)
     
+    @Slot(int)
+    def update_active_tab(self, index: int):
+        """Update the active tab in the settings."""
+        tab_name = self.tab_at(index)
+        self.settings['app']['activeTab'] = tab_name
+        _logger.debug(f'Active tab updated to index {index}')
+    
     def set_active_tab(self, tab: TabName):
         if tab in self.tabs:
+            _logger.debug(f'Setting active tab to {tab}')
             self.tabWidget.setCurrentIndex(self.index(tab))
 
     def closeEvent(self, event):
@@ -193,6 +208,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.telescope_queue.put([self._client_id, 'terminate'])
             self._listener_thread.join()
             self.telescope_controller_process.join()
+        
+        self.settings.save_settings()
         return super().closeEvent(event)
 
 def move_to_center(win: QMainWindow, screen: QScreen):

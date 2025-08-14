@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>650</width>
-    <height>772</height>
+    <height>425</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -452,58 +452,10 @@
      </property>
      <layout class="QGridLayout" name="resonator_gridLayout">
       <item row="0" column="0" colspan="2">
-       <widget class="QCheckBox" name="params_checkBox">
-        <property name="text">
-         <string>Generate new parameters file</string>
-        </property>
-       </widget>
+       <widget class="FileSelectWidget" name="params_fileSelectWidget" native="true"/>
       </item>
-      <item row="4" column="1">
-       <layout class="QGridLayout" name="gridLayout_3">
-        <item row="1" column="1">
-         <widget class="QPushButton" name="tone_power_pushButton">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="text">
-           <string>Browse...</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0">
-         <widget class="ClickableLineEdit" name="tone_power_lineEdit">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="placeholderText">
-           <string>/path/to/filename.npy</string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="0">
-         <widget class="QCheckBox" name="tone_power_checkBox">
-          <property name="text">
-           <string>Use equal tone powers</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="5" column="1">
-       <widget class="QLabel" name="tone_power_error_label">
-        <property name="text">
-         <string/>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="1" alignment="Qt::AlignmentFlag::AlignRight">
-       <widget class="QPushButton" name="upload_tones_pushButton">
+      <item row="1" column="1" alignment="Qt::AlignmentFlag::AlignRight">
+       <widget class="QPushButton" name="upload_params_pushButton">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -511,188 +463,11 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>Upload tones to RFSoC</string>
+         <string>Upload parameters to RFSoC</string>
         </property>
         <property name="icon">
          <iconset resource="icons.qrc">
           <normaloff>:/icons/upload.png</normaloff>:/icons/upload.png</iconset>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0" colspan="2">
-       <widget class="FileSelectWidget" name="params_fileSelectWidget" native="true"/>
-      </item>
-      <item row="7" column="0">
-       <widget class="QLabel" name="chanmask_label">
-        <property name="text">
-         <string>Channel mask:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="tone_list_label">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="toolTip">
-         <string>Choose a list of resonant frequencies</string>
-        </property>
-        <property name="whatsThis">
-         <string>List of tones of resonant frequencies</string>
-        </property>
-        <property name="text">
-         <string>Tone list:</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <layout class="QGridLayout" name="gridLayout_2">
-        <item row="5" column="0" colspan="2">
-         <widget class="QLabel" name="tone_list_equal_label">
-          <property name="text">
-           <string>Generating tones from XXX to XXX</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="tone_list_baseband_min_label">
-          <property name="text">
-           <string>Lowest Baseband (MHz):</string>
-          </property>
-         </widget>
-        </item>
-        <item row="6" column="0">
-         <widget class="ClickableLineEdit" name="tone_list_lineEdit">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="placeholderText">
-           <string>/path/to/filename.npy</string>
-          </property>
-         </widget>
-        </item>
-        <item row="4" column="0">
-         <widget class="QLabel" name="tone_list_ntones_label">
-          <property name="text">
-           <string>Number of tones:</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0">
-         <widget class="QCheckBox" name="tone_list_checkBox">
-          <property name="text">
-           <string>Use equally spaced tones</string>
-          </property>
-         </widget>
-        </item>
-        <item row="4" column="1">
-         <widget class="ClickableLineEdit" name="tone_list_ntones_lineEdit">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="0">
-         <widget class="QLabel" name="tone_list_baseband_max_label">
-          <property name="text">
-           <string>Highest Baseband (MHz):</string>
-          </property>
-         </widget>
-        </item>
-        <item row="6" column="1">
-         <widget class="QPushButton" name="tone_list_pushButton">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="text">
-           <string>Browse...</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="1">
-         <widget class="ClickableLineEdit" name="tone_list_baseband_min_lineEdit">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="1">
-         <widget class="ClickableLineEdit" name="tone_list_baseband_max_lineEdit">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="tone_power_label">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>0</height>
-         </size>
-        </property>
-        <property name="text">
-         <string>Tone power:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="7" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout">
-        <item>
-         <widget class="ClickableLineEdit" name="chanmask_lineEdit">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="placeholderText">
-           <string>/path/to/filename.npy</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="chanmask_pushButton">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="text">
-           <string>Browse...</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="3" column="1">
-       <widget class="QLabel" name="tone_list_error_label">
-        <property name="text">
-         <string/>
         </property>
        </widget>
       </item>
