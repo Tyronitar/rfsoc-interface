@@ -41,6 +41,7 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
     def wait_for_TOD(self, duration: int):
         """Wait for the TOD file to be created before processing."""
         pd = QProgressDialog('Collecting data...', 'Cancel', 0, duration)
+        pd.setWindowModality(Qt.WindowModality.WindowModal)
         pd.setMinimumDuration(0)
         start = time.time()
         now = time.time()
@@ -56,8 +57,8 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
             pd.setValue(now - start)
         
     def process_data(self, date: str, setnum: int):
-        _logger.info('Processing data')
-        ProcessedData.from_tod(date, setnum)
+        pass
+        # _logger.info('Processing data')
     
     def start_streaming(self):
         # TODO: Do this in another thread
