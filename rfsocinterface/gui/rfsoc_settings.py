@@ -1,5 +1,6 @@
 from pathlib import Path
 import logging
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Slot, Signal
 from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIntValidator
@@ -23,7 +24,10 @@ from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.core.utils import IPV4_REGEX, MAC_REGEX
 from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.data.data import DEFAULT_PARAMS_DIRECTORY
+from rfsocinterface.core.data import DEFAULT_PARAMS_DIRECTORY
+
+if TYPE_CHECKING:
+    from rfsocinterface.gui.main_window import MainWindow
 
 _logger = logging.getLogger(__name__)
 

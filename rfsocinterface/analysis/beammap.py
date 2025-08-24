@@ -10,7 +10,7 @@ import numpy.typing as npt
 import tables
 from scipy.optimize import curve_fit
 
-from rfsocinterface.core.data.data import MapData
+from rfsocinterface.core.data import MapData
 
 
 def Gauss_2d(

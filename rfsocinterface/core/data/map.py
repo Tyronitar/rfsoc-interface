@@ -197,7 +197,7 @@ def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, 
     return n_pix_x, n_pix_y, map_x, map_y
 
 class BinTODIntoMap(DataRoutine):
-    stage = ProcessingStage.MAPPING
+    stage = ProcessingStage.POST_PROCESSING
     def __init__(
             self,
             hp_filter_freq: float=0.5,

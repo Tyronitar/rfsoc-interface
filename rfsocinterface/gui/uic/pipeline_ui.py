@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 ################################################################################
-## Form generated from reading UI file 'mapping.ui'
+## Form generated from reading UI file 'pipeline.ui'
 ##
 ## Created by: Qt User Interface Compiler version 6.8.1
 ##
@@ -19,16 +19,16 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDialogBu
     QGridLayout, QSizePolicy, QSpacerItem, QToolButton,
     QWidget)
 
-from rfsocinterface.gui.widgets.function import DragFunctionWidget
+from rfsocinterface.gui.widgets.function import MultiSectionDragFunctionWidget
 
-class Ui_MappingDialog(object):
-    def setupUi(self, MappingDialog):
-        if not MappingDialog.objectName():
-            MappingDialog.setObjectName(u"MappingDialog")
-        MappingDialog.resize(426, 348)
-        self.gridLayout = QGridLayout(MappingDialog)
+class Ui_PipelineDialog(object):
+    def setupUi(self, PipelineDialog):
+        if not PipelineDialog.objectName():
+            PipelineDialog.setObjectName(u"PipelineDialog")
+        PipelineDialog.resize(426, 348)
+        self.gridLayout = QGridLayout(PipelineDialog)
         self.gridLayout.setObjectName(u"gridLayout")
-        self.drag_function_widget = DragFunctionWidget(MappingDialog)
+        self.drag_function_widget = MultiSectionDragFunctionWidget(PipelineDialog)
         self.drag_function_widget.setObjectName(u"drag_function_widget")
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
@@ -38,14 +38,14 @@ class Ui_MappingDialog(object):
 
         self.gridLayout.addWidget(self.drag_function_widget, 0, 0, 1, 4)
 
-        self.buttonBox = QDialogButtonBox(MappingDialog)
+        self.buttonBox = QDialogButtonBox(PipelineDialog)
         self.buttonBox.setObjectName(u"buttonBox")
         self.buttonBox.setOrientation(Qt.Orientation.Horizontal)
         self.buttonBox.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok)
 
         self.gridLayout.addWidget(self.buttonBox, 2, 1, 1, 3)
 
-        self.remove_toolButton = QToolButton(MappingDialog)
+        self.remove_toolButton = QToolButton(PipelineDialog)
         self.remove_toolButton.setObjectName(u"remove_toolButton")
         icon = QIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListRemove))
         self.remove_toolButton.setIcon(icon)
@@ -53,7 +53,7 @@ class Ui_MappingDialog(object):
 
         self.gridLayout.addWidget(self.remove_toolButton, 1, 3, 1, 1)
 
-        self.add_toolButton = QToolButton(MappingDialog)
+        self.add_toolButton = QToolButton(PipelineDialog)
         self.add_toolButton.setObjectName(u"add_toolButton")
         icon1 = QIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListAdd))
         self.add_toolButton.setIcon(icon1)
@@ -66,16 +66,16 @@ class Ui_MappingDialog(object):
         self.gridLayout.addItem(self.horizontalSpacer, 1, 0, 1, 2)
 
 
-        self.retranslateUi(MappingDialog)
-        self.buttonBox.accepted.connect(MappingDialog.accept)
-        self.buttonBox.rejected.connect(MappingDialog.reject)
+        self.retranslateUi(PipelineDialog)
+        self.buttonBox.accepted.connect(PipelineDialog.accept)
+        self.buttonBox.rejected.connect(PipelineDialog.reject)
 
-        QMetaObject.connectSlotsByName(MappingDialog)
+        QMetaObject.connectSlotsByName(PipelineDialog)
     # setupUi
 
-    def retranslateUi(self, MappingDialog):
-        MappingDialog.setWindowTitle(QCoreApplication.translate("MappingDialog", u"Dialog", None))
-        self.remove_toolButton.setText(QCoreApplication.translate("MappingDialog", u"...", None))
-        self.add_toolButton.setText(QCoreApplication.translate("MappingDialog", u"...", None))
+    def retranslateUi(self, PipelineDialog):
+        PipelineDialog.setWindowTitle(QCoreApplication.translate("PipelineDialog", u"Dialog", None))
+        self.remove_toolButton.setText(QCoreApplication.translate("PipelineDialog", u"...", None))
+        self.add_toolButton.setText(QCoreApplication.translate("PipelineDialog", u"...", None))
     # retranslateUi
 
