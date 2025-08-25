@@ -7,6 +7,7 @@ import pdb
 import time
 from multiprocessing.connection import Connection
 from multiprocessing import Queue
+import queue
 import sys
 import threading
 from threading import Thread
@@ -116,15 +117,17 @@ class TelescopeMotorController:
             )
             timer.start()
             try:
-                for conn in self.connections.values():
+                for client_id, conn in self.connections.items():
                     conn.send([command, *args])
+                    _tele_logger.debug(f'Sent command "{command}" with data {args} to {client_id}')
             except KeyboardInterrupt:
                 _tele_logger.error(f'Timed out sending command "{command}" with args {args} to all clients')
             finally:
                 timer.cancel()
         else:
-            for conn in self.connections.values():
+            for client_id, conn in self.connections.items():
                 conn.send([command, *args])
+                _tele_logger.debug(f'Sent command "{command}" with data {args} to {client_id}')
     
     def send(self, client_id: str, command: str, *args, timeout: float=None):
         """Send a command to the telescope controller"""
@@ -137,50 +140,55 @@ class TelescopeMotorController:
                 timer.start()
                 try:
                     self.connections[client_id].send([command, *args])
+                    _tele_logger.debug(f'Sent command "{command}" with data {args} to {client_id}')
                 except KeyboardInterrupt:
                     _tele_logger.error(f'Timed out sending command "{command}" with args {args} to Client "{client_id}"')
                 finally:
                     timer.cancel()
             else:
                 self.connections[client_id].send([command, *args])
+                _tele_logger.debug(f'Sent command "{command}" with data {args} to {client_id}')
         else:
             self.send_all('err', f'Unknown client "{client_id}".', timeout=2)
 
     def _listener_loop(self):
         while True:
-            client_id, command, *args = self.queue.get()
-            _tele_logger.debug(f'Client "{client_id}" sent command: "{command}", args: {args}')
-            match command.lower():
-                case 'add_connection':
-                    self.add_connection(client_id, *args)
-                    self.send(client_id, 'add_connection_succesful')
-                case 'remove_connection':
-                    self.remove_connection(client_id)
-                case 'get_ser_az_pos':
-                    self.get_ser_az_pos()
-                case 'set_az_pos':
-                    self.set_az_pos(*args)
-                case 'get_ser_ze_pos':
-                    self.get_ser_ze_pos()
-                case 'set_ze_pos':
-                    self.set_ze_pos(*args)
-                case 'set_voltage':
-                    self._run = True
-                    self.set_ao_value(*args)
-                case 'set_az_speed_relation':
-                    self.set_az_speed_relation(*args)
-                case 'set_ze_speed_relation':
-                    self.set_ze_speed_relation(*args)
-                case 'az_scan_mode':
-                    self.az_scan_mode(client_id, *args)
-                case 'stop_telescope':
-                    self._run = False
-                    self.set_ao_zero()
-                case 'terminate':
-                    self.close()
-                    break
-                case _:
-                    self.send(client_id, 'err', f'Unknown command "{command}" received.')
+            try:
+                client_id, command, *args = self.queue.get()
+                _tele_logger.debug(f'Client "{client_id}" sent command: "{command}", args: {args}')
+                match command.lower():
+                    case 'add_connection':
+                        self.add_connection(client_id, *args)
+                        self.send(client_id, 'add_connection_succesful')
+                    case 'remove_connection':
+                        self.remove_connection(client_id)
+                    case 'get_ser_az_pos':
+                        self.get_ser_az_pos()
+                    case 'set_az_pos':
+                        self.set_az_pos(*args)
+                    case 'get_ser_ze_pos':
+                        self.get_ser_ze_pos()
+                    case 'set_ze_pos':
+                        self.set_ze_pos(*args)
+                    case 'set_voltage':
+                        self._run = True
+                        self.set_ao_value(*args)
+                    case 'set_az_speed_relation':
+                        self.set_az_speed_relation(*args)
+                    case 'set_ze_speed_relation':
+                        self.set_ze_speed_relation(*args)
+                    case 'az_scan_mode':
+                        self.az_scan_mode(client_id, *args)
+                    case 'stop_telescope':
+                        self._run = False
+                        self.set_ao_zero()
+                    case 'terminate':
+                        self.close()
+                        break
+                    case _:
+                        self.send(client_id, 'err', f'Unknown command "{command}" received.')
+            except queue.Empty:
+                continue
 
     def test_init(self):
         if not self._initialized:
@@ -262,6 +270,7 @@ class TelescopeMotorController:
 
     def set_ao_value(self, data: float, channel: int):
         self.ao_device.a_out(channel, self.ul_range_out, self.ao_flags, data)
+        _tele_logger.debug(f'Set ao value for channel {channel} to {data}')
 
     def set_ao_zero(self):
         self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)

@@ -25,11 +25,13 @@ from rfsocinterface.core.utils import ensure_path, TabName, wait_for_telescope_c
 import json
 
 _logger = logging.getLogger(__name__)
+_tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     """The Main program window."""
     channelNamesUpdated = Signal()
+    telescopeUpdate = Signal(str, tuple)
 
     @ensure_path(1)
     def __init__(self, parent: QWidget | None=None):
@@ -182,7 +184,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # self.adjustSize()
     
     def _listener_loop(self):
-        self.wait_for_telescope_command('done')
+        while True:
+            if not self.telescope_parent_conn.poll(1e-4):
+                continue
+            response, *data = self.telescope_parent_conn.recv()
+            _tele_logger.debug(f'{self._client_id} got response: "{response}", data: {data}')
+            match response.lower():
+                case 'err':
+                    raise RuntimeError(f'Error from telescope controller: {data}')
+                case 'done':
+                    break 
+                case _:
+                    self.telescopeUpdate.emit(response, data)
+                
 
     def wait_for_telescope_command(self, command: str, err_msg: str=''):
         wait_for_telescope_command(self.telescope_parent_conn, self._client_id, command, err_msg=err_msg)
