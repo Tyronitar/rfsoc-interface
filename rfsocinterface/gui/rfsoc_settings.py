@@ -1,35 +1,33 @@
 from pathlib import Path
 import logging
+from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QCoreApplication, QSize, QRect, Slot, Signal
-from PySide6.QtGui import QDoubleValidator, QIcon, QRegularExpressionValidator, QIntValidator
+from PySide6.QtCore import Qt, Slot, Signal
+from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIntValidator
 from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
 from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import Ui_RFSOCAdvancedSettingsWidget
+from rfsocinterface.gui.utils import PathValidator, get_lineEdit_text, get_num_value
 from rfsocinterface.gui.widgets.icon_label import IconLabel
-from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QVBoxLayout, QSizePolicy, QGroupBox, QGridLayout
+from PySide6.QtWidgets import QWidget, QFileDialog, QVBoxLayout
 
-from PySide6.QtWidgets import (QFormLayout,
-    QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QAbstractButton, QDialogButtonBox,
-    QWidget)
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QDialogButtonBox,
+    QWidget,
+)
+import tables
 
-import numpy.typing as npt
 
-import time
-import json
-import redis
-import configparser
-from kidpy3.hardware import Transceiver321, Transceiver320d, Valon5009
 import numpy as np
-from transceiver import Transceiver
-import yaml
 
-from rfsocinterface.gui.widgets.file_select import FileUploadWidget
 from rfsocinterface.gui.widgets.section import Section
-from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
-from rfsocinterface.core.utils import get_num_value, get_lineEdit_text, IPV4_REGEX, MAC_REGEX, PathValidator
+from rfsocinterface.core.utils import IPV4_REGEX, MAC_REGEX
 from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.data import DEFAULT_PARAMS_DIRECTORY
+
+if TYPE_CHECKING:
+    from rfsocinterface.gui.main_window import MainWindow
 
 _logger = logging.getLogger(__name__)
 
@@ -47,6 +45,11 @@ class RFSOCSettingsWidget(QWidget):
         self.channel2_section.collapse(recursive=recursive)
         self.advanced_section.collapse(recursive=recursive)
     
+    def update_channel_names(self):
+        """Update the channel names in the sections."""
+        self.channel1_section.setTitle(self.rfsoc.get_channel_name(1))
+        self.channel2_section.setTitle(self.rfsoc.get_channel_name(2))
+    
     def setupUi(self):
         layout = QVBoxLayout(self)
 
@@ -54,7 +57,7 @@ class RFSOCSettingsWidget(QWidget):
         self.channel1_widget = ChannelSettingsWidget(self.rfsoc, 1, parent=self)
         channel1_layout.addWidget(self.channel1_widget)
         self.channel1_section = Section(self)
-        self.channel1_section.setTitle('Channel 1')
+        self.channel1_section.setTitle(self.rfsoc.get_channel_name(1))
         self.channel1_section.setContentLayout(channel1_layout)
         layout.addWidget(self.channel1_section)
         # for label in self.channel1_widget.error_labels:
@@ -66,7 +69,7 @@ class RFSOCSettingsWidget(QWidget):
         self.channel2_widget = ChannelSettingsWidget(self.rfsoc, 2, parent=self)
         channel2_layout.addWidget(self.channel2_widget)
         self.channel2_section = Section(self)
-        self.channel2_section.setTitle('Channel 2')
+        self.channel2_section.setTitle(self.rfsoc.get_channel_name(2))
         self.channel2_section.setContentLayout(channel2_layout)
         layout.addWidget(self.channel2_section)
         self.channel2_widget.height_updated.connect(self.channel2_section.height_changed)
@@ -137,8 +140,9 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
 
         # Comports
         self.comport_atten_fileUploadWidget.lineEdit.setText(str(settings['attenComport']))
-        self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channel1']['loComport']))
-        self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channel2']['loComport']))
+        self.comport_channel1_fileUploadWidget.lineEdit.setText(str(settings['channels'][0]['loComport']))
+        self.comport_channel2_fileUploadWidget.lineEdit.setText(str(settings['channels'][1]['loComport']))
+
 
 class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     height_updated = Signal()
@@ -150,21 +154,12 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.setupUi(self)
 
         # Resonator Settings Connections
-        self.tone_list_pushButton.clicked.connect(self.choose_tone_list)
-        self.tone_power_pushButton.clicked.connect(self.choose_tone_powers)
-        self.path_validator = PathValidator(parent=self)
-        self.tone_list_lineEdit.setValidator(self.path_validator)
-        self.tone_power_lineEdit.setValidator(self.path_validator)
-        self.upload_tones_pushButton.clicked.connect(self.upload_tone_list)
-        self.tone_list_checkBox.stateChanged.connect(self.check_equal_tones)
-        self.tone_power_checkBox.stateChanged.connect(self.check_equal_power)
-        self.baseband_validator = QDoubleValidator(0, 256, 3, parent=self)
-        self.tone_list_baseband_max_lineEdit.setValidator(self.baseband_validator)
-        self.tone_list_baseband_min_lineEdit.setValidator(self.baseband_validator)
-        self.n_tone_validator = QIntValidator(1, 10000, parent=self)
-        self.tone_list_ntones_lineEdit.setValidator(self.n_tone_validator)
-
-        self.chanmask_pushButton.clicked.connect(self.choose_channel_mask)
+        # TODO: Make params checkbox toggle the other options
+        self.params_fileSelectWidget.set_dir(DEFAULT_PARAMS_DIRECTORY)
+        # self.params_fileSelectWidget.editingFinished.connect(self.load_params_file)
+        self.upload_params_pushButton.clicked.connect(self.load_params_file)
+        # self.params_fileSelectWidget.textChanged.connect(self.load_params_file)
+        # self.upload_tones_pushButton.clicked.connect(self.upload_tone_list)
 
         # IF Settings Validation and Connections
         self.atten_validator = QDoubleValidator(0, 31.75, 2, parent=self)
@@ -201,69 +196,32 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.buttonBox.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self.set_defaults)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(self.clear_form)
 
-        self.check_equal_tones(self.tone_list_checkBox.checkState())
-        self.check_equal_power(self.tone_power_checkBox.checkState())
-        self.tone_list_baseband_min_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
-        self.tone_list_baseband_max_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
-        self.tone_list_ntones_lineEdit.textEdited.connect(self.update_tone_list_equal_label)
     
-    @Slot(str)
-    def update_tone_list_equal_label(self, new_text: str):
-        show_label = True
-        try:
-            min_base = get_num_value(self.tone_list_baseband_min_lineEdit)
-            max_base = get_num_value(self.tone_list_baseband_max_lineEdit)
-            n = get_num_value(self.tone_list_ntones_lineEdit, int)
-        except ValueError:
-            show_label = False
-        show_changed = self.tone_list_equal_label.isVisible() != show_label
-        self.tone_list_equal_label.setVisible(show_label)
-        if show_label:
-            if min_base > 0:
-                self.tone_list_equal_label.setText(
-                    f'Generating {n // 2} tones from {-max_base} MHz to {-min_base} MHz'
-                    f' and {n // 2} tones from {min_base} MHz to {max_base} MHz'
-                )
-            else:
-                self.tone_list_equal_label.setText(
-                    f'Generating {n} tones from {-max_base} MHz to {max_base} MHz'
-                )
-        if show_changed:
-            self.height_updated.emit()
+    @property
+    def main_window(self) -> 'MainWindow':
+        """Return the main window of the application."""
+        return self.get_all_parents()[-1]
     
-    @Slot(int)
-    def check_equal_tones(self, state: int):
-        checked = Qt.CheckState(state) == Qt.CheckState.Checked
-        self.tone_list_lineEdit.setStyleSheet('')
-        self.tone_list_lineEdit.setVisible(not checked)
-        self.tone_list_error_label.setVisible(False)
-        self.tone_list_pushButton.setVisible(not checked)
-
-        self.tone_list_baseband_max_label.setVisible(checked)
-        self.tone_list_baseband_max_lineEdit.setStyleSheet('')
-        self.tone_list_baseband_max_lineEdit.setVisible(checked)
-
-        self.tone_list_baseband_min_label.setVisible(checked)
-        self.tone_list_baseband_min_lineEdit.setStyleSheet('')
-        self.tone_list_baseband_min_lineEdit.setVisible(checked)
-
-        self.tone_list_ntones_label.setVisible(checked)
-        self.tone_list_ntones_lineEdit.setStyleSheet('')
-        self.tone_list_ntones_lineEdit.setVisible(checked)
-
-        self.update_tone_list_equal_label('')
-        self.tone_list_equal_label.setVisible(checked)
-        self.height_updated.emit()
-
-    @Slot(int)
-    def check_equal_power(self, state: int):
-        checked = Qt.CheckState(state) == Qt.CheckState.Checked
-        self.tone_power_lineEdit.setStyleSheet('')
-        self.tone_power_lineEdit.setVisible(not checked)
-        self.tone_power_pushButton.setVisible(not checked)
-        self.tone_power_error_label.setVisible(False)
-        self.height_updated.emit()
-
+    def get_all_parents(self) -> list[QWidget]:
+        """Return a list of all parent widgets."""
+        parents = []
+        widget = self.parent()
+        while widget:
+            parents.append(widget)
+            widget = widget.parent()
+        return parents
+    
+    def load_params_file(self):
+        params_file = self.params_fileSelectWidget.text()
+        if params_file and Path(params_file).exists():
+            self.setCursor(Qt.CursorShape.WaitCursor)
+            try:
+                self.rfsoc.load_params_file(self.channel, params_file)
+                self.main_window.channelNamesUpdated.emit()
+                self.lo_freq_lineEdit.setText(f'{self.rfsoc.get_channel(self.channel).lo_freq / 1e6:.3f}')
+            finally:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+            
     def hide_error_labels(self):
         for label in self.error_labels:
             label.setVisible(False)
@@ -281,17 +239,6 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.rfin_error_label = IconLabel(ERROR_ICON_CODE, att_err_str, color='red', wrap_text=True, parent=self)
         self.if_gridLayout.addWidget(self.rfin_error_label, 3, 1, Qt.AlignmentFlag.AlignLeft)
 
-        # Resonator Error Labels
-        file_err_str = 'Specified file does not exist'
-        self.resonator_gridLayout.removeWidget(self.tone_list_error_label)
-        self.tone_list_error_label.deleteLater()
-        self.tone_list_error_label = IconLabel(ERROR_ICON_CODE, file_err_str, color='red', parent=self)
-        self.resonator_gridLayout.addWidget(self.tone_list_error_label, 1, 1, Qt.AlignmentFlag.AlignLeft)
-
-        self.resonator_gridLayout.removeWidget(self.tone_power_error_label)
-        self.tone_power_error_label.deleteLater()
-        self.tone_power_error_label= IconLabel(ERROR_ICON_CODE, file_err_str, color='red', parent=self)
-        self.resonator_gridLayout.addWidget(self.tone_power_error_label, 3, 1, Qt.AlignmentFlag.AlignLeft)
 
         # Ethernet Error Labels
         ip_err_str = 'Please enter a valid IPv4 address'
@@ -319,8 +266,6 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.error_labels = [
             self.rfout_error_label,
             self.rfin_error_label,
-            self.tone_list_error_label,
-            self.tone_power_error_label,
             self.eth_source_error_label,
             self.eth_dest_error_label,
             self.eth_mac_error_label,
@@ -328,12 +273,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         ]
     
     def clear_form(self):
-        self.tone_list_lineEdit.clear()
-        self.tone_power_lineEdit.clear()
-        self.tone_list_baseband_max_lineEdit.clear()
-        self.tone_list_baseband_min_lineEdit.clear()
-        self.tone_list_ntones_lineEdit.clear()
-        self.chanmask_lineEdit.clear()
+        self.params_fileSelectWidget.clear()
         self.eth_source_lineEdit.clear()
         self.eth_dest_lineEdit.clear()
         self.eth_mac_lineEdit.clear()
@@ -342,54 +282,18 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.rfout_lineEdit.clear()
         self.lo_freq_lineEdit.clear()
         self.hide_error_labels()
-
-    def choose_tone_list(self):
-        """Open a file dialog to select the tone list file."""
-        fname, _ = QFileDialog.getOpenFileName(
-            self,
-            'Select Tone List',
-            './',
-            'Numpy (*.npy);;All Files(*.*)',
-            'Numpy (*.npy)',
-        )
-        if fname:
-            self.tone_list_lineEdit.setText(fname)
-
-    def choose_tone_powers(self):
-        """Open a file dialog to select the tone power file."""
-        fname, _ = QFileDialog.getOpenFileName(
-            self,
-            'Select Tone Powers',
-            './',
-            'Numpy (*.npy);;All Files(*.*)',
-            'Numpy (*.npy)',
-        )
-        if fname:
-            self.tone_power_lineEdit.setText(fname)
-        
-    def choose_channel_mask(self):
-        """Open a file dialog to select the channel mask file."""
-        fname, _ = QFileDialog.getOpenFileName(
-            self,
-            'Select Channel Mask',
-            './',
-            'Numpy (*.npy);;All Files(*.*)',
-            'Numpy (*.npy)',
-        )
-        if fname:
-            self.chanmask_lineEdit.setText(fname)
-            self.rfsoc.set_chanmask(fname, self.channel)
-            # TODO: Add updating for when the file is typed in manually
     
     @Slot(str)
     def upload_firmware(self, bitstream: str):
         self.setCursor(Qt.CursorShape.WaitCursor)
-        self.rfsoc.upload_bitstream(bitstream)
-        self.setCursor(Qt.CursorShape.ArrowCursor)
+        try:
+            self.rfsoc.upload_bitstream(bitstream)
+        finally:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
     @Slot()
     def update_ethernet_config(self):
-        chan_settings = self.rfsoc.settings[f'channel{self.channel}']
+        chan_settings = self.rfsoc.channel_settings(self.channel)
         chan_settings['sourceIP'] = get_lineEdit_text(self.eth_source_lineEdit)
         chan_settings['destIP'] = get_lineEdit_text(self.eth_dest_lineEdit)
         chan_settings['destMAC'] = get_lineEdit_text(self.eth_mac_lineEdit)
@@ -408,77 +312,11 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.height_updated.emit()
         elif all([source_ok, dest_ok, mac_ok, port_ok]):
             self.setCursor(Qt.CursorShape.WaitCursor)
-            self.update_ethernet_config()
-            self.rfsoc.configure_hardware()
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-
-    @Slot()
-    def upload_tone_list(self):
-        # see if the user wants the default list or something different:
-        # if tone_toggled or power_toggled:
-        #     self.height_updated.emit()
-        # if not (tone_valid and power_valid):
-        #     return
-        tones_valid = True
-        if self.tone_list_checkBox.isChecked():
-            n_valid, _ = verify_lineEdit(self.tone_list_ntones_lineEdit)
-            bb_min_valid, _ = verify_lineEdit(self.tone_list_baseband_min_lineEdit)
-            bb_max_valid, _ = verify_lineEdit(self.tone_list_baseband_max_lineEdit)
-            tones_valid &= n_valid
-            tones_valid &= bb_min_valid
-            tones_valid &= bb_max_valid
-            if tones_valid:
-                n = get_num_value(self.tone_list_ntones_lineEdit, int)
-                # Get baseband frequencies in Hz
-                bb_min = get_num_value(self.tone_list_baseband_min_lineEdit) * 1e6
-                bb_max = get_num_value(self.tone_list_baseband_max_lineEdit) * 1e6
-                if bb_max <= bb_min:
-                    tones_valid = False
-                    highlight_error_line_edit(self.tone_list_baseband_max_lineEdit)
-                else:
-                    # Only for testing purposes
-                    # tone_list = np.load('Default_tone_list.npy')
-                    # tone_list = tone_list[(bb_min <= np.abs(tone_list)) & (np.abs(tone_list) <= bb_max)]
-
-                    if bb_min == 0:
-                        # Generate n tones from -bb_max to bb_max
-                        tone_list = np.linspace(-bb_max, bb_max, n)
-                    else:
-                        # Generate n / 2 tones from -bb_max to -bb_min and n / 2 from bb_min to bb_max
-                        freq_low = np.linspace(-bb_max, -bb_min, n // 2)
-                        freq_hi = np.linspace(bb_min, bb_max, n // 2)
-                        tone_list = np.append(freq_low, freq_hi)
-            # TODO: Ask Cody about this
-            # Cody's code for equally spaced tones
-            # Nover2 = 500 # number of tones to make  
-            # freqs_up = -1.0*np.linspace(251.0e6,1.0e6,Nover2)  
-            # freqs_lw = 1.0*np.linspace(2.25e6,252.25e6,Nover2)  
-            # tone_list = np.append(freqs_up,freqs_lw)
-        else:
-            tone_list_valid, tone_toggled = verify_lineEdit(self.tone_list_lineEdit, self.tone_list_error_label)
-            tones_valid &= tone_list_valid
-            if tone_toggled:
-                self.height_updated.emit()
-            if tones_valid:
-                tone_file = get_lineEdit_text(self.tone_list_lineEdit)
-                tone_list = np.load(tone_file)
-
-        if self.tone_power_checkBox.isChecked():
-            if tones_valid:
-                tone_powers = np.ones_like(tone_list)
-        else:
-            power_valid, power_toggled = verify_lineEdit(self.tone_power_lineEdit, self.tone_power_error_label)
-            tones_valid &= power_valid
-            if power_toggled:
-                self.height_updated.emit()
-            if tones_valid:
-                amp_file = get_lineEdit_text(self.tone_power_lineEdit)
-                tone_powers = np.load(amp_file)
-
-        if tones_valid:
-            self.setCursor(Qt.CursorShape.WaitCursor)
-            self.rfsoc.set_tone_list(chan=self.channel, tonelist=tone_list, amplitudes=tone_powers)
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            try:
+                self.update_ethernet_config()
+                self.rfsoc.configure_hardware()
+            finally:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def set_attenuation(self, attenuation: str):
         match attenuation:
@@ -497,32 +335,26 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         if toggled:
             self.height_updated.emit()
         elif valid:
-            att = get_num_value(lineEdit)
             self.setCursor(Qt.CursorShape.WaitCursor)
-            self.rfsoc.set_atten(addr, att)
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-            _logger.info(f'Succesfully set attenuation for channel {self.channel} to {att} dB')
+            try:
+                att = get_num_value(lineEdit)
+                self.rfsoc.set_atten(addr, att)
+            finally:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
     
     def set_lo_freq(self):
         lo_freq = get_num_value(self.lo_freq_lineEdit) * 1e6  # MHz to Hz
         self.setCursor(Qt.CursorShape.WaitCursor)
-        self.rfsoc.set_frequency(self.channel, lo_freq)
-        self.setCursor(Qt.CursorShape.ArrowCursor)
+        try:
+            self.rfsoc.set_frequency(self.channel, lo_freq)
+        finally:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
     
     def set_defaults(self):
-        chan_settings = self.rfsoc.settings[f'channel{self.channel}']
+        chan_settings = self.rfsoc.channel_settings(self.channel)
 
-        # Resonator Settings
-        self.tone_list_lineEdit.setText(str(chan_settings['toneList']))
-        # self.tone_list_lineEdit.setPlaceholderText(self.rfsoc.settings['tone_list'])
-        if 'tonePowers' in chan_settings:
-            self.tone_power_lineEdit.setText(str(chan_settings['tonePowers']))
-        # self.tone_power_lineEdit.setPlaceholderText(self.rfsoc.settings['tone_powers'])
-        if 'chanmask' in chan_settings:
-            fname = str(chan_settings['chanmask'])
-            self.chanmask_lineEdit.setText(fname)
-            self.rfsoc.set_chanmask(fname, self.channel)
-            # self.chanmask_lineEdit.setPlaceholderText(self.settings['chanmask'])
+        if 'paramsFile' in chan_settings:
+            self.params_fileSelectWidget.setText(str(chan_settings['paramsFile']))
 
         # Ethernet Settings
         self.eth_source_lineEdit.setText(chan_settings['sourceIP'])
@@ -533,7 +365,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         # IF Settings
         self.rfin_lineEdit.setText(str(chan_settings['rfin']))
         self.rfout_lineEdit.setText(str(chan_settings['rfout']))
-        self.lo_freq_lineEdit.setText(f'{chan_settings["dsp"]["loFreq"]}')
+        self.lo_freq_lineEdit.setText(f'{chan_settings["dsp"]["loFreq"] * 1e-6}')
     
     @Slot(QAbstractButton)
     def restore_defaults(self, button: QAbstractButton):

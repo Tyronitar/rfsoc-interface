@@ -1,36 +1,27 @@
 """GUI Elements dealing with Configuring the LO Sweep."""
 
 from pathlib import Path
-from typing import Literal, Type, Callable, TYPE_CHECKING, Iterator
-from functools import partial
-from concurrent.futures import Future
+from typing import Literal, TYPE_CHECKING
 import logging
 
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import Figure
 
-from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QRadioButton, QLineEdit, QWidget, QProgressDialog, QTabWidget, QDialogButtonBox, QPushButton, QDialog
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog
+from PySide6.QtCore import Signal
 
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
-from rfsocinterface.core.losweep import LoSweepData, get_tone_list, LoSweep
+from rfsocinterface.core.losweep import LoSweepData, LoSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
+from rfsocinterface.gui.utils import get_num_value
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
-from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
+from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
-from rfsocinterface.gui.initialization import InitializationWidget
-from rfsocinterface.core.utils import get_num_value, ensure_path, get_filename, PathLike, TabName
+from rfsocinterface.core.utils import ensure_path, get_filename, TabName
 from rfsocinterface.gui.main_widget import MainWidget
 
-# from kidpy3 import RFSOC
-from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 import time
-# import valon5009
 import numpy as np
-import onrkidpy
-import sweeps
-import h5py
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -68,6 +59,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.set_defaults()
         self.make_error_labels()    
         self.update_channel_choices(self.channel_comboBox)
+        main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
 
         self.buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
         self.second_sweep_checkBox.clicked.connect(self.check_second_sweep)
@@ -141,32 +133,33 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             self.run_sweep(rfsoc, chan)
     
     def run_sweep(self, rfsoc: RFSOCWrapper, chan: int):
-        channel_settings = rfsoc.settings[f'channel{chan}']
         valon = rfsoc.get_valon(chan)
 
         chan_name = rfsoc.get_channel_name(chan)
+        _logger.info(f'Running LO Sweep with {chan_name}...')
 
         # For running on ONR Computer
         # TODO: Fix this
-        lo_freq = channel_settings['dsp']['loFreq']  # MHz
-        valon.set_frequency(SYNTH_B, lo_freq)
+        # lo_freq = channel_settings['dsp']['loFreq']  # MHz
+        lo_freq = rfsoc.get_channel(chan).lo_freq
+        rfsoc.set_frequency(chan, lo_freq)
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3  # KHz to Hz
         if tone_shift != 0:
-            lo_freq = valon.get_frequency(SYNTH_B) * 1e6  # MHz to Hz
+            lo_freq = rfsoc.get_frequency(chan)  # Hz
             curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
             new_tones = np.ndarray.tolist(
                 curr_tone_list
                 + float(tone_shift)
                 * (curr_tone_list + lo_freq)
-                / np.median(curr_tone_list + lo_freq)
+                / lo_freq
             )
             _logger.info(
                 "Waiting for the RFSOC to finish writing the updated frequency list"
             )
             rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
             
-        savefile = onrkidpy.get_filename(
-            type="LO", chan_name=chan_name
+        savefile = get_filename(
+            file_type="LO", chan_name=chan_name
         )
         match self.buttonGroup.checkedButton():
             case self.filename_elevation_radioButton:
@@ -178,14 +171,14 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # For running on ONR compupter
         rfchan = rfsoc.get_channel(chan)
-        tone_list = rfsoc.get_tone_list()[0]
+        tone_list = rfsoc.get_tone_list(chan)[0]
         sweep = LoSweep(
             valon,
             rfchan,
             tone_list,
-            valon.get_frequency(SYNTH_B) * 1e6,  # MHZ to Hz
+            lo_freq,
         )
-        chanmask = rfsoc.settings.get('chanmask', DEFAULT_CHANMASK)
+
         freq_step = get_num_value(self.df_lineEdit)  * 1e3  # KHz to Hz
         full_span = get_num_value(self.deltaf_lineEdit)  * 1e3  # KHz to Hz
         n_steps = full_span / freq_step
@@ -195,7 +188,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         pd.show()
         QApplication.processEvents()
 
-        sweep_data_future = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
+        _logger.debug(f'Starting LO Sweep...')
+        sweep_data_future = sweep.run_sweep(rfchan.chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
         sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan, False))
 
         # For running on local computer
@@ -260,24 +254,22 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         filename = first_sweep_savefile.stem + '_high_res.h5'
         savefile = first_sweep_savefile.with_name(filename)
 
-        channel_settings = rfsoc.settings[f'channel{chan}']
         valon = rfsoc.get_valon(chan)
 
         # For running on ONR Computer
-        lo_freq = channel_settings['dsp']['loFreq']  # MHz
-        valon.set_frequency(SYNTH_B, lo_freq)
+        lo_freq = rfsoc.get_channel(chan).lo_freq
+        rfsoc.set_frequency(chan, lo_freq)
 
         rfchan = rfsoc.get_channel(chan)
-        tone_list = rfsoc.get_tone_list()[0]
+        tone_list = rfsoc.get_tone_list(chan)[0]
         sweep = LoSweep(
             valon,
             rfchan,
             tone_list,
-            valon.get_frequency(SYNTH_B) * 1e6,  # MHZ to Hz
+            lo_freq,
         )
-        chanmask = rfsoc.settings.get('chanmask', DEFAULT_CHANMASK)
         freq_step = get_num_value(self.second_sweep_df_lineEdit)  * 1e3  # KHz to Hz
-        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3  # KHz to Hz
+        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3 / 5  # KHz to Hz
         n_steps = full_span / freq_step
 
         pd = QThreadJobProgressDialog(labelText='Running Second LO Sweep...',  maximum=n_steps, max_workers=1, parent=self)
@@ -285,11 +277,15 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         pd.show()
         QApplication.processEvents()
 
-        sweep_data_future = sweep.run_sweep(chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
+        sweep_data_future = sweep.run_sweep(rfsoc.get_channel(chan).chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
         sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan, True))
 
     def _wait_and_save(self, sweep: LoSweep, savefile: Path, rfsoc: RFSOCWrapper, chan: int):
+        counter = 0
         while not sweep._processed:
+            counter += 1
+            if counter % 500 == 0:
+                _logger.debug('Waiting for sweep to finish...')
             QApplication.processEvents()
             time.sleep(0.1)
         sweep_data = sweep.data
@@ -307,6 +303,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     @ensure_path(1)
     def save_sweep(self, savefile: Path, sweep_data: LoSweepData):
+        savefile.parent.mkdir(parents=True, exist_ok=True)
         sweep_data.saveh5(savefile)
         sweep_data.savenp(savefile)
         _logger.info(f'Saved LO sweep data to {savefile}')

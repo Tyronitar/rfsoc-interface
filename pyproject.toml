@@ -8,9 +8,7 @@ authors = ["Nia McNichols <niamcnichols@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.14"
-numpy = "^2.1.0"
-scipy = "^1.14.1"
+python = ">=3.11,<3.13"
 matplotlib = "^3.9.2"
 redis = "^5.0.8"
 h5py = "^3.12.1"
@@ -22,6 +20,10 @@ kidpy3 = {url = "https://github.com/ASU-Astronomical-Instrumentation/readout/rel
 exscript = "^2.6.28"
 psutil = "^6.1.1"
 vmbpy = "^1.1.0"
+tables = "^3.10.2"
+gitpython = "^3.1.44"
+numpy = "^2.3.1"
+scipy = "^1.16.0"
 
 [tool.poetry.group.gui.dependencies]
 shiboken6 = "6.8.1"
@@ -37,6 +39,14 @@ pytest-xdist = "^3.6.1"
 pytest-mock = "^3.14.0"
 coverage = {extras = ["toml"], version = "^7.6.1"}
 pytest-qt = "^4.4.0"
+memray = "^1.17.2"
+snakeviz = "^2.2.2"
+
+
+[[tool.poetry.source]]
+name = "numpy-mkl"
+url = "https://urob.github.io/numpy-mkl"
+priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]

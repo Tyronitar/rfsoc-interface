@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import matplotlib as mpl
 
 mpl.use('QtAgg')
@@ -33,7 +35,7 @@ from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_lis
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
-from rfsocinterface.core.utils import PathLike
+from rfsocinterface.core.utils import ensure_path
 
 _logger = logging.getLogger(__name__)
 
@@ -417,12 +419,30 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def get_figure(self) -> Figure:
         """Return the window's figure."""
         return self.canvas.canvas.figure
+    
+    @classmethod
+    @ensure_path(1)
+    def from_h5(cls, filepath: Path, parent: QWidget | None = None) -> DiagnosticsDialog:
+        """Create a DiagnosticsDialog from an HDF5 file."""
+        sweep = LoSweepData.from_h5(filepath)
+        dialog = cls(sweep, savefile=filepath, parent=parent)
+
+        pd = QThreadJobProgressDialog(labelText='Plotting LO Sweep...', maximum=sweep.nchan, parent=parent)
+        pd.show()
+
+        fig, future = dialog.plot(pd=pd)
+        dialog.set_figure(fig)
+
+        future.add_done_callback(lambda _: fig.tight_layout())
+        future.add_done_callback(lambda _: dialog.update_median_shift())
+        # future.add_done_callback(lambda _: dial.set_figure(fig))
+        return dialog
 
 
 if __name__ == '__main__':
     from concurrent.futures import wait
     app = QApplication()
-    sweep = LoSweepData.from_h5('/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
+    sweep = LoSweepData.from_h5('/data/20250730/20250730_devrfsoc_rfsoc2_LO_Sweep_hour11p3667.h5')
 
 
     win = QMainWindow()
@@ -465,14 +485,3 @@ if __name__ == '__main__':
 
     win.show()
     app.exec()
-
-if __name__ == '__main__':
-    app = QApplication()
-
-    sweep = LoSweepData.from_h5('/data/20250509/20250509_rfsoc2_LO_Sweep_hour13p8025.h5')
-    dw = DiagnosticsDialog(sweep, '')
-    dw.show()
-
-    app.exec()
-
-

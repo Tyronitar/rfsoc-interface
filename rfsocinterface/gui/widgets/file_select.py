@@ -4,7 +4,6 @@ from PySide6.QtGui import QDoubleValidator, QIcon
 from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QHBoxLayout, QPushButton, QToolButton
 from typing import Callable, Any
 
-from rfsocinterface.core.utils import get_num_value
 from rfsocinterface.gui.uic.file_upload_ui import Ui_FileUploadWidget
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 
@@ -80,6 +79,9 @@ class FileSelectWidget(QWidget):
     
     def setText(self, text: str):
         self.lineEdit.setText(text)
+    
+    def clear(self):
+        self.lineEdit.clear()
     
     def set_caption(self, caption: str):
         self.browse_dialog_options['caption'] = caption

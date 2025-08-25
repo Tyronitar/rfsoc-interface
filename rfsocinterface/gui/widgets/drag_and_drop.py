@@ -2,9 +2,10 @@
 
 Implementation from https://www.pythonguis.com/faq/pyside6-drag-drop-widgets/
 """
+from itertools import chain
 
-from PySide6.QtCore import QMimeData, Qt, Signal, QPoint
-from PySide6.QtGui import QDrag, QPixmap, QMouseEvent, QCursor
+from PySide6.QtCore import QMimeData, Qt, Signal, QPoint, Slot
+from PySide6.QtGui import QDrag, QPixmap, QMouseEvent, QDropEvent, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -13,6 +14,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from rfsocinterface.gui.widgets.divider import VLine, HLine
 
 DRAG_ITEM_CSS = """
         QLabel {
@@ -57,7 +60,6 @@ class DragItem(QLabel):
         self.setStyleSheet("border: 1px solid black;")
         # Store data separately from display label, but use label for default.
         self.data = self.text()
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
 
     def set_data(self, data):
         self.data = data
@@ -71,6 +73,7 @@ class DragItem(QLabel):
 
             # TODO: Change the mouse cursor when dragging
             drag = QDrag(self)
+            drag.setDragCursor
             mime = QMimeData()
             drag.setMimeData(mime)
 
@@ -109,7 +112,7 @@ class DragWidget(QWidget):
     Generic list sorting handler.
     """
 
-    orderChanged = Signal(list)
+    orderChanged = Signal(list, list)
 
     def __init__(self, *args, orientation=Qt.Orientation.Vertical, **kwargs):
         super().__init__()
@@ -131,15 +134,18 @@ class DragWidget(QWidget):
 
         self.setLayout(self.blayout)
 
-    def dragEnterEvent(self, e):
+    def dragEnterEvent(self, e: QDragEnterEvent):
         e.accept()
 
-    def dragLeaveEvent(self, e):
+    def dragLeaveEvent(self, e: QDragLeaveEvent):
         self._drag_target_indicator.hide()
         e.accept()
 
-    def dragMoveEvent(self, e):
+    def dragMoveEvent(self, e: QDragMoveEvent):
         # Find the correct location of the drop target, so we can move it there.
+        if e.source().parent() != self:
+            e.ignore()
+            return
         index = self._find_drop_location(e)
         if index is not None:
             # Inserting moves the item if its alreaady in the layout.
@@ -150,19 +156,22 @@ class DragWidget(QWidget):
             self._drag_target_indicator.show()
         e.accept()
 
-    def dropEvent(self, e):
+    def dropEvent(self, e: QDropEvent):
         widget = e.source()
         # Use drop target location for destination, then remove it.
         self._drag_target_indicator.hide()
+        if widget.parent() != self:
+            e.ignore()
+            return
         index = self.blayout.indexOf(self._drag_target_indicator)
         if index is not None:
             self.blayout.insertWidget(index, widget)
-            self.orderChanged.emit(self.get_item_data())
+            self.orderChanged.emit(self.items(), self.get_item_data())
             widget.show()
             self.blayout.activate()
         e.accept()
 
-    def _find_drop_location(self, e):
+    def _find_drop_location(self, e: QDragMoveEvent):
         pos = e.position()
         spacing = self.blayout.spacing() / 2
 
@@ -192,6 +201,9 @@ class DragWidget(QWidget):
     def add_item(self, item: DragItem):
         self.blayout.addWidget(item)
         item.setParent(self)
+    
+    def remove_item(self, item: DragItem):
+        self.blayout.removeWidget(item)
 
     def get_item_data(self):
         data = []
@@ -202,8 +214,11 @@ class DragWidget(QWidget):
                 # The target indicator has no data.
                 data.append(w.data)
         return data
-
-
+    
+    def items(self) -> list[DragItem]:
+        all_items = [self.blayout.itemAt(i).widget() for i in range(self.blayout.count())]
+        # print(all_items)
+        return list(filter(lambda item: isinstance(item, DragItem), all_items))
 
     # def mousePressEvent(self, event):
     #     widget = self.childAt(event.pos())
@@ -213,6 +228,8 @@ class DragWidget(QWidget):
 
 
 class ClickableDragWidget(DragWidget):
+    activeItemChanged = Signal(QWidget)
+
     def __init__(self, *args, orientation=Qt.Orientation.Vertical, **kwargs):
         super().__init__(*args, orientation=orientation, **kwargs)
         self.active_item = None
@@ -221,6 +238,11 @@ class ClickableDragWidget(DragWidget):
         super().add_item(item)
         item.clicked.connect(self.item_clicked)
 
+    def remove_item(self, item: ClickableDragItem):
+        super().remove_item(item)
+        if item == self.active_item:
+            self.set_active_item(None)
+
     def set_active_item(self, item: ClickableDragItem):
         if self.active_item is not None:
             self.active_item.set_active('false')
@@ -228,6 +250,7 @@ class ClickableDragWidget(DragWidget):
         self.active_item = item 
         if self.active_item is not None:
             self.active_item.set_active('true')
+        self.activeItemChanged.emit(item)
 
     def item_clicked(self):
         item: ClickableDragItem = self.sender()
@@ -236,22 +259,142 @@ class ClickableDragWidget(DragWidget):
 
 
 
+class MultiSectionDragWidget(QWidget):
+    orderChanged = Signal(list, list)
+
+    def __init__(self, orientation=Qt.Orientation.Vertical, parent=None):
+        super().__init__(parent=parent)
+        self.orientation = orientation
+        self.sections: list[DragWidget] = []
+        self._items = []
+        self._item_data = []
+
+        if self.orientation == Qt.Orientation.Vertical:
+            self.blayout = QVBoxLayout()
+        else:
+            self.blayout = QHBoxLayout()
+        self.setLayout(self.blayout)
+    
+    def get_item_data(self) -> list:
+        return list(chain(*self._item_data))
+
+    def get_item_data_separated(self) -> list[list]:
+        return self._item_data
+    
+    def _update_item_data(self):
+        self._item_data = [section.get_item_data() for section in self.sections]
+
+    def items(self) -> list[DragItem]:
+        return list(chain(*self._items))
+    
+    def items_separated(self) -> list[list[DragItem]]:
+        return self._items
+    
+    def _update_items(self):
+        self._items = [section.items() for section in self.sections]
+
+    @Slot(list, list)
+    def update_order(self, items: list, data: list):
+        sender = self.sender()
+        i_sec = self.sections.index(sender)
+        self._items[i_sec] = items
+        self._item_data[i_sec] = data
+        self.orderChanged.emit(self._items, self._item_data)
+
+    def __len__(self) -> int:
+        return len(self.sections)
+
+    def add_section(self, label: str) -> DragWidget:
+        if len(self) > 0:
+            if self.orientation == Qt.Orientation.Vertical:
+                self.blayout.addWidget(HLine())
+            else:
+                self.blayout.addWidget(VLine())
+        section_label = QLabel(label, self)
+        new_section = DragWidget(orientation=self.orientation, parent=self)
+        new_section.orderChanged.connect(self.update_order)
+        self.blayout.addWidget(section_label)
+        self.blayout.addWidget(new_section)
+        self.sections.append(new_section)
+        self._items.append([])
+        self._item_data.append([])
+        return new_section
+    
+    def add_item(self, i_section: int, item: DragItem):
+        self.sections[i_section].add_item(item)
+        self._items[i_section].append(item)
+        self._item_data[i_section].append(item.data)
+
+    def remove_item(self, i_section: int, item: DragItem):
+        self.sections[i_section].remove_item(item)
+        self._items[i_section].remove(item)
+        self._item_data[i_section].remove(item.data)
+
+
+class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
+    activeItemChanged = Signal(int, QWidget)
+
+    def __init__(self, orientation=Qt.Orientation.Vertical, parent=None):
+        super().__init__(orientation, parent)
+        self.active_item = (-1, None)
+
+    def add_section(self, label: str) -> ClickableDragWidget:
+        if len(self) > 0:
+            if self.orientation == Qt.Orientation.Vertical:
+                self.blayout.addWidget(HLine())
+            else:
+                self.blayout.addWidget(VLine())
+        section_label = QLabel(label, self)
+        new_section = ClickableDragWidget(orientation=self.orientation, parent=self)
+        new_section.orderChanged.connect(self.update_order)
+        self.blayout.addWidget(section_label)
+        self.blayout.addWidget(new_section)
+        i_sec = len(self.sections)
+        new_section.activeItemChanged.connect(lambda item: self.set_active_item(i_sec, item))
+        self.sections.append(new_section)
+        self._items.append([])
+        self._item_data.append([])
+        return new_section
+
+    @Slot(int, object)
+    def set_active_item(self, section: int, item: ClickableDragItem):
+        if self.active_item[1] is not None:
+            self.active_item[1].set_active('false')
+
+        self.active_item = (section, item)
+        if self.active_item[1] is not None:
+            self.active_item[1].set_active('true')
+        self.activeItemChanged.emit(section, item)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.drag = DragWidget(orientation=Qt.Orientation.Vertical)
-        for n, l in enumerate(["A", "B", "C", "D"]):
-            item = DragItem(l)
-            item.set_data(n)  # Store the data.
-            self.drag.add_item(item)
+        self.multi_drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Horizontal, parent=self)
+        n_sections = 2
+        counter = 0
+        for i_sec, section_name in enumerate([f'Section {i + 1}' for i in range(n_sections)]):
+            self.multi_drag.add_section(section_name)
+            for l in ["A", "B", "C", "D"]:
+                item = ClickableDragItem(l)
+                item.set_data(counter)  # Store the data.
+                counter += 1
+                self.multi_drag.add_item(i_sec, item)
+        # self.drag = DragWidget(orientation=Qt.Orientation.Vertical)
+        # for n, l in enumerate(["A", "B", "C", "D"]):
+        #     item = DragItem(l)
+        #     item.set_data(n)  # Store the data.
+        #     self.drag.add_item(item)
 
         # Print out the changed order.
-        self.drag.orderChanged.connect(print)
+        # self.drag.orderChanged.connect(print)
+        self.multi_drag.orderChanged.connect(lambda _, l: print(l))
 
         container = QWidget()
         layout = QVBoxLayout()
         layout.addStretch(1)
-        layout.addWidget(self.drag)
+        # layout.addWidget(self.drag)
+        layout.addWidget(self.multi_drag)
         layout.addStretch(1)
         container.setLayout(layout)
 

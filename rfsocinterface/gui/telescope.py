@@ -12,7 +12,7 @@ from rfsocinterface.gui.uic.telescope_control_ui import Ui_TelescopeControlWidge
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from rfsocinterface.core.camera import SKPR_Camera_Control
-from rfsocinterface.core.utils import P, R, get_num_value
+from rfsocinterface.core.utils import P, R
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from typing import Callable, Concatenate, Any, TYPE_CHECKING
@@ -20,6 +20,7 @@ import functools
 
 from multiprocessing import Process, Pipe, Queue
 from threading import Thread
+import time
 
 import matplotlib.pyplot as plt
 import sys
@@ -30,10 +31,12 @@ from pyModbusTCP.client import ModbusClient
 import glob
 from pathlib import Path
 
+from rfsocinterface.gui.utils import get_num_value
+
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
-_tele_logger = logging.getLogger('rfsocinterface.telescope')
+_tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
@@ -53,15 +56,8 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.controller.buttonGroup.buttonReleased.connect(self.stop_motion)
         self.manual_controlcheckBox.toggled.connect(self.toggle_jogging)
 
-        # self._client_id = 'telescope_tab'
-        # self._conn_parent, self._conn_child = Pipe(duplex=False)
         self._listener_thread = Thread(target=self._connection_loop)
 
-        # self._telescope_queue.put([self._client_id, 'add_connection', self._conn_child])
-        # self.wait_for_command(
-        #     'add_connection_succesful',
-        #     err_msg=f'Unexpected response from telescope controller when adding connection {self._client_id}',
-        # )
 
         # Set up Optical Camera
         self.cam_ctrl = SKPR_Camera_Control()
@@ -124,8 +120,10 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     
     def _connection_loop(self):
         while True:
+            if not self._conn_parent.poll(1e-2):
+                continue
             response, *data = self._conn_parent.recv()
-            _tele_logger.debug(f'{self._client_id} got response: {response}, data: {data}')
+            _tele_logger.debug(f'{self._client_id} got response: "{response}", data: {data}')
             match response.lower():
                 case 'az_pos':
                     self.update_az_pos(*data)

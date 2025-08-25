@@ -29,7 +29,7 @@ class Ui_LoConfigWidget(object):
     def setupUi(self, LoConfigWidget):
         if not LoConfigWidget.objectName():
             LoConfigWidget.setObjectName(u"LoConfigWidget")
-        LoConfigWidget.resize(634, 524)
+        LoConfigWidget.resize(784, 705)
         self.actionWhat_s_This = QAction(LoConfigWidget)
         self.actionWhat_s_This.setObjectName(u"actionWhat_s_This")
         icon = QIcon(QIcon.fromTheme(QIcon.ThemeIcon.HelpFaq))
@@ -41,7 +41,7 @@ class Ui_LoConfigWidget(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 614, 472))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 764, 652))
         self.verticalLayout_3 = QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.lo_settings_groupBox = QGroupBox(self.scrollAreaWidgetContents)
@@ -165,7 +165,7 @@ class Ui_LoConfigWidget(object):
 
         self.save_plots_CheckBox = QCheckBox(self.lo_settings_groupBox)
         self.save_plots_CheckBox.setObjectName(u"save_plots_CheckBox")
-        self.save_plots_CheckBox.setChecked(True)
+        self.save_plots_CheckBox.setChecked(False)
 
         self.lo_gridLayout.addWidget(self.save_plots_CheckBox, 7, 2, 1, 1)
 
@@ -239,7 +239,7 @@ class Ui_LoConfigWidget(object):
 
         self.second_sweep_save_plots_checkBox = QCheckBox(self.lo_settings_groupBox)
         self.second_sweep_save_plots_checkBox.setObjectName(u"second_sweep_save_plots_checkBox")
-        self.second_sweep_save_plots_checkBox.setChecked(True)
+        self.second_sweep_save_plots_checkBox.setChecked(False)
 
         self.lo_gridLayout.addWidget(self.second_sweep_save_plots_checkBox, 10, 2, 1, 1)
 

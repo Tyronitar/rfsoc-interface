@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit
 from PySide6.QtWidgets import (QApplication, QGridLayout, QScrollArea, QSizePolicy,
     QVBoxLayout, QWidget)
 
-from rfsocinterface.core.utils import get_num_value
+from rfsocinterface.gui.utils import get_num_value
 from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.gui.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
@@ -32,6 +32,12 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
 
         self.add_toolButton.clicked.connect(lambda: self.add_section(toggle=True))
         self.delete_toolButton.clicked.connect(self.remove_section)
+        main_window.channelNamesUpdated.connect(self.update_channel_names)
+    
+    def update_channel_names(self):
+        """Update the channel names in the sections."""
+        for widget in self.rfsoc_widgets:
+            widget.update_channel_names()
     
     def add_section(self, rfsoc: RFSOCWrapper, toggle: bool=False):
         # channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)
