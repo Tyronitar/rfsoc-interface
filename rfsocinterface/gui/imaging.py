@@ -59,7 +59,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.setupUi(self)
         self.cam_ctrl = SKPR_Camera_Control()
         self.pipeline_dialog = PipelineDialog(self)
-        self.routines = []
+        self.pipeline = DataPipeline()
         self._add_default_routines()
 
         self._file =  '.'
@@ -113,8 +113,8 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
                         base_arg[1]['default'] = default_args_dict[base_arg_name]
             self.pipeline_dialog.add_routine(routine_type, *base_args)
             # self.pipeline_dialog.drag_function_widget.add_item(*base_args)
-        routine_widgets = self.pipeline_dialog.drag_function_widget.items()
-        self.routines = [item.func_widget.call_function() for item in routine_widgets]
+        self.pipeline_dialog.accept()
+        self.pipeline = self.pipeline_dialog.make_pipeline()
         
     def run_telescope_scan(self, command: str, *args):
         # Tell the controller to start moving the telescope according to the scan type
@@ -172,11 +172,10 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
     
     def choose_mapping_routines(self):
         if self.pipeline_dialog.exec():
+            self.pipeline = self.pipeline_dialog.make_pipeline()
             # Get the selected routines, instantiate them, and store in the class
-            routine_widgets = self.pipeline_dialog.drag_function_widget.items()
             # TODO: validate the inputs somehow...
-            self.routines = [item.func_widget.call_function() for item in routine_widgets]
-        print(self.routines)
+        print(self.pipeline.all_routines())
     
     def run(self):
         chans = self.get_selected_channels(self.channel_comboBox)

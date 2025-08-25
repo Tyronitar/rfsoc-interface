@@ -1,11 +1,12 @@
 from typing import Type
+from itertools import chain
 
 
 from rfsocinterface.gui.uic.pipeline_ui import Ui_PipelineDialog
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
 
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout
 
 from rfsocinterface.gui.widgets.function import FunctionDragItem
@@ -63,41 +64,64 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         # self.buttonBox.accepted.connect(self.accept)
         # self.buttonBox.rejected.connect(self.reject)
 
-        self._current_items: list[FunctionDragItem] = []
-        self._new_items: list[FunctionDragItem] = []
-        self._removed_items: list[FunctionDragItem] = []
+        self._current_items: list[list[FunctionDragItem]] = [[]] * 4
+        self._new_items: list[list[FunctionDragItem]] = [[]] * 4
+        self._removed_items: list[list[FunctionDragItem]] = [[]] * 4
         self.drag_function_widget.add_section('Pre-processing')
         self.drag_function_widget.add_section('Processing Level 1')
         self.drag_function_widget.add_section('Processing Level 2')
         self.drag_function_widget.add_section('Post-processing')
+        print('Flushing buffer mayber idk')
+        # self.drag_function_widget.orderChanged.connect(self.update_order)
 
     def exec(self):
-        self._current_items = self.drag_function_widget.items()
+        self._current_items = self.drag_function_widget.items_separated()
+        print(f'Original order: {self.drag_function_widget.item_data_separated()}\n')
+        self._new_items = [[]] * 4
+        self._removed_items = [[]] * 4
         return super().exec()
+    
+    # @Slot(list, list)
+    # def update_order(self, items: list[list[FunctionDragItem]], data: list):
+    #     self._current_items = items
+    #     print('updated order')
+    
+    def make_pipeline(self) -> DataPipeline:
+        new_pipeline = DataPipeline()
+        for item in self.drag_function_widget.items():
+            new_pipeline.add_routine(item.func_widget.call_function())
+        return new_pipeline
+    
 
     def reject(self):
         # Un-remove any items that were removed
-        for item in self._removed_items:
-            item.show()
-        self._removed_items.clear()
+        for section_items in self._removed_items:
+            for item in section_items:
+                item.show()
+        self._removed_items = [[]] * 4
 
         # Delete new items
-        for item in self._new_items:
-            self.remove_routine(item)
-        self._new_items.clear()
+        for section_items in self._new_items:
+            for item in section_items:
+                self.remove_routine(item)
+        self._new_items = [[]] * 4
 
         # Restore the order of the original items
-        for i, item in enumerate(self._current_items):
-            self.drag_function_widget.drag.blayout.insertWidget(i, item)
+        # print(f'New order: {self.drag_function_widget.item_data_separated()}\n')
+        for i_sec, section_items in enumerate(self._current_items):
+            section = self.drag_function_widget.drag.sections[i_sec]
+            for i, item in enumerate(section_items):
+                section.blayout.insertWidget(i, item)
 
         super().reject()
 
     def accept(self):
         # Actually remove items
-        for item in self._removed_items:
-            self.remove_routine(item)
-        self._removed_items.clear()
-        self._new_items.clear()  # New items were already added
+        for section in self._removed_items:
+            for item in section:
+                self.remove_routine(item)
+        self._new_items = [[]] * 4  # New items were already added
+        self._removed_items = [[]] * 4
 
         super().accept()
 
@@ -119,28 +143,29 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
             raise ValueError(f'Routine type {routine_type_name} not in DATA_ROUTINE_FUNCTION_WIDGET_ARGS')
         if len(args) == 0:
             args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type_name]  # Get default values
-        item = self.drag_function_widget.add_item(STAGE_TO_SECTION_MAP[routine_cls.stage], *args)
+        section = STAGE_TO_SECTION_MAP[routine_cls.stage]
+        item = self.drag_function_widget.add_item(section, *args)
         # item = self.drag_function_widget.add_item(*args)
         item.clicked.emit()  # Set active itme and display the function's aruments
-        self._new_items.append(item)
+        self._new_items[section].append(item)
 
-    def remove_routine(self, item: FunctionDragItem | None=None):
+    def remove_routine(self, i_sec: int, item: FunctionDragItem | None=None):
         if item is None:
-            item = self.drag_function_widget.active_item
+            i_sec, item = self.drag_function_widget.active_item
         if item is not None:
-            self.drag_function_widget.remove_item(item)
+            self.drag_function_widget.remove_item(i_sec, item)
 
     def _temp_remove_item(self):
-        item = self.drag_function_widget.active_item
+        i_sec, item = self.drag_function_widget.active_item
         # No need to keep track of new items that are then removed
-        if item in self._new_items:
-            self._new_items.remove(item)
-            self.remove_routine(item)
-        else:
+        if item in self._new_items[i_sec]:
+            self._new_items[i_sec].remove(item)
+            self.remove_routine(i_sec, item)
+        elif item is not None:
             # Hide the item to look like it was removed...
             item.hide()
             # ...but keep track of it in case changes are discarded
-            self._removed_items.append(item)
+            self._removed_items[i_sec].append(item)
     
         
 if __name__ == '__main__':

@@ -205,9 +205,13 @@ class DragFunctionWidget(QWidget):
         return super().mousePressEvent(event)
 
 class MultiSectionDragFunctionWidget(QWidget):
+    orderChanged = Signal(list, list)
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Vertical)
+        self.drag.orderChanged.connect(self.orderChanged.emit)
+        self.drag.orderChanged.connect(lambda _, l: print(l))
 
         hlayout = QHBoxLayout()
 
@@ -231,7 +235,7 @@ class MultiSectionDragFunctionWidget(QWidget):
         self.setLayout(hlayout)
     
     @property
-    def active_item(self) -> FunctionDragItem | None:
+    def active_item(self) -> tuple[int, FunctionDragItem | None]:
         return self.drag.active_item
 
     def add_section(self, label: str):
@@ -272,6 +276,13 @@ class MultiSectionDragFunctionWidget(QWidget):
 
     def items(self) -> list[FunctionDragItem]:
         return self.drag.items()
+    
+    def items_separated(self) -> list[list[FunctionDragItem]]:
+        return self.drag.items_separated()
+
+    def item_data_separated(self) -> list[list]:
+        return self.drag.get_item_data_separated()
+
 
     @Slot()
     def display_args(self):
@@ -282,7 +293,7 @@ class MultiSectionDragFunctionWidget(QWidget):
         child = self.childAt(event.position())
         # Clicking off of the list items or parameters should deselect
         if child is None or child == self.drop_container or child == self.drag:
-            self.drag.set_active_item(None)
+            self.drag.set_active_item(-1, None)
             self.func_container.setCurrentIndex(0)
         return super().mousePressEvent(event)
 

@@ -277,6 +277,9 @@ class MultiSectionDragWidget(QWidget):
     
     def get_item_data(self) -> list:
         return list(chain(*self._item_data))
+
+    def get_item_data_separated(self) -> list[list]:
+        return self._item_data
     
     def _update_item_data(self):
         self._item_data = [section.get_item_data() for section in self.sections]
@@ -284,16 +287,19 @@ class MultiSectionDragWidget(QWidget):
     def items(self) -> list[DragItem]:
         return list(chain(*self._items))
     
+    def items_separated(self) -> list[list[DragItem]]:
+        return self._items
+    
     def _update_items(self):
         self._items = [section.items() for section in self.sections]
 
-    @Slot(list)
+    @Slot(list, list)
     def update_order(self, items: list, data: list):
         sender = self.sender()
         i_sec = self.sections.index(sender)
         self._items[i_sec] = items
         self._item_data[i_sec] = data
-        self.orderChanged.emit(self.items(), self.get_item_data())
+        self.orderChanged.emit(self._items, self._item_data)
 
     def __len__(self) -> int:
         return len(self.sections)
@@ -326,11 +332,11 @@ class MultiSectionDragWidget(QWidget):
 
 
 class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
-    activeItemChanged = Signal(QWidget)
+    activeItemChanged = Signal(int, QWidget)
 
     def __init__(self, orientation=Qt.Orientation.Vertical, parent=None):
         super().__init__(orientation, parent)
-        self.active_item = None
+        self.active_item = (-1, None)
 
     def add_section(self, label: str) -> ClickableDragWidget:
         if len(self) > 0:
@@ -341,23 +347,24 @@ class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
         section_label = QLabel(label, self)
         new_section = ClickableDragWidget(orientation=self.orientation, parent=self)
         new_section.orderChanged.connect(self.update_order)
-        new_section.activeItemChanged.connect(self.set_active_item)
         self.blayout.addWidget(section_label)
         self.blayout.addWidget(new_section)
+        i_sec = len(self.sections)
+        new_section.activeItemChanged.connect(lambda item: self.set_active_item(i_sec, item))
         self.sections.append(new_section)
         self._items.append([])
         self._item_data.append([])
         return new_section
 
-    @Slot(object)
-    def set_active_item(self, item: ClickableDragItem):
-        if self.active_item is not None:
-            self.active_item.set_active('false')
+    @Slot(int, object)
+    def set_active_item(self, section: int, item: ClickableDragItem):
+        if self.active_item[1] is not None:
+            self.active_item[1].set_active('false')
 
-        self.active_item = item 
-        if self.active_item is not None:
-            self.active_item.set_active('true')
-        self.activeItemChanged.emit(item)
+        self.active_item = (section, item)
+        if self.active_item[1] is not None:
+            self.active_item[1].set_active('true')
+        self.activeItemChanged.emit(section, item)
 
 
 class MainWindow(QMainWindow):
