@@ -6,21 +6,24 @@ from multiprocessing import Pipe
 import h5py
 import copy
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QWidget, QCheckBox, QComboBox, QLineEdit, QStackedLayout, QDialog, QVBoxLayout, QFormLayout, QDialogButtonBox
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout
 from kidpy3 import capture
 
-from rfsocinterface.core.data.routines import DataRoutine
+from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
-from rfsocinterface.gui.uic.mapping_ui import Ui_MappingDialog
-from rfsocinterface.gui.widgets.function import FunctionDragItem
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, get_filename
+from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
 from rfsocinterface.gui.widgets.function import FunctionWidget
 from rfsocinterface.core.camera import SKPR_Camera_Control
-from rfsocinterface.core.data.data import ProcessedData, MapData
+from rfsocinterface.core.data import (
+    ProcessedData,
+    MapData,
+    DataPipeline,
+    DataRoutine,
+)
 from rfsocinterface.core.data.routines import Mapper
 
 if TYPE_CHECKING:
@@ -35,116 +38,6 @@ enum_choices = ['hello', 'world']
 def dummy_func(file: Path, string: str, num: float, enum: str, check: bool):
     assert enum in enum_choices
     print(f'{file}, "{string}", {num}, {enum}, {check}')
-
-
-class RoutineSelectionDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-        self.setupUi()
-
-        self.button_box.accepted.connect(self.accept)
-        self.button_box.rejected.connect(self.reject)
-    
-    def setupUi(self):
-        self.setWindowTitle('Select Mapping Routine')
-        self.setModal(True)
-        layout = QFormLayout()
-
-        self.combo_box = QComboBox(self)
-        self.combo_box.addItems(DATA_ROUTINE_FUNCTION_WIDGET_ARGS.keys())
-        layout.addRow('Routine Type:', self.combo_box)
-
-        self.button_box = QDialogButtonBox(self)
-        self.button_box.setOrientation(Qt.Orientation.Horizontal)
-        self.button_box.setStandardButtons(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        layout.addRow(self.button_box)
-
-        self.setLayout(layout)
-
-class MappingDialog(QDialog, Ui_MappingDialog):
-    
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-        self.setupUi(self)
-        self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
-        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
-        # self.add_toolButton.clicked.connect(self.select_and_add_routine)
-        self.add_toolButton.clicked.connect(lambda _: self.select_and_add_routine())
-        self.remove_toolButton.clicked.connect(lambda _: self._temp_remove_item())
-        # self.buttonBox.accepted.connect(self.accept)
-        # self.buttonBox.rejected.connect(self.reject)
-
-        self._current_items: list[FunctionDragItem] = []
-        self._new_items: list[FunctionDragItem] = []
-        self._removed_items: list[FunctionDragItem] = []
-    
-    def exec(self):
-        self._current_items = self.drag_function_widget.items()
-        return super().exec()
-    
-    def reject(self):
-        # Un-remove any items that were removed
-        for item in self._removed_items:
-            item.show()
-        self._removed_items.clear()
-
-        # Delete new items
-        for item in self._new_items:
-            self.remove_routine(item)
-        self._new_items.clear()
-
-        # Restore the order of the original items
-        for i, item in enumerate(self._current_items):
-            self.drag_function_widget.drag.blayout.insertWidget(i, item)
-
-        super().reject()
-    
-    def accept(self):
-        # Actually remove items
-        for item in self._removed_items:
-            self.remove_routine(item)
-        self._removed_items.clear()
-        self._new_items.clear()  # New items were already added
-
-        super().accept()
-    
-    def select_and_add_routine(self):
-        routine_type = self.select_routine()
-        if routine_type is None:
-            return
-        self.add_routine(routine_type)
-
-    def select_routine(self) -> str | None:
-        """Open a dialog to select a routine type."""
-        d = RoutineSelectionDialog(self)
-        if d.exec():
-            return d.combo_box.currentText()
-    
-    def add_routine(self, routine_type_name: str):
-        if routine_type_name not in DATA_ROUTINE_FUNCTION_WIDGET_ARGS:
-            raise ValueError(f'Routine type {routine_type_name} not in DATA_ROUTINE_FUNCTION_WIDGET_ARGS')
-        args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type_name]
-        item = self.drag_function_widget.add_item(*args)
-        item.clicked.emit()  # Set active itme and display the function's aruments
-        self._new_items.append(item)
-    
-    def remove_routine(self, item: FunctionDragItem | None=None):
-        if item is None:
-            item = self.drag_function_widget.active_item
-        if item is not None:
-            self.drag_function_widget.remove_item(item)
-    
-    def _temp_remove_item(self):
-        item = self.drag_function_widget.active_item
-        # No need to keep track of new items that are then removed
-        if item in self._new_items:  
-            self._new_items.remove(item)
-            self.remove_routine(item)
-        else:
-            # Hide the item to look like it was removed...
-            item.hide()
-            # ...but keep track of it in case changes are discarded
-            self._removed_items.append(item)
 
 
 class DitherPatternWidget(FunctionWidget):
@@ -165,13 +58,14 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
         self.cam_ctrl = SKPR_Camera_Control()
-        self.mapping_dialog = MappingDialog(self)
-        self.routines = []
+        self.pipeline_dialog = PipelineDialog(self)
+        self.pipeline = DataPipeline()
         self._add_default_routines()
 
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
         self.update_channel_choices(self.channel_comboBox)
+        main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
         self.patterns: list[FunctionWidget] = []
 
         self.stacked_layout = QStackedLayout(parent=self)
@@ -217,9 +111,10 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
                     base_arg_name = base_arg[0][0].strip(': ')
                     if base_arg_name in default_args_dict:
                         base_arg[1]['default'] = default_args_dict[base_arg_name]
-            self.mapping_dialog.drag_function_widget.add_item(*base_args)
-        routine_widgets = self.mapping_dialog.drag_function_widget.items()
-        self.routines = [item.func_widget.call_function() for item in routine_widgets]
+            self.pipeline_dialog.add_routine(routine_type, *base_args)
+            # self.pipeline_dialog.drag_function_widget.add_item(*base_args)
+        self.pipeline_dialog.accept()
+        self.pipeline = self.pipeline_dialog.make_pipeline()
         
     def run_telescope_scan(self, command: str, *args):
         # Tell the controller to start moving the telescope according to the scan type
@@ -276,12 +171,11 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.active_pattern = self.patterns[index]
     
     def choose_mapping_routines(self):
-        if self.mapping_dialog.exec():
+        if self.pipeline_dialog.exec():
+            self.pipeline = self.pipeline_dialog.make_pipeline()
             # Get the selected routines, instantiate them, and store in the class
-            routine_widgets = self.mapping_dialog.drag_function_widget.items()
             # TODO: validate the inputs somehow...
-            self.routines = [item.func_widget.call_function() for item in routine_widgets]
-        print(self.routines)
+        print(self.pipeline.all_routines())
     
     def run(self):
         chans = self.get_selected_channels(self.channel_comboBox)
@@ -304,20 +198,4 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         # Dither telescope and collect data in separate thread
         capture_thread = Thread(target=capture, args=(rfchans, self.active_pattern.call_function))
         capture_thread.start()
-
-    
-        
-if __name__ == '__main__':
-    from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton
-
-    app = QApplication()
-
-    w = QMainWindow()
-    butt = QPushButton('Click me')
-    d = MappingDialog(w)
-    butt.clicked.connect(d.exec)
-    w.setCentralWidget(butt)
-
-    w.show()
-    app.exec()
 

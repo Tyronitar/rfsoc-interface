@@ -141,11 +141,11 @@ class DataPipeline:
         match routine.stage:
             case ProcessingStage.PRE_PROCESSING:
                 self.pre_processor.add_routine(routine)
-            case ProcessingStage.PROCESSING:
+            case ProcessingStage.PROCESSING_L1:
                 self.processor.add_routine(routine)
-            case ProcessingStage.POST_PROCESSING:
+            case ProcessingStage.PROCESSING_L2:
                 self.post_processor.add_routine(routine)
-            case ProcessingStage.MAPPING:
+            case ProcessingStage.POST_PROCESSING:
                 self.mapper.add_routine(routine)
             case _:
                 pass

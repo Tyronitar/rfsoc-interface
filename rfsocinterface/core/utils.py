@@ -197,7 +197,9 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
             else:
                 this_dir_files.sort()
                 offset = 1 if file_type == 'tod' else 0
-                setnum = int(this_dir_files[-1].name[-7:-3]) + offset
+                setnums = [f.name[-7:-3] for f in this_dir_files]
+                setnums.sort()
+                setnum = int(setnums[-1]) + offset
             if file_type.lower() == 'optcam':
                 strings = [yymmdd, 'optcam', f'set{setnum}']
             else:

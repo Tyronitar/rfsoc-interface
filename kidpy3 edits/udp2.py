@@ -41,7 +41,7 @@ def __data_writer_process(dataqueue, chan: Rfchan, runFlag):
     Data is handled in bursts and the data is chunked allowing us to collect an indefinite amount of data.
     """
     log = logger.getChild(__name__)
-    log.debug(f"began data writer process <{chan.name}>")
+    log.debug(f"began data writer process <{chan.tile_name}>")
 
     # Create HDF5 Datafile and populate various fields
     try:
@@ -54,7 +54,7 @@ def __data_writer_process(dataqueue, chan: Rfchan, runFlag):
         return
         # raise e
     # Pass in the last LO sweep here
-    raw.append_lo_sweep(get_last_lo(chan.name))
+    raw.append_lo_sweep(get_last_lo(chan.tile_name))
 
     while True:
         # we're done if the queue closes or we don't get any day within 5 seconds
@@ -63,10 +63,10 @@ def __data_writer_process(dataqueue, chan: Rfchan, runFlag):
         except Exception as e:
             obj = None
         if obj is None:
-            log.debug(f"obj is None <{chan.name}>")
+            log.debug(f"obj is None <{chan.tile_name}>")
             break
         t1 = time.perf_counter_ns()
-        log.debug(f"Received a queue object<{chan.name}>")
+        log.debug(f"Received a queue object<{chan.tile_name}>")
         # re-Allocate Dataset
         indx, adci, adcq, timestamp = obj
         raw.resize(indx)
@@ -77,11 +77,11 @@ def __data_writer_process(dataqueue, chan: Rfchan, runFlag):
         raw.timestamp[indx - 488 : indx] = timestamp
         raw.n_sample[0] = indx
         t2 = time.perf_counter_ns()
-        log.debug(f"Parsed in this loop's data <{chan.name}>")
-        log.debug(f"Data Writer deltaT = {(t2-t1)*1e-6} ms for <{chan.name}>")
+        log.debug(f"Parsed in this loop's data <{chan.tile_name}>")
+        log.debug(f"Data Writer deltaT = {(t2-t1)*1e-6} ms for <{chan.tile_name}>")
 
     raw.close()
-    log.debug(f"Queue closed, closing file and exiting for <{chan.name}>")
+    log.debug(f"Queue closed, closing file and exiting for <{chan.tile_name}>")
     #log.warning("Keyboard Interrupt Caught. This terminates processes that may be writing to a file. Expect possible hdf5 data corruption")
 
 def __data_collector_process(dataqueue, chan: Rfchan, runFlag):
@@ -95,7 +95,7 @@ def __data_collector_process(dataqueue, chan: Rfchan, runFlag):
     """
     import time
     log = logger.getChild(__name__)
-    log.debug(f"began data collector process <{chan.name}>")
+    log.debug(f"began data collector process <{chan.tile_name}>")
     # Creae Socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -106,7 +106,7 @@ def __data_collector_process(dataqueue, chan: Rfchan, runFlag):
         errorstr = RED+str(e)+NC
         log.exception(errorstr)
         return
-    # log.debug(f"Socket bound - <{chan.name}>")
+    # log.debug(f"Socket bound - <{chan.tile_name}>")
     # Take Data
     idx = 488
     i = np.zeros((1024, 488))
@@ -128,14 +128,14 @@ def __data_collector_process(dataqueue, chan: Rfchan, runFlag):
                 q[:, k] = spec_data[1::2][0:1024]
                 ts[k] = time.time()
             dataqueue.put((idx, i, q, ts))
-            # log.info(f"<{chan.name}> rx 488 pkts")
+            # log.info(f"<{chan.tile_name}> rx 488 pkts")
         except TimeoutError:
-            log.warning(f"Timed out waiting for data <{chan.name}>")
+            log.warning(f"Timed out waiting for data <{chan.tile_name}>")
             break
         idx = idx + 488
         t2 = time.perf_counter_ns()
         log.debug(f"datacollector deltaT = {(t2-t1)*1e-6} ms")
-    log.debug(f"exited while loop, putting None in dataqueue for <{chan.name}> ")
+    log.debug(f"exited while loop, putting None in dataqueue for <{chan.tile_name}> ")
     dataqueue.put(None)
     s.close()
     return
@@ -281,13 +281,13 @@ def capture(channels: list, fn=None, *args, **kwargs):
             (dataqueue, chan, runFlag),
             error_callback=exceptionCallback,
         )
-        log.debug(f"Spawned data collector process: {chan.name}")
+        log.debug(f"Spawned data collector process: {chan.tile_name}")
         pool.apply_async(
             __data_collector_process,
             (dataqueue, chan, runFlag),
             error_callback=exceptionCallback,
         )
-        log.debug(f"Spawned data writer process: {chan.name}")
+        log.debug(f"Spawned data writer process: {chan.tile_name}")
 
     pool.close()
     log.info("Waiting on capture to complete")

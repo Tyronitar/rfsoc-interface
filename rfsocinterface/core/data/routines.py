@@ -15,9 +15,9 @@ from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_fil
 class ProcessingStage:
     """Enum for the different stages of data processing."""
     PRE_PROCESSING = 'pre_processing'
-    PROCESSING = 'processing'
+    PROCESSING_L1 = 'processing_l1'
+    PROCESSING_L2 = 'processing_l2'
     POST_PROCESSING = 'post_processing'
-    MAPPING = 'mapping'
 
 
 class DataRoutine(abc.ABC):
@@ -60,7 +60,7 @@ class Mapper:
 #
 
 class GaussianFilter(DataRoutine):
-    stage = ProcessingStage.PROCESSING
+    stage = ProcessingStage.PROCESSING_L1
     def __init__(self, gaussian_sigma: tuple[float, float]=GAUSSIAN_SIGMA):
         super().__init__()
         self.gaussian_sigma = gaussian_sigma
@@ -75,7 +75,7 @@ class GaussianFilter(DataRoutine):
 
 
 class CutoffFilter(DataRoutine):
-    stage = ProcessingStage.POST_PROCESSING
+    stage = ProcessingStage.PROCESSING_L2
 
     def __init__(self, filter_freq: float, btype: str, dataset: str='data_mK'):
         super().__init__()
@@ -147,7 +147,7 @@ class Downsample(DataRoutine):
 
 
 class RemoveElectronicsNoise(DataRoutine):
-    stage = ProcessingStage.PROCESSING
+    stage = ProcessingStage.PROCESSING_L1
 
     def __init__(self):
         super().__init__()
@@ -163,7 +163,7 @@ class RemoveElectronicsNoise(DataRoutine):
 
 
 class CleanTOD(DataRoutine):
-    stage = ProcessingStage.POST_PROCESSING
+    stage = ProcessingStage.PROCESSING_L2
 
     def __init__(self, dataset: str='data_mK'):
         super().__init__()

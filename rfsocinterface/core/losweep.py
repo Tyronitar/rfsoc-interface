@@ -646,19 +646,16 @@ class LoSweep:
         return Z
 
 
-    def run_sweep(self, chanmask_file: Path, tone_list: npt.NDArray, N_steps=500, freq_step=1e3, pd: QThreadJobProgressDialog | None=None) -> Future[LoSweepData]:
+    def run_sweep(self, chanmask: npt.NDArray, tone_list: npt.NDArray, N_steps=500, freq_step=1e3, pd: QThreadJobProgressDialog | None=None) -> Future[LoSweepData]:
         """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file
 
         f_center: center frequency for sweep in [MHz], default is 400
         """
         self.tone_list = tone_list
-        if chanmask_file is not None:
-            chanmask = np.load(chanmask_file)
-        else:
-            if np.size(self.chan.chanmask) == 0:  # Chanmask hasn't been set, so use all ones
-                chanmask = np.ones(np.size(tone_list), dtype=int)
-            else:
-                chanmask = self.chan.chanmask
+
+        if np.size(chanmask) == 0:  # Chanmask hasn't been set, so use all ones
+            chanmask = np.ones(np.size(tone_list), dtype=int)
+
         self.chanmask = chanmask
         self._processed = False
         if len(self.freqs) > 1:

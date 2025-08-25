@@ -32,6 +32,12 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
 
         self.add_toolButton.clicked.connect(lambda: self.add_section(toggle=True))
         self.delete_toolButton.clicked.connect(self.remove_section)
+        main_window.channelNamesUpdated.connect(self.update_channel_names)
+    
+    def update_channel_names(self):
+        """Update the channel names in the sections."""
+        for widget in self.rfsoc_widgets:
+            widget.update_channel_names()
     
     def add_section(self, rfsoc: RFSOCWrapper, toggle: bool=False):
         # channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)

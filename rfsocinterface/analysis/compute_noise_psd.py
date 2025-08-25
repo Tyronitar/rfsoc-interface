@@ -15,8 +15,13 @@ import tables
 from kidpy3 import RawDataFile
 
 
-from rfsocinterface.core.data.data import flag_outliers, ProcessedData, DATA_DIRECTORY
-from rfsocinterface.core.data.routines import DataRoutine, ProcessingStage
+from rfsocinterface.core.data import (
+    flag_outliers,
+    ProcessedData,
+    DATA_DIRECTORY,
+    DataRoutine,
+    ProcessingStage
+)
 from rfsocinterface.core.utils import ensure_path, ordinal
 
 XLIM = (0.1, 100)
@@ -81,7 +86,7 @@ def _compute_psd(
 
 
 class ComputeNoisePSD(DataRoutine):
-    stage = ProcessingStage.POST_PROCESSING
+    stage = ProcessingStage.PROCESSING_L2
 
     def __init__(self, dataset: str='data_mK'):
         # TODO: Add parameters for the PSD computation
@@ -376,7 +381,6 @@ if __name__ == '__main__':
     if do_flag_outliers:
         chanmask = flag_outliers(input_data, pd.fs, chanmask, sigma=outlier_sigma)
     
-    pdb.set_trace()
     chanmask, freq, noise_psd = compute_noise_psd(
         input_data,
         pd.timestamp,
@@ -393,3 +397,4 @@ if __name__ == '__main__':
     )
     if args.show_plots:
         plt.show()
+    pd.close()
