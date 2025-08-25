@@ -328,16 +328,16 @@ class BinTODIntoMap(DataRoutine):
 
 if __name__ == '__main__':
     from rfsocinterface.core.data.routines import DataRoutine, CleanTOD, HighPassFilter, LowPassFilter
-    date = '20250728'
-    setnum = 1001
-    dataset = 'data_freq'
+    date = '20250730'
+    setnum = 1005
+    dataset = 'data_mK'
 
     ds_factor = 10
     hp_filt_freq = 0.5
     lp_filt_freq = 10
 
-    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
-    # pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor, beam_map_mode=True)
+    # pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
+    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor, beam_map_mode=True)
     # pd = PyTablesProcessedData.from_file(date, setnum)
 
     hpfilt = HighPassFilter(hp_filt_freq, dataset=dataset)

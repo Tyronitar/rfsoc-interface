@@ -179,9 +179,9 @@ def analyze_beammap(
 if __name__ == '__main__':
     # date = '20250729'
     # setnum = 1012
-    date = '20250805'
+    date = '20250730'
 
-    setnum = 1002
+    setnum = 1005
 
     md = MapData.from_file(date, setnum, 'r')
     # pdb.set_trace()

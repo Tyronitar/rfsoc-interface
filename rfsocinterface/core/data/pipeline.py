@@ -184,10 +184,10 @@ class DataPipeline:
 
 if __name__ == '__main__':
     import pdb
-    date = '20250805'
-    setnum = 1001
+    date = '20250825'
+    setnum = 1002
     dataset = 'data_mK'
-    beam_map_mode = True 
+    beam_map_mode = False
 
     ds_factor = 10
     hp_filt_freq = 0.2
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     )
     pipeline.add_routine(hpfilt)
     pipeline.add_routine(lpfilt)
-    # pipeline.add_routine(cleaner)
+    pipeline.add_routine(cleaner)
     pipeline.add_routine(binner)
 
     data = pipeline.run_pipeline(date, setnum)
