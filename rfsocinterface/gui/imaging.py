@@ -184,7 +184,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.update_current_file()
         for rfsoc, chan in chans:
             rfchan = rfsoc.get_channel(chan)
-            save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'{rfsoc.name}_{rfchan.name}', mkdir=True, touch_file=True)
+            save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'{rfchan.tile_name}', mkdir=True, touch_file=True)
             # save_location.parent.mkdir(parents=True, exist_ok=True)
             # Ensure the TOD file exists before getting the AZEL and optcam filenames
             # with h5py.File(save_location, 'w'):
