@@ -327,7 +327,7 @@ if __name__ == '__main__':
     parser.add_argument('date', type=str, help='Date of the data in YYYYMMDD format.')
     parser.add_argument('setnum', type=int, help='Set number of the data.')
     parser.add_argument('--outlier_sigma', type=float, default=2.0, help='Sigma for outlier detection.')
-    parser.add_argument('--ds_factor', type=int, default=3, help='Downsampling factor.')
+    parser.add_argument('--ds_factor', type=int, default=1, help='Downsampling factor.')
     parser.add_argument('-f', '--do_flag_outliers', action='store_true', help='Flag outliers in the data.')
     parser.add_argument('-n', '--remove_noise', action='store_true', help='Remove electronics noise from the data.')
     parser.add_argument('-b', '--basis', type=str, choices=VALID_BASES, default='gp', help='Basis of the data (gp, iq, fd).')
