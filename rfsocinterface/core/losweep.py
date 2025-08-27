@@ -454,17 +454,18 @@ class LoSweepData:
         mid_ind = self.nfreq // 2
         edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
         ind_val = np.arange(edge_indices[0], edge_indices[1])
+        freq_val = self.freq[:, ind_val] - self.tone_list[:, np.newaxis]
 
         # rotation_angle = np.zeros(self.nchan)
         # adc_units_to_hz = np.zeros(self.nchan)
 
         for i_chan in range(0, self.nchan):
-            fit_I = np.polyfit(ind_val, self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            fit_I = np.polyfit(freq_val[i_chan], self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
             fit_I_deriv = np.polyder(fit_I)
-            dIQ_df[0, i_chan] = np.polyval(fit_I_deriv, mid_ind) / self.df
-            fit_Q = np.polyfit(ind_val, self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            dIQ_df[0, i_chan] = np.polyval(fit_I_deriv, 0)
+            fit_Q = np.polyfit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
             fit_Q_deriv = np.polyder(fit_Q)
-            dIQ_df[1, i_chan] = np.polyval(fit_Q_deriv, mid_ind) / self.df
+            dIQ_df[1, i_chan] = np.polyval(fit_Q_deriv, 0)
 
             # rotation_angle[i_chan] = np.atan2(dIQ_df[1, i_chan], dIQ_df[0, i_chan])
             # adc_units_to_hz[i_chan] = np.sqrt(
