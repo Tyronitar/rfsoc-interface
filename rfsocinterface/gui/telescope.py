@@ -56,7 +56,10 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.controller.buttonGroup.buttonReleased.connect(self.stop_motion)
         self.manual_controlcheckBox.toggled.connect(self.toggle_jogging)
 
-        self._listener_thread = Thread(target=self._connection_loop)
+        self.connect_to_command('az_pos', self.update_az_pos)
+        self.connect_to_command('ze_pos', self.update_ze_pos)
+        self.connect_to_command('az_pos_comm', self.update_az_cmd)
+        self.connect_to_command('ze_pos_comm', self.update_ze_cmd)
 
 
         # Set up Optical Camera
@@ -67,10 +70,9 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         # Initialize the numbers in the GUI
         self.az_pos = self.last_az = 0
         self.ze_pos = self.last_ze = 0
-        self._listener_thread.start()
 
-        self._telescope_queue.put([self._client_id, 'get_ser_az_pos'])
-        self._telescope_queue.put([self._client_id, 'get_ser_ze_pos'])
+        self.send_command('get_ser_az_pos')
+        self.send_command('get_ser_ze_pos')
 
         self.last_az_commanded = self.last_az
         self.last_ze_commanded = self.last_ze
@@ -84,7 +86,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
 
     def stop_motion(self):
-        self._telescope_queue.put([self._client_id, 'stop_telescope'])
+        self.send_command('stop_telescope')
     
     def take_pic(self):
         pic_data = self.cam_ctrl.take_pic(show=False)
@@ -110,43 +112,21 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def jog(self, btn: QAbstractButton): 
         match btn:
             case self.controller.up_toolButton:
-                self._telescope_queue.put([self._client_id, 'set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL])
+                self.send_command('set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL)
             case self.controller.down_toolButton:
-                self._telescope_queue.put([self._client_id, 'set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL])
+                self.send_command('set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL)
             case self.controller.left_toolButton:
-                self._telescope_queue.put([self._client_id, 'set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL])
+                self.send_command('set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL)
             case self.controller.right_toolButton:
-                self._telescope_queue.put([self._client_id, 'set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL])
+                self.send_command('set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL)
     
-    def _connection_loop(self):
-        while True:
-            if not self._conn_parent.poll(1e-2):
-                continue
-            response, *data = self._conn_parent.recv()
-            _tele_logger.debug(f'{self._client_id} got response: "{response}", data: {data}')
-            match response.lower():
-                case 'az_pos':
-                    self.update_az_pos(*data)
-                case 'ze_pos':
-                    self.update_ze_pos(*data)
-                case 'az_pos_comm':
-                    self.update_az_cmd(*data)
-                case 'ze_pos_comm':
-                    self.update_ze_cmd(*data)
-                case 'err':
-                    raise RuntimeError(f'Error from telescope controller: {data}')
-                case 'done' | 'remove_connection_succesful':
-                    break 
-                case _:
-                    raise RuntimeError(f'Unknown response from telescope controller: {response}')
-
     def set_az_pos(self):
         new_pos = get_num_value(self.azimuth_setlineEdit)
-        self._telescope_queue.put([self._client_id, 'set_az_pos', new_pos])
+        self.send_command('set_az_pos', new_pos)
     
     def set_ze_pos(self):
         new_pos = get_num_value(self.zenith_setlineEdit)
-        self._telescope_queue.put([self._client_id, 'set_ze_pos', new_pos])
+        self.send_command('set_ze_pos', new_pos)
     
     @Slot(float)
     def update_az_pos(self, new_pos: float):
@@ -200,11 +180,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
     def closeEvent(self, event):
         self.timer.stop()
-        self._telescope_queue.put([self._client_id, 'remove_connection'])
         # don't need to wait for success msg, since listener thread will eat the message
-        self._listener_thread.join()
-        self._conn_parent.close()
-        self._conn_child.close()
         return super().closeEvent(event)
     
 

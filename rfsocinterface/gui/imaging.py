@@ -7,7 +7,7 @@ import h5py
 import copy
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout, QProgressDialog
 from kidpy3 import capture
 
 from rfsocinterface.gui.pipeline import PipelineDialog
@@ -99,6 +99,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.start_pushButton.clicked.connect(self.run)
         self.mapping_pushButton.clicked.connect(self.choose_mapping_routines)
         self.choose_pattern(0)
+
     
     def _add_default_routines(self):
         default_routines = self.settings['defaults']['imaging']['mappingRoutines']
@@ -115,32 +116,49 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
             # self.pipeline_dialog.drag_function_widget.add_item(*base_args)
         self.pipeline_dialog.accept()
         self.pipeline = self.pipeline_dialog.make_pipeline()
+    
         
-    def run_telescope_scan(self, command: str, *args):
+    def run_telescope_scan(self, command: str, *args) -> int:
+        pd = QProgressDialog('Running...', 'Cancel and Stop Telescope', 0, 100, parent=self)
+        pd.canceled.connect(lambda: self.send_command('stop_telescope'))
+        pd.setAutoClose(False)
+        pd.setAutoReset(False)
+        pd.setValue(0)
+        pd.setWindowTitle('rfsocinterface')
+        pd.setModal(True)
+
+        self.active_command = command
+        self.connect_to_command(f'{command}_maximum', pd.setMaximum)
+        self.connect_to_command(f'{command}_progress', pd.setValue)
+        self.connect_to_command(f'{command}_label', pd.setLabelText)
+
         # Tell the controller to start moving the telescope according to the scan type
-        self._telescope_queue.put([self._client_id, command, *args])
+        self.send_command(command, *args)
+        pd.show()
 
         # Wait until the motor controller indicates the scan is complete
         self.wait_for_telescope_command(
             f'{command}_complete',
             err_msg=f'Error occured while running command "{command}"',
         )
-        _logger.info(f'{command} completed.')
-        self.startMapping.emit()
+        _logger.info(f'{command} completed with data {self._command_data}.')
+        self.disconnect_command(f'{command}_maximum', pd.setMaximum)
+        self.disconnect_command(f'{command}_progress', pd.setValue)
+        self.disconnect_command(f'{command}_label', pd.setLabelText)
+        pd.close()
     
     def make_map(self):
         print('Generating map...')
-        return
-        current_file = self.get_current_file().stem
-        date = current_file[:8]
-        setnum = int(current_file[-4:])
-        p = ProcessedData.from_tod(date, setnum)
+        # current_file = self.get_current_file().stem
+        # date = current_file[:8]
+        # setnum = int(current_file[-4:])
+        # p = ProcessedData.from_tod(date, setnum)
 
-        # TODO: Make Qt widget for mapping , so signals can be emitted after completing 
-        # each routine. Needed for showing progress
-        mapper = Mapper(self.routines)
-        map_data: MapData = mapper(p)
-        map_data.plot(self.show_checkBox.isChecked())
+        # # TODO: Make Qt widget for mapping , so signals can be emitted after completing 
+        # # each routine. Needed for showing progress
+        # mapper = Mapper(self.routines)
+        # map_data: MapData = mapper(p)
+        # map_data.plot(self.show_checkBox.isChecked())
     
     def update_current_file(self) -> Path:
         f = self.save_location_widget.get_chosen_save_location()
@@ -196,6 +214,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.cam_ctrl.take_pic(save=True)
 
         # Dither telescope and collect data in separate thread
-        capture_thread = Thread(target=capture, args=(rfchans, self.active_pattern.call_function))
-        capture_thread.start()
+        capture(rfchans, self.active_pattern.call_function)
+        if self._command_data != 0:  # Value other than 1 idicates the scan stopped early
+            self.make_map()
 
