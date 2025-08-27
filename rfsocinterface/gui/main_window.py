@@ -32,6 +32,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     """The Main program window."""
     channelNamesUpdated = Signal()
     telescopeUpdate = Signal(str, tuple)
+    closeWindow = Signal()
 
     @ensure_path(1)
     def __init__(self, parent: QWidget | None=None):
@@ -50,23 +51,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.setupUi(self)
         self._additional_ui_setup()
+        self.closeWindow.connect(self.close)
     
     def _make_telescope_controller(self):
         from rfsocinterface.core.telescope import make_controller
         # If it already exists, we're good
-        if self.telescope_queue is not None:
+        if self.telescope_controller_process is not None:
             return
-        self.telescope_queue = Queue()
-        self.telescope_parent_conn, self.telescope_child_conn = Pipe(duplex=False)
-        self.telescope_controller_process = Process(target=make_controller, args=(self.telescope_queue,))
+        self.telescope_parent_conn, self.telescope_child_conn = Pipe(duplex=True)
+        self.telescope_controller_process = Process(target=make_controller, args=(self.telescope_child_conn,))
         self.telescope_controller_process.start()
 
-        self._client_id = 'MAIN'
-        self.telescope_queue.put([self._client_id, 'add_connection', self.telescope_child_conn])
-        self.wait_for_telescope_command(
-            'add_connection_succesful',
-            err_msg=f'Error received from telescope controller when adding connection {self._client_id}',
-        )
+        # self._client_id = 'MAIN'
+        # self.telescope_queue.put([self._client_id, 'add_connection', self.telescope_child_conn])
+        # self.wait_for_telescope_command(
+        #     'add_connection_succesful',
+        #     err_msg=f'Error received from telescope controller when adding connection {self._client_id}',
+        # )
         self._listener_thread = Thread(target=self._listener_loop)
         self._listener_thread.start()
 
@@ -184,23 +185,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # self.adjustSize()
     
     def _listener_loop(self):
-        while True:
-            if not self.telescope_parent_conn.poll(1e-4):
-                continue
-            response, *data = self.telescope_parent_conn.recv()
-            _tele_logger.debug(f'{self._client_id} got response: "{response}", data: {data}')
-            match response.lower():
-                case 'err':
-                    raise RuntimeError(f'Error from telescope controller: {data}')
-                case 'done':
-                    break 
-                case _:
-                    self.telescopeUpdate.emit(response, data)
+        try:
+            while True:
+                if not self.telescope_parent_conn.poll(1e-4):
+                    continue
+                response, *data = self.telescope_parent_conn.recv()
+                _tele_logger.debug(f'MAIN got response: "{response}", data: {data}')
+                match response.lower():
+                    case 'err':
+                        criticality = data[0]
+                        if criticality == 'CRITICAL':
+                            raise RuntimeError(f'Critical error from telescope controller: {data[1]}')
+                    case 'done':
+                        break 
+                    case _:
+                        self.telescopeUpdate.emit(response, data)
+        except RuntimeError:
+            self.closeWindow.emit()
                 
 
-    def wait_for_telescope_command(self, command: str, err_msg: str=''):
-        wait_for_telescope_command(self.telescope_parent_conn, self._client_id, command, err_msg=err_msg)
-    
     @Slot(int)
     def update_active_tab(self, index: int):
         """Update the active tab in the settings."""
@@ -219,7 +222,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             tab.close()
 
         if self.telescope_controller_process is not None:
-            self.telescope_queue.put([self._client_id, 'terminate'])
+            self.telescope_parent_conn.send(['terminate'])
             self._listener_thread.join()
             self.telescope_controller_process.join()
         

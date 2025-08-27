@@ -1,9 +1,10 @@
 from typing import TYPE_CHECKING, Iterator, Callable
 from functools import partial
 from multiprocessing import Queue, Pipe
+import time
 
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QCoreApplication
 
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.settings import SettingsError
@@ -53,6 +54,7 @@ class TelescopeMainWidget(MainWidget):
 
         self.main_window.telescopeUpdate.connect(self.handle_telescope)
         self.commands: dict[str, list[Callable]] = {}
+        self._command_data = None  # Data returned from a command that was waited for
 
     def handle_telescope(self, command: str, args: tuple):
         if command in self.commands:
@@ -66,10 +68,19 @@ class TelescopeMainWidget(MainWidget):
         self.commands[command].remove(callback)
     
     def send_command(self, command: str, *data):
-        self.main_window.telescope_queue.put([self.main_window._client_id, command, *data])
+        self.main_window.telescope_parent_conn.send([command, *data])
 
     def wait_for_telescope_command(self, command: str, err_msg: str=''):
-        wait_for_telescope_command(self._conn_parent, self._client_id, command, err_msg=err_msg)
+        wait = True
+        def stop_waiting(data: tuple):
+            nonlocal wait
+            wait = False
+            self._command_data = data
+        self.connect_to_command(command, stop_waiting)
+        while wait:
+            time.sleep(1e-3)
+            QCoreApplication.processEvents()
+        self.disconnect_command(command, stop_waiting)
 
     def closeEvent(self, event):
         return super().closeEvent(event)
