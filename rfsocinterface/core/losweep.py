@@ -119,11 +119,7 @@ class ResonatorData:
         ax.axvline(x=self.fit_f0, color='r', animated=animated)
 
         # Scale the span of the plot based on the frequency ratio
-        new_span = self.span * self.freq_ratio
-        ax.set_xlim(
-            np.mean(self.freq - new_span / 2.0),
-            np.mean(self.freq + new_span / 2.0),
-        )
+        ax.set_xlim(self.freq.min(), self.freq.max())
 
         # Add a label showing the resonator number
         if self.is_onres:
