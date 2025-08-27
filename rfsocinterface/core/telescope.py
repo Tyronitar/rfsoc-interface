@@ -181,7 +181,9 @@ class TelescopeMotorController:
             self.send('done')
             return
         except OSError as e:
-            self.send('err', 'CRITICAL', 'DAQ could not be initialized; Check comport and power supply')
+            msg = 'DAQ could not be initialized; Check comport and power supply'
+            _tele_logger.critical(msg, exc_info=True)
+            self.send('err', 'CRITICAL', msg)
             self.send('done')
             return
 
@@ -205,15 +207,27 @@ class TelescopeMotorController:
             _tele_logger.debug('AZ motor connected to original port')
         else:
             # _logger.error('Could not communicate with AZ controller. System could not initialize.')
-            _tele_logger.critical('Could not communicate with AZ controller. System could not initialize.')
+            msg = 'Could not communicate with AZ controller. System could not initialize.'
+            _tele_logger.critical(msg, exc_info=True)
+            self.send('err', 'CRITICAL', msg)
+            self.send('done')
+            return
+
         self.ser_az = ser_az
         self.az_pos = 0
         self.az_pos = self.get_ser_az_pos()
         _tele_logger.info(f'Telescope AZ position is: {self.az_pos}')
 
         # Zenith Angle
-        self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
-        self.ser_ze.open(host=AKD1, port=ZEPORT)
+        try:
+            self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
+            self.ser_ze.open(host=AKD1, port=ZEPORT)
+        except OSError as e:
+            msg = 'Could not communicate with ZA controller. System could not initialize.'
+            _tele_logger.critical(msg, exc_info=True)
+            self.send('err', 'CRITICAL', msg)
+            self.send('done')
+            return
         self.ser_ze.write(b'DRV.ACTIVE\r\n')
         status_string = self.ser_ze.read_until(b'\r', 0.1)
         # _tele_logger.debug(status_string, type(status_string))
