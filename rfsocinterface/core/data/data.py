@@ -246,24 +246,31 @@ def compute_templates(data: npt.NDArray) -> npt.NDArray:
     return templates
 
 
-def remove_electronics_noise(data: npt.NDArray) -> npt.NDArray:
+def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
     Args:
         data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
             be in the gain/phase basis.
+        fs (float): Sampling frequency of the data.
+        lp_filt_freq (float, optional): Low-pass filter frequency for the templates. Defaults to 10 Hz.
 
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    templates = compute_templates(data)  # N_chan x 2 x N_samples
+    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
+    data_lp = signal.sosfiltfilt(filt_sos, data)
+
+    templates = compute_templates(data_lp)  # N_chan x 2 x N_samples
 
     denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
-    numerator0 = np.einsum('ijk,ik->ij', data, templates[:, 0])  # N_chan x N_detector
+    numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
     corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
     deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
 
-    numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
+    deproj_lp = signal.sosfiltfilt(filt_sos, deproj)
+
+    numerator1 = np.einsum('ijk,ik->ij', deproj_lp, templates[:, 1])  # N_chan x N_detector
     corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
     clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
     return clean_data
@@ -271,31 +278,37 @@ def remove_electronics_noise(data: npt.NDArray) -> npt.NDArray:
 
 def remove_electronics_noise_tables(
     data_gain_phase: tables.Array,
+    fs: float,
+    lp_filt_freq: float=10,
 ):
     """Remove correlated electronics noise templates from data stored with PyTables.
 
     Args:
         data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
             be in the gain/phase basis.
+        fs (float): Sampling frequency of the data.
+        lp_filt_freq (float, optional): Low-pass filter frequency for the templates. Defaults to 10 Hz.
 
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    for i_chan in range(data_gain_phase.shape[0]):
-        clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
-        # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
+    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq=lp_filt_freq)
+    data_gain_phase[:] = clean_data
+    # for i_chan in range(data_gain_phase.shape[0]):
+    #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
+    #     # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
 
-        # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 1 x 2
-        # pdb.set_trace()
-        # numerator0 = np.einsum('jk,k->j', data_gain_phase[i_chan], templates[0])  # N_detector
-        # pdb.set_trace()
-        # corr0 = numerator0 / denominator[:, 0:1]  # N_detector
-        # deproj = data_gain_phase[i_chan] - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
+    #     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 1 x 2
+    #     # pdb.set_trace()
+    #     # numerator0 = np.einsum('jk,k->j', data_gain_phase[i_chan], templates[0])  # N_detector
+    #     # pdb.set_trace()
+    #     # corr0 = numerator0 / denominator[:, 0:1]  # N_detector
+    #     # deproj = data_gain_phase[i_chan] - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
 
-        # numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
-        # pdb.set_trace()
-        # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
-        data_gain_phase[i_chan, :] = clean_data.squeeze()
+    #     # numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
+    #     # pdb.set_trace()
+    #     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+    #     data_gain_phase[i_chan, :] = clean_data.squeeze()
 
 #
 # Data Classes
@@ -507,6 +520,7 @@ class ProcessedData:
         losweep: str | None=None,
         beam_map_mode: bool=False,
         do_electronics_noise_removal: bool=True,
+        electronics_noise_lp_filt_freq: float=10,
         ds_factor: int=1,
     ) -> ProcessedData:
 
@@ -708,11 +722,20 @@ class ProcessedData:
                     detector_data.IQ_to_gain_phase_angle,
                 )
 
+                if i == 0:  # Only should make this once, since it's never changed
+                    time = time_ordered_data.timestamp
+                    time_0 = time - time[0]
+                    total_time = np.max(time_0)
+                    detector_data.timestamp[:] = np.linspace(
+                        0, total_time, n_samples_ds
+                    ) + time[0]
+                fs = 1 / np.median(np.diff(detector_data.timestamp[:]))
+
                 # TODO: Make this optional I guess
                 if do_electronics_noise_removal:
                     # data_gain_phase = np.stack((detector_data.data_gain, detector_data.data_phase), axis=0)
                     # detector_data.data_gain[:], detector_data.data_phase[:] = remove_electronics_noise2(data_gain_phase)
-                    remove_electronics_noise_tables(detector_data.data_gain_phase)
+                    remove_electronics_noise_tables(detector_data.data_gain_phase, fs, lp_filt_freq=electronics_noise_lp_filt_freq)
                 
 
                 # Create calibrated data
@@ -727,17 +750,6 @@ class ProcessedData:
                 #     data_mK = np.concatenate((data_mK, detector_data.data_mK), axis=0)
                 # else:
                 #     data_mK = np.copy(detector_data.data_mK)
-
-
-
-                if i == 0:  # Only should make this once, since it's never changed
-                    time = time_ordered_data.timestamp
-                    time_0 = time - time[0]
-                    total_time = np.max(time_0)
-                    detector_data.timestamp[:] = np.linspace(
-                        0, total_time, n_samples_ds
-                    ) + time[0]
-
                 #now the telescope data to get coordinates
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]

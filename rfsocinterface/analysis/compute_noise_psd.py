@@ -24,7 +24,7 @@ from rfsocinterface.core.data import (
 )
 from rfsocinterface.core.utils import ensure_path, ordinal
 
-XLIM = (0.1, 100)
+XLIM = (0.1, 250)
 YLIM = (-110, -60)
 VALID_BASES = ['gp', 'iq', 'fd']
 
@@ -259,6 +259,9 @@ def create_plot(
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
     ax.plot(xdata, ydata_med, color='b', label=label)
+    flat_spectrum_idx = np.where((xdata > 10) & (xdata < 50))
+    flat_spectrum_noise = np.median(ydata_med[flat_spectrum_idx])
+    plt.hlines(flat_spectrum_noise, XLIM[0], XLIM[1], colors='r', linestyles='dashed', label=f'Flat Spectrum Level = {flat_spectrum_noise:.1f} dBc/Hz')
     ax.fill_between(
         xdata,
         ydata_min,
@@ -268,7 +271,7 @@ def create_plot(
         label=f'{ordinal(int(percentiles[0]))} Percentile to {ordinal(int(percentiles[1]))} Percentile'
     )
     ax.set_xscale('log')
-    ax.set_xlim(0.1,100.)
+    ax.set_xlim(*XLIM)
     ax.set_yscale(yscale)
     if yscale=='linear' and np.median(ydata_min) > -110 and np.median(ydata_max) < -60:
         ax.set_ylim(-110, -60)
@@ -327,9 +330,10 @@ if __name__ == '__main__':
     parser.add_argument('date', type=str, help='Date of the data in YYYYMMDD format.')
     parser.add_argument('setnum', type=int, help='Set number of the data.')
     parser.add_argument('--outlier_sigma', type=float, default=2.0, help='Sigma for outlier detection.')
-    parser.add_argument('--ds_factor', type=int, default=1, help='Downsampling factor.')
+    parser.add_argument('-d', '--ds_factor', type=int, default=1, help='Downsampling factor.')
     parser.add_argument('-f', '--do_flag_outliers', action='store_true', help='Flag outliers in the data.')
     parser.add_argument('-n', '--remove_noise', action='store_true', help='Remove electronics noise from the data.')
+    parser.add_argument('--lp_filt_freq', type=float, default=10, help='Low-pass filter frequency in HZ for electronics noise removal (defaults to 10).')
     parser.add_argument('-b', '--basis', type=str, choices=VALID_BASES, default='gp', help='Basis of the data (gp, iq, fd).')
     parser.add_argument('-p', '--show_plots', action='store_true', help='Show noise plots to screen when finished.')
     parser.add_argument('--block_length', type=float, default=10, help='Nominal block length. Time in seconds for a single "block" of data (defaults to 10s).')
@@ -346,8 +350,9 @@ if __name__ == '__main__':
     basis = args.basis
     nominal_block_length = args.block_length
     cut_time = args.cut_time
+    lp_filt_freq = args.lp_filt_freq
 
-    pd = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise, ds_factor=ds_factor)
+    pd = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise, ds_factor=ds_factor, electronics_noise_lp_filt_freq=lp_filt_freq)
 
 
 
@@ -388,12 +393,13 @@ if __name__ == '__main__':
         nominal_block_length=nominal_block_length,
         cut_time=cut_time,
     )
+    title = args.title
     plot_psd(
         freq,
         noise_psd,
-        f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_psd_{basis}.pdf',
+        f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_psd_{basis}_{title}.pdf',
         basis=basis,
-        title=args.title,
+        title=title,
     )
     if args.show_plots:
         plt.show()
