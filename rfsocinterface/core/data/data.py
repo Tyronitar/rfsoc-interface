@@ -6,6 +6,7 @@ import glob
 import pdb
 import time
 import inspect
+import logging
 
 import tables
 import numpy as np
@@ -15,6 +16,8 @@ import matplotlib.pyplot as plt
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks
 from rfsocinterface.core.losweep import LoSweepData
+
+_logger = logging.getLogger(__name__)
 
 DATA_DIRECTORY = '/data'
 DEFAULT_PARAMS_DIRECTORY = DATA_DIRECTORY + '/params/'
@@ -236,10 +239,23 @@ def compute_templates(data: npt.NDArray) -> npt.NDArray:
     # create a separate correlation matrix for all data channels
     correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
     # calculate the eigenmodes of the correlation matrices
-    _, v = np.linalg.eig(correlation_matrices)
+    eigen_values, v = np.linalg.eig(correlation_matrices)
+    
+    n_modes = 2
+    new_modes = -1
+    while new_modes != 0:
+        log_eigen_values = np.log10(eigen_values[:, n_modes:])
+        mu = np.mean(log_eigen_values, axis=1)
+        sigma = np.std(log_eigen_values, axis=1)
+        large_eigen_values = np.where(log_eigen_values > (mu + 3 * sigma)[:, np.newaxis])
+        i_count = large_eigen_values[0].size - np.sum(large_eigen_values[0])
+        q_count = large_eigen_values[0].size - i_count
+        new_modes = max(i_count, q_count)
+        n_modes += new_modes
+    # print(f'Using {n_modes} eigen modes')
 
-    # create templates based on the 2 largest eigenmodes of each
-    templates = np.einsum('ijk,ijl->ikl', v[:,:,0:2], deproj)
+        # create templates based on the N_mode largest eigenmodes of each
+    templates = np.einsum('ijk,ijl->ikl', v[:,:,0:n_modes], deproj)
 
     # subtract the mean again to be sure
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
@@ -259,21 +275,31 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
     filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
-    data_lp = signal.sosfiltfilt(filt_sos, data)
+    # data_lp = signal.sosfiltfilt(filt_sos, data)
+    data_lp = data
 
     templates = compute_templates(data_lp)  # N_chan x 2 x N_samples
-
+    n_modes = templates.shape[1]
     denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
-    numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
-    corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
-    deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
 
-    deproj_lp = signal.sosfiltfilt(filt_sos, deproj)
+    for i in range(n_modes):
+        numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # N_chan x N_detector
+        corr = numerator / denominator[:, i:i+1]  # N_chan x N_detector
+        data = data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # N_chan x N_detector x N_samples
+        # data_lp = signal.sosfiltfilt(filt_sos, data)
+        data_lp = data
 
-    numerator1 = np.einsum('ijk,ik->ij', deproj_lp, templates[:, 1])  # N_chan x N_detector
-    corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
-    clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
-    return clean_data
+    # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
+    # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
+    # corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
+    # deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
+
+    # deproj_lp = signal.sosfiltfilt(filt_sos, deproj)
+
+    # numerator1 = np.einsum('ijk,ik->ij', deproj_lp, templates[:, 1])  # N_chan x N_detector
+    # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+    # clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
+    return data 
 
 
 def remove_electronics_noise_tables(
@@ -1256,6 +1282,7 @@ def initialize_params_file(
             shape=(n_tones,),
         )
         dfoveref_per_mK[:] = 1
+    _logger.info(f'Initialized params file {params_tile_file}')
 
 
 def update_params_file(
@@ -1263,8 +1290,8 @@ def update_params_file(
     params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
     baseband_freqs: npt.NDArray=None,
     lo_freq: float=None,
-    detector_delta_dx: npt.NDArray=None,
-    detector_delta_dy: npt.NDArray=None,
+    detector_delta_x: npt.NDArray=None,
+    detector_delta_y: npt.NDArray=None,
     detector_beam_ampl: npt.NDArray=None,
     detector_pol: npt.NDArray=None,
     dfoverf_per_mK: npt.NDArray=None,

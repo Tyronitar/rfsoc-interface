@@ -19,18 +19,22 @@ Be231102p2_LO_freq = 300e6
 
 
 if __name__ == "__main__":
-    tile_name = 'Device_aSi1_Channel2'
-    baseband_freqs =  np.load('/home/onrkids/readout/host/params/Default_tone_list.npy')
     lo_freq = 4e8
+    n_tones = 30
+    baseband_freqs = np.concatenate([np.linspace(-246e6, -11e6, n_tones // 2), np.linspace(10e6, 245e6, n_tones // 2)])
+    tile_name = f'{n_tones}_tone_uniform_202050829'
+    # tile_name = 'Device_aSi1_Channel2'
+    # baseband_freqs =  np.load('/home/onrkids/readout/host/params/Default_tone_list.npy')
 
     #needs to be the same length as baseband
-    detdx = np.load('/home/onrkids/readout/host/params/detector_delta_x_tile2.npy')
-    detdy = np.load('/home/onrkids/readout/host/params/detector_delta_y_tile2.npy')
-    chanmask = np.load('/home/onrkids/onrkidpy/params/chanmask.npy')  #needs to be the same length as baseband_freqs, with 1 for the tones we keep and 0 the tones we remove
-    det_beam_ampl = np.load('/home/onrkids/readout/host/params/detector_beam_ampl_tile2.npy')
-    det_pol = np.load('/home/onrkids/readout/host/params/detector_pol_tile2.npy')
-    tone_powers = np.load('/home/onrkids/onrkidpy/params/Device_aSi1_Channel2_max_readout_power_dB.npy')
-    df_overf_per_mK = np.load('/home/onrkids/readout/host/params/dfoverf_per_mK_tile2.npy')
+    # detdx = np.load('/home/onrkids/readout/host/params/detector_delta_x_tile2.npy')
+    # detdy = np.load('/home/onrkids/readout/host/params/detector_delta_y_tile2.npy')
+    # chanmask = np.load('/home/onrkids/onrkidpy/params/chanmask.npy')  #needs to be the same length as baseband_freqs, with 1 for the tones we keep and 0 the tones we remove
+    # det_beam_ampl = np.load('/home/onrkids/readout/host/params/detector_beam_ampl_tile2.npy')
+    # det_pol = np.load('/home/onrkids/readout/host/params/detector_pol_tile2.npy')
+    # tone_powers = np.load('/home/onrkids/onrkidpy/params/Device_aSi1_Channel2_max_readout_power_dB.npy')
+    # df_overf_per_mK = np.load('/home/onrkids/readout/host/params/dfoverf_per_mK_tile2.npy')
+    detdx = detdy = chanmask = det_beam_ampl = det_pol = tone_powers = df_overf_per_mK = None
 
 
     initialize_params_file(tile_name, baseband_freqs, lo_freq, DEFAULT_PARAMS_DIRECTORY)

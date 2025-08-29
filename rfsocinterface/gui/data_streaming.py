@@ -40,9 +40,11 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
     
     def wait_for_TOD(self, duration: int):
         """Wait for the TOD file to be created before processing."""
-        pd = QProgressDialog('Collecting data...', 'Cancel', 0, duration)
-        pd.setWindowModality(Qt.WindowModality.WindowModal)
-        pd.setMinimumDuration(0)
+        pd = QProgressDialog('Collecting data...', 'Cancel', 0, duration, parent=self)
+        pd.setValue(0)
+        pd.setWindowTitle('rfsocinterface')
+        pd.setModal(True)
+        pd.show()
         start = time.time()
         now = time.time()
         while now - start < duration:
