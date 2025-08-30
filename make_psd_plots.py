@@ -7,9 +7,15 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 
+
 from rfsocinterface.core.data import ProcessedData
 from rfsocinterface.analysis.compute_noise_psd import compute_noise_psd, XLIM
 from rfsocinterface.core.utils import ordinal
+
+TICK_SIZE = 20
+AXES_LABEL_SIZE = 22
+TITLE_SIZE = 26
+LEGEND_SIZE = 22
 
 def plot_psd(
         ax: plt.Axes,
@@ -67,7 +73,7 @@ def plot_psd(
     if flat_spectrum:
         flat_spectrum_idx = np.where((xdata > 10) & (xdata < 50))
         flat_spectrum_noise = np.median(ydata_med[flat_spectrum_idx])
-        ax.plot(xdata, ydata_med, color=med_color, label=f'{label}, Flat Spectrum Level = {flat_spectrum_noise:.1f} dBc/Hz')
+        ax.plot(xdata, ydata_med, color=med_color, label=rf'{label} ({flat_spectrum_noise:.1f} dBc Hz$^{{-1}}$)')
         plt.axhline(flat_spectrum_noise, color=med_color, linestyle='dashed')
     else:
         ax.plot(xdata, ydata_med, color=med_color, label=label)
@@ -119,9 +125,9 @@ if __name__ == "__main__":
         ax.set_yscale('linear')
         ax.set_xlim(*XLIM)
         ax.set_ylim(*ylim)
-        ax.set_xlabel('Frequency (Hz)', fontsize=16)
-        ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
-        ax.tick_params(labelsize=14)
+        ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
+        ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
+        ax.tick_params(labelsize=TICK_SIZE)
 
         plot_psd(ax, 'black', 'Raw Spectrum', freq_1000, psd_1000, flat_spectrum=False)
 
@@ -144,8 +150,8 @@ if __name__ == "__main__":
 
         plot_psd(ax, 'b', 'Clean Spectrum', freq_1000, psd_1000, flat_spectrum=False)
 
-        ax.legend(fontsize=14, loc='upper right')
-        ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=22)
+        ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
+        ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=TITLE_SIZE)
 
         plt.tight_layout()
 
@@ -183,7 +189,7 @@ if __name__ == "__main__":
         cut_time=10,
     )
 
-    ylim = (-135, -85)
+    ylim = (-135, -80)
     with PdfPages(f'psd_plots_{loopback}.pdf') as pdf:
         fig = plt.figure(figsize=(9, 6))
         ax = plt.subplot()
@@ -191,18 +197,21 @@ if __name__ == "__main__":
         ax.set_yscale('linear')
         ax.set_xlim(*XLIM)
         ax.set_ylim(*ylim)
-        ax.set_xlabel('Frequency (Hz)', fontsize=16)
-        ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
-        ax.tick_params(labelsize=14)
+        ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
+        ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
+        ax.tick_params(labelsize=TICK_SIZE)
 
 
         plot_psd(ax, 'b', '1000 Tones', freq_1000, psd_1000)
+        plot_psd(ax, 'g', '10 Tones', freq_10, psd_10)
         plot_psd(ax, 'r', '100 Tones', freq_100, psd_100)
-        if loopback == 'Digital':
-            plot_psd(ax, 'g', '10 Tones', freq_10, psd_10)
-        ax.legend(fontsize=14, loc='upper right')
+        handles, labels = plt.gca().get_legend_handles_labels()
+        order = [0,2,1]
+        ax.legend([handles[idx] for idx in order],[labels[idx] for idx in order], fontsize=LEGEND_SIZE, loc='upper right')
 
-        ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=22)
+        # ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
+
+        ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=TITLE_SIZE)
 
         plt.tight_layout()
 

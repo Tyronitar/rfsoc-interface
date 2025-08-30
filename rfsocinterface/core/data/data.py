@@ -232,6 +232,7 @@ def compute_templates(data: npt.NDArray) -> npt.NDArray:
     # subtract the mean from each detector
     # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
     deproj = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    n_tones = data.shape[1]
 
     # select only the middle few detectors
     # deproj = data_meansub[:, 8:1008, :]
@@ -240,22 +241,33 @@ def compute_templates(data: npt.NDArray) -> npt.NDArray:
     correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
     # calculate the eigenmodes of the correlation matrices
     eigen_values, v = np.linalg.eig(correlation_matrices)
+    sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
+    sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
+    sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
     
+    if n_tones < 25:
+        sigma_mult = 1.5
+    elif n_tones < 50:
+        sigma_mult = 2.5
+    else:
+        sigma_mult = 3
+
     n_modes = 2
     new_modes = -1
     while new_modes != 0:
-        log_eigen_values = np.log10(eigen_values[:, n_modes:])
+        log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
         mu = np.mean(log_eigen_values, axis=1)
         sigma = np.std(log_eigen_values, axis=1)
-        large_eigen_values = np.where(log_eigen_values > (mu + 3 * sigma)[:, np.newaxis])
+        large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis])
         i_count = large_eigen_values[0].size - np.sum(large_eigen_values[0])
         q_count = large_eigen_values[0].size - i_count
         new_modes = max(i_count, q_count)
         n_modes += new_modes
-    # print(f'Using {n_modes} eigen modes')
+    # pdb.set_trace()
+    print(f'Using {n_modes} eigen modes')
 
         # create templates based on the N_mode largest eigenmodes of each
-    templates = np.einsum('ijk,ijl->ikl', v[:,:,0:n_modes], deproj)
+    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj)
 
     # subtract the mean again to be sure
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]

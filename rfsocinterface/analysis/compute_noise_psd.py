@@ -151,11 +151,11 @@ def plot_psd(
     match basis.lower():
         case 'gp':
             titles = [title + ' - Gain', title + ' - Phase']
-            ylabel = r'Noise PSD (dBc/Hz)'
+            ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
         case 'iq':
             titles = [title + ' - I', title + ' - Q']
-            ylabel = r'Noise PSD (dBc/Hz)'
+            ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
         case 'fd':
             titles = [title + ' - Frequency', title + ' - Dissipation']
