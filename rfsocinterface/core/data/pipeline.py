@@ -6,6 +6,7 @@ from itertools import chain
 import git
 import json
 import time
+from typing import Callable
 
 import rfsocinterface
 from rfsocinterface.core.data.data import ProcessedData, MapData
@@ -19,6 +20,7 @@ class RoutineApplier:
     def __init__(self, pipeline: DataPipeline):
         self.pipeline = pipeline
         self.routines = []
+        self._run = True
 
     @property
     def options(self):
@@ -31,12 +33,21 @@ class RoutineApplier:
         if not isinstance(routine, DataRoutine):
             raise TypeError(f'Expected an instance of `DataRoutine`, got `{type(routine)}`')
         self.routines.append(routine)
+    
+    def stop(self):
+        self._run = False
 
-    def apply_routines(self, input: ProcessedData):
+    def apply_routines(self, input: ProcessedData, progress_callbacks: tuple[Callable[[str]], Callable]=None):
         for routine in self.routines:
+            if not self._run:
+                return
             _logger.debug(f'Running routine: {routine.__class__.__name__}')
+            if progress_callbacks is not None:
+                progress_callbacks[0](f'Running routine: {routine.__class__.__name__}')
             routine(input)
             self.pipeline.add_to_receipt(routine.get_receipt_entry())
+            if progress_callbacks is not None:
+                progress_callbacks[1]()
 
 
 class DataPipeline:
@@ -75,6 +86,19 @@ class DataPipeline:
         self.shared_values = kwargs
         self.shared_values['ds_factor'] = ds_factor
         self.shared_values['beam_map_mode'] = beam_map_mode
+        self._run = True
+    
+    def __len__(self) -> int:
+        return len(self.pre_processor) + len(self.pre_processor) + \
+              len(self.post_processor) + len(self.mapper)
+    
+    def stop(self):
+        """Cancel the execution of the pipeline."""
+        self._run =  False
+        self.pre_processor.stop()
+        self.processor.stop()
+        self.post_processor.stop()
+        self.mapper.stop()
 
     def synchronize_values(self):
         """Update all routines to use shared values."""
@@ -150,14 +174,24 @@ class DataPipeline:
             case _:
                 pass
 
-    def run_pipeline(self, date: str, setnum: int) -> ProcessedData | MapData:
+    def run_pipeline(
+        self,
+        date: str,
+        setnum: int,
+        progress_callbacks: tuple[Callable[[str]], Callable]=None,
+    ) -> ProcessedData | MapData | None:
         self.synchronize_values()
         _logger.info(f'Beginning data pipeline for {date}set{setnum}')
         start_time = time.time()
         # _logger.info('Runnig pre-processing routines...')
         # self.pre_processor.apply_routines(input)
         # TODO: Propogate effects from pre-processing to the processed file
+
         _logger.info('Running processing routines...')
+        if progress_callbacks is not None:
+            progress_callbacks[0](f'Processing Data\nPerforming initial processing...')
+        if not self._run:  # If the operation was canceled stop
+            return None
         pd = ProcessedData.from_tod(
             date,
             setnum,
@@ -166,16 +200,37 @@ class DataPipeline:
             do_electronics_noise_removal=self.shared_values.get('do_electronics_noise_removal', True),
             max_modes=self.shared_values.get('max_modes', 30),
         )
-        self.processor.apply_routines(pd)
+        if progress_callbacks is not None:
+            progress_callbacks[1]()
+        if not self._run:  # If the operation was canceled stop
+            pd.add_receipt(self.generate_receipt())
+            return pd
+
+        _logger.info('Running processing routines...')
+        self.processor.apply_routines(pd, progress_callbacks=progress_callbacks)
+        if not self._run:  # If the operation was canceled stop
+            pd.add_receipt(self.generate_receipt())
+            return pd
+
         _logger.info('Running post-processing routines...')
-        self.post_processor.apply_routines(pd)
+        self.post_processor.apply_routines(pd, progress_callbacks=progress_callbacks)
+        if not self._run:  # If the operation was canceled stop
+            pd.add_receipt(self.generate_receipt())
+            return pd
+
+        if not self._run:  # If the operation was canceled stop
+            pd.add_receipt(self.generate_receipt())
+            return pd
 
         pd.add_receipt(self.generate_receipt())
+
         output = pd
         if len(self.mapper) > 0:
+            if not self._run:  # If the operation was canceled stop
+                return pd
             _logger.info('Running mapping routines...')
             md = MapData.from_processed_data(pd)
-            self.mapper.apply_routines(md)
+            self.mapper.apply_routines(md, progress_callbacks=progress_callbacks)
             md.add_receipt(self.generate_receipt())
             output = md
         stop_time = time.time()
@@ -185,13 +240,16 @@ class DataPipeline:
 
 if __name__ == '__main__':
     import pdb
-    date = '20250827'
-    setnum = 1003
+    import matplotlib.pyplot as plt
+    date = '20250902'
+    setnum = 1006
+    md = MapData.from_file(date, setnum)
+    pdb.set_trace()
     dataset = 'data_mK'
     beam_map_mode = False
 
     ds_factor = 10
-    hp_filt_freq = 0.2
+    hp_filt_freq = 0.05
     lp_filt_freq = 10
 
 
@@ -206,7 +264,7 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filt_freq,
         dataset=dataset,
         beam_map_mode=beam_map_mode,
-        do_electronics_noise_removal=True,
+        do_electronics_noise_removal=False,
         max_modes=2,
     )
     pipeline.add_routine(hpfilt)
@@ -216,5 +274,6 @@ if __name__ == '__main__':
 
     data = pipeline.run_pipeline(date, setnum)
     data.plot()
+    plt.show()
     pdb.set_trace()
     data.close()

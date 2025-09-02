@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDialogBu
     QPushButton, QSizePolicy, QSpacerItem, QVBoxLayout,
     QWidget)
 
-from rfsocinterface.gui.widgets.canvas import ResonatorCanvas
+from rfsocinterface.gui.widgets.canvas import FigureWidget
 from . import icons_rc
 
 class Ui_Dialog(object):
@@ -37,7 +37,7 @@ class Ui_Dialog(object):
         self.verticalLayout.setObjectName(u"verticalLayout")
         self.verticalLayout_2 = QVBoxLayout()
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
-        self.canvas = ResonatorCanvas(Dialog)
+        self.canvas = FigureWidget(Dialog)
         self.canvas.setObjectName(u"canvas")
         sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         sizePolicy1.setHorizontalStretch(0)

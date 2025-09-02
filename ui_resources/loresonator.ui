@@ -23,7 +23,7 @@
    <item>
     <layout class="QVBoxLayout" name="verticalLayout_2">
      <item>
-      <widget class="ResonatorCanvas" name="canvas" native="true">
+      <widget class="FigureWidget" name="canvas" native="true">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
          <horstretch>0</horstretch>
@@ -135,7 +135,7 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>ResonatorCanvas</class>
+   <class>FigureWidget</class>
    <extends>QWidget</extends>
    <header>rfsocinterface.gui.widgets.canvas</header>
    <container>1</container>

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
     QWidget,
+    QDialog,
 )
 import warnings
 
@@ -83,8 +84,25 @@ class ScrollableCanvas(QScrollArea):
         return super().eventFilter(obj, event)
 
 
-class ResonatorCanvas(QWidget):
-    """Widget for displaying the data for a single resonator and adjusting the fit."""
+class CanvasDialog(QDialog):
+    def __init__(self, parent=None, fig: Figure | None = None):
+        """Initialize a CanvasDialog."""
+        super().__init__(parent)
+        self.canvas = FigureWidget(parent=self, fig=fig)
+        self.setWindowTitle('rfsocinterface')
+        self.vlayout = QVBoxLayout()
+        self.vlayout.addWidget(self.canvas)
+
+        self.setLayout(self.vlayout)
+
+
+    def set_figure(self, fig: Figure | None):
+        """Set the figure of this widget."""
+        self.canvas.set_figure(fig)
+
+
+class FigureWidget(QWidget):
+    """Widget for displaying a single plot and the Matplotlib toolbar."""
 
     def __init__(self, parent=None, fig: Figure | None = None):
         """Initialize a ResonatorCanvas."""
@@ -195,7 +213,7 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     fig = plt.figure()
     ax = plt.subplot()
-    canvas = ResonatorCanvas()
+    canvas = FigureWidget()
     ax.plot(np.random.rand(10))
     ax.axvline(0.5, color='red')
     canvas.set_figure(fig)

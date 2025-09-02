@@ -179,12 +179,12 @@ def analyze_beammap(
 if __name__ == '__main__':
     # date = '20250729'
     # setnum = 1012
-    date = '20250805'
+    date = '20250902'
 
-    setnum = 1002
+    setnum = 1003
 
     md = MapData.from_file(date, setnum, 'r')
-    # pdb.set_trace()
+    pdb.set_trace()
     for i in range(240, 250):
         md.plot_individual(i)
         plt.show(block=False)

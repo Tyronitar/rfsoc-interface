@@ -13,6 +13,7 @@ from kidpy3 import capture
 from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
+from rfsocinterface.gui.widgets.canvas import CanvasDialog
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
@@ -23,6 +24,10 @@ from rfsocinterface.core.data import (
     MapData,
     DataPipeline,
     DataRoutine,
+    CleanTOD,
+    HighPassFilter,
+    LowPassFilter,
+    BinTODIntoMap
 )
 from rfsocinterface.core.data.routines import Mapper
 
@@ -146,12 +151,59 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.disconnect_command(f'{command}_progress', pd.setValue)
         self.disconnect_command(f'{command}_label', pd.setLabelText)
         pd.close()
+
     
     def make_map(self):
         print('Generating map...')
-        # current_file = self.get_current_file().stem
-        # date = current_file[:8]
-        # setnum = int(current_file[-4:])
+        current_file = self.get_current_file().stem
+        date = current_file[:8]
+        setnum = int(current_file[-4:])
+        dataset = 'data_mK'
+        beam_map_mode = False
+
+        ds_factor = 10
+        hp_filt_freq = 0.05
+        lp_filt_freq = 10
+
+
+        hpfilt = HighPassFilter(hp_filt_freq)
+        lpfilt = LowPassFilter(lp_filt_freq)
+        cleaner = CleanTOD()
+        binner = BinTODIntoMap()
+
+        pipeline = DataPipeline(
+            ds_factor=ds_factor,
+            hp_filter_freq=hp_filt_freq,
+            lp_filter_freq=lp_filt_freq,
+            dataset=dataset,
+            beam_map_mode=beam_map_mode,
+            do_electronics_noise_removal=False,
+            max_modes=2,
+        )
+        pipeline.add_routine(hpfilt)
+        pipeline.add_routine(lpfilt)
+        pipeline.add_routine(cleaner)
+        pipeline.add_routine(binner)
+
+        total_steps = len(pipeline) + 1  # Add one for creating the ProcessedData object
+        pd = QProgressDialog('Processing Data...', 'Cancel', 0, total_steps, parent=self)
+        pd.setWindowTitle('rfsocinterface')
+        pd.setValue(0)
+        pd.canceled.connect(pipeline.stop)
+        def update_progress():
+            nonlocal pd
+            pd.setValue(pd.value() + 1)
+
+        pd.show()
+        data = pipeline.run_pipeline(date, setnum, progress_callbacks=(pd.setLabelText, update_progress))
+        if not beam_map_mode and isinstance(data, MapData) and self.show_checkBox.isChecked():
+            fig = data.plot()
+            dialog = CanvasDialog(parent=self, fig=fig)
+            dialog.setWindowTitle('rfsocinterface')
+            dialog.exec_()
+        data.close()
+
+
         # p = ProcessedData.from_tod(date, setnum)
 
         # # TODO: Make Qt widget for mapping , so signals can be emitted after completing 
@@ -215,6 +267,6 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
 
         # Dither telescope and collect data in separate thread
         capture(rfchans, self.active_pattern.call_function)
-        if self._command_data != 0:  # Value other than 1 idicates the scan stopped early
+        if self._command_data == 0:  # Value other than 0 idicates the scan stopped early
             self.make_map()
 

@@ -13,6 +13,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy import signal
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks
 from rfsocinterface.core.losweep import LoSweepData
@@ -1132,7 +1133,7 @@ class MapData(ProcessedData):
     def plot_individual(self, index: int):
         plot_map(self.map[index], self.map_az, self.map_za, self.extent(), title=f'Resonator {index}')
 
-    def plot(self, show: bool=True, save: bool=True):
+    def plot(self, save: bool=True) -> plt.Figure:
 
         hits_map = self.hits_map[:]
         mapp = self.map[:]
@@ -1221,8 +1222,8 @@ class MapData(ProcessedData):
     #    pw.addPlot("Raw Image", this_fig)
         if save:
             this_fig.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
-        if show:
-            plt.show()
+
+        return this_fig
 
 #
 # Parameter Files
