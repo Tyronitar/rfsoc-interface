@@ -22,6 +22,14 @@ if __name__ == '__main__':
     i_res = 241
     pd = ProcessedData.from_file(date, setnum)
     # raw_data = RawDataFile('/data/20250902/20250902_Device_aSi1_Channel2_TOD_set1006.h5', 'r')
+
+    angle_off, units_off = sweep_off.freq_direction()
+    angle_on, units_on = sweep_on.freq_direction()
+    dI_df_off = np.cos(angle_off[:]) * units_off[:]
+    dQ_df_off = np.sin(angle_off[:]) * units_off[:]
+    dI_df_on = np.cos(angle_on[:]) * units_on[:]
+    dQ_df_on = np.sin(angle_on[:]) * units_on[:]
+
     axes[0, 0].plot(sweep_off.data_I[i_res],label='I - Source OFF')
     axes[0, 0].plot(sweep_on.data_I[i_res],label='I - Source ON')
     axes[0, 0].plot(actual_sweep.data_I[i_res],label=f'I - Set {setnum}')
@@ -29,6 +37,8 @@ if __name__ == '__main__':
     axes[0, 0].legend()
     axes[0, 0].set_title(f'Resonator {i_res} - LO Sweep I Data') 
     axes[0, 0].annotate(rf'$\cos{{\theta}} = {np.cos(pd.IQ_to_freq_diss_angle[i_res]):.3f}$', (.05, .7), xycoords='axes fraction')
+    axes[0, 0].annotate(f'dIdf OFF = {dI_df_off[i_res]:.3f}', (.05, .65), xycoords='axes fraction')
+    axes[0, 0].annotate(f'dIdf ON = {dI_df_on[i_res]:.3f}', (.05, .60), xycoords='axes fraction')
 
     axes[0, 1].plot(pd.data_I[i_res])
     axes[0, 1].set_title(f'Resonator {i_res} - Data I')
@@ -40,6 +50,8 @@ if __name__ == '__main__':
     axes[1, 0].legend()
     axes[1, 0].set_title(f'Resonator {i_res} - LO Sweep Q Data')
     axes[1, 0].annotate(rf'$\sin{{\theta}} = {np.sin(pd.IQ_to_freq_diss_angle[i_res]):.3f}$', (.05, .7), xycoords='axes fraction')
+    axes[1, 0].annotate(f'dQdf OFF = {dQ_df_off[i_res]:.3f}', (.05, .65), xycoords='axes fraction')
+    axes[1, 0].annotate(f'dQdf ON = {dQ_df_on[i_res]:.3f}', (.05, .60), xycoords='axes fraction')
 
     axes[1, 1].plot(pd.data_Q[i_res])
     axes[1, 1].set_title(f'Resonator {i_res} - Data Q')
