@@ -3,6 +3,8 @@
 Implementation from https://www.pythonguis.com/faq/pyside6-drag-drop-widgets/
 """
 from itertools import chain
+from enum import StrEnum
+from typing import Any
 
 from PySide6.QtCore import QMimeData, Qt, Signal, QPoint, Slot
 from PySide6.QtGui import QDrag, QPixmap, QMouseEvent, QDropEvent, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent
@@ -13,6 +15,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QVBoxLayout,
     QWidget,
+    QFormLayout,
 )
 
 from rfsocinterface.gui.widgets.divider import VLine, HLine
@@ -257,7 +260,21 @@ class ClickableDragWidget(DragWidget):
         if self.blayout.indexOf(item) != -1:
             self.set_active_item(item)
 
+class SectionType(StrEnum):
+    DRAG = 'drag'
+    MISC = 'misc'
 
+
+class ContainerSection(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.form_layout = QFormLayout()
+        self.items = dict[str, Any]
+        self.setLayout(self.form_layout)
+    
+    def add_item(self, label: str):
+        pass
 
 class MultiSectionDragWidget(QWidget):
     orderChanged = Signal(list, list)
@@ -265,7 +282,7 @@ class MultiSectionDragWidget(QWidget):
     def __init__(self, orientation=Qt.Orientation.Vertical, parent=None):
         super().__init__(parent=parent)
         self.orientation = orientation
-        self.sections: list[DragWidget] = []
+        self.sections: list[tuple[SectionType, DragWidget | QWidget]] = []
         self._items = []
         self._item_data = []
 
@@ -304,15 +321,18 @@ class MultiSectionDragWidget(QWidget):
     def __len__(self) -> int:
         return len(self.sections)
 
-    def add_section(self, label: str) -> DragWidget:
+    def add_section(self, label: str, type: SectionType) -> DragWidget:
         if len(self) > 0:
             if self.orientation == Qt.Orientation.Vertical:
                 self.blayout.addWidget(HLine())
             else:
                 self.blayout.addWidget(VLine())
         section_label = QLabel(label, self)
-        new_section = DragWidget(orientation=self.orientation, parent=self)
-        new_section.orderChanged.connect(self.update_order)
+        if type == SectionType.DRAG:
+            new_section = DragWidget(orientation=self.orientation, parent=self)
+            new_section.orderChanged.connect(self.update_order)
+        else:
+            new_section = QWidget(parent=self)
         self.blayout.addWidget(section_label)
         self.blayout.addWidget(new_section)
         self.sections.append(new_section)
