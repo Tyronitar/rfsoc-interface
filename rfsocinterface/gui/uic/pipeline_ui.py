@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDialogBu
     QGridLayout, QSizePolicy, QSpacerItem, QToolButton,
     QWidget)
 
-from rfsocinterface.gui.widgets.function import MultiSectionDragFunctionWidget
+from rfsocinterface.gui.widgets.drag_and_drop import MultiSectionDragFunctionWidget
 
 class Ui_PipelineDialog(object):
     def setupUi(self, PipelineDialog):

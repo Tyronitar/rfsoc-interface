@@ -18,7 +18,7 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
 from PySide6.QtWidgets import (QApplication, QGridLayout, QSizePolicy, QSpacerItem,
     QToolButton, QWidget)
 
-from rfsocinterface.gui.widgets.function import MultiSectionDragFunctionWidget
+from rfsocinterface.gui.widgets.drag_and_drop import MultiSectionDragFunctionWidget
 
 class Ui_RoutineListWidget(object):
     def setupUi(self, RoutineListWidget):

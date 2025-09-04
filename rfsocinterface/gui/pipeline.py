@@ -9,7 +9,8 @@ from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout
 
-from rfsocinterface.gui.widgets.function import FunctionDragItem
+from rfsocinterface.gui.utils import ArgumentType
+from rfsocinterface.gui.widgets.drag_and_drop import FunctionDragItem
 from rfsocinterface.core.data import (
     DataPipeline,
     ProcessingStage,
@@ -44,10 +45,10 @@ class RoutineSelectionDialog(QDialog):
 
 
 STAGE_TO_SECTION_MAP = {
-    ProcessingStage.PRE_PROCESSING: 0,
-    ProcessingStage.PROCESSING_L1: 1,
-    ProcessingStage.PROCESSING_L2: 2,
-    ProcessingStage.POST_PROCESSING: 3,
+    ProcessingStage.PRE_PROCESSING: 1,
+    ProcessingStage.PROCESSING_L1: 2,
+    ProcessingStage.PROCESSING_L2: 3,
+    ProcessingStage.POST_PROCESSING: 4,
 }
 
 
@@ -64,21 +65,39 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         # self.buttonBox.accepted.connect(self.accept)
         # self.buttonBox.rejected.connect(self.reject)
 
-        self._current_items: list[list[FunctionDragItem]] = [[]] * 4
-        self._new_items: list[list[FunctionDragItem]] = [[]] * 4
-        self._removed_items: list[list[FunctionDragItem]] = [[]] * 4
-        self.drag_function_widget.add_section('Pre-processing')
-        self.drag_function_widget.add_section('Processing Level 1')
-        self.drag_function_widget.add_section('Processing Level 2')
-        self.drag_function_widget.add_section('Post-processing')
-        print('Flushing buffer mayber idk')
+        self._current_items: list[list[FunctionDragItem]] = [[]] * 5
+        self._new_items: list[list[FunctionDragItem]] = [[]] * 5
+        self._removed_items: list[list[FunctionDragItem]] = [[]] * 5
+        self.drag_function_widget.add_argument_section(
+            'General Parameters',
+            [
+                (('Downsampling Factor:', ArgumentType.FLOAT), {'default': '1.0'}),
+                (('Beam Map Mode:', ArgumentType.BOOL), {'default': False}),
+                (('High Pass Filter Frequency:', ArgumentType.FLOAT), {'default': 0.5}),
+                (('Low Pass Filter Frequency:', ArgumentType.FLOAT), {'default': 10.0}),
+                (
+                    ('Dataset for Processing:', ArgumentType.ENUM),
+                    {
+                        'options': [
+                            'data_mK', 'data_freq', 'data_diss', 'data_gain',
+                            'data_phase', 'data_I', 'data_Q',
+                        ],
+                        'default': 'data_mK',
+                    }
+                )
+            ],
+        )
+        self.drag_function_widget.add_drag_section('Pre-processing')
+        self.drag_function_widget.add_drag_section('Processing Level 1')
+        self.drag_function_widget.add_drag_section('Processing Level 2')
+        self.drag_function_widget.add_drag_section('Post-processing')
         # self.drag_function_widget.orderChanged.connect(self.update_order)
 
     def exec(self):
         self._current_items = self.drag_function_widget.items_separated()
-        print(f'Original order: {self.drag_function_widget.item_data_separated()}\n')
-        self._new_items = [[]] * 4
-        self._removed_items = [[]] * 4
+        # print(f'Original order: {self.drag_function_widget.item_data_separated()}\n')
+        self._new_items = [[]] * 5
+        self._removed_items = [[]] * 5
         return super().exec()
     
     # @Slot(list, list)
@@ -98,17 +117,19 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         for section_items in self._removed_items:
             for item in section_items:
                 item.show()
-        self._removed_items = [[]] * 4
+        self._removed_items = [[]] * 5
 
         # Delete new items
         for section_items in self._new_items:
             for item in section_items:
                 self.remove_routine(item)
-        self._new_items = [[]] * 4
+        self._new_items = [[]] * 5
 
         # Restore the order of the original items
         # print(f'New order: {self.drag_function_widget.item_data_separated()}\n')
         for i_sec, section_items in enumerate(self._current_items):
+            if i_sec == 0:
+                continue  # Skip general parameters
             section = self.drag_function_widget.drag.sections[i_sec]
             for i, item in enumerate(section_items):
                 section.blayout.insertWidget(i, item)
@@ -120,8 +141,8 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         for section in self._removed_items:
             for item in section:
                 self.remove_routine(item)
-        self._new_items = [[]] * 4  # New items were already added
-        self._removed_items = [[]] * 4
+        self._new_items = [[]] * 5  # New items were already added
+        self._removed_items = [[]] * 5
 
         super().accept()
 

@@ -4,7 +4,7 @@ Implementation from https://www.pythonguis.com/faq/pyside6-drag-drop-widgets/
 """
 from itertools import chain
 from enum import StrEnum
-from typing import Any
+from typing import Callable, Concatenate, overload
 
 from PySide6.QtCore import QMimeData, Qt, Signal, QPoint, Slot
 from PySide6.QtGui import QDrag, QPixmap, QMouseEvent, QDropEvent, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent
@@ -13,12 +13,15 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
-    QFormLayout,
 )
 
+from rfsocinterface.core.utils import P, R, Q
+from rfsocinterface.gui.utils import ArgumentType
 from rfsocinterface.gui.widgets.divider import VLine, HLine
+from rfsocinterface.gui.widgets.function import ArgumentContainer, FunctionWidget
 
 DRAG_ITEM_CSS = """
         QLabel {
@@ -56,6 +59,8 @@ class DragTargetIndicator(QLabel):
 
 
 class DragItem(QLabel):
+    dataChanged = Signal(object)
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setContentsMargins(25, 5, 25, 5)
@@ -66,6 +71,7 @@ class DragItem(QLabel):
 
     def set_data(self, data):
         self.data = data
+        self.dataChanged.emit(data)
 
     def mouseMoveEvent(self, e: QMouseEvent):
         if e.buttons() == Qt.MouseButton.LeftButton:
@@ -262,19 +268,8 @@ class ClickableDragWidget(DragWidget):
 
 class SectionType(StrEnum):
     DRAG = 'drag'
-    MISC = 'misc'
+    ARGUMENT = 'argument'
 
-
-class ContainerSection(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-        self.form_layout = QFormLayout()
-        self.items = dict[str, Any]
-        self.setLayout(self.form_layout)
-    
-    def add_item(self, label: str):
-        pass
 
 class MultiSectionDragWidget(QWidget):
     orderChanged = Signal(list, list)
@@ -282,7 +277,7 @@ class MultiSectionDragWidget(QWidget):
     def __init__(self, orientation=Qt.Orientation.Vertical, parent=None):
         super().__init__(parent=parent)
         self.orientation = orientation
-        self.sections: list[tuple[SectionType, DragWidget | QWidget]] = []
+        self.sections: list[tuple[SectionType, DragWidget | ArgumentContainer]] = []
         self._items = []
         self._item_data = []
 
@@ -320,32 +315,52 @@ class MultiSectionDragWidget(QWidget):
 
     def __len__(self) -> int:
         return len(self.sections)
-
-    def add_section(self, label: str, type: SectionType) -> DragWidget:
+    
+    def add_drag_section(self, label: str) -> DragWidget:
         if len(self) > 0:
             if self.orientation == Qt.Orientation.Vertical:
                 self.blayout.addWidget(HLine())
             else:
                 self.blayout.addWidget(VLine())
         section_label = QLabel(label, self)
-        if type == SectionType.DRAG:
-            new_section = DragWidget(orientation=self.orientation, parent=self)
-            new_section.orderChanged.connect(self.update_order)
-        else:
-            new_section = QWidget(parent=self)
+        new_section = DragWidget(orientation=self.orientation, parent=self)
+        new_section.orderChanged.connect(self.update_order)
         self.blayout.addWidget(section_label)
         self.blayout.addWidget(new_section)
         self.sections.append(new_section)
         self._items.append([])
         self._item_data.append([])
         return new_section
+
+    def add_argument_section(self, label: str, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[] ) -> ArgumentContainer:
+        if len(self) > 0:
+            if self.orientation == Qt.Orientation.Vertical:
+                self.blayout.addWidget(HLine())
+            else:
+                self.blayout.addWidget(VLine())
+        section_label = QLabel(label, self)
+        new_section = ArgumentContainer(args, parent=self)
+        new_section.valuesUpdated.connect(self.update_order)
+        self.blayout.addWidget(section_label)
+        self.blayout.addWidget(new_section)
+        self.sections.append(new_section)
+        self._items.append([])
+        self._item_data.append([])
+        new_section.emit_items()
+        return new_section
     
     def add_item(self, i_section: int, item: DragItem):
+        sec = self.sections[i_section]
+        if not isinstance(sec, DragWidget):
+            raise TypeError(f"Section {i_section} is not a DragWidget, cannot add item.")
         self.sections[i_section].add_item(item)
         self._items[i_section].append(item)
         self._item_data[i_section].append(item.data)
 
     def remove_item(self, i_section: int, item: DragItem):
+        sec = self.sections[i_section]
+        if not isinstance(sec, DragWidget):
+            raise TypeError(f"Section {i_section} is not a DragWidget, cannot remove item.")
         self.sections[i_section].remove_item(item)
         self._items[i_section].remove(item)
         self._item_data[i_section].remove(item.data)
@@ -358,7 +373,7 @@ class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
         super().__init__(orientation, parent)
         self.active_item = (-1, None)
 
-    def add_section(self, label: str) -> ClickableDragWidget:
+    def add_drag_section(self, label: str) -> ClickableDragWidget:
         if len(self) > 0:
             if self.orientation == Qt.Orientation.Vertical:
                 self.blayout.addWidget(HLine())
@@ -387,43 +402,316 @@ class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
         self.activeItemChanged.emit(section, item)
 
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.multi_drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Horizontal, parent=self)
-        n_sections = 2
-        counter = 0
-        for i_sec, section_name in enumerate([f'Section {i + 1}' for i in range(n_sections)]):
-            self.multi_drag.add_section(section_name)
-            for l in ["A", "B", "C", "D"]:
-                item = ClickableDragItem(l)
-                item.set_data(counter)  # Store the data.
-                counter += 1
-                self.multi_drag.add_item(i_sec, item)
-        # self.drag = DragWidget(orientation=Qt.Orientation.Vertical)
-        # for n, l in enumerate(["A", "B", "C", "D"]):
-        #     item = DragItem(l)
-        #     item.set_data(n)  # Store the data.
-        #     self.drag.add_item(item)
+class FunctionDragItem(ClickableDragItem):
+    def __init__(
+            self,
+            fn: Callable[P, R],
+            args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[],
+            label: str = None,
+            *init_args,
+            **init_kwargs,
+    ):
+        if not label:
+            label = fn.__name__
+        super().__init__(label, *init_args, **init_kwargs)
+        self.fn = fn
+        self.args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=args
+        self.func_widget = FunctionWidget(self.fn, self.args, parent=self.parent())
+        self.set_data(self.func_widget.get_inputs())
+        self.func_widget.valuesUpdated.connect(lambda _, data: self.set_data(data))
 
-        # Print out the changed order.
-        # self.drag.orderChanged.connect(print)
-        self.multi_drag.orderChanged.connect(lambda _, l: print(l))
 
-        container = QWidget()
-        layout = QVBoxLayout()
-        layout.addStretch(1)
-        # layout.addWidget(self.drag)
-        layout.addWidget(self.multi_drag)
-        layout.addStretch(1)
-        container.setLayout(layout)
+class DragFunctionWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.drag = ClickableDragWidget(orientation=Qt.Orientation.Vertical)
 
-        self.setCentralWidget(container)
+        hlayout = QHBoxLayout()
+
+        self.drop_container = QWidget(parent=self)
+        drop_vlayout = QVBoxLayout()
+        drop_vlayout.addStretch(1)
+        drop_vlayout.addWidget(self.drag)
+        drop_vlayout.addStretch(1)
+        self.drop_container.setLayout(drop_vlayout)
+        hlayout.addWidget(self.drop_container)
+
+        hlayout.addStretch(1)
+
+        # scrollArea.layout().setContentsMargins(0, 0, 0, 0)
+        self.func_container = QStackedWidget(parent=self)
+        placheolder_widget = QWidget(parent=self)
+        self.func_container.addWidget(placheolder_widget)
+        hlayout.addWidget(self.func_container)
+
+        # self.setCentralWidget(drop_container)
+        self.setLayout(hlayout)
+
+    @property
+    def active_item(self) -> FunctionDragItem | None:
+        return self.drag.active_item
+
+    @overload
+    def add_item(self, item: FunctionDragItem) -> FunctionDragItem:
+        pass
+
+    @overload
+    def add_item(self, label: str, fn: Callable, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]) -> FunctionDragItem:
+        pass
+
+    def add_item(self, *data):
+        if not isinstance(data[0], FunctionDragItem):
+            label, fn, args = data
+            item = FunctionDragItem(fn, args, label=label, parent=self)
+            item.set_data(fn.__name__)
+        else:
+            item = data[0]
+        self.drag.add_item(item)
+        item.clicked.connect(self.display_args)
+        self.func_container.addWidget(item.func_widget)
+        item.func_widget.valuesUpdated.connect(self.drag.orderChanged.emit)
+        return item
+
+    def clear(self):
+        for item in self.drag.items():
+            self.drag.remove_item(item)
+            self.func_container.removeWidget(item.func_widget)
+        self.func_container.setCurrentIndex(0)
+
+    def remove_item(self, item: FunctionDragItem):
+        self.drag.remove_item(item)
+        self.func_container.removeWidget(item.func_widget)
+        item.deleteLater()
+        self.func_container.setCurrentIndex(0)
+
+    def items(self) -> list[FunctionDragItem]:
+        return self.drag.items()
+
+    @Slot()
+    def display_args(self):
+        item: FunctionDragItem = self.sender()
+        self.func_container.setCurrentIndex(self.func_container.indexOf(item.func_widget))
+
+    def mousePressEvent(self, event: QMouseEvent):
+        child = self.childAt(event.position())
+        # Clicking off of the list items or parameters should deselect
+        if child is None or child == self.drop_container or child == self.drag:
+            self.drag.set_active_item(None)
+            self.func_container.setCurrentIndex(0)
+        return super().mousePressEvent(event)
+
+
+
+
+class MultiSectionDragFunctionWidget(QWidget):
+    orderChanged = Signal(list, list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Vertical)
+        self.drag.orderChanged.connect(self.orderChanged.emit)
+        self.drag.orderChanged.connect(lambda _, l: print(l))
+
+        hlayout = QHBoxLayout()
+
+        self.drop_container = QWidget(parent=self)
+        drop_vlayout = QVBoxLayout()
+        drop_vlayout.addStretch(1)
+        drop_vlayout.addWidget(self.drag)
+        drop_vlayout.addStretch(1)
+        self.drop_container.setLayout(drop_vlayout)
+        hlayout.addWidget(self.drop_container)
+
+        hlayout.addStretch(1)
+
+        # scrollArea.layout().setContentsMargins(0, 0, 0, 0)
+        self.func_container = QStackedWidget(parent=self)
+        placheolder_widget = QWidget(parent=self)
+        self.func_container.addWidget(placheolder_widget)
+        hlayout.addWidget(self.func_container)
+
+        # self.setCentralWidget(drop_container)
+        self.setLayout(hlayout)
+
+    @property
+    def active_item(self) -> tuple[int, FunctionDragItem | None]:
+        return self.drag.active_item
+
+    def add_drag_section(self, label: str):
+        self.drag.add_drag_section(label)
+    
+    def add_argument_section(self, label: str, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]):
+        self.drag.add_argument_section(label, args)
+
+    @overload
+    def add_item(self, i_section: int, item: FunctionDragItem) -> FunctionDragItem:
+        pass
+
+    @overload
+    def add_item(self, i_section: int, label: str, fn: Callable, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]) -> FunctionDragItem:
+        pass
+
+    def add_item(self, *data):
+        if not isinstance(data[1], FunctionDragItem):
+            label, fn, args = data[1:]
+            item = FunctionDragItem(fn, args, label=label, parent=self)
+            # item.set_data(fn.__name__)
+        else:
+            item = data[1]
+        self.drag.add_item(data[0], item)
+        item.clicked.connect(self.display_args)
+        self.func_container.addWidget(item.func_widget)
+        # item.func_widget.valuesUpdated.connect(self.drag.update_order)
+        return item
+
+    def clear(self):
+        for i_sec, sec in enumerate(self.drag.sections):
+            for item in sec.items():
+                self.drag.remove_item(i_sec, item)
+                self.func_container.removeWidget(item.func_widget)
+        self.func_container.setCurrentIndex(0)
+
+    def remove_item(self, i_section: int, item: FunctionDragItem):
+        self.drag.remove_item(i_section, item)
+        self.func_container.removeWidget(item.func_widget)
+        item.deleteLater()
+        self.func_container.setCurrentIndex(0)
+
+    def items(self) -> list[FunctionDragItem]:
+        return self.drag.items()
+
+    def items_separated(self) -> list[list[FunctionDragItem]]:
+        return self.drag.items_separated()
+
+    def item_data_separated(self) -> list[list]:
+        return self.drag.get_item_data_separated()
+
+
+    @Slot()
+    def display_args(self):
+        item: FunctionDragItem = self.sender()
+        self.func_container.setCurrentIndex(self.func_container.indexOf(item.func_widget))
+
+    def mousePressEvent(self, event: QMouseEvent):
+        child = self.childAt(event.position())
+        # Clicking off of the list items or parameters should deselect
+        if child is None or child == self.drop_container or child == self.drag:
+            self.drag.set_active_item(-1, None)
+            self.func_container.setCurrentIndex(0)
+        return super().mousePressEvent(event)
 
 
 if __name__ == '__main__':
-    app = QApplication([])
-    w = MainWindow()
-    w.show()
+    from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout
+    import numpy as np
+    # class MainWindow(QMainWindow):
+    #     def __init__(self):
+    #         super().__init__()
+    #         self.multi_drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Vertical, parent=self)
+    #         n_sections = 2
+    #         counter = 0
+    #         for i_sec, section_name in enumerate([f'Section {i + 1}' for i in range(n_sections)]):
+    #             self.multi_drag.add_drag_section(section_name)
+    #             for l in ["A", "B", "C", "D"]:
+    #                 item = ClickableDragItem(l)
+    #                 item.set_data(counter)  # Store the data.
+    #                 counter += 1
+    #                 self.multi_drag.add_item(i_sec, item)
+    #         self.multi_drag.add_argument_section(
+    #             'Parameters',
+    #             [
+    #                 (('String: ', (ArgumentType.STR,)), {'default': 'Hello'}),
+    #                 (('Number: ', (ArgumentType.FLOAT,)), {'default': 2.25}),
+    #                 (('Numbers: ', (ArgumentType.FLOAT, ArgumentType.FLOAT)), {'default': (1.0, 2.0)}),
+    #                 (('Enum: ', (ArgumentType.ENUM,)), {'options': ['hello', 'world', 1], 'default': 'hello'}),
+    #                 (('Check: ', (ArgumentType.BOOL,)), {'default': True}),
+    #             ],
+    #         )
+    #         # self.drag = DragWidget(orientation=Qt.Orientation.Vertical)
+    #         # for n, l in enumerate(["A", "B", "C", "D"]):
+    #         #     item = DragItem(l)
+    #         #     item.set_data(n)  # Store the data.
+    #         #     self.drag.add_item(item)
 
+    #         # Print out the changed order.
+    #         # self.drag.orderChanged.connect(print)
+    #         self.multi_drag.orderChanged.connect(lambda _, l: print(l))
+    #         data_butt = QPushButton('Print Data', parent=self)
+    #         data_butt.clicked.connect(lambda: print(self.multi_drag.get_item_data()))
+    #         item_butt = QPushButton('Print Items', parent=self)
+    #         item_butt.clicked.connect(lambda: print(self.multi_drag.items()))
+            
+
+
+    #         container = QWidget()
+    #         layout = QVBoxLayout()
+    #         layout.addStretch(1)
+    #         # layout.addWidget(self.drag)
+    #         layout.addWidget(self.multi_drag)
+    #         layout.addStretch(1)
+    #         layout.addWidget(data_butt)
+    #         layout.addWidget(item_butt)
+    #         container.setLayout(layout)
+
+    #         self.setCentralWidget(container)
+
+    # app = QApplication([])
+    # w = MainWindow()
+    # w.show()
+
+    # app.exec()
+    enum_choices = ['hello', 'world']
+
+    def dummy_func(string: str, num: float, nums: tuple[float, float], enum: str, check: bool):
+        assert enum in enum_choices
+        print(f'"{string}", {num}, {nums}, {enum}, {check}')
+
+
+    def root(n: float) -> float:
+        return np.sqrt(n)
+
+
+    app = QApplication()
+    w = QMainWindow()
+    # ...
+    drag = MultiSectionDragFunctionWidget(parent=w)
+    w.setCentralWidget(drag)
+
+    n_sections = 2
+    counter = 0
+    for i_sec, section_name in enumerate([f'Section {i + 1}' for i in range(n_sections)]):
+        drag.add_drag_section(section_name)
+        drag.add_item(
+            i_sec,
+            'Square Root',
+            root,
+            [
+                (('Number: ', ArgumentType.FLOAT), {'default': 2.25}),
+            ],
+        )
+        drag.add_item(
+            i_sec,
+            'Dummy Func',
+            dummy_func,
+            [
+                (('Str Arg: ', ArgumentType.STR), {'default': ('default string',)}),
+                (('Float Arg: ', ArgumentType.FLOAT), {'default': (10.2,)}),
+                (('Double Float Arg: ', (ArgumentType.FLOAT, ArgumentType.FLOAT)), {'default': (10.2, 64.7)}),
+                (('Enum Arg: ', ArgumentType.ENUM), {'options': enum_choices, 'default': ('world',)}),
+                (('Bool Arg', ArgumentType.BOOL), {'default': (True,)}),
+            ],
+        )
+    drag.add_argument_section(
+        'Parameters',
+        [
+            (('String: ', (ArgumentType.STR,)), {'default': 'Hello'}),
+            (('Number: ', (ArgumentType.FLOAT,)), {'default': 2.25}),
+            (('Numbers: ', (ArgumentType.FLOAT, ArgumentType.FLOAT)), {'default': (1.0, 2.0)}),
+            (('Enum: ', (ArgumentType.ENUM,)), {'options': ['hello', 'world', 1], 'default': 'hello'}),
+            (('Check: ', (ArgumentType.BOOL,)), {'default': True}),
+        ],
+    )
+
+    w.show()
     app.exec()
+

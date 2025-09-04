@@ -24,7 +24,6 @@ from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 # Useful Aliases
 tr = QCoreApplication.translate
 
-
 class ArgumentType(IntEnum):
     """Class for specifying the type of argument to add to a GUI."""
     BOOL = 0
@@ -51,15 +50,24 @@ class ArgumentType(IntEnum):
             case ArgumentType.BOOL:
                 return QCheckBox.isChecked
             case ArgumentType.ENUM:
-                return QComboBox.currentText
+                return QComboBox.currentData
             case ArgumentType.INT:
-                return (lambda wid: get_num_value(wid, int))
+                return (lambda wid: get_num_value(wid, int, True))
             case ArgumentType.FLOAT:
-                return (lambda wid: get_num_value(wid, float))
+                return (lambda wid: get_num_value(wid, float, True))
             case ArgumentType.FILE:
                 return FileSelectWidget.text
             case _:
                 return QLineEdit.text
+    
+    def updated_signal(self) -> str:
+        match self.value:
+            case ArgumentType.BOOL:
+                return 'checkStateChanged'
+            case ArgumentType.ENUM:
+                return 'currentTextChanged'
+            case _:
+                return 'textEdited'
 
 DATA_ROUTINE_FUNCTION_WIDGET_ARGS = {
     'CleanTOD': (
