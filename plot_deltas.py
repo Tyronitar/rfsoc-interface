@@ -28,7 +28,7 @@ def main():
 
         plt.close("all")
         plt.figure(figsize=(12, 6))
-        plt.plot()
+        plt.plot(ts_delta[1:])
         plt.xlabel("Sample")
         plt.ylabel("Δ Timestamp (Seconds)")
         plt.savefig("ts_delta.png")
