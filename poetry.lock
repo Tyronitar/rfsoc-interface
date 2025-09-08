@@ -903,13 +903,13 @@ files = [
 
 [[package]]
 name = "kidpy3"
-version = "0.3.0"
+version = "0.3.2"
 description = ""
 optional = false
 python-versions = ">=3.12"
 groups = ["main"]
 files = [
-    {file = "kidpy3-0.3.0-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:2b91be9a03db1d7a63028d53ef0445e370638ba7372f356b2f2efc6975f007c5"},
+    {file = "kidpy3-0.3.2-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:c810be593e14bac7cb4ec531bcf84bb90a9a55fea5e3bc96ef8b6a550f5a739a"},
 ]
 
 [package.dependencies]
@@ -927,7 +927,7 @@ tqdm = ">=4.67.1,<5.0.0"
 
 [package.source]
 type = "file"
-url = "../../Downloads/kidpy3-0.3.0-cp312-cp312-manylinux_2_35_x86_64.whl"
+url = "../../readout_cdatacap/dist/kidpy3-0.3.2-cp312-cp312-manylinux_2_35_x86_64.whl"
 
 [[package]]
 name = "kiwisolver"
@@ -2794,4 +2794,4 @@ test = ["coverage", "flake8", "flake8-junit-report", "mypy", "unittest-xml-repor
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "1f418c636f0a662e1497377ddae1af22c13dfe221948140c7954f168bb79c132"
+content-hash = "ab1f028d60246186cb6f2a9142158c11ff288fdf0adf06cbd487aa0657bbd198"
