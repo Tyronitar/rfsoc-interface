@@ -14,5 +14,6 @@
     <file>stop.png</file>
     <file>error.png</file>
     <file alias="external-link.svg">icons8-external-link.svg</file>
+    <file>logo.svg</file>
   </qresource>
 </RCC>

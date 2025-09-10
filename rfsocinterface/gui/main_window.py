@@ -9,7 +9,7 @@ from threading import Thread
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QGridLayout, QTabWidget
 from PySide6.QtCore import Qt, QCoreApplication, Signal, Slot
 from PySide6.QtGui import QScreen
-import PySide6.QtGui as QtGui
+from PySide6.QtGui import QIcon
 
 # from kidpy3 import RFSOC
 from rfsocinterface.core.settings import Settings, SettingsError, convert_to_kidy_format
@@ -135,6 +135,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabs[TabName.IMAGING] = self.imaging_widget
     
     def _additional_ui_setup(self):
+        self.setWindowIcon(QIcon(':/icons/rfsoc_icon.png'))
         self.tabWidget = QTabWidget(self.centralwidget)
         self.tabWidget.setObjectName(u"tabWidget")
 
