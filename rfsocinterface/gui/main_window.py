@@ -135,7 +135,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabs[TabName.IMAGING] = self.imaging_widget
     
     def _additional_ui_setup(self):
-        self.setWindowIcon(QIcon(':/icons/rfsoc_icon.png'))
         self.tabWidget = QTabWidget(self.centralwidget)
         self.tabWidget.setObjectName(u"tabWidget")
 
