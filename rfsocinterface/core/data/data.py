@@ -639,7 +639,11 @@ class ProcessedData:
             with tables.open_file(file, 'r') as f:
                 raw_global_data = f.root.global_data
                 raw_dimension = f.root.dimension
-                n_samples = raw_dimension.n_sample[0]
+                time_ordered_data = f.root.time_ordered_data
+
+                # NOTE: Temporary fix until n_sample is fixed in the raw files
+                # n_samples = raw_dimension.n_sample[0]
+                n_samples = time_ordered_data.adc_i.shape[-1]
                 n_samples_ds = int(np.ceil(n_samples / ds_factor))
                 n_tones = raw_dimension.n_tones[0]
 
@@ -729,7 +733,6 @@ class ProcessedData:
 
                 #create the calibrated datastreams-----------------------------------------------------------
                 #first get the I and Q data
-                time_ordered_data = f.root.time_ordered_data
                 # data_I = np.ndarray.astype(time_ordered_data.adc_i, np.float64)
                 # data_Q = np.ndarray.astype(time_ordered_data.adc_q, np.float64)
 
