@@ -185,10 +185,15 @@ class DataPipeline:
 
 if __name__ == '__main__':
     import pdb
-    date = '20250827'
-    setnum = 1003
+    import matplotlib.pyplot as plt
+    date = '20250912'
+    setnum = 1014
+    # date = '20250513'
+    # setnum = 1008
+    # md = MapData.from_file(date, setnum)
+    # pdb.set_trace()
     dataset = 'data_mK'
-    beam_map_mode = False
+    beam_map_mode = True
 
     ds_factor = 10
     hp_filt_freq = 0.2
@@ -211,10 +216,11 @@ if __name__ == '__main__':
     )
     pipeline.add_routine(hpfilt)
     pipeline.add_routine(lpfilt)
-    pipeline.add_routine(cleaner)
+    # pipeline.add_routine(cleaner)
     pipeline.add_routine(binner)
 
     data = pipeline.run_pipeline(date, setnum)
-    data.plot()
+    # data.plot()
+    # plt.show()
     pdb.set_trace()
     data.close()
