@@ -107,7 +107,7 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
     
     def make_pipeline(self) -> DataPipeline:
         new_pipeline = DataPipeline()
-        for item in self.drag_function_widget.items():
+        for item in self.drag_function_widget.drag_items():
             new_pipeline.add_routine(item.func_widget.call_function())
         return new_pipeline
     
