@@ -250,7 +250,7 @@ class RFSOCWrapper:
         """Get the last attenuations for all addresses from the settings file."""
         for addr in range(1, 5):
             channel = 1 if addr < 3 else 2
-            attenuator = 'rfin' if addr % 2 == 1 else 'rfout'
+            attenuator = 'rfin' if addr % 2 == 0 else 'rfout'
             value = self.channel_settings(channel)[attenuator]
             _logger.info(f'RFSoC {self.name} got last value for "{attenuator}" for channel {channel}: {value:.2f} dB')
             self.set_atten(addr, value)
@@ -277,7 +277,7 @@ class RFSOCWrapper:
             rfchan.attenuator_settings = old_atten
 
             # Update settings
-            attenuator = 'rfin' if addr % 2 == 1 else 'rfout'
+            attenuator = 'rfin' if addr % 2 == 0 else 'rfout'
             self.channel_settings(channel)[attenuator] = value
         else:
             _logger.error(f'RFSoC {self.name} failed to set attenuation for address {addr}. Message: "{msg}"')
