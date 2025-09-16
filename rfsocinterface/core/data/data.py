@@ -57,9 +57,10 @@ def test_node(f: tables.File, name: str) -> bool:
 # File Templates
 #
 
-def get_tod_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_*_TOD_set{setnum}.h5'
-
+def get_tod_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, chan_name: str=None) -> str:
+    if chan_name is None:
+        chan_name = '*'
+    return f'{data_dir}/{date}/{date}_{chan_name}_TOD_set{setnum}.h5'
 
 def get_azel_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
     return f'{data_dir}/{date}/{date}_AZEL_set{setnum}.h5'

@@ -20,7 +20,8 @@ from rfsocinterface.core.data import (
     ProcessedData,
     DATA_DIRECTORY,
     DataRoutine,
-    ProcessingStage
+    ProcessingStage,
+    get_tod_template
 )
 from rfsocinterface.core.utils import ensure_path, ordinal
 
@@ -166,7 +167,7 @@ def plot_psd(
 
     figs = []
     if basis.lower() == 'fd':
-        fig = plot_df_over_f(freq, psd, n_resonators=1, ylabel=ylabel, title=title)
+        fig = plot_df_over_f(freq, psd, resonators=[0], ylabel=ylabel, title=title)
         figs.append(fig)
         return figs
 
@@ -217,18 +218,18 @@ def plot_df_over_f(
     y_data: npt.ArrayLike,
     title: str | None=None,
     ylabel: str='Noise PSD (df / f)',
-    n_resonators: int=1,
+    resonators: list[int]=[0],
 ) -> Figure:
     """Create a plot of the noise PSD in df/f units."""
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
-    for i in range(n_resonators):
+    for i_res in resonators:
         for j, label in enumerate(['Frequency', 'Dissipation']):
-            ax.plot(x_data, y_data[j, i], label=f'Resonator {i} - {label}')
+            ax.plot(x_data, y_data[j, i_res], label=f'Resonator {i_res} - {label}')
     ax.set_xscale('log')
     ax.set_xlim(0.1,100.)
     ax.set_yscale('log')
-    ax.set_ylim(1e-17,1e-15)
+    # ax.set_ylim(1e-17,1e-15)
     
     ax.set_xlabel('Frequency (Hz)', fontsize=16)
             
@@ -339,6 +340,8 @@ if __name__ == '__main__':
     parser.add_argument('--block_length', type=float, default=10, help='Nominal block length. Time in seconds for a single "block" of data (defaults to 10s).')
     parser.add_argument('--cut_time', type=float, default=10, help='Time in seconds to cut from teh ends of the data (defaults to 10).')
     parser.add_argument('--title', type=str, default='Noise PSD', help='Title to use for the plots')
+    parser.add_argument('-o', '--output', type=str, default='', help='Output filename (defaults to DATE_setSETNUM_psd_BASIS_TITLE.pdf).')
+    parser.add_argument('--max_eigenmodes', type=int, default=30, help='Maximum number of eigenmodes to use for electronics noise removal (defaults to 30).')
     args = parser.parse_args()
 
     date = args.date
@@ -351,8 +354,21 @@ if __name__ == '__main__':
     nominal_block_length = args.block_length
     cut_time = args.cut_time
     lp_filt_freq = args.lp_filt_freq
+    max_modes = args.max_eigenmodes
+    title = args.title
+    if args.output == '':
+        output_file = f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_psd_{basis}_{title}.pdf'
+    else:
+        output = args.output
 
-    pd = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise, ds_factor=ds_factor, electronics_noise_lp_filt_freq=lp_filt_freq)
+    pd = ProcessedData.from_tod(
+        date,
+        setnum,
+        do_electronics_noise_removal=remove_noise,
+        max_modes=max_modes,
+        ds_factor=ds_factor,
+        electronics_noise_lp_filt_freq=lp_filt_freq,
+    )
 
 
 
@@ -364,7 +380,10 @@ if __name__ == '__main__':
         case 'fd':
             # Frequency/Dissipation basis
             # Get frequencies from the raw data file
-            raw_data_file = f'/data/{date}/{date}_chan_1_TOD_set{setnum}.h5'
+            # raw_data_file = f'/data/{date}/{date}_chan_1_TOD_set{setnum}.h5'
+            # TODO: Get the channel name from the processed data file? (but there's multiple in theory??)
+            raw_data_file = get_tod_template(date, setnum, chan_name='Be231102p2_100_tones')
+            # raw_data_file = get_tod_template(date, setnum, chan_name='1000_tone_uniform_202050829')
             fh = RawDataFile(raw_data_file, 'r')
             freq = fh.baseband_freqs[:] + fh.lo_freq[:]
 
@@ -393,11 +412,10 @@ if __name__ == '__main__':
         nominal_block_length=nominal_block_length,
         cut_time=cut_time,
     )
-    title = args.title
     plot_psd(
         freq,
         noise_psd,
-        f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_psd_{basis}_{title}.pdf',
+        output_file,
         basis=basis,
         title=title,
     )
