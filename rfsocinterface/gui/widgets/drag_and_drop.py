@@ -299,6 +299,13 @@ class MultiSectionDragWidget(QWidget):
     def items(self) -> list[DragItem]:
         return list(chain(*self._items))
     
+    def drag_items(self) -> list[DragItem]:
+        items = []
+        for section_type, section in self.sections:
+            if section_type == SectionType.DRAG:
+                items.extend(section.items())
+        return items
+    
     def items_separated(self) -> list[list[DragItem]]:
         return self._items
     
@@ -308,7 +315,8 @@ class MultiSectionDragWidget(QWidget):
     @Slot(list, list)
     def update_order(self, items: list, data: list):
         sender = self.sender()
-        i_sec = self.sections.index(sender)
+        sections = [sec for (_, sec) in self.sections]
+        i_sec = sections.index(sender)
         self._items[i_sec] = items
         self._item_data[i_sec] = data
         self.orderChanged.emit(self._items, self._item_data)
@@ -327,7 +335,7 @@ class MultiSectionDragWidget(QWidget):
         new_section.orderChanged.connect(self.update_order)
         self.blayout.addWidget(section_label)
         self.blayout.addWidget(new_section)
-        self.sections.append(new_section)
+        self.sections.append((SectionType.DRAG, new_section))
         self._items.append([])
         self._item_data.append([])
         return new_section
@@ -343,25 +351,25 @@ class MultiSectionDragWidget(QWidget):
         new_section.valuesUpdated.connect(self.update_order)
         self.blayout.addWidget(section_label)
         self.blayout.addWidget(new_section)
-        self.sections.append(new_section)
+        self.sections.append((SectionType.ARGUMENT, new_section))
         self._items.append([])
         self._item_data.append([])
         new_section.emit_items()
         return new_section
     
     def add_item(self, i_section: int, item: DragItem):
-        sec = self.sections[i_section]
+        sec = self.sections[i_section][1]
         if not isinstance(sec, DragWidget):
             raise TypeError(f"Section {i_section} is not a DragWidget, cannot add item.")
-        self.sections[i_section].add_item(item)
+        sec.add_item(item)
         self._items[i_section].append(item)
         self._item_data[i_section].append(item.data)
 
     def remove_item(self, i_section: int, item: DragItem):
-        sec = self.sections[i_section]
+        sec = self.sections[i_section][1]
         if not isinstance(sec, DragWidget):
             raise TypeError(f"Section {i_section} is not a DragWidget, cannot remove item.")
-        self.sections[i_section].remove_item(item)
+        sec.remove_item(item)
         self._items[i_section].remove(item)
         self._item_data[i_section].remove(item.data)
 
@@ -386,7 +394,7 @@ class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
         self.blayout.addWidget(new_section)
         i_sec = len(self.sections)
         new_section.activeItemChanged.connect(lambda item: self.set_active_item(i_sec, item))
-        self.sections.append(new_section)
+        self.sections.append((SectionType.DRAG, new_section))
         self._items.append([])
         self._item_data.append([])
         return new_section
@@ -565,7 +573,7 @@ class MultiSectionDragFunctionWidget(QWidget):
         return item
 
     def clear(self):
-        for i_sec, sec in enumerate(self.drag.sections):
+        for i_sec, (_, sec) in enumerate(self.drag.sections):
             for item in sec.items():
                 self.drag.remove_item(i_sec, item)
                 self.func_container.removeWidget(item.func_widget)
@@ -579,6 +587,9 @@ class MultiSectionDragFunctionWidget(QWidget):
 
     def items(self) -> list[FunctionDragItem]:
         return self.drag.items()
+    
+    def drag_items(self) -> list[FunctionDragItem]:
+        return self.drag.drag_items()
 
     def items_separated(self) -> list[list[FunctionDragItem]]:
         return self.drag.items_separated()
