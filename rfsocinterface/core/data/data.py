@@ -190,8 +190,8 @@ def rotate_basis(
 
     # new_data = np.zeros(shape=(2, np.size(tone_index), data_1.shape[-1]))
     # pdb.set_trace()
-    out_data[0, :] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.sin(rotation_angle)[:, np.newaxis] * in_data[1, :]
-    out_data[1, :] = -np.sin(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
+    out_data[0, :] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0, :] - np.sin(rotation_angle)[:, np.newaxis] * in_data[1, :]
+    out_data[1, :] = np.sin(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
 
 
 def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
@@ -211,6 +211,7 @@ def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
     #this will then yield data_f
 
     rotate_basis(data.data_IQ / data.adc_units_to_hz[:][:, np.newaxis], data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
+    # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
 
     # Finally, we need to get data_mK
     data.data_mK[:] = np.divide(data.data_freq_diss[0, :], global_data.df_per_mK[:][:, np.newaxis])
@@ -639,7 +640,11 @@ class ProcessedData:
             with tables.open_file(file, 'r') as f:
                 raw_global_data = f.root.global_data
                 raw_dimension = f.root.dimension
-                n_samples = raw_dimension.n_sample[0]
+                time_ordered_data = f.root.time_ordered_data
+
+                # NOTE: Temporary fix until n_sample is fixed in the raw files
+                # n_samples = raw_dimension.n_sample[0]
+                n_samples = time_ordered_data.adc_i.shape[-1]
                 n_samples_ds = int(np.ceil(n_samples / ds_factor))
                 n_tones = raw_dimension.n_tones[0]
 
@@ -729,7 +734,6 @@ class ProcessedData:
 
                 #create the calibrated datastreams-----------------------------------------------------------
                 #first get the I and Q data
-                time_ordered_data = f.root.time_ordered_data
                 # data_I = np.ndarray.astype(time_ordered_data.adc_i, np.float64)
                 # data_Q = np.ndarray.astype(time_ordered_data.adc_q, np.float64)
 
