@@ -470,11 +470,15 @@ class LoSweepData:
             # )
 
         # Q in y direction, I in x direction
-        rotation_angle = np.atan2(dIQ_df[1, :], dIQ_df[0, :])
-        adc_units_to_hz = np.sqrt(
-            (dIQ_df[0, :] * np.cos(rotation_angle)) ** 2 +
-            (dIQ_df[1, :] * np.sin(rotation_angle)) ** 2
-        )
+        # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
+        # The negative sign is because we're rotating the coordinate axes, not the point
+        rotation_angle = -np.atan2(dIQ_df[1, :], dIQ_df[0, :])
+
+        adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
+        # adc_units_to_hz = np.sqrt(
+        #     (dIQ_df[0, :] * np.cos(rotation_angle)) ** 2 +
+        #     (dIQ_df[1, :] * np.sin(rotation_angle)) ** 2
+        # )
         return rotation_angle, adc_units_to_hz
 
 
@@ -622,10 +626,12 @@ class LoSweep:
 
         # Actually use this data
         Naccums = 100
-        packets = capture_packets(self.chan, Naccums).T
+        packets = capture_packets(self.chan, Naccums)
         I = []
         Q = []
-        for packet in packets:
+        # for packet in packets:
+        for i in range(packets.shape[1]):
+            packet = packets[:, i]
             It = packet[::2]
             Qt = packet[1::2]
             I.append(It)

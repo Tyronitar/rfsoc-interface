@@ -215,6 +215,6 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
 
         # Dither telescope and collect data in separate thread
         capture(rfchans, self.active_pattern.call_function)
-        if self._command_data != 0:  # Value other than 1 idicates the scan stopped early
+        if self._command_data == 0:  # Value other than 1 idicates the scan stopped early
             self.make_map()
 

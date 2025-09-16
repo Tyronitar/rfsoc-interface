@@ -189,8 +189,8 @@ def rotate_basis(
 
     # new_data = np.zeros(shape=(2, np.size(tone_index), data_1.shape[-1]))
     # pdb.set_trace()
-    out_data[0, :] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.sin(rotation_angle)[:, np.newaxis] * in_data[1, :]
-    out_data[1, :] = -np.sin(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
+    out_data[0, :] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0, :] - np.sin(rotation_angle)[:, np.newaxis] * in_data[1, :]
+    out_data[1, :] = np.sin(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
 
 
 def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
@@ -210,6 +210,7 @@ def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
     #this will then yield data_f
 
     rotate_basis(data.data_IQ / data.adc_units_to_hz[:][:, np.newaxis], data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
+    # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
 
     # Finally, we need to get data_mK
     data.data_mK[:] = np.divide(data.data_freq_diss[0, :], global_data.df_per_mK[:][:, np.newaxis])
