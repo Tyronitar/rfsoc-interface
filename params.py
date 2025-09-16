@@ -20,9 +20,12 @@ Be231102p2_LO_freq = 300e6
 
 if __name__ == "__main__":
     lo_freq = 4e8
-    n_tones = 30
-    baseband_freqs = np.concatenate([np.linspace(-246e6, -11e6, n_tones // 2), np.linspace(10e6, 245e6, n_tones // 2)])
-    tile_name = f'{n_tones}_tone_uniform_202050829'
+    # n_tones = 30
+    # baseband_freqs = np.concatenate([np.linspace(-246e6, -11e6, n_tones // 2), np.linspace(10e6, 245e6, n_tones // 2)])
+    # tile_name = f'{n_tones}_tone_uniform_202050829'
+
+    baseband_freqs = np.array([6e6])
+    tile_name = f'1_tone_6MHz_20250909'
     # tile_name = 'Device_aSi1_Channel2'
     # baseband_freqs =  np.load('/home/onrkids/readout/host/params/Default_tone_list.npy')
 
