@@ -497,12 +497,12 @@ class TelescopeMotorController:
             return
         
         path = Path(file)
-        path.touch(0o644, exist_ok=True)
-        with h5py.File(file, 'w') as f:
+        with h5py.File(path, 'w') as f:
             f.create_dataset("az_tel", data=position_data[0::3])
             f.create_dataset("za_tel", data=position_data[1::3])
             f.create_dataset("timestamp_tel", data=position_data[2::3])
             f.create_dataset("optical_visibility", data=['****'])
+        path.chmod(0o666)
         self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         if position_return:
             _tele_logger.info('AZ Scan Mode: Resetting telescope position...')
