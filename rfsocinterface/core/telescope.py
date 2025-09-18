@@ -16,6 +16,7 @@ try:
     import thread
 except ImportError:
     import _thread as thread
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -495,7 +496,9 @@ class TelescopeMotorController:
                 self._set_ze_pos(initial_ze, stop_run=False)
             return
         
-        with h5py.File(file, "a") as f:
+        path = Path(file)
+        path.touch(0o644, exist_ok=True)
+        with h5py.File(file, 'w') as f:
             f.create_dataset("az_tel", data=position_data[0::3])
             f.create_dataset("za_tel", data=position_data[1::3])
             f.create_dataset("timestamp_tel", data=position_data[2::3])

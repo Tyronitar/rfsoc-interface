@@ -609,7 +609,9 @@ class ProcessedData:
             vis=0.
         
 
-        pfile = tables.open_file(get_processed_file_template(date, setnum), 'w')
+        pfile_path = Path(get_processed_file_template(date, setnum))
+        pfile = tables.open_file(pfile_path, 'w')
+        pfile_path.chmod(0o666)
         pfile.root._v_attrs.date = date
         pfile.root._v_attrs.setnum = setnum
         pfile.root._v_attrs.receipt = ''
@@ -978,10 +980,13 @@ class MapData(ProcessedData):
     def from_processed_data(cls, pdata: ProcessedData | tables.File, mode='w') -> MapData:
         if isinstance(pdata, tables.File):
             pfile = pdata
-            mfile = tables.File(ProcessedData(pfile).map_file_template, mode)
+            fname = Path(ProcessedData(pfile).map_file_template)
         else:
             pfile = pdata._l1file
-            mfile = tables.File(pdata.map_file_template, mode)
+            fname = Path(pdata.map_file_template )
+        mfile = tables.File(fname, mode)
+        if mode == 'w':
+            fname.chmod(0o666)
 
         map_data = MapData(mfile, pfile)
         chanmask = pfile.root.detector_0.global_data.chanmask
@@ -1224,8 +1229,10 @@ class MapData(ProcessedData):
             
         this_fig.subplots_adjust(wspace=0, hspace=0)
     #    pw.addPlot("Raw Image", this_fig)
+        path = self.folder / (self.file_stub + '_Source_Finder_Image.png')
+        path.touch(0o666, exist_ok=True)
         if save:
-            this_fig.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
+            this_fig.savefig(path, bbox_inches='tight')
         if show:
             plt.show()
 
@@ -1240,6 +1247,7 @@ def initialize_params_file(
     params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
 ):
     params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
+    params_tile_file.touch(0o666, exist_ok=True)
     n_tones = np.size(baseband_freqs)
     with tables.open_file(params_tile_file, 'w') as params_fh:
         params_fh.root._v_attrs.n_tones = n_tones

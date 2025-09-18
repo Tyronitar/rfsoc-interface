@@ -28,6 +28,7 @@ class SKPR_Camera_Control:
             if save:
                 if not savefile:
                     savefile = get_filename(file_type='optcam').with_suffix('.h5')
+                savefile.touch(0o644, exist_ok=True)
                 f = h5py.File(savefile, 'a')
                 f.create_dataset('optical_image', data=pic_data)
                 f.close()

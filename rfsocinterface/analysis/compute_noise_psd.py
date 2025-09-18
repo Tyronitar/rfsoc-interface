@@ -209,6 +209,7 @@ def plot_psd(
             yscale=yscale,
         )
         pdf.savefig(average_fig)
+    filename.chmod(0o666)
 
     return figs
 

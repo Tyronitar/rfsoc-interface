@@ -425,16 +425,20 @@ class LoSweepData:
     @ensure_path(1)
     def savenp(self, fname: Path):
         path = fname.with_suffix('.npy')
+        path.touch(0o644, exist_ok=True)
         np.save(path, self.data)
     
     @ensure_path(1)
     def save_new_tone_list(self, fname: Path):
+        path = fname.with_suffix('.npy')
+        path.touch(0o644, exist_ok=True)
         np.save(fname, self.new_tone_list)
 
     @ensure_path(1)
     def saveh5(self, fname: Path):
         """Save the LO Sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
+        path.touch(0o644, exist_ok=True)
         with h5py.File(path, 'w') as fh:
             fh.create_dataset('global_data/lo_sweep', data=self.data)
             # fh.create_dataset('global_data/s21', data=self.s21)

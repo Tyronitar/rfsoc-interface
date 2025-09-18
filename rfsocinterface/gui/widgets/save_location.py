@@ -31,7 +31,7 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
         self.filename_label.setVisible(visible)
         self.filename_file_select.setVisible(visible)
 
-    def get_chosen_save_location(self, chan_name: str='', mkdir: bool=False, touch_file: bool=False) -> Path:
+    def get_chosen_save_location(self, chan_name: str='', mkdir: bool=False, touch_file: bool=False, mode: int=0o644) -> Path:
         if self.checkBox.isChecked():
             save_path = get_filename(file_type=self.file_type, chan_name=chan_name, mkdir=mkdir).with_suffix('.h5')
         else:
@@ -39,7 +39,7 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
             filename = self.filename_file_select.text()
             save_path = Path(f'{directory}/{filename}')
         if touch_file:
-            save_path.touch()
+            save_path.touch(mode, exist_ok=True)
         return save_path
 
     @Slot(str)

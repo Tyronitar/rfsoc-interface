@@ -68,8 +68,7 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
         rfchans = []
         for rfsoc, chan in chans:
             rfchan = rfsoc.get_channel(chan)
-            save_location = self.save_location_widget.get_chosen_save_location(chan_name=rfchan.tile_name)
-            save_location.parent.mkdir(parents=True, exist_ok=True)
+            save_location = self.save_location_widget.get_chosen_save_location(chan_name=rfchan.tile_name, touch_file=True, mode=0o644, mkdir=True)
             rfchan.raw_filename = str(save_location)
             rfchans.append(rfchan)
         duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)

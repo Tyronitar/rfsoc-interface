@@ -302,6 +302,12 @@ class RFSOCWrapper:
     def get_chanmask(self, chan: int) -> npt.ArrayLike:
         return self.get_channel(chan).chanmask 
 
+    def set_ntones(self, chan: int, ntones: int):
+        self.get_channel(chan).n_tones = ntones
+
+    def get_ntones(self, chan: int) -> int:
+        return self.get_channel(chan).n_tones
+
     def get_chanmask_file(self, chan: int) -> Path | None:
         return self.settings[f'channel{chan}'].get('chanmask', None)
 
@@ -357,8 +363,11 @@ class RFSOCWrapper:
             tone_powers = fh.root.tone_powers[:]
             lo_freq = fh.root.lo_freq[()]
             chanmask = fh.root.chanmask[:]
+            ntones = fh.root._v_attrs.n_tones
+            tile_name = fh.root._v_attrs.tile_name
 
-            self.set_channel_name(channel, fh.root._v_attrs.tile_name)
+        self.set_channel_name(channel, tile_name)
+        self.set_ntones(channel, ntones)
         self.set_frequency(channel, lo_freq)
         if upload_tones:
             self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
