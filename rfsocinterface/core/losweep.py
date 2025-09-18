@@ -438,7 +438,6 @@ class LoSweepData:
     def saveh5(self, fname: Path):
         """Save the LO Sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
-        path.touch(0o644, exist_ok=True)
         with h5py.File(path, 'w') as fh:
             fh.create_dataset('global_data/lo_sweep', data=self.data)
             # fh.create_dataset('global_data/s21', data=self.s21)
@@ -448,6 +447,7 @@ class LoSweepData:
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
             fh.create_dataset('global_data/fit_qc', data=self.fit_qc)
+        path.chmod(0o644)
     
     def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.nchan))

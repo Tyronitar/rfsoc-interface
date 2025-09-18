@@ -176,7 +176,7 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
     yymmdd = get_yymmdd()
     date_folder = base_dir / yymmdd
     if mkdir:
-        date_folder.mkdir(exist_ok=True)
+        date_folder.mkdir(0o666, exist_ok=True)
 
     #provide the name of the file
     match file_type.lower():
