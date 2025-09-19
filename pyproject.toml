@@ -16,7 +16,8 @@ uldaq = "^1.2.3"
 pymodbustcp = "^0.3.0"
 scikit-learn = "^1.5.2"
 opencv-python = "^4.10.0.84"
-kidpy3 = {path = "/home/rf_soc_user/readout_cdatacap/dist/kidpy3-0.3.4-cp312-cp312-manylinux_2_35_x86_64.whl"}
+# kidpy3 = {path = "/home/rf_soc_user/readout_cdatacap/dist/kidpy3-0.3.4-cp312-cp312-manylinux_2_35_x86_64.whl"}
+kidpy3 = {git = "https://github.com/ASU-Astronomical-Instrumentation/readout.git", branch="c_datacap"}
 # kidpy3 = {url = "https://github.com/ASU-Astronomical-Instrumentation/readout/releases/download/0.2.7/kidpy3-0.2.7-py3-none-any.whl"}
 exscript = "^2.6.28"
 psutil = "^6.1.1"
