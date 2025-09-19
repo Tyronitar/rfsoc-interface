@@ -16,7 +16,6 @@ def move_to_center(win: QMainWindow, screen: QScreen):
     win.move(screen.geometry().center() - win.geometry().center())
 
 if __name__ == '__main__':
-    os.umask(0)  # Set user file-creation mask to 0 so files are created with permissions we set
 
     logging.config.fileConfig('rfsocinterface/logging.conf')
     _logger = logging.getLogger('rfsocinterface')
