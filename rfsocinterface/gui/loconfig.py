@@ -159,7 +159,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
             
         savefile = get_filename(
-            file_type="LO", chan_name=chan_name
+            file_type="LO", chan_name=chan_name, mkdir=True
         )
         match self.buttonGroup.checkedButton():
             case self.filename_elevation_radioButton:
@@ -303,7 +303,6 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     @ensure_path(1)
     def save_sweep(self, savefile: Path, sweep_data: LoSweepData):
-        savefile.parent.mkdir(parents=True, exist_ok=True)
         sweep_data.saveh5(savefile)
         sweep_data.savenp(savefile)
         _logger.info(f'Saved LO sweep data to {savefile}')

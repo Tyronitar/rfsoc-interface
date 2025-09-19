@@ -25,7 +25,7 @@ import serial.tools.list_ports
 import uldaq as ul
 from Exscript.protocols.telnetlib import Telnet
 
-from rfsocinterface.core.utils import analog_to_digital
+from rfsocinterface.core.utils import analog_to_digital, PERMISSIONS_USR_RW
 
 _logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
@@ -502,7 +502,7 @@ class TelescopeMotorController:
             f.create_dataset("za_tel", data=position_data[1::3])
             f.create_dataset("timestamp_tel", data=position_data[2::3])
             f.create_dataset("optical_visibility", data=['****'])
-        path.chmod(0o666)
+        path.chmod(PERMISSIONS_USR_RW)
         self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         if position_return:
             _tele_logger.info('AZ Scan Mode: Resetting telescope position...')

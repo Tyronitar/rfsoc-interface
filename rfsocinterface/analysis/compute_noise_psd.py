@@ -23,7 +23,7 @@ from rfsocinterface.core.data import (
     ProcessingStage,
     get_tod_template
 )
-from rfsocinterface.core.utils import ensure_path, ordinal
+from rfsocinterface.core.utils import ensure_path, ordinal, PERMISSIONS_ALL_FULL 
 
 XLIM = (0.1, 250)
 YLIM = (-110, -60)
@@ -184,6 +184,8 @@ def plot_psd(
     plot_data_max = 10 * np.log10(psd_max)
 
     # Plot 
+    if not filename.exists():
+        filename.touch(PERMISSIONS_ALL_FULL)
     with PdfPages(filename) as pdf:
         for i in range(n_plots):
             fig = create_plot(
@@ -209,7 +211,6 @@ def plot_psd(
             yscale=yscale,
         )
         pdf.savefig(average_fig)
-    filename.chmod(0o666)
 
     return figs
 
