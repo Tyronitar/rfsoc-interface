@@ -23,7 +23,7 @@ from rfsocinterface.core.data import (
     ProcessingStage,
     get_tod_template
 )
-from rfsocinterface.core.utils import ensure_path, ordinal
+from rfsocinterface.core.utils import ensure_path, ordinal, PERMISSIONS_ALL_RW
 
 XLIM = (0.1, 250)
 YLIM = (-110, -60)
@@ -209,7 +209,7 @@ def plot_psd(
             yscale=yscale,
         )
         pdf.savefig(average_fig)
-    filename.chmod(0o666)
+    filename.chmod(PERMISSIONS_ALL_RW)
 
     return figs
 

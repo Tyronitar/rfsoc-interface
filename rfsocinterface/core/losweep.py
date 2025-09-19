@@ -16,7 +16,7 @@ from scipy.signal import savgol_filter
 import h5py
 
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path
+from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from kidpy3 import capture_packets
@@ -425,19 +425,20 @@ class LoSweepData:
     @ensure_path(1)
     def savenp(self, fname: Path):
         path = fname.with_suffix('.npy')
-        path.touch(0o644, exist_ok=True)
+        path.touch(PERMISSIONS_USR_RW, exist_ok=True)
         np.save(path, self.data)
     
     @ensure_path(1)
     def save_new_tone_list(self, fname: Path):
         path = fname.with_suffix('.npy')
-        path.touch(0o644, exist_ok=True)
+        path.touch(PERMISSIONS_USR_RW, exist_ok=True)
         np.save(fname, self.new_tone_list)
 
     @ensure_path(1)
     def saveh5(self, fname: Path):
         """Save the LO Sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
+        path.touch(PERMISSIONS_USR_RW)
         with h5py.File(path, 'w') as fh:
             fh.create_dataset('global_data/lo_sweep', data=self.data)
             # fh.create_dataset('global_data/s21', data=self.s21)
@@ -447,7 +448,6 @@ class LoSweepData:
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
             fh.create_dataset('global_data/fit_qc', data=self.fit_qc)
-        path.chmod(0o644)
     
     def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.nchan))

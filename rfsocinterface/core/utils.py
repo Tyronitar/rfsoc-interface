@@ -15,6 +15,7 @@ from itertools import islice
 import copy
 import sys
 from multiprocessing.connection import Connection
+import stat
 
 import numpy as np
 import numpy.typing as npt
@@ -55,6 +56,10 @@ R = TypeVar('R')
 
 P = ParamSpec('P')
 Q = ParamSpec('Q')
+
+PERMISSIONS_USR_RW = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+PERMISSIONS_ALL_RW = PERMISSIONS_USR_RW | stat.S_IWGRP | stat.S_IWOTH
+PERMISSIONS_ALL_FULL = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH | PERMISSIONS_ALL_RW
 
 
 def convert_path(path: PathLike) -> Path:
@@ -176,7 +181,7 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
     yymmdd = get_yymmdd()
     date_folder = base_dir / yymmdd
     if mkdir:
-        date_folder.mkdir(0o666, exist_ok=True)
+        date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
 
     #provide the name of the file
     match file_type.lower():

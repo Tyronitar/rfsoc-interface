@@ -14,7 +14,7 @@ from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command
+from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
 from rfsocinterface.gui.widgets.function import FunctionWidget
 from rfsocinterface.core.camera import SKPR_Camera_Control
@@ -202,7 +202,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.update_current_file()
         for rfsoc, chan in chans:
             rfchan = rfsoc.get_channel(chan)
-            save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'{rfchan.tile_name}', mkdir=True, touch_file=True, mode=0o644)
+            save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'{rfchan.tile_name}', mkdir=True, touch_file=True, mode=PERMISSIONS_USR_RW)
             # save_location.parent.mkdir(parents=True, exist_ok=True)
             # Ensure the TOD file exists before getting the AZEL and optcam filenames
             # with h5py.File(save_location, 'w'):

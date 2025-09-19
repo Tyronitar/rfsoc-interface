@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import QWidget
 
 from rfsocinterface.gui.uic.save_location_ui import Ui_SaveLocationWidget
-from rfsocinterface.core.utils import get_filename
+from rfsocinterface.core.utils import get_filename, PERMISSIONS_ALL_RW
 from rfsocinterface.gui.utils import get_lineEdit_text
 
 
@@ -31,7 +31,7 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
         self.filename_label.setVisible(visible)
         self.filename_file_select.setVisible(visible)
 
-    def get_chosen_save_location(self, chan_name: str='', mkdir: bool=False, touch_file: bool=False, mode: int=0o644) -> Path:
+    def get_chosen_save_location(self, chan_name: str='', mkdir: bool=False, touch_file: bool=False, mode: int=PERMISSIONS_ALL_RW) -> Path:
         if self.checkBox.isChecked():
             save_path = get_filename(file_type=self.file_type, chan_name=chan_name, mkdir=mkdir).with_suffix('.h5')
         else:

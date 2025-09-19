@@ -14,7 +14,7 @@ import numpy.typing as npt
 from scipy import signal
 import matplotlib.pyplot as plt
 
-from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks
+from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_RW
 from rfsocinterface.core.losweep import LoSweepData
 
 _logger = logging.getLogger(__name__)
@@ -611,7 +611,7 @@ class ProcessedData:
 
         pfile_path = Path(get_processed_file_template(date, setnum))
         pfile = tables.open_file(pfile_path, 'w')
-        pfile_path.chmod(0o666)
+        pfile_path.chmod(PERMISSIONS_ALL_RW)
         pfile.root._v_attrs.date = date
         pfile.root._v_attrs.setnum = setnum
         pfile.root._v_attrs.receipt = ''
@@ -986,7 +986,7 @@ class MapData(ProcessedData):
             fname = Path(pdata.map_file_template )
         mfile = tables.File(fname, mode)
         if mode == 'w':
-            fname.chmod(0o666)
+            fname.chmod(PERMISSIONS_ALL_RW)
 
         map_data = MapData(mfile, pfile)
         chanmask = pfile.root.detector_0.global_data.chanmask
@@ -1230,7 +1230,7 @@ class MapData(ProcessedData):
         this_fig.subplots_adjust(wspace=0, hspace=0)
     #    pw.addPlot("Raw Image", this_fig)
         path = self.folder / (self.file_stub + '_Source_Finder_Image.png')
-        path.touch(0o666, exist_ok=True)
+        path.touch(PERMISSIONS_ALL_RW, exist_ok=True)
         if save:
             this_fig.savefig(path, bbox_inches='tight')
         if show:
@@ -1247,7 +1247,7 @@ def initialize_params_file(
     params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
 ):
     params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
-    params_tile_file.touch(0o666, exist_ok=True)
+    params_tile_file.touch(PERMISSIONS_ALL_RW, exist_ok=True)
     n_tones = np.size(baseband_freqs)
     with tables.open_file(params_tile_file, 'w') as params_fh:
         params_fh.root._v_attrs.n_tones = n_tones
