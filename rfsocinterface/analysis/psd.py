@@ -115,6 +115,7 @@ def plot_psd(
         max_percentile: float=84,
         title: str | None=None,
         basis: Literal['gp', 'iq', 'fd']='gp',
+        resonators: list[int]=[0],
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -165,12 +166,6 @@ def plot_psd(
         case _:
             raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
 
-    figs = []
-    if basis.lower() == 'fd':
-        fig = plot_df_over_f(freq, psd, resonators=[0], ylabel=ylabel, title=title)
-        figs.append(fig)
-        return figs
-
     plot_data_med = 10 * np.log10(psd_med)
 
     psd_min = psd_med[:]
@@ -186,31 +181,40 @@ def plot_psd(
     # Plot 
     if not filename.exists():
         filename.touch(PERMISSIONS_ALL_FULL)
+    figs = []
     with PdfPages(filename) as pdf:
-        for i in range(n_plots):
-            fig = create_plot(
+        if basis.lower() == 'fd':
+            for i, res in enumerate(resonators):
+                fig = plot_df_over_f(freq, psd[:, i:i+1, :], resonators=[res], ylabel=ylabel, title=title)
+                pdf.savefig(fig[0])
+                figs.extend(fig)
+                plt.close((fig[0]))
+            return
+        else:
+            for i in range(n_plots):
+                fig = create_plot(
+                    freq,
+                    plot_data_min[i],
+                    plot_data_med[i],
+                    plot_data_max[i],
+                    percentiles=(min_percentile, max_percentile),
+                    title=titles[i],
+                    ylabel=ylabel,
+                    yscale=yscale,
+                )
+                pdf.savefig(fig)
+                figs.append(fig)
+            average_fig = create_plot(
                 freq,
-                plot_data_min[i],
-                plot_data_med[i],
-                plot_data_max[i],
+                np.sum(plot_data_min, axis=0) / n_plots,
+                np.sum(plot_data_med, axis=0) / n_plots,
+                np.sum(plot_data_max, axis=0) / n_plots,
                 percentiles=(min_percentile, max_percentile),
-                title=titles[i],
+                title= title + ' - Averaged',
                 ylabel=ylabel,
                 yscale=yscale,
             )
-            pdf.savefig(fig)
-            figs.append(fig)
-        average_fig = create_plot(
-            freq,
-            np.sum(plot_data_min, axis=0) / n_plots,
-            np.sum(plot_data_med, axis=0) / n_plots,
-            np.sum(plot_data_max, axis=0) / n_plots,
-            percentiles=(min_percentile, max_percentile),
-            title= title + ' - Averaged',
-            ylabel=ylabel,
-            yscale=yscale,
-        )
-        pdf.savefig(average_fig)
+            pdf.savefig(average_fig)
 
     return figs
 
@@ -221,29 +225,32 @@ def plot_df_over_f(
     title: str | None=None,
     ylabel: str='Noise PSD (df / f)',
     resonators: list[int]=[0],
-) -> Figure:
+) -> list[Figure]:
     """Create a plot of the noise PSD in df/f units."""
-    fig = plt.figure(figsize=(9, 6))
-    ax = plt.subplot()
-    for i_res in resonators:
+    figures = []
+    for i, i_res in enumerate(resonators):
+        fig = plt.figure(figsize=(9, 6))
+        ax = plt.subplot()
         for j, label in enumerate(['Frequency', 'Dissipation']):
-            ax.plot(x_data, y_data[j, i_res], label=f'Resonator {i_res} - {label}')
-    ax.set_xscale('log')
-    ax.set_xlim(0.1,100.)
-    ax.set_yscale('log')
-    # ax.set_ylim(1e-17,1e-15)
+            ax.plot(x_data, y_data[j, i], label=f'Resonator {i_res} - {label}')
+        ax.set_xscale('log')
+        ax.set_xlim(1, 250)
+        ax.set_yscale('log')
+        # ax.set_ylim(1e-17,1e-15)
     
-    ax.set_xlabel('Frequency (Hz)', fontsize=16)
+        ax.set_xlabel('Frequency (Hz)', fontsize=16)
             
-    ax.set_ylabel(ylabel, fontsize=16)
-    ax.tick_params(labelsize=14)
-    ax.legend(fontsize=14, loc='best')
-    if title is None:
-        title = 'RFSoC Loopback PSD'
-    ax.set_title(title, fontsize=16)
-    plt.tight_layout()
+        ax.set_ylabel(ylabel, fontsize=16)
+        ax.tick_params(labelsize=14)
+        ax.legend(fontsize=14, loc='best')
+        if title is None:
+            title = 'RFSoC Loopback PSD'
+        title = title + f' - Resonator {i_res}'
+        ax.set_title(title, fontsize=16)
+        plt.tight_layout()
+        figures.append(fig)
 
-    return fig
+    return figures
 
 
 def create_plot(
@@ -420,6 +427,7 @@ if __name__ == '__main__':
         output_file,
         basis=basis,
         title=title,
+        resonators=np.where(chanmask==1)[0],
     )
     if args.show_plots:
         plt.show()
