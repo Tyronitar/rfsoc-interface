@@ -5,6 +5,7 @@ import pdb
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import numpy.typing as npt
 import tables
@@ -47,6 +48,7 @@ def analyze_beammap(
         chanmask = np.ones(map_data.n_tones)
     else:
         chanmask = map_data.chanmask[:]
+    # chanmask = chanmask[:100]
 
     beammap_file = tables.File(filename, 'w')
     az_center = beammap_file.create_array('/', 'az_center', shape=np.shape(chanmask), atom=tables.Float64Atom())
@@ -137,59 +139,65 @@ def analyze_beammap(
         counter = 1
         for idx in np.argwhere(chanmask == 1).flatten():
 
-            sub = plt.subplot(nrows, ncols, counter)
-            plt.axis('off')
-            plt.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+            if counter == 1:
+                fig, axes = plt.subplots(nrows, ncols)
+                fig.set_dpi(300)  # Sharper plots
+                for ax in axes.flatten():
+                    ax.set_axis_off()
+            ax = axes.flatten()[idx]
+            ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+
+
+            
+            if show_all and map_data.chanmask[idx] != 1:
+            # if show_all and idx == 1:
+                # Draw a rectangle around the subplot indicating on/off resonance
+                auto_axis = ax.axis()
+                # bbox = ax.get_window_extent().bounds
+                rec = plt.Rectangle(
+                    # bbox[:2],
+                    # bbox[2],
+                    # bbox[3],
+                    (auto_axis[0], auto_axis[2]),
+                    auto_axis[1] - auto_axis[0],
+                    auto_axis[3] - auto_axis[2],
+                    fill=False,
+                    lw=2,
+                    edgecolor='orange',
+                )
+                rec = ax.add_patch(rec)
+                # fig.patches.append(rec)
+                rec.set_clip_on(False)
+                # ax.set_facecolor('orange')
 
             if counter == nrows*ncols:
-                plt.gcf().set_dpi(300)  # Sharper plots
-                pdf.savefig()
+                pdf.savefig(fig)
                 plt.close()
                 counter = 0
             counter +=1
-            
-            if show_all:
-                # Draw a rectangle around the subplot indicating on/off resonance
-                auto_axis = sub.axis()
-                rec = plt.Rectangle(
-                    (auto_axis[0]-0.7, auto_axis[2]-0.2),
-                    (auto_axis[1]-auto_axis[0])+1,
-                    (auto_axis[3]-auto_axis[2])+0.4,
-                    fill=False,
-                    lw=2,
-                    edgecolor='white' if chanmask[idx] == 1 else 'orange'
-                )
-                rec = sub.add_patch(rec)
-                rec.set_clip_on(False)
         
-        plt.gcf().set_dpi(300)  # Sharper plots  
-        pdf.savefig()
+        if counter > 1:
+            pdf.savefig(fig)
+        # plt.show()
         plt.close()
 
         for idx in np.argwhere(chanmask == 1).flatten():
             fig, ax = plt.subplots()
             im = ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
-            fig.colorbar(im)
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(im, cax=cax)
             ax.set_xlabel('X Position (deg)')
             ax.set_ylabel('Y Position (deg)')
             ax.set_xlim(extent[0],extent[1])
             ax.set_ylim(extent[2],extent[3])
-            ax.set_title('Resonator Number ' + str(idx))
+            title = f'Resonator {idx}'
+            if show_all and map_data.chanmask[idx] != 1:
+            # if show_all and idx == 1:
+                title += ' (Off-resonance)'
+            ax.set_title(title)
             ax.plot(az_center[idx],za_center[idx],marker='+',color='white', markersize=10, mew=2)
 
-            if show_all:
-                # Draw a rectangle around the subplot indicating on/off resonance
-                auto_axis = ax.axis()
-                rec = plt.Rectangle(
-                    (auto_axis[0]-0.7, auto_axis[2]-0.2),
-                    (auto_axis[1]-auto_axis[0])+1,
-                    (auto_axis[3]-auto_axis[2])+0.4,
-                    fill=False,
-                    lw=2,
-                    edgecolor='white' if chanmask[idx] == 1 else 'orange'
-                )
-                rec = ax.add_patch(rec)
-                rec.set_clip_on(False)
             bbox_pad = 0.3
             t = AnchoredText(
                 f'Amplitude = {amplitude[idx]}\n'
@@ -207,8 +215,16 @@ def analyze_beammap(
             t.patch.set_alpha(0.25)
             t.patch.set_color('black')
             ax.add_artist(t)
-            plt.gcf().set_dpi(300)  # Sharper plots
+            fig.set_dpi(300)
+            # fig.tight_layout()
+            if show_all and map_data.chanmask[idx] != 1:
+            # if show_all and idx == 1:
+                fig.set_facecolor('orange')
+
             pdf.savefig(fig)
+            # if idx == 1:
+            #     plt.show()
+                # fig.show()
             plt.close()
     beammap_file.close()
 
