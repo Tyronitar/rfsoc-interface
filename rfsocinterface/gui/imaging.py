@@ -10,7 +10,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout, QProgressDialog
 from kidpy3 import capture
 
-from rfsocinterface.gui.pipeline import PipelineDialog
+from rfsocinterface.gui.widgets.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.gui.widgets.canvas import CanvasDialog
@@ -64,7 +64,7 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.setupUi(self)
         self.cam_ctrl = SKPR_Camera_Control()
         self.pipeline_dialog = PipelineDialog(self)
-        self.pipeline = DataPipeline()
+        self.pipeline = DataPipeliine()
         self._add_default_routines()
 
         self._file =  '.'

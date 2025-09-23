@@ -1,13 +1,15 @@
 from typing import Type
 from itertools import chain
-
+import copy
 
 from rfsocinterface.gui.uic.pipeline_ui import Ui_PipelineDialog
+from rfsocinterface.gui.uic.process_ui import Ui_ProcessingWidget
+
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
 
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout
+from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout, QWidget
 
 from rfsocinterface.gui.utils import ArgumentType
 from rfsocinterface.gui.widgets.drag_and_drop import FunctionDragItem
@@ -17,6 +19,40 @@ from rfsocinterface.core.data import (
     DataRoutine,
     ROUTINE_NAME_MAP,
 )
+
+class ProcessingWidget(QWidget, Ui_ProcessingWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setupUi()
+        self.pushButton.clicked.connect()
+        self.pipeline_dialog = PipelineDialog(self)
+        self.pipeline = DataPipeline()
+        self._add_default_routines()
+        self.pushButton.clicked.connect(self.choose_processing_routines)
+    
+    def _add_default_routines(self):
+        default_routines = self.settings['defaults']['imaging']['mappingRoutines']
+        for routine_dict in default_routines:
+            routine_type = routine_dict['type']
+            base_args = copy.copy(DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type])
+            if 'defaults' in routine_dict:
+                default_args_dict = routine_dict['defaults']
+                for base_arg in base_args[2]:
+                    base_arg_name = base_arg[0][0].strip(': ')
+                    if base_arg_name in default_args_dict:
+                        base_arg[1]['default'] = default_args_dict[base_arg_name]
+            self.pipeline_dialog.add_routine(routine_type, *base_args)
+            # self.pipeline_dialog.drag_function_widget.add_item(*base_args)
+        self.pipeline_dialog.accept()
+        self.pipeline = self.pipeline_dialog.make_pipeline()
+    
+    def choose_processing_routines(self):
+        if self.pipeline_dialog.exec():
+            self.pipeline = self.pipeline_dialog.make_pipeline()
+            # Get the selected routines, instantiate them, and store in the class
+            # TODO: validate the inputs somehow...
+        print(self.pipeline.all_routines())
+
 
 
 class RoutineSelectionDialog(QDialog):
