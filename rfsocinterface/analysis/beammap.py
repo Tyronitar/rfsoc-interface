@@ -33,6 +33,7 @@ def analyze_beammap(
     map_data: MapData,
     nrows: int=10,
     ncols: int=10,
+    show_all: bool=False,
 ):
     az = map_data.map_az[:][:, np.newaxis]
     za = map_data.map_za[:][np.newaxis, :]
@@ -40,19 +41,21 @@ def analyze_beammap(
 
     extent = map_data.extent()
 
-    # TODO: Get actual file name
     filename = map_data.beammap_file_template
 
-    chanmask = map_data.chanmask[:]
+    if show_all:
+        chanmask = np.ones(map_data.n_tones)
+    else:
+        chanmask = map_data.chanmask[:]
 
     beammap_file = tables.File(filename, 'w')
-    az_center = beammap_file.create_array('/', 'az_center', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    za_center =beammap_file.create_array('/', 'za_center', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    amplitude  = beammap_file.create_array('/', 'amplitude', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    snr = beammap_file.create_array('/', 'snr', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    chisq = beammap_file.create_array('/', 'chisq', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    fwhm_az = beammap_file.create_array('/', 'fwhm_az', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    fwhm_za = beammap_file.create_array('/', 'fwhm_za', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
+    az_center = beammap_file.create_array('/', 'az_center', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    za_center =beammap_file.create_array('/', 'za_center', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    amplitude  = beammap_file.create_array('/', 'amplitude', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    snr = beammap_file.create_array('/', 'snr', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    chisq = beammap_file.create_array('/', 'chisq', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    fwhm_az = beammap_file.create_array('/', 'fwhm_az', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    fwhm_za = beammap_file.create_array('/', 'fwhm_za', shape=np.shape(chanmask), atom=tables.Float64Atom())
 
     for idx in np.flatnonzero(chanmask == 1):
         this_val = np.ndarray.flatten(map_val[idx,:])
@@ -134,7 +137,7 @@ def analyze_beammap(
         counter = 1
         for idx in np.argwhere(chanmask == 1).flatten():
 
-            plt.subplot(nrows, ncols, counter)
+            sub = plt.subplot(nrows, ncols, counter)
             plt.axis('off')
             plt.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
 
@@ -144,6 +147,20 @@ def analyze_beammap(
                 plt.close()
                 counter = 0
             counter +=1
+            
+            if show_all:
+                # Draw a rectangle around the subplot indicating on/off resonance
+                auto_axis = sub.axis()
+                rec = plt.Rectangle(
+                    (auto_axis[0]-0.7, auto_axis[2]-0.2),
+                    (auto_axis[1]-auto_axis[0])+1,
+                    (auto_axis[3]-auto_axis[2])+0.4,
+                    fill=False,
+                    lw=2,
+                    edgecolor='white' if chanmask[idx] == 1 else 'orange'
+                )
+                rec = sub.add_patch(rec)
+                rec.set_clip_on(False)
         
         plt.gcf().set_dpi(300)  # Sharper plots  
         pdf.savefig()
@@ -159,6 +176,20 @@ def analyze_beammap(
             ax.set_ylim(extent[2],extent[3])
             ax.set_title('Resonator Number ' + str(idx))
             ax.plot(az_center[idx],za_center[idx],marker='+',color='white', markersize=10, mew=2)
+
+            if show_all:
+                # Draw a rectangle around the subplot indicating on/off resonance
+                auto_axis = ax.axis()
+                rec = plt.Rectangle(
+                    (auto_axis[0]-0.7, auto_axis[2]-0.2),
+                    (auto_axis[1]-auto_axis[0])+1,
+                    (auto_axis[3]-auto_axis[2])+0.4,
+                    fill=False,
+                    lw=2,
+                    edgecolor='white' if chanmask[idx] == 1 else 'orange'
+                )
+                rec = ax.add_patch(rec)
+                rec.set_clip_on(False)
             bbox_pad = 0.3
             t = AnchoredText(
                 f'Amplitude = {amplitude[idx]}\n'
@@ -194,5 +225,5 @@ if __name__ == '__main__':
     #     md.plot_individual(i)
     #     plt.show(block=False)
     # pdb.set_trace()
-    analyze_beammap(md)
+    analyze_beammap(md, show_all=True)
     md.close()
