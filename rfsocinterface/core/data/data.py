@@ -9,6 +9,7 @@ import inspect
 import logging
 
 import tables
+from tables.link import Link
 import numpy as np
 import numpy.typing as npt
 from scipy import signal
@@ -855,6 +856,219 @@ class ProcessedData:
     def close(self):
         self._l1file.close()
 
+
+class PyTablesDataset:
+    """Class for handling PyTables datasets and links.
+    
+    Will store an external link to a previous dataset until a write operation is
+    attempted, at which point it will copy the data to the new file.
+    """
+    def __init__(self, data: tables.Array | Link, file: tables.File):
+        self._data = data
+        self._file = file
+    
+    def __setitem__(self, key, value):
+        # Dereference link if necessary
+        if isinstance(self._data, Link):
+            parent = self._data._v_parent
+            old_array: tables.Array = self._data(mode='r')
+            # Copy over data from old array to the new file before setting anything
+            new_array = old_array.copy(parent)
+            self._data.umount()
+            self._data = new_array
+        self._data[key] = value
+    
+    def __getitem__(self, key):
+        return self._data[key]
+    
+    def shape(self):
+        if isinstance(self._data, Link):
+            return self._data(mode='r').shape
+        return self._data.shape
+
+
+class RawData:
+    def __init__(self, file: tables.File):
+        self._file = file
+    
+    @property
+    def time_ordered_data(self) -> tables.Group:
+        return self._file.root.time_ordered_data
+    
+    @property
+    def data_IQ(self) -> tables.Array:
+        return self._file.root.detector_0.data.data_IQ
+
+    def from_tod(
+        cls,
+        date: str,
+        setnum: int,
+        losweep: str | None=None,
+    ) -> RawData:
+
+
+                # # Temporary fix for testing code:
+                # f.baseband_freqs = np.load('/data/20250422/20250422_tone_list.npy')
+                # f.lo_freq = np.array([4e8])
+
+                if losweep:
+                    losweep = Path(losweep)
+                    # f.append_lo_sweep(losweep)
+                    if losweep.suffix == '.npy':
+                        sweep_data = np.load(folder / losweep)
+                    else:
+                        with tables.open_file(folder / losweep, 'r') as sweep_file:
+                            sweep_data = sweep_file.root.global_data.lo_sweep
+                    sweep_data = raw_global_data.lo_sweep
+                elif raw_global_data.lo_sweep is not None:
+                    sweep_data = raw_global_data.lo_sweep
+                else:
+                    raise RuntimeError('No LO sweep provided. Canceliing processing of file.')
+
+                # f.lo_freq[:] = 4e8
+                lo_freq = raw_global_data.lo_freq[:]
+                lo_freq = 4e8
+                sweep = LoSweepData(raw_global_data.baseband_freqs, lo_freq, sweep_data, raw_global_data.chanmask[:])
+                IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
+                detector_data.IQ_to_freq_diss_angle[:] = IQ_to_freq_diss_angle
+                detector_data.adc_units_to_hz[:] = adc_units_to_hz
+
+
+class ProcessedDataL1(ProcessedData):
+    def __init__(self, file: tables.File):
+        self.file = file
+
+    @property
+    def data_IQ(self) -> PyTablesDataset:
+        return self._data_IQ
+    
+    @data_IQ.setter
+    def data_IQ(self, data_IQ: tables.Array | Link):
+        self._data_IQ = PyTablesDataset(data_IQ, self.file)
+
+    @classmethod
+    def from_tod(
+        cls,
+        date: str,
+        setnum: int,
+        losweep: str | None=None,
+        beam_map_mode: bool=False,
+        do_electronics_noise_removal: bool=True,
+        electronics_noise_lp_filt_freq: float=10,
+        ds_factor: int=1,
+        max_modes: int=30,
+    ) -> ProcessedDataL1:
+        
+        date = date
+        setnum = setnum
+    
+
+        folder = Path(f'{DATA_DIRECTORY}/{date}')
+        todtemplate = get_tod_template(date, setnum)
+        tele_template = Path(get_azel_template(date, setnum))
+        optcam_template = Path(get_optcam_template(date ,setnum))
+
+        azel_exists = tele_template.exists()
+        optcam_exists = optcam_template.exists()
+
+        if azel_exists:
+            azel_file = tables.open_file(tele_template, 'r')
+        
+        if optcam_exists:
+            optcam_file = tables.open_file(optcam_template, 'r')
+        
+
+        # Create processed data file
+        todlist = glob.glob(todtemplate)
+
+        if len(todlist) == 0:
+            raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
+
+        if azel_exists:
+            # pdb.set_trace()
+            az_tel = azel_file.root.az_tel
+            try:
+                za_tel = azel_file.root.za_tel
+            except:
+                za_tel = azel_file.rooe.el_tel
+            timestamp_tel = azel_file.root.timestamp_tel
+            # vis = azel_tfile.root.optical_visibility[0]
+            vis = np.nan
+            if isinstance(vis, bytes):
+                vis = np.nan
+        else:
+            vis=0.
+        
+
+        pfile_path = Path(get_processed_file_template(date, setnum))
+        if not pfile_path.exists():
+            pfile_path.touch(PERMISSIONS_ALL_FULL)
+        pfile = tables.open_file(pfile_path, 'w')
+        pfile.root._v_attrs.date = date
+        pfile.root._v_attrs.setnum = setnum
+        pfile.root._v_attrs.receipt = ''
+
+        if optcam_exists:
+            # optical_image = optcam_file.root.optical_image
+            pfile.create_array(pfile.root, 'optical_image', obj=optcam_file.root.optical_image[:])
+            optcam_file.close()
+        else:
+            pfile.create_array(pfile.root, 'optical_image', obj=np.array([]))
+            optical_image = None
+
+        # dIQ_df = np.array([])
+        # carrier_amp_I = np.array([])
+        # carrier_amp_Q = np.array([])
+        # df_per_mK = np.array([])
+        # data_freq_diss = np.array([])
+        # data_gain_phase = np.array([])
+        # gain_phase_angle = np.array([])
+        # data_mK = 0
+        # chanmask = np.array([], dtype=np.int32)
+        # detector_pol = np.array([])
+        # detector_az = np.array([[]])
+        # detector_za = np.array([[]])
+        # Iterate over the TOD Files
+        for i, file in enumerate(todlist):
+                #compute the derivatives to obtain frequency direction
+            with tables.open_file(file, 'r') as f:
+                raw_global_data = f.root.global_data
+                raw_dimension = f.root.dimension
+                time_ordered_data = f.root.time_ordered_data
+
+                # NOTE: Temporary fix until n_sample is fixed in the raw files
+                # n_samples = raw_dimension.n_sample[0]
+                n_samples = time_ordered_data.adc_i.shape[-1]
+                n_samples_ds = int(np.ceil(n_samples / ds_factor))
+                n_tones = raw_dimension.n_tones[0]
+
+                # TODO: Change this for when there are multiple TOD files
+                detector = pfile.create_group('/', f'detector_{i}')
+                detector_global_data = pfile.create_group(detector, 'global_data')
+                pfile.create_array(detector_global_data, 'vis', vis)
+                pfile.create_array(detector_global_data, 'df_per_mK', shape=(n_tones,), atom=tables.Float64Atom())
+                chanmask = pfile.create_array(detector_global_data, 'chanmask', shape=(n_tones,), atom=tables.Int8Atom(dflt=1))
+                chanmask[:] = 1
+                pfile.create_array(detector_global_data, 'detector_pol', shape=(n_tones,), atom=tables.Int8Atom())
+                pfile.create_array(detector_global_data, 'optical_visibility', shape=(1,), atom=tables.Float64Atom())
+
+                detector_data = pfile.create_group(detector, 'data')
+                detector_data._v_attrs.n_tones = n_tones
+                detector_data._v_attrs.n_samples = n_samples_ds
+                pfile.create_array(detector_data, 'timestamp', shape=(n_samples_ds,), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'IQ_to_freq_diss_angle', shape=(n_tones,), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'adc_units_to_hz', shape=(n_tones,), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'carrier_amplitudes', shape=(2, n_tones), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'data_IQ', shape=(2, n_tones, n_samples_ds), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'data_gain_phase', shape=(2, n_tones, n_samples_ds), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'IQ_to_gain_phase_angle', shape=(n_tones,), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'data_freq_diss', shape=(2, n_tones, n_samples_ds), atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'data_mK', shape=(n_tones, n_samples_ds), atom=tables.Float64Atom())
+                azel_shape = (n_tones, n_samples_ds) if azel_exists else (1, 0)
+                pfile.create_array(detector_data, 'detector_az', shape=azel_shape, atom=tables.Float64Atom())
+                pfile.create_array(detector_data, 'detector_za', shape=azel_shape, atom=tables.Float64Atom())
+
+        return 
 
 class ProcessedDataL2(ProcessedData):
     """Class for storing level 2 processed data."""
