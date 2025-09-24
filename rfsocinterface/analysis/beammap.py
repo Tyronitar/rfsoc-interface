@@ -123,7 +123,8 @@ def analyze_beammap(
 
 
     # TODO: file name
-    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap_NO_swap_negative_angle.pdf'
+    # pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap_NO_swap_negative_angle.pdf'
+    pdf_file_name = map_data.folder / map_data.file_stub
     with PdfPages(pdf_file_name) as pdf:
         FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
         high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50)).flatten()
@@ -144,14 +145,14 @@ def analyze_beammap(
                 fig.set_dpi(300)  # Sharper plots
                 for ax in axes.flatten():
                     ax.set_axis_off()
-            ax = axes.flatten()[idx]
+            ax = axes.flatten()[counter - 1]
             ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
 
 
             
-            if show_all and map_data.chanmask[idx] != 1:
+            # Draw a rectangle around the subplot indicating off resonance
+            if show_all and map_data.chanmask[idx] == 0:
             # if show_all and idx == 1:
-                # Draw a rectangle around the subplot indicating on/off resonance
                 auto_axis = ax.axis()
                 # bbox = ax.get_window_extent().bounds
                 rec = plt.Rectangle(
@@ -192,7 +193,9 @@ def analyze_beammap(
             ax.set_xlim(extent[0],extent[1])
             ax.set_ylim(extent[2],extent[3])
             title = f'Resonator {idx}'
-            if show_all and map_data.chanmask[idx] != 1:
+            
+            # Indicate in plot title if off-resonance
+            if show_all and map_data.chanmask[idx] == 0:
             # if show_all and idx == 1:
                 title += ' (Off-resonance)'
             ax.set_title(title)
@@ -217,7 +220,9 @@ def analyze_beammap(
             ax.add_artist(t)
             fig.set_dpi(300)
             # fig.tight_layout()
-            if show_all and map_data.chanmask[idx] != 1:
+
+            # Set face color to orange to indicate off-resonance
+            if show_all and map_data.chanmask[idx] == 0:
             # if show_all and idx == 1:
                 fig.set_facecolor('orange')
 
