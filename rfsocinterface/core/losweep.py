@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QProgressDialog
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+from numpy.polynomial import Polynomial
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from scipy.signal import savgol_filter
@@ -441,7 +442,6 @@ class LoSweepData:
         path.touch(PERMISSIONS_USR_RW)
         with h5py.File(path, 'w') as fh:
             fh.create_dataset('global_data/lo_sweep', data=self.data)
-            # fh.create_dataset('global_data/s21', data=self.s21)
             fh.create_dataset('global_data/lo_freq', data=self.f_center)
             fh.create_dataset('global_data/baseband_freqs', data=self.tone_list - self.f_center)
             fh.create_dataset('global_data/chanmask', data=self.chanmask)
@@ -456,34 +456,22 @@ class LoSweepData:
         ind_val = np.arange(edge_indices[0], edge_indices[1])
         freq_val = self.freq[:, ind_val] - self.tone_list[:, np.newaxis]
 
-        # rotation_angle = np.zeros(self.nchan)
-        # adc_units_to_hz = np.zeros(self.nchan)
-
-
         for i_chan in range(0, self.nchan):
-            fit_I = np.polyfit(freq_val[i_chan], self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
-            fit_I_deriv = np.polyder(fit_I)
-            dIQ_df[0, i_chan] = np.polyval(fit_I_deriv, freq_val[i_chan, deriv_length])
-            fit_Q = np.polyfit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
-            fit_Q_deriv = np.polyder(fit_Q)
-            dIQ_df[1, i_chan] = np.polyval(fit_Q_deriv, freq_val[i_chan, deriv_length])
-
-            # rotation_angle[i_chan] = np.atan2(dIQ_df[1, i_chan], dIQ_df[0, i_chan])
-            # adc_units_to_hz[i_chan] = np.sqrt(
-            #     (dIQ_df[0, i_chan] * np.cos(rotation_angle)) ** 2 + \
-            #     (dIQ_df[1, i_chan] * np.sin(rotation_angle)) ** 2
-            # )
+            fit_I = Polynomial.fit(freq_val[i_chan], self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            fit_I_deriv = fit_I.deriv()
+            dIQ_df[0, i_chan] = fit_I_deriv(freq_val[i_chan, deriv_length])
+            fit_Q = Polynomial.fit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            fit_Q_deriv = fit_Q.deriv()
+            dIQ_df[1, i_chan] = fit_Q_deriv(freq_val[i_chan, deriv_length])
 
         # Q in y direction, I in x direction
         # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
-        # The negative sign is because we're rotating the coordinate axes, not the point
+        # Negative because we're rotating the coordinate axes, not the point
         rotation_angle = -np.atan2(dIQ_df[1, :], dIQ_df[0, :])
 
-        adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
-        # adc_units_to_hz = np.sqrt(
-        #     (dIQ_df[0, :] * np.cos(rotation_angle)) ** 2 +
-        #     (dIQ_df[1, :] * np.sin(rotation_angle)) ** 2
-        # )
+        # For a fixed readout tone, a negatvine shift in the resonance freq appears 
+        # as a perceived positive shift in the I/Q data, which thus necessitates the negative sign
+        adc_units_to_hz = -np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
         return rotation_angle, adc_units_to_hz
 
 
