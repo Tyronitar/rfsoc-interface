@@ -9,7 +9,7 @@ import inspect
 import logging
 
 import tables
-from tables.link import Link
+from tables.link import ExternalLink
 import numpy as np
 import numpy.typing as npt
 from scipy import signal
@@ -864,75 +864,77 @@ class PyTablesDataset:
     Will store an external link to a previous dataset until a write operation is
     attempted, at which point it will copy the data to the new file.
     """
-    def __init__(self, data: tables.Array | Link, file: tables.File):
+    def __init__(self, data: tables.Array | ExternalLink, file: tables.File):
         self._data = data
         self._file = file
     
+    def __str__(self):
+        return str(self._data)
+    
+    def __repr__(self):
+        return f'PyTablesDataset({self._data}, {self._file.filename})'
+    
     def __setitem__(self, key, value):
         # Dereference link if necessary
-        if isinstance(self._data, Link):
-            parent = self._data._v_parent
+        if isinstance(self._data, ExternalLink):
+            parent_node = self._data._v_parent
             old_array: tables.Array = self._data(mode='r')
             # Copy over data from old array to the new file before setting anything
-            new_array = old_array.copy(parent)
-            self._data.umount()
+            temp_name = self._data._v_name + '_temp'
+            self._file.rename_node(self._data, temp_name)
+            new_array = self._file.copy_node(old_array, parent_node, overwrite=True)
+            self._file.remove_node(parent_node, temp_name)
             self._data = new_array
+        pdb.set_trace()
         self._data[key] = value
     
     def __getitem__(self, key):
+        # Dereference link if necessary
+        if isinstance(self._data, ExternalLink):
+            return self._data(mode='r')[key]
         return self._data[key]
     
-    def shape(self):
-        if isinstance(self._data, Link):
+    @property
+    def shape(self) -> tuple[int, ...]:
+        if isinstance(self._data, ExternalLink):
             return self._data(mode='r').shape
         return self._data.shape
 
 
-class RawData:
-    def __init__(self, file: tables.File):
-        self._file = file
-    
-    @property
-    def time_ordered_data(self) -> tables.Group:
-        return self._file.root.time_ordered_data
-    
-    @property
-    def data_IQ(self) -> tables.Array:
-        return self._file.root.data.data_IQ
+DYNAMIC_PROCESSED_DATA_FIELDS = [
+    'carrier_amplitudes',
+    'data_IQ',
+    'IQ_to_gain_phase_angle',
+    'adc_units_to_hz',
+    'data_gain_phase',
+    'data_freq_diss',
+    'data_mK',
+    'timestamp',
+    'chanmask',
+]
 
-    def from_tod(
-        cls,
-        date: str,
-        setnum: int,
-        losweep: str | None=None,
-    ) -> RawData:
+STATIC_PROCESSED_DATA_FIELDS = [
+    'vis',
+    'df_per_mK',
+    'detector_pol',
+    'optical_visibility',
+]
 
-
-                # # Temporary fix for testing code:
-                # f.baseband_freqs = np.load('/data/20250422/20250422_tone_list.npy')
-                # f.lo_freq = np.array([4e8])
-
-                if losweep:
-                    losweep = Path(losweep)
-                    # f.append_lo_sweep(losweep)
-                    if losweep.suffix == '.npy':
-                        sweep_data = np.load(folder / losweep)
-                    else:
-                        with tables.open_file(folder / losweep, 'r') as sweep_file:
-                            sweep_data = sweep_file.root.global_data.lo_sweep
-                    sweep_data = raw_global_data.lo_sweep
-                elif raw_global_data.lo_sweep is not None:
-                    sweep_data = raw_global_data.lo_sweep
-                else:
-                    raise RuntimeError('No LO sweep provided. Canceliing processing of file.')
-
-                # f.lo_freq[:] = 4e8
-                lo_freq = raw_global_data.lo_freq[:]
-                lo_freq = 4e8
-                sweep = LoSweepData(raw_global_data.baseband_freqs, lo_freq, sweep_data, raw_global_data.chanmask[:])
-                IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
-                detector_data.IQ_to_freq_diss_angle[:] = IQ_to_freq_diss_angle
-                detector_data.adc_units_to_hz[:] = adc_units_to_hz
+PROCESSED_DATA_FIELD_LOCATIONS = {
+    'carrier_amplitudes': '/data',
+    'data_IQ': '/data',
+    'IQ_to_gain_phase_angle': '/data',
+    'adc_units_to_hz': '/data',
+    'data_gain_phase': '/data',
+    'data_freq_diss': '/data',
+    'data_mK': '/data',
+    'timestamp': '/data',
+    'chanmask': '/global_data',
+    'vis': '/global_data',
+    'df_per_mK': '/global_data',
+    'detector_pol': '/global_data',
+    'optical_visibility': '/global_data',
+}
 
 class NewProcessedData:
     """Class contianing data from processed TOD files."""
@@ -948,6 +950,36 @@ class NewProcessedData:
     
     def close(self):
         self._file.close()
+    
+    def open(self, mode: str='r'):
+        self._file = tables.open_file(self.filename, mode=mode)
+    
+
+    def get_node(self, name: str, where: str=None) -> tables.Node:
+        if where is None:
+            where = PROCESSED_DATA_FIELD_LOCATIONS[name]
+        return self._file.get_node(where, name)
+
+    def get_node_value(self, name: str, where: str=None) -> tables.Array:
+        node = self.get_node(name, where=where)
+        # Dereference link if necessary
+        if isinstance(node, ExternalLink):
+            return node(mode='r')
+        return node
+
+    @property
+    def lo_sweep_group(self) -> tables.Group:
+        return self._file.root.lo_sweep
+    
+    def get_lo_sweep_data(self) -> npt.NDArray:
+        lo_sweep = None
+        for node in self.lo_sweep_group._f_walknodes('ExternalLink'):
+            this_lo_sweep = node(mode='r')[:]
+            if lo_sweep is None:
+                lo_sweep = this_lo_sweep
+            else:
+                lo_sweep = np.append(lo_sweep, this_lo_sweep, axis=1)
+        return lo_sweep
 
     @property
     def tod_template(self) -> str:
@@ -990,6 +1022,10 @@ class NewProcessedData:
         return Path(f'{DATA_DIRECTORY}/{self.date}')
     
     @property
+    def filename(self) -> str:
+        return self._file.filename
+    
+    @property
     def date(self) -> str:
         return self._file.root._v_attrs.date
     
@@ -1020,74 +1056,79 @@ class NewProcessedData:
     @property
     def optical_image(self) -> tables.Array:
         return self._file.root.optical_image
+
     
     @property
+    def carrier_amplitudes(self) -> tables.Array:
+        return self.get_node_value('carrier_amplitudes')
+
+    @property
     def carrier_amp_I(self) -> tables.Array:
-        return self._file.root.data.carrier_amplitudes[0]
+        return self.carrier_amplitudes[0]
     
     @property
     def carrier_amp_Q(self) -> tables.Array:
-        return self._file.root.data.carrier_amplitudes[1]
+        return self.carrier_amplitudes[1]
 
     @property
     def df_per_mK(self) -> tables.Array:
-        return self._file.root.global_data.df_per_mK
+        return self.get_node_value('df_per_mK')
 
     @property
     def data_IQ(self) -> tables.Array:
-        return self._file.root.data.data_IQ
+        return self.get_node_value('data_IQ')
     
     @property
     def data_I(self) -> npt.NDArray:
-        return self._file.root.data.data_IQ[0]
+        return self.data_IQ[0]
 
     @property
     def data_Q(self) -> npt.NDArray:
-        return self._file.root.data.data_IQ[1]
+        return self.data_IQ[1]
     
     @property
     def IQ_to_gain_phase_angle(self) -> tables.Array:
-        return self._file.root.data.IQ_to_gain_phase_angle
+        return self.get_node_value('IQ_to_gain_phase_angle')
 
     @property
     def IQ_to_freq_diss_angle(self) -> tables.Array:
-        return self._file.root.data.IQ_to_freq_diss_angle
+        return self.get_node_value('IQ_to_freq_diss_angle')
     
     @property
-    def adc_units_to_hz(self) -> float:
-        return self._file.root.data.adc_units_to_hz
+    def adc_units_to_hz(self) -> tables.Array:
+        return self.get_node_value('adc_units_to_hz')
 
     @property
     def data_freq_diss(self) -> tables.Array:
-        return self._file.root.data.data_freq_diss
+        return self.get_node_value('data_freq_diss')
 
     @property
     def data_freq(self) -> npt.NDArray:
-        return self._file.root.data.data_freq_diss[0]
+        return self.data_freq_diss[0]
     
     @property
     def data_diss(self) -> npt.NDArray:
-        return self._file.root.data.data_freq_diss[0]
+        return self.data_freq_diss[0]
     
     @property
     def data_mK(self) -> tables.Array:
-        return self._file.root.data.data_mK
+        return self.get_node_value('data_mK')
     
     @property
     def data_gain_phase(self) -> tables.Array:
-        return self._file.root.data.data_gain_phase
+        return self.get_node_value('data_gain_phase')
     
     @property
     def data_gain(self) -> npt.NDArray:
-        return self._file.root.data.data_gain_phase[0]
+        return self.data_gain_phase[0]
     
     @property
     def data_phase(self) -> npt.NDArray:
-        return self._file.root.data.data_gain_phase[1]
+        return self.data_gain_phase[1]
     
     @property
     def timestamp(self) -> tables.Array:
-        return self._file.root.data.timestamp
+        return self.get_node_value('timestamp')
 
     @property
     def time(self) -> npt.NDArray:
@@ -1103,23 +1144,23 @@ class NewProcessedData:
     
     @property
     def detector_az(self) -> tables.Array:
-        return self._file.root.data.detector_az
+        return self.get_node_value('detector_az')
 
     @property
     def detector_za(self) -> tables.Array:
-        return self._file.root.data.detector_za
+        return self.get_node_value('detector_za')
 
     @property
     def vis(self) -> tables.Array:
-        return self._file.root.global_data.vis
+        return self.get_node_value('vis')
 
     @property
     def detector_pol(self) -> tables.Array:
-        return self._file.root.global_data.detector_pol
+        return self.get_node_value('detector_pol')
     
     @property
     def chanmask(self) -> tables.Array:
-        return self._file.root.global_data.chanmask
+        return self.get_node_value('chanmask')
     
     @property
     def receipt(self) -> str:
@@ -1392,68 +1433,124 @@ class ProcessedDataL1(NewProcessedData):
                 chanmask[no_pol] = -1
         return cls(pfile)
 
+class ExternalLinkProcessedData(NewProcessedData):
+    """Class for storing processed data with external links to another file."""
+    def __init__(self, file: tables.File):
+        super().__init__(file)
+        for field_name in DYNAMIC_PROCESSED_DATA_FIELDS:
+            setattr(self, field_name, self.get_node(field_name))
 
-class ProcessedDataL2(ProcessedData):
-    """Class for storing level 2 processed data."""
+    @property
+    def carrier_amplitudes(self) -> PyTablesDataset:
+        return self._carrier_amplitudes
 
-    def __init__(self, l1file: tables.File, l2file: tables.File):
-        super().__init__(l1file)
-        self._l2file = l2file
-
+    @carrier_amplitudes.setter
+    def carrier_amplitudes(self, carrier_amplitudes: tables.Array | ExternalLink):
+        self._carrier_amplitudes = PyTablesDataset(carrier_amplitudes, self._file)
+    
     @property
     def data_IQ(self) -> PyTablesDataset:
         return self._data_IQ
     
     @data_IQ.setter
-    def data_IQ(self, data_IQ: tables.Array | Link):
-        self._data_IQ = PyTablesDataset(data_IQ, self.file)
+    def data_IQ(self, data_IQ: tables.Array | ExternalLink):
+        self._data_IQ = PyTablesDataset(data_IQ, self._file)
+
+    @property
+    def IQ_to_gain_phase_angle(self) -> PyTablesDataset:
+        return self._IQ_to_gain_phase_angle
+
+    @IQ_to_gain_phase_angle.setter
+    def IQ_to_gain_phase_angle(self, IQ_to_gain_phase_angle: tables.Array | ExternalLink):
+        self._IQ_to_gain_phase_angle = PyTablesDataset(IQ_to_gain_phase_angle, self._file)
     
-    @classmethod
-    def from_processed_data(cls, pl1: ProcessedData | tables.File, mode='w') -> ProcessedDataL2:
-        if isinstance(pl1, tables.File):
-            l1file = pl1
-            l2file = tables.File(ProcessedData(pl1).processed_file_level2_template, mode)
-        else:
-            l1file = pl1._l1file
-            l2file = tables.File(pl1.processed_file_level2_template, mode)
-
-        # Set global attributes from L1 file
-        pl2 = cls(l1file, l2file)
-        pl2.date = pl1.date
-        pl2.setnum = pl1.setnum
-        return pl2
+    @property
+    def adc_units_to_hz(self) -> PyTablesDataset:
+        return self._adc_units_to_hz
     
-    def setup_l2file(self):
-        """Setup the level 2 file with necessary attributes and arrays."""
-        self.date = super().date
-        self.setnum = super().setnum
+    @adc_units_to_hz.setter
+    def adc_units_to_hz(self, adc_units_to_hz: tables.Array | ExternalLink):
+        self._adc_units_to_hz = PyTablesDataset(adc_units_to_hz, self._file)
 
-        psd_group = self._l2file.create_group('/', 'psd')
-        # self._l2file.create_array(psd_group, 'freq', shape=(self
-        # self._l2file.create_array(psd_group, 'psd_gain_phase', shape=(self
-
+    @property
+    def data_gain_phase(self) -> PyTablesDataset:
+        return self._data_gain_phase
+    
+    @data_gain_phase.setter
+    def data_gain_phase(self, data_gain_phase: tables.Array | ExternalLink):
+        self._data_gain_phase = PyTablesDataset(data_gain_phase, self._file)
+    
+    @property
+    def data_freq_diss(self) -> PyTablesDataset:
+        return self._data_freq_diss
+    
+    @data_freq_diss.setter
+    def data_freq_diss(self, data_freq_diss: tables.Array | ExternalLink):
+        self._data_freq_diss = PyTablesDataset(data_freq_diss, self._file)
+    
+    @property
+    def data_mK(self) -> PyTablesDataset:
+        return self._data_mK
+    
+    @data_mK.setter
+    def data_mK(self, data_mK: tables.Array | ExternalLink):
+        self._data_mK = PyTablesDataset(data_mK, self._file)
+    
+    @property
+    def timestamp(self) -> PyTablesDataset:
+        return self._timestamp
+    
+    @timestamp.setter
+    def timestamp(self, timestamp: tables.Array | ExternalLink):
+        self._timestamp = PyTablesDataset(timestamp, self._file)
 
     @property
     def chanmask(self) -> tables.Array:
-        return self._l2file.root.chanmask
-
-    @property
-    def date(self) -> str:
-        return self._l2file.root._v_attrs.date
-
-    @date.setter
-    def date(self, date: str):
-        self._l2file.root._v_attrs.date = date
-
-    @property
-    def setnum(self) -> int:
-        return self._l2file.root._v_attrs.setnum
-
-    @setnum.setter
-    def setnum(self, setnum: int):
-        self._l2file.root._v_attrs.setnum = setnum
+        return self._chanmask
+    
+    @chanmask.setter
+    def chanmask(self, chanmask: tables.Array | ExternalLink):
+        self._chanmask = PyTablesDataset(chanmask, self._file)
 
 
+
+class ProcessedDataLN(ExternalLinkProcessedData):
+    """Class for storing level N processed data."""
+
+    def __init__(self, file: tables.File):
+        super().__init__(file)
+    
+    @classmethod
+    def from_previous_level(cls, previous: NewProcessedData, level: int) -> ProcessedDataLN:
+        """Create a level N processed file with external links to level N-1."""
+        file = tables.File(get_processed_level_file_template(previous.date, previous.setnum, level=level), 'w')
+        file.create_group('/', 'global_data')
+        data_group = file.create_group('/', 'data')
+        lo_group = file.create_group('/', 'lo_sweep')
+
+        # Copy attributes
+        file.root._v_attrs.date = previous.date
+        file.root._v_attrs.setnum = previous.setnum
+        file.root._v_attrs.receipt = previous.receipt
+        data_group._v_attrs.n_tones = previous.n_tones
+        data_group._v_attrs.n_samples = previous.n_samples
+
+        # Copy LO sweep external links
+        for node in previous.lo_sweep_group._f_walknodes('ExternalLink'):
+            file.create_external_link(lo_group, node._v_name, node.target)
+
+        # Create external links for all datasets
+        for node_name in DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS:
+            node = previous.get_node(node_name)
+            parent_path = node._v_parent._v_pathname
+            if isinstance(node, ExternalLink):
+                target_path = node.target
+            else:
+                target_path = f'{previous.filename}:{node._v_pathname}'
+            file.create_external_link(parent_path, node_name, target_path)
+        
+        previous.close()
+        return cls(file)
 
 def plot_map(
         map: npt.NDArray,
@@ -1906,17 +2003,22 @@ if __name__ == '__main__':
     setnum = 1017
     # date = '20250529'
     # setnum = 1011
-
-    pd_old = ProcessedData.from_tod(date, setnum)
-    pd_new = ProcessedDataL1.from_tod(date, setnum)
-    plt.show()
-    plt.plot(pd_old.df_per_mK[:], label='Old')
-    plt.plot(pd_new.df_per_mK[:], label='New')
-    plt.legend()
-    plt.show()
+    pd = ProcessedDataL1.from_tod(date, setnum)
+    pd2 = ProcessedDataLN.from_previous_level(pd, 2)
     pdb.set_trace()
-    pd_old.close()
-    pd_new.close()
+    pd.close()
+    pd2.close()
+
+    # pd_old = ProcessedData.from_tod(date, setnum)
+    # pd_new = ProcessedDataL1.from_tod(date, setnum)
+    # plt.show()
+    # plt.plot(pd_old.df_per_mK[:], label='Old')
+    # plt.plot(pd_new.df_per_mK[:], label='New')
+    # plt.legend()
+    # plt.show()
+    # pdb.set_trace()
+    # pd_old.close()
+    # pd_new.close()
     # data = ProcessedData.from_file(date, setnum)
     # pfile = PyTablesProcessedData.from_tod(date, setnum, save=False)
     # todtemplate = get_tod_template(date, setnum)

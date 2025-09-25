@@ -2,7 +2,7 @@
 
 from rfsocinterface.core.data.data import (
     ProcessedData,
-    ProcessedDataL2,
+    ProcessedDataLN,
     MapData,
     DATA_DIRECTORY,
     DEFAULT_PARAMS_DIRECTORY,
@@ -52,7 +52,7 @@ ROUTINE_NAME_MAP = {
 
 __all__ = [
     ProcessedData,
-    ProcessedDataL2,
+    ProcessedDataLN,
     MapData,
     Downsample,
     CleanTOD,
