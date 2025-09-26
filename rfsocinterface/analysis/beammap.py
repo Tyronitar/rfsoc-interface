@@ -124,7 +124,8 @@ def analyze_beammap(
 
     # TODO: file name
     # pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap_NO_swap_negative_angle.pdf'
-    pdf_file_name = map_data.folder / map_data.file_stub
+    # pdf_file_name = map_data.folder / map_data.file_stub
+    pdf_file_name = map_data.beammap_file_template
     with PdfPages(pdf_file_name) as pdf:
         FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
         high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50)).flatten()
