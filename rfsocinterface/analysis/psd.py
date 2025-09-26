@@ -435,7 +435,10 @@ if __name__ == '__main__':
     # Flag outliers
     if do_flag_outliers:
         chanmask = flag_outliers(input_data, pd.fs, chanmask, sigma=outlier_sigma)
-    
+
+    filt_sos = signal.butter(6, 1, btype='highpass', fs=pd.fs, output='sos', analog=False)
+    input_data[:] = signal.sosfiltfilt(filt_sos, input_data)
+
     chanmask, freq, noise_psd = compute_noise_psd(
         input_data,
         pd.timestamp,
