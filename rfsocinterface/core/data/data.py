@@ -210,16 +210,6 @@ def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
     #in each direction (assuming the noise is identical in I and Q)
     #this will then yield data_f
 
-    # quad_sum = np.sqrt(data.data_IQ[0, :] ** 2 + data.data_IQ[1, :] ** 2)
-    # source_peak_idx = np.argmax(quad_sum, axis=1)
-
-    # n_tones = data.data_IQ.shape[1]
-    # data_IQ = data.data_IQ[:]
-    # peak_I = data_IQ[0, np.arange(n_tones, dtype=int), source_peak_idx]
-    # peak_Q = data_IQ[1, np.arange(n_tones, dtype=int), source_peak_idx]
-
-    # data.IQ_to_freq_diss_angle[:] = -np.atan2(peak_Q, peak_I)
-
     rotate_basis(data.data_IQ / data.adc_units_to_hz[:][:, np.newaxis], data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
     # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
 
@@ -711,7 +701,6 @@ class ProcessedData:
                 sweep = LoSweepData(raw_global_data.baseband_freqs, lo_freq, sweep_data, raw_global_data.chanmask[:])
                 IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
                 detector_data.IQ_to_freq_diss_angle[:] = IQ_to_freq_diss_angle
-
                 detector_data.adc_units_to_hz[:] = adc_units_to_hz
                 # if np.size(dIQ_df) > 0:
                 #     dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
