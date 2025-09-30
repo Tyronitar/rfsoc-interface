@@ -407,7 +407,7 @@ if __name__ == '__main__':
         case 'iq':
             # IQ basis
             # input_data = rotate_basis(p.data_gain_phase, -p.IQ_to_gain_phase_angle)
-            input_data = pd.data_IQ
+            input_data = pd.data_IQ[:]
         case 'fd':
             # Frequency/Dissipation basis
             # Get frequencies from the raw data file

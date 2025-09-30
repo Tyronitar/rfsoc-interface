@@ -11,6 +11,7 @@ import logging
 import tables
 import numpy as np
 import numpy.typing as npt
+from numpy.polynomial import Polynomial
 from scipy import signal
 import matplotlib.pyplot as plt
 
@@ -219,6 +220,32 @@ def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
     # peak_Q = data_IQ[1, np.arange(n_tones, dtype=int), source_peak_idx]
 
     # data.IQ_to_freq_diss_angle[:] = -np.atan2(peak_Q, peak_I)
+
+    # Compute the rotation angle based on a fit to the IQ data
+    fit_order = 1
+    sigma = 4
+    for i_res in range(data.data_IQ.shape[1]):
+        data_IQ = data.data_IQ[:, i_res]
+
+        iq_mean = np.mean(data_IQ, axis=1, keepdims=True)
+        iq_std = np.std(data_IQ, axis=1, keepdims=True)
+        iq_inliers_mask = (data_IQ >=  iq_mean - sigma * iq_std) & (data_IQ <= iq_mean + sigma * iq_std)
+        iq_inliers_mask = iq_inliers_mask[0] & iq_inliers_mask[1]
+        # iq_inliers = np.ones(data_IQ.shape[1], dtype=bool)
+        iq_inliers = data_IQ[:, iq_inliers_mask]
+        fit_IQ = Polynomial.fit(iq_inliers[0], iq_inliers[1], fit_order)
+
+
+        # i_bar = (min_iq[0] + max_iq[0]) / 2
+        i_bar = iq_mean[0, 0]
+        q_bar = fit_IQ(i_bar)
+        sign_i = np.sign(i_bar)
+        sign_q = np.sign(q_bar)
+        
+        # Compute the angle the IQ data is at relative to the IQ basis
+        m_bar = fit_IQ.deriv()(i_bar)
+        # data.IQ_to_freq_diss_angle[i_res] = -np.atan2(sign_q * np.abs(m_bar), sign_i)
+        data.IQ_to_freq_diss_angle[i_res] = -np.atan2(m_bar, 1)
 
     rotate_basis(data.data_IQ / data.adc_units_to_hz[:][:, np.newaxis], data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
     # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
