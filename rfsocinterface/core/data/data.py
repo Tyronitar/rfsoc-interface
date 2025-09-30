@@ -702,6 +702,7 @@ class ProcessedData:
                 sweep = LoSweepData(raw_global_data.baseband_freqs, lo_freq, sweep_data, raw_global_data.chanmask[:])
                 IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
                 detector_data.IQ_to_freq_diss_angle[:] = IQ_to_freq_diss_angle
+
                 detector_data.adc_units_to_hz[:] = adc_units_to_hz
                 # if np.size(dIQ_df) > 0:
                 #     dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)

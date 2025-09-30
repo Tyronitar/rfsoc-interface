@@ -466,9 +466,11 @@ class LoSweepData:
 
         # Q in y direction, I in x direction
         # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
-        # The negative sign is because we're rotating the coordinate axes, not the point
+        # Negative because we're rotating the coordinate axes, not the point
         rotation_angle = -np.atan2(dIQ_df[1, :], dIQ_df[0, :])
 
+        # For a fixed readout tone, a positive shift in the resonance freq appears 
+        # as a perceived positive shift in the I/Q data, which thus necessitates the positive sign
         adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
         return rotation_angle, adc_units_to_hz
 
