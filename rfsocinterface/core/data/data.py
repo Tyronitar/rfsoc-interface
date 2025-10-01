@@ -886,7 +886,6 @@ class PyTablesDataset:
             new_array = self._file.copy_node(old_array, parent_node, overwrite=True)
             self._file.remove_node(parent_node, temp_name)
             self._data = new_array
-        pdb.set_trace()
         self._data[key] = value
     
     def __getitem__(self, key):
@@ -900,6 +899,10 @@ class PyTablesDataset:
         if isinstance(self._data, ExternalLink):
             return self._data(mode='r').shape
         return self._data.shape
+    
+    @property
+    def ndim(self) -> int:
+        return len(self.shape)
 
 
 DYNAMIC_PROCESSED_DATA_FIELDS = [
@@ -939,8 +942,9 @@ PROCESSED_DATA_FIELD_LOCATIONS = {
 
 class NewProcessedData:
     """Class contianing data from processed TOD files."""
-    def __init__(self, file: tables.File):
+    def __init__(self, file: tables.File, level: int=1):
         self._file = file
+        self.level = level
     
     def test_node(self, name: str) -> bool:
         try:
@@ -954,7 +958,6 @@ class NewProcessedData:
     
     def open(self, mode: str='r'):
         self._file = tables.open_file(self.filename, mode=mode)
-    
 
     def get_node(self, name: str, where: str=None) -> tables.Node:
         if where is None:
@@ -969,6 +972,10 @@ class NewProcessedData:
         return node
 
     @property
+    def global_data_group(self) -> tables.Group:
+        return self._file.root.global_data
+
+    @property
     def lo_sweep_group(self) -> tables.Group:
         return self._file.root.lo_sweep
     
@@ -981,6 +988,18 @@ class NewProcessedData:
             else:
                 lo_sweep = np.append(lo_sweep, this_lo_sweep, axis=1)
         return lo_sweep
+    
+    @property
+    def lo_freq(self) -> float:
+        return self.lo_sweep_group._v_attrs.lo_freq
+    
+    @property
+    def baseband_freqs(self) -> tables.Array:
+        return self.global_data_group.baseband_freqs
+    
+    @property
+    def tones(self) -> npt.NDArray:
+        return self.baseband_freqs[:] + self.lo_freq
 
     @property
     def tod_template(self) -> str:
@@ -995,12 +1014,8 @@ class NewProcessedData:
         return get_optcam_template(self.date ,self.setnum)
     
     @property
-    def processed_file_level1_template(self) -> str:
-        return get_processed_file_template(self.date, self.setnum)
-
-    @property
-    def processed_file_level2_template(self) -> str:
-        return get_processed_file_template(self.date, self.setnum, level=2)
+    def processed_file_template(self) -> str:
+        return get_processed_level_file_template(self.date, self.setnum, level=self.level)
 
     @property
     def cleaned_file_template(self) -> str:
@@ -1079,12 +1094,10 @@ class NewProcessedData:
     def data_IQ(self) -> tables.Array:
         return self.get_node_value('data_IQ')
     
-    @property
-    def data_I(self) -> npt.NDArray:
+    def get_data_I(self) -> npt.NDArray:
         return self.data_IQ[0]
 
-    @property
-    def data_Q(self) -> npt.NDArray:
+    def get_data_Q(self) -> npt.NDArray:
         return self.data_IQ[1]
     
     @property
@@ -1103,12 +1116,10 @@ class NewProcessedData:
     def data_freq_diss(self) -> tables.Array:
         return self.get_node_value('data_freq_diss')
 
-    @property
-    def data_freq(self) -> npt.NDArray:
+    def get_data_freq(self) -> npt.NDArray:
         return self.data_freq_diss[0]
     
-    @property
-    def data_diss(self) -> npt.NDArray:
+    def get_data_diss(self) -> npt.NDArray:
         return self.data_freq_diss[0]
     
     @property
@@ -1119,12 +1130,10 @@ class NewProcessedData:
     def data_gain_phase(self) -> tables.Array:
         return self.get_node_value('data_gain_phase')
     
-    @property
-    def data_gain(self) -> npt.NDArray:
+    def get_data_gain(self) -> npt.NDArray:
         return self.data_gain_phase[0]
     
-    @property
-    def data_phase(self) -> npt.NDArray:
+    def get_data_phase(self) -> npt.NDArray:
         return self.data_gain_phase[1]
     
     @property
@@ -1269,6 +1278,7 @@ class ProcessedDataL1(NewProcessedData):
         vis = pfile.create_array(global_data_group, 'vis', vis)
         df_per_mK = pfile.create_earray(global_data_group, 'df_per_mK', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
         chanmask = pfile.create_earray(global_data_group, 'chanmask', shape=(0,), expectedrows=n_tones, atom=tables.Int8Atom(dflt=1))
+        baseband_freqs = pfile.create_earray(global_data_group, 'baseband_freqs', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
         # chanmask[:] = 1
         detector_pol = pfile.create_earray(global_data_group, 'detector_pol', shape=(0,), expectedrows=n_tones, atom=tables.Int8Atom())
         optical_visibility = pfile.create_array(global_data_group, 'optical_visibility', shape=(1,), atom=tables.Float64Atom())
@@ -1309,6 +1319,8 @@ class ProcessedDataL1(NewProcessedData):
                 pfile.create_external_link(lo_group, f'lo_sweep_{i}', f'{file}:/global_data/lo_sweep')
                 lo_freq = raw_global_data.lo_freq[:]
                 # lo_freq = 4e8
+                baseband_freqs.append(raw_global_data.baseband_freqs[:])
+                lo_group._v_attrs.lo_freq = lo_freq
                 sweep = LoSweepData(raw_global_data.baseband_freqs, lo_freq, sweep_data, raw_global_data.chanmask[:])
 
                 # Get frequency direction
@@ -1433,6 +1445,12 @@ class ProcessedDataL1(NewProcessedData):
             if np.size(no_pol > 0):
                 chanmask[no_pol] = -1
         return cls(pfile)
+    
+    @classmethod
+    def from_file(cls, date: str, setnum: int, mode: str='r'):
+        fname = get_processed_level_file_template(date, setnum, level=1)
+        return cls(tables.File(fname, mode=mode), level=1)
+
 
 class ExternalLinkProcessedData(NewProcessedData):
     """Class for storing processed data with external links to another file."""
@@ -1445,6 +1463,10 @@ class ExternalLinkProcessedData(NewProcessedData):
     def carrier_amplitudes(self) -> PyTablesDataset:
         return self._carrier_amplitudes
 
+    @property
+    def baseband_freqs(self) -> tables.Array:
+        return self.global_data_group.baseband_freqs(mode='r')
+
     @carrier_amplitudes.setter
     def carrier_amplitudes(self, carrier_amplitudes: tables.Array | ExternalLink):
         self._carrier_amplitudes = PyTablesDataset(carrier_amplitudes, self._file)
@@ -1456,7 +1478,7 @@ class ExternalLinkProcessedData(NewProcessedData):
     @data_IQ.setter
     def data_IQ(self, data_IQ: tables.Array | ExternalLink):
         self._data_IQ = PyTablesDataset(data_IQ, self._file)
-
+    
     @property
     def IQ_to_gain_phase_angle(self) -> PyTablesDataset:
         return self._IQ_to_gain_phase_angle
@@ -1518,14 +1540,18 @@ class ExternalLinkProcessedData(NewProcessedData):
 class ProcessedDataLN(ExternalLinkProcessedData):
     """Class for storing level N processed data."""
 
-    def __init__(self, file: tables.File):
+    def __init__(self, file: tables.File, level: int=2):
         super().__init__(file)
+        if level < 2:
+            raise ValueError(f'Argument `level` must be >= 2 for class `ProcessedDataLN`, received {level}')
+        self.level = level
     
     @classmethod
-    def from_previous_level(cls, previous: NewProcessedData, level: int) -> ProcessedDataLN:
+    def from_previous_level(cls, previous: NewProcessedData) -> ProcessedDataLN:
         """Create a level N processed file with external links to level N-1."""
+        level = previous.level + 1
         file = tables.File(get_processed_level_file_template(previous.date, previous.setnum, level=level), 'w')
-        file.create_group('/', 'global_data')
+        global_data_group = file.create_group('/', 'global_data')
         data_group = file.create_group('/', 'data')
         lo_group = file.create_group('/', 'lo_sweep')
 
@@ -1539,6 +1565,11 @@ class ProcessedDataLN(ExternalLinkProcessedData):
         # Copy LO sweep external links
         for node in previous.lo_sweep_group._f_walknodes('ExternalLink'):
             file.create_external_link(lo_group, node._v_name, node.target)
+        lo_group._v_attrs.lo_freq = previous.lo_freq
+        if isinstance(previous, ProcessedDataLN):
+            file.create_external_link(global_data_group, 'baseband_freqs', previous.global_data_group.baseband_freqs.target)
+        else:
+            file.create_external_link(global_data_group, 'baseband_freqs', f'{previous.filename}:/{previous.baseband_freqs._v_pathname}')
 
         # Create external links for all datasets
         for node_name in DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS:
@@ -1550,8 +1581,16 @@ class ProcessedDataLN(ExternalLinkProcessedData):
                 target_path = f'{previous.filename}:{node._v_pathname}'
             file.create_external_link(parent_path, node_name, target_path)
         
+        # Swap the previous file to read-only
         previous.close()
-        return cls(file)
+        previous.open('r')
+
+        return cls(file, level)
+
+    @classmethod
+    def from_file(cls, date: str, setnum: int, level: int, mode: str='r'):
+        fname = get_processed_level_file_template(date, setnum, level=level)
+        return cls(tables.File(fname, mode=mode), level=level)
 
 def plot_map(
         map: npt.NDArray,
@@ -2005,7 +2044,9 @@ if __name__ == '__main__':
     # date = '20250529'
     # setnum = 1011
     pd = ProcessedDataL1.from_tod(date, setnum)
-    pd2 = ProcessedDataLN.from_previous_level(pd, 2)
+    pd2 = ProcessedDataLN.from_previous_level(pd)
+    pd2.data_IQ[:] = 0
+    pd3 = ProcessedDataLN.from_previous_level(pd2)
     pdb.set_trace()
     pd.close()
     pd2.close()
