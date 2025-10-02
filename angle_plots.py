@@ -1,3 +1,4 @@
+import tables
 from rfsocinterface.core.data import ProcessedData, MapData
 import numpy as np
 from numpy.polynomial import Polynomial
@@ -84,6 +85,8 @@ def plot_angle_in_blob(
         adc_units_to_Hz: float,
         title: str='',
         fit_order: int=2,
+        alpha: float=0.5,
+        sigma: float=2.5,
     ) -> Figure:
     """Plot the IQ noise blob and the rotation angle used to convert to freq/diss.
     
@@ -105,52 +108,59 @@ def plot_angle_in_blob(
     data_IQ = data_IQ[:] / adc_units_to_Hz
     data_freq_diss = data_freq_diss[:] 
     x0, y0 = np.median(data_IQ, axis=1)
-    min_iq = np.min(data_IQ, axis=1)
-    max_iq = np.max(data_IQ, axis=1)
     # x0 = y0 = 0
-    ax.scatter(data_IQ[0], data_IQ[1], label='IQ Data in Hz', color='lightskyblue', rasterized=True)
-    ax.scatter(data_freq_diss[0], data_freq_diss[1], label='Freq / Diss Data', color='pink', rasterized=True)
 
     # Compute best fit for IQ data
-    # iq_mean = np.mean(data_IQ, axis=1, keepdims=True)
-    # iq_std = np.std(data_IQ, axis=1, keepdims=True)
-    # iq_inliers = (data_IQ >=  iq_mean - 2 * iq_std) & (data_IQ <= iq_mean + 2 * iq_std)
-    # iq_inliers = iq_inliers[0] & iq_inliers[1]
-    iq_inliers = np.ones(data_IQ.shape[1], dtype=bool)
-    fit_IQ = Polynomial.fit(data_IQ[0, iq_inliers], data_IQ[1, iq_inliers], fit_order)
+    iq_mean = np.mean(data_IQ, axis=1, keepdims=True)
+    iq_std = np.std(data_IQ, axis=1, keepdims=True)
+    iq_inliers_mask = (data_IQ >=  iq_mean - sigma * iq_std) & (data_IQ <= iq_mean + sigma * iq_std)
+    iq_inliers_mask = iq_inliers_mask[0] & iq_inliers_mask[1]
+    # iq_inliers = np.ones(data_IQ.shape[1], dtype=bool)
+    iq_inliers = data_IQ[:, iq_inliers_mask]
+    ax.scatter(iq_inliers[0], iq_inliers[1], label='IQ Data in Hz', color='blue', rasterized=True, alpha=alpha)
+    fit_IQ = Polynomial.fit(iq_inliers[0], iq_inliers[1], fit_order)
 
     # Compute best fit for freq / diss data
-    # fd_mean = np.mean(data_freq_diss, axis=1, keepdims=True)
-    # fd_std = np.std(data_freq_diss, axis=1, keepdims=True)
-    # fd_inliers = (data_freq_diss >=  fd_mean - 2 * fd_std) & (data_freq_diss<= fd_mean + 2 * fd_std)
-    # fd_inliers = fd_inliers[0] & fd_inliers[1]
-    iq_inliers = np.ones(data_freq_diss.shape[1], dtype=bool)
-    fit_fd = Polynomial.fit(data_freq_diss[0], data_freq_diss[1], fit_order)
+    fd_mean = np.mean(data_freq_diss, axis=1, keepdims=True)
+    fd_std = np.std(data_freq_diss, axis=1, keepdims=True)
+    fd_inliers_mask = (data_freq_diss >=  fd_mean - sigma * fd_std) & (data_freq_diss<= fd_mean + sigma * fd_std)
+    fd_inliers_mask = fd_inliers_mask[0] & fd_inliers_mask[1]
+    fd_inliers = data_freq_diss[:, fd_inliers_mask]
+    ax.scatter(fd_inliers[0], fd_inliers[1], label='Freq / Diss Data', color='red', rasterized=True, alpha=alpha)
+    # fd_inliers = np.ones(data_freq_diss.shape[1], dtype=bool)
+    fit_fd = Polynomial.fit(fd_inliers[0], fd_inliers[1], fit_order)
 
     # Plot fits
-    x_iq = np.linspace(min_iq[0], max_iq[0], 100)
-    ax.plot(x_iq, fit_IQ(x_iq), linestyle='--', color='blue', label='IQ fit')
-    x_fd = np.linspace(np.min(data_freq_diss[0]), np.max(data_freq_diss[0]), 100)
-    ax.plot(x_fd, fit_fd(x_fd), linestyle='--', color='red', label='freq/diss fit')
+    min_iq = np.min(iq_inliers, axis=1)
+    max_iq = np.max(iq_inliers, axis=1)
+    min_fd = np.min(fd_inliers, axis=1)
+    max_fd = np.max(fd_inliers, axis=1)
+    x_fit = np.linspace(min(min_iq[0], min_fd[0]), max(max_iq[0], max_fd[0]))
+    # x_iq = np.linspace(min_iq[0], max_iq[0], 100)
+    ax.plot(x_fit, fit_IQ(x_fit), linestyle='--', color='blue', label='IQ fit')
+    # x_fd = np.linspace(np.min(data_freq_diss[0]), np.max(data_freq_diss[0]), 100)
+    ax.plot(x_fit, fit_fd(x_fit), linestyle='--', color='red', label='freq/diss fit')
  
     # # Plot center point
     # ax.scatter(x0, y0, label='IQ midpoint', color='blue')
 
     # Determmine direction the data is oriented using the midpoint of the fit
-    i_bar = (min_iq[0] + max_iq[0]) / 2
+    # i_bar = (min_iq[0] + max_iq[0]) / 2
+    i_bar = iq_mean[0, 0]
     q_bar = fit_IQ(i_bar)
     sign_i = np.sign(i_bar)
     sign_q = np.sign(q_bar)
     
     # Compute the angle the IQ data is at relative to the IQ basis
     m_bar = fit_IQ.deriv()(i_bar)
-    current_angle = np.atan2(sign_q * np.abs(m_bar), sign_i)
+    # current_angle = np.atan2(sign_q * np.abs(m_bar), sign_i)
+    current_angle = np.atan2(m_bar, 1)
     print(f'\ti_bar = {i_bar}')
     print(f'\tm_bar = {m_bar}')
     print(f'\ttheta = {np.degrees(current_angle)} degrees')
 
     # Plot angle of rotation used for computing freq / diss
-    r = np.ptp(data_IQ) / 8
+    r = np.ptp(iq_inliers) / 8
     plot_arc(
         ax,
         current_angle,
@@ -159,10 +169,10 @@ def plot_angle_in_blob(
         x0=x0,
         y0=y0,
         color='black',
-        label='Actual rotation to Freq / Diss',
+        label=f'Actual rotation to Freq / Diss $\\theta = {np.degrees(angle):.2f}^\\circ$',
     )
     # Plot angle IQ data makes with the basis
-    r1 = np.ptp(data_IQ) / 16
+    r1 = r / 2
     plot_arc(
         ax,
         0,
@@ -171,36 +181,58 @@ def plot_angle_in_blob(
         x0=x0,
         y0=y0,
         color='xkcd:bright blue',
-        label='Initial angle based on IQ fit',
+        label=f'Initial angle based on IQ fit $\\theta = {np.degrees(current_angle):.2f}^\\circ$',
     )
 
-    ax.legend()
-    fig.tight_layout()
+    # ax.legend()
+    # Shrink current axis by 20%
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0 + box.height * 0.15, box.width, box.height * 0.9])
+
+    # Put a legend to the right of the current axis
+    ax.legend(
+        loc='upper center',
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=3,
+    )
+    # fig.tight_layout()
 
     return fig
 
 
 
 if __name__ == '__main__':
-    date = '20250912'
-    setnum = 1014
-    data = MapData.from_file(date, setnum, 'r')
-    with PdfPages(f'{date}_{setnum}_IQ_rotation_quadratic.pdf') as pdf:
-        for i_res in range(data.n_tones):
-        # for i_res in range(10):
+    # date = '20250912'
+    # setnum = 1014
+    # data = MapData.from_file(date, setnum, 'r')
+    date = '20250916'
+    setnum = 1017
+    # data = ProcessedData.from_file(date, setnum, 'r')
+    data = ProcessedData.from_tod(date, setnum)
+    raw_data = tables.File('/data/20250916/20250916_Be231102p2_100_tones_TOD_set1017.h5', 'r')
+    freq = raw_data.root.global_data.baseband_freqs[:] + raw_data.root.global_data.lo_freq[:] 
+    freq *= 1e-6
+
+    with PdfPages(f'{date}_{setnum}_IQ_rotation.pdf') as pdf:
+        # for i_res in range(data.n_tones):
+        for i_res in np.argwhere(data.chanmask[:] == 1).flatten():
             print(f'Resonator {i_res}:')
             fig = plot_angle_in_blob(
                 data.data_IQ[:, i_res],
                 data.data_freq_diss[:, i_res],
                 data.IQ_to_freq_diss_angle[i_res],
                 data.adc_units_to_hz[i_res],
-                title=f'IQ to Frequency/Dissipation Rotation for Resonator {i_res}'
+                title=f'IQ to Frequency/Dissipation Rotation for Resonator {i_res} ($f = {freq[i_res]:.3f}$ MHz)',
+                fit_order=1,
+                alpha=0.1,
+                sigma=4,
             )
             pdf.savefig(fig)
             plt.close(fig)
 
     # plt.show()
     data.close()
+    raw_data.close()
 
     # quad_sum = np.sqrt(data.data_I[:] ** 2 + data.data_Q[:] ** 2)
     # source_peak_idx = np.argmax(quad_sum, axis=1)
