@@ -927,43 +927,52 @@ class NewProcessedData:
         for node in self._file.walk_nodes(where):
             if node._v_name == name:
                 return node
-        raise tables.exceptions.NoSuchNodeError(f'No node named {name} found in {where}')
+        raise tables.exceptions.NoSuchNodeError(f'group `{where}` does not have a child named `{name}`')
     
     def close(self):
         self._file.close()
     
     def open(self, mode: str='r'):
         self._file = tables.open_file(self.filename, mode=mode)
+    
+    @property
+    def root(self) -> tables.Group:
+        return self._file.root
 
-    def get_node(self, name: str, where: str=None) -> tables.Node:
+    def get_node(self, name: str, where: str='/') -> tables.Node:
         if where is None:
             where = PROCESSED_DATA_FIELD_LOCATIONS[name]
         return self.find_node(name, where=where)
         # return self._file.get_node(where, name)
 
-    def get_node_value(self, name: str, where: str=None) -> tables.Array:
+    def get_node_value(self, name: str, where: str='/') -> tables.Array:
         node = self.get_node(name, where=where)
         # Dereference link if necessary
         if isinstance(node, ExternalLink):
             return node(mode='r')
         return node
-    
-    @typing.overload
-    def create_array(self, where: tables.Group | str, name: str, obj: npt.NDArray) -> tables.Array:
-        pass
 
-    @typing.overload
-    def create_array(self, where: tables.Group | str, name: str, shape: tuple[int, ...], atom: tables.Atom) -> tables.Array:
-        pass
+    def create_array(
+            self,
+            where: tables.Group | str,
+            name: str,
+            obj: npt.NDArray | None=None,
+            atom: tables.Atom | None=None,
+            shape: tuple[int, ...] | None=None,
+    ) -> tables.Array:
+        return self._file.create_array(where, name, shape=shape, obj=obj, atom=atom)
+
+    def create_earray(
+            self,
+            where: tables.Group | str,
+            name: str,
+            obj: npt.NDArray | None=None,
+            atom: tables.Atom | None=None,
+            shape: tuple[int, ...] | None=None,
+            expectedrows: int=1000,
+    ) -> tables.Array:
+        return self._file.create_earray(where, name, shape=shape, obj=obj, atom=atom, expectedrows=expectedrows)
     
-    def create_array(self, *args) -> tables.Array:
-        if len(args) == 3:
-            where, name, obj = args
-            arr = self._file.create_array(where, name, obj=obj)
-        else:
-            where, name, shape, atom = args
-            arr = self._file.create_array(where, name, shape=shape, atom=atom)
-        return arr
     
     def create_group(self, where: tables.Group | str, name: str) -> tables.Group:
         return self._file.create_group(where, name)
@@ -1179,6 +1188,12 @@ class NewProcessedData:
         """Add a receipt entry to the processed data file."""
         self._file.root._v_attrs.receipt = receipt
         self._file.flush()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
 
 class ProcessedDataL1(NewProcessedData):
@@ -1455,7 +1470,6 @@ class ExternalLinkProcessedData(NewProcessedData):
     """Class for storing processed data with external links to another file."""
     def __init__(self, file: tables.File):
         super().__init__(file)
-        self._load_dynamic_fields()
 
     def _load_dynamic_fields(self):
         for field_name in DYNAMIC_PROCESSED_DATA_FIELDS:
@@ -1540,12 +1554,43 @@ class ExternalLinkProcessedData(NewProcessedData):
     @chanmask.setter
     def chanmask(self, chanmask: tables.Array | ExternalLink):
         self._chanmask = PyTablesDataset(chanmask, self._file)
+    
+
+    def link_to_file(self, target: NewProcessedData):
+        global_data_group = self._file.create_group('/', 'global_data')
+        data_group = self._file.create_group('/', 'data')
+        lo_group = self._file.create_group('/', 'lo_sweep')
+
+        # Copy attributes
+        self._file.root._v_attrs.date = target.date
+        self._file.root._v_attrs.setnum = target.setnum
+        self._file.root._v_attrs.receipt = target.receipt
+        data_group._v_attrs.n_tones = target.n_tones
+        data_group._v_attrs.n_samples = target.n_samples
+
+        # Copy LO sweep external links
+        for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
+            self._file.create_external_link(lo_group, node._v_name, node.target)
+        lo_group._v_attrs.lo_freq = target.lo_freq
+        if isinstance(target, ProcessedDataLN):
+            self._file.create_external_link(global_data_group, 'baseband_freqs', target.global_data_group.baseband_freqs.target)
+        else:
+            self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
+
+        # Create external links for all datasets
+        for node_name in DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS:
+            node = target.get_node(node_name)
+            parent_path = node._v_parent._v_pathname
+            if isinstance(node, ExternalLink):
+                target_path = node.target
+            else:
+                target_path = f'{target.filename}:{node._v_pathname}'
+            self._file.create_external_link(parent_path, node_name, target_path)
 
 
 
 class ProcessedDataLN(ExternalLinkProcessedData):
     """Class for storing level N processed data."""
-
     def __init__(self, file: tables.File, level: int=2):
         super().__init__(file)
         if level < 2:
@@ -1556,47 +1601,276 @@ class ProcessedDataLN(ExternalLinkProcessedData):
     def from_previous_level(cls, previous: NewProcessedData) -> ProcessedDataLN:
         """Create a level N processed file with external links to level N-1."""
         level = previous.level + 1
-        file = tables.File(get_processed_level_file_template(previous.date, previous.setnum, level=level), 'w')
-        global_data_group = file.create_group('/', 'global_data')
-        data_group = file.create_group('/', 'data')
-        lo_group = file.create_group('/', 'lo_sweep')
+        pfile_path = Path(get_processed_level_file_template(previous.date, previous.setnum, level=level))
+        if not pfile_path.exists():
+            pfile_path.touch(PERMISSIONS_ALL_FULL)
+        file = tables.File(pfile_path, mode='w')
+        new_data = cls(file, level)
+        new_data.link_to_file(previous)
+        new_data._load_dynamic_fields()
 
-        # Copy attributes
-        file.root._v_attrs.date = previous.date
-        file.root._v_attrs.setnum = previous.setnum
-        file.root._v_attrs.receipt = previous.receipt
-        data_group._v_attrs.n_tones = previous.n_tones
-        data_group._v_attrs.n_samples = previous.n_samples
-
-        # Copy LO sweep external links
-        for node in previous.lo_sweep_group._f_walknodes('ExternalLink'):
-            file.create_external_link(lo_group, node._v_name, node.target)
-        lo_group._v_attrs.lo_freq = previous.lo_freq
-        if isinstance(previous, ProcessedDataLN):
-            file.create_external_link(global_data_group, 'baseband_freqs', previous.global_data_group.baseband_freqs.target)
-        else:
-            file.create_external_link(global_data_group, 'baseband_freqs', f'{previous.filename}:/{previous.baseband_freqs._v_pathname}')
-
-        # Create external links for all datasets
-        for node_name in DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS:
-            node = previous.get_node(node_name)
-            parent_path = node._v_parent._v_pathname
-            if isinstance(node, ExternalLink):
-                target_path = node.target
-            else:
-                target_path = f'{previous.filename}:{node._v_pathname}'
-            file.create_external_link(parent_path, node_name, target_path)
-        
         # Swap the previous file to read-only
         previous.close()
         previous.open('r')
 
-        return cls(file, level)
+        return new_data
 
     @classmethod
     def from_file(cls, date: str, setnum: int, level: int, mode: str='r'):
         fname = get_processed_level_file_template(date, setnum, level=level)
         return cls(tables.File(fname, mode=mode), level=level)
+
+
+class NewMapData(ProcessedDataLN):
+    def __init__(self, file: tables.File):
+        super().__init__(file)
+
+    @classmethod
+    def from_processed_data(cls, pdata: NewProcessedData) -> NewMapData:
+        return cls.from_previous_level(pdata)
+    
+    @classmethod
+    def from_previous_level(cls, previous: NewProcessedData) -> NewMapData:
+        """Create a map file with external links to level N-1."""
+        file_path = Path(get_map_file_template(previous.date, previous.setnum))
+        if not file_path.exists():
+            file_path.touch(PERMISSIONS_ALL_FULL)
+        file = tables.File(file_path, mode='w')
+        new_data = cls(file)
+        new_data.link_to_file(previous)
+        new_data._load_dynamic_fields()
+
+        # Swap the previous file to read-only
+        previous.close()
+        previous.open('r')
+
+        return new_data
+
+    def setup_map_arrays(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False):
+        # Create empty arrays
+        n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
+        self.create_group('/', 'map')
+        self.create_array('/map', 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
+        self.create_array('/map', 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
+        self.create_array('/map', 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self.create_array('/map', 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self.create_array('/map', 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
+        self.create_earray('/map', 'good_samples', expectedrows=self.n_samples, obj=np.arange(self.n_samples))
+
+    @property
+    def map_az(self) -> tables.Array:
+        return self.get_node_value('map_az', where='/map')
+
+    @property
+    def map_za(self) -> tables.Array:
+        return self.get_node_value('map_za', where='/map')
+
+    @property
+    def sum_map(self) -> tables.Array:
+        return self.get_node_value('sum_map', where='/map')
+
+    @property
+    def hits_map(self) -> tables.Array:
+        return self.get_node_value('hits_map', where='/map')
+    
+    @property
+    def netd(self) -> tables.Array:
+        return self.get_node_value('netd', where='/map')
+
+    @property
+    def good_samples(self) -> tables.Array:
+        return self.get_node_value('good_samples', where='/map')
+
+    @property
+    def map(self) -> npt.NDArray:
+        div = tables.Expr('sum_map / hits_map', {'sum_map': self.sum_map, 'hits_map': self.hits_map})
+        d = div.eval()
+        return d
+
+    @property
+    def total_map(self) -> npt.NDArray:
+        return np.sum(self.sum_map, axis=0) / np.sum(self.hits_map, axis=0)
+
+    def get_netd_pol(self, polarization: int) -> npt.NDArray:
+        return self.netd[self.detector_pol[:] == polarization]
+
+    @property
+    def integration_time(self) -> npt.NDArray:
+        integration_times = [
+            np.flip(
+                np.transpose(self.hits_map[i,::-1]) * \
+                    np.median(self.get_netd_pol(pol)) ** 2. / self.fs,
+                1,
+            )
+            for i, pol in enumerate(range(1, N_POLARIZATION + 1))
+        ]
+        return integration_times
+
+    def get_scaled_optical_image(self) -> npt.NDArray:
+        opt_npix_per_tel_npix = DEFAULT_MAP_DPIX/OPTCAM_PIX_SIZE_DEGREES
+        opt_npix_az = int(np.size(self.map_az)*opt_npix_per_tel_npix/2)*2
+        opt_npix_za = int(np.size(self.map_za)*opt_npix_per_tel_npix/2)*2
+        opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
+        opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
+        return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
+                                    opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
+
+    def get_combined_map(self, sigma: tuple[float,...]=GAUSSIAN_SIGMA) -> npt.NDArray:
+        flagged_map_1 = gaussian_filter(self.map[0], sigma)
+        flagged_map_2 = gaussian_filter(self.map[1], sigma)
+        flagged_map_3 = gaussian_filter(self.total_map, sigma)
+       # pdb.set_trace()
+        # flagged_map_1 = np.copy(self.map[0])
+        # flagged_map_2 = np.copy(self.map[1])
+        # flagged_map_3 = np.copy(self.total_map)
+
+        final_final_map1= np.copy(flagged_map_1)
+        final_final_map2= np.copy(flagged_map_2)
+        final_final_map3= np.copy(flagged_map_3)
+
+        # Convert all nans to boolean True
+        nan_map_1 = np.isnan(flagged_map_1)
+        nan_map_2 = np.isnan(flagged_map_2)
+        nan_map_3 = np.isnan(flagged_map_3)
+
+        # Combine the boolean maps such that if any pixel is flagged in any map, it is flagged in the combined map
+        combined_nan_map = np.logical_or(np.logical_or(nan_map_1, nan_map_2), nan_map_3)
+        
+        # Get the coordinates of True values in the combined_nan_map
+        flagged_positions = np.where(combined_nan_map)
+        final_flagged_coords = list(zip(flagged_positions[0], flagged_positions[1]))
+
+        # Apply this combined map to each of the final maps
+        flagged_map_1[combined_nan_map] = 1
+        flagged_map_2[combined_nan_map] = 1
+        flagged_map_3[combined_nan_map] = 1
+
+        flagged_map_1[flagged_map_1 != 1] = 0
+        flagged_map_2[flagged_map_2 != 1] = 0
+        flagged_map_3[flagged_map_3 != 1] = 0
+
+        final_final_map1[combined_nan_map] = np.nan
+        final_final_map2[combined_nan_map] = np.nan
+        final_final_map3[combined_nan_map] = np.nan
+
+        contour_levels = [1]
+
+        final_final_map1= final_final_map1.flatten()
+        final_final_map2= final_final_map2.flatten()
+        final_final_map3= final_final_map3.flatten()
+
+        final_final_map1 = [x for x in final_final_map1 if not np.isnan(x)]
+        final_final_map2 = [x for x in final_final_map2 if not np.isnan(x)]
+        final_final_map3 = [x for x in final_final_map3 if not np.isnan(x)]
+        return flagged_map_1, flagged_map_2, flagged_map_3, contour_levels
+    
+    def extent(self) -> tuple[float, float, float, float]:
+        return (
+            min(self.map_az)-DEFAULT_MAP_DPIX /2.,
+            max(self.map_az)+DEFAULT_MAP_DPIX /2,
+            max(self.map_za)+DEFAULT_MAP_DPIX /2.,
+            min(self.map_za)-DEFAULT_MAP_DPIX /2.
+        )
+
+    def plot_individual(self, index: int):
+        plot_map(self.map[index], self.map_az, self.map_za, self.extent(), title=f'Resonator {index}')
+
+    def plot(self, show: bool=True, save: bool=True):
+
+        hits_map = self.hits_map[:]
+        mapp = self.map[:]
+        total_map = self.total_map[:]
+
+        valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
+        map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
+        for i_cov in np.arange(np.size(valid_cov_1[:,0])):
+            map_goodcov_1[i_cov] = mapp[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
+        valid_cov_2 = np.argwhere(hits_map[1] > 0.5 * np.median(hits_map[1]))
+        map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
+        for i_cov in np.arange(np.size(valid_cov_2[:,0])):
+            map_goodcov_2[i_cov] = mapp[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
+
+        netd_1 = self.get_netd_pol(1)
+        netd_2 = self.get_netd_pol(2)
+        cb_shrink = 0.95
+        this_xlim = min(self.map_az),max(self.map_az)
+        this_ylim = max(self.map_za),min(self.map_za)
+        max_abs = np.max(np.abs(np.append(map_goodcov_1,map_goodcov_2)))*0.75
+        valid_netd_1 = np.argwhere(netd_1 > 0)
+        med_netd_1 = 1./np.sqrt(np.sum(1./netd_1[valid_netd_1]**2)/np.size(valid_netd_1))
+        valid_netd_2 = np.argwhere(netd_2 > 0)
+        med_netd_2 = 1./np.sqrt(np.sum(1./netd_2[valid_netd_2]**2)/np.size(valid_netd_2))
+
+        #Sage's plotting code---------------------------------------------------------------------------------------------
+
+        # contour_levels, final_map_1_filt, final_map_2_filt, final_map_tot_filt, flagged_map_1_filt, flagged_map_2_filt, \
+        # flagged_map_tot_filt, final_flagged_coordinates = combined_map(map_1_filt_final_map, map_2_filt_final_map, map_tot_filt_final_map)
+        flagged_map_1_filt, flagged_map_2_filt, flagged_map_tot_filt, contour_levels = self.get_combined_map()
+
+    #    pw = plotWindow()
+        # TODO: Make figure size change based on the size of the map
+        this_fig = plt.figure(figsize=(15,7.5))
+        plt.subplot(4,1,1)
+        plt.imshow(np.flip(np.transpose(mapp[0][::-1]),1), \
+        extent = self.extent(), \
+        aspect='equal', vmin=-max_abs, vmax=max_abs, cmap='Blues_r')
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
+        plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+        extent=self.extent(), colors='red')
+        plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
+        ', Optical Visibility = ' + str(self.vis[()]) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
+        ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
+        plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+
+        plt.subplot(4,1,2)
+        plt.imshow(np.flip(np.transpose(mapp[1][::-1]),1), \
+        extent = self.extent(), \
+        aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Reds_r')
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
+        plt.contour(np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+        extent=self.extent(), colors='black')
+        plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+
+        plt.subplot(4,1,3)
+        plt.imshow(np.flip(np.transpose(total_map[::-1]),1), \
+        extent = self.extent(), \
+        aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Greys_r')
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
+        plt.contour(np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+        extent=self.extent(), colors='red')
+        plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+        
+        plt.subplot(4,1,4)
+        optical_image = self.get_scaled_optical_image()
+        valid_opt_pix = np.where(optical_image < 240)
+        opt_vmax = 255. #np.percentile(optical_image[valid_opt_pix], 90)
+        opt_vmin = -255. #np.percentile(optical_image[valid_opt_pix], 10)
+        plt.imshow(optical_image, \
+                extent = self.extent(), \
+                aspect='equal', vmax=255, vmin=-255)
+        cb = plt.colorbar(shrink=cb_shrink)
+        cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
+        ##Need to match aspect ratio of plots (and get rid of colorbar).
+        plt.xlabel('Azimuth (degrees)'), plt.ylabel('ZA (degrees)')
+        plt.xlim(this_xlim), plt.ylim(this_ylim)
+            
+        this_fig.subplots_adjust(wspace=0, hspace=0)
+    #    pw.addPlot("Raw Image", this_fig)
+        path = self.folder / (self.file_stub + '_Source_Finder_Image.png')
+        if not path.exists():
+            path.touch(PERMISSIONS_ALL_FULL)
+        if save:
+            this_fig.savefig(path, bbox_inches='tight')
+        if show:
+            plt.show()
+    
+
 
 def plot_map(
         map: npt.NDArray,
@@ -1656,12 +1930,12 @@ class MapData(ProcessedData):
 
         # Create empty arrays
         n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
-        self._mfile.create_array(self._mfile.root, 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
-        self._mfile.create_array(self._mfile.root, 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
-        self._mfile.create_array(self._mfile.root, 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self._mfile.create_array(self._mfile.root, 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self._mfile.create_array(self._mfile.root, 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
-        good_samples = self._mfile.create_earray(self._mfile.root, 'good_samples', shape=(0,), expectedrows=self.n_samples, atom=tables.UInt32Atom())
+        self.create_array(self.root, 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
+        self.create_array(self.root, 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
+        self.create_array(self._mfile.root, 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self.create_array(self._mfile.root, 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self.create_array(self._mfile.root, 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
+        good_samples = self.create_earray(self._mfile.root, 'good_samples', shape=(0,), expectedrows=self.n_samples, atom=tables.UInt32Atom())
         good_samples.append(np.arange(self.n_samples))
 
 
