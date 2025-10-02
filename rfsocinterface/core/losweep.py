@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import pdb
+import glob
 
 from concurrent.futures import Future
 
@@ -15,6 +16,7 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from scipy.signal import savgol_filter
 import h5py
+import tables
 
 from PySide6.QtWidgets import QApplication
 from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW
@@ -23,6 +25,7 @@ from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from kidpy3 import capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
 from kidpy3.data_handler import Rfchan
+from rfsocinterface.core.utils import get_tod_template
 
 
 _logger = logging.getLogger(__name__)
@@ -714,6 +717,48 @@ class LoSweep:
         self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), self.chanmask)
         self._processed = True
         _logger.info('Finished processing sweep results')
+
+
+class ManualLoSweepData(LoSweepData):
+    def __init__(
+            self,
+            date: str,
+            min_setnum: int,
+            max_setnum: int,
+            f_center: float=400e6,
+    ):
+        n_setnum = max_setnum - min_setnum + 1
+        n_tones: float
+        data: npt.NDArray
+        flos: npt.NDArray
+        baseband_freqs: npt.NDArray
+        chanmask: npt.NDArray
+        for i_setnum, setnum in enumerate(range(min_setnum, max_setnum + 1)):
+            tod_template = get_tod_template(date, setnum)
+            todlist = glob.glob(tod_template)
+            if len(todlist) == 0:
+                raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
+            with tables.open_file(todlist[0], 'r') as f:
+                global_data = f.root.global_data
+                time_ordered_data = f.root.time_ordered_data
+                # Initialize arrays if needed
+                if i_setnum == 0:
+                    n_tones = f.root.dimension.n_tones[0]
+                    flos = np.zeros(n_setnum)
+                    baseband_freqs = global_data.baseband_freqs[:]
+                    data = np.zeros(2, n_tones, n_setnum, dtype=complex)
+                    chanmask = f.root.global_data.chanmask[:]
+                # Append to the data 
+                flos[i_setnum] = global_data.lo_freq[:]
+                data_I = time_ordered_data.adc_i[BAD_RFSOC_TONE_START_INDEX:BAD_RFSOC_TONE_START_INDEX + n_tones]
+                data_Q = time_ordered_data.adc_q[BAD_RFSOC_TONE_START_INDEX:BAD_RFSOC_TONE_START_INDEX + n_tones]
+                z = np.median(data_I, axis=-1) + 1j * np.median(data_Q, axis=-1)
+                data[1, :, i_setnum] = z
+        # Determine the list of frequencies
+        for i_tone, tone in enumerate(baseband_freqs):
+            data[0, i_tone, :] = flos + tone
+        super().__init__(baseband_freqs, f_center, data, chanmask)
+
 
 
 if __name__ == '__main__':
