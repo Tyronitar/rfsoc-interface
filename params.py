@@ -4,8 +4,9 @@ import pdb
 import numpy as np
 import tables
 
-from rfsocinterface.core.data.data import initialize_params_file, update_params_file, DATA_DIRECTORY, DEFAULT_PARAMS_DIRECTORY
+from rfsocinterface.core.data.data import initialize_params_file, update_params_file
 from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.utils import DATA_DIRECTORY, DEFAULT_PARAMS_DIRECTORY
 
 Be231102p2_tones = np.array([213078506, 214801178, 247405640, 255826241, 256855576, 260115494,
        263857108, 265547813, 269670205, 270298250, 272671603, 274710449,

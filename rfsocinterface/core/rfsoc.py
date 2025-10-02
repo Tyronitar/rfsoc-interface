@@ -13,7 +13,7 @@ from kidpy3.data_handler import Rfchan
 from kidpy3.hardware import Valon5009, Transceiver320d
 import tables
 
-from rfsocinterface.core.data.data import DEFAULT_PARAMS_DIRECTORY
+from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY
 from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
 from rfsocinterface.core.utils import convert_path, recursive_update, ensure_path
 

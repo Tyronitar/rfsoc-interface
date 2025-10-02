@@ -18,12 +18,10 @@ from kidpy3 import RawDataFile
 from rfsocinterface.core.data import (
     flag_outliers,
     ProcessedData,
-    DATA_DIRECTORY,
     DataRoutine,
-    ProcessingStage,
-    get_tod_template
+    ProcessingStage
 )
-from rfsocinterface.core.utils import ensure_path, ordinal, PERMISSIONS_ALL_FULL 
+from rfsocinterface.core.utils import DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
 
 XLIM = (0.1, 250)
 YLIM = (-110, -60)
