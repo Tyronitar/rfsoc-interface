@@ -720,6 +720,7 @@ class LoSweep:
 
 
 class ManualLoSweepData(LoSweepData):
+    """LO Sweep Constructed by Combining Data from TOD Files."""
     def __init__(
             self,
             date: str,
@@ -727,6 +728,22 @@ class ManualLoSweepData(LoSweepData):
             max_setnum: int,
             f_center: float=400e6,
     ):
+        """Initialize a ManualLoSweepData object.
+
+        Constructs a LO sweep manually from TOD files. It is assumed that:
+        * There are `max_setnums` - `min_setnum` frequency steps
+        * Each set was collected with a different LO frequency but same tone list and
+            chanmask.
+        For each setnum, takes the median I and Q values for each resonator and appends
+        to the data for the given LO frequency.
+        
+        Arguments:
+            date (str): The date to search for files.
+            min_setnum (int): The start setnum for files to include.
+            max_setnum (int): The end setnum for files to include.
+            f_center (float): The center frequency in Hz for the LO sweep. Deafults
+                to 400 MHz (4e8).
+        """
         n_setnum = max_setnum - min_setnum + 1
         n_tones: float
         data: npt.NDArray
@@ -738,6 +755,7 @@ class ManualLoSweepData(LoSweepData):
             todlist = glob.glob(tod_template)
             if len(todlist) == 0:
                 raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
+            # TODO: Allow multiple TOD files
             with tables.open_file(todlist[0], 'r') as f:
                 global_data = f.root.global_data
                 time_ordered_data = f.root.time_ordered_data
