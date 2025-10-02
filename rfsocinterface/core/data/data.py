@@ -7,6 +7,7 @@ import pdb
 import time
 import inspect
 import logging
+import typing
 
 import tables
 from tables.link import ExternalLink
@@ -22,6 +23,7 @@ from rfsocinterface.core.utils import (
     get_azel_template,
     get_optcam_template,
     get_processed_file_template,
+    get_processed_level_file_template,
     get_cleaned_file_template,
     get_file_stub,
     get_map_file_template,
@@ -916,10 +918,16 @@ class NewProcessedData:
     
     def test_node(self, name: str) -> bool:
         try:
-            self._file.get_node('/', name)
+            self.find_node(name)
             return True
         except tables.exceptions.NosuchNodeError:
             return False
+    
+    def find_node(self, name: str, where: tables.Group | str='/') -> tables.Node:
+        for node in self._file.walk_nodes(where):
+            if node._v_name == name:
+                return node
+        raise tables.exceptions.NoSuchNodeError(f'No node named {name} found in {where}')
     
     def close(self):
         self._file.close()
@@ -930,7 +938,8 @@ class NewProcessedData:
     def get_node(self, name: str, where: str=None) -> tables.Node:
         if where is None:
             where = PROCESSED_DATA_FIELD_LOCATIONS[name]
-        return self._file.get_node(where, name)
+        return self.find_node(name, where=where)
+        # return self._file.get_node(where, name)
 
     def get_node_value(self, name: str, where: str=None) -> tables.Array:
         node = self.get_node(name, where=where)
@@ -938,6 +947,29 @@ class NewProcessedData:
         if isinstance(node, ExternalLink):
             return node(mode='r')
         return node
+    
+    @typing.overload
+    def create_array(self, where: tables.Group | str, name: str, obj: npt.NDArray) -> tables.Array:
+        pass
+
+    @typing.overload
+    def create_array(self, where: tables.Group | str, name: str, shape: tuple[int, ...], atom: tables.Atom) -> tables.Array:
+        pass
+    
+    def create_array(self, *args) -> tables.Array:
+        if len(args) == 3:
+            where, name, obj = args
+            arr = self._file.create_array(where, name, obj=obj)
+        else:
+            where, name, shape, atom = args
+            arr = self._file.create_array(where, name, shape=shape, atom=atom)
+        return arr
+    
+    def create_group(self, where: tables.Group | str, name: str) -> tables.Group:
+        return self._file.create_group(where, name)
+    
+    def create_external_link(self, where: tables.Group | str, name: str, target: str) -> ExternalLink:
+        return self._file.create_external_link(where, name, target)
 
     @property
     def global_data_group(self) -> tables.Group:
@@ -1040,7 +1072,6 @@ class NewProcessedData:
     @property
     def optical_image(self) -> tables.Array:
         return self._file.root.optical_image
-
     
     @property
     def carrier_amplitudes(self) -> tables.Array:
@@ -1424,8 +1455,15 @@ class ExternalLinkProcessedData(NewProcessedData):
     """Class for storing processed data with external links to another file."""
     def __init__(self, file: tables.File):
         super().__init__(file)
+        self._load_dynamic_fields()
+
+    def _load_dynamic_fields(self):
         for field_name in DYNAMIC_PROCESSED_DATA_FIELDS:
             setattr(self, field_name, self.get_node(field_name))
+    
+    def open(self, mode: str='r'):
+        super().open(mode=mode)
+        self._load_dynamic_fields()
 
     @property
     def carrier_amplitudes(self) -> PyTablesDataset:
@@ -2018,6 +2056,7 @@ if __name__ == '__main__':
     pdb.set_trace()
     pd.close()
     pd2.close()
+    pd3.close()
 
     # pd_old = ProcessedData.from_tod(date, setnum)
     # pd_new = ProcessedDataL1.from_tod(date, setnum)
