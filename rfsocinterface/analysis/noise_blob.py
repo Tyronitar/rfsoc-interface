@@ -1,5 +1,5 @@
 import pdb
-from rfsocinterface.core.data import ProcessedData, DATA_DIRECTORY
+from rfsocinterface.core.data import ProcessedData
 from pathlib import Path
 from typing import Literal
 import numpy as np
@@ -9,6 +9,8 @@ from matplotlib.figure import Figure
 from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
+
+from rfsocinterface.core.utils import DATA_DIRECTORY
 
 
 def plot_complex_datastreams_scatter_plot(

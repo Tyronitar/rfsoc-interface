@@ -17,11 +17,21 @@ import matplotlib.pyplot as plt
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_FULL
 from rfsocinterface.core.losweep import LoSweepData
+from rfsocinterface.core.utils import (
+    get_tod_template,
+    get_azel_template,
+    get_optcam_template,
+    get_processed_file_template,
+    get_cleaned_file_template,
+    get_file_stub,
+    get_map_file_template,
+    get_beammap_file_template,
+    get_params_file_template,
+    DATA_DIRECTORY,
+    DEFAULT_PARAMS_DIRECTORY,
+)
 
 _logger = logging.getLogger(__name__)
-
-DATA_DIRECTORY = '/data'
-DEFAULT_PARAMS_DIRECTORY = DATA_DIRECTORY + '/params/'
 
 OPTCAM_OFFSET_AZ_PIX = 57
 OPTCAM_OFFSET_ZA_PIX = 49
@@ -54,48 +64,6 @@ def test_node(f: tables.File, name: str) -> bool:
     except tables.exceptions.NoSuchNodeError:
         return False
         
-#
-# File Templates
-#
-
-def get_tod_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, chan_name: str=None) -> str:
-    if chan_name is None:
-        chan_name = '*'
-    return f'{data_dir}/{date}/{date}_{chan_name}_TOD_set{setnum}.h5'
-
-def get_azel_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_AZEL_set{setnum}.h5'
-
-
-def get_optcam_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
-
-
-def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_processed_data_set{setnum}.h5'
-
-def get_processed_level_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
-    return f'{data_dir}/{date}/{date}_processed_data_level{level}_set{setnum}.h5'
-
-def get_cleaned_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_cleaned_data_set{setnum}.h5'
-
-
-def get_file_stub(date: str, setnum: int) -> str:
-    return f'{date}_set{setnum}'
-
-
-def get_map_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_mapped_data_set{setnum}.h5'
-
-
-def get_beammap_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_beammap_set{setnum}.h5'
-
-
-def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
-    return f'{params_dir}/params_tile_{tile_name}.h5'
-
 #
 # Outlier Removal and Flagging
 #
