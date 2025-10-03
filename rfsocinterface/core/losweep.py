@@ -796,11 +796,11 @@ if __name__ == '__main__':
     import pdb
     from matplotlib.backends.backend_pdf import PdfPages
     from matplotlib.ticker import ScalarFormatter
-    date = '20251002'
+    date = '20251003'
 
     # data = LoSweepData.from_h5('/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
     # normal_sweep = LoSweepData.from_h5('/data/20251002/20251002_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p7394_high_res.h5')
-    normal_sweep = LoSweepData.from_h5('/data/20251002/20251002_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour16p7625.h5')
+    normal_sweep = LoSweepData.from_h5('/data/20251003/20251003_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour14p8842_high_res.h5')
     manual_sweep = ManualLoSweepData(
         date,
         1001,
