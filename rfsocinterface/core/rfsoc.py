@@ -11,6 +11,7 @@ from kidpy3 import RFSOC
 from kidpy3.rfsoc import RedisConnection
 from kidpy3.data_handler import Rfchan
 from kidpy3.hardware import Valon5009, Transceiver320d
+from kidpy3.hardware.Valon5009 import SYNTH_A, SYNTH_B
 import tables
 
 from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY
@@ -213,7 +214,7 @@ class RFSOCWrapper:
     def set_frequency(self, channel: int, freq: float):
         """Set the frequency of the specified channel in Hz."""
         valon = self.get_valon(channel)
-        valon.set_frequency(channel, freq * 1e-6)
+        valon.set_frequency(SYNTH_B, freq * 1e-6)
         _logger.info(f'RFSoC {self.name} succesfully set frequency for channel {channel} to {freq * 1e-6:.3f} MHz')
         self.get_channel(channel).lo_freq = freq
         self.channel_settings(channel)['dsp']['loFreq'] = freq

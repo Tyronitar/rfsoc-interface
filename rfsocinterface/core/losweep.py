@@ -587,7 +587,7 @@ class LoSweep:
         # WITH TIMESTAMP
 
         # set the LO back to the original frequency
-        self.valon.set_frequency(Valon5009.SYNTH_B, self.f_center)
+        self.valon.set_frequency(SYNTH_B, self.f_center)
 
         return (f, sweep_Z_f)
 
@@ -709,7 +709,7 @@ class LoSweep:
         # WITH TIMESTAMP
 
         # set the LO back to the original frequency
-        self.valon.set_frequency(self.chan.chan_number, self.f_center * 1e-6)
+        self.valon.set_frequency(SYNTH_B, self.f_center * 1e-6)
 
         self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), self.chanmask)
         self._processed = True
