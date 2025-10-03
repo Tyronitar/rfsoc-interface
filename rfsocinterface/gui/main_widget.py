@@ -1,9 +1,10 @@
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Iterator, Callable
 from functools import partial
 from multiprocessing import Queue, Pipe
+import time
 
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QCoreApplication
 
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.settings import SettingsError
@@ -48,24 +49,38 @@ class MainWidget(QWidget):
         return super().closeEvent(event)
 
 class TelescopeMainWidget(MainWidget):
-    def __init__(self, main_window, rfsocs, settings, client_id: str, parent = None):
+    def __init__(self, main_window: 'MainWindow', rfsocs, settings, client_id: str, parent = None):
         super().__init__(main_window, rfsocs, settings, parent)
 
-        self._conn_parent, self._conn_child = Pipe(duplex=False)
-        self._client_id = client_id
-        self._telescope_queue.put([self._client_id, 'add_connection', self._conn_child])
-        self.wait_for_telescope_command(
-            'add_connection_succesful',
-            err_msg=f'Error received from telescope controller when adding connection {self._client_id}',
-        )
+        self.main_window.telescopeUpdate.connect(self.handle_telescope)
+        self.commands: dict[str, list[Callable]] = {}
+        self._command_data = None  # Data returned from a command that was waited for
+
+    def handle_telescope(self, command: str, args: tuple):
+        if command in self.commands:
+            for callback in self.commands[command]:
+                callback(*args)
+    
+    def connect_to_command(self, command: str, callback: Callable):
+        self.commands.setdefault(command, []).append(callback)
+
+    def disconnect_command(self, command: str, callback: Callable):
+        self.commands[command].remove(callback)
+    
+    def send_command(self, command: str, *data):
+        self.main_window.telescope_parent_conn.send([command, *data])
 
     def wait_for_telescope_command(self, command: str, err_msg: str=''):
-        wait_for_telescope_command(self._conn_parent, self._client_id, command, err_msg=err_msg)
+        wait = True
+        def stop_waiting(data: tuple):
+            nonlocal wait
+            wait = False
+            self._command_data = data
+        self.connect_to_command(command, stop_waiting)
+        while wait:
+            time.sleep(1e-3)
+            QCoreApplication.processEvents()
+        self.disconnect_command(command, stop_waiting)
 
     def closeEvent(self, event):
-        if not self._conn_parent.closed:
-            self._telescope_queue.put([self._client_id, 'remove_connection'])
-            self.wait_for_telescope_command('remove_connection_succesful')
-            self._conn_parent.close()
-            self._conn_child.close()
         return super().closeEvent(event)

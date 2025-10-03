@@ -6,6 +6,7 @@ import glob
 import pdb
 import time
 import inspect
+import logging
 
 import tables
 import numpy as np
@@ -14,11 +15,23 @@ from scipy import signal
 from scipy.stats import linregress
 import matplotlib.pyplot as plt
 
-from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks
+from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_FULL
 from rfsocinterface.core.losweep import LoSweepData
+from rfsocinterface.core.utils import (
+    get_tod_template,
+    get_azel_template,
+    get_optcam_template,
+    get_processed_file_template,
+    get_cleaned_file_template,
+    get_file_stub,
+    get_map_file_template,
+    get_beammap_file_template,
+    get_params_file_template,
+    DATA_DIRECTORY,
+    DEFAULT_PARAMS_DIRECTORY,
+)
 
-DATA_DIRECTORY = '/data'
-DEFAULT_PARAMS_DIRECTORY = DATA_DIRECTORY + '/params/'
+_logger = logging.getLogger(__name__)
 
 OPTCAM_OFFSET_AZ_PIX = 57
 OPTCAM_OFFSET_ZA_PIX = 49
@@ -51,47 +64,6 @@ def test_node(f: tables.File, name: str) -> bool:
     except tables.exceptions.NoSuchNodeError:
         return False
         
-#
-# File Templates
-#
-
-def get_tod_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_*_TOD_set{setnum}.h5'
-
-
-def get_azel_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_AZEL_set{setnum}.h5'
-
-
-def get_optcam_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
-
-
-def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_processed_data_set{setnum}.h5'
-
-def get_processed_level_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
-    return f'{data_dir}/{date}/{date}_processed_data_level{level}_set{setnum}.h5'
-
-def get_cleaned_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_cleaned_data_set{setnum}.h5'
-
-
-def get_file_stub(date: str, setnum: int) -> str:
-    return f'{date}_set{setnum}'
-
-
-def get_map_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_mapped_data_set{setnum}.h5'
-
-
-def get_beammap_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_beammap_set{setnum}.h5'
-
-
-def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
-    return f'{params_dir}/params_tile_{tile_name}.h5'
-
 #
 # Outlier Removal and Flagging
 #
@@ -187,8 +159,8 @@ def rotate_basis(
 
     # new_data = np.zeros(shape=(2, np.size(tone_index), data_1.shape[-1]))
     # pdb.set_trace()
-    out_data[0, :] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.sin(rotation_angle)[:, np.newaxis] * in_data[1, :]
-    out_data[1, :] = -np.sin(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
+    out_data[0, :] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0, :] - np.sin(rotation_angle)[:, np.newaxis] * in_data[1, :]
+    out_data[1, :] = np.sin(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
 
 
 def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
@@ -207,7 +179,18 @@ def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
     #in each direction (assuming the noise is identical in I and Q)
     #this will then yield data_f
 
+    # quad_sum = np.sqrt(data.data_IQ[0, :] ** 2 + data.data_IQ[1, :] ** 2)
+    # source_peak_idx = np.argmax(quad_sum, axis=1)
+
+    # n_tones = data.data_IQ.shape[1]
+    # data_IQ = data.data_IQ[:]
+    # peak_I = data_IQ[0, np.arange(n_tones, dtype=int), source_peak_idx]
+    # peak_Q = data_IQ[1, np.arange(n_tones, dtype=int), source_peak_idx]
+
+    # data.IQ_to_freq_diss_angle[:] = -np.atan2(peak_Q, peak_I)
+
     rotate_basis(data.data_IQ / data.adc_units_to_hz[:][:, np.newaxis], data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
+    # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
 
     # Finally, we need to get data_mK
     data.data_mK[:] = np.divide(data.data_freq_diss[0, :], global_data.df_per_mK[:][:, np.newaxis])
@@ -217,7 +200,7 @@ def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
 # Electronics Noise Removal
 #
 
-def compute_templates(data: npt.NDArray) -> npt.NDArray:
+def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     """Compute templates for correlated noise removal.
 
     Args:
@@ -230,6 +213,7 @@ def compute_templates(data: npt.NDArray) -> npt.NDArray:
     # subtract the mean from each detector
     # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
     deproj = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    n_tones = data.shape[1]
 
     # select only the middle few detectors
     # deproj = data_meansub[:, 8:1008, :]
@@ -237,66 +221,115 @@ def compute_templates(data: npt.NDArray) -> npt.NDArray:
     # create a separate correlation matrix for all data channels
     correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
     # calculate the eigenmodes of the correlation matrices
-    _, v = np.linalg.eig(correlation_matrices)
+    eigen_values, v = np.linalg.eig(correlation_matrices)
+    sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
+    sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
+    sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
+    
+    if n_tones < 25:
+        sigma_mult = 1.5
+    elif n_tones < 50:
+        sigma_mult = 2.5
+    else:
+        sigma_mult = 3
 
-    # create templates based on the 2 largest eigenmodes of each
-    templates = np.einsum('ijk,ijl->ikl', v[:,:,0:2], deproj)
+    n_modes = 2
+    new_modes = -1
+    while new_modes != 0 and n_modes <= max_modes:
+        log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
+        mu = np.mean(log_eigen_values, axis=1)
+        sigma = np.std(log_eigen_values, axis=1)
+        large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis])
+        i_count = large_eigen_values[0].size - np.sum(large_eigen_values[0])
+        q_count = large_eigen_values[0].size - i_count
+        new_modes = max(i_count, q_count)
+        n_modes += new_modes
+    # pdb.set_trace()
+    n_modes = min(n_modes, max_modes)
+    print(f'Using {n_modes} eigen modes')
+
+        # create templates based on the N_mode largest eigenmodes of each
+    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj)
 
     # subtract the mean again to be sure
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
 
 
-def remove_electronics_noise(data: npt.NDArray) -> npt.NDArray:
+def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
     Args:
         data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
             be in the gain/phase basis.
+        fs (float): Sampling frequency of the data.
+        lp_filt_freq (float, optional): Low-pass filter frequency for the templates. Defaults to 10 Hz.
 
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    templates = compute_templates(data)  # N_chan x 2 x N_samples
+    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
+    # data_lp = signal.sosfiltfilt(filt_sos, data)
+    data_lp = data
 
+    templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
+    n_modes = templates.shape[1]
     denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
-    numerator0 = np.einsum('ijk,ik->ij', data, templates[:, 0])  # N_chan x N_detector
-    corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
-    deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
 
-    numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
-    corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
-    clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
-    return clean_data
+    for i in range(n_modes):
+        numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # N_chan x N_detector
+        corr = numerator / denominator[:, i:i+1]  # N_chan x N_detector
+        data = data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # N_chan x N_detector x N_samples
+        # data_lp = signal.sosfiltfilt(filt_sos, data)
+        data_lp = data
+
+    # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
+    # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
+    # corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
+    # deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
+
+    # deproj_lp = signal.sosfiltfilt(filt_sos, deproj)
+
+    # numerator1 = np.einsum('ijk,ik->ij', deproj_lp, templates[:, 1])  # N_chan x N_detector
+    # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+    # clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
+    return data 
 
 
 def remove_electronics_noise_tables(
     data_gain_phase: tables.Array,
+    fs: float,
+    lp_filt_freq: float=10,
+    max_modes: int=30,
 ):
     """Remove correlated electronics noise templates from data stored with PyTables.
 
     Args:
         data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
             be in the gain/phase basis.
+        fs (float): Sampling frequency of the data.
+        lp_filt_freq (float, optional): Low-pass filter frequency for the templates. Defaults to 10 Hz.
 
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    for i_chan in range(data_gain_phase.shape[0]):
-        clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
-        # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
+    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
+    data_gain_phase[:] = clean_data
+    # for i_chan in range(data_gain_phase.shape[0]):
+    #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
+    #     # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
 
-        # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 1 x 2
-        # pdb.set_trace()
-        # numerator0 = np.einsum('jk,k->j', data_gain_phase[i_chan], templates[0])  # N_detector
-        # pdb.set_trace()
-        # corr0 = numerator0 / denominator[:, 0:1]  # N_detector
-        # deproj = data_gain_phase[i_chan] - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
+    #     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 1 x 2
+    #     # pdb.set_trace()
+    #     # numerator0 = np.einsum('jk,k->j', data_gain_phase[i_chan], templates[0])  # N_detector
+    #     # pdb.set_trace()
+    #     # corr0 = numerator0 / denominator[:, 0:1]  # N_detector
+    #     # deproj = data_gain_phase[i_chan] - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
 
-        # numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
-        # pdb.set_trace()
-        # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
-        data_gain_phase[i_chan, :] = clean_data.squeeze()
+    #     # numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
+    #     # pdb.set_trace()
+    #     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+    #     data_gain_phase[i_chan, :] = clean_data.squeeze()
 
 #
 # Data Classes
@@ -508,7 +541,9 @@ class ProcessedData:
         losweep: str | None=None,
         beam_map_mode: bool=False,
         do_electronics_noise_removal: bool=True,
+        electronics_noise_lp_filt_freq: float=10,
         ds_factor: int=1,
+        max_modes: int=30,
     ) -> ProcessedData:
 
         #20230803_rfsoc1_TOD_set1012
@@ -553,7 +588,10 @@ class ProcessedData:
             vis=0.
         
 
-        pfile = tables.open_file(get_processed_file_template(date, setnum), 'w')
+        pfile_path = Path(get_processed_file_template(date, setnum))
+        if not pfile_path.exists():
+            pfile_path.touch(PERMISSIONS_ALL_FULL)
+        pfile = tables.open_file(pfile_path, 'w')
         pfile.root._v_attrs.date = date
         pfile.root._v_attrs.setnum = setnum
         pfile.root._v_attrs.receipt = ''
@@ -584,7 +622,11 @@ class ProcessedData:
             with tables.open_file(file, 'r') as f:
                 raw_global_data = f.root.global_data
                 raw_dimension = f.root.dimension
-                n_samples = raw_dimension.n_sample[0]
+                time_ordered_data = f.root.time_ordered_data
+
+                # NOTE: Temporary fix until n_sample is fixed in the raw files
+                # n_samples = raw_dimension.n_sample[0]
+                n_samples = time_ordered_data.adc_i.shape[-1]
                 n_samples_ds = int(np.ceil(n_samples / ds_factor))
                 n_tones = raw_dimension.n_tones[0]
 
@@ -638,6 +680,7 @@ class ProcessedData:
                 sweep = LoSweepData(raw_global_data.baseband_freqs, lo_freq, sweep_data, raw_global_data.chanmask[:])
                 IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
                 detector_data.IQ_to_freq_diss_angle[:] = IQ_to_freq_diss_angle
+
                 detector_data.adc_units_to_hz[:] = adc_units_to_hz
                 # if np.size(dIQ_df) > 0:
                 #     dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
@@ -740,11 +783,13 @@ class ProcessedData:
                     detector_data.IQ_to_gain_phase_angle,
                 )
 
+                fs = 1 / np.median(np.diff(detector_data.timestamp[:]))
+
                 # TODO: Make this optional I guess
                 if do_electronics_noise_removal:
                     # data_gain_phase = np.stack((detector_data.data_gain, detector_data.data_phase), axis=0)
                     # detector_data.data_gain[:], detector_data.data_phase[:] = remove_electronics_noise2(data_gain_phase)
-                    remove_electronics_noise_tables(detector_data.data_gain_phase)
+                    remove_electronics_noise_tables(detector_data.data_gain_phase, fs, lp_filt_freq=electronics_noise_lp_filt_freq, max_modes=max_modes)
                 
 
                 # Create calibrated data
@@ -759,9 +804,6 @@ class ProcessedData:
                 #     data_mK = np.concatenate((data_mK, detector_data.data_mK), axis=0)
                 # else:
                 #     data_mK = np.copy(detector_data.data_mK)
-
-     
-
                 #now the telescope data to get coordinates
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
@@ -944,10 +986,13 @@ class MapData(ProcessedData):
     def from_processed_data(cls, pdata: ProcessedData | tables.File, mode='w') -> MapData:
         if isinstance(pdata, tables.File):
             pfile = pdata
-            mfile = tables.File(ProcessedData(pfile).map_file_template, mode)
+            fname = Path(ProcessedData(pfile).map_file_template)
         else:
             pfile = pdata._l1file
-            mfile = tables.File(pdata.map_file_template, mode)
+            fname = Path(pdata.map_file_template )
+        mfile = tables.File(fname, mode)
+        if mode == 'w' and not fname.exists():
+            fname.touch(PERMISSIONS_ALL_FULL)
 
         map_data = MapData(mfile, pfile)
         chanmask = pfile.root.detector_0.global_data.chanmask
@@ -1190,8 +1235,11 @@ class MapData(ProcessedData):
             
         this_fig.subplots_adjust(wspace=0, hspace=0)
     #    pw.addPlot("Raw Image", this_fig)
+        path = self.folder / (self.file_stub + '_Source_Finder_Image.png')
+        if not path.exists():
+            path.touch(PERMISSIONS_ALL_FULL)
         if save:
-            this_fig.savefig(self.folder / (self.file_stub + '_Source_Finder_Image.png'), bbox_inches='tight')
+            this_fig.savefig(path, bbox_inches='tight')
         if show:
             plt.show()
 
@@ -1206,6 +1254,8 @@ def initialize_params_file(
     params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
 ):
     params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
+    if not params_tile_file.exists():
+        params_tile_file.touch(PERMISSIONS_ALL_FULL)
     n_tones = np.size(baseband_freqs)
     with tables.open_file(params_tile_file, 'w') as params_fh:
         params_fh.root._v_attrs.n_tones = n_tones
@@ -1268,6 +1318,7 @@ def initialize_params_file(
             shape=(n_tones,),
         )
         dfoveref_per_mK[:] = 1
+    _logger.info(f'Initialized params file {params_tile_file}')
 
 
 def update_params_file(

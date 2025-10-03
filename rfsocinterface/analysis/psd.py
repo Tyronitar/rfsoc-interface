@@ -18,13 +18,12 @@ from kidpy3 import RawDataFile
 from rfsocinterface.core.data import (
     flag_outliers,
     ProcessedData,
-    DATA_DIRECTORY,
     DataRoutine,
     ProcessingStage
 )
-from rfsocinterface.core.utils import ensure_path, ordinal
+from rfsocinterface.core.utils import DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
 
-XLIM = (0.1, 100)
+XLIM = (0.1, 250)
 YLIM = (-110, -60)
 VALID_BASES = ['gp', 'iq', 'fd']
 
@@ -114,6 +113,7 @@ def plot_psd(
         max_percentile: float=84,
         title: str | None=None,
         basis: Literal['gp', 'iq', 'fd']='gp',
+        resonators: list[int]=[0],
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -136,39 +136,29 @@ def plot_psd(
     Raises:
         ValueError: If `basis` is not a valid basis (see `VALID_BASES`).
     """
-   
 
     # cutoff = 250  # Number of data points to cut off at the end
     # psd = psd[:, :, :-cutoff]
     # freq = freq[:-cutoff]
-
-    n_plots = psd.shape[0]
-    psd_med = np.median(psd, axis=1)
-
 
     if title is None:
         title = 'RFSoC Loopback PSD'
     match basis.lower():
         case 'gp':
             titles = [title + ' - Gain', title + ' - Phase']
-            ylabel = r'Noise PSD (dBc/Hz)'
+            ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
         case 'iq':
             titles = [title + ' - I', title + ' - Q']
-            ylabel = r'Noise PSD (dBc/Hz)'
+            ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
         case 'fd':
-            titles = [title + ' - Frequency', title + ' - Dissipation']
-            ylabel = r'Sdf/f ($Hz^{-1}$)'
-            yscale = 'log'
+            return plot_psd_df_over_f(freq, psd, filename, title=title, resonators=resonators)
         case _:
             raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
 
-    figs = []
-    if basis.lower() == 'fd':
-        fig = plot_df_over_f(freq, psd, n_resonators=1, ylabel=ylabel, title=title)
-        figs.append(fig)
-        return figs
+    n_plots = psd.shape[0]
+    psd_med = np.median(psd, axis=1)
 
     plot_data_med = 10 * np.log10(psd_med)
 
@@ -183,6 +173,9 @@ def plot_psd(
     plot_data_max = 10 * np.log10(psd_max)
 
     # Plot 
+    if not filename.exists():
+        filename.touch(PERMISSIONS_ALL_FULL)
+    figs = []
     with PdfPages(filename) as pdf:
         for i in range(n_plots):
             fig = create_plot(
@@ -211,35 +204,72 @@ def plot_psd(
 
     return figs
 
+@ensure_path(2)
+def plot_psd_df_over_f(
+        freq: npt.NDArray,
+        psd: npt.NDArray,
+        filename: Path,
+        title: str | None=None,
+        resonators: list[int]=[0],
+) -> list[Figure]:
+    """Create plots for the psd.
+    
+    Args:
+        freq (npt.NDArray): Array of frequencies (N_freq).
+        psd: (npt.NDArray): PSD (N_chan x N_resonators x N_freq).
+        filename (Path): PDF filename to save the  plots to.
+        title (str, optional): Title to give to each plot. Defaults to None.
+    
+    Returns:
+        (list[Figure]): N_chan plots corresponding to the PSD for each resonator.
+    
+    Raises:
+        ValueError: If the length of `resonators` is greater than the number of resonators
+    """
+    ylabel = r'Sdf/f ($Hz^{-1}$)'
+    # Plot 
+    if not filename.exists():
+        filename.touch(PERMISSIONS_ALL_FULL)
+    figs = []
+    with PdfPages(filename) as pdf:
+        for i, res in enumerate(resonators):
+            res_title = title + f' - Resonator {res}'
+            fig = plot_df_over_f(
+                freq,
+                psd[:, i, :],
+                ylabel=ylabel,
+                title=res_title,
+            )
+            pdf.savefig(fig)
+            plt.close(fig)
+            figs.append(fig)
+        return figs
+
 
 def plot_df_over_f(
     x_data: npt.NDArray,
     y_data: npt.ArrayLike,
     title: str | None=None,
     ylabel: str='Noise PSD (df / f)',
-    n_resonators: int=1,
 ) -> Figure:
     """Create a plot of the noise PSD in df/f units."""
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
-    for i in range(n_resonators):
-        for j, label in enumerate(['Frequency', 'Dissipation']):
-            ax.plot(x_data, y_data[j, i], label=f'Resonator {i} - {label}')
+    for j, label in enumerate(['Frequency', 'Dissipation']):
+        ax.plot(x_data, y_data[j], label=label)
     ax.set_xscale('log')
-    ax.set_xlim(0.1,100.)
+    ax.set_xlim(1, 250)
     ax.set_yscale('log')
-    ax.set_ylim(1e-17,1e-15)
-    
+    # ax.set_ylim(1e-17,1e-15)
+
     ax.set_xlabel('Frequency (Hz)', fontsize=16)
-            
+        
     ax.set_ylabel(ylabel, fontsize=16)
     ax.tick_params(labelsize=14)
     ax.legend(fontsize=14, loc='best')
-    if title is None:
-        title = 'RFSoC Loopback PSD'
-    ax.set_title(title, fontsize=16)
+    if title is not None:
+        ax.set_title(title, fontsize=16)
     plt.tight_layout()
-
     return fig
 
 
@@ -259,6 +289,9 @@ def create_plot(
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
     ax.plot(xdata, ydata_med, color='b', label=label)
+    flat_spectrum_idx = np.where((xdata > 10) & (xdata < 50))
+    flat_spectrum_noise = np.median(ydata_med[flat_spectrum_idx])
+    plt.hlines(flat_spectrum_noise, XLIM[0], XLIM[1], colors='r', linestyles='dashed', label=f'Flat Spectrum Level = {flat_spectrum_noise:.1f} dBc/Hz')
     ax.fill_between(
         xdata,
         ydata_min,
@@ -268,7 +301,7 @@ def create_plot(
         label=f'{ordinal(int(percentiles[0]))} Percentile to {ordinal(int(percentiles[1]))} Percentile'
     )
     ax.set_xscale('log')
-    ax.set_xlim(0.1,100.)
+    ax.set_xlim(*XLIM)
     ax.set_yscale(yscale)
     if yscale=='linear' and np.median(ydata_min) > -110 and np.median(ydata_max) < -60:
         ax.set_ylim(-110, -60)
@@ -327,14 +360,17 @@ if __name__ == '__main__':
     parser.add_argument('date', type=str, help='Date of the data in YYYYMMDD format.')
     parser.add_argument('setnum', type=int, help='Set number of the data.')
     parser.add_argument('--outlier_sigma', type=float, default=2.0, help='Sigma for outlier detection.')
-    parser.add_argument('--ds_factor', type=int, default=3, help='Downsampling factor.')
+    parser.add_argument('-d', '--ds_factor', type=int, default=1, help='Downsampling factor.')
     parser.add_argument('-f', '--do_flag_outliers', action='store_true', help='Flag outliers in the data.')
     parser.add_argument('-n', '--remove_noise', action='store_true', help='Remove electronics noise from the data.')
+    parser.add_argument('--lp_filt_freq', type=float, default=10, help='Low-pass filter frequency in HZ for electronics noise removal (defaults to 10).')
     parser.add_argument('-b', '--basis', type=str, choices=VALID_BASES, default='gp', help='Basis of the data (gp, iq, fd).')
     parser.add_argument('-p', '--show_plots', action='store_true', help='Show noise plots to screen when finished.')
     parser.add_argument('--block_length', type=float, default=10, help='Nominal block length. Time in seconds for a single "block" of data (defaults to 10s).')
     parser.add_argument('--cut_time', type=float, default=10, help='Time in seconds to cut from teh ends of the data (defaults to 10).')
     parser.add_argument('--title', type=str, default='Noise PSD', help='Title to use for the plots')
+    parser.add_argument('-o', '--output', type=str, default='', help='Output filename (defaults to DATE_setSETNUM_psd_BASIS_TITLE.pdf).')
+    parser.add_argument('--max_eigenmodes', type=int, default=30, help='Maximum number of eigenmodes to use for electronics noise removal (defaults to 30).')
     args = parser.parse_args()
 
     date = args.date
@@ -346,8 +382,22 @@ if __name__ == '__main__':
     basis = args.basis
     nominal_block_length = args.block_length
     cut_time = args.cut_time
+    lp_filt_freq = args.lp_filt_freq
+    max_modes = args.max_eigenmodes
+    title = args.title
+    if args.output == '':
+        output_file = f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_psd_{basis}_{title}.pdf'
+    else:
+        output = args.output
 
-    pd = ProcessedData.from_tod(date, setnum, do_electronics_noise_removal=remove_noise, ds_factor=ds_factor)
+    pd = ProcessedData.from_tod(
+        date,
+        setnum,
+        do_electronics_noise_removal=remove_noise,
+        max_modes=max_modes,
+        ds_factor=ds_factor,
+        electronics_noise_lp_filt_freq=lp_filt_freq,
+    )
 
 
 
@@ -359,7 +409,10 @@ if __name__ == '__main__':
         case 'fd':
             # Frequency/Dissipation basis
             # Get frequencies from the raw data file
-            raw_data_file = f'/data/{date}/{date}_chan_1_TOD_set{setnum}.h5'
+            # raw_data_file = f'/data/{date}/{date}_chan_1_TOD_set{setnum}.h5'
+            # TODO: Get the channel name from the processed data file? (but there's multiple in theory??)
+            raw_data_file = get_tod_template(date, setnum, chan_name='Be231102p2_100_tones')
+            # raw_data_file = get_tod_template(date, setnum, chan_name='1000_tone_uniform_202050829')
             fh = RawDataFile(raw_data_file, 'r')
             freq = fh.baseband_freqs[:] + fh.lo_freq[:]
 
@@ -380,7 +433,10 @@ if __name__ == '__main__':
     # Flag outliers
     if do_flag_outliers:
         chanmask = flag_outliers(input_data, pd.fs, chanmask, sigma=outlier_sigma)
-    
+
+    filt_sos = signal.butter(6, 1, btype='highpass', fs=pd.fs, output='sos', analog=False)
+    input_data[:] = signal.sosfiltfilt(filt_sos, input_data)
+
     chanmask, freq, noise_psd = compute_noise_psd(
         input_data,
         pd.timestamp,
@@ -391,9 +447,10 @@ if __name__ == '__main__':
     plot_psd(
         freq,
         noise_psd,
-        f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_psd_{basis}.pdf',
+        output_file,
         basis=basis,
-        title=args.title,
+        title=title,
+        resonators=np.where(chanmask==1)[0],
     )
     if args.show_plots:
         plt.show()

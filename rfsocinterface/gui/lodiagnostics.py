@@ -441,8 +441,10 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
 if __name__ == '__main__':
     from concurrent.futures import wait
+    import pdb
     app = QApplication()
-    sweep = LoSweepData.from_h5('/data/20250730/20250730_devrfsoc_rfsoc2_LO_Sweep_hour11p3667.h5')
+    sweep = LoSweepData.from_h5('/data/20250916/20250916_Be231102p2_100_tones_LO_Sweep_hour15p8722_high_res.npy')
+    pdb.set_trace()
 
 
     win = QMainWindow()
@@ -455,9 +457,9 @@ if __name__ == '__main__':
         pd.show()
         QApplication.processEvents()
 
-        future = sweep.fit(pd=pd)
+        # future = sweep.fit(pd=pd)
         # wait([future])
-        future.result()
+        # future.result()
         plot(sweep, pd)
         # future.add_done_callback(lambda _: plot(sweep, pd))
     

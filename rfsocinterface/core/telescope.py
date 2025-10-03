@@ -7,6 +7,7 @@ import pdb
 import time
 from multiprocessing.connection import Connection
 from multiprocessing import Queue
+import queue
 import sys
 import threading
 from threading import Thread
@@ -15,6 +16,7 @@ try:
     import thread
 except ImportError:
     import _thread as thread
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -23,7 +25,7 @@ import serial.tools.list_ports
 import uldaq as ul
 from Exscript.protocols.telnetlib import Telnet
 
-from rfsocinterface.core.utils import analog_to_digital
+from rfsocinterface.core.utils import analog_to_digital, PERMISSIONS_USR_RW
 
 _logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
@@ -89,26 +91,18 @@ def exit_after(timeout: int):
 class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
 
-    def __init__(self, queue: Queue):
+    def __init__(self, connection: Connection):
         self._initialized = False
         self._run = False
-        self.queue = queue
-        self.connections: dict[str, Connection] = {}
+        self.connection = connection
         self._active_jobs: list[Thread] = []
         self.test_init()
+        _tele_logger.debug(f'Result of TelescopeMotorController initialization: {self._initialized}')
         self._listener_loop()
     
-    def add_connection(self, client_id: str, conn: Connection):
-        """Add a connection to the telescope controller"""
-        self.connections[client_id] = conn
-        _tele_logger.debug(f'Succesfully added new Client "{client_id}"')
     
-    def remove_connection(self, client_id: str):
-        self.send(client_id, 'remove_connection_succesful')
-        del self.connections[client_id]
-        _tele_logger.debug(f'Succesfully removed Client "{client_id}"')
-    
-    def send_all(self, command: str, *args, timeout: float=None):
+    def send(self, command: str, *args, timeout: float=None):
+        """Send a command to the telescope client"""
         if timeout:
             timer = threading.Timer(
                 timeout,
@@ -116,71 +110,51 @@ class TelescopeMotorController:
             )
             timer.start()
             try:
-                for conn in self.connections.values():
-                    conn.send([command, *args])
+                self.connection.send([command, *args])
+                _tele_logger.debug(f'CONTROLLER sent command "{command}" with data {args}')
             except KeyboardInterrupt:
-                _tele_logger.error(f'Timed out sending command "{command}" with args {args} to all clients')
+                _tele_logger.error(f'Timed out sending command "{command}"')
             finally:
                 timer.cancel()
         else:
-            for conn in self.connections.values():
-                conn.send([command, *args])
-    
-    def send(self, client_id: str, command: str, *args, timeout: float=None):
-        """Send a command to the telescope controller"""
-        if client_id in self.connections:
-            if timeout:
-                timer = threading.Timer(
-                    timeout,
-                    quit_function,
-                )
-                timer.start()
-                try:
-                    self.connections[client_id].send([command, *args])
-                except KeyboardInterrupt:
-                    _tele_logger.error(f'Timed out sending command "{command}" with args {args} to Client "{client_id}"')
-                finally:
-                    timer.cancel()
-            else:
-                self.connections[client_id].send([command, *args])
-        else:
-            self.send_all('err', f'Unknown client "{client_id}".', timeout=2)
+            self.connection.send([command, *args])
+            _tele_logger.debug(f'CONTROLLER sent command "{command}" with data {args}')
 
     def _listener_loop(self):
+        if not self._initialized:
+            return
         while True:
-            client_id, command, *args = self.queue.get()
-            _tele_logger.debug(f'Client "{client_id}" sent command: "{command}", args: {args}')
-            match command.lower():
-                case 'add_connection':
-                    self.add_connection(client_id, *args)
-                    self.send(client_id, 'add_connection_succesful')
-                case 'remove_connection':
-                    self.remove_connection(client_id)
-                case 'get_ser_az_pos':
-                    self.get_ser_az_pos()
-                case 'set_az_pos':
-                    self.set_az_pos(*args)
-                case 'get_ser_ze_pos':
-                    self.get_ser_ze_pos()
-                case 'set_ze_pos':
-                    self.set_ze_pos(*args)
-                case 'set_voltage':
-                    self._run = True
-                    self.set_ao_value(*args)
-                case 'set_az_speed_relation':
-                    self.set_az_speed_relation(*args)
-                case 'set_ze_speed_relation':
-                    self.set_ze_speed_relation(*args)
-                case 'az_scan_mode':
-                    self.az_scan_mode(client_id, *args)
-                case 'stop_telescope':
-                    self._run = False
-                    self.set_ao_zero()
-                case 'terminate':
-                    self.close()
-                    break
-                case _:
-                    self.send(client_id, 'err', f'Unknown command "{command}" received.')
+            try:
+                command, *args = self.connection.recv()
+                _tele_logger.debug(f'CONTROLLER received command: "{command}", args: {args}')
+                match command.lower():
+                    case 'get_ser_az_pos':
+                        self.get_ser_az_pos()
+                    case 'set_az_pos':
+                        self.set_az_pos(*args)
+                    case 'get_ser_ze_pos':
+                        self.get_ser_ze_pos()
+                    case 'set_ze_pos':
+                        self.set_ze_pos(*args)
+                    case 'set_voltage':
+                        self._run = True
+                        self.set_ao_value(*args)
+                    case 'set_az_speed_relation':
+                        self.set_az_speed_relation(*args)
+                    case 'set_ze_speed_relation':
+                        self.set_ze_speed_relation(*args)
+                    case 'az_scan_mode':
+                        self.az_scan_mode(*args)
+                    case 'stop_telescope':
+                        self._run = False
+                        self.set_ao_zero()
+                    case 'terminate':
+                        self.close()
+                        break
+                    case _:
+                        self.send('err', 'NON-CRITICAL', f'Unknown command "{command}" received.')
+            except queue.Empty:
+                continue
 
     def test_init(self):
         if not self._initialized:
@@ -201,8 +175,17 @@ class TelescopeMotorController:
 
             # Set output to zero
             self.set_ao_zero()
+        except ul.ul_exception.ULException as e:
+            msg = f'Error encounterd when attempting to connect to device: {e.error_message}'
+            _tele_logger.critical(msg, exc_info=True)
+            self.send('err', 'CRITICAL', msg)
+            self.send('done')
+            return
         except OSError as e:
-            self.send_all('err', 'DAQ could not be initialized; Check comport and power supply')
+            msg = 'DAQ could not be initialized; Check comport and power supply'
+            _tele_logger.critical(msg, exc_info=True)
+            self.send('err', 'CRITICAL', msg)
+            self.send('done')
             return
 
         # Init serial communication with S700 for high res positioning of AZ monitors
@@ -225,15 +208,27 @@ class TelescopeMotorController:
             _tele_logger.debug('AZ motor connected to original port')
         else:
             # _logger.error('Could not communicate with AZ controller. System could not initialize.')
-            _tele_logger.critical('Could not communicate with AZ controller. System could not initialize.')
+            msg = 'Could not communicate with AZ controller. System could not initialize.'
+            _tele_logger.critical(msg, exc_info=True)
+            self.send('err', 'CRITICAL', msg)
+            self.send('done')
+            return
+
         self.ser_az = ser_az
         self.az_pos = 0
         self.az_pos = self.get_ser_az_pos()
         _tele_logger.info(f'Telescope AZ position is: {self.az_pos}')
 
         # Zenith Angle
-        self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
-        self.ser_ze.open(host=AKD1, port=ZEPORT)
+        try:
+            self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
+            self.ser_ze.open(host=AKD1, port=ZEPORT)
+        except OSError as e:
+            msg = 'Could not communicate with ZA controller. System could not initialize.'
+            _tele_logger.critical(msg, exc_info=True)
+            self.send('err', 'CRITICAL', msg)
+            self.send('done')
+            return
         self.ser_ze.write(b'DRV.ACTIVE\r\n')
         status_string = self.ser_ze.read_until(b'\r', 0.1)
         # _tele_logger.debug(status_string, type(status_string))
@@ -258,10 +253,11 @@ class TelescopeMotorController:
             job.join()
         self.ser_az.close()
         self.ser_ze.close()
-        self.send_all('done')
+        self.send('done')
 
     def set_ao_value(self, data: float, channel: int):
         self.ao_device.a_out(channel, self.ul_range_out, self.ao_flags, data)
+        _tele_logger.debug(f'Set ao value for channel {channel} to {data}')
 
     def set_ao_zero(self):
         self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
@@ -298,11 +294,12 @@ class TelescopeMotorController:
                 self.ser_az.reset_output_buffer()
                 self.az_pos = pfb
                 if self._initialized:
-                    self.send_all('az_pos', pfb, timeout=0.25)
+                    self.send('az_pos', pfb, timeout=0.25)
                 return pfb
         except ValueError:
-            self.send_all(
+            self.send(
                 'err',
+                'NON-CRITICAL',
                 'Error communicating with AZ controller; '
                 'position set to most recent read.',
             )
@@ -315,7 +312,7 @@ class TelescopeMotorController:
         worker_thread.start()
 
     def _set_az_pos(self, new_pos: int, scan_mode: bool=False, stop_run: bool=True, speed_factor: float=1.):
-        self.send_all('az_pos_comm', new_pos, timeout=0.25)
+        self.send('az_pos_comm', new_pos, timeout=0.25)
         # I want to accept a number in degrees, but put the number in the integer value desired by S700 controller
         # AZ controlled by 2 motors, the first to actually move the telescope, the second to put some tension on the gear for avoiding any backlash. Currently the secondary motor is disabled, probably providing little to no torque, but given the huge gearing ratio, it probably helps with backlash. The next easiest technique would be to run the secondary in "analog torque" mode, setting the zero value to some small torque. This could be improved by increasing the torque during motion and reducing when the first motor is not moving (probably by changing the zero value torque, since both analog outs are already in use). The proper way to do it, and the reason we were sold these S700 controllers is called RDP per the kollmorgen tech guy but my guess is he meant prd cogging mode.
         self.set_ao_zero()
@@ -393,7 +390,6 @@ class TelescopeMotorController:
 
     def az_scan_mode(
             self,
-            client_id: str,
             file: str,
             az_start: float,  # relative to current positions
             az_stop: float,
@@ -403,13 +399,12 @@ class TelescopeMotorController:
             large_map_mode: bool=False,
     ):
         self._run = True
-        worker_thread = Thread(target=self._az_scan_mode, args=(client_id, file, az_start, az_stop, n_repeats, ze_dither, position_return, large_map_mode))
+        worker_thread = Thread(target=self._az_scan_mode, args=(file, az_start, az_stop, n_repeats, ze_dither, position_return, large_map_mode))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
     def _az_scan_mode(
             self,
-            client_id: str,
             file: str,
             az_start: float,
             az_stop: float,
@@ -434,17 +429,28 @@ class TelescopeMotorController:
         az_stop += initial_az
 
         # Set start position in current thread
-        _logger.info(f'Moving telescope to initial position')
+        _tele_logger.info(f'Moving telescope to initial position')
+        self.send('az_scan_mode_label', 'Running AZ Scan Mode\nMoving telescope to initial position')
         self._set_az_pos(az_start - az_start_buffer, stop_run=False)
         self.set_ze_speed_relation(ZE_SCAN_RPM_PER_VOLT)
 
         speed_factor = 1/3 if large_map_mode else 1.
 
+        self.send('az_scan_mode_maximum', n_repeats)
         start_time = time.time()
         rep_times = []
         for i_rep in np.arange(n_repeats):
             rep_start_time = time.time()
-            _logger.info(f'AZ Scan Mode: Starting repeat {i_rep + 1} of {n_repeats}')
+            _tele_logger.info(f'AZ Scan Mode: Starting repeat {i_rep + 1} of {n_repeats}')
+            label_text = \
+                f'Running AZ Scan Mode\n' \
+                f'Repeat {i_rep + 1} / {n_repeats}'
+            if len(rep_times) > 0:
+                label_text += f'\nEstimated time remaining: {np.mean(rep_times) * (n_repeats - i_rep):.2f} s'
+            self.send(
+                'az_scan_mode_label',
+                label_text
+            )
             if not self._run:
                 break
             if large_map_mode:
@@ -470,38 +476,43 @@ class TelescopeMotorController:
             rep_end_time = time.time()
             elapsed_time = rep_end_time - rep_start_time
             rep_times.append(elapsed_time)
-            _logger.info(f'AZ Scan Mode: Finished repeat {i_rep + 1} in {elapsed_time:.3f}s')
-            _logger.info(f'Average time per repetition is {np.mean(rep_times):.3f}s')
+            self.send('az_scan_mode_progress', i_rep + 1)
+            _tele_logger.info(f'AZ Scan Mode: Finished repeat {i_rep + 1} in {elapsed_time:.3f}s')
+            _tele_logger.info(f'AZ Scan Mode: Average time per repetition is {np.mean(rep_times):.3f}s')
 
         stop_time = time.time()
-        _logger.info(f'Finished {n_repeats} repeats in {stop_time - start_time:.3f}s')
+        _logger.info(f'AZ Scan Mode: Finished {n_repeats} repeats in {stop_time - start_time:.3f}s')
 
         # self._run is only changed if the telescope was stopped mid scan
         # Don't save the telescope data in that case
         if not self._run:
-            _logger.info("AZ Scan Mode cancelled before completion.")
-            self.send(client_id, 'az_scan_mode_complete', 1)
+            _tele_logger.info("AZ Scan Mode canceled before completion.")
+            self.send('az_scan_mode_complete', 1)
             self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
             if position_return:
-                _tele_logger.info('Resetting telescope position...')
+                _tele_logger.info('Canceling AZ Scan Mode\nResetting telescope position...')
+                self.send('az_scan_mode_label', 'Resetting telescope position')
                 self._set_az_pos(initial_az, stop_run=False)
                 self._set_ze_pos(initial_ze, stop_run=False)
             return
         
-        with h5py.File(file, "a") as f:
+        path = Path(file)
+        with h5py.File(path, 'w') as f:
             f.create_dataset("az_tel", data=position_data[0::3])
             f.create_dataset("za_tel", data=position_data[1::3])
             f.create_dataset("timestamp_tel", data=position_data[2::3])
             f.create_dataset("optical_visibility", data=['****'])
+        path.chmod(PERMISSIONS_USR_RW)
         self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         if position_return:
-            _tele_logger.info('Resetting telescope position...')
+            _tele_logger.info('AZ Scan Mode: Resetting telescope position...')
+            self.send('az_scan_mode_label', 'Running AZ Scan Mode\nResetting telescope position')
             self._set_az_pos(initial_az, stop_run=False)
             self._set_ze_pos(initial_ze, stop_run=False)
 
         self._run = False
-        _logger.info("Scan Complete")
-        self.send(client_id, 'az_scan_mode_complete', 0)
+        _tele_logger.info("Scan Complete")
+        self.send('az_scan_mode_complete', 0)
 
     def jog_az_pos(self, speed: float=1):
         raise NotImplementedError("Jogging not implemented yet.")
@@ -547,7 +558,7 @@ class TelescopeMotorController:
             pos = float(pos_str.split(' ')[0].split('>')[-1])
             self.ze_pos = pos
             if self._initialized:
-                self.send_all('ze_pos', pos, timeout=0.25)
+                self.send('ze_pos', pos, timeout=0.25)
             return pos
         except ValueError:
             _tele_logger.error(
@@ -564,7 +575,7 @@ class TelescopeMotorController:
         worker_thread.start()
 
     def _set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True):
-        self.send_all('ze_pos_comm', new_pos, timeout=0.25)
+        self.send('ze_pos_comm', new_pos, timeout=0.25)
         # new_pos = float(new_pos)
         self.set_ao_zero()
 
@@ -683,6 +694,6 @@ class TelescopeMotorController:
             self.ser_az.reset_output_buffer()
 
 
-def make_controller(queue: Queue) -> TelescopeMotorController:
-    return TelescopeMotorController(queue)
+def make_controller(connection: Connection) -> TelescopeMotorController:
+    return TelescopeMotorController(connection)
 

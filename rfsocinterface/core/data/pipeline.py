@@ -164,6 +164,7 @@ class DataPipeline:
             beam_map_mode=self.shared_values['beam_map_mode'],
             ds_factor=self.shared_values['ds_factor'],
             do_electronics_noise_removal=self.shared_values.get('do_electronics_noise_removal', True),
+            max_modes=self.shared_values.get('max_modes', 30),
         )
         self.processor.apply_routines(pd)
         _logger.info('Running post-processing routines...')
@@ -184,10 +185,15 @@ class DataPipeline:
 
 if __name__ == '__main__':
     import pdb
-    date = '20250825'
-    setnum = 1002
+    import matplotlib.pyplot as plt
+    date = '20250912'
+    setnum = 1014
+    # date = '20250513'
+    # setnum = 1008
+    # md = MapData.from_file(date, setnum)
+    # pdb.set_trace()
     dataset = 'data_mK'
-    beam_map_mode = False
+    beam_map_mode = True
 
     ds_factor = 10
     hp_filt_freq = 0.2
@@ -205,7 +211,8 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filt_freq,
         dataset=dataset,
         beam_map_mode=beam_map_mode,
-        do_electronics_noise_removal=False,
+        do_electronics_noise_removal=True,
+        max_modes=2,
     )
     pipeline.add_routine(hpfilt)
     pipeline.add_routine(lpfilt)
@@ -214,5 +221,6 @@ if __name__ == '__main__':
 
     data = pipeline.run_pipeline(date, setnum)
     # data.plot()
+    # plt.show()
     pdb.set_trace()
     data.close()

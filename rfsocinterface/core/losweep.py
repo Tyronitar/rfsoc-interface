@@ -10,17 +10,18 @@ from PySide6.QtWidgets import QProgressDialog
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+from numpy.polynomial import Polynomial
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from scipy.signal import savgol_filter
 import h5py
 
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path
+from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from kidpy3 import capture_packets
-from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
+from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
 
 
@@ -119,11 +120,7 @@ class ResonatorData:
         ax.axvline(x=self.fit_f0, color='r', animated=animated)
 
         # Scale the span of the plot based on the frequency ratio
-        new_span = self.span * self.freq_ratio
-        ax.set_xlim(
-            np.mean(self.freq - new_span / 2.0),
-            np.mean(self.freq + new_span / 2.0),
-        )
+        ax.set_xlim(self.freq.min(), self.freq.max())
 
         # Add a label showing the resonator number
         if self.is_onres:
@@ -310,6 +307,7 @@ class LoSweepData:
         sweep.fit_f0 = fit_f0
         sweep.fit_qi = fit_qi
         sweep.fit_qc = fit_qc
+        _logger.debug(f'Loaded LO sweep data from {str(path)}')
         return sweep
 
     @property
@@ -369,6 +367,7 @@ class LoSweepData:
 
     def fit(self, pd: QThreadJobProgressDialog | None=None) -> Future:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
+        _logger.debug('Fitting LO sweep results...')
         if pd is None:
             pd = QThreadJobPool(parent=self)
         return pd.map(self._fit_i, np.argwhere(self.chanmask == 1))
@@ -429,55 +428,56 @@ class LoSweepData:
     @ensure_path(1)
     def savenp(self, fname: Path):
         path = fname.with_suffix('.npy')
+        path.touch(PERMISSIONS_USR_RW, exist_ok=True)
         np.save(path, self.data)
     
     @ensure_path(1)
     def save_new_tone_list(self, fname: Path):
+        path = fname.with_suffix('.npy')
+        path.touch(PERMISSIONS_USR_RW, exist_ok=True)
         np.save(fname, self.new_tone_list)
+        _logger.debug(f'LoSweepData saved new tone list to {str(fname)}')
 
     @ensure_path(1)
     def saveh5(self, fname: Path):
         """Save the LO Sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
+        path.touch(PERMISSIONS_USR_RW)
         with h5py.File(path, 'w') as fh:
             fh.create_dataset('global_data/lo_sweep', data=self.data)
-            # fh.create_dataset('global_data/s21', data=self.s21)
             fh.create_dataset('global_data/lo_freq', data=self.f_center)
             fh.create_dataset('global_data/baseband_freqs', data=self.tone_list - self.f_center)
             fh.create_dataset('global_data/chanmask', data=self.chanmask)
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
             fh.create_dataset('global_data/fit_qc', data=self.fit_qc)
+        _logger.debug(f'LoSweepData saved to {str(fname)}')
     
     def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.nchan))
         mid_ind = self.nfreq // 2
         edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
         ind_val = np.arange(edge_indices[0], edge_indices[1])
-
-        # rotation_angle = np.zeros(self.nchan)
-        # adc_units_to_hz = np.zeros(self.nchan)
+        freq_val = self.freq[:, ind_val] - self.tone_list[:, np.newaxis]
 
         for i_chan in range(0, self.nchan):
-            fit_I = np.polyfit(ind_val, self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
-            fit_I_deriv = np.polyder(fit_I)
-            dIQ_df[0, i_chan] = np.polyval(fit_I_deriv, mid_ind) / self.df
-            fit_Q = np.polyfit(ind_val, self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
-            fit_Q_deriv = np.polyder(fit_Q)
-            dIQ_df[1, i_chan] = np.polyval(fit_Q_deriv, mid_ind) / self.df
-
-            # rotation_angle[i_chan] = np.atan2(dIQ_df[1, i_chan], dIQ_df[0, i_chan])
-            # adc_units_to_hz[i_chan] = np.sqrt(
-            #     (dIQ_df[0, i_chan] * np.cos(rotation_angle)) ** 2 + \
-            #     (dIQ_df[1, i_chan] * np.sin(rotation_angle)) ** 2
-            # )
+            fit_I = Polynomial.fit(freq_val[i_chan], self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            fit_I_deriv = fit_I.deriv()
+            dIQ_df[0, i_chan] = fit_I_deriv(freq_val[i_chan, deriv_length])
+            fit_Q = Polynomial.fit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            fit_Q_deriv = fit_Q.deriv()
+            dIQ_df[1, i_chan] = fit_Q_deriv(freq_val[i_chan, deriv_length])
 
         # Q in y direction, I in x direction
-        rotation_angle = np.atan2(dIQ_df[1, :], dIQ_df[0, :])
-        adc_units_to_hz = np.sqrt(
-            (dIQ_df[0, :] * np.cos(rotation_angle)) ** 2 +
-            (dIQ_df[1, :] * np.sin(rotation_angle)) ** 2
-        )
+        # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
+        # Negative because we're rotating the coordinate axes, not the point
+        rotation_angle = -np.atan2(dIQ_df[1, :], dIQ_df[0, :])
+
+        # For a fixed readout tone, a positive shift in the resonance freq appears 
+        # as a perceived positive shift in the I/Q data, which thus necessitates the positive sign
+        adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
+        with np.printoptions(threshold=20):
+            _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
         return rotation_angle, adc_units_to_hz
 
 
@@ -593,7 +593,8 @@ class LoSweep:
         # WITH TIMESTAMP
 
         # set the LO back to the original frequency
-        self.valon.set_frequency(Valon5009.SYNTH_B, self.f_center)
+        self.valon.set_frequency(SYNTH_B, self.f_center)
+        _logger.debug(f'Valon {self.valon} set frequency for synthesizer {SYNTH_B} to {self.f_center} MHz')
 
         return (f, sweep_Z_f)
 
@@ -618,6 +619,7 @@ class LoSweep:
         Credit: Dr. Adrian Sinclair (adriankaisinclair@gmail.com)
         """
         self.valon.set_frequency(SYNTH_B, lo_freq)
+        _logger.debug(f'Valon {self.valon} set frequency for synthesizer {SYNTH_B} to {lo_freq} MHz')
 
         # Read values and trash initial read, suspecting linear delay is cause..
         # toss 20 packets in the garbage
@@ -625,10 +627,12 @@ class LoSweep:
 
         # Actually use this data
         Naccums = 100
-        packets = capture_packets(self.chan, Naccums).T
+        packets = capture_packets(self.chan, Naccums)
         I = []
         Q = []
-        for packet in packets:
+        # for packet in packets:
+        for i in range(packets.shape[1]):
+            packet = packets[:, i]
             It = packet[::2]
             Qt = packet[1::2]
             I.append(It)
@@ -662,13 +666,11 @@ class LoSweep:
             tone_diff = np.diff(self.freqs)[0] * 1e-6  # MHz
         else:
             tone_diff = 0
-        _logger.debug(f"tone diff={tone_diff}")
         if freq_step > 0:
             flo_step = freq_step * 1e-6  # MHz
         else:
             flo_step = tone_diff / N_steps
 
-        _logger.debug(f"lo step size={flo_step}")
         flo_start = self.f_center * 1e-6 - flo_step * N_steps / 2.0  # MHz
         flo_stop = self.f_center * 1e-6  + flo_step * N_steps / 2.0  # MHz
 
@@ -676,7 +678,8 @@ class LoSweep:
         if pd is not None:
             pd.setMaximum(len(self.flos))
         # flos = np.round(flos * 1e3)*1e-3
-        _logger.debug(f"len flos {self.flos.shape}")
+        with np.printoptions(threshold=50):
+            _logger.debug(f'Performing LO sweep with frequencies: {self.flos}')
         if pd is not None:
             future = pd.map(self._get_data_at, self.flos)
         else:
@@ -695,6 +698,8 @@ class LoSweep:
         _logger.info('Processing sweep results')
         if future.cancelled():
             _logger.info('Sweep cancelled. Exiting...')
+            self.valon.set_frequency(SYNTH_B, self.f_center * 1e-6)
+            _logger.debug(f'Valon {self.valon} set frequency for synthesizer {SYNTH_B} to {self.f_center * 1e-6} MHz')
             return
         sweep_Z = np.array(list(future.result()))
 
@@ -706,6 +711,8 @@ class LoSweep:
             f[itone, :] = self.flos * 1e6 + ftone
         #    f = np.array([flos * 1e6 + ftone for ftone in freqs]).flatten()
         sweep_Z_f = sweep_Z.T
+        sweep_data = np.array((f, sweep_Z_f))
+        _logger.debug(f'Shape of LO sweep data: {sweep_data.shape}')
         #    sweep_Z_f = sweep_Z.T.flatten()
 
         ## SAVE f and sweep_Z_f TO LOCAL FILES
@@ -713,9 +720,10 @@ class LoSweep:
         # WITH TIMESTAMP
 
         # set the LO back to the original frequency
-        self.valon.set_frequency(self.chan.chan_number, self.f_center * 1e-6)
+        self.valon.set_frequency(SYNTH_B, self.f_center * 1e-6)
+        _logger.debug(f'Valon {self.valon} set frequency for synthesizer {SYNTH_B} to {self.f_center * 1e-6} MHz')
 
-        self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), self.chanmask)
+        self.data = LoSweepData(self.tone_list, self.f_center, sweep_data, self.chanmask)
         self._processed = True
         _logger.info('Finished processing sweep results')
 

@@ -12,8 +12,8 @@ import tables
 
 from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
-from rfsocinterface.core.utils import get_filename
-from rfsocinterface.core.data import ProcessedData, get_tod_template
+from rfsocinterface.core.utils import get_filename, PERMISSIONS_USR_RW, get_tod_template
+from rfsocinterface.core.data import ProcessedData
 from rfsocinterface.gui.main_widget import MainWidget
 from rfsocinterface.gui.utils import PathValidator, get_lineEdit_text, get_num_value
 
@@ -40,11 +40,14 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
     
     def wait_for_TOD(self, duration: int):
         """Wait for the TOD file to be created before processing."""
-        pd = QProgressDialog('Collecting data...', 'Cancel', 0, duration)
-        pd.setWindowModality(Qt.WindowModality.WindowModal)
-        pd.setMinimumDuration(0)
+        pd = QProgressDialog('Collecting data...', 'Cancel', 0, duration, parent=self)
+        pd.setValue(0)
+        pd.setWindowTitle('rfsocinterface')
+        pd.setModal(True)
+        pd.show()
         start = time.time()
         now = time.time()
+        counter = 0
         while now - start < duration:
             if pd.wasCanceled():
                 pd.close()
@@ -55,6 +58,9 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
             remaining_time = duration - (now - start)
             pd.setLabelText(f'Collecting data...\nRemaining time: {int(remaining_time)} seconds')
             pd.setValue(now - start)
+            counter += 1
+            if counter % 50 == 0:
+                _logger.info(f'Collecting data: {100 * (now - start) / duration:.2f}% complete...')
         
     def process_data(self, date: str, setnum: int):
         pass
@@ -66,14 +72,15 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
         rfchans = []
         for rfsoc, chan in chans:
             rfchan = rfsoc.get_channel(chan)
-            save_location = self.save_location_widget.get_chosen_save_location(chan_name=rfchan.tile_name)
-            save_location.parent.mkdir(parents=True, exist_ok=True)
+            save_location = self.save_location_widget.get_chosen_save_location(chan_name=rfchan.tile_name, touch_file=True, mode=PERMISSIONS_USR_RW, mkdir=True)
             rfchan.raw_filename = str(save_location)
             rfchans.append(rfchan)
         duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)
         date = save_location.stem[:8]
         setnum = int(save_location.stem[-4:])
+        _logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
         capture(rfchans, self.wait_for_TOD, duration)
+        _logger.info('Completed data streaming')
         # TODO: Add a check to see if the data collection was canceled
         self.process_data(date, setnum)
     

@@ -15,6 +15,7 @@ from itertools import islice
 import copy
 import sys
 from multiprocessing.connection import Connection
+import stat
 
 import numpy as np
 import numpy.typing as npt
@@ -24,6 +25,10 @@ import redis
 
 import time
 from collections.abc import Mapping
+
+DATA_DIRECTORY = '/data'
+DEFAULT_PARAMS_DIRECTORY = DATA_DIRECTORY + '/params/'
+
 
 _tele_logger = logging.getLogger('telescopeControl')
 
@@ -55,6 +60,10 @@ R = TypeVar('R')
 
 P = ParamSpec('P')
 Q = ParamSpec('Q')
+
+PERMISSIONS_USR_RW = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
+PERMISSIONS_ALL_RW = PERMISSIONS_USR_RW | stat.S_IWGRP | stat.S_IWOTH
+PERMISSIONS_ALL_FULL = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH | PERMISSIONS_ALL_RW
 
 
 def convert_path(path: PathLike) -> Path:
@@ -176,7 +185,7 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
     yymmdd = get_yymmdd()
     date_folder = base_dir / yymmdd
     if mkdir:
-        date_folder.mkdir(exist_ok=True)
+        date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
 
     #provide the name of the file
     match file_type.lower():
@@ -394,7 +403,7 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
     if not err_msg:
         err_msg = f'Error occured while waiting for command "{command}": '
     while True:
-        if not conn.poll(1e-2):
+        if not conn.poll(1e-4):
             continue
         response, *data = conn.recv()
         _tele_logger.debug(f'{id} got response: "{response}", data: {data}')
@@ -683,6 +692,52 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
         out[...] = axis_slice(y, step=q, axis=axis)
 
 
+
+#
+# File Templates
+#
+
+def get_tod_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, chan_name: str=None) -> str:
+    if chan_name is None:
+        chan_name = '*'
+    return f'{data_dir}/{date}/{date}_{chan_name}_TOD_set{setnum}.h5'
+
+
+def get_azel_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_AZEL_set{setnum}.h5'
+
+
+def get_optcam_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
+
+
+def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_processed_data_set{setnum}.h5'
+
+
+def get_processed_level_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
+    return f'{data_dir}/{date}/{date}_processed_data_level{level}_set{setnum}.h5'
+
+
+def get_cleaned_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_cleaned_data_set{setnum}.h5'
+
+
+def get_file_stub(date: str, setnum: int) -> str:
+    return f'{date}_set{setnum}'
+
+
+def get_map_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_mapped_data_set{setnum}.h5'
+
+
+def get_beammap_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_beammap_set{setnum}.h5'
+
+
+def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
+    return f'{params_dir}/params_tile_{tile_name}.h5'
+    #
 if __name__ == '__main__':
     import timeit, functools
     from scipy.signal import decimate
@@ -691,7 +746,7 @@ if __name__ == '__main__':
     q = 10
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
-    # y = np.zeros(n // q)
+    y = np.zeros(n // q)
     # decimate_in_chunks(x, q, out=y)
 
     # n_repeats = 20

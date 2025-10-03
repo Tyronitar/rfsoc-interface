@@ -86,16 +86,21 @@ def analyze_beammap(
             (0., az_center[idx] - 0.2, za_center[idx] - 0.2, 0.01, 0.01, -np.max(np.abs(this_val))),
             (10. * np.max(this_val), az_center[idx] + 0.2, za_center[idx] + 0.2, 1., 1., np.max(np.abs(this_val)))
         )
-        popt, pcov = curve_fit(
-            Gauss_2d,
-            (this_az, this_za),
-            this_val,
-            p0=start_params,
-            sigma=sigma_z,
-            absolute_sigma=True,
-            maxfev=1000000,
-            bounds=bounds
-        )
+        try:
+            popt, pcov = curve_fit(
+                Gauss_2d,
+                (this_az, this_za),
+                this_val,
+                p0=start_params,
+                sigma=sigma_z,
+                absolute_sigma=True,
+                maxfev=10000,
+                bounds=bounds
+            )
+        except RuntimeError:
+            popt = np.zeros(6)
+            pcov = np.zeros((6, 6))
+            continue
         az_center[idx] = popt[1]
         za_center[idx] = popt[2]
         amplitude[idx] = popt[0]
@@ -113,7 +118,7 @@ def analyze_beammap(
 
 
     # TODO: file name
-    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap.pdf'
+    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap_NO_swap_negative_angle.pdf'
     with PdfPages(pdf_file_name) as pdf:
         FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
         high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50)).flatten()
@@ -146,7 +151,8 @@ def analyze_beammap(
 
         for idx in np.argwhere(chanmask == 1).flatten():
             fig, ax = plt.subplots()
-            ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+            im = ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+            fig.colorbar(im)
             ax.set_xlabel('X Position (deg)')
             ax.set_ylabel('Y Position (deg)')
             ax.set_xlim(extent[0],extent[1])
@@ -179,15 +185,14 @@ def analyze_beammap(
 if __name__ == '__main__':
     # date = '20250729'
     # setnum = 1012
-    date = '20250730'
+    date = '20250912'
 
-    setnum = 1005
+    setnum = 1014
 
     md = MapData.from_file(date, setnum, 'r')
+    # for i in range(240, 250):
+    #     md.plot_individual(i)
+    #     plt.show(block=False)
     # pdb.set_trace()
-    for i in range(240, 250):
-        md.plot_individual(i)
-        plt.show(block=False)
-    pdb.set_trace()
     analyze_beammap(md)
     md.close()
