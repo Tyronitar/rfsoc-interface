@@ -145,6 +145,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         rfsoc.set_frequency(chan, lo_freq)
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3  # KHz to Hz
         if tone_shift != 0:
+            _logger.debug(f'Tone shift != 0. Computing new tones...')
             lo_freq = rfsoc.get_frequency(chan)  # Hz
             curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
             new_tones = np.ndarray.tolist(
@@ -153,6 +154,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 * (curr_tone_list + lo_freq)
                 / lo_freq
             )
+            _logger.debug(f'LoConfigWidget calling `set_tone_list` for RFSoC {rfsoc.name} channel {chan}')
             _logger.info(
                 "Waiting for the RFSOC to finish writing the updated frequency list"
             )
@@ -232,10 +234,12 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     def _finish_sweep(self, result: int, savefile: Path, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int, dw: DiagnosticsDialog, second_sweep: bool=False):
         # If the sweep was discarded, close without saving anything
         if result == QDialog.DialogCode.Rejected:
+            _logger.debug(f'Diagnostics dialog rejected.')
             return
         self.save_sweep(savefile, sweep_data)
         if not second_sweep:
             if self.save_plots_CheckBox.isChecked():
+                _logger.debug(f'Saving LO sweep plots')
                 dw.save_plots()
                 plt.close('all')
             if self.second_sweep_checkBox.isChecked():
@@ -245,12 +249,14 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 self._write_new_tones(sweep_data, rfsoc, chan)
         else:
             if self.second_sweep_save_plots_checkBox.isChecked():
+                _logger.debug(f'Saving LO sweep plots')
                 dw.save_plots()
                 plt.close('all')
             
     @ensure_path(1)
     def second_sweep(self, first_sweep_savefile: Path, rfsoc: RFSOCWrapper, chan: int):
         """Perform second LO sweep."""
+        _logger.debug(f'Performing second LO sweep...')
         filename = first_sweep_savefile.stem + '_high_res.h5'
         savefile = first_sweep_savefile.with_name(filename)
 
@@ -288,6 +294,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 _logger.debug('Waiting for sweep to finish...')
             QApplication.processEvents()
             time.sleep(0.1)
+        _logger.debug(f'LoConfigWidget finished waiting for LO Sweep processing. Saving to {str(savefile)}.')
         sweep_data = sweep.data
         sweep_data.set_diff_to_flag(get_num_value(self.flagging_lineEdit, float) * 1e3)
         self.save_sweep(savefile, sweep_data)

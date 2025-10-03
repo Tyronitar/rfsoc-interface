@@ -21,7 +21,7 @@ from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, P
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from kidpy3 import capture_packets
-from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_A, SYNTH_B
+from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
 
 
@@ -307,6 +307,7 @@ class LoSweepData:
         sweep.fit_f0 = fit_f0
         sweep.fit_qi = fit_qi
         sweep.fit_qc = fit_qc
+        _logger.debug(f'Loaded LO sweep data from {str(path)}')
         return sweep
 
     @property
@@ -366,6 +367,7 @@ class LoSweepData:
 
     def fit(self, pd: QThreadJobProgressDialog | None=None) -> Future:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
+        _logger.debug('Fitting LO sweep results...')
         if pd is None:
             pd = QThreadJobPool(parent=self)
         return pd.map(self._fit_i, np.argwhere(self.chanmask == 1))
@@ -434,6 +436,7 @@ class LoSweepData:
         path = fname.with_suffix('.npy')
         path.touch(PERMISSIONS_USR_RW, exist_ok=True)
         np.save(fname, self.new_tone_list)
+        _logger.debug(f'LoSweepData saved new tone list to {str(fname)}')
 
     @ensure_path(1)
     def saveh5(self, fname: Path):
@@ -448,6 +451,7 @@ class LoSweepData:
             fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
             fh.create_dataset('global_data/fit_qc', data=self.fit_qc)
+        _logger.debug(f'LoSweepData saved to {str(fname)}')
     
     def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.nchan))
@@ -472,6 +476,8 @@ class LoSweepData:
         # For a fixed readout tone, a positive shift in the resonance freq appears 
         # as a perceived positive shift in the I/Q data, which thus necessitates the positive sign
         adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
+        with np.printoptions(threshold=20):
+            _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
         return rotation_angle, adc_units_to_hz
 
 
@@ -588,6 +594,7 @@ class LoSweep:
 
         # set the LO back to the original frequency
         self.valon.set_frequency(SYNTH_B, self.f_center)
+        _logger.debug(f'Valon {self.valon} set frequency for synthesizer {SYNTH_B} to {self.f_center} MHz')
 
         return (f, sweep_Z_f)
 
@@ -612,6 +619,7 @@ class LoSweep:
         Credit: Dr. Adrian Sinclair (adriankaisinclair@gmail.com)
         """
         self.valon.set_frequency(SYNTH_B, lo_freq)
+        _logger.debug(f'Valon {self.valon} set frequency for synthesizer {SYNTH_B} to {lo_freq} MHz')
 
         # Read values and trash initial read, suspecting linear delay is cause..
         # toss 20 packets in the garbage
@@ -658,13 +666,11 @@ class LoSweep:
             tone_diff = np.diff(self.freqs)[0] * 1e-6  # MHz
         else:
             tone_diff = 0
-        _logger.debug(f"tone diff={tone_diff}")
         if freq_step > 0:
             flo_step = freq_step * 1e-6  # MHz
         else:
             flo_step = tone_diff / N_steps
 
-        _logger.debug(f"lo step size={flo_step}")
         flo_start = self.f_center * 1e-6 - flo_step * N_steps / 2.0  # MHz
         flo_stop = self.f_center * 1e-6  + flo_step * N_steps / 2.0  # MHz
 
@@ -672,7 +678,8 @@ class LoSweep:
         if pd is not None:
             pd.setMaximum(len(self.flos))
         # flos = np.round(flos * 1e3)*1e-3
-        _logger.debug(f"len flos {self.flos.shape}")
+        with np.printoptions(threshold=50):
+            _logger.debug(f'Performing LO sweep with frequencies: {self.flos}')
         if pd is not None:
             future = pd.map(self._get_data_at, self.flos)
         else:
@@ -691,6 +698,8 @@ class LoSweep:
         _logger.info('Processing sweep results')
         if future.cancelled():
             _logger.info('Sweep cancelled. Exiting...')
+            self.valon.set_frequency(SYNTH_B, self.f_center * 1e-6)
+            _logger.debug(f'Valon {self.valon} set frequency for synthesizer {SYNTH_B} to {self.f_center * 1e-6} MHz')
             return
         sweep_Z = np.array(list(future.result()))
 
@@ -702,6 +711,8 @@ class LoSweep:
             f[itone, :] = self.flos * 1e6 + ftone
         #    f = np.array([flos * 1e6 + ftone for ftone in freqs]).flatten()
         sweep_Z_f = sweep_Z.T
+        sweep_data = np.array((f, sweep_Z_f))
+        _logger.debug(f'Shape of LO sweep data: {sweep_data.shape}')
         #    sweep_Z_f = sweep_Z.T.flatten()
 
         ## SAVE f and sweep_Z_f TO LOCAL FILES
@@ -710,8 +721,9 @@ class LoSweep:
 
         # set the LO back to the original frequency
         self.valon.set_frequency(SYNTH_B, self.f_center * 1e-6)
+        _logger.debug(f'Valon {self.valon} set frequency for synthesizer {SYNTH_B} to {self.f_center * 1e-6} MHz')
 
-        self.data = LoSweepData(self.tone_list, self.f_center, np.array((f, sweep_Z_f)), self.chanmask)
+        self.data = LoSweepData(self.tone_list, self.f_center, sweep_data, self.chanmask)
         self._processed = True
         _logger.info('Finished processing sweep results')
 

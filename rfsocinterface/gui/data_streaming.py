@@ -47,6 +47,7 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
         pd.show()
         start = time.time()
         now = time.time()
+        counter = 0
         while now - start < duration:
             if pd.wasCanceled():
                 pd.close()
@@ -57,6 +58,9 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
             remaining_time = duration - (now - start)
             pd.setLabelText(f'Collecting data...\nRemaining time: {int(remaining_time)} seconds')
             pd.setValue(now - start)
+            counter += 1
+            if counter % 50 == 0:
+                _logger.info(f'Collecting data: {100 * (now - start) / duration:.2f}% complete...')
         
     def process_data(self, date: str, setnum: int):
         pass
@@ -74,7 +78,9 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
         duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)
         date = save_location.stem[:8]
         setnum = int(save_location.stem[-4:])
+        _logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
         capture(rfchans, self.wait_for_TOD, duration)
+        _logger.info('Completed data streaming')
         # TODO: Add a check to see if the data collection was canceled
         self.process_data(date, setnum)
     
