@@ -727,6 +727,7 @@ class ManualLoSweepData(LoSweepData):
             min_setnum: int,
             max_setnum: int,
             f_center: float=400e6,
+            cut_samples: int=100,
     ):
         """Initialize a ManualLoSweepData object.
 
@@ -764,12 +765,12 @@ class ManualLoSweepData(LoSweepData):
                     n_tones = f.root.dimension.n_tones[0]
                     flos = np.zeros(n_setnum)
                     baseband_freqs = global_data.baseband_freqs[:]
-                    data = np.zeros(2, n_tones, n_setnum, dtype=complex)
+                    data = np.zeros((2, n_tones, n_setnum), dtype=complex)
                     chanmask = f.root.global_data.chanmask[:]
                 # Append to the data 
-                flos[i_setnum] = global_data.lo_freq[:]
-                data_I = time_ordered_data.adc_i[BAD_RFSOC_TONE_START_INDEX:BAD_RFSOC_TONE_START_INDEX + n_tones]
-                data_Q = time_ordered_data.adc_q[BAD_RFSOC_TONE_START_INDEX:BAD_RFSOC_TONE_START_INDEX + n_tones]
+                flos[i_setnum] = global_data.lo_freq[0]
+                data_I = time_ordered_data.adc_i[BAD_RFSOC_TONE_START_INDEX:BAD_RFSOC_TONE_START_INDEX + n_tones, cut_samples:]
+                data_Q = time_ordered_data.adc_q[BAD_RFSOC_TONE_START_INDEX:BAD_RFSOC_TONE_START_INDEX + n_tones, cut_samples:]
                 z = np.median(data_I, axis=-1) + 1j * np.median(data_Q, axis=-1)
                 data[1, :, i_setnum] = z
         # Determine the list of frequencies
@@ -781,6 +782,30 @@ class ManualLoSweepData(LoSweepData):
 
 if __name__ == '__main__':
     import pdb
+    from matplotlib.backends.backend_pdf import PdfPages
+    from matplotlib.ticker import ScalarFormatter
+    date = '20251002'
 
-    data = LoSweepData.from_h5('/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
-    pdb.set_trace()
+    # data = LoSweepData.from_h5('/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
+    # normal_sweep = LoSweepData.from_h5('/data/20251002/20251002_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p7394_high_res.h5')
+    normal_sweep = LoSweepData.from_h5('/data/20251002/20251002_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour16p7625.h5')
+    manual_sweep = ManualLoSweepData(
+        date,
+        1001,
+        1020
+    )
+    with PdfPages(f'/data/{date}/lo_sweep_comparison.pdf') as pdf:
+        x_formatter = ScalarFormatter(useOffset=False)
+        for i_res in range(normal_sweep.nchan):
+        # for i_res in [69]:
+            fig = plt.figure(figsize=(9, 5))
+            ax = fig.subplots()
+            ax.plot(normal_sweep.freq[i_res] * 1e-6, normal_sweep.data_I[i_res], label='Standard LO Sweep')
+            ax.plot(manual_sweep.freq[i_res] * 1e-6, manual_sweep.data_I[i_res], label='Manual LO Sweep')
+            ax.set_xlabel('Frequency (MHz)')
+            ax.set_ylabel('Response (ADC Units)')
+            ax.xaxis.set_major_formatter(x_formatter)
+            ax.legend()
+            pdf.savefig(fig)
+            plt.close(fig)
+    # pdb.set_trace()
