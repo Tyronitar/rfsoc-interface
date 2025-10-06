@@ -44,10 +44,10 @@ def analyze_beammap(
 
     filename = map_data.beammap_file_template
 
-    if show_all:
-        chanmask = np.ones(map_data.n_tones)
-    else:
-        chanmask = map_data.chanmask[:]
+    # if show_all:
+    #     chanmask = np.ones(map_data.n_tones)
+    # else:
+    chanmask = map_data.chanmask[:]
     # chanmask = chanmask[:100]
 
     beammap_file = tables.File(filename, 'w')
@@ -123,9 +123,9 @@ def analyze_beammap(
 
 
     # TODO: file name
-    # pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap_NO_swap_negative_angle.pdf'
+    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap.pdf'
     # pdf_file_name = map_data.folder / map_data.file_stub
-    pdf_file_name = map_data.beammap_file_template
+    # pdf_file_name = map_data.beammap_file_template
     with PdfPages(pdf_file_name) as pdf:
         FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
         high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50)).flatten()
@@ -139,7 +139,10 @@ def analyze_beammap(
         plt.close()
         
         counter = 1
-        for idx in np.argwhere(chanmask == 1).flatten():
+        for idx in range(map_data.n_tones):
+        # for idx in np.argwhere(chanmask == 1).flatten():
+            if not show_all and chanmask[idx] != 1:
+                continue
 
             if counter == 1:
                 fig, axes = plt.subplots(nrows, ncols)
@@ -152,7 +155,7 @@ def analyze_beammap(
 
             
             # Draw a rectangle around the subplot indicating off resonance
-            if show_all and map_data.chanmask[idx] == 0:
+            if show_all and chanmask[idx] == 0:
             # if show_all and idx == 1:
                 auto_axis = ax.axis()
                 # bbox = ax.get_window_extent().bounds
@@ -183,20 +186,35 @@ def analyze_beammap(
         # plt.show()
         plt.close()
 
-        for idx in np.argwhere(chanmask == 1).flatten():
+        for idx in range(map_data.n_tones):
+        # for idx in np.argwhere(chanmask == 1).flatten():
+            if not show_all and chanmask[idx] != 1:
+                continue
             fig, ax = plt.subplots()
-            im = ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+            data_to_plot = np.flip(np.transpose(map_val[idx, ::-1]), 1)
+            data_to_plot -= np.nanmedian(data_to_plot)
+            data_to_plot /= np.nanmax(data_to_plot)
+            data_to_plot = 10 * np.log10(np.abs(data_to_plot))
+            im = ax.imshow(
+                data_to_plot,
+                vmin=-10,
+                vmax=0,
+                extent=extent,
+                aspect='equal',
+                cmap='jet',
+                # interpolation='bilinear',
+            )
             divider = make_axes_locatable(ax)
             cax = divider.append_axes('right', size='5%', pad=0.05)
             fig.colorbar(im, cax=cax)
             ax.set_xlabel('X Position (deg)')
             ax.set_ylabel('Y Position (deg)')
-            ax.set_xlim(extent[0],extent[1])
+            ax.set_xlim(extent[1],extent[0])
             ax.set_ylim(extent[2],extent[3])
             title = f'Resonator {idx}'
             
             # Indicate in plot title if off-resonance
-            if show_all and map_data.chanmask[idx] == 0:
+            if show_all and chanmask[idx] == 0:
             # if show_all and idx == 1:
                 title += ' (Off-resonance)'
             ax.set_title(title)
@@ -238,9 +256,9 @@ def analyze_beammap(
 if __name__ == '__main__':
     # date = '20250729'
     # setnum = 1012
-    date = '20250912'
+    date = '20251006'
 
-    setnum = 1014
+    setnum = 1009
 
     md = MapData.from_file(date, setnum, 'r')
     # for i in range(240, 250):

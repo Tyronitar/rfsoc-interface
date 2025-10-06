@@ -187,12 +187,12 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     date = '20251006'
-    setnum = 1008
+    setnum = 1009
     # date = '20250513'
     # setnum = 1008
     # md = MapData.from_file(date, setnum)
     # pdb.set_trace()
-    dataset = 'data_mK'
+    dataset = 'data_freq'
     beam_map_mode = True
 
     ds_factor = 12
@@ -202,7 +202,7 @@ if __name__ == '__main__':
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
-    # cleaner = CleanTOD()
+    cleaner = CleanTOD()
     binner = BinTODIntoMap()
 
     pipeline = DataPipeline(
@@ -216,7 +216,7 @@ if __name__ == '__main__':
     )
     pipeline.add_routine(hpfilt)
     pipeline.add_routine(lpfilt)
-    # pipeline.add_routine(cleaner)
+    pipeline.add_routine(cleaner)
     pipeline.add_routine(binner)
 
     data = pipeline.run_pipeline(date, setnum)
