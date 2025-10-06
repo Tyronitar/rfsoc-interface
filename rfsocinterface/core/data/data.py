@@ -16,11 +16,21 @@ import matplotlib.pyplot as plt
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_FULL
 from rfsocinterface.core.losweep import LoSweepData
+from rfsocinterface.core.utils import (
+    get_tod_template,
+    get_azel_template,
+    get_optcam_template,
+    get_processed_file_template,
+    get_cleaned_file_template,
+    get_file_stub,
+    get_map_file_template,
+    get_beammap_file_template,
+    get_params_file_template,
+    DATA_DIRECTORY,
+    DEFAULT_PARAMS_DIRECTORY,
+)
 
 _logger = logging.getLogger(__name__)
-
-DATA_DIRECTORY = '/data'
-DEFAULT_PARAMS_DIRECTORY = DATA_DIRECTORY + '/params/'
 
 OPTCAM_OFFSET_AZ_PIX = 57
 OPTCAM_OFFSET_ZA_PIX = 49
@@ -53,48 +63,6 @@ def test_node(f: tables.File, name: str) -> bool:
     except tables.exceptions.NoSuchNodeError:
         return False
         
-#
-# File Templates
-#
-
-def get_tod_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, chan_name: str=None) -> str:
-    if chan_name is None:
-        chan_name = '*'
-    return f'{data_dir}/{date}/{date}_{chan_name}_TOD_set{setnum}.h5'
-
-def get_azel_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_AZEL_set{setnum}.h5'
-
-
-def get_optcam_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
-
-
-def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_processed_data_set{setnum}.h5'
-
-def get_processed_level_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
-    return f'{data_dir}/{date}/{date}_processed_data_level{level}_set{setnum}.h5'
-
-def get_cleaned_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_cleaned_data_set{setnum}.h5'
-
-
-def get_file_stub(date: str, setnum: int) -> str:
-    return f'{date}_set{setnum}'
-
-
-def get_map_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_mapped_data_set{setnum}.h5'
-
-
-def get_beammap_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_beammap_set{setnum}.h5'
-
-
-def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
-    return f'{params_dir}/params_tile_{tile_name}.h5'
-
 #
 # Outlier Removal and Flagging
 #
@@ -209,6 +177,16 @@ def generate_calibrated_data(data: tables.Group, global_data: tables.Group):
     #need to optimally weight the data based on the response
     #in each direction (assuming the noise is identical in I and Q)
     #this will then yield data_f
+
+    # quad_sum = np.sqrt(data.data_IQ[0, :] ** 2 + data.data_IQ[1, :] ** 2)
+    # source_peak_idx = np.argmax(quad_sum, axis=1)
+
+    # n_tones = data.data_IQ.shape[1]
+    # data_IQ = data.data_IQ[:]
+    # peak_I = data_IQ[0, np.arange(n_tones, dtype=int), source_peak_idx]
+    # peak_Q = data_IQ[1, np.arange(n_tones, dtype=int), source_peak_idx]
+
+    # data.IQ_to_freq_diss_angle[:] = -np.atan2(peak_Q, peak_I)
 
     rotate_basis(data.data_IQ / data.adc_units_to_hz[:][:, np.newaxis], data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
     # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
@@ -701,6 +679,7 @@ class ProcessedData:
                 sweep = LoSweepData(raw_global_data.baseband_freqs, lo_freq, sweep_data, raw_global_data.chanmask[:])
                 IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
                 detector_data.IQ_to_freq_diss_angle[:] = IQ_to_freq_diss_angle
+
                 detector_data.adc_units_to_hz[:] = adc_units_to_hz
                 # if np.size(dIQ_df) > 0:
                 #     dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)

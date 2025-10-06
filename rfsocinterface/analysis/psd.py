@@ -18,12 +18,10 @@ from kidpy3 import RawDataFile
 from rfsocinterface.core.data import (
     flag_outliers,
     ProcessedData,
-    DATA_DIRECTORY,
     DataRoutine,
-    ProcessingStage,
-    get_tod_template
+    ProcessingStage
 )
-from rfsocinterface.core.utils import ensure_path, ordinal, PERMISSIONS_ALL_FULL 
+from rfsocinterface.core.utils import DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
 
 XLIM = (0.1, 250)
 YLIM = (-110, -60)
@@ -435,7 +433,10 @@ if __name__ == '__main__':
     # Flag outliers
     if do_flag_outliers:
         chanmask = flag_outliers(input_data, pd.fs, chanmask, sigma=outlier_sigma)
-    
+
+    filt_sos = signal.butter(6, 1, btype='highpass', fs=pd.fs, output='sos', analog=False)
+    input_data[:] = signal.sosfiltfilt(filt_sos, input_data)
+
     chanmask, freq, noise_psd = compute_noise_psd(
         input_data,
         pd.timestamp,

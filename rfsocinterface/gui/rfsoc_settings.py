@@ -24,7 +24,7 @@ from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.core.utils import IPV4_REGEX, MAC_REGEX
 from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.data import DEFAULT_PARAMS_DIRECTORY
+from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -216,6 +216,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         if params_file and Path(params_file).exists():
             self.setCursor(Qt.CursorShape.WaitCursor)
             try:
+                _logger.debug(f'ChannelSettingsWidget calling `load_params_file` of RFSoC {self.rfsoc.name} with ({self.channel}, {params_file})')
                 self.rfsoc.load_params_file(self.channel, params_file)
                 self.main_window.channelNamesUpdated.emit()
                 self.lo_freq_lineEdit.setText(f'{self.rfsoc.get_channel(self.channel).lo_freq / 1e6:.3f}')
@@ -287,6 +288,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     def upload_firmware(self, bitstream: str):
         self.setCursor(Qt.CursorShape.WaitCursor)
         try:
+            _logger.debug(f'ChannelSettingsWidget calling `upload_bitstream` of RFSoC {self.rfsoc.name} with {bitstream}')
             self.rfsoc.upload_bitstream(bitstream)
         finally:
             self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -298,6 +300,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         chan_settings['destIP'] = get_lineEdit_text(self.eth_dest_lineEdit)
         chan_settings['destMAC'] = get_lineEdit_text(self.eth_mac_lineEdit)
         chan_settings['port'] = get_num_value(self.eth_port_lineEdit, int)
+        _logger.debug(f'ChannelSettingsWidget calling `update_kidpy_rfsoc` of RFSoC {self.rfsoc.name}')
         self.rfsoc.update_kidpy_rfsoc()
 
     @Slot()
@@ -314,6 +317,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.setCursor(Qt.CursorShape.WaitCursor)
             try:
                 self.update_ethernet_config()
+                _logger.debug(f'ChannelSettingsWidget calling `configure_hardware` of RFSoC {self.rfsoc.name}')
                 self.rfsoc.configure_hardware()
             finally:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -338,6 +342,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.setCursor(Qt.CursorShape.WaitCursor)
             try:
                 att = get_num_value(lineEdit)
+                _logger.debug(f'ChannelSettingsWidget setting attenuation of rf{attenuation} for RFSoC {self.rfsoc.name} channel {self.channel} to {att:.2f} dB')
                 self.rfsoc.set_atten(addr, att)
             finally:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -346,6 +351,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         lo_freq = get_num_value(self.lo_freq_lineEdit) * 1e6  # MHz to Hz
         self.setCursor(Qt.CursorShape.WaitCursor)
         try:
+            _logger.debug(f'ChannelSettingsWidget setting LO freq for RFSoC {self.rfsoc.name} channel {self.channel} to {lo_freq * 1e-6:.3f} MHz')
             self.rfsoc.set_frequency(self.channel, lo_freq)
         finally:
             self.setCursor(Qt.CursorShape.ArrowCursor)

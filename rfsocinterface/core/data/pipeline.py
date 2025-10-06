@@ -186,8 +186,8 @@ class DataPipeline:
 if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
-    date = '20250912'
-    setnum = 1014
+    date = '20251006'
+    setnum = 1008
     # date = '20250513'
     # setnum = 1008
     # md = MapData.from_file(date, setnum)
@@ -195,14 +195,14 @@ if __name__ == '__main__':
     dataset = 'data_mK'
     beam_map_mode = True
 
-    ds_factor = 10
-    hp_filt_freq = 0.2
+    ds_factor = 12
+    hp_filt_freq = 0.05
     lp_filt_freq = 10
 
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
-    cleaner = CleanTOD()
+    # cleaner = CleanTOD()
     binner = BinTODIntoMap()
 
     pipeline = DataPipeline(
@@ -211,7 +211,7 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filt_freq,
         dataset=dataset,
         beam_map_mode=beam_map_mode,
-        do_electronics_noise_removal=True,
+        do_electronics_noise_removal=False,
         max_modes=2,
     )
     pipeline.add_routine(hpfilt)

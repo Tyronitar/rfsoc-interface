@@ -26,6 +26,10 @@ import redis
 import time
 from collections.abc import Mapping
 
+DATA_DIRECTORY = '/data'
+DEFAULT_PARAMS_DIRECTORY = DATA_DIRECTORY + '/params/'
+
+
 _tele_logger = logging.getLogger('telescopeControl')
 
 IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
@@ -688,6 +692,52 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
         out[...] = axis_slice(y, step=q, axis=axis)
 
 
+
+#
+# File Templates
+#
+
+def get_tod_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, chan_name: str=None) -> str:
+    if chan_name is None:
+        chan_name = '*'
+    return f'{data_dir}/{date}/{date}_{chan_name}_TOD_set{setnum}.h5'
+
+
+def get_azel_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_AZEL_set{setnum}.h5'
+
+
+def get_optcam_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
+
+
+def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_processed_data_set{setnum}.h5'
+
+
+def get_processed_level_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
+    return f'{data_dir}/{date}/{date}_processed_data_level{level}_set{setnum}.h5'
+
+
+def get_cleaned_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_cleaned_data_set{setnum}.h5'
+
+
+def get_file_stub(date: str, setnum: int) -> str:
+    return f'{date}_set{setnum}'
+
+
+def get_map_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_mapped_data_set{setnum}.h5'
+
+
+def get_beammap_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
+    return f'{data_dir}/{date}/{date}_beammap_set{setnum}.h5'
+
+
+def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
+    return f'{params_dir}/params_tile_{tile_name}.h5'
+    #
 if __name__ == '__main__':
     import timeit, functools
     from scipy.signal import decimate
@@ -696,7 +746,7 @@ if __name__ == '__main__':
     q = 10
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
-    # y = np.zeros(n // q)
+    y = np.zeros(n // q)
     # decimate_in_chunks(x, q, out=y)
 
     # n_repeats = 20
