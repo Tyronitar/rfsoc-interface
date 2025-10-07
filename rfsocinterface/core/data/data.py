@@ -688,12 +688,23 @@ class ProcessedData:
                 #     dIQ_df = np.copy(this_dIQ_df)
                 time_ordered_data = f.root.time_ordered_data
 
+                # Create timestamp
                 if i == 0:  # Only should make this once, since it's never changed
                     time = time_ordered_data.timestamp
+
                     # Drop first few seconds of time samples
                     cut_time = 5  # Time in seconds to cut from the front
                     cut_samples = cut_time // np.median(np.diff(time))
-                    good_times = time[cut_samples:]
+                    
+                    # Exclude samples that dropped packets
+                    # NOTE: The packet counter is all zeros currently??
+                    packet_idx = time_ordered_data.pkt_idx[:]
+                    dpkt_idx = np.diff(packet_idx)
+                    pdb.set_trace()
+                    no_dropped_packets = np.argwhere(dpkt_idx == 1).flatten()[cut_samples:]
+
+                    good_times = time[cut_samples:][no_dropped_packets]
+                    pdb.set_trace()
 
 
                     dtime = np.diff(good_times)
@@ -1362,8 +1373,8 @@ def update_params_file(
 
 
 if __name__ == '__main__':
-    date = '20250730'
-    setnum = 1005
+    date = '20250918'
+    setnum = 1001
     # date = '20250529'
     # setnum = 1011
 
