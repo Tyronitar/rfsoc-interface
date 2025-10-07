@@ -694,28 +694,35 @@ class ProcessedData:
 
                     # Drop first few seconds of time samples
                     cut_time = 5  # Time in seconds to cut from the front
-                    cut_samples = cut_time // np.median(np.diff(time))
+                    cut_samples = int(cut_time // np.median(np.diff(time)))
                     
                     # Exclude samples that dropped packets
                     # NOTE: The packet counter is all zeros currently??
                     packet_idx = time_ordered_data.pkt_idx[:]
                     dpkt_idx = np.diff(packet_idx)
-                    pdb.set_trace()
-                    no_dropped_packets = np.argwhere(dpkt_idx == 1).flatten()[cut_samples:]
+                    good_idx = np.argwhere(dpkt_idx == 1).flatten()[cut_samples:]
 
-                    good_times = time[cut_samples:][no_dropped_packets]
-                    pdb.set_trace()
+                    # Fit a line to the samples without dropped packets and 
+                    # generate a new timestamp.
+                    good_times = time[cut_samples:][good_idx]
+                    reg = linregress(good_idx, good_times)
+                    time_0 = time[0]
+                    total_time = reg.slope * n_samples
+                    timestamp = np.linspace(0, total_time, n_samples_ds) + time_0
+                    # pdb.set_trace()
+                    detector_data.timestamp[:] = timestamp
 
 
-                    dtime = np.diff(good_times)
-                    total_time = np.ptp(good_times)
-                    timestamp = np.linspace(0, total_time + cut_time, n_samples_ds) + np.min(good_times)
-                    dtime = timestamp - time[::ds_factor]
-                    std = np.std(dtime)
-                    median = np.median(dtime)
-                    good_idx = np.argwhere(np.abs(dtime - median) < 0.5*std).flatten()
-                    median_diff = np.median(dtime[good_idx])
-                    detector_data.timestamp[:] = timestamp - median_diff - 0.04
+
+                    # dtime = np.diff(good_times)
+                    # total_time = np.ptp(good_times)
+                    # timestamp = np.linspace(0, total_time + cut_time, n_samples_ds) + np.min(good_times)
+                    # dtime = timestamp - time[::ds_factor]
+                    # std = np.std(dtime)
+                    # median = np.median(dtime)
+                    # good_idx = np.argwhere(np.abs(dtime - median) < 0.5*std).flatten()
+                    # median_diff = np.median(dtime[good_idx])
+                    # detector_data.timestamp[:] = timestamp - median_diff - 0.04
 
                     # # Fit a line to the good times and generate new timestamps
                     # dtime = np.diff(good_times)
