@@ -839,11 +839,14 @@ class ProcessedData:
 
                 #also save the chanmask and detector polarization information
                 chanmask = raw_global_data.chanmask[:]
+                off_res = np.argwhere(chanmask == 0).flatten()
                 no_pol = np.ndarray.flatten(np.argwhere(raw_global_data.detector_pol[:] < 1))
                 # TODO: This is a temporary fix, should be removed when the polarization
                 # is properly set up on the lab computer.
                 if np.size(no_pol > 0):
                     chanmask[no_pol] = -1
+                # Preserve off-resonance indices
+                chanmask[off_res] = 0
                 detector_global_data.chanmask[:] = chanmask
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
         # pfile.close()
