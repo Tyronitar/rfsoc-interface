@@ -928,9 +928,9 @@ tqdm = ">=4.67.1,<5.0.0"
 
 [package.source]
 type = "git"
-url = "https://github.com/Tyronitar/readout.git"
+url = "https://github.com/ASU-Astronomical-Instrumentation/readout.git"
 reference = "c_datacap"
-resolved_reference = "79e7ed703ab4b0370a6ae95e69ceceb0f8c3f8cf"
+resolved_reference = "41f3f382ebfa129406b040f55d76aa560ff03143"
 
 [[package]]
 name = "kiwisolver"
@@ -2797,4 +2797,4 @@ test = ["coverage", "flake8", "flake8-junit-report", "mypy", "unittest-xml-repor
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "b719b68a8bc637dcdfc6ad5134383e4f8d1ea6df044f69febb83619e2ebe7d84"
+content-hash = "e35d718bd638ca30dea03ea22cdad5f6b632c34ed7c1ea13454e6a7d7d6e5c5c"
