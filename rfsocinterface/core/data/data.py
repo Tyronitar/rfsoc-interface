@@ -668,7 +668,7 @@ class ProcessedData:
 
                 # f.lo_freq[:] = 4e8
                 lo_freq = raw_global_data.lo_freq[:]
-                lo_freq = 4e8
+                # lo_freq = 4e8
                 sweep = LoSweepData(raw_global_data.baseband_freqs, lo_freq, sweep_data, raw_global_data.chanmask[:])
                 IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
                 detector_data.IQ_to_freq_diss_angle[:] = IQ_to_freq_diss_angle
@@ -985,6 +985,10 @@ class NewProcessedData:
         return self._file.root.global_data
 
     @property
+    def data_group(self) -> tables.Group:
+        return self._file.root.data
+
+    @property
     def lo_sweep_group(self) -> tables.Group:
         return self._file.root.lo_sweep
     
@@ -1150,7 +1154,7 @@ class NewProcessedData:
 
     @property
     def time(self) -> npt.NDArray:
-        return self.timestamp - self.timestamp[0]
+        return self.timestamp[:] - self.timestamp[0]
     
     @property
     def delta_t(self) -> float:
@@ -1431,33 +1435,33 @@ class ProcessedDataL1(NewProcessedData):
                 # Store chanmask from TOD
                 chanmask.append(raw_global_data.chanmask[:])
 
-            # Close telescope file as it's no longer needed
-            if azel_exists:
-                azel_file.close()
+        # Close telescope file as it's no longer needed
+        if azel_exists:
+            azel_file.close()
 
-            # Rotate to Gain / Phase
-            IQ_to_gain_phase_angle[:] = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])
+        # Rotate to Gain / Phase
+        IQ_to_gain_phase_angle[:] = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])
 
-            rotate_basis(
-                data_IQ,
-                data_gain_phase,
-                IQ_to_gain_phase_angle,
-            )
-            
-            # Remove electronics noise
-            fs = 1 / np.median(np.diff(timestamp[:]))
-            if do_electronics_noise_removal:
-                remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=electronics_noise_lp_filt_freq, max_modes=max_modes)
+        rotate_basis(
+            data_IQ,
+            data_gain_phase,
+            IQ_to_gain_phase_angle,
+        )
+        
+        # Remove electronics noise
+        fs = 1 / np.median(np.diff(timestamp[:]))
+        if do_electronics_noise_removal:
+            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=electronics_noise_lp_filt_freq, max_modes=max_modes)
 
-            # Create calibrated data
-            generate_calibrated_data(data_group, global_data_group)
+        # Create calibrated data
+        generate_calibrated_data(data_group, global_data_group)
 
-            # Update chanmask to reflect no polarization detectors
-            no_pol = np.ndarray.flatten(np.argwhere(detector_pol[:] < 1))
-            # TODO: This is a temporary fix, should be removed when the polarization
-            # is properly set up on the lab computer.
-            if np.size(no_pol > 0):
-                chanmask[no_pol] = -1
+        # Update chanmask to reflect no polarization detectors
+        no_pol = np.ndarray.flatten(np.argwhere(detector_pol[:] < 1))
+        # TODO: This is a temporary fix, should be removed when the polarization
+        # is properly set up on the lab computer.
+        if np.size(no_pol > 0):
+            chanmask[no_pol] = -1
         return cls(pfile)
     
     @classmethod

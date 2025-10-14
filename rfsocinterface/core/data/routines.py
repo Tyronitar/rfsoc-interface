@@ -8,7 +8,7 @@ import numpy as np
 from scipy import signal
 import tables
 
-from rfsocinterface.core.data.data import ProcessedData, ProcessedData, generate_calibrated_data, remove_electronics_noise_tables
+from rfsocinterface.core.data.data import ProcessedData, NewProcessedData, generate_calibrated_data, remove_electronics_noise_tables
 from rfsocinterface.core.data.data import DECIMATE_ORDER
 from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter
 
@@ -33,6 +33,22 @@ class DataRoutine(abc.ABC):
     
     def get_receipt_entry(self) -> str:
         raise NotImplementedError
+
+class NewDataRoutine(abc.ABC):
+    stage: ProcessingStage
+
+    def __call__(self, input: NewProcessedData):
+        self.forward(input)
+
+    def forward(self, input: NewProcessedData):
+        raise NotImplementedError(
+            f'DataRoutine [{type(self).__name__}] is missing a forward method'
+        )
+    
+    def get_receipt_entry(self) -> str:
+        raise NotImplementedError
+
+
 
 
 class Mapper:
@@ -73,6 +89,20 @@ class GaussianFilter(DataRoutine):
     def get_receipt_entry(self) -> str:
         return f'GaussianFilter: {{\n\tsigma = {self.gaussian_sigma}\n}}'
 
+class NewGaussianFilter(NewDataRoutine):
+    stage = ProcessingStage.PROCESSING_L1
+    def __init__(self, gaussian_sigma: tuple[float, float]=GAUSSIAN_SIGMA):
+        super().__init__()
+        self.gaussian_sigma = gaussian_sigma
+
+    def forward(self, pd: NewProcessedData, field: str='data_mK'):
+        array = getattr(pd, field)
+        smoothed_data = gaussian_filter(array, self.gaussian_sigma)
+        array[:] = smoothed_data
+    
+    def get_receipt_entry(self) -> str:
+        return f'GaussianFilter: {{\n\tsigma = {self.gaussian_sigma}\n}}'
+
 
 class CutoffFilter(DataRoutine):
     stage = ProcessingStage.PROCESSING_L2
@@ -92,6 +122,26 @@ class CutoffFilter(DataRoutine):
         # pd.data_freq_diss[:] = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
         data[:] = signal.sosfiltfilt(filt_sos, data)
 
+class NewCutoffFilter(NewDataRoutine):
+    stage = ProcessingStage.PROCESSING_L2
+
+    def __init__(self, filter_freq: float, btype: str, dataset: str='data_mK'):
+        super().__init__()
+        self.filter_freq = filter_freq
+        self.btype = btype
+        self.dataset = dataset
+
+    def forward(self, pd: NewProcessedData):
+        data = getattr(pd, self.dataset)
+        filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
+
+        # Apply cutoff filter
+        # pd.data_gain_phase[:] = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
+        # pd.data_freq_diss[:] = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
+        data[:] = signal.sosfiltfilt(filt_sos, data[:])
+
+
+
 
 class LowPassFilter(CutoffFilter):
     def __init__(self, filter_freq: float, dataset: str='data_mK'):
@@ -102,6 +152,21 @@ class LowPassFilter(CutoffFilter):
 
 
 class HighPassFilter(CutoffFilter):
+    def __init__(self, filter_freq: float, dataset: str='data_mK'):
+        super().__init__(filter_freq, btype='highpass', dataset=dataset)
+
+    def get_receipt_entry(self) -> str:
+        return f'HighPassFilter: {{\n\tfreq = {self.filter_freq},\n\tdataset = {self.dataset}\n}}'
+
+class NewLowPassFilter(NewCutoffFilter):
+    def __init__(self, filter_freq: float, dataset: str='data_mK'):
+        super().__init__(filter_freq, btype='lowpass', dataset=dataset)
+
+    def get_receipt_entry(self) -> str:
+        return f'LowPassFilter: {{\n\tfreq = {self.filter_freq},\n\tdataset = {self.dataset}\n}}'
+
+
+class NewHighPassFilter(NewCutoffFilter):
     def __init__(self, filter_freq: float, dataset: str='data_mK'):
         super().__init__(filter_freq, btype='highpass', dataset=dataset)
 
@@ -159,6 +224,19 @@ class RemoveElectronicsNoise(DataRoutine):
     def get_receipt_entry(self) -> str:
         return f'RemoveElectronicsNoise: {{\n}}'
 
+class NewRemoveElectronicsNoise(NewDataRoutine):
+    stage = ProcessingStage.PROCESSING_L1
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, pd: NewProcessedData):
+        remove_electronics_noise_tables(pd.data_gain_phase)
+        generate_calibrated_data(pd.data_group, pd.global_data_group)
+
+    def get_receipt_entry(self) -> str:
+        return f'RemoveElectronicsNoise: {{\n}}'
+
 
 
 
@@ -189,6 +267,37 @@ class CleanTOD(DataRoutine):
             cfile.create_array('/', 'detector_az', pd.detector_az[:])
             cfile.create_array('/', 'detector_za', pd.detector_za[:])
             cfile.create_array('/', 'clean_data', data[:])
+
+    def get_receipt_entry(self) -> str:
+        return f'CleanTOD: {{\n\tdataset = {self.dataset},\n}}'
+
+class NewCleanTOD(NewDataRoutine):
+    stage = ProcessingStage.PROCESSING_L2
+
+    def __init__(self, dataset: str='data_mK'):
+        super().__init__()
+        self.dataset = dataset
+
+    def forward(self, pd: NewProcessedData):
+
+        # TODO: Does this need to still support the "good_sample" stuff?
+        #average template subtraction
+        data = getattr(pd, self.dataset)
+        goodchan = np.ndarray.flatten(np.argwhere(pd.chanmask[:] == 1))
+        template = np.nansum(data[goodchan, :], axis=0)
+        template = template - np.mean(template)
+        template_corr = np.sum(np.multiply(data[goodchan, :],template), axis=1) / \
+                        np.sum(np.multiply(template,template))
+        # TODO: This edits the original processed file...
+        data[goodchan, :] = data[goodchan, :] - np.outer(template_corr, template)
+
+        # with tables.File(pd.cleaned_file_template, 'w') as cfile:
+        #     cfile.create_array('/', 'chanmask', pd.chanmask[:])
+        #     cfile.create_array('/', 'detector_pol', pd.detector_pol[:])
+        #     cfile.create_array('/', 'timestamp', pd.timestamp[:])
+        #     cfile.create_array('/', 'detector_az', pd.detector_az[:])
+        #     cfile.create_array('/', 'detector_za', pd.detector_za[:])
+        #     cfile.create_array('/', 'clean_data', data[:])
 
     def get_receipt_entry(self) -> str:
         return f'CleanTOD: {{\n\tdataset = {self.dataset},\n}}'
