@@ -890,8 +890,11 @@ DYNAMIC_PROCESSED_DATA_FIELDS = [
 STATIC_PROCESSED_DATA_FIELDS = [
     'vis',
     'df_per_mK',
+    'detector_az',
+    'detector_za',
     'detector_pol',
     'optical_visibility',
+    'optical_image',
 ]
 
 PROCESSED_DATA_FIELD_LOCATIONS = {
@@ -903,6 +906,9 @@ PROCESSED_DATA_FIELD_LOCATIONS = {
     'data_freq_diss': '/data',
     'data_mK': '/data',
     'timestamp': '/data',
+    'detector_az': '/data',
+    'detector_za': '/data',
+    'optical_image': '/global_data',
     'chanmask': '/global_data',
     'vis': '/global_data',
     'df_per_mK': '/global_data',
@@ -1084,7 +1090,7 @@ class NewProcessedData:
     
     @property
     def optical_image(self) -> tables.Array:
-        return self._file.root.optical_image
+        return self.get_node_value('optical_image')
     
     @property
     def carrier_amplitudes(self) -> tables.Array:
@@ -1284,15 +1290,16 @@ class ProcessedDataL1(NewProcessedData):
         pfile.root._v_attrs.setnum = setnum
         pfile.root._v_attrs.receipt = ''
 
-        if optcam_exists:
-            # optical_image = optcam_file.root.optical_image
-            pfile.create_array(pfile.root, 'optical_image', obj=optcam_file.root.optical_image[:])
-            optcam_file.close()
-        else:
-            pfile.create_array(pfile.root, 'optical_image', obj=np.array([]))
-            optical_image = None
+
 
         global_data_group = pfile.create_group('/', 'global_data')
+        if optcam_exists:
+            # optical_image = optcam_file.root.optical_image
+            pfile.create_array(global_data_group, 'optical_image', obj=optcam_file.root.optical_image[:])
+            optcam_file.close()
+        else:
+            pfile.create_array(global_data_group, 'optical_image', obj=np.array([]))
+            optical_image = None
         vis = pfile.create_array(global_data_group, 'vis', vis)
         df_per_mK = pfile.create_earray(global_data_group, 'df_per_mK', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
         chanmask = pfile.create_earray(global_data_group, 'chanmask', shape=(0,), expectedrows=n_tones, atom=tables.Int8Atom(dflt=1))
@@ -1637,6 +1644,7 @@ class NewMapData(ProcessedDataLN):
     def from_previous_level(cls, previous: NewProcessedData) -> NewMapData:
         """Create a map file with external links to level N-1."""
         file_path = Path(get_map_file_template(previous.date, previous.setnum))
+        file_path = file_path.with_stem(file_path.stem + '_new')
         if not file_path.exists():
             file_path.touch(PERMISSIONS_ALL_FULL)
         file = tables.File(file_path, mode='w')
@@ -1934,12 +1942,12 @@ class MapData(ProcessedData):
 
         # Create empty arrays
         n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
-        self.create_array(self.root, 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
-        self.create_array(self.root, 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
-        self.create_array(self._mfile.root, 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self.create_array(self._mfile.root, 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self.create_array(self._mfile.root, 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
-        good_samples = self.create_earray(self._mfile.root, 'good_samples', shape=(0,), expectedrows=self.n_samples, atom=tables.UInt32Atom())
+        self._mfile.create_array(self._mfile.root, 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self._mfile.create_array(self._mfile.root, 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
+        good_samples = self._mfile.create_earray(self._mfile.root, 'good_samples', shape=(0,), expectedrows=self.n_samples, atom=tables.UInt32Atom())
         good_samples.append(np.arange(self.n_samples))
 
 

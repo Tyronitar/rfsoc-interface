@@ -249,7 +249,7 @@ class NewDataPipeline:
         """Update all routines to use shared values."""
         for routine in self.all_routines():
             match routine:
-                case BinTODIntoMap():
+                case NewBinTODIntoMap():
                     routine.beam_map_mode = self.shared_values['beam_map_mode']
                     if routine.beam_map_mode:
                         routine.az_trim = 0
@@ -358,14 +358,14 @@ class NewDataPipeline:
 if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
-    date = '20250916'
-    setnum = 1017
+    date = '20251006'
+    setnum = 1003
     # date = '20250513'
     # setnum = 1008
     # md = MapData.from_file(date, setnum)
     # pdb.set_trace()
     dataset = 'data_mK'
-    beam_map_mode = True
+    beam_map_mode = False
 
     ds_factor = 10
     hp_filt_freq = 0.2
@@ -375,7 +375,7 @@ if __name__ == '__main__':
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
-    # binner = BinTODIntoMap()
+    binner = BinTODIntoMap()
 
     pipeline = DataPipeline(
         ds_factor=ds_factor,
@@ -389,14 +389,14 @@ if __name__ == '__main__':
     pipeline.add_routine(hpfilt)
     pipeline.add_routine(lpfilt)
     pipeline.add_routine(cleaner)
-    # pipeline.add_routine(binner)
+    pipeline.add_routine(binner)
 
     old_data = pipeline.run_pipeline(date, setnum)
 
     newhpfilt = NewHighPassFilter(hp_filt_freq)
     newlpfilt = NewLowPassFilter(lp_filt_freq)
     newcleaner = NewCleanTOD()
-    # binner = BinTODIntoMap()
+    newbinner = NewBinTODIntoMap()
 
     newpipeline = NewDataPipeline(
         ds_factor=ds_factor,
@@ -410,8 +410,11 @@ if __name__ == '__main__':
     newpipeline.add_routine(newhpfilt)
     newpipeline.add_routine(newlpfilt)
     newpipeline.add_routine(newcleaner)
+    newpipeline.add_routine(newbinner)
 
     new_data = newpipeline.run_pipeline(date, setnum)
     # data.plot()
     # plt.show()
     pdb.set_trace()
+    old_data.close()
+    new_data.close()

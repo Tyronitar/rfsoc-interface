@@ -303,7 +303,6 @@ class BinTODIntoMap(DataRoutine):
                 np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
             good_samples = good_samples[valid_index]
 
-            # pdb.set_trace()
             #loop over samples to create sum and hits maps
             for time_sample in good_samples:
                 sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
@@ -383,7 +382,7 @@ class NewBinTODIntoMap(NewDataRoutine):
         print('netd done!')
 
         # Get rid of channels with bad weights
-        new_chanmask = np.copy(md.chanmask)
+        new_chanmask = np.copy(md.chanmask[:])
         good_idx = np.where(new_chanmask == 1)[0]
         good_netd = md.netd[good_idx]
         new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
@@ -434,7 +433,6 @@ class NewBinTODIntoMap(NewDataRoutine):
                 np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
             good_samples = good_samples[valid_index]
 
-            # pdb.set_trace()
             #loop over samples to create sum and hits maps
             for time_sample in good_samples:
                 sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
