@@ -302,6 +302,79 @@ class NewCleanTOD(NewDataRoutine):
     def get_receipt_entry(self) -> str:
         return f'CleanTOD: {{\n\tdataset = {self.dataset},\n}}'
 
+class PsdBasis:
+    """Enum for the different bases to use for computing the PSD."""
+    IQ = 'iq'
+    GAIN_PHASE = 'gain_phase'
+    FREQ_DISS = 'freq_diss'
+
+class ComputeNoisePSD(NewDataRoutine):
+    stage = ProcessingStage.POST_PROCESSING
+
+    def __init__(
+            self,
+            *bases: PsdBasis,
+            nominal_block_length: float=10,
+            cut_time: float=0.0,
+    ):
+        super().__init__()
+        self.bases = bases
+        self.nominal_block_length = nominal_block_length
+        self.cut_time = cut_time
+    
+    def forward(self, pd: NewProcessedData):
+        # Initialize PSD group in the file if needed
+        if not pd.test_node('psd'):
+            psd_group = pd.create_group('/', 'psd')
+        else:
+            psd_group = pd.get_node('psd')
+
+        for basis in self.bases:
+            time = pd.time
+            match basis:
+                case PsdBasis.IQ:
+                    data = pd.data_IQ[:]
+                case PsdBasis.GAIN_PHASE:
+                    data = pd.data_gain_phase[:] / pd.carrier_amplitude_norm()
+                case PsdBasis.FREQ_DISS:
+                    f = pd.baseband_freqs[:] + pd.lo_freq
+                    data = pd.data_freq_diss[:] / f[np.newaxis, :, np.newaxis]
+                case _:
+                    raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')
+            if self.cut_time > 0:
+                n_samples_to_cut = np.round(self.cut_time * pd.fs).astype(int)
+                data = data[:, :, n_samples_to_cut:-n_samples_to_cut]
+                time = time[n_samples_to_cut:-n_samples_to_cut]
+
+            # Determine the number of blocks for computing the PSD
+            n_samples = np.size(time)
+            n_samples_per_block = int(2**np.ceil(np.log2(self.nominal_block_length * pd.fs)))
+            n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
+            if n_blocks == 0:
+                n_blocks = 1
+                n_samples_per_block = n_samples
+            
+            # Compute the PSD
+            freq, psd = signal.welch(
+                data[:, np.argwhere(pd.chanmask[:] == 1).flatten(), :],
+                pd.fs,
+                nperseg=n_samples_per_block,
+            )
+
+            # Save to the file
+            if not pd.test_node('freq'):
+                pd.create_array(psd_group, 'freq', obj=freq)
+            pd.create_array(psd_group, f'psd_{basis}', obj=psd)
+
+    def get_receipt_entry(self) -> str:
+        return f'ComputeNoisePSD: {{\n' \
+               f'\tbases: {self.bases},\n' \
+               f'\tcut_time: {self.cut_time},\n' \
+               f'\tnominal_block_length: {self.nominal_block_length},\n' \
+               f'}}'
+
+            
+
 # class RemovePointLomaPickup(DataRoutine):
 #     def __init__(self, ds_factor: int=6, pickup_filter_freq: float=1):
 #         super().__init__()

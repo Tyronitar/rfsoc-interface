@@ -926,7 +926,7 @@ class NewProcessedData:
         try:
             self.find_node(name)
             return True
-        except tables.exceptions.NosuchNodeError:
+        except tables.exceptions.NoSuchNodeError:
             return False
     
     def find_node(self, name: str, where: tables.Group | str='/') -> tables.Node:
