@@ -358,10 +358,13 @@ class NewDataPipeline:
 if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
-    date = '20250916'
-    setnum = 1017
-    # date = '20250513'
-    # setnum = 1008
+    # Lab Testing
+    # date = '20250916'
+    # setnum = 1017
+
+    #Telescope Testing
+    date = '20251006'
+    setnum = 1003
     # md = MapData.from_file(date, setnum)
     # pdb.set_trace()
     dataset = 'data_gain_phase'

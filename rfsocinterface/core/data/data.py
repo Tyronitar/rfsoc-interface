@@ -916,12 +916,11 @@ PROCESSED_DATA_FIELD_LOCATIONS = {
     'optical_visibility': '/global_data',
 }
 
-class NewProcessedData:
+class DataStorage:
     """Class contianing data from processed TOD files."""
-    def __init__(self, file: tables.File, level: int=1):
+    def __init__(self, file: tables.File):
         self._file = file
-        self.level = level
-    
+ 
     def test_node(self, name: str) -> bool:
         try:
             self.find_node(name)
@@ -946,8 +945,6 @@ class NewProcessedData:
         return self._file.root
 
     def get_node(self, name: str, where: str='/') -> tables.Node:
-        if where is None:
-            where = PROCESSED_DATA_FIELD_LOCATIONS[name]
         return self.find_node(name, where=where)
         # return self._file.get_node(where, name)
 
@@ -985,40 +982,6 @@ class NewProcessedData:
     
     def create_external_link(self, where: tables.Group | str, name: str, target: str) -> ExternalLink:
         return self._file.create_external_link(where, name, target)
-
-    @property
-    def global_data_group(self) -> tables.Group:
-        return self._file.root.global_data
-
-    @property
-    def data_group(self) -> tables.Group:
-        return self._file.root.data
-
-    @property
-    def lo_sweep_group(self) -> tables.Group:
-        return self._file.root.lo_sweep
-    
-    def get_lo_sweep_data(self) -> npt.NDArray:
-        lo_sweep = None
-        for node in self.lo_sweep_group._f_walknodes('ExternalLink'):
-            this_lo_sweep = node(mode='r')[:]
-            if lo_sweep is None:
-                lo_sweep = this_lo_sweep
-            else:
-                lo_sweep = np.append(lo_sweep, this_lo_sweep, axis=1)
-        return lo_sweep
-    
-    @property
-    def lo_freq(self) -> float:
-        return self.lo_sweep_group._v_attrs.lo_freq
-    
-    @property
-    def baseband_freqs(self) -> tables.Array:
-        return self.global_data_group.baseband_freqs
-    
-    @property
-    def tones(self) -> npt.NDArray:
-        return self.baseband_freqs[:] + self.lo_freq
 
     @property
     def tod_template(self) -> str:
@@ -1075,6 +1038,276 @@ class NewProcessedData:
     @setnum.setter
     def setnum(self, setnum: int):
         self._file.root._v_attrs.setnum = setnum
+
+    @property
+    def receipt(self) -> str:
+        return self._file.root._v_attrs.receipt 
+
+    def add_receipt(self, receipt: str):
+        """Add a receipt entry to the processed data file."""
+        self._file.root._v_attrs.receipt = receipt
+        self._file.flush()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+
+class ProcessedDataL0(DataStorage):
+    """Class for interpolating data where needed from the raw TOD files."""
+
+    def __init__(self, file: tables.File):
+        super().__init__(file)
+
+    @classmethod
+    def from_tod(
+        cls,
+        date: str,
+        setnum: int,
+        beam_map_mode: bool=False,
+    ) -> ProcessedDataL0:
+
+        folder = Path(f'{DATA_DIRECTORY}/{date}')
+        todtemplate = get_tod_template(date, setnum)
+        tele_template = Path(get_azel_template(date, setnum))
+        optcam_template = Path(get_optcam_template(date ,setnum))
+
+        azel_exists = tele_template.exists()
+        optcam_exists = optcam_template.exists()
+
+        if azel_exists:
+            azel_file = tables.open_file(tele_template, 'r')
+        
+        if optcam_exists:
+            optcam_file = tables.open_file(optcam_template, 'r')
+        
+
+        # Find TOD files
+        todlist = glob.glob(todtemplate)
+        ntod = len(todlist)
+        if ntod == 0:
+            raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
+
+        # Get the n_tones and n_samples from all TOD files to determine array sizes
+        sample_counts = []
+        tone_counts = []
+        for file in todlist:
+            with tables.open_file(file, 'r') as f:
+                raw_time_ordered_data = f.root.time_ordered_data
+                # NOTE: Temporary fix until n_sample is fixed in the raw files
+                # n_samples = raw_dimension.n_sample[0]
+                n_samples = raw_time_ordered_data.adc_i.shape[-1]
+                sample_counts.append(n_samples)
+                raw_dimension = f.root.dimension
+                tone_counts.append(raw_dimension.n_tones[0])
+        n_samples = min(sample_counts)
+        total_samples = n_samples
+        n_tones = sum(tone_counts)
+
+
+        if azel_exists:
+            # pdb.set_trace()
+            az_tel = azel_file.root.az_tel
+            try:
+                za_tel = azel_file.root.za_tel
+            except:
+                za_tel = azel_file.rooe.el_tel
+            timestamp_tel = azel_file.root.timestamp_tel
+            # vis = azel_tfile.root.optical_visibility[0]
+            vis = np.nan
+            if isinstance(vis, bytes):
+                vis = np.nan
+        else:
+            vis=0.
+        
+
+        # Create processed data file
+        pfile_path = Path(get_processed_level_file_template(date, setnum, level=0))
+        if not pfile_path.exists():
+            pfile_path.touch(PERMISSIONS_ALL_FULL)
+        pfile = tables.open_file(pfile_path, 'w')
+        pfile.root._v_attrs.date = date
+        pfile.root._v_attrs.setnum = setnum
+        pfile.root._v_attrs.receipt = ''
+
+
+
+        time_ordered_data_group = pfile.create_group('/', 'time_ordered_data')
+        global_data_group = pfile.create_group('/', 'global_data')
+        if optcam_exists:
+            # optical_image = optcam_file.root.optical_image
+            pfile.create_array(global_data_group, 'optical_image', obj=optcam_file.root.optical_image[:])
+            optcam_file.close()
+        else:
+            pfile.create_array(global_data_group, 'optical_image', obj=np.array([]))
+            optical_image = None
+        vis = pfile.create_array(global_data_group, 'vis', vis)
+        dfoverf_per_mK = pfile.create_earray(global_data_group, 'dfoverf_per_mK', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
+        detector_beam_amplitude = pfile.create_earray(global_data_group, 'detector_beam_ampl', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
+        chanmask = pfile.create_earray(global_data_group, 'chanmask', shape=(0,), expectedrows=n_tones, atom=tables.Int8Atom(dflt=1))
+        baseband_freqs = pfile.create_earray(global_data_group, 'baseband_freqs', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
+        # chanmask[:] = 1
+        detector_pol = pfile.create_earray(global_data_group, 'detector_pol', shape=(0,), expectedrows=n_tones, atom=tables.Int8Atom())
+        optical_visibility = pfile.create_array(global_data_group, 'optical_visibility', shape=(1,), atom=tables.Float64Atom())
+
+        time_ordered_data_group._v_attrs.n_tones = n_tones
+        time_ordered_data_group._v_attrs.n_samples = n_samples
+        new_timestamp = pfile.create_earray(time_ordered_data_group, 'timestamp', shape=(0,), expectedrows=n_samples, atom=tables.Float64Atom())
+        corrected_packet_index = pfile.create_earray(time_ordered_data_group, 'packet_index', shape=(0,), expectedrows=n_samples, atom=tables.Float64Atom())
+        interpolated_indices = pfile.create_earray(time_ordered_data_group, 'interpolated_indices', shape=(0,), atom=tables.UInt32Atom())
+        azel_shape = (0, n_samples) if azel_exists else (1, 0)
+        detector_az = pfile.create_earray(time_ordered_data_group, 'detector_az', shape=azel_shape, expectedrows=n_tones, atom=tables.Float64Atom())
+        detector_za = pfile.create_earray(time_ordered_data_group, 'detector_za', shape=azel_shape, expectedrows=n_tones, atom=tables.Float64Atom())
+        lo_group = pfile.create_group('/', 'lo_sweep')
+
+        # TODO: Interpolation Code
+        
+
+        # Don't make this until we know how many missed packets there are
+        # total_samples = n_samples + missed_packets
+        data_IQ = pfile.create_earray(time_ordered_data_group, 'data_IQ', shape=(2, 0, total_samples), expectedrows=n_tones, atom=tables.Float64Atom())
+
+        # Iterate over the TOD Files, extracting IQ data and calibration info
+        for i, file in enumerate(todlist):
+            with tables.open_file(file, 'r') as f:
+                raw_global_data = f.root.global_data
+                raw_time_ordered_data = f.root.time_ordered_data
+                this_n_tones = tone_counts[i]
+
+                tone_indices = np.arange(sum(tone_counts[:i]), sum(tone_counts[:i+1]), dtype=int)
+
+                if raw_global_data.lo_sweep is None:
+                    raise RuntimeError('No LO sweep provided. Canceliing processing of file.')
+
+               # Initialize timestamp
+               # TODO: find number of missed packets, resize accordingly, and
+               # interpolate missing data
+                if i == 0:  # Only should make this once, since it's never changed
+                    time = raw_time_ordered_data.timestamp[:n_samples]  # Ensure same length for all files
+                    time_0 = time - time[0]
+                    total_time = np.max(time_0)
+                    new_timestamp[:] = np.linspace(
+                        0, total_time, n_samples_ds
+                    ) + time[0]
+
+
+
+                # Link to LO sweep
+                pfile.create_external_link(lo_group, f'lo_sweep_{i}', f'{file}:/global_data/lo_sweep')
+                lo_freq = raw_global_data.lo_freq[:]
+                baseband_freqs.append(raw_global_data.baseband_freqs[:])
+                lo_group._v_attrs.lo_freq = lo_freq
+            
+                # Copy calibration factors
+                this_detector_pol = raw_global_data.detector_pol[:]
+                if np.count_nonzero(this_detector_pol) == 0:
+                    this_detector_pol = np.ones_like(this_detector_pol)
+                detector_pol.append(this_detector_pol)
+
+                this_detector_beam_ampl = raw_global_data.detector_beam_ampl[:]
+                if np.count_nonzero(this_detector_beam_ampl) == 0:
+                    this_detector_beam_ampl = np.ones_like(this_detector_beam_ampl)
+                detector_beam_amplitude.append(this_detector_beam_ampl)
+
+                this_dfoverf_per_mK = raw_global_data.dfoverf_per_mK[:] * -1
+                if np.count_nonzero(this_dfoverf_per_mK) == 0:
+                    this_dfoverf_per_mK = np.ones_like(this_dfoverf_per_mK)
+                dfoverf_per_mK.append(this_dfoverf_per_mK)
+
+                # Get the correct tone indices in the TOD file
+                if int(date[:4]) < 2025:
+                    expr = tables.Expr('time_ordered_data.adc_i[:, 0] != 0')
+                    expr.eval()
+                    valid_tone_index = np.ndarray.flatten(np.argwhere(expr))
+                    valid_tone_index = valid_tone_index[:this_n_tones]
+                else:
+                    valid_tone_index = np.arange(this_n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
+
+                # Append dummy data and then set in place to avoids loading in both 
+                # I and Q into memory at the same time
+                data_IQ.append(np.zeros((2, this_n_tones, total_samples)))
+
+                # Read IQ data
+                data_IQ[0, tone_indices] = raw_time_ordered_data.adc_i[valid_tone_index, :]
+                data_IQ[1, tone_indices] = raw_time_ordered_data.adc_q[valid_tone_index, :]
+                
+                if azel_exists:
+                    detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
+                    this_az_tel = np.interp(new_timestamp, timestamp_tel, az_tel)
+                    this_za_tel = np.interp(new_timestamp, timestamp_tel, za_tel)
+                    this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
+                    this_detector_delta_x = raw_global_data.detector_delta_x[:]
+                    this_detector_delta_y = raw_global_data.detector_delta_y[:]
+                    if beam_map_mode:
+                        this_detector_delta_x *= 0
+                        this_detector_delta_y *= 0
+                    #save the az/el information to the file
+                    detector_az.append(
+                        np.outer(this_detector_delta_x, np.cos(this_ang)) - \
+                        np.outer(this_detector_delta_y, np.sin(this_ang)) + \
+                        np.outer(np.ones(n_tones), this_az_tel)
+                    )
+                    detector_za.append(
+                        np.outer(this_detector_delta_y, np.cos(this_ang)) + \
+                        np.outer(this_detector_delta_x, np.sin(this_ang)) + \
+                        np.outer(np.ones(n_tones), this_za_tel)
+                    )
+                
+                # Store chanmask from TOD
+                chanmask.append(raw_global_data.chanmask[:])
+
+        # Close telescope file as it's no longer needed
+        if azel_exists:
+            azel_file.close()
+
+
+
+class NewProcessedData(DataStorage):
+    """Class contianing data from processed TOD files."""
+    def __init__(self, file: tables.File, level: int=1):
+        super().__init__(file)
+        self.level = level
+
+    def get_node(self, name: str, where: str='/') -> tables.Node:
+        if where is None:
+            where = PROCESSED_DATA_FIELD_LOCATIONS[name]
+        return super().get_node(name, where=where)
+   
+    @property
+    def global_data_group(self) -> tables.Group:
+        return self._file.root.global_data
+
+    @property
+    def data_group(self) -> tables.Group:
+        return self._file.root.data
+
+    @property
+    def lo_sweep_group(self) -> tables.Group:
+        return self._file.root.lo_sweep
+    
+    def get_lo_sweep_data(self) -> npt.NDArray:
+        lo_sweep = None
+        for node in self.lo_sweep_group._f_walknodes('ExternalLink'):
+            this_lo_sweep = node(mode='r')[:]
+            if lo_sweep is None:
+                lo_sweep = this_lo_sweep
+            else:
+                lo_sweep = np.append(lo_sweep, this_lo_sweep, axis=1)
+        return lo_sweep
+    
+    @property
+    def lo_freq(self) -> float:
+        return self.lo_sweep_group._v_attrs.lo_freq
+    
+    @property
+    def baseband_freqs(self) -> tables.Array:
+        return self.global_data_group.baseband_freqs
+    
+    @property
+    def tones(self) -> npt.NDArray:
+        return self.baseband_freqs[:] + self.lo_freq
 
     def carrier_amplitude_norm(self) -> npt.NDArray:
         Z = self.carrier_amp_I + 1j*self.carrier_amp_Q
@@ -1190,20 +1423,6 @@ class NewProcessedData:
     def chanmask(self) -> tables.Array:
         return self.get_node_value('chanmask')
     
-    @property
-    def receipt(self) -> str:
-        return self._file.root._v_attrs.receipt 
-
-    def add_receipt(self, receipt: str):
-        """Add a receipt entry to the processed data file."""
-        self._file.root._v_attrs.receipt = receipt
-        self._file.flush()
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
 
 
 class ProcessedDataL1(NewProcessedData):
