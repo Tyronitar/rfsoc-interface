@@ -1385,7 +1385,7 @@ def update_params_file(
             fh.get_node('/', k)[:] = v
 
 
-def compute_timestamp(raw_data: tables.File, window_size: int=5, sigma: float=3.0) -> tuple[npt.NDArray, npt.NDArray]:
+def compute_timestamp(raw_data: tables.File, window_size: int=5, sigma: float=3.0) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     pkt_idx = raw_data.root.time_ordered_data.pkt_idx
     timestamp = raw_data.root.time_ordered_data.timestamp
     n_samples = raw_data.root.time_ordered_data.adc_i.shape[-1]
@@ -1394,6 +1394,7 @@ def compute_timestamp(raw_data: tables.File, window_size: int=5, sigma: float=3.
     std_dtime = np.std(dtime)
     bad_samples = np.argwhere(np.abs(dtime - med_dtime) > sigma * std_dtime).flatten()
 
+    # Plotting specfically for 20251006set1009
     # plt.scatter(range(1, n_samples), dtime, label='Delta Time for each sample')
     # plt.scatter(bad_samples + 1, dtime[bad_samples], color='red', label='Flagged Samples')
     # plt.axhline(med_dtime, linestyle='--', color='blue', label=f'Median Delta T $\\mu = {med_dtime:.5f}$')
@@ -1406,9 +1407,9 @@ def compute_timestamp(raw_data: tables.File, window_size: int=5, sigma: float=3.
     # plt.legend()
     # plt.show()
     # pdb.set_trace()
-    correct_packet_idx = np.zeros(n_samples, dtype=int)
-    missed_packet_indices = []
-    i = 0
+    corrected_packet_idx = np.zeros(n_samples, dtype=int)
+    missed_packets = np.empty((0, 2), dtype=int)
+    i = 1
     while i < n_samples:
         dtime_idx = i - 1
         if dtime_idx in bad_samples:
@@ -1423,18 +1424,18 @@ def compute_timestamp(raw_data: tables.File, window_size: int=5, sigma: float=3.
             actual_samples = window_max_idx - window_min_idx
             # A packet was potentially missed
             if expected_samples > actual_samples:
-                missed_packets = expected_samples - actual_samples + 1
+                packets_missed = expected_samples - actual_samples + 1
 
                 # Look in a larger window to avoid spurious problems
                 # Look outside the window by number of supposed missed packets to 
                 # verfiy that they were actually missed
                 large_window_min_idx = max(0, i - window_size)
-                large_window_max_idx = min(n_samples, i + window_size + missed_packets)
+                large_window_max_idx = min(n_samples, i + window_size + packets_missed)
                 large_window = timestamp[large_window_min_idx:large_window_max_idx + 1]
                 large_window_dtime = np.ptp(large_window)
                 large_expected_samples = int(large_window_dtime // med_dtime)
                 large_actual_samples = large_window_max_idx - large_window_min_idx
-                large_missed_packets = large_expected_samples - large_actual_samples + 1
+                large_window_packets_missed = large_expected_samples - large_actual_samples + 1
                 if large_expected_samples > large_actual_samples:
                     # print(f'Missed {large_missed_packets} in large window, {missed_packets} in original')
                     # plt.scatter(range(large_window_min_idx, large_window_max_idx + 1), large_window)
@@ -1442,62 +1443,66 @@ def compute_timestamp(raw_data: tables.File, window_size: int=5, sigma: float=3.
                     # plt.scatter(i, timestamp[i], color='red')
                     # plt.show()
                     # pdb.set_trace()
-                    missed_packet_indices.append([i, large_missed_packets])
-                    correct_packet_idx[i] = correct_packet_idx[i - 1] + large_missed_packets + 1
+                    missed_packets = np.vstack([missed_packets, [i, large_window_packets_missed]])
+                    corrected_packet_idx[i] = corrected_packet_idx[i - 1] + large_window_packets_missed + 1
 
                     # Don't need to re-evaluate the next few samples, since their offset
                     # was already accounted for.
-                    for j in range(i + 1, i + large_missed_packets + 1):
-                        correct_packet_idx[j] = correct_packet_idx[j - 1] + 1
+                    for j in range(i + 1, i + large_window_packets_missed + 1):
+                        corrected_packet_idx[j] = corrected_packet_idx[j - 1] + 1
                     i = j
                     continue
                 else:
-                    correct_packet_idx[i] = correct_packet_idx[i - 1] + 1
+                    corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
             else:
-                correct_packet_idx[i] = correct_packet_idx[i - 1] + 1
+                corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
 
             # plt.scatter(range(window_min_idx, window_max_idx + 1), timestamp_window)
             # plt.show()
             # pdb.set_trace()
         else:
-            correct_packet_idx[i] = correct_packet_idx[i - 1] + 1
+            corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
         i += 1
 
-    # pd = ProcessedData.from_tod(date, setnum)
-    fit = linregress(correct_packet_idx, timestamp[:])
-    total_time = fit.slope * n_samples
-    times = np.linspace(0, total_time, n_samples) + timestamp[0]
-    times = fit.slope * correct_packet_idx + fit.intercept 
-    x = np.arange(n_samples)
-    print(f'{correct_packet_idx[-1] - x[-1]} missed packets')
-    y = fit.slope * x + fit.intercept
-    # plt.scatter(correct_packet_idx, timestamp[:])
-    # plt.scatter(correct_packet_idx, times)
+    fit = linregress(corrected_packet_idx, timestamp[:])
+    new_timestamp = fit.slope * corrected_packet_idx + fit.intercept 
+    print(f'{np.sum(missed_packets[:, 1])} missed packets')
+
+    # Plotting Code for Debugging
+    # x = np.arange(n_samples)
+    # y = fit.slope * x + fit.intercept
+    # plt.scatter(corrected_packet_idx, timestamp[:])
+    # plt.scatter(corrected_packet_idx, new_timestamp)
     # plt.plot(x, y, color='red', linestyle='--')
     # plt.show()
     # pdb.set_trace()
-    return times, np.array(missed_packet_indices), correct_packet_idx
+    return new_timestamp, missed_packets, corrected_packet_idx
 
 
 def interpolate_data(
         data_I: tables.Array,
         data_Q: tables.Array,
         timestamp: npt.NDArray,
-        missed_packet_indices: npt.NDArray,
-        packet_index: npt.NDArray,
+        missed_packets: npt.NDArray,
+        packet_indices: npt.NDArray,
 ) -> tuple[npt.NDArray. npt.NDArray, npt.NDArray]:
-    missed_packets = np.sum(missed_packet_indices[:, 1])
+    total_missed_packets = np.sum(missed_packets[:, 1])
     n_tones = data_I.shape[0]
-    n_samples = data_I.shape[-1] + missed_packets
-    interpolated_data = np.zeros((2, n_tones, n_samples))
-    new_timestamp = np.zeros(n_samples)
-    normalized_indices = packet_index - packet_index[0]
-    interpolated_data[0, :][:, normalized_indices] = data_I[:]
-    interpolated_data[1, :][:, normalized_indices] = data_Q[:]
-    new_timestamp[normalized_indices] = timestamp[:]
+    total_samples = data_I.shape[-1] + total_missed_packets
+
+    # Initialize Arrays
+    interpolated_data = np.zeros((2, n_tones, total_samples))
+    new_timestamp = np.zeros(total_samples)
     interpolated_indices = []
+    normalized_packet_indices = packet_indices - packet_indices[0]
+    interpolated_data[0, :][:, normalized_packet_indices] = data_I[:]
+    interpolated_data[1, :][:, normalized_packet_indices] = data_Q[:]
+    new_timestamp[normalized_packet_indices] = timestamp[:]
+
+    # Iterate over the spot where data was missed
     window_size = 50
-    for i, this_missed_packets in missed_packet_indices:
+    for i, this_missed_packets in missed_packets:
+        # Fit a spline using data from nearest (window_size * 2) packets
         min_t = max(0, i - window_size)
         max_t = min(data_I.shape[-1], i + window_size)
         window = range(min_t, max_t + 1)
@@ -1505,20 +1510,20 @@ def interpolate_data(
         i_data = data_I[:, window]
         q_data = data_Q[:, window]
         iq_data = np.stack((i_data, q_data))
-        # spline_i = make_interp_spline(times, i_data.T)
-        # spline_q = make_interp_spline(times, q_data.T)
         spline = make_interp_spline(times, iq_data, axis=-1)
 
         # Use the spline to interpolate data between sample i-1 and i
-        previous_t = timestamp[i - 1]
         dtime = (timestamp[i] - timestamp[i - 1]) / this_missed_packets
         missing_packet_start_t = timestamp[i - 1] + dtime
         current_t = timestamp[i]
         missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False)
         new_data = spline(missed_packet_t)
-        this_interpolated_indices = list(range(normalized_indices[i - 1] + 1, normalized_indices[i]))
+        this_interpolated_indices = list(range(normalized_packet_indices[i - 1] + 1, normalized_packet_indices[i]))
         interpolated_indices.extend(this_interpolated_indices)
         interpolated_data[:, :, this_interpolated_indices] = new_data
+
+        
+        # Plotting Code for Debugging
         ax = plt.axes(projection='3d')
         x = np.linspace(times[0], times[-1], 150)
         ax.plot3D(x, *spline(x)[:, 0], label='Spline Fit')
@@ -1530,7 +1535,7 @@ def interpolate_data(
         ax.legend()
         plt.show()
         pdb.set_trace()
-    return interpolate_data, new_timestamp, interpolated_indices
+    return interpolated_data, new_timestamp, interpolated_indices
 
 
 
@@ -1542,10 +1547,10 @@ if __name__ == '__main__':
     SAMPLE_RATE = 488
 
     f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')
-    corrected_timestamp, missed_packet_indices, packet_index = compute_timestamp(f, sigma=2.0)
+    corrected_timestamp, missed_packets, corrected_packet_index = compute_timestamp(f, sigma=2.0)
     data_I = f.root.time_ordered_data.adc_i
     data_Q = f.root.time_ordered_data.adc_q
-    interpolate_data(data_I, data_Q, corrected_timestamp, missed_packet_indices, packet_index)
+    interpolate_data(data_I, data_Q, corrected_timestamp, missed_packets, corrected_packet_index)
     f.close()
    
     # pd.close()
