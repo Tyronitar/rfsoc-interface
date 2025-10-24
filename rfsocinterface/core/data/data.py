@@ -14,6 +14,7 @@ import tables
 import numpy as np
 import numpy.typing as npt
 from scipy.interpolate import make_interp_spline
+from numpy.polynomial import Polynomial
 from scipy import signal
 from scipy.stats import linregress
 import matplotlib.pyplot as plt
@@ -1500,8 +1501,9 @@ def interpolate_data(
     new_timestamp[normalized_packet_indices] = timestamp[:]
 
     # Iterate over the spot where data was missed
-    window_size = 50
+    # window_size = 50
     for i, this_missed_packets in missed_packets:
+        window_size = 5 * this_missed_packets
         # Fit a spline using data from nearest (window_size * 2) packets
         min_t = max(0, i - window_size)
         max_t = min(data_I.shape[-1], i + window_size)
@@ -1510,25 +1512,31 @@ def interpolate_data(
         i_data = data_I[:, window]
         q_data = data_Q[:, window]
         iq_data = np.stack((i_data, q_data))
-        spline = make_interp_spline(times, iq_data, axis=-1)
+        fit_I = np.polyfit(times - times[0], i_data[0], 4)
+        fit_Q = np.polyfit(times - times[0], q_data[0], 4)
+        # spline = make_interp_spline(times, iq_data, axis=-1)
 
         # Use the spline to interpolate data between sample i-1 and i
         dtime = (timestamp[i] - timestamp[i - 1]) / this_missed_packets
         missing_packet_start_t = timestamp[i - 1] + dtime
         current_t = timestamp[i]
-        missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False)
-        new_data = spline(missed_packet_t)
+        missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False) 
+        new_data_I = np.polyval(fit_I, missed_packet_t - times[0])
+        new_data_Q = np.polyval(fit_Q, missed_packet_t - times[0])
+        new_data = np.stack((new_data_I, new_data_Q))
+        # new_data = spline(missed_packet_t)
         this_interpolated_indices = list(range(normalized_packet_indices[i - 1] + 1, normalized_packet_indices[i]))
         interpolated_indices.extend(this_interpolated_indices)
-        interpolated_data[:, :, this_interpolated_indices] = new_data
+        interpolated_data[:, 0, this_interpolated_indices] = new_data
 
         
         # Plotting Code for Debugging
         ax = plt.axes(projection='3d')
         x = np.linspace(times[0], times[-1], 150)
-        ax.plot3D(x, *spline(x)[:, 0], label='Spline Fit')
+        # ax.plot3D(x, *spline(x)[:, 0], label='Spline Fit')
+        ax.plot3D(x, np.polyval(fit_I, x - times[0]), np.polyval(fit_Q, x - times[0]), label='Polynomial Fit')
         ax.scatter3D(times, *iq_data[:, 0], label='Actual Values')
-        ax.scatter3D(missed_packet_t, *new_data[:, 0], label='Interpolated Points')
+        ax.scatter3D(missed_packet_t, *new_data, label='Interpolated Points')
         ax.set_xlabel('Timestamp (s)')
         ax.set_ylabel('ADC I')
         ax.set_zlabel('ADC Q')
