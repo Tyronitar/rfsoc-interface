@@ -2,7 +2,7 @@
 
 from rfsocinterface.core.data.data import (
     ProcessedData,
-    ProcessedDataL2,
+    ProcessedDataLN,
     MapData,
     DEFAULT_MAP_DPIX,
     N_POLARIZATION,
@@ -40,7 +40,7 @@ ROUTINE_NAME_MAP = {
 
 __all__ = [
     ProcessedData,
-    ProcessedDataL2,
+    ProcessedDataLN,
     MapData,
     Downsample,
     CleanTOD,
