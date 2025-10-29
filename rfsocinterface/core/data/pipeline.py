@@ -358,51 +358,31 @@ class NewDataPipeline:
 if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
+    # date = '20250513'
+    # setnum = 1008
     # Lab Testing
     # date = '20250916'
     # setnum = 1017
 
     #Telescope Testing
     date = '20251006'
-    setnum = 1003
+    setnum = 1008
     # md = MapData.from_file(date, setnum)
     # pdb.set_trace()
     dataset = 'data_gain_phase'
     beam_map_mode = False
 
-    ds_factor = 1
-    hp_filt_freq = 0.2
+    ds_factor = 12
+    hp_filt_freq = 0.05
     lp_filt_freq = 10
 
 
-    # hpfilt = HighPassFilter(hp_filt_freq)
-    # lpfilt = LowPassFilter(lp_filt_freq)
+    hpfilt = HighPassFilter(hp_filt_freq)
+    lpfilt = LowPassFilter(lp_filt_freq)
     # cleaner = CleanTOD()
-    # binner = BinTODIntoMap()
+    binner = BinTODIntoMap()
 
-    # pipeline = DataPipeline(
-    #     ds_factor=ds_factor,
-    #     hp_filter_freq=hp_filt_freq,
-    #     lp_filter_freq=lp_filt_freq,
-    #     dataset=dataset,
-    #     beam_map_mode=beam_map_mode,
-    #     do_electronics_noise_removal=True,
-    #     max_modes=2,
-    # )
-    # pipeline.add_routine(hpfilt)
-    # pipeline.add_routine(lpfilt)
-    # pipeline.add_routine(cleaner)
-    # pipeline.add_routine(binner)
-
-    # old_data = pipeline.run_pipeline(date, setnum)
-
-    newhpfilt = NewHighPassFilter(hp_filt_freq)
-    newlpfilt = NewLowPassFilter(lp_filt_freq)
-    # newcleaner = NewCleanTOD()
-    # newbinner = NewBinTODIntoMap()
-    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
-
-    newpipeline = NewDataPipeline(
+    pipeline = DataPipeline(
         ds_factor=ds_factor,
         hp_filter_freq=hp_filt_freq,
         lp_filter_freq=lp_filt_freq,
@@ -411,21 +391,43 @@ if __name__ == '__main__':
         do_electronics_noise_removal=True,
         max_modes=2,
     )
+    pipeline.add_routine(hpfilt)
+    pipeline.add_routine(lpfilt)
+#     pipeline.add_routine(cleaner)
+    pipeline.add_routine(binner)
+
+    old_data = pipeline.run_pipeline(date, setnum)
+
+#     newhpfilt = NewHighPassFilter(hp_filt_freq)
+#     newlpfilt = NewLowPassFilter(lp_filt_freq)
+    # newcleaner = NewCleanTOD()
+    # newbinner = NewBinTODIntoMap()
+#     psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
+
+#     newpipeline = NewDataPipeline(
+#         ds_factor=ds_factor,
+#         hp_filter_freq=hp_filt_freq,
+#         lp_filter_freq=lp_filt_freq,
+#         dataset=dataset,
+#         beam_map_mode=beam_map_mode,
+#         do_electronics_noise_removal=False,
+#         max_modes=2,
+#     )
     # newpipeline.add_routine(newhpfilt)
     # newpipeline.add_routine(newlpfilt)
-    newpipeline.add_routine(NewHighPassFilter(1, dataset='data_gain_phase'))
-    newpipeline.add_routine(psd)
+#     newpipeline.add_routine(NewHighPassFilter(1, dataset='data_gain_phase'))
+#     newpipeline.add_routine(psd)
     # newpipeline.add_routine(newcleaner)
     # newpipeline.add_routine(newbinner)
 
-    new_data = newpipeline.run_pipeline(date, setnum)
-    from rfsocinterface.analysis.psd import plot_psd
-    freq = new_data.get_node_value('freq')[:]
-    psd = new_data.get_node_value('psd_gain_phase')[:]
-    plot_psd(freq, psd, 'test.pdf', basis='gp')
-    plt.show()
+#     new_data = newpipeline.run_pipeline(date, setnum)
+#     from rfsocinterface.analysis.psd import plot_psd
+#     freq = new_data.get_node_value('freq')[:]
+#     psd = new_data.get_node_value('psd_gain_phase')[:]
+#     plot_psd(freq, psd, 'test.pdf', basis='gp')
+#     plt.show()
     # data.plot()
     # plt.show()
     pdb.set_trace()
     # old_data.close()
-    new_data.close()
+#     new_data.close()

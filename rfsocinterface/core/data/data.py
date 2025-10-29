@@ -1,5 +1,6 @@
 """Core functionality relating to data loading and processing."""
 
+
 from __future__ import annotations
 from pathlib import Path
 import glob
@@ -7,14 +8,18 @@ import pdb
 import time
 import inspect
 import logging
+from itertools import chain
 import typing
 
 import tables
 from tables.link import ExternalLink
 import numpy as np
 import numpy.typing as npt
+from scipy.interpolate import make_interp_spline
+from numpy.polynomial import Polynomial
 from scipy.stats import linregress
 from scipy import signal
+from scipy.stats import linregress
 import matplotlib.pyplot as plt
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_FULL
@@ -679,6 +684,56 @@ class ProcessedData:
                 #     dIQ_df = np.concatenate((dIQ_df, this_dIQ_df), axis=0)
                 # else:
                 #     dIQ_df = np.copy(this_dIQ_df)
+                time_ordered_data = f.root.time_ordered_data
+
+                # Create timestamp
+                if i == 0:  # Only should make this once, since it's never changed
+                    time = time_ordered_data.timestamp
+
+                    # Drop first few seconds of time samples
+                    cut_time = 5  # Time in seconds to cut from the front
+                    cut_samples = int(cut_time // np.median(np.diff(time)))
+                    
+                    # Exclude samples that dropped packets
+                    # NOTE: The packet counter is all zeros currently??
+                    packet_idx = time_ordered_data.pkt_idx[:]
+                    dpkt_idx = np.diff(packet_idx)
+                    good_idx = np.argwhere(dpkt_idx == 1).flatten()[cut_samples:]
+
+                    # Fit a line to the samples without dropped packets and 
+                    # generate a new timestamp.
+                    good_times = time[cut_samples:][good_idx]
+                    reg = linregress(good_idx, good_times)
+                    time_0 = time[0]
+                    total_time = reg.slope * n_samples
+                    timestamp = np.linspace(0, total_time, n_samples_ds) + time_0
+                    # pdb.set_trace()
+                    detector_data.timestamp[:] = timestamp
+
+
+
+                    # dtime = np.diff(good_times)
+                    # total_time = np.ptp(good_times)
+                    # timestamp = np.linspace(0, total_time + cut_time, n_samples_ds) + np.min(good_times)
+                    # dtime = timestamp - time[::ds_factor]
+                    # std = np.std(dtime)
+                    # median = np.median(dtime)
+                    # good_idx = np.argwhere(np.abs(dtime - median) < 0.5*std).flatten()
+                    # median_diff = np.median(dtime[good_idx])
+                    # detector_data.timestamp[:] = timestamp - median_diff - 0.04
+
+                    # # Fit a line to the good times and generate new timestamps
+                    # dtime = np.diff(good_times)
+                    # std = np.std(dtime)
+                    # median = np.median(dtime)
+                    # skip_idx = np.where(dtime > 0.1)
+                    # # good_idx = np.argwhere(np.abs(dtime - median) < 0.2 * median).flatten() + 1
+                    # good_idx = np.argwhere(np.abs(dtime - median) < 1.5*std).flatten()
+                    # reg = linregress(good_idx, good_times[good_idx])
+                    # time_0 = reg.intercept
+                    # total_time = reg.slope * n_samples
+                    # detector_data.timestamp[:] = np.linspace(0, total_time, n_samples_ds) + time_0
+                    
             
                 #compute the calibration factor from dfoverf to mK
                 detector_global_data.detector_pol[:] = raw_global_data.detector_pol[:]
@@ -745,13 +800,6 @@ class ProcessedData:
                     detector_data.IQ_to_gain_phase_angle,
                 )
 
-                if i == 0:  # Only should make this once, since it's never changed
-                    time = time_ordered_data.timestamp
-                    time_0 = time - time[0]
-                    total_time = np.max(time_0)
-                    detector_data.timestamp[:] = np.linspace(
-                        0, total_time, n_samples_ds
-                    ) + time[0]
                 fs = 1 / np.median(np.diff(detector_data.timestamp[:]))
 
                 # TODO: Make this optional I guess
@@ -797,11 +845,14 @@ class ProcessedData:
 
                 #also save the chanmask and detector polarization information
                 chanmask = raw_global_data.chanmask[:]
+                off_res = np.argwhere(chanmask == 0).flatten()
                 no_pol = np.ndarray.flatten(np.argwhere(raw_global_data.detector_pol[:] < 1))
                 # TODO: This is a temporary fix, should be removed when the polarization
                 # is properly set up on the lab computer.
                 if np.size(no_pol > 0):
                     chanmask[no_pol] = -1
+                # Preserve off-resonance indices
+                chanmask[off_res] = 0
                 detector_global_data.chanmask[:] = chanmask
     #        detector_pol = np.concatenate((detector_pol, f.detector_pol[:]))
         # pfile.close()
@@ -2737,19 +2788,194 @@ def update_params_file(
             fh.get_node('/', k)[:] = v
 
 
+def compute_timestamp(raw_data: tables.File, window_size: int=5, sigma: float=3.0) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    pkt_idx = raw_data.root.time_ordered_data.pkt_idx
+    timestamp = raw_data.root.time_ordered_data.timestamp
+    n_samples = raw_data.root.time_ordered_data.adc_i.shape[-1]
+    dtime = np.diff(timestamp)
+    med_dtime = np.median(dtime)
+    std_dtime = np.std(dtime)
+    bad_samples = np.argwhere(np.abs(dtime - med_dtime) > sigma * std_dtime).flatten()
+
+    # Plotting specfically for 20251006set1009
+    # plt.scatter(range(1, n_samples), dtime, label='Delta Time for each sample')
+    # plt.scatter(bad_samples + 1, dtime[bad_samples], color='red', label='Flagged Samples')
+    # plt.axhline(med_dtime, linestyle='--', color='blue', label=f'Median Delta T $\\mu = {med_dtime:.5f}$')
+    # plt.xlim(235450, 235500)
+    # plt.ylim(0.00001, 0.2)
+    # plt.yscale('log')
+
+    # plt.xlabel('Sample Index')
+    # plt.ylabel('Delta Time (s)')
+    # plt.legend()
+    # plt.show()
+    # pdb.set_trace()
+    corrected_packet_idx = np.zeros(n_samples, dtype=int)
+    missed_packets = np.empty((0, 2), dtype=int)
+    i = 1
+    while i < n_samples:
+        dtime_idx = i - 1
+        if dtime_idx in bad_samples:
+            window_min_idx = max(0, i - window_size)
+            window_max_idx = min(n_samples, i + window_size)
+            window = timestamp[window_min_idx:window_max_idx + 1]
+            window_dtime = np.ptp(window)
+            # Expected number of samples in time elapsed between start and end of window
+            # In theory, this is 1 less than the number of actual samples in the window
+            # i.e. (2 * window_size)
+            expected_samples = int(window_dtime // med_dtime)  
+            actual_samples = window_max_idx - window_min_idx
+            # A packet was potentially missed
+            if expected_samples > actual_samples:
+                packets_missed = expected_samples - actual_samples + 1
+
+                # Look in a larger window to avoid spurious problems
+                # Look outside the window by number of supposed missed packets to 
+                # verfiy that they were actually missed
+                large_window_min_idx = max(0, i - window_size)
+                large_window_max_idx = min(n_samples, i + window_size + packets_missed)
+                large_window = timestamp[large_window_min_idx:large_window_max_idx + 1]
+                large_window_dtime = np.ptp(large_window)
+                large_expected_samples = int(large_window_dtime // med_dtime)
+                large_actual_samples = large_window_max_idx - large_window_min_idx
+                large_window_packets_missed = large_expected_samples - large_actual_samples + 1
+                if large_expected_samples > large_actual_samples:
+                    # print(f'Missed {large_missed_packets} in large window, {missed_packets} in original')
+                    # plt.scatter(range(large_window_min_idx, large_window_max_idx + 1), large_window)
+                    # plt.scatter(range(window_min_idx, window_max_idx + 1), window)
+                    # plt.scatter(i, timestamp[i], color='red')
+                    # plt.show()
+                    # pdb.set_trace()
+                    missed_packets = np.vstack([missed_packets, [i, large_window_packets_missed]])
+                    corrected_packet_idx[i] = corrected_packet_idx[i - 1] + large_window_packets_missed + 1
+
+                    # Don't need to re-evaluate the next few samples, since their offset
+                    # was already accounted for.
+                    for j in range(i + 1, i + large_window_packets_missed + 1):
+                        corrected_packet_idx[j] = corrected_packet_idx[j - 1] + 1
+                    i = j
+                    continue
+                else:
+                    corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
+            else:
+                corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
+
+            # plt.scatter(range(window_min_idx, window_max_idx + 1), timestamp_window)
+            # plt.show()
+            # pdb.set_trace()
+        else:
+            corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
+        i += 1
+
+    fit = linregress(corrected_packet_idx, timestamp[:])
+    new_timestamp = fit.slope * corrected_packet_idx + fit.intercept 
+    print(f'{np.sum(missed_packets[:, 1])} missed packets')
+
+    # Plotting Code for Debugging
+    # x = np.arange(n_samples)
+    # y = fit.slope * x + fit.intercept
+    # plt.scatter(corrected_packet_idx, timestamp[:])
+    # plt.scatter(corrected_packet_idx, new_timestamp)
+    # plt.plot(x, y, color='red', linestyle='--')
+    # plt.show()
+    # pdb.set_trace()
+    return new_timestamp, missed_packets, corrected_packet_idx
+
+
+def interpolate_data(
+        data_I: tables.Array,
+        data_Q: tables.Array,
+        timestamp: npt.NDArray,
+        missed_packets: npt.NDArray,
+        packet_indices: npt.NDArray,
+) -> tuple[npt.NDArray. npt.NDArray, npt.NDArray]:
+    total_missed_packets = np.sum(missed_packets[:, 1])
+    n_tones = data_I.shape[0]
+    total_samples = data_I.shape[-1] + total_missed_packets
+
+    # Initialize Arrays
+    interpolated_data = np.zeros((2, n_tones, total_samples))
+    new_timestamp = np.zeros(total_samples)
+    interpolated_indices = []
+    normalized_packet_indices = packet_indices - packet_indices[0]
+    interpolated_data[0, :][:, normalized_packet_indices] = data_I[:]
+    interpolated_data[1, :][:, normalized_packet_indices] = data_Q[:]
+    new_timestamp[normalized_packet_indices] = timestamp[:]
+
+    # Iterate over the spot where data was missed
+    # window_size = 50
+    for i, this_missed_packets in missed_packets:
+        window_size = 5 * this_missed_packets
+        # Fit a spline using data from nearest (window_size * 2) packets
+        min_t = max(0, i - window_size)
+        max_t = min(data_I.shape[-1], i + window_size)
+        window = range(min_t, max_t + 1)
+        times = timestamp[window]
+        i_data = data_I[:, window]
+        q_data = data_Q[:, window]
+        iq_data = np.stack((i_data, q_data))
+        fit_I = np.polyfit(times - times[0], i_data[0], 4)
+        fit_Q = np.polyfit(times - times[0], q_data[0], 4)
+        # spline = make_interp_spline(times, iq_data, axis=-1)
+
+        # Use the spline to interpolate data between sample i-1 and i
+        dtime = (timestamp[i] - timestamp[i - 1]) / this_missed_packets
+        missing_packet_start_t = timestamp[i - 1] + dtime
+        current_t = timestamp[i]
+        missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False) 
+        new_data_I = np.polyval(fit_I, missed_packet_t - times[0])
+        new_data_Q = np.polyval(fit_Q, missed_packet_t - times[0])
+        new_data = np.stack((new_data_I, new_data_Q))
+        # new_data = spline(missed_packet_t)
+        this_interpolated_indices = list(range(normalized_packet_indices[i - 1] + 1, normalized_packet_indices[i]))
+        interpolated_indices.extend(this_interpolated_indices)
+        interpolated_data[:, 0, this_interpolated_indices] = new_data
+
+        
+        # Plotting Code for Debugging
+        ax = plt.axes(projection='3d')
+        x = np.linspace(times[0], times[-1], 150)
+        # ax.plot3D(x, *spline(x)[:, 0], label='Spline Fit')
+        ax.plot3D(x, np.polyval(fit_I, x - times[0]), np.polyval(fit_Q, x - times[0]), label='Polynomial Fit')
+        ax.scatter3D(times, *iq_data[:, 0], label='Actual Values')
+        ax.scatter3D(missed_packet_t, *new_data, label='Interpolated Points')
+        ax.set_xlabel('Timestamp (s)')
+        ax.set_ylabel('ADC I')
+        ax.set_zlabel('ADC Q')
+        ax.legend()
+        plt.show()
+        pdb.set_trace()
+    return interpolated_data, new_timestamp, interpolated_indices
+
+
+
 if __name__ == '__main__':
-    date = '20250916'
-    setnum = 1017
+    date = '20251006'
+    setnum = 1009
     # date = '20250529'
     # setnum = 1011
-    pd = ProcessedDataL1.from_tod(date, setnum)
-    pd2 = ProcessedDataLN.from_previous_level(pd)
-    pd2.data_IQ[:] = 0
-    pd3 = ProcessedDataLN.from_previous_level(pd2)
-    pdb.set_trace()
-    pd.close()
-    pd2.close()
-    pd3.close()
+    SAMPLE_RATE = 488
+
+    f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')
+    corrected_timestamp, missed_packets, corrected_packet_index = compute_timestamp(f, sigma=2.0)
+    data_I = f.root.time_ordered_data.adc_i
+    data_Q = f.root.time_ordered_data.adc_q
+    interpolate_data(data_I, data_Q, corrected_timestamp, missed_packets, corrected_packet_index)
+    f.close()
+   
+    # pd.close()
+#     date = '20250916'
+#     setnum = 1017
+#     # date = '20250529'
+#     # setnum = 1011
+#     pd = ProcessedDataL1.from_tod(date, setnum)
+#     pd2 = ProcessedDataLN.from_previous_level(pd)
+#     pd2.data_IQ[:] = 0
+#     pd3 = ProcessedDataLN.from_previous_level(pd2)
+#     pdb.set_trace()
+#     pd.close()
+#     pd2.close()
+#     pd3.close()
 
     # pd_old = ProcessedData.from_tod(date, setnum)
     # pd_new = ProcessedDataL1.from_tod(date, setnum)

@@ -87,6 +87,7 @@ def plot_angle_in_blob(
         fit_order: int=2,
         alpha: float=0.5,
         sigma: float=2.5,
+        markersize: float=0.5,
     ) -> Figure:
     """Plot the IQ noise blob and the rotation angle used to convert to freq/diss.
     
@@ -117,7 +118,7 @@ def plot_angle_in_blob(
     iq_inliers_mask = iq_inliers_mask[0] & iq_inliers_mask[1]
     # iq_inliers = np.ones(data_IQ.shape[1], dtype=bool)
     iq_inliers = data_IQ[:, iq_inliers_mask]
-    ax.scatter(iq_inliers[0], iq_inliers[1], label='IQ Data in Hz', color='blue', rasterized=True, alpha=alpha)
+    ax.scatter(iq_inliers[0], iq_inliers[1], label='IQ Data in Hz', color='blue', rasterized=True, alpha=alpha, edgecolors=None, s=markersize)
     fit_IQ = Polynomial.fit(iq_inliers[0], iq_inliers[1], fit_order)
 
     # Compute best fit for freq / diss data
@@ -126,7 +127,7 @@ def plot_angle_in_blob(
     fd_inliers_mask = (data_freq_diss >=  fd_mean - sigma * fd_std) & (data_freq_diss<= fd_mean + sigma * fd_std)
     fd_inliers_mask = fd_inliers_mask[0] & fd_inliers_mask[1]
     fd_inliers = data_freq_diss[:, fd_inliers_mask]
-    ax.scatter(fd_inliers[0], fd_inliers[1], label='Freq / Diss Data', color='red', rasterized=True, alpha=alpha)
+    ax.scatter(fd_inliers[0], fd_inliers[1], label='Freq / Diss Data', color='red', rasterized=True, alpha=alpha, edgecolors=None, s=markersize)
     # fd_inliers = np.ones(data_freq_diss.shape[1], dtype=bool)
     fit_fd = Polynomial.fit(fd_inliers[0], fd_inliers[1], fit_order)
 
@@ -226,6 +227,7 @@ if __name__ == '__main__':
                 fit_order=1,
                 alpha=0.1,
                 sigma=4,
+                markersize=1,
             )
             pdf.savefig(fig)
             plt.close(fig)
@@ -234,21 +236,23 @@ if __name__ == '__main__':
     data.close()
     raw_data.close()
 
-    # quad_sum = np.sqrt(data.data_I[:] ** 2 + data.data_Q[:] ** 2)
+    # good_chan = data.chanmask[:] == 1
+    # quad_sum = np.sqrt(data.data_I[good_chan, :] ** 2 + data.data_Q[good_chan, :] ** 2)
     # source_peak_idx = np.argmax(quad_sum, axis=1)
 
-    # peak_I = data.data_I[np.arange(data.n_tones, dtype=int), source_peak_idx]
-    # peak_Q = data.data_Q[np.arange(data.n_tones, dtype=int), source_peak_idx]
+    # peak_I = data.data_I[good_chan, source_peak_idx]
+    # peak_Q = data.data_Q[good_chan, source_peak_idx]
 
     # angle = -np.atan2(peak_Q, peak_I)
 
     # plt.figure()
-    # plt.scatter(data.IQ_to_freq_diss_angle[:], angle)
+    # plt.scatter(data.IQ_to_freq_diss_angle[good_chan], angle)
     # one_to_one = np.arange(-4, 4) 
     # plt.plot(one_to_one, one_to_one, linestyle='--', color='red')
     # plt.plot(one_to_one, one_to_one + np.pi / 2, linestyle='--', color='green')
     # plt.figure()
-    # diff = data.IQ_to_freq_diss_angle[:] - angle
+    # diff = data.IQ_to_freq_diss_angle[good_chan] - angle
+    # pdb.set_trace()
 
     # too_large_indices = np.where(diff > np.pi)
     # too_small_indices = np.where(diff < -np.pi)
@@ -258,7 +262,9 @@ if __name__ == '__main__':
     # plt.hist(diff)
 
     # plt.figure()
-    # plt.scatter(np.arange(data.n_tones), diff)
+    # plt.scatter(np.arange(np.count_nonzero(data.chanmask)), diff)
 
     # plt.show()
     # pdb.set_trace()
+    # data.close()
+    # raw_data.close()
