@@ -976,6 +976,7 @@ STATIC_PROCESSED_DATA_FIELDS = [
     'detector_pol',
     'optical_visibility',
     'optical_image',
+    'interpolated_indices',
 ]
 
 PROCESSED_DATA_FIELD_LOCATIONS = {
@@ -987,6 +988,7 @@ PROCESSED_DATA_FIELD_LOCATIONS = {
     'data_freq_diss': '/data',
     'data_mK': '/data',
     'timestamp': '/data',
+    'interpolated_indices': '/data',
     'detector_az': '/data',
     'detector_za': '/data',
     'optical_image': '/global_data',
@@ -2401,12 +2403,23 @@ class ProcessedDataLN(ExternalLinkProcessedData):
     @classmethod
     def from_file(cls, date: str, setnum: int, level: int, mode: str='r'):
         fname = get_processed_level_file_template(date, setnum, level=level)
-        return cls(tables.File(fname, mode=mode), level=level)
+        pd = cls(tables.File(fname, mode=mode), level=level)
+        pd._load_dynamic_fields()
+        return pd
 
 
 class NewMapData(ProcessedDataLN):
-    def __init__(self, file: tables.File):
-        super().__init__(file)
+    def __init__(self, file, level=3):
+        super().__init__(file, level)
+
+    @classmethod
+    def from_file(cls, date: str, setnum: int, mode: str='r'):
+        # TODO: Appending "new" to compare with old data
+        file_path = Path(get_map_file_template(date, setnum))
+        file_path = file_path.with_stem(file_path.stem + '_new')
+        md = cls(tables.File(file_path, mode=mode), level=3)
+        md._load_dynamic_fields()
+        return md
 
     @classmethod
     def from_processed_data(cls, pdata: NewProcessedData) -> NewMapData:
@@ -2440,7 +2453,7 @@ class NewMapData(ProcessedDataLN):
         self.create_array('/map', 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
         self.create_array('/map', 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
         initial_good_samples = np.arange(self.n_samples)
-        good_samples = np.delete(initial_good_samples, self.interpolated_indices)
+        good_samples = np.setdiff1d(initial_good_samples, self.interpolated_indices)
         self.create_earray('/map', 'good_samples', expectedrows=self.n_samples, obj=good_samples)
 
     @property

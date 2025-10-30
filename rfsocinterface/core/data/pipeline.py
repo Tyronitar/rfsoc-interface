@@ -374,7 +374,7 @@ if __name__ == '__main__':
     # md = MapData.from_file(date, setnum)
     # pdb.set_trace()
     dataset = 'data_freq'
-    beam_map_mode = False
+    beam_map_mode = True
 
     ds_factor = 12
     hp_filt_freq = 0.05
@@ -422,7 +422,7 @@ if __name__ == '__main__':
     # newpipeline.add_routine(NewHighPassFilter(1, dataset='data_gain_phase'))
     # newpipeline.add_routine(psd)
     newpipeline.add_routine(newcleaner)
-    # newpipeline.add_routine(newbinner)
+    newpipeline.add_routine(newbinner)
 
     new_data = newpipeline.run_pipeline(date, setnum)
 #     from rfsocinterface.analysis.psd import plot_psd

@@ -11,6 +11,7 @@ import tables
 from scipy.optimize import curve_fit
 
 from rfsocinterface.core.data import MapData
+from rfsocinterface.core.data.data import NewMapData
 
 
 def Gauss_2d(
@@ -118,7 +119,7 @@ def analyze_beammap(
 
 
     # TODO: file name
-    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap_NO_swap_negative_angle.pdf'
+    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap_new.pdf'
     with PdfPages(pdf_file_name) as pdf:
         FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
         high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50)).flatten()
@@ -185,14 +186,15 @@ def analyze_beammap(
 if __name__ == '__main__':
     # date = '20250729'
     # setnum = 1012
-    date = '20250912'
+    date = '20251006'
 
-    setnum = 1014
+    setnum = 1009
 
-    md = MapData.from_file(date, setnum, 'r')
+    # md = MapData.from_file(date, setnum, 'r')
+    md = NewMapData.from_file(date, setnum)
     # for i in range(240, 250):
     #     md.plot_individual(i)
     #     plt.show(block=False)
-    # pdb.set_trace()
+    pdb.set_trace()
     analyze_beammap(md)
     md.close()
