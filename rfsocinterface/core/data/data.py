@@ -8,13 +8,14 @@ import pdb
 import time
 import inspect
 import logging
-from itertools import chain
+from itertools import chain, batched
 import typing
 
 import tables
 from tables.link import ExternalLink
 import numpy as np
 import numpy.typing as npt
+from numpy.polynomial import polynomial as poly
 from scipy.interpolate import make_interp_spline
 from numpy.polynomial import Polynomial
 from scipy.stats import linregress
@@ -1187,11 +1188,11 @@ def find_missed_packets(
             corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
         i += 1
 
-    fit = linregress(corrected_packet_idx, raw_timestamp[:])
     # new_timestamp.append(fit.slope * corrected_packet_idx + fit.intercept)
     print(f'{np.sum(missed_packets[:, 1])} missed packets')
 
     # Plotting Code for Debugging
+    # fit = linregress(corrected_packet_idx, raw_timestamp[:])
     # x = np.arange(n_samples)
     # y = fit.slope * x + fit.intercept
     # plt.scatter(corrected_packet_idx, timestamp[:])
@@ -1205,79 +1206,76 @@ def find_missed_packets(
 def interpolate_timestamp(
     raw_timestamp: npt.NDArray,
     new_timestamp: tables.Array,
-    missed_packets: npt.NDArray,
     packet_indices: npt.NDArray,
-    interpolated_indices: tables.EArray,
 ) -> npt.NDArray:
     normalized_packet_indices = packet_indices - packet_indices[0]
-    new_timestamp[normalized_packet_indices] = raw_timestamp[:]
+    n_samples = len(new_timestamp)
+    fit = linregress(normalized_packet_indices, raw_timestamp[:])
+    new_timestamp[:] = fit.slope * np.arange(n_samples) + fit.intercept
+    return fit.slope * normalized_packet_indices + fit.intercept
 
-    for i, this_missed_packets in missed_packets:
-        # Use the spline to interpolate data between sample i-1 and i
-        dtime = (raw_timestamp[i] - raw_timestamp[i - 1]) / this_missed_packets
-        missing_packet_start_t = raw_timestamp[i - 1] + dtime
-        current_t = raw_timestamp[i]
-        missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False)
-        missing_indices = list(range(normalized_packet_indices[i - 1] + 1, normalized_packet_indices[i]))
-        interpolated_indices.append(missing_indices)
-        new_timestamp[missing_indices] = missed_packet_t
     
 def interpolate_missing_data(
-    data_IQ: tables.Array,
+    data_I: tables.Array,
+    data_Q: tables.Array,
     timestamp: tables.Array,
     missed_packets: npt.NDArray,
     packet_indices: npt.NDArray,
+    valid_tone_index: npt.NDArray,
 ) -> tuple[npt.NDArray. npt.NDArray, npt.NDArray]:
     total_missed_packets = np.sum(missed_packets[:, 1])
-    n_tones = raw_data_I.shape[0]
-    total_samples = raw_data_I.shape[-1] + total_missed_packets
+    n_tones = np.size(valid_tone_index)
+    n_samples = data_I.shape[-1]
+    # total_samples = raw_data_I.shape[-1] + total_missed_packets
 
-    # Initialize Arrays
-    # output_data = np.zeros((2, n_tones, total_samples))
-    new_timestamp = np.zeros(total_samples)
     interpolated_indices = []
+    interpolated_data = np.zeros((2, n_tones, total_missed_packets), dtype=data_I.dtype)
     normalized_packet_indices = packet_indices - packet_indices[0]
-    output_data_IQ[0, :][:, normalized_packet_indices] = raw_data_I[:]
-    output_data_IQ[1, :][:, normalized_packet_indices] = raw_data_Q[:]
-    new_timestamp[normalized_packet_indices] = timestamp[:]
 
-    # Iterate over the spot where data was missed
-    window_size = 50
+    # Iterate over the spots where data was missed
+    count = 0
     for i, this_missed_packets in missed_packets:
+        window_size = 5 * this_missed_packets
+        index = normalized_packet_indices[i]
+        prev_index = normalized_packet_indices[i - 1]
         # Fit a spline using data from nearest (window_size * 2) packets
         min_t = max(0, i - window_size)
-        max_t = min(raw_data_I.shape[-1], i + window_size)
+        max_t = min(n_samples, i + window_size)
         window = range(min_t, max_t + 1)
-        times = timestamp[window]
-        i_data = raw_data_I[:, window]
-        q_data = raw_data_Q[:, window]
-        iq_data = np.stack((i_data, q_data))
-        spline = make_interp_spline(times, iq_data, axis=-1)
+        times = timestamp[packet_indices[window]]
+        i_data = data_I[:, window][valid_tone_index, :]
+        q_data = data_Q[:, window][valid_tone_index, :]
+        fit_I = poly.polyfit(times - times[0], i_data.T, 4)
+        fit_Q = poly.polyfit(times - times[0], q_data.T, 4)
 
-        # Use the spline to interpolate data between sample i-1 and i
-        dtime = (timestamp[i] - timestamp[i - 1]) / this_missed_packets
-        missing_packet_start_t = timestamp[i - 1] + dtime
-        current_t = timestamp[i]
-        missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False)
-        new_data = spline(missed_packet_t)
-        this_interpolated_indices = list(range(normalized_packet_indices[i - 1] + 1, normalized_packet_indices[i]))
+        # Interpolate data between sample i-1 and i
+        dtime = (timestamp[index] - timestamp[prev_index]) / this_missed_packets
+        missing_packet_start_t = timestamp[prev_index] + dtime
+        current_t = timestamp[index]
+        missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False) 
+        new_data_I = poly.polyval(missed_packet_t - times[0], fit_I)
+        new_data_Q = poly.polyval(missed_packet_t - times[0], fit_Q)
+        new_data = np.stack((new_data_I, new_data_Q))
+
+        this_interpolated_indices = list(range(prev_index + 1, index))
         interpolated_indices.extend(this_interpolated_indices)
-        output_data_IQ[:, :, this_interpolated_indices] = new_data
+        # data_IQ[:, :, this_interpolated_indices] = new_data
+        interpolated_data[:, :, count:count + this_missed_packets] = new_data
+        count += this_missed_packets
 
-        
         # Plotting Code for Debugging
-        ax = plt.axes(projection='3d')
-        x = np.linspace(times[0], times[-1], 150)
-        ax.plot3D(x, *spline(x)[:, 0], label='Spline Fit')
-        ax.scatter3D(times, *iq_data[:, 0], label='Actual Values')
-        ax.scatter3D(missed_packet_t, *new_data[:, 0], label='Interpolated Points')
-        ax.set_xlabel('Timestamp (s)')
-        ax.set_ylabel('ADC I')
-        ax.set_zlabel('ADC Q')
-        ax.legend()
-        plt.show()
-        pdb.set_trace()
-    return output_data_IQ, new_timestamp, interpolated_indices
+        # ax = plt.axes(projection='3d')
+        # x = np.linspace(times[0], times[-1], 150)
+        # ax.plot3D(x, poly.polyval(x - times[0], fit_I)[0], poly.polyval(x - times[0], fit_Q)[0], label='Polynomial Fit')
+        # ax.scatter3D(times, i_data[0, :], q_data[0, :], label='Actual Values')
+        # ax.scatter3D(missed_packet_t, *new_data[:, 0], label='Interpolated Points')
+        # ax.set_xlabel('Timestamp (s)')
+        # ax.set_ylabel('ADC I')
+        # ax.set_zlabel('ADC Q')
+        # ax.legend()
+        # plt.show()
+        # pdb.set_trace()
+    return interpolated_indices, interpolated_data
 
 
 
@@ -1400,6 +1398,15 @@ class ProcessedDataL0(DataStorage):
                 raw_time_ordered_data = f.root.time_ordered_data
                 this_n_tones = tone_counts[i]
 
+                # Get the correct tone indices in the TOD file
+                if int(date[:4]) < 2025:
+                    expr = tables.Expr('time_ordered_data.adc_i[:, 0] != 0')
+                    expr.eval()
+                    valid_tone_index = np.ndarray.flatten(np.argwhere(expr))
+                    valid_tone_index = valid_tone_index[:this_n_tones]
+                else:
+                    valid_tone_index = np.arange(this_n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
+
                 tone_indices = np.arange(sum(tone_counts[:i]), sum(tone_counts[:i+1]), dtype=int)
 
                 if raw_global_data.lo_sweep is None:
@@ -1410,6 +1417,7 @@ class ProcessedDataL0(DataStorage):
                # interpolate missing data
                 if i == 0:  # Only should make this once, since it's never changed
                     raw_timestamp = raw_time_ordered_data.timestamp[:n_samples]
+                    print('finding missed packets...')
                     missed_packets, corrected_packet_index = find_missed_packets(
                         raw_timestamp,
                         n_samples
@@ -1417,15 +1425,68 @@ class ProcessedDataL0(DataStorage):
                     n_missed = np.sum(missed_packets[:, 1])
                     total_samples = n_samples + n_missed
                     # Can now initialize time-ordered data arrays
+                    # chunksize = int(1e5)
                     timestamp = pfile.create_array(time_ordered_data_group, 'timestamp', shape=(total_samples,), atom=tables.Float64Atom())
-                    data_IQ = pfile.create_array(time_ordered_data_group, 'data_IQ', shape=(2, n_tones, total_samples), atom=tables.Float64Atom())
-                    interpolate_timestamp(
+                    chunkshape = (1, 1, int(5e5))
+                    clevel = 4
+                    cname = 'lz4'
+                    tables_filters = tables.Filters(
+                        complevel=clevel,
+                        complib="blosc2:%s" % cname,
+                        shuffle=True,
+                    )
+                    # data_IQ = pfile.create_array(time_ordered_data_group, 'data_IQ', shape=(2, n_tones, total_samples), atom=tables.Float64Atom())
+                    data_IQ = pfile.create_carray(time_ordered_data_group, 'data_IQ', shape=(2, n_tones, total_samples), atom=tables.Float64Atom())
+                    normalized_packet_indices = corrected_packet_index - corrected_packet_index[0]
+                    # n_chunks = int(np.ceil(total_samples / chunksize))
+                    # print('copying data')
+                    # data_IQ[0, :, normalized_packet_indices] = raw_time_ordered_data.adc_i[valid_tone_index, :]
+                    # data_IQ[1, :, normalized_packet_indices] = raw_time_ordered_data.adc_q[valid_tone_index, :]
+                    # for i, tone in enumerate(valid_tone_index):
+                    #     print(i)
+                    #     data_IQ[0, i, normalized_packet_indices] = raw_time_ordered_data.adc_i[tone][:]
+                    #     data_IQ[1, i, normalized_packet_indices] = raw_time_ordered_data.adc_q[tone][:]
+                    #     # data_IQ[1, i, normalized_packet_indices[j * chunksize:(j + 1) * chunksize]] = raw_time_ordered_data.adc_q[tone, j * chunksize:(j + 1) * chunksize]
+                    # print('done copying data')
+                    print('interpolating timestamp...')
+                    correct_timestamp = interpolate_timestamp(
                         raw_timestamp,
                         timestamp,
-                        missed_packets,
                         corrected_packet_index,
-                        interpolated_indices,
                     )
+                    # interpolate_data(
+                    #     raw_time_ordered_data.adc_i,
+                    #     raw_time_ordered_data.adc_q,
+                    #     correct_timestamp,
+                    #     missed_packets,
+                    #     corrected_packet_index,
+                    #     valid_tone_index,
+                    #     data_IQ,
+                    # )
+
+                # Interpolate Data
+                print('interpolating data...')
+                this_interpolated_indices, interpolated_data = interpolate_missing_data(
+                    raw_time_ordered_data.adc_i,
+                    raw_time_ordered_data.adc_q,
+                    timestamp,
+                    missed_packets,
+                    corrected_packet_index,
+                    valid_tone_index
+                )
+                interpolated_indices.append(this_interpolated_indices)
+
+                # Read IQ data
+                print('copying data')
+                for j, tone in enumerate(tone_indices):
+                    data_IQ[:, tone, this_interpolated_indices] = interpolated_data[:, j, :]
+                    data_IQ[0, tone, normalized_packet_indices] = raw_time_ordered_data.adc_i[valid_tone_index[j], :]
+                    data_IQ[1, tone, normalized_packet_indices] = raw_time_ordered_data.adc_q[valid_tone_index[j], :]
+                # for i, tone in enumerate(valid_tone_index):
+                #     print(i)
+                #     data_IQ[0, i, normalized_packet_indices] = raw_time_ordered_data.adc_i[tone, :]
+                #     data_IQ[1, i, normalized_packet_indices] = raw_time_ordered_data.adc_q[tone, :]
+                print('done copying data')
 
 
                 # Link to LO sweep
@@ -1450,19 +1511,12 @@ class ProcessedDataL0(DataStorage):
                     this_dfoverf_per_mK = np.ones_like(this_dfoverf_per_mK)
                 dfoverf_per_mK.append(this_dfoverf_per_mK)
 
-                # Get the correct tone indices in the TOD file
-                if int(date[:4]) < 2025:
-                    expr = tables.Expr('time_ordered_data.adc_i[:, 0] != 0')
-                    expr.eval()
-                    valid_tone_index = np.ndarray.flatten(np.argwhere(expr))
-                    valid_tone_index = valid_tone_index[:this_n_tones]
-                else:
-                    valid_tone_index = np.arange(this_n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
 
 
-                # Read IQ data
-                data_IQ[0, tone_indices, corrected_packet_index] = raw_time_ordered_data.adc_i[valid_tone_index, :]
-                data_IQ[1, tone_indices, corrected_packet_index] = raw_time_ordered_data.adc_q[valid_tone_index, :]
+
+                # # Read IQ data
+                # data_IQ[0, tone_indices, corrected_packet_index] = raw_time_ordered_data.adc_i[valid_tone_index, :]
+                # data_IQ[1, tone_indices, corrected_packet_index] = raw_time_ordered_data.adc_q[valid_tone_index, :]
                 
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
@@ -1489,13 +1543,13 @@ class ProcessedDataL0(DataStorage):
                 # Store chanmask from TOD
                 chanmask.append(raw_global_data.chanmask[:])
 
-        # Populate the arrays, interpolating where necessary
-        interpolate_missing_data(
-            data_IQ,
-            timestamp,
-            missed_packets,
-            corrected_packet_index
-        )
+        # # Populate the arrays, interpolating where necessary
+        # interpolate_missing_data(
+        #     data_IQ,
+        #     timestamp,
+        #     missed_packets,
+        #     corrected_packet_index
+        # )
 
         # Close telescope file as it's no longer needed
         if azel_exists:
@@ -2888,31 +2942,38 @@ def interpolate_data(
         timestamp: npt.NDArray,
         missed_packets: npt.NDArray,
         packet_indices: npt.NDArray,
+        valid_tone_index: npt.NDArray,
+        interpolated_data: tables.Array,
 ) -> tuple[npt.NDArray. npt.NDArray, npt.NDArray]:
     total_missed_packets = np.sum(missed_packets[:, 1])
-    n_tones = data_I.shape[0]
+    n_tones = len(valid_tone_index)
     total_samples = data_I.shape[-1] + total_missed_packets
 
     # Initialize Arrays
-    interpolated_data = np.zeros((2, n_tones, total_samples))
+    # interpolated_data = np.zeros((2, n_tones, total_samples))
     new_timestamp = np.zeros(total_samples)
     interpolated_indices = []
     normalized_packet_indices = packet_indices - packet_indices[0]
-    interpolated_data[0, :][:, normalized_packet_indices] = data_I[:]
-    interpolated_data[1, :][:, normalized_packet_indices] = data_Q[:]
+    # print('copying data over')
+    # interpolated_data[0, :][:, normalized_packet_indices] = data_I[valid_tone_index, :]
+    # interpolated_data[1, :][:, normalized_packet_indices] = data_Q[valid_tone_index, :]
+    # print('done')
     new_timestamp[normalized_packet_indices] = timestamp[:]
 
     # Iterate over the spot where data was missed
     # window_size = 50
     for i, this_missed_packets in missed_packets:
+        print(f'interpolating data for i={i} with {this_missed_packets} missed packets')
         window_size = 5 * this_missed_packets
         # Fit a spline using data from nearest (window_size * 2) packets
         min_t = max(0, i - window_size)
         max_t = min(data_I.shape[-1], i + window_size)
         window = range(min_t, max_t + 1)
         times = timestamp[window]
-        i_data = data_I[:, window]
-        q_data = data_Q[:, window]
+        print('accessing iq data...')
+        i_data = data_I[:, window][valid_tone_index, :]
+        q_data = data_Q[:, window][valid_tone_index, :]
+        print('done')
         iq_data = np.stack((i_data, q_data))
         fit_I = np.polyfit(times - times[0], i_data[0], 4)
         fit_Q = np.polyfit(times - times[0], q_data[0], 4)
@@ -2956,12 +3017,14 @@ if __name__ == '__main__':
     # setnum = 1011
     SAMPLE_RATE = 488
 
-    f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')
-    corrected_timestamp, missed_packets, corrected_packet_index = compute_timestamp(f, sigma=2.0)
-    data_I = f.root.time_ordered_data.adc_i
-    data_Q = f.root.time_ordered_data.adc_q
-    interpolate_data(data_I, data_Q, corrected_timestamp, missed_packets, corrected_packet_index)
-    f.close()
+    pd = ProcessedDataL0.from_tod(date, setnum)
+    # f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')
+    # corrected_timestamp, missed_packets, corrected_packet_index = compute_timestamp(f, sigma=2.0)
+    # data_I = f.root.time_ordered_data.adc_i
+    # data_Q = f.root.time_ordered_data.adc_q
+    # interpolate_data(data_I, data_Q, corrected_timestamp, missed_packets, corrected_packet_index)
+    # f.close()
+    pdb.set_trace()
    
     # pd.close()
 #     date = '20250916'
