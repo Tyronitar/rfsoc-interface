@@ -195,6 +195,35 @@ def generate_calibrated_data(data_group: tables.Group, global_data_group: tables
     data_group.data_mK[:] = np.divide(data_group.data_freq_diss[0, :], global_data_group.df_per_mK[:][:, np.newaxis])
     # data.data_mK[:] = np.where(np.isinf(data.data_mK), np.nan, data.data_mK)
 
+def new_generate_calibrated_data(pd: ProcessedDataL1):
+    if isinstance(pd.get_node('data_IQ'), ExternalLink):
+        data_IQ = np.zeros(pd.data_IQ.shape, pd.data_IQ.dtype)
+    else:
+        data_IQ = pd.data_IQ
+        
+
+    rotate_basis(
+        pd.data_gain_phase,
+        data_IQ,
+        -pd.IQ_to_gain_phase_angle[:],
+    )
+    data_IQ[:] = data_IQ[:] - np.mean(data_IQ[:], axis=2, keepdims=True)
+    # data.data_IQ[0, :] = data.data_IQ[0, :] - np.mean(data.data_IQ[0, :], axis=1, keepdims=True)
+    # data.data_IQ[1, :] = data.data_IQ[1, :] - np.mean(data.data_IQ[1, :], axis=1, keepdims=True)
+
+
+    #now use the derivatives to convert to a frequency shift
+    #need to optimally weight the data based on the response
+    #in each direction (assuming the noise is identical in I and Q)
+    #this will then yield data_f
+
+    rotate_basis(data_IQ[:] / pd.adc_units_to_hz[:][:, np.newaxis], pd.data_freq_diss, pd.IQ_to_freq_diss_angle[:])
+    # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
+
+    # Finally, we need to get data_mK
+    pd.data_mK[:] = np.divide(pd.data_freq_diss[0, :], pd.df_per_mK[:][:, np.newaxis])
+    # data.data_mK[:] = np.where(np.isinf(data.data_mK), np.nan, data.data_mK)
+
 #
 # Electronics Noise Removal
 #
@@ -1319,11 +1348,15 @@ class BaseProcessedData(DataStorage):
     @property
     def lo_freq(self) -> float:
         return self.lo_sweep_group._v_attrs.lo_freq
+
+    @lo_freq.setter
+    def lo_freq(self, lo_freq: float):
+        self.lo_sweep_group._v_attrs.lo_freq = lo_freq
     
     @property
     def baseband_freqs(self) -> tables.Array:
-        return self.global_data_group.baseband_freqs
- 
+        return self.get_node_value('baseband_freqs')
+
     @property
     def tones(self) -> npt.NDArray:
         return self.baseband_freqs[:] + self.lo_freq
@@ -1331,10 +1364,18 @@ class BaseProcessedData(DataStorage):
     @property
     def n_tones(self) -> int:
         return self._file.root.data._v_attrs.n_tones 
+    
+    @n_tones.setter
+    def n_tones(self, n_tones: int):
+        self._file.root.data._v_attrs.n_tones = n_tones
 
     @property
     def n_samples(self) -> int:
         return self._file.root.data._v_attrs.n_samples
+
+    @n_samples.setter
+    def n_samples(self, n_samples: int):
+        self._file.root.data._v_attrs.n_samples = n_samples
     
     @property
     def optical_image(self) -> tables.Array:
@@ -1600,7 +1641,6 @@ class ProcessedDataL0(BaseProcessedData):
                 this_data_IQ[0, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_i[:]
                 this_data_IQ[1, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_q[:]
                 this_data_IQ[:, valid_tone_index][:, :, this_interpolated_indices] = interpolated_data
-                pdb.set_trace()
                 data_IQ.append(this_data_IQ[:, valid_tone_index])
                 print('done copying data')
                 # for j, tone in enumerate(tone_indices):
@@ -2028,6 +2068,9 @@ class ProcessedDataL1(NewProcessedData):
         
         # Copy global data
         self.create_external_link(global_data_group, 'dfoverf_per_mK', f'{target.filename}:/{target.dfoverf_per_mK._v_pathname}')
+        self.create_external_link(global_data_group, 'chanmask', f'{target.filename}:/{target.chanmask._v_pathname}')
+        self.create_external_link(global_data_group, 'detector_pol', f'{target.filename}:/{target.detector_pol._v_pathname}')
+        self.create_external_link(global_data_group, 'detector_beam_ampl', f'{target.filename}:/{target.detector_beam_ampl._v_pathname}')
         
     
     @classmethod
@@ -2048,10 +2091,12 @@ class ProcessedDataL1(NewProcessedData):
         pfile.root._v_attrs.receipt = ''
 
         total_samples = l0.n_samples
-        n_samples_ds = total_samples // ds_factor
+        n_samples_ds = int(np.ceil(total_samples / ds_factor))
         n_tones = l0.n_tones
 
         new_data = cls(pfile, level=1)
+        l0.close()
+        l0.open('r')
         new_data.link_to_l0(l0)
 
         new_data.n_samples = n_samples_ds
@@ -2141,7 +2186,7 @@ class ProcessedDataL1(NewProcessedData):
             timestamp = new_data.create_array(
                 new_data.data_group,
                 'timestamp',
-                shape=(n_samples_ds),
+                shape=(n_samples_ds,),
                 atom=tables.Float64Atom(),
             )
             detector_az = new_data.create_array(
@@ -2158,10 +2203,14 @@ class ProcessedDataL1(NewProcessedData):
             )
             # decimate_in_chunks(time_ordered_data.adc_i[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[0, :])
             # decimate_in_chunks(time_ordered_data.adc_q[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[1, :])
-            data_IQ[:] = signal.decimate(l0.data_IQ[:])
-            timestamp[:] = signal.decimate(l0.timestamp[:])
-            detector_az[:] = signal.decimate(l0.detector_az[:])
-            detector_za[:] = signal.decimate(l0.detector_za[:])
+            data_IQ[:] = signal.decimate(l0.data_IQ[:], ds_factor)
+            timestamp[:] = l0.timestamp[::ds_factor]
+            if azel_shape[1] == 0:
+                detector_az[:] = l0.detector_az[:]
+                detector_za[:] = l0.detector_za[:]
+            else:
+                detector_az[:] = l0.detector_az[:, ::ds_factor]
+                detector_za[:] = l0.detector_za[:, ::ds_factor]
         else:
             data_IQ = new_data.create_external_link(new_data.data_group, 'data_IQ', f'{l0.filename}:{l0.data_IQ._v_pathname}')
             timestamp = new_data.create_external_link(new_data.data_group, 'timestamp', f'{l0.filename}:{l0.timestamp._v_pathname}')
@@ -2184,7 +2233,7 @@ class ProcessedDataL1(NewProcessedData):
             remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=electronics_noise_lp_filt_freq, max_modes=max_modes)
 
         # Create calibrated data
-        generate_calibrated_data(new_data.data_group, new_data.global_data_group)
+        new_generate_calibrated_data(new_data)
         
         return new_data
 
@@ -2194,21 +2243,21 @@ class ExternalLinkProcessedData(NewProcessedData):
     def __init__(self, file: tables.File):
         super().__init__(file)
 
-    def _load_dynamic_fields(self):
-        for field_name in DYNAMIC_PROCESSED_DATA_FIELDS:
-            setattr(self, field_name, self.get_node(field_name))
-    
     def open(self, mode: str='r'):
         super().open(mode=mode)
         self._load_dynamic_fields()
 
+    def _load_dynamic_fields(self):
+        for field_name in DYNAMIC_PROCESSED_DATA_FIELDS:
+            setattr(self, field_name, self.get_node(field_name))
+
+    # @property
+    # def baseband_freqs(self) -> tables.Array:
+    #     return self.global_data_group.baseband_freqs(mode='r') 
+
     @property
     def carrier_amplitudes(self) -> PyTablesDataset:
         return self._carrier_amplitudes
-
-    @property
-    def baseband_freqs(self) -> tables.Array:
-        return self.global_data_group.baseband_freqs(mode='r')
 
     @carrier_amplitudes.setter
     def carrier_amplitudes(self, carrier_amplitudes: tables.Array | ExternalLink):
@@ -3211,15 +3260,21 @@ def interpolate_data(
 
 
 if __name__ == '__main__':
-    date = '20251006'
-    setnum = 1009
-    # date = '20250529'
-    # setnum = 1011
+    # date = '20251006'
+    # setnum = 1009
+    # Telescope Testing
+    # date = '20250906'
+    # setnum = 1012
     SAMPLE_RATE = 488
+    # Lab Testing
+    date = '20250916'
+    setnum = 1017
 
-    # pd = ProcessedDataL0.from_tod(date, setnum)
-    pd = ProcessedDataL0.from_file(date, setnum)
-    pd11 = ProcessedDataL1.from_level0(pd)
+    pd = ProcessedDataL0.from_tod(date, setnum)
+    # pd = ProcessedDataL0.from_file(date, setnum)
+    pd1 = ProcessedDataL1.from_level0(pd, ds_factor=5)
+    from kidpy3 import RawDataFile
+    f = RawDataFile('/data/20250916/20250916_Be231102p2_100_tones_TOD_set1017.h5', 'r')
     # f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')
     # corrected_timestamp, missed_packets, corrected_packet_index = compute_timestamp(f, sigma=2.0)
     # data_I = f.root.time_ordered_data.adc_i
