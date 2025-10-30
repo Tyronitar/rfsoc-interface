@@ -257,7 +257,7 @@ class CleanTOD(DataRoutine):
         #average template subtraction
         data = getattr(pd, self.dataset)
         goodchan = np.ndarray.flatten(np.argwhere(pd.chanmask[:] == 1))
-        template = np.nansum(data[goodchan, :], axis=0)
+        template = np.nanmedian(data[goodchan, :], axis=0)
         template = template - np.mean(template)
         template_corr = np.sum(np.multiply(data[goodchan, :],template), axis=1) / \
                         np.sum(np.multiply(template,template))
