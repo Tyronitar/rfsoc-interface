@@ -193,11 +193,11 @@ def analyze_beammap(
             data_to_plot = np.flip(np.transpose(map_val[idx, ::-1]), 1)
             data_to_plot -= np.nanmedian(data_to_plot)
             data_to_plot /= np.nanmax(data_to_plot)
-            data_to_plot = 10 * np.log10(np.abs(data_to_plot))
+            # data_to_plot = 10 * np.log10(np.abs(data_to_plot))
             im = ax.imshow(
                 data_to_plot,
-                vmin=-10,
-                vmax=0,
+                # vmin=-10,
+                # vmax=0,
                 extent=extent,
                 aspect='equal',
                 cmap='jet',
