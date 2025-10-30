@@ -363,9 +363,9 @@ class NewBinTODIntoMap(NewDataRoutine):
 
         wind = signal.get_window('hamming', md.n_samples)
 
-        data = getattr(md, self.dataset)[:]
+        # data = getattr(md, self.dataset)[:]
         if self.beam_map_mode:
-            data = md.data_freq[:]
+            data = md.get_data_freq()
         else:
             data = md.data_mK[:]
         sum_map = np.zeros(md.sum_map.shape)

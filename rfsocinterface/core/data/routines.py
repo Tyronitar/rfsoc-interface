@@ -282,14 +282,20 @@ class NewCleanTOD(NewDataRoutine):
 
         # TODO: Does this need to still support the "good_sample" stuff?
         #average template subtraction
-        data = getattr(pd, self.dataset)
         goodchan = np.ndarray.flatten(np.argwhere(pd.chanmask[:] == 1))
-        template = np.nansum(data[goodchan, :], axis=0)
+        if self.dataset == 'data_freq':
+            data = pd.data_freq_diss
+            array_slice = (0, goodchan, slice(None))
+        else:
+            # BUG: This breaks if data has shape (2, n_tones, n_samples)
+            data = getattr(pd, self.dataset)
+            array_slice = (goodchan, slice(None))
+        template = np.nansum(data[array_slice], axis=0)
         template = template - np.mean(template)
-        template_corr = np.sum(np.multiply(data[goodchan, :],template), axis=1) / \
+        template_corr = np.sum(np.multiply(data[array_slice],template), axis=1) / \
                         np.sum(np.multiply(template,template))
         # TODO: This edits the original processed file...
-        data[goodchan, :] = data[goodchan, :] - np.outer(template_corr, template)
+        data[array_slice] = data[array_slice] - np.outer(template_corr, template)
 
         # with tables.File(pd.cleaned_file_template, 'w') as cfile:
         #     cfile.create_array('/', 'chanmask', pd.chanmask[:])

@@ -970,7 +970,6 @@ DYNAMIC_PROCESSED_DATA_FIELDS = [
 ]
 
 STATIC_PROCESSED_DATA_FIELDS = [
-    'vis',
     'df_per_mK',
     'detector_az',
     'detector_za',
@@ -1420,8 +1419,8 @@ class BaseProcessedData(DataStorage):
         return self.get_node_value('detector_za')
 
     @property
-    def vis(self) -> tables.Array:
-        return self.get_node_value('vis')
+    def optical_visibility(self) -> tables.Array:
+        return self.get_node_value('optical_visibility')
 
     @property
     def dfoverf_per_mK(self) -> tables.Array:
@@ -1529,14 +1528,13 @@ class ProcessedDataL0(BaseProcessedData):
         else:
             pfile.create_array(global_data_group, 'optical_image', obj=np.array([]))
             optical_image = None
-        vis = pfile.create_array(global_data_group, 'vis', vis)
         dfoverf_per_mK = pfile.create_earray(global_data_group, 'dfoverf_per_mK', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
         detector_beam_amplitude = pfile.create_earray(global_data_group, 'detector_beam_ampl', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
         chanmask = pfile.create_earray(global_data_group, 'chanmask', shape=(0,), expectedrows=n_tones, atom=tables.Int8Atom(dflt=1))
         baseband_freqs = pfile.create_earray(global_data_group, 'baseband_freqs', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
         # chanmask[:] = 1
         detector_pol = pfile.create_earray(global_data_group, 'detector_pol', shape=(0,), expectedrows=n_tones, atom=tables.Int8Atom())
-        optical_visibility = pfile.create_array(global_data_group, 'optical_visibility', shape=(1,), atom=tables.Float64Atom())
+        optical_visibility = pfile.create_array(global_data_group, 'optical_visibility', obj=vis)
 
         time_ordered_data_group._v_attrs.n_tones = n_tones
         time_ordered_data_group._v_attrs.n_samples = n_samples
@@ -2076,6 +2074,8 @@ class ProcessedDataL1(NewProcessedData):
         self.create_external_link(global_data_group, 'chanmask', f'{target.filename}:/{target.chanmask._v_pathname}')
         self.create_external_link(global_data_group, 'detector_pol', f'{target.filename}:/{target.detector_pol._v_pathname}')
         self.create_external_link(global_data_group, 'detector_beam_ampl', f'{target.filename}:/{target.detector_beam_ampl._v_pathname}')
+        self.create_external_link(global_data_group, 'optical_visibility', f'{target.filename}:/{target.optical_visibility._v_pathname}')
+        self.create_external_link(global_data_group, 'optical_image', f'{target.filename}:/{target.optical_image._v_pathname}')
         
     
     @classmethod
@@ -2091,9 +2091,6 @@ class ProcessedDataL1(NewProcessedData):
         if not pfile_path.exists():
             pfile_path.touch(PERMISSIONS_ALL_FULL)
         pfile = tables.File(pfile_path, mode='w')
-        pfile.root._v_attrs.date = date
-        pfile.root._v_attrs.setnum = setnum
-        pfile.root._v_attrs.receipt = ''
 
         total_samples = l0.n_samples
         n_samples_ds = int(np.ceil(total_samples / ds_factor))
@@ -2442,7 +2439,9 @@ class NewMapData(ProcessedDataLN):
         self.create_array('/map', 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
         self.create_array('/map', 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
         self.create_array('/map', 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
-        self.create_earray('/map', 'good_samples', expectedrows=self.n_samples, obj=np.arange(self.n_samples))
+        initial_good_samples = np.arange(self.n_samples)
+        good_samples = np.delete(initial_good_samples, self.interpolated_indices)
+        self.create_earray('/map', 'good_samples', expectedrows=self.n_samples, obj=good_samples)
 
     @property
     def map_az(self) -> tables.Array:
@@ -2606,7 +2605,7 @@ class NewMapData(ProcessedDataLN):
         plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
         extent=self.extent(), colors='red')
         plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
-        ', Optical Visibility = ' + str(self.vis[()]) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
+        ', Optical Visibility = ' + str(self.optical_visibility[()]) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
         ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
         plt.ylabel('ZA (degrees)')
         plt.xlim(this_xlim), plt.ylim(this_ylim)
@@ -3274,21 +3273,16 @@ def interpolate_data(
 
 
 if __name__ == '__main__':
-    # date = '20251006'
-    # setnum = 1009
     # Telescope Testing
-    # date = '20250906'
-    # setnum = 1012
-    SAMPLE_RATE = 488
+    date = '20251006'
+    setnum = 1009
     # Lab Testing
-    date = '20250916'
-    setnum = 1017
+    # date = '20250916'
+    # setnum = 1017
 
-    pd = ProcessedDataL0.from_tod(date, setnum)
+    pd = ProcessedDataL0.from_tod(date, setnum, beam_map_mode=True)
     # pd = ProcessedDataL0.from_file(date, setnum)
-    pd1 = ProcessedDataL1.from_level0(pd, ds_factor=5, do_electronics_noise_removal=False)
-    from kidpy3 import RawDataFile
-    f = RawDataFile('/data/20250916/20250916_Be231102p2_100_tones_TOD_set1017.h5', 'r')
+    pd1 = ProcessedDataL1.from_level0(pd, ds_factor=12, do_electronics_noise_removal=False)
     # f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')
     # corrected_timestamp, missed_packets, corrected_packet_index = compute_timestamp(f, sigma=2.0)
     # data_I = f.root.time_ordered_data.adc_i
