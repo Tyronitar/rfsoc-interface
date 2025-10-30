@@ -132,7 +132,11 @@ class NewCutoffFilter(NewDataRoutine):
         self.dataset = dataset
 
     def forward(self, pd: NewProcessedData):
-        data = getattr(pd, self.dataset)
+        # TODO: Fix this hacky handling of data_freq
+        if self.dataset == 'data_freq':
+            data = pd.data_freq_diss
+        else:
+            data = getattr(pd, self.dataset)
         filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
 
         # Apply cutoff filter
