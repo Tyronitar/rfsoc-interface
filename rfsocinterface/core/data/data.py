@@ -1390,6 +1390,10 @@ class BaseProcessedData(DataStorage):
 
     def get_data_Q(self) -> npt.NDArray:
         return self.data_IQ[1]
+
+    @property
+    def interpolated_indices(self) -> tables.Array:
+        return self.get_node_value('interpolated_indices')
   
     @property
     def timestamp(self) -> tables.Array:
@@ -1640,8 +1644,9 @@ class ProcessedDataL0(BaseProcessedData):
                 print('copying data')
                 this_data_IQ[0, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_i[:]
                 this_data_IQ[1, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_q[:]
-                this_data_IQ[:, valid_tone_index][:, :, this_interpolated_indices] = interpolated_data
-                data_IQ.append(this_data_IQ[:, valid_tone_index])
+                this_data_IQ = this_data_IQ[:, valid_tone_index]
+                this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
+                data_IQ.append(this_data_IQ)
                 print('done copying data')
                 # for j, tone in enumerate(tone_indices):
                 #     data_IQ[:, tone, this_interpolated_indices] = interpolated_data[:, j, :]
@@ -2201,6 +2206,13 @@ class ProcessedDataL1(NewProcessedData):
                 shape=azel_shape,
                 atom=tables.Float64Atom(),
             )
+            interpolated_indices = new_data.create_earray(
+                new_data.data_group,
+                'interpolated_indices',
+                shape=(0,),
+                expectedrows=len(l0.interpolated_indices),
+                atom=tables.Float64Atom(),
+            )
             # decimate_in_chunks(time_ordered_data.adc_i[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[0, :])
             # decimate_in_chunks(time_ordered_data.adc_q[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[1, :])
             data_IQ[:] = signal.decimate(l0.data_IQ[:], ds_factor)
@@ -2211,11 +2223,13 @@ class ProcessedDataL1(NewProcessedData):
             else:
                 detector_az[:] = l0.detector_az[:, ::ds_factor]
                 detector_za[:] = l0.detector_za[:, ::ds_factor]
+            interpolated_indices.append(l0.interpolated_indices[l0.interpolated_indices[:] % ds_factor == 0] // ds_factor)
         else:
             data_IQ = new_data.create_external_link(new_data.data_group, 'data_IQ', f'{l0.filename}:{l0.data_IQ._v_pathname}')
             timestamp = new_data.create_external_link(new_data.data_group, 'timestamp', f'{l0.filename}:{l0.timestamp._v_pathname}')
             detector_az = new_data.create_external_link(new_data.data_group, 'detector_az', f'{l0.filename}:{l0.detector_az._v_pathname}')
             detector_za = new_data.create_external_link(new_data.data_group, 'detector_za', f'{l0.filename}:{l0.detector_za._v_pathname}')
+            interpolated_indices = new_data.create_external_link(new_data.data_group, 'interpolated_indices', f'{l0.filename}:{l0.interpolated_indices._v_pathname}')
         carrier_amplitudes[:] = np.nanmedian(new_data.data_IQ[:])
 
 
@@ -3272,7 +3286,7 @@ if __name__ == '__main__':
 
     pd = ProcessedDataL0.from_tod(date, setnum)
     # pd = ProcessedDataL0.from_file(date, setnum)
-    pd1 = ProcessedDataL1.from_level0(pd, ds_factor=5)
+    pd1 = ProcessedDataL1.from_level0(pd, ds_factor=5, do_electronics_noise_removal=False)
     from kidpy3 import RawDataFile
     f = RawDataFile('/data/20250916/20250916_Be231102p2_100_tones_TOD_set1017.h5', 'r')
     # f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')
