@@ -124,7 +124,8 @@ def analyze_beammap(
 
 
     # TODO: file name
-    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap_new.pdf'
+    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap.pdf'
+
     with PdfPages(pdf_file_name) as pdf:
         FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
         high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50)).flatten()
@@ -264,6 +265,6 @@ if __name__ == '__main__':
     # for i in range(240, 250):
     #     md.plot_individual(i)
     #     plt.show(block=False)
-    pdb.set_trace()
+    # pdb.set_trace()
     analyze_beammap(md, show_all=True)
     md.close()

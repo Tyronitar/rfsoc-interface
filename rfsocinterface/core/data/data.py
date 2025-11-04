@@ -55,6 +55,8 @@ DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
+RFSOC_TIME_OFFSET = -0.05  # -50 ms, empirically determined
+
 PARAM_FILE_N_TONE_ATTRIBUTES = [
     'baseband_freqs',
     'tone_powers',
@@ -1241,7 +1243,7 @@ def interpolate_timestamp(
     normalized_packet_indices = packet_indices - packet_indices[0]
     n_samples = len(new_timestamp)
     fit = linregress(normalized_packet_indices, raw_timestamp[:])
-    new_timestamp[:] = fit.slope * np.arange(n_samples) + fit.intercept
+    new_timestamp[:] = fit.slope * np.arange(n_samples) + fit.intercept + RFSOC_TIME_OFFSET
     return fit.slope * normalized_packet_indices + fit.intercept
 
     
