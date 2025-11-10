@@ -12,7 +12,6 @@ import tables
 from scipy.optimize import curve_fit
 
 from rfsocinterface.core.data import MapData
-from rfsocinterface.core.data.data import NewMapData
 
 
 def Gauss_2d(
@@ -261,7 +260,7 @@ if __name__ == '__main__':
     setnum = 1009
 
     # md = MapData.from_file(date, setnum, 'r')
-    md = NewMapData.from_file(date, setnum)
+    md = MapData.from_file(date, setnum)
     # for i in range(240, 250):
     #     md.plot_individual(i)
     #     plt.show(block=False)
