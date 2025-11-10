@@ -38,6 +38,7 @@ from rfsocinterface.core.utils import (
     get_params_file_template,
     DATA_DIRECTORY,
     DEFAULT_PARAMS_DIRECTORY,
+    ensure_path
 )
 
 _logger = logging.getLogger(__name__)
@@ -981,6 +982,19 @@ STATIC_PROCESSED_DATA_FIELDS = [
     'interpolated_indices',
 ]
 
+ALL_PROCESSED_DATA_FIELDS = DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS
+
+MAP_DATA_FIELDS = [
+    'hits_map',
+    'sum_map',
+    'map_az',
+    'map_za',
+    'net',
+    'good_samples'
+]
+
+ALL_MAP_DATA_FIELDS = ALL_PROCESSED_DATA_FIELDS + MAP_DATA_FIELDS
+
 PROCESSED_DATA_FIELD_LOCATIONS = {
     'carrier_amplitudes': '/data',
     'data_IQ': '/data',
@@ -1060,7 +1074,6 @@ class DataStorage:
             expectedrows: int=1000,
     ) -> tables.Array:
         return self._file.create_earray(where, name, shape=shape, obj=obj, atom=atom, expectedrows=expectedrows)
-    
     
     def create_group(self, where: tables.Group | str, name: str) -> tables.Group:
         return self._file.create_group(where, name)
@@ -1320,12 +1333,29 @@ class BaseProcessedData(DataStorage):
     def from_file(cls, date: str, setnum: int, mode: str='r', level: int=1):
         fname = get_processed_level_file_template(date, setnum, level=level)
         return cls(tables.File(fname, mode=mode), level=level)
+    
+    @ensure_path(1)
+    def compile_to_file(self, path: Path, datasets: list[str]=None, mode: str='w') -> tables.File:
+        if not path.exists():
+            path.touch(PERMISSIONS_ALL_FULL)
+        new_file = tables.open_file(path, mode=mode)
+
+        new_file.root._v_attrs.date = self.date
+        new_file.root._v_attrs.setnum = self.setnum
+        new_file.root._v_attrs.receipt = self.receipt
+
+        if datasets is None:
+            datasets = ALL_PROCESSED_DATA_FIELDS
+        for dataset in datasets:
+            new_file.create_array('/', dataset, obj=getattr(self, dataset)[:])
+        
+        return new_file
 
     def get_node(self, name: str, where: str='/') -> tables.Node:
         if where is None:
             where = PROCESSED_DATA_FIELD_LOCATIONS[name]
         return super().get_node(name, where=where)
-   
+    
     @property
     def global_data_group(self) -> tables.Group:
         return self._file.root.global_data
@@ -2457,6 +2487,12 @@ class NewMapData(ProcessedDataLN):
         initial_good_samples = np.arange(self.n_samples)
         good_samples = np.setdiff1d(initial_good_samples, self.interpolated_indices)
         self.create_earray('/map', 'good_samples', expectedrows=self.n_samples, obj=good_samples)
+    
+    @ensure_path(1)
+    def compile_to_file(self, path: Path, datasets: list[str]=None, mode: str='w') -> tables.File:
+        if datasets is None:
+            datasets = ALL_MAP_DATA_FIELDS
+        return super().compile_to_file(path, datasets=datasets, mode=mode)
 
     @property
     def map_az(self) -> tables.Array:
