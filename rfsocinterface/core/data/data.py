@@ -30,7 +30,6 @@ from rfsocinterface.core.utils import (
     get_azel_template,
     get_optcam_template,
     get_processed_file_template,
-    get_processed_level_file_template,
     get_cleaned_file_template,
     get_file_stub,
     get_map_file_template,
@@ -720,7 +719,7 @@ class DataStorage:
     
     @property
     def processed_file_template(self) -> str:
-        return get_processed_level_file_template(self.date, self.setnum, level=self.level)
+        return get_processed_file_template(self.date, self.setnum, level=self.level)
 
     @property
     def cleaned_file_template(self) -> str:
@@ -786,7 +785,7 @@ class BaseProcessedData(DataStorage):
 
     @classmethod
     def from_file(cls, date: str, setnum: int, mode: str='r', level: int=1):
-        fname = get_processed_level_file_template(date, setnum, level=level)
+        fname = get_processed_file_template(date, setnum, level=level)
         return cls(tables.File(fname, mode=mode), level=level)
     
     @ensure_path(1)
@@ -996,7 +995,7 @@ class ProcessedDataL0(BaseProcessedData):
             vis=0.
 
         # Create processed data file
-        pfile_path = Path(get_processed_level_file_template(date, setnum, level=0))
+        pfile_path = Path(get_processed_file_template(date, setnum, level=0))
         if not pfile_path.exists():
             pfile_path.touch(PERMISSIONS_ALL_FULL)
         pfile = tables.open_file(pfile_path, 'w')
@@ -1264,7 +1263,7 @@ class ProcessedDataL1(ProcessedData):
         ds_factor: int=1,
         max_modes: int=30,
     ) -> ProcessedDataL1:
-        pfile_path = Path(get_processed_level_file_template(l0.date, l0.setnum, level=1))
+        pfile_path = Path(get_processed_file_template(l0.date, l0.setnum, level=1))
         if not pfile_path.exists():
             pfile_path.touch(PERMISSIONS_ALL_FULL)
         pfile = tables.File(pfile_path, mode='w')
@@ -1556,7 +1555,7 @@ class ProcessedDataLN(ExternalLinkProcessedData):
     def from_previous_level(cls, previous: ProcessedData) -> ProcessedDataLN:
         """Create a level N processed file with external links to level N-1."""
         level = previous.level + 1
-        pfile_path = Path(get_processed_level_file_template(previous.date, previous.setnum, level=level))
+        pfile_path = Path(get_processed_file_template(previous.date, previous.setnum, level=level))
         if not pfile_path.exists():
             pfile_path.touch(PERMISSIONS_ALL_FULL)
         file = tables.File(pfile_path, mode='w')
@@ -1572,7 +1571,7 @@ class ProcessedDataLN(ExternalLinkProcessedData):
 
     @classmethod
     def from_file(cls, date: str, setnum: int, level: int, mode: str='r'):
-        fname = get_processed_level_file_template(date, setnum, level=level)
+        fname = get_processed_file_template(date, setnum, level=level)
         pd = cls(tables.File(fname, mode=mode), level=level)
         pd._load_dynamic_fields()
         return pd

@@ -711,11 +711,8 @@ def get_optcam_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) ->
     return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
 
 
-def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_processed_data_set{setnum}.h5'
 
-
-def get_processed_level_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
+def get_processed_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, level: int=1) -> str:
     return f'{data_dir}/{date}/{date}_processed_data_level{level}_set{setnum}.h5'
 
 
