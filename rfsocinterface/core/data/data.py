@@ -89,6 +89,7 @@ STATIC_PROCESSED_DATA_FIELDS = [
     'optical_visibility',
     'optical_image',
     'interpolated_indices',
+    'baseband_freqs',
 ]
 
 ALL_PROCESSED_DATA_FIELDS = DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS
@@ -766,7 +767,7 @@ class DataStorage:
     def receipt(self) -> str:
         return self._file.root._v_attrs.receipt 
 
-    def add_receipt(self, receipt: str):
+    def set_receipt(self, receipt: str):
         """Add a receipt entry to the processed data file."""
         self._file.root._v_attrs.receipt = receipt
         self._file.flush()
@@ -1527,10 +1528,6 @@ class ExternalLinkProcessedData(ProcessedData):
         for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
             self._file.create_external_link(lo_group, node._v_name, node.target)
         lo_group._v_attrs.lo_freq = target.lo_freq
-        if isinstance(target, ProcessedDataLN):
-            self._file.create_external_link(global_data_group, 'baseband_freqs', target.global_data_group.baseband_freqs.target)
-        else:
-            self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
 
         # Create external links for all datasets
         for node_name in DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS:
@@ -1747,7 +1744,7 @@ class MapData(ProcessedDataLN):
     def plot_individual(self, index: int):
         plot_map(self.map[index], self.map_az, self.map_za, self.extent(), title=f'Resonator {index}')
 
-    def plot(self, save: bool=True) -> plt.Figure:
+    def plot(self, save: bool=True, show: bool=True) -> plt.Figure:
 
         hits_map = self.hits_map[:]
         mapp = self.map[:]
