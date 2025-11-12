@@ -8,7 +8,7 @@ import numpy as np
 from scipy import signal
 import tables
 
-from rfsocinterface.core.data.data import ProcessedData, ProcessedData, generate_calibrated_data, remove_electronics_noise_tables
+from rfsocinterface.core.data.data import ProcessedData, BaseProcessedData, generate_calibrated_data, remove_electronics_noise_tables
 from rfsocinterface.core.data.data import DECIMATE_ORDER
 from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter
 
@@ -23,10 +23,10 @@ class ProcessingStage:
 class DataRoutine(abc.ABC):
     stage: ProcessingStage
 
-    def __call__(self, input: ProcessedData):
+    def __call__(self, input: BaseProcessedData):
         self.forward(input)
 
-    def forward(self, input: ProcessedData):
+    def forward(self, input: BaseProcessedData):
         raise NotImplementedError(
             f'DataRoutine [{type(self).__name__}] is missing a forward method'
         )
@@ -34,26 +34,6 @@ class DataRoutine(abc.ABC):
     def get_receipt_entry(self) -> str:
         raise NotImplementedError
 
-
-class Mapper:
-    def __init__(self, routines: list[DataRoutine]=[]):
-        self._routines = routines
-
-    def add_routine(self, routine: DataRoutine):
-        if not isinstance(routine, DataRoutine):
-            raise TypeError(f'Expected DataRoutine, got {type(routine)}')
-        self._routines.append(routine)
-
-    def __call__(self, input: ProcessedData, save: bool=True):
-
-        output = input
-        for routine in self._routines:
-            # if isinstance(routine, BinTODIntoMap):
-            #     pdb.set_trace()
-            output = routine(output)
-        if save:
-            output.save()
-        return output
 
 #
 # Begin Data Routine Catlog
@@ -66,13 +46,12 @@ class GaussianFilter(DataRoutine):
         self.gaussian_sigma = gaussian_sigma
 
     def forward(self, pd: ProcessedData, field: str='data_mK'):
-        array = pd._l1file.get_node('/', field)
+        array = getattr(pd, field)
         smoothed_data = gaussian_filter(array, self.gaussian_sigma)
         array[:] = smoothed_data
     
     def get_receipt_entry(self) -> str:
         return f'GaussianFilter: {{\n\tsigma = {self.gaussian_sigma}\n}}'
-
 
 class CutoffFilter(DataRoutine):
     stage = ProcessingStage.PROCESSING_L2
@@ -84,13 +63,17 @@ class CutoffFilter(DataRoutine):
         self.dataset = dataset
 
     def forward(self, pd: ProcessedData):
-        data = getattr(pd, self.dataset)
+        # TODO: Fix this hacky handling of data_freq
+        if self.dataset == 'data_freq':
+            data = pd.data_freq_diss
+        else:
+            data = getattr(pd, self.dataset)
         filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
 
         # Apply cutoff filter
         # pd.data_gain_phase[:] = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
         # pd.data_freq_diss[:] = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
-        data[:] = signal.sosfiltfilt(filt_sos, data)
+        data[:] = signal.sosfiltfilt(filt_sos, data[:])
 
 
 class LowPassFilter(CutoffFilter):
@@ -154,12 +137,10 @@ class RemoveElectronicsNoise(DataRoutine):
 
     def forward(self, pd: ProcessedData):
         remove_electronics_noise_tables(pd.data_gain_phase)
-        generate_calibrated_data(pd.root.detector_0.data, pd._l1file.root.detector_0.global_data)
+        generate_calibrated_data(pd.data_group, pd.global_data_group)
 
     def get_receipt_entry(self) -> str:
         return f'RemoveElectronicsNoise: {{\n}}'
-
-
 
 
 class CleanTOD(DataRoutine):
@@ -173,25 +154,104 @@ class CleanTOD(DataRoutine):
 
         # TODO: Does this need to still support the "good_sample" stuff?
         #average template subtraction
-        data = getattr(pd, self.dataset)
         goodchan = np.ndarray.flatten(np.argwhere(pd.chanmask[:] == 1))
-        template = np.nansum(data[goodchan, :], axis=0)
+        if self.dataset == 'data_freq':
+            data = pd.data_freq_diss
+            array_slice = (0, goodchan, slice(None))
+        else:
+            # BUG: This breaks if data has shape (2, n_tones, n_samples)
+            data = getattr(pd, self.dataset)
+            array_slice = (goodchan, slice(None))
+        template = np.nansum(data[array_slice], axis=0)
         template = template - np.mean(template)
-        template_corr = np.sum(np.multiply(data[goodchan, :],template), axis=1) / \
+        template_corr = np.sum(np.multiply(data[array_slice],template), axis=1) / \
                         np.sum(np.multiply(template,template))
         # TODO: This edits the original processed file...
-        data[goodchan, :] = data[goodchan, :] - np.outer(template_corr, template)
+        data[array_slice] = data[array_slice] - np.outer(template_corr, template)
 
-        with tables.File(pd.cleaned_file_template, 'w') as cfile:
-            cfile.create_array('/', 'chanmask', pd.chanmask[:])
-            cfile.create_array('/', 'detector_pol', pd.detector_pol[:])
-            cfile.create_array('/', 'timestamp', pd.timestamp[:])
-            cfile.create_array('/', 'detector_az', pd.detector_az[:])
-            cfile.create_array('/', 'detector_za', pd.detector_za[:])
-            cfile.create_array('/', 'clean_data', data[:])
+        # with tables.File(pd.cleaned_file_template, 'w') as cfile:
+        #     cfile.create_array('/', 'chanmask', pd.chanmask[:])
+        #     cfile.create_array('/', 'detector_pol', pd.detector_pol[:])
+        #     cfile.create_array('/', 'timestamp', pd.timestamp[:])
+        #     cfile.create_array('/', 'detector_az', pd.detector_az[:])
+        #     cfile.create_array('/', 'detector_za', pd.detector_za[:])
+        #     cfile.create_array('/', 'clean_data', data[:])
 
     def get_receipt_entry(self) -> str:
         return f'CleanTOD: {{\n\tdataset = {self.dataset},\n}}'
+
+class PsdBasis:
+    """Enum for the different bases to use for computing the PSD."""
+    IQ = 'iq'
+    GAIN_PHASE = 'gain_phase'
+    FREQ_DISS = 'freq_diss'
+
+class ComputeNoisePSD(DataRoutine):
+    stage = ProcessingStage.POST_PROCESSING
+
+    def __init__(
+            self,
+            *bases: PsdBasis,
+            nominal_block_length: float=10,
+            cut_time: float=0.0,
+    ):
+        super().__init__()
+        self.bases = bases
+        self.nominal_block_length = nominal_block_length
+        self.cut_time = cut_time
+    
+    def forward(self, pd: ProcessedData):
+        # Initialize PSD group in the file if needed
+        if not pd.test_node('psd'):
+            psd_group = pd.create_group('/', 'psd')
+        else:
+            psd_group = pd.get_node('psd')
+
+        for basis in self.bases:
+            time = pd.time
+            match basis:
+                case PsdBasis.IQ:
+                    data = pd.data_IQ[:]
+                case PsdBasis.GAIN_PHASE:
+                    data = pd.data_gain_phase[:] / pd.carrier_amplitude_norm()
+                case PsdBasis.FREQ_DISS:
+                    f = pd.baseband_freqs[:] + pd.lo_freq
+                    data = pd.data_freq_diss[:] / f[np.newaxis, :, np.newaxis]
+                case _:
+                    raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')
+            if self.cut_time > 0:
+                n_samples_to_cut = np.round(self.cut_time * pd.fs).astype(int)
+                data = data[:, :, n_samples_to_cut:-n_samples_to_cut]
+                time = time[n_samples_to_cut:-n_samples_to_cut]
+
+            # Determine the number of blocks for computing the PSD
+            n_samples = np.size(time)
+            n_samples_per_block = int(2**np.ceil(np.log2(self.nominal_block_length * pd.fs)))
+            n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
+            if n_blocks == 0:
+                n_blocks = 1
+                n_samples_per_block = n_samples
+            
+            # Compute the PSD
+            freq, psd = signal.welch(
+                data[:, np.argwhere(pd.chanmask[:] == 1).flatten(), :],
+                pd.fs,
+                nperseg=n_samples_per_block,
+            )
+
+            # Save to the file
+            if not pd.test_node('freq'):
+                pd.create_array(psd_group, 'freq', obj=freq)
+            pd.create_array(psd_group, f'psd_{basis}', obj=psd)
+
+    def get_receipt_entry(self) -> str:
+        return f'ComputeNoisePSD: {{\n' \
+               f'\tbases: {self.bases},\n' \
+               f'\tcut_time: {self.cut_time},\n' \
+               f'\tnominal_block_length: {self.nominal_block_length},\n' \
+               f'}}'
+
+            
 
 # class RemovePointLomaPickup(DataRoutine):
 #     def __init__(self, ds_factor: int=6, pickup_filter_freq: float=1):

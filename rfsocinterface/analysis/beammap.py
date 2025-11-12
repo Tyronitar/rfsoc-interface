@@ -5,6 +5,7 @@ import pdb
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import numpy.typing as npt
 import tables
@@ -33,6 +34,7 @@ def analyze_beammap(
     map_data: MapData,
     nrows: int=10,
     ncols: int=10,
+    show_all: bool=False,
 ):
     az = map_data.map_az[:][:, np.newaxis]
     za = map_data.map_za[:][np.newaxis, :]
@@ -40,19 +42,22 @@ def analyze_beammap(
 
     extent = map_data.extent()
 
-    # TODO: Get actual file name
     filename = map_data.beammap_file_template
 
+    # if show_all:
+    #     chanmask = np.ones(map_data.n_tones)
+    # else:
     chanmask = map_data.chanmask[:]
+    # chanmask = chanmask[:100]
 
     beammap_file = tables.File(filename, 'w')
-    az_center = beammap_file.create_array('/', 'az_center', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    za_center =beammap_file.create_array('/', 'za_center', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    amplitude  = beammap_file.create_array('/', 'amplitude', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    snr = beammap_file.create_array('/', 'snr', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    chisq = beammap_file.create_array('/', 'chisq', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    fwhm_az = beammap_file.create_array('/', 'fwhm_az', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
-    fwhm_za = beammap_file.create_array('/', 'fwhm_za', shape=np.shape(map_data.chanmask), atom=tables.Float64Atom())
+    az_center = beammap_file.create_array('/', 'az_center', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    za_center =beammap_file.create_array('/', 'za_center', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    amplitude  = beammap_file.create_array('/', 'amplitude', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    snr = beammap_file.create_array('/', 'snr', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    chisq = beammap_file.create_array('/', 'chisq', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    fwhm_az = beammap_file.create_array('/', 'fwhm_az', shape=np.shape(chanmask), atom=tables.Float64Atom())
+    fwhm_za = beammap_file.create_array('/', 'fwhm_za', shape=np.shape(chanmask), atom=tables.Float64Atom())
 
     for idx in np.flatnonzero(chanmask == 1):
         this_val = np.ndarray.flatten(map_val[idx,:])
@@ -118,7 +123,8 @@ def analyze_beammap(
 
 
     # TODO: file name
-    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap_NO_swap_negative_angle.pdf'
+    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap.pdf'
+
     with PdfPages(pdf_file_name) as pdf:
         FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
         high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50)).flatten()
@@ -132,33 +138,87 @@ def analyze_beammap(
         plt.close()
         
         counter = 1
-        for idx in np.argwhere(chanmask == 1).flatten():
+        for idx in range(map_data.n_tones):
+        # for idx in np.argwhere(chanmask == 1).flatten():
+            if not show_all and chanmask[idx] != 1:
+                continue
 
-            plt.subplot(nrows, ncols, counter)
-            plt.axis('off')
-            plt.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+            if counter == 1:
+                fig, axes = plt.subplots(nrows, ncols)
+                fig.set_dpi(300)  # Sharper plots
+                for ax in axes.flatten():
+                    ax.set_axis_off()
+            ax = axes.flatten()[counter - 1]
+            ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
+
+
+            
+            # Draw a rectangle around the subplot indicating off resonance
+            if show_all and chanmask[idx] == 0:
+            # if show_all and idx == 1:
+                auto_axis = ax.axis()
+                # bbox = ax.get_window_extent().bounds
+                rec = plt.Rectangle(
+                    # bbox[:2],
+                    # bbox[2],
+                    # bbox[3],
+                    (auto_axis[0], auto_axis[2]),
+                    auto_axis[1] - auto_axis[0],
+                    auto_axis[3] - auto_axis[2],
+                    fill=False,
+                    lw=2,
+                    edgecolor='orange',
+                )
+                rec = ax.add_patch(rec)
+                # fig.patches.append(rec)
+                rec.set_clip_on(False)
+                # ax.set_facecolor('orange')
 
             if counter == nrows*ncols:
-                plt.gcf().set_dpi(300)  # Sharper plots
-                pdf.savefig()
+                pdf.savefig(fig)
                 plt.close()
                 counter = 0
             counter +=1
         
-        plt.gcf().set_dpi(300)  # Sharper plots  
-        pdf.savefig()
+        if counter > 1:
+            pdf.savefig(fig)
+        # plt.show()
         plt.close()
 
-        for idx in np.argwhere(chanmask == 1).flatten():
+        for idx in range(map_data.n_tones):
+        # for idx in np.argwhere(chanmask == 1).flatten():
+            if not show_all and chanmask[idx] != 1:
+                continue
             fig, ax = plt.subplots()
-            im = ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
-            fig.colorbar(im)
+            data_to_plot = np.flip(np.transpose(map_val[idx, ::-1]), 1)
+            data_to_plot -= np.nanmedian(data_to_plot)
+            data_to_plot /= np.nanmax(data_to_plot)
+            # data_to_plot = 10 * np.log10(np.abs(data_to_plot))
+            im = ax.imshow(
+                data_to_plot,
+                # vmin=-10,
+                # vmax=0,
+                extent=extent,
+                aspect='equal',
+                cmap='jet',
+                # interpolation='bilinear',
+            )
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(im, cax=cax)
             ax.set_xlabel('X Position (deg)')
             ax.set_ylabel('Y Position (deg)')
-            ax.set_xlim(extent[0],extent[1])
+            ax.set_xlim(extent[1],extent[0])
             ax.set_ylim(extent[2],extent[3])
-            ax.set_title('Resonator Number ' + str(idx))
+            title = f'Resonator {idx}'
+            
+            # Indicate in plot title if off-resonance
+            if show_all and chanmask[idx] == 0:
+            # if show_all and idx == 1:
+                title += ' (Off-resonance)'
+            ax.set_title(title)
             ax.plot(az_center[idx],za_center[idx],marker='+',color='white', markersize=10, mew=2)
+
             bbox_pad = 0.3
             t = AnchoredText(
                 f'Amplitude = {amplitude[idx]}\n'
@@ -176,8 +236,18 @@ def analyze_beammap(
             t.patch.set_alpha(0.25)
             t.patch.set_color('black')
             ax.add_artist(t)
-            plt.gcf().set_dpi(300)  # Sharper plots
+            fig.set_dpi(300)
+            # fig.tight_layout()
+
+            # Set face color to orange to indicate off-resonance
+            if show_all and map_data.chanmask[idx] == 0:
+            # if show_all and idx == 1:
+                fig.set_facecolor('orange')
+
             pdf.savefig(fig)
+            # if idx == 1:
+            #     plt.show()
+                # fig.show()
             plt.close()
     beammap_file.close()
 
@@ -185,14 +255,15 @@ def analyze_beammap(
 if __name__ == '__main__':
     # date = '20250729'
     # setnum = 1012
-    date = '20250912'
+    date = '20251006'
 
-    setnum = 1014
+    setnum = 1009
 
-    md = MapData.from_file(date, setnum, 'r')
+    # md = MapData.from_file(date, setnum, 'r')
+    md = MapData.from_file(date, setnum)
     # for i in range(240, 250):
     #     md.plot_individual(i)
     #     plt.show(block=False)
     # pdb.set_trace()
-    analyze_beammap(md)
+    analyze_beammap(md, show_all=True)
     md.close()
