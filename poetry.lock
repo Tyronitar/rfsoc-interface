@@ -930,7 +930,7 @@ tqdm = ">=4.67.1,<5.0.0"
 type = "git"
 url = "https://github.com/ASU-Astronomical-Instrumentation/readout.git"
 reference = "c_datacap"
-resolved_reference = "6eb7fa424b50fd59bc10801e483a5316a0ebfe96"
+resolved_reference = "41f3f382ebfa129406b040f55d76aa560ff03143"
 
 [[package]]
 name = "kiwisolver"
