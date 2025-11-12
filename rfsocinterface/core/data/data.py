@@ -766,7 +766,7 @@ class DataStorage:
     def receipt(self) -> str:
         return self._file.root._v_attrs.receipt 
 
-    def set_receipt(self, receipt: str):
+    def add_receipt(self, receipt: str):
         """Add a receipt entry to the processed data file."""
         self._file.root._v_attrs.receipt = receipt
         self._file.flush()
