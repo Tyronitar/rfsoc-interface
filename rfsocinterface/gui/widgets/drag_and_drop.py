@@ -5,6 +5,7 @@ Implementation from https://www.pythonguis.com/faq/pyside6-drag-drop-widgets/
 from itertools import chain
 from enum import StrEnum
 from typing import Callable, Concatenate, overload
+from copy import copy
 
 from PySide6.QtCore import QMimeData, Qt, Signal, QPoint, Slot
 from PySide6.QtGui import QDrag, QPixmap, QMouseEvent, QDropEvent, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent
@@ -210,9 +211,21 @@ class DragWidget(QWidget):
     def add_item(self, item: DragItem):
         self.blayout.addWidget(item)
         item.setParent(self)
+        self.orderChanged.emit(self.items(), self.get_item_data())
+    
+    def insert_item(self, index: int, item: DragItem):
+        self.blayout.insertWidget(index, item)
+        item.setParent(self)
+        self.orderChanged.emit(self.items(), self.get_item_data())
     
     def remove_item(self, item: DragItem):
         self.blayout.removeWidget(item)
+        self.orderChanged.emit(self.items(), self.get_item_data())
+    
+    def move_item(self, index: int, item: DragItem):
+        self.blayout.removeWidget(item)
+        self.blayout.insertWidget(index, item)
+        self.orderChanged.emit(self.items(), self.get_item_data())
 
     def get_item_data(self):
         data = []
@@ -307,7 +320,8 @@ class MultiSectionDragWidget(QWidget):
         return items
     
     def items_separated(self) -> list[list[DragItem]]:
-        return self._items
+        # Do this so it's not a reference to the internal list
+        return [items[:] for items in self._items]
     
     def _update_items(self):
         self._items = [section.items() for section in self.sections]
@@ -370,8 +384,9 @@ class MultiSectionDragWidget(QWidget):
         if not isinstance(sec, DragWidget):
             raise TypeError(f"Section {i_section} is not a DragWidget, cannot remove item.")
         sec.remove_item(item)
-        self._items[i_section].remove(item)
-        self._item_data[i_section].remove(item.data)
+        # self._items[i_section].remove(item)
+        # self._item_data[i_section].remove(item.data)
+        # self.orderChanged.emit(self._items, self._item_data)
 
 
 class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
@@ -427,6 +442,9 @@ class FunctionDragItem(ClickableDragItem):
         self.func_widget = FunctionWidget(self.fn, self.args, parent=self.parent())
         self.set_data(self.func_widget.get_inputs())
         self.func_widget.valuesUpdated.connect(lambda _, data: self.set_data(data))
+    
+    def __repr__(self) -> str:
+        return f'FunctionDragItem({self.fn.__name__})'
 
 
 class DragFunctionWidget(QWidget):
