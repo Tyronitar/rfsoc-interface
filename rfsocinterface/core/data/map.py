@@ -10,7 +10,7 @@ from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 
 from rfsocinterface.core.data.data import DEFAULT_MAP_DPIX, MapData, ProcessedData
-from rfsocinterface.core.data.routines import DataRoutine, ProcessingStage
+from rfsocinterface.core.data.routines import DataRoutine, ProcessingStage, DataRoutine
 
 class BasicMapRemoval(DataRoutine):
     def forward(self, map: MapData) -> MapData:
@@ -227,15 +227,15 @@ class BinTODIntoMap(DataRoutine):
     ):
 
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, DEFAULT_MAP_DPIX, self.beam_map_mode)
-        md.setup_mfile(n_pix_x, n_pix_y, beammap_mode=self.beam_map_mode)
+        md.setup_map_arrays(n_pix_x, n_pix_y, beammap_mode=self.beam_map_mode)
         md.map_az[:] = map_az
         md.map_za[:] = map_za
 
         wind = signal.get_window('hamming', md.n_samples)
 
-        data = getattr(md, self.dataset)[:]
+        # data = getattr(md, self.dataset)[:]
         if self.beam_map_mode:
-            data = md.data_freq[:]
+            data = md.get_data_freq()
         else:
             data = md.data_mK[:]
         sum_map = np.zeros(md.sum_map.shape)
@@ -252,7 +252,7 @@ class BinTODIntoMap(DataRoutine):
         print('netd done!')
 
         # Get rid of channels with bad weights
-        new_chanmask = np.copy(md.chanmask)
+        new_chanmask = np.copy(md.chanmask[:])
         good_idx = np.where(new_chanmask == 1)[0]
         good_netd = md.netd[good_idx]
         new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
@@ -303,7 +303,6 @@ class BinTODIntoMap(DataRoutine):
                 np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
             good_samples = good_samples[valid_index]
 
-            # pdb.set_trace()
             #loop over samples to create sum and hits maps
             for time_sample in good_samples:
                 sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
@@ -328,16 +327,16 @@ class BinTODIntoMap(DataRoutine):
 
 if __name__ == '__main__':
     from rfsocinterface.core.data.routines import DataRoutine, CleanTOD, HighPassFilter, LowPassFilter
-    date = '20250728'
-    setnum = 1001
-    dataset = 'data_freq'
+    date = '20250730'
+    setnum = 1005
+    dataset = 'data_mK'
 
     ds_factor = 10
     hp_filt_freq = 0.5
     lp_filt_freq = 10
 
-    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
-    # pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor, beam_map_mode=True)
+    # pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
+    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor, beam_map_mode=True)
     # pd = PyTablesProcessedData.from_file(date, setnum)
 
     hpfilt = HighPassFilter(hp_filt_freq, dataset=dataset)

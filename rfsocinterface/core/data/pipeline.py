@@ -9,12 +9,11 @@ import time
 from typing import Callable
 
 import rfsocinterface
-from rfsocinterface.core.data.data import ProcessedData, MapData
+from rfsocinterface.core.data.data import ProcessedData, ProcessedDataL1, ProcessedDataLN, MapData, ProcessedDataL0
 from rfsocinterface.core.data.map import BinTODIntoMap
-from rfsocinterface.core.data.routines import DataRoutine, Downsample, HighPassFilter, LowPassFilter, ProcessingStage, CleanTOD
+from rfsocinterface.core.data.routines import ProcessingStage, DataRoutine, Downsample, HighPassFilter, LowPassFilter, CleanTOD, ComputeNoisePSD, PsdBasis
 
 _logger = logging.getLogger(__name__)
-
 
 class RoutineApplier:
     def __init__(self, pipeline: DataPipeline):
@@ -43,7 +42,7 @@ class RoutineApplier:
                 return
             _logger.debug(f'Running routine: {routine.__class__.__name__}')
             if progress_callbacks is not None:
-                progress_callbacks[0](f'Running routine: {routine.__class__.__name__}')
+                progress_callbacks[0](f'Processing Data\nRunning routine: {routine.__class__.__name__}...')
             routine(input)
             self.pipeline.add_to_receipt(routine.get_receipt_entry())
             if progress_callbacks is not None:
@@ -54,23 +53,23 @@ class DataPipeline:
     """A Pipeline of data routines from the raw data file to finished products.
 
     The general flow of the pipeline is as follows:
-        1. Open the raw data file
-        2. Run pre-processing routines
-        3. Downsample data
-        4. Run processing routines
-        5. Run post-processing routines
+        1. Coallesce raw data files into L0 file
+        2. Run L0 data routines
+        3. Downsample data and cretae L1 file
+        4. Run L1 data routines
+        5. Run L2 data routines
         6. Run mapping routines
 
     Attributes:
         _receipt (list[str]): "Receipt" for tracking which functions were run and
             what version of the code the data is being processed with.
-        pre_processor (RoutineApplier): Wrapper for routines to apply before processing 
+        l0_applier (RoutineApplier): Wrapper for routines to apply before processing 
             the data e.g. RemovePointLomaPickup.
-        processor (RoutineApplier): Wrapper for routines that are applied in processing
+        l1_applier (RoutineApplier): Wrapper for routines that are applied in processing
             e.g. Downsample, RemoveElectronicsNoise, etc.
-        post_processor (RoutineApplier): Wrapper for routines to apply after creating
+        l2_applier (RoutineApplier): Wrapper for routines to apply after creating
             the processed data file, e.g. HighPassFilter, LowPassFilter, CleanTOD, etc.
-        mapper (RoutineApplier): Wrapper for routines to apply curing map creation
+        mapping_applier (RoutineApplier): Wrapper for routines to apply during map creation
             e.g. BinTODIntoMap, etc. 
         shared_values (dict): Values that are shared across routines, such as
             `ds_factor`, `hp_filter_freq`, and `lp_filter_freq`.
@@ -79,10 +78,10 @@ class DataPipeline:
 
     def __init__(self, ds_factor: float=1, beam_map_mode: bool=False, **kwargs):
         self._receipt = []
-        self.pre_processor = RoutineApplier(self)
-        self.processor = RoutineApplier(self)
-        self.post_processor = RoutineApplier(self)
-        self.mapper = RoutineApplier(self)
+        self.l0_applier = RoutineApplier(self)
+        self.l1_applier = RoutineApplier(self)
+        self.l2_applier = RoutineApplier(self)
+        self.mapping_applier = RoutineApplier(self)
         self.shared_values = kwargs
         self.shared_values['ds_factor'] = ds_factor
         self.shared_values['beam_map_mode'] = beam_map_mode
@@ -149,10 +148,10 @@ class DataPipeline:
 
     def all_routines(self) -> list[DataRoutine]:
         return list(chain(
-            self.pre_processor.routines,
-            self.processor.routines,
-            self.post_processor.routines,
-            self.mapper.routines
+            self.l0_applier.routines,
+            self.l1_applier.routines,
+            self.l2_applier.routines,
+            self.mapping_applier.routines
         ))
 
     def get_routines_by_type(self, *routine_type: type[DataRoutine]) -> list[DataRoutine]:
@@ -164,13 +163,13 @@ class DataPipeline:
             raise TypeError(f'Expected an instance of `DataRoutine`, got `{type(routine)}`')
         match routine.stage:
             case ProcessingStage.PRE_PROCESSING:
-                self.pre_processor.add_routine(routine)
+                self.l0_applier.add_routine(routine)
             case ProcessingStage.PROCESSING_L1:
-                self.processor.add_routine(routine)
+                self.l1_applier.add_routine(routine)
             case ProcessingStage.PROCESSING_L2:
-                self.post_processor.add_routine(routine)
+                self.l2_applier.add_routine(routine)
             case ProcessingStage.POST_PROCESSING:
-                self.mapper.add_routine(routine)
+                self.mapping_applier.add_routine(routine)
             case _:
                 pass
 
@@ -179,59 +178,60 @@ class DataPipeline:
         date: str,
         setnum: int,
         progress_callbacks: tuple[Callable[[str]], Callable]=None,
-    ) -> ProcessedData | MapData | None:
+    ) -> ProcessedData | None:
         self.synchronize_values()
         _logger.info(f'Beginning data pipeline for {date}set{setnum}')
         start_time = time.time()
-        # _logger.info('Runnig pre-processing routines...')
-        # self.pre_processor.apply_routines(input)
         # TODO: Propogate effects from pre-processing to the processed file
 
-        _logger.info('Running processing routines...')
-        if progress_callbacks is not None:
-            progress_callbacks[0](f'Processing Data\nPerforming initial processing...')
         if not self._run:  # If the operation was canceled stop
             return None
-        pd = ProcessedData.from_tod(
+        if progress_callbacks is not None:
+            progress_callbacks[0](f'Processing Data\nPerforming initial processing...')
+        _logger.info('Creating level 0 processed data...')
+        pd = ProcessedDataL0.from_tod(
             date,
             setnum,
-            beam_map_mode=self.shared_values['beam_map_mode'],
+            beam_map_mode=self.shared_values['beam_map_mode']
+        )
+        pd.set_receipt(self.generate_receipt())
+        if not self._run:  # If the operation was canceled stop
+            return pd
+        if progress_callbacks is not None:
+            progress_callbacks[1]()  # Increment progress
+            progress_callbacks[0](f'Processing Data\nCreating level 1 data products...')
+        _logger.info('Creating level 1 processed data...')
+        pd1 = ProcessedDataL1.from_level0(
+            pd,
             ds_factor=self.shared_values['ds_factor'],
             do_electronics_noise_removal=self.shared_values.get('do_electronics_noise_removal', True),
             max_modes=self.shared_values.get('max_modes', 30),
         )
         if progress_callbacks is not None:
-            progress_callbacks[1]()
+            progress_callbacks[1]()  # Increment progress
         if not self._run:  # If the operation was canceled stop
-            pd.add_receipt(self.generate_receipt())
-            return pd
+            pd1.set_receipt(self.generate_receipt())
+            return pd1
 
-        _logger.info('Running processing routines...')
-        self.processor.apply_routines(pd, progress_callbacks=progress_callbacks)
+        self.l1_applier.apply_routines(pd1, progress_callbacks=progress_callbacks)
+        pd1.set_receipt(self.generate_receipt())
         if not self._run:  # If the operation was canceled stop
-            pd.add_receipt(self.generate_receipt())
-            return pd
+            return pd1
 
-        _logger.info('Running post-processing routines...')
-        self.post_processor.apply_routines(pd, progress_callbacks=progress_callbacks)
+        _logger.info('Creating level 2 processed data...')
+        pd2 = ProcessedDataLN.from_previous_level(pd1)
+        self.l2_applier.apply_routines(pd2, progress_callbacks=progress_callbacks)
+
+        pd2.set_receipt(self.generate_receipt())
         if not self._run:  # If the operation was canceled stop
-            pd.add_receipt(self.generate_receipt())
-            return pd
+            return pd2
 
-        if not self._run:  # If the operation was canceled stop
-            pd.add_receipt(self.generate_receipt())
-            return pd
-
-        pd.add_receipt(self.generate_receipt())
-
-        output = pd
-        if len(self.mapper) > 0:
-            if not self._run:  # If the operation was canceled stop
-                return pd
+        output = pd2
+        if len(self.mapping_applier) > 0:
             _logger.info('Running mapping routines...')
-            md = MapData.from_processed_data(pd)
-            self.mapper.apply_routines(md, progress_callbacks=progress_callbacks)
-            md.add_receipt(self.generate_receipt())
+            md = MapData.from_processed_data(pd2)
+            self.mapping_applier.apply_routines(md, progress_callbacks=progress_callbacks)
+            md.set_receipt(self.generate_receipt())
             output = md
         stop_time = time.time()
         _logger.info(f'Data pipeline completed in {stop_time - start_time:.3f} seconds.')
@@ -241,24 +241,27 @@ class DataPipeline:
 if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
-    date = '20250912'
-    setnum = 1014
-    # date = '20250513'
-    # setnum = 1008
-    # md = MapData.from_file(date, setnum)
-    # pdb.set_trace()
-    dataset = 'data_mK'
-    beam_map_mode = True
+    # Lab Testing
+    # date = '20250916'
+    # setnum = 1017
 
-    ds_factor = 10
+    #Telescope Testing
+    date = '20251006'
+    setnum = 1007
+
+    dataset = 'data_freq'
+    beam_map_mode = False 
+    do_electronics_noise_removal = True
+
+    ds_factor = 12
     hp_filt_freq = 0.05
     lp_filt_freq = 10
-
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
+    # psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
 
     pipeline = DataPipeline(
         ds_factor=ds_factor,
@@ -266,16 +269,20 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filt_freq,
         dataset=dataset,
         beam_map_mode=beam_map_mode,
-        do_electronics_noise_removal=False,
+        do_electronics_noise_removal=do_electronics_noise_removal,
         max_modes=2,
     )
     pipeline.add_routine(hpfilt)
     pipeline.add_routine(lpfilt)
-    # pipeline.add_routine(cleaner)
+    # pipeline.add_routine(psd)
+    pipeline.add_routine(cleaner)
     pipeline.add_routine(binner)
 
     data = pipeline.run_pipeline(date, setnum)
-    # data.plot()
-    # plt.show()
+#     from rfsocinterface.analysis.psd import plot_psd
+#     freq = data.get_node_value('freq')[:]
+#     psd = data.get_node_value('psd_gain_phase')[:]
+#     plot_psd(freq, psd, 'test.pdf', basis='gp')
+#     plt.show()
     pdb.set_trace()
     data.close()

@@ -4,7 +4,7 @@ import h5py
 import cv2
 import matplotlib.pyplot as plt
 from vmbpy import VmbSystem, PixelFormat
-from rfsocinterface.core.utils import get_filename, PathLike
+from rfsocinterface.core.utils import get_filename, PathLike, PERMISSIONS_USR_RW
 from rfsocinterface.core.utils import ensure_path
 
 class SKPR_Camera_Control:
@@ -28,6 +28,7 @@ class SKPR_Camera_Control:
             if save:
                 if not savefile:
                     savefile = get_filename(file_type='optcam').with_suffix('.h5')
+                savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
                 f = h5py.File(savefile, 'a')
                 f.create_dataset('optical_image', data=pic_data)
                 f.close()

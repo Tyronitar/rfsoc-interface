@@ -16,6 +16,7 @@ try:
     import thread
 except ImportError:
     import _thread as thread
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -24,7 +25,7 @@ import serial.tools.list_ports
 import uldaq as ul
 from Exscript.protocols.telnetlib import Telnet
 
-from rfsocinterface.core.utils import analog_to_digital
+from rfsocinterface.core.utils import analog_to_digital, PERMISSIONS_USR_RW
 
 _logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
@@ -495,11 +496,13 @@ class TelescopeMotorController:
                 self._set_ze_pos(initial_ze, stop_run=False)
             return
         
-        with h5py.File(file, "a") as f:
+        path = Path(file)
+        with h5py.File(path, 'w') as f:
             f.create_dataset("az_tel", data=position_data[0::3])
             f.create_dataset("za_tel", data=position_data[1::3])
             f.create_dataset("timestamp_tel", data=position_data[2::3])
             f.create_dataset("optical_visibility", data=['****'])
+        path.chmod(PERMISSIONS_USR_RW)
         self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         if position_return:
             _tele_logger.info('AZ Scan Mode: Resetting telescope position...')

@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 
 
 from rfsocinterface.core.data import ProcessedData
-from rfsocinterface.analysis.compute_noise_psd import compute_noise_psd, XLIM
+from rfsocinterface.analysis.psd import compute_noise_psd, XLIM
 from rfsocinterface.core.utils import ordinal
 
 TICK_SIZE = 20
