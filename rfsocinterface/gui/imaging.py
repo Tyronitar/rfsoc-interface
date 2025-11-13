@@ -6,7 +6,7 @@ from multiprocessing import Pipe
 import h5py
 import copy
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Slot, Qt
 from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout, QProgressDialog
 from kidpy3 import capture
 
@@ -15,7 +15,7 @@ from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.gui.widgets.canvas import CanvasDialog
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW
+from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW, unpack_file_name
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
 from rfsocinterface.gui.widgets.function import FunctionWidget
 from rfsocinterface.core.camera import SKPR_Camera_Control
@@ -57,14 +57,13 @@ class DitherPatternWidget(FunctionWidget):
         self.fn(self.command, file, *values)
 
 class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
-    startMapping = Signal()
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None) -> None:
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
         self.cam_ctrl = SKPR_Camera_Control()
         self.pipeline_dialog = PipelineDialog(self)
-        self.pipeline = DataPipeliine()
+        self.pipeline = DataPipeline()
         self._add_default_routines()
 
         self._file =  '.'
@@ -75,7 +74,6 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
 
         self.stacked_layout = QStackedLayout(parent=self)
         self.dither_groupBox.layout().addLayout(self.stacked_layout, 2, 0, 1, 2)
-        self.startMapping.connect(self.make_map)
 
         self.add_dither_pattern(
             'AZ Scan Mode',
@@ -102,12 +100,19 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         # self.dither_comboBox.setPlaceholderText('Choose dither pattern...')
         self.dither_comboBox.activated.connect(self.choose_pattern)
         self.start_pushButton.clicked.connect(self.run)
-        self.mapping_pushButton.clicked.connect(self.choose_mapping_routines)
+        self.routines_pushButton.clicked.connect(self.choose_data_routines)
         self.choose_pattern(0)
 
+
+    @Slot(Qt.CheckState)
+    def toggle_auto_processing(self, state: Qt.CheckState):
+        self.routines_pushButton.setHidden(state == Qt.CheckState.Unchecked)
+        self.show_checkBox.setHidden(state == Qt.CheckState.Unchecked)
+
     
+    # TODO: Replace this with presets
     def _add_default_routines(self):
-        default_routines = self.settings['defaults']['imaging']['mappingRoutines']
+        default_routines = self.settings['defaults']['imaging']['dataRoutines']
         for routine_dict in default_routines:
             routine_type = routine_dict['type']
             base_args = copy.copy(DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type])
@@ -133,11 +138,13 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         pd.setModal(True)
 
         self.active_command = command
+        _logger.debug('Connecting to telescope command signals for progress updates.')
         self.connect_to_command(f'{command}_maximum', pd.setMaximum)
         self.connect_to_command(f'{command}_progress', pd.setValue)
         self.connect_to_command(f'{command}_label', pd.setLabelText)
 
         # Tell the controller to start moving the telescope according to the scan type
+        _logger.debug(f'Starting telescope command "{command}" with args {args}.')
         self.send_command(command, *args)
         pd.show()
 
@@ -146,7 +153,8 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
             f'{command}_complete',
             err_msg=f'Error occured while running command "{command}"',
         )
-        _logger.info(f'{command} completed with data {self._command_data}.')
+        _logger.debug(f'{command} completed with data {self._command_data}.')
+        _logger.debug('Disconnceting from telescope command signals for progress updates.')
         self.disconnect_command(f'{command}_maximum', pd.setMaximum)
         self.disconnect_command(f'{command}_progress', pd.setValue)
         self.disconnect_command(f'{command}_label', pd.setLabelText)
@@ -156,34 +164,35 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
     def make_map(self):
         print('Generating map...')
         current_file = self.get_current_file().stem
-        date = current_file[:8]
-        setnum = int(current_file[-4:])
-        dataset = 'data_mK'
-        beam_map_mode = False
+        date, setnum = unpack_file_name(current_file)
+        _logger.debug(f'Preparing data processing for {date}set{setnum}')
+        # dataset = 'data_mK'
+        # beam_map_mode = False
 
-        ds_factor = 10
-        hp_filt_freq = 0.05
-        lp_filt_freq = 10
+        # ds_factor = 10
+        # hp_filt_freq = 0.05
+        # lp_filt_freq = 10
 
 
-        hpfilt = HighPassFilter(hp_filt_freq)
-        lpfilt = LowPassFilter(lp_filt_freq)
-        cleaner = CleanTOD()
-        binner = BinTODIntoMap()
+        # hpfilt = HighPassFilter(hp_filt_freq)
+        # lpfilt = LowPassFilter(lp_filt_freq)
+        # cleaner = CleanTOD()
+        # binner = BinTODIntoMap()
 
-        pipeline = DataPipeline(
-            ds_factor=ds_factor,
-            hp_filter_freq=hp_filt_freq,
-            lp_filter_freq=lp_filt_freq,
-            dataset=dataset,
-            beam_map_mode=beam_map_mode,
-            do_electronics_noise_removal=False,
-            max_modes=2,
-        )
-        pipeline.add_routine(hpfilt)
-        pipeline.add_routine(lpfilt)
-        pipeline.add_routine(cleaner)
-        pipeline.add_routine(binner)
+        # pipeline = DataPipeline(
+        #     ds_factor=ds_factor,
+        #     hp_filter_freq=hp_filt_freq,
+        #     lp_filter_freq=lp_filt_freq,
+        #     dataset=dataset,
+        #     beam_map_mode=beam_map_mode,
+        #     do_electronics_noise_removal=False,
+        #     max_modes=2,
+        # )
+        # pipeline.add_routine(hpfilt)
+        # pipeline.add_routine(lpfilt)
+        # pipeline.add_routine(cleaner)
+        # pipeline.add_routine(binner)
+        pipeline = self.pipeline
 
         total_steps = len(pipeline) + 2  # Add two for creating the ProcessedData L0 and L1 objects
         pd = QProgressDialog('Processing Data...', 'Cancel', 0, total_steps, parent=self)
@@ -196,22 +205,17 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
 
         pd.show()
         data = pipeline.run_pipeline(date, setnum, progress_callbacks=(pd.setLabelText, update_progress))
-        if not beam_map_mode and isinstance(data, MapData) and self.show_checkBox.isChecked():
+        if (
+            not pipeline.shared_values['beam_map_mode'] and 
+            isinstance(data, MapData) and
+            self.show_checkBox.isChecked()
+        ):
             fig = data.plot()
             dialog = CanvasDialog(parent=self, fig=fig)
-            dialog.setWindowTitle('rfsocinterface')
+            dialog.setWindowTitle(current_file)
             dialog.exec_()
         data.close()
 
-
-        # p = ProcessedData.from_tod(date, setnum)
-
-        # # TODO: Make Qt widget for mapping , so signals can be emitted after completing 
-        # # each routine. Needed for showing progress
-        # mapper = Mapper(self.routines)
-        # map_data: MapData = mapper(p)
-        # map_data.plot(self.show_checkBox.isChecked())
-    
     def update_current_file(self) -> Path:
         f = self.save_location_widget.get_chosen_save_location()
         self._file = f
@@ -240,12 +244,11 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.stacked_layout.setCurrentIndex(index)
         self.active_pattern = self.patterns[index]
     
-    def choose_mapping_routines(self):
+    def choose_data_routines(self):
         if self.pipeline_dialog.exec():
-            self.pipeline = self.pipeline_dialog.make_pipeline()
             # Get the selected routines, instantiate them, and store in the class
+            self.pipeline = self.pipeline_dialog.make_pipeline()
             # TODO: validate the inputs somehow...
-        print(self.pipeline.all_routines())
     
     def run(self):
         chans = self.get_selected_channels(self.channel_comboBox)
@@ -255,10 +258,6 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         for rfsoc, chan in chans:
             rfchan = rfsoc.get_channel(chan)
             save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'{rfchan.tile_name}', mkdir=True, touch_file=True, mode=PERMISSIONS_USR_RW)
-            # save_location.parent.mkdir(parents=True, exist_ok=True)
-            # Ensure the TOD file exists before getting the AZEL and optcam filenames
-            # with h5py.File(save_location, 'w'):
-            #     pass
             rfchan.raw_filename = str(save_location)
             rfchans.append(rfchan)
 
@@ -266,7 +265,11 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         self.cam_ctrl.take_pic(save=True)
 
         # Dither telescope and collect data in separate thread
+        _logger.debug(f'Starting telescope dither and data capture for chans: {[chan.tile_name for chan in rfchans]}')
         capture(rfchans, self.active_pattern.call_function)
-        if self._command_data == 0:  # Value other than 0 idicates the scan stopped early
+        if (
+            self.auto_process_checkBox.isChecked() and
+            self._command_data == 0  # Value other than 0 idicates the scan stopped early
+        ):
             self.make_map()
 

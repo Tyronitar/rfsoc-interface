@@ -15,9 +15,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QGridLayout, QGroupBox, QLabel,
-    QLineEdit, QPushButton, QScrollArea, QSizePolicy,
-    QSpacerItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QCheckBox, QGridLayout, QGroupBox,
+    QLabel, QLineEdit, QPushButton, QSizePolicy,
+    QSpacerItem, QWidget)
 
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from rfsocinterface.gui.widgets.save_location import SaveLocationWidget
@@ -26,26 +26,22 @@ class Ui_DataStreamingWidget(object):
     def setupUi(self, DataStreamingWidget):
         if not DataStreamingWidget.objectName():
             DataStreamingWidget.setObjectName(u"DataStreamingWidget")
-        DataStreamingWidget.resize(457, 309)
+        DataStreamingWidget.resize(308, 187)
         self.gridLayout = QGridLayout(DataStreamingWidget)
         self.gridLayout.setObjectName(u"gridLayout")
-        self.scrollArea = QScrollArea(DataStreamingWidget)
-        self.scrollArea.setObjectName(u"scrollArea")
-        self.scrollArea.setWidgetResizable(True)
-        self.scrollAreaWidgetContents = QWidget()
-        self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 437, 289))
-        self.verticalLayout = QVBoxLayout(self.scrollAreaWidgetContents)
-        self.verticalLayout.setObjectName(u"verticalLayout")
-        self.groupBox = QGroupBox(self.scrollAreaWidgetContents)
+        self.routines_pushButton = QPushButton(DataStreamingWidget)
+        self.routines_pushButton.setObjectName(u"routines_pushButton")
+
+        self.gridLayout.addWidget(self.routines_pushButton, 2, 2, 1, 1)
+
+        self.verticalSpacer = QSpacerItem(20, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+
+        self.gridLayout.addItem(self.verticalSpacer, 1, 0, 1, 1)
+
+        self.groupBox = QGroupBox(DataStreamingWidget)
         self.groupBox.setObjectName(u"groupBox")
         self.gridLayout_2 = QGridLayout(self.groupBox)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
-        self.start_pushButton = QPushButton(self.groupBox)
-        self.start_pushButton.setObjectName(u"start_pushButton")
-
-        self.gridLayout_2.addWidget(self.start_pushButton, 5, 2, 1, 1)
-
         self.duration_label = QLabel(self.groupBox)
         self.duration_label.setObjectName(u"duration_label")
 
@@ -76,15 +72,22 @@ class Ui_DataStreamingWidget(object):
         self.gridLayout_2.addItem(self.horizontalSpacer, 0, 2, 1, 1)
 
 
-        self.verticalLayout.addWidget(self.groupBox)
+        self.gridLayout.addWidget(self.groupBox, 0, 0, 1, 3)
 
-        self.verticalSpacer = QSpacerItem(20, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+        self.auto_process_checkBox = QCheckBox(DataStreamingWidget)
+        self.auto_process_checkBox.setObjectName(u"auto_process_checkBox")
+        self.auto_process_checkBox.setChecked(True)
 
-        self.verticalLayout.addItem(self.verticalSpacer)
+        self.gridLayout.addWidget(self.auto_process_checkBox, 2, 0, 1, 1)
 
-        self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+        self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
-        self.gridLayout.addWidget(self.scrollArea, 0, 0, 1, 1)
+        self.gridLayout.addItem(self.horizontalSpacer_2, 2, 1, 1, 1)
+
+        self.start_pushButton = QPushButton(DataStreamingWidget)
+        self.start_pushButton.setObjectName(u"start_pushButton")
+
+        self.gridLayout.addWidget(self.start_pushButton, 3, 2, 1, 1)
 
 
         self.retranslateUi(DataStreamingWidget)
@@ -94,10 +97,12 @@ class Ui_DataStreamingWidget(object):
 
     def retranslateUi(self, DataStreamingWidget):
         DataStreamingWidget.setWindowTitle(QCoreApplication.translate("DataStreamingWidget", u"Form", None))
-        self.groupBox.setTitle(QCoreApplication.translate("DataStreamingWidget", u"Data Streaming", None))
-        self.start_pushButton.setText(QCoreApplication.translate("DataStreamingWidget", u"Start", None))
+        self.routines_pushButton.setText(QCoreApplication.translate("DataStreamingWidget", u"Data Routines...", None))
+        self.groupBox.setTitle(QCoreApplication.translate("DataStreamingWidget", u"Data Streaming Settings", None))
         self.duration_label.setText(QCoreApplication.translate("DataStreamingWidget", u"Duration (s):", None))
         self.duration_lineEdit.setPlaceholderText(QCoreApplication.translate("DataStreamingWidget", u"5", None))
         self.channels_label.setText(QCoreApplication.translate("DataStreamingWidget", u"Channels:", None))
+        self.auto_process_checkBox.setText(QCoreApplication.translate("DataStreamingWidget", u"Auto process data", None))
+        self.start_pushButton.setText(QCoreApplication.translate("DataStreamingWidget", u"Start", None))
     # retranslateUi
 

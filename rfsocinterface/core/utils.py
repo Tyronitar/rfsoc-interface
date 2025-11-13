@@ -688,6 +688,10 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
 #
 # File Templates
 #
+def unpack_file_name(file_name: str) -> tuple[str, int]:
+    date = file_name[:8]
+    setnum = int(file_name[-4:])
+    return date, setnum
 
 def get_tod_template(date: str, setnum: int, data_dir: str=DATA_DIRECTORY, chan_name: str=None) -> str:
     if chan_name is None:

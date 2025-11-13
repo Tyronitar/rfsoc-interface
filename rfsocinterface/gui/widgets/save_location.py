@@ -25,6 +25,8 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
         self.update_timer.timeout.connect(self.update_default_save_location)
         self.update_timer.start(10000)
 
+
+
     def change_save_location_visibility(self, visible: bool):
         self.directory_label.setVisible(visible)
         self.directory_file_select.setVisible(visible)

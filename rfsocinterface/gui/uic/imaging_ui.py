@@ -26,35 +26,46 @@ class Ui_ImagingWidget(object):
     def setupUi(self, ImagingWidget):
         if not ImagingWidget.objectName():
             ImagingWidget.setObjectName(u"ImagingWidget")
-        ImagingWidget.resize(518, 376)
+        ImagingWidget.resize(480, 190)
         self.gridLayout = QGridLayout(ImagingWidget)
         self.gridLayout.setObjectName(u"gridLayout")
         self.gridLayout.setContentsMargins(9, 9, 9, 9)
-        self.start_pushButton = QPushButton(ImagingWidget)
-        self.start_pushButton.setObjectName(u"start_pushButton")
-
-        self.gridLayout.addWidget(self.start_pushButton, 7, 3, 1, 1)
-
-        self.mapping_pushButton = QPushButton(ImagingWidget)
-        self.mapping_pushButton.setObjectName(u"mapping_pushButton")
-
-        self.gridLayout.addWidget(self.mapping_pushButton, 5, 3, 1, 1)
-
-        self.show_checkBox = QCheckBox(ImagingWidget)
-        self.show_checkBox.setObjectName(u"show_checkBox")
-        self.show_checkBox.setChecked(True)
-
-        self.gridLayout.addWidget(self.show_checkBox, 5, 0, 1, 1)
-
         self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
-        self.gridLayout.addItem(self.horizontalSpacer, 5, 2, 1, 1)
+        self.gridLayout.addItem(self.horizontalSpacer, 6, 2, 1, 1)
 
-        self.dither_groupBox = QGroupBox(ImagingWidget)
-        self.dither_groupBox.setObjectName(u"dither_groupBox")
+        self.save_location_widget = SaveLocationWidget(ImagingWidget)
+        self.save_location_widget.setObjectName(u"save_location_widget")
         sizePolicy = QSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.save_location_widget.sizePolicy().hasHeightForWidth())
+        self.save_location_widget.setSizePolicy(sizePolicy)
+
+        self.gridLayout.addWidget(self.save_location_widget, 1, 0, 1, 4)
+
+        self.routines_pushButton = QPushButton(ImagingWidget)
+        self.routines_pushButton.setObjectName(u"routines_pushButton")
+
+        self.gridLayout.addWidget(self.routines_pushButton, 6, 3, 1, 1)
+
+        self.start_pushButton = QPushButton(ImagingWidget)
+        self.start_pushButton.setObjectName(u"start_pushButton")
+
+        self.gridLayout.addWidget(self.start_pushButton, 8, 3, 1, 1)
+
+        self.channel_comboBox = CheckableComboBox(ImagingWidget)
+        self.channel_comboBox.setObjectName(u"channel_comboBox")
+
+        self.gridLayout.addWidget(self.channel_comboBox, 0, 2, 1, 2)
+
+        self.channels_label = QLabel(ImagingWidget)
+        self.channels_label.setObjectName(u"channels_label")
+
+        self.gridLayout.addWidget(self.channels_label, 0, 0, 1, 1)
+
+        self.dither_groupBox = QGroupBox(ImagingWidget)
+        self.dither_groupBox.setObjectName(u"dither_groupBox")
         sizePolicy.setHeightForWidth(self.dither_groupBox.sizePolicy().hasHeightForWidth())
         self.dither_groupBox.setSizePolicy(sizePolicy)
         self.gridLayout_2 = QGridLayout(self.dither_groupBox)
@@ -79,22 +90,17 @@ class Ui_ImagingWidget(object):
 
         self.gridLayout.addWidget(self.dither_groupBox, 2, 0, 1, 4)
 
-        self.save_location_widget = SaveLocationWidget(ImagingWidget)
-        self.save_location_widget.setObjectName(u"save_location_widget")
-        sizePolicy.setHeightForWidth(self.save_location_widget.sizePolicy().hasHeightForWidth())
-        self.save_location_widget.setSizePolicy(sizePolicy)
+        self.show_checkBox = QCheckBox(ImagingWidget)
+        self.show_checkBox.setObjectName(u"show_checkBox")
+        self.show_checkBox.setChecked(True)
 
-        self.gridLayout.addWidget(self.save_location_widget, 1, 0, 1, 4)
+        self.gridLayout.addWidget(self.show_checkBox, 6, 1, 1, 1)
 
-        self.channels_label = QLabel(ImagingWidget)
-        self.channels_label.setObjectName(u"channels_label")
+        self.auto_process_checkBox = QCheckBox(ImagingWidget)
+        self.auto_process_checkBox.setObjectName(u"auto_process_checkBox")
+        self.auto_process_checkBox.setChecked(True)
 
-        self.gridLayout.addWidget(self.channels_label, 0, 0, 1, 1)
-
-        self.channel_comboBox = CheckableComboBox(ImagingWidget)
-        self.channel_comboBox.setObjectName(u"channel_comboBox")
-
-        self.gridLayout.addWidget(self.channel_comboBox, 0, 2, 1, 2)
+        self.gridLayout.addWidget(self.auto_process_checkBox, 6, 0, 1, 1)
 
 
         self.retranslateUi(ImagingWidget)
@@ -104,11 +110,12 @@ class Ui_ImagingWidget(object):
 
     def retranslateUi(self, ImagingWidget):
         ImagingWidget.setWindowTitle(QCoreApplication.translate("ImagingWidget", u"Form", None))
+        self.routines_pushButton.setText(QCoreApplication.translate("ImagingWidget", u"Data Routines...", None))
         self.start_pushButton.setText(QCoreApplication.translate("ImagingWidget", u"Start", None))
-        self.mapping_pushButton.setText(QCoreApplication.translate("ImagingWidget", u"Mapping Routines...", None))
-        self.show_checkBox.setText(QCoreApplication.translate("ImagingWidget", u"Show image", None))
+        self.channels_label.setText(QCoreApplication.translate("ImagingWidget", u"Channels:", None))
         self.dither_groupBox.setTitle(QCoreApplication.translate("ImagingWidget", u"Dithering", None))
         self.dither_label.setText(QCoreApplication.translate("ImagingWidget", u"Dither pattern:", None))
-        self.channels_label.setText(QCoreApplication.translate("ImagingWidget", u"Channels:", None))
+        self.show_checkBox.setText(QCoreApplication.translate("ImagingWidget", u"Show completed image", None))
+        self.auto_process_checkBox.setText(QCoreApplication.translate("ImagingWidget", u"Auto process data", None))
     # retranslateUi
 

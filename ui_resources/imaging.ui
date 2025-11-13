@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>518</width>
-    <height>376</height>
+    <width>480</width>
+    <height>190</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -26,31 +26,7 @@
    <property name="bottomMargin">
     <number>9</number>
    </property>
-   <item row="7" column="3">
-    <widget class="QPushButton" name="start_pushButton">
-     <property name="text">
-      <string>Start</string>
-     </property>
-    </widget>
-   </item>
-   <item row="5" column="3">
-    <widget class="QPushButton" name="mapping_pushButton">
-     <property name="text">
-      <string>Mapping Routines...</string>
-     </property>
-    </widget>
-   </item>
-   <item row="5" column="0">
-    <widget class="QCheckBox" name="show_checkBox">
-     <property name="text">
-      <string>Show image</string>
-     </property>
-     <property name="checked">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item row="5" column="2">
+   <item row="6" column="2">
     <spacer name="horizontalSpacer">
      <property name="orientation">
       <enum>Qt::Orientation::Horizontal</enum>
@@ -62,6 +38,40 @@
       </size>
      </property>
     </spacer>
+   </item>
+   <item row="1" column="0" colspan="4">
+    <widget class="SaveLocationWidget" name="save_location_widget" native="true">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+    </widget>
+   </item>
+   <item row="6" column="3">
+    <widget class="QPushButton" name="routines_pushButton">
+     <property name="text">
+      <string>Data Routines...</string>
+     </property>
+    </widget>
+   </item>
+   <item row="8" column="3">
+    <widget class="QPushButton" name="start_pushButton">
+     <property name="text">
+      <string>Start</string>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="2" colspan="2">
+    <widget class="CheckableComboBox" name="channel_comboBox"/>
+   </item>
+   <item row="0" column="0">
+    <widget class="QLabel" name="channels_label">
+     <property name="text">
+      <string>Channels:</string>
+     </property>
+    </widget>
    </item>
    <item row="2" column="0" colspan="4">
     <widget class="QGroupBox" name="dither_groupBox">
@@ -95,25 +105,25 @@
      </layout>
     </widget>
    </item>
-   <item row="1" column="0" colspan="4">
-    <widget class="SaveLocationWidget" name="save_location_widget" native="true">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-    </widget>
-   </item>
-   <item row="0" column="0">
-    <widget class="QLabel" name="channels_label">
+   <item row="6" column="1">
+    <widget class="QCheckBox" name="show_checkBox">
      <property name="text">
-      <string>Channels:</string>
+      <string>Show completed image</string>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
      </property>
     </widget>
    </item>
-   <item row="0" column="2" colspan="2">
-    <widget class="CheckableComboBox" name="channel_comboBox"/>
+   <item row="6" column="0">
+    <widget class="QCheckBox" name="auto_process_checkBox">
+     <property name="text">
+      <string>Auto process data</string>
+     </property>
+     <property name="checked">
+      <bool>true</bool>
+     </property>
+    </widget>
    </item>
   </layout>
  </widget>
