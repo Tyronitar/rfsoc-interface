@@ -13,11 +13,11 @@ from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.core.losweep import LoSweepData, LoSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
-from rfsocinterface.gui.utils import get_num_value
+from rfsocinterface.gui.utils import TabName, get_num_value
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.widgets.icon_label import IconLabel, ERROR_ICON_CODE
-from rfsocinterface.core.utils import ensure_path, get_filename, TabName
+from rfsocinterface.core.utils import ensure_path, get_filename
 from rfsocinterface.gui.main_widget import MainWidget
 
 import time

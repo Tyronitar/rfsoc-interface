@@ -20,9 +20,11 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.data_streaming import DataStreamingWidget
 from rfsocinterface.gui.main_widget import MainWidget
 
-from rfsocinterface.core.utils import ensure_path, TabName, wait_for_telescope_command
+from rfsocinterface.core.utils import ensure_path, wait_for_telescope_command
 
 import json
+
+from rfsocinterface.gui.utils import TabName
 
 _logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')

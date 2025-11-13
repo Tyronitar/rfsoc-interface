@@ -4,7 +4,7 @@ import functools
 import os
 from pathlib import Path
 import json
-from enum import IntEnum, StrEnum
+from enum import IntEnum
 from dataclasses import dataclass
 from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Literal
 from datetime import datetime
@@ -46,14 +46,6 @@ FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
 
 GAUSSIAN_SIGMA = (0.5, 0.33)
 BUTTER_ORDER = 6
-class TabName(StrEnum):
-    """Possible tab names for the GUI."""
-    INITIALIZATION = 'initialization'
-    LOSWEEP = 'losweep'
-    TELESCOPE = 'telescope'
-    DATA = 'data'
-    IMAGING = 'imaging'
-
 # Generic types for type hints
 T = TypeVar('T')
 R = TypeVar('R')

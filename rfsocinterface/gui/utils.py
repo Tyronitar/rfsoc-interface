@@ -1,5 +1,5 @@
 from __future__ import annotations
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from numbers import Number
 from pathlib import Path
 from typing import Callable, Type
@@ -23,6 +23,16 @@ from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 
 # Useful Aliases
 tr = QCoreApplication.translate
+
+
+
+class TabName(StrEnum):
+    """Possible tab names for the GUI."""
+    INITIALIZATION = 'initialization'
+    LOSWEEP = 'losweep'
+    TELESCOPE = 'telescope'
+    DATA = 'data'
+    IMAGING = 'imaging'
 
 class ArgumentType(IntEnum):
     """Class for specifying the type of argument to add to a GUI."""
