@@ -232,7 +232,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     
     @ensure_path(2)
     def _finish_sweep(self, result: int, savefile: Path, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int, dw: DiagnosticsDialog, second_sweep: bool=False):
-        # If the sweep was discarded, close without saving anything
+        # If the sweep was discarded, close without saving changes
         if result == QDialog.DialogCode.Rejected:
             _logger.debug(f'Diagnostics dialog rejected.')
             return
