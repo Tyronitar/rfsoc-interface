@@ -420,6 +420,20 @@ def remove_electronics_noise_tables(
 #
 # Code for recitifying the timestamp
 #
+def find_missed_packets_with_indices(
+        packet_idx: tables.Array,
+) -> npt.NDArray:
+    bad_samples = np.argwhere(np.diff(packet_idx[:]) > 1)
+    missed_packets = np.empty((0, 2), dtype=int)
+
+    for i in bad_samples.flatten():
+        index = i + 1  # np.diff has shape n - 1
+        this_missed_packets = packet_idx[index] - packet_idx[index - 1] - 1
+        missed_packets = np.vstack([missed_packets, [index, this_missed_packets]])
+    print(f'{np.sum(missed_packets[:, 1])} missed packets')
+    return missed_packets
+
+
 def find_missed_packets(
     raw_timestamp: tables.Array,
     n_samples: int,
@@ -1051,10 +1065,13 @@ class ProcessedDataL0(BaseProcessedData):
                 if i == 0:  # Only should make this once, since it's never changed
                     raw_timestamp = raw_time_ordered_data.timestamp[:n_samples]
                     print('finding missed packets...')
-                    missed_packets, this_corrected_packet_index = find_missed_packets(
-                        raw_timestamp,
-                        n_samples
-                    )
+                    missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
+                    this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
+                    this_corrected_packet_index -= this_corrected_packet_index[0]
+                    # missed_packets, this_corrected_packet_index = find_missed_packets(
+                    #     raw_timestamp,
+                    #     n_samples
+                    # )
                     n_missed = np.sum(missed_packets[:, 1])
                     total_samples = n_samples + n_missed
                     time_ordered_data_group._v_attrs.n_samples = total_samples

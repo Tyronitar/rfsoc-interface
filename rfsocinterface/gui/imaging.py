@@ -24,7 +24,6 @@ from rfsocinterface.core.data import (
     DataPipeline,
     DataRoutine,
 )
-from rfsocinterface.core.data.routines import Mapper
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
