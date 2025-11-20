@@ -55,7 +55,7 @@ DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
-RFSOC_TIME_OFFSET = -0.05  # -50 ms, empirically determined
+RFSOC_TIME_OFFSET = -0.012  # -12 ms, empirically determined
 
 PARAM_FILE_N_TONE_ATTRIBUTES = [
     'baseband_freqs',
@@ -1067,7 +1067,7 @@ class ProcessedDataL0(BaseProcessedData):
                     print('finding missed packets...')
                     missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
                     this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
-                    this_corrected_packet_index -= this_corrected_packet_index[0]
+                    # this_corrected_packet_index -= this_corrected_packet_index[0]
                     # missed_packets, this_corrected_packet_index = find_missed_packets(
                     #     raw_timestamp,
                     #     n_samples
