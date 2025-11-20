@@ -3,10 +3,11 @@
 from pathlib import Path
 from typing import Literal, TYPE_CHECKING
 import logging
+from threading import Thread
 
 import matplotlib.pyplot as plt
 
-from PySide6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog
+from PySide6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog, QProgressDialog
 from PySide6.QtCore import Signal
 
 from rfsocinterface.core.settings import SettingsError
@@ -133,73 +134,69 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             self.run_sweep(rfsoc, chan)
     
     def run_sweep(self, rfsoc: RFSOCWrapper, chan: int):
-        valon = rfsoc.get_valon(chan)
-
         chan_name = rfsoc.get_channel_name(chan)
-        _logger.info(f'Running LO Sweep with {chan_name}...')
 
-        # For running on ONR Computer
-        # TODO: Fix this
-        # lo_freq = channel_settings['dsp']['loFreq']  # MHz
-        lo_freq = rfsoc.get_channel(chan).lo_freq
-        rfsoc.set_frequency(chan, lo_freq)
-        tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3  # KHz to Hz
-        if tone_shift != 0:
-            _logger.debug(f'Tone shift != 0. Computing new tones...')
-            lo_freq = rfsoc.get_frequency(chan)  # Hz
-            curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
-            new_tones = np.ndarray.tolist(
-                curr_tone_list
-                + float(tone_shift)
-                * (curr_tone_list + lo_freq)
-                / lo_freq
-            )
-            _logger.debug(f'LoConfigWidget calling `set_tone_list` for RFSoC {rfsoc.name} channel {chan}')
-            _logger.info(
-                "Waiting for the RFSOC to finish writing the updated frequency list"
-            )
-            rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
-            
+        # Get values from GUI, converting KHz to Hz
+        tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
+        diff_to_flag = get_num_value(self.flagging_lineEdit, float) * 1e3
+        freq_step = get_num_value(self.df_lineEdit)  * 1e3
+        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3
+
         savefile = get_filename(
             file_type="LO", chan_name=chan_name, mkdir=True
         )
         match self.buttonGroup.checkedButton():
             case self.filename_elevation_radioButton:
-                savefile += f'_elev_{self.filename_elevation_lineEdit.text()}'
+                savefile = savefile.with_stem(f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}')
             case self.filename_temperature_radioButton:
-                savefile += f'_temp_{self.filename_temperature_lineEdit.text()}'
+                savefile = savefile.with_stem(f'{savefile.stem}_temp_{self.filename_temperature_lineEdit.text()}')
             case _:
                 pass
 
-        # For running on ONR compupter
-        rfchan = rfsoc.get_channel(chan)
-        tone_list = rfsoc.get_tone_list(chan)[0]
-        sweep = LoSweep(
-            valon,
-            rfchan,
-            tone_list,
-            lo_freq,
+        pd = QProgressDialog(
+            'Setting Up LO Sweep...',
+            'Cancel',
+            0,
+            100,
+            parent=self,
         )
-
-        freq_step = get_num_value(self.df_lineEdit)  * 1e3  # KHz to Hz
-        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3  # KHz to Hz
-        n_steps = full_span / freq_step
-
-        pd = QThreadJobProgressDialog(labelText='Running LO Sweep...',  maximum=n_steps, max_workers=1, parent=self)
-        pd.setAutoClose(False)
+        pd.setAutoClose(True)
         pd.show()
         QApplication.processEvents()
+        
+        # For running on ONR compupter
+        sweep = LoSweep(
+            rfsoc,
+            chan,
+            savefile,
+            tone_shift,
+            freq_step,
+            full_span,
+            diff_to_flag=diff_to_flag,
+        )
+        pd.canceled.connect(sweep.cancel)
+        pd.setValue(0)
+        pd.setMinimum(0)
+        pd.setMaximum(sweep.n_steps)
 
-        _logger.debug(f'Starting LO Sweep...')
-        sweep_data_future = sweep.run_sweep(rfchan.chanmask, tone_list, N_steps=n_steps, freq_step=freq_step, pd=pd)
-        sweep_data_future.add_done_callback(lambda _: self.start_fit.emit(sweep, pd, savefile, rfsoc, chan, False))
+        def increment_progress():
+            nonlocal pd
+            pd.setValue(pd.value() + 1)
 
-        # For running on local computer
-        # sweep_file = '20240822_rfsoc2_LO_Sweep_hour16p3294.npy'
-        # tone_list = 'Default_tone_list.npy'
-        # chanmask = 'chanmask.npy'
-        # savefile = Path(savefile).name
-        # sweep_data = LoSweepData.from_file(tone_list, sweep_file, chanmask)
+        pd.setLabelText('Running LO Sweep...')
+        sweep_thread = Thread(target=sweep.run_sweep, args=(increment_progress,))
+        sweep_thread.start()
+
+        while pd.value() < pd.maximum() and not sweep._cancel:
+            QApplication.processEvents()
+            time.sleep(0.1)
+        
+        sweep_thread.join()
+
+        # TODO
+        # Fit sweep if requested...
+        #    Multiprocessing???
+        # Show diagnostics dialog if requested...
 
     @ensure_path(3)
     def _save_and_fit_sweep(self, sweep: LoSweep, pd: QThreadJobProgressDialog, savefile: Path, rfsoc: RFSOCWrapper, chan: int, second_sweep: bool=False):
