@@ -723,6 +723,7 @@ class LoSweep:
         self.valon.set_frequency(SYNTH_B, self.f_center * 1e-6)
         _logger.debug(f'Valon {self.valon} set frequency for synthesizer {SYNTH_B} to {self.f_center * 1e-6} MHz')
 
+        # BUG: This hangs forever if the tone list isn't set
         self.data = LoSweepData(self.tone_list, self.f_center, sweep_data, self.chanmask)
         self._processed = True
         _logger.info('Finished processing sweep results')

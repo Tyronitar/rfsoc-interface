@@ -55,7 +55,8 @@ DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
-RFSOC_TIME_OFFSET = -0.05  # -50 ms, empirically determined
+RFSOC_TIME_OFFSET = -0.012  # -12 ms, empirically determined
+# RFSOC_TIME_OFFSET = 0.0 
 
 PARAM_FILE_N_TONE_ATTRIBUTES = [
     'baseband_freqs',
@@ -569,7 +570,7 @@ def interpolate_missing_data(
         min_t = max(0, i - window_size)
         max_t = min(n_samples, i + window_size)
         window = range(min_t, max_t + 1)
-        times = timestamp[packet_indices[window]]
+        times = timestamp[normalized_packet_indices[window]]
         i_data = data_I[:, window][valid_tone_index, :]
         q_data = data_Q[:, window][valid_tone_index, :]
         fit_I = poly.polyfit(times - times[0], i_data.T, 4)
@@ -1103,16 +1104,17 @@ class ProcessedDataL0(BaseProcessedData):
 
                 this_data_IQ = np.zeros((2, 1024, total_samples))
                 # Interpolate Data
-                print('interpolating data...')
-                this_interpolated_indices, interpolated_data = interpolate_missing_data(
-                    raw_time_ordered_data.adc_i,
-                    raw_time_ordered_data.adc_q,
-                    timestamp,
-                    missed_packets,
-                    corrected_packet_index[:],
-                    valid_tone_index
-                )
-                interpolated_indices.append(this_interpolated_indices)
+                if n_missed > 0:
+                    print('interpolating data...')
+                    this_interpolated_indices, interpolated_data = interpolate_missing_data(
+                        raw_time_ordered_data.adc_i,
+                        raw_time_ordered_data.adc_q,
+                        timestamp,
+                        missed_packets,
+                        corrected_packet_index[:],
+                        valid_tone_index
+                    )
+                    interpolated_indices.append(this_interpolated_indices)
 
                 # TODO: Fix this for multi channel readout (not using `tone_indices`)
                 # Read IQ data
@@ -1120,7 +1122,8 @@ class ProcessedDataL0(BaseProcessedData):
                 this_data_IQ[0, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_i[:]
                 this_data_IQ[1, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_q[:]
                 this_data_IQ = this_data_IQ[:, valid_tone_index]
-                this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
+                if n_missed > 0:
+                    this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
                 data_IQ.append(this_data_IQ)
                 print('done copying data')
 
@@ -1169,7 +1172,13 @@ class ProcessedDataL0(BaseProcessedData):
                     )
                 
                 # Store chanmask from TOD
-                chanmask.append(raw_global_data.chanmask[:])
+                this_chanmask = raw_global_data.chanmask[:]
+                off_res = np.argwhere(this_chanmask == 0).flatten()
+                no_pol = np.argwhere(this_detector_pol[:] < 1).flatten()
+                this_chanmask[no_pol] = -1
+                # Preserve off-resonance indices
+                this_chanmask[off_res] = 0
+                chanmask.append(this_chanmask)
 
         # Close telescope file as it's no longer needed
         if azel_exists:
