@@ -145,6 +145,8 @@ class TelescopeMotorController:
                         self.set_ze_speed_relation(*args)
                     case 'az_scan_mode':
                         self.az_scan_mode(*args)
+                    case 'dither_pattern':
+                        self.dither_pattern(*args)
                     case 'stop_telescope':
                         self._run = False
                         self.set_ao_zero()
@@ -457,7 +459,7 @@ class TelescopeMotorController:
                 new_ze = initial_ze + (i_rep - (n_repeats - 1) / 2) * ze_dither
             else:
                 new_ze = initial_ze + (i_rep % 2) * ze_dither
-            self._set_ze_pos(new_ze, stop_run=False)
+            self._set_ze_pos(new_ze, stop_run=False, primary_scan_direction='az')
 
 
             if np.mod(i_rep, 2) == 0:
@@ -493,7 +495,7 @@ class TelescopeMotorController:
                 _tele_logger.info('Canceling AZ Scan Mode\nResetting telescope position...')
                 self.send('az_scan_mode_label', 'Resetting telescope position')
                 self._set_az_pos(initial_az, stop_run=False)
-                self._set_ze_pos(initial_ze, stop_run=False)
+                self._set_ze_pos(initial_ze, stop_run=False, primary_scan_direction='az')
             return
         
         path = Path(file)
@@ -508,7 +510,7 @@ class TelescopeMotorController:
             _tele_logger.info('AZ Scan Mode: Resetting telescope position...')
             self.send('az_scan_mode_label', 'Running AZ Scan Mode\nResetting telescope position')
             self._set_az_pos(initial_az, stop_run=False)
-            self._set_ze_pos(initial_ze, stop_run=False)
+            self._set_ze_pos(initial_ze, stop_run=False, primary_scan_direction='az')
 
         self._run = False
         _tele_logger.info("Scan Complete")
@@ -567,14 +569,14 @@ class TelescopeMotorController:
             )
             return old_pos
 
-    def set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True):
+    def set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True, primary_scan_direction: str='ze'):
         # self.zenithCommanded.emit(new_pos)
         self._run = True
-        worker_thread = Thread(target=self._set_ze_pos, args=(new_pos, scan_mode, stop_run))
+        worker_thread = Thread(target=self._set_ze_pos, args=(new_pos, scan_mode, stop_run, primary_scan_direction))
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
-    def _set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True):
+    def _set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True, primary_scan_direction: str='za'):
         self.send('ze_pos_comm', new_pos, timeout=0.25)
         # new_pos = float(new_pos)
         self.set_ao_zero()
@@ -585,14 +587,18 @@ class TelescopeMotorController:
         if scan_mode:
             this_az = self.get_ser_az_pos()
             position_data = []
+        if scan_mode and primary_scan_direction.lower() == 'za':
+            tolerance = ZE_POS_TOL_DEG * 5
+        else:
+            tolerance = ZE_POS_TOL_DEG
         counter = 0
 
         # Run loop
-        _tele_logger.debug(f'Zenith Angle - Pos: {pos}, New pos: {new_pos}, tolerance: {ZE_POS_TOL_DEG}, diff: {pos - new_pos}')
+        _tele_logger.debug(f'Zenith Angle - Pos: {pos}, New pos: {new_pos}, tolerance: {tolerance}, diff: {pos - new_pos}')
         # start_time = time.time()
         # profiler = cProfile.Profile()
         # profiler.enable()
-        while abs(pos - new_pos) > ZE_POS_TOL_DEG and self._run:
+        while abs(pos - new_pos) > tolerance and self._run:
             try:
                 # Choose direction of motion
                 if pos > new_pos:
@@ -617,7 +623,7 @@ class TelescopeMotorController:
 
                 self.set_ao_value(data_value, ZE_OUT_CHANNEL)
                 pos = self.get_ser_ze_pos()
-                if abs(pos - new_pos) <= ZE_POS_TOL_DEG:
+                if abs(pos - new_pos) <= tolerance:
                     self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
                 # self.conn.send(['ze_pos', pos])
                 if scan_mode:
@@ -651,24 +657,184 @@ class TelescopeMotorController:
         _tele_logger.debug(f'Finished setting ze_pos to {new_pos}. Actual={pos}, Error={pos - new_pos:.5f}')
         if scan_mode:
             return position_data
+        
+    def dither_pattern(
+        self,
+        file: str,
+        primary_start: float,  # relative to current positions
+        primary_stop: float,
+        n_repeats: int=1,
+        secondary_dither: float=0.04,
+        position_return: bool=True,
+        large_map_mode: bool=False,
+        primary_dither_direction: str='az',
+    ):
+        """Dither the telescope along the specified direction.
 
-    def ze_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
-        # worker = TelescopeMotionJob(self._az_scan_mode, start, stop, file, n_repeats)
-        # self._active_jobs.append(worker)
-        # worker.start()
-        self._ze_scan_mode(start, stop, file, n_repeats)
+        Arguments:
+            primary_start (float): Starting location relative to current position in deg.
+            primary_stop (float): Ending location relative to current position in deg.
+            primary_dither_direction (str): Which direction is the pimary direction (must be 'az' or 'za')
+        """
+        self._run = True
+        worker_thread = Thread(
+            target=self._dither_pattern,
+            args=(
+                file,
+                primary_start,
+                primary_stop,
+                n_repeats,
+                secondary_dither,
+                position_return,
+                large_map_mode,
+                primary_dither_direction,))
+        self._active_jobs.append(worker_thread)
+        worker_thread.start()
 
-    def _ze_scan_mode(self, start: float, stop: float, file: str, n_repeats: int=1):
-        ze_start_buffer = 0.2 * np.sign(stop - start)
-        ze_end_buffer = 0.2 * np.sign(stop - start)
-        dummy = self._set_ze_pos(start - ze_start_buffer, scan_mode=True)
-        position_data = self._set_ze_pos(stop + ze_end_buffer, scan_mode=True)
-        np.savez(
-            file,
-            az=position_data[0::3],
-            el=position_data[1::3],
-            time=position_data[2::3],
-        )
+    def _dither_pattern(
+            self,
+            file: str,
+            primary_start: float,
+            primary_stop: float,
+            n_repeats: int=2,
+            secondary_dither: float=0.04,
+            position_return: bool=True,
+            large_map_mode: bool=False,
+            primary_dither_direction: str='az',
+    ):
+        """Dither the telescope...
+        
+        Arguments:
+            large_map_mode (bool): If True, the telescoep will continue to step in ZE in
+                the same direction between each dither, to create a larger map in the ZE
+                direction. Defaults to False.
+        
+        """
+        if primary_dither_direction not in ['az', 'za']:
+            # TODO: Handle error
+            pass
+        primary_az = primary_dither_direction.lower() == 'az'
+        primary_start_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
+        primary_end_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
+        initial_az = self.get_ser_az_pos()
+        initial_ze = self.get_ser_ze_pos()
+        if primary_az:
+            primary_start += initial_az
+            primary_stop += initial_az
+        else:
+            primary_start += initial_ze
+            primary_stop += initial_ze
+
+        # Set start position in current thread
+        _tele_logger.info(f'Moving telescope to initial position')
+        self.send('dither_pattern_label', 'Running Dither Pattern\nMoving telescope to initial position')
+        if primary_az:
+            self._set_az_pos(primary_start - primary_start_buffer, stop_run=False)
+        else:
+            self._set_ze_pos(primary_start - primary_start_buffer, stop_run=False)
+
+        if primary_az:
+            self.set_ze_speed_relation(ZE_SCAN_RPM_PER_VOLT)
+
+
+        az_speed_factor = 1/3 if large_map_mode else 1.
+
+        self.send('dither_pattern_maximum', n_repeats)
+        start_time = time.time()
+        rep_times = []
+        for i_rep in np.arange(n_repeats):
+            rep_start_time = time.time()
+            _tele_logger.info(f'Dither Pattern: Starting repeat {i_rep + 1} of {n_repeats}')
+            label_text = \
+                f'Running Dither Pattern\n' \
+                f'Repeat {i_rep + 1} / {n_repeats}'
+            if len(rep_times) > 0:
+                label_text += f'\nEstimated time remaining: {np.mean(rep_times) * (n_repeats - i_rep):.2f} s'
+            self.send(
+                'dither_pattern_label',
+                label_text
+            )
+            if not self._run:
+                break
+            if large_map_mode:
+                new_ze = initial_ze + (i_rep - (n_repeats - 1) / 2) * secondary_dither
+                self._set_ze_pos(new_ze, stop_run=False)
+            else:
+                if primary_az:
+                    new_ze = initial_ze + (i_rep % 2) * secondary_dither
+                    self._set_ze_pos(new_ze, stop_run=False)
+                else:
+                    new_az = initial_az + (i_rep % 2) * secondary_dither
+                    self._set_az_pos(new_az, stop_run=False)
+
+
+            if np.mod(i_rep, 2) == 0:
+                if primary_az:
+                    this_position_data = self._set_az_pos(
+                        primary_stop + primary_end_buffer + 0.5, scan_mode=True, stop_run=False, speed_factor=az_speed_factor,
+                    )
+                else:
+                    this_position_data = self._set_ze_pos(
+                        primary_stop + primary_end_buffer + 0.5, scan_mode=True, stop_run=False,
+                        primary_scan_direction=primary_dither_direction,
+                    )
+                if i_rep == 0:
+                    position_data = this_position_data
+                else:
+                    position_data = np.append(position_data, this_position_data)
+            if np.mod(i_rep, 2) == 1:
+                if primary_az:
+                    this_position_data = self._set_az_pos(
+                        primary_start - primary_start_buffer - 0.5, scan_mode=True, stop_run=False, speed_factor=az_speed_factor,
+                    )
+                else:
+                    this_position_data = self._set_ze_pos(
+                        primary_start - primary_start_buffer - 0.5, scan_mode=True, stop_run=False,
+                        primary_scan_direction=primary_dither_direction,
+                    )
+                position_data = np.append(position_data, this_position_data)
+            rep_end_time = time.time()
+            elapsed_time = rep_end_time - rep_start_time
+            rep_times.append(elapsed_time)
+            self.send('dither_pattern_progress', i_rep + 1)
+            _tele_logger.info(f'Dither Pattern: Finished repeat {i_rep + 1} in {elapsed_time:.3f}s')
+            _tele_logger.info(f'Dither Pattern: Average time per repetition is {np.mean(rep_times):.3f}s')
+
+        stop_time = time.time()
+        _logger.info(f'Dither Pattern: Finished {n_repeats} repeats in {stop_time - start_time:.3f}s')
+
+        # self._run is only changed if the telescope was stopped mid scan
+        # Don't save the telescope data in that case
+        if not self._run:
+            _tele_logger.info("Dither Pattern canceled before completion.")
+            if primary_az:
+                self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
+            if position_return:
+                _tele_logger.info('Canceling Dither Pattern\nResetting telescope position...')
+                self.send('dither_pattern_label', 'Resetting telescope position')
+                self._set_az_pos(initial_az, stop_run=False)
+                self._set_ze_pos(initial_ze, stop_run=False)
+            self.send('dither_pattern_complete', 1)
+            return
+        
+        path = Path(file)
+        with h5py.File(path, 'w') as f:
+            f.create_dataset("az_tel", data=position_data[0::3])
+            f.create_dataset("za_tel", data=position_data[1::3])
+            f.create_dataset("timestamp_tel", data=position_data[2::3])
+            f.create_dataset("optical_visibility", data=['****'])
+        path.chmod(PERMISSIONS_USR_RW)
+        if primary_az:
+            self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
+        if position_return:
+            _tele_logger.info('Dither Pattern: Resetting telescope position...')
+            self.send('dither_pattern_label', 'Running Dither Pattern\nResetting telescope position')
+            self._set_az_pos(initial_az, stop_run=False)
+            self._set_ze_pos(initial_ze, stop_run=False)
+
+        self._run = False
+        _tele_logger.info("Scan Complete")
+        self.send('dither_pattern_complete', 0)
 
     def set_ze_speed_relation(self, rpm_per_volt: float):
         # Set the speed of the motor in RPM/1V. Default is 40, which would roughly turn the telescope 1 degree/second. ASCII code for serial is AIN.VSCALE. NOTE: AZ VALUE IS PER 10 VOLTS AND EL VALUE IS PER 1 VOLT!
