@@ -24,7 +24,6 @@ from rfsocinterface.core.data import (
     DataPipeline,
     DataRoutine,
 )
-from rfsocinterface.core.data.routines import Mapper
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -82,6 +81,20 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
                 (('Zenith angle dither: ', ArgumentType.FLOAT), {'default': 0.04}),
                 (('Return to starting position', ArgumentType.BOOL), {'default': True}),
                 (('Large Map Mode', ArgumentType.BOOL), {'default': False}),
+            ],
+        )
+
+        self.add_dither_pattern(
+            'Dither Pattern',
+            'dither_pattern',
+            [
+                (('Primary start: ', ArgumentType.FLOAT), {'default': -5}),
+                (('Primary stop: ', ArgumentType.FLOAT), {'default': 5}),
+                (('N Repeats: ', ArgumentType.INT), {'default': 2}),
+                (('Secondary Dither: ', ArgumentType.FLOAT), {'default': 0.04}),
+                (('Return to starting position', ArgumentType.BOOL), {'default': True}),
+                (('Large Map Mode', ArgumentType.BOOL), {'default': False}),
+                (('Primary Direction', ArgumentType.ENUM), {'options': ['AZ', 'ZA'], 'default': 'AZ'}),
             ],
         )
         # self.add_dither_pattern(
