@@ -22,6 +22,7 @@ from rfsocinterface.core.data.routines import (
     LowPassFilter,
     GaussianFilter,
     RemoveElectronicsNoise,
+    PsdBasis,
 )
 from rfsocinterface.core.data.map import (
     BinTODIntoMap,
@@ -53,6 +54,7 @@ __all__ = [
     RoutineApplier,
     ProcessingStage,
     DataRoutine,
+    PsdBasis,
     DEFAULT_MAP_DPIX,
     N_POLARIZATION,
     PARAM_FILE_N_TONE_ATTRIBUTES,

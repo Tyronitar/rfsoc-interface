@@ -187,7 +187,7 @@ class PsdBasis:
     FREQ_DISS = 'freq_diss'
 
 class ComputeNoisePSD(DataRoutine):
-    stage = ProcessingStage.POST_PROCESSING
+    stage = ProcessingStage.PROCESSING_L2
 
     def __init__(
             self,
