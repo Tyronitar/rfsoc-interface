@@ -19,7 +19,8 @@ from rfsocinterface.core.data import (
     flag_outliers,
     ProcessedData,
     DataRoutine,
-    ProcessingStage
+    ProcessingStage,
+    PsdBasis,
 )
 from rfsocinterface.core.utils import DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
 
@@ -112,7 +113,7 @@ def plot_psd(
         min_percentile: float=16,
         max_percentile: float=84,
         title: str | None=None,
-        basis: Literal['gp', 'iq', 'fd']='gp',
+        basis: PsdBasis=PsdBasis.GAIN_PHASE,
         resonators: list[int]=[0],
 ) -> list[Figure]:
     """Create plots for the psd.
@@ -143,16 +144,16 @@ def plot_psd(
 
     if title is None:
         title = 'RFSoC Loopback PSD'
-    match basis.lower():
-        case 'gp':
+    match basis:
+        case PsdBasis.GAIN_PHASE:
             titles = [title + ' - Gain', title + ' - Phase']
             ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
-        case 'iq':
+        case PsdBasis.IQ:
             titles = [title + ' - I', title + ' - Q']
             ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
-        case 'fd':
+        case PsdBasis.FREQ_DISS:
             return plot_psd_df_over_f(freq, psd, filename, title=title, resonators=resonators)
         case _:
             raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
