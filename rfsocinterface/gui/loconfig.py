@@ -12,7 +12,7 @@ from PySide6.QtCore import Signal
 
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
-from rfsocinterface.core.losweep import LoSweepData, LoSweep
+from rfsocinterface.core.losweep import LoSweepData, LoSweep, BlindSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
 from rfsocinterface.gui.utils import get_num_value
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
@@ -131,8 +131,26 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.channel_error_label.hide()
         # TODO: Run sweeps in parallel
         for rfsoc, chan in selected_channels:
-            self.run_sweep(rfsoc, chan)
+            self.run_blind_sweep(rfsoc, chan)
+            # self.run_sweep(rfsoc, chan)
     
+    def run_blind_sweep(self, rfsoc: RFSOCWrapper, chan: int):
+        chan_name = rfsoc.get_channel_name(chan)
+
+        # Get values from GUI, converting KHz to Hz
+        tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
+        freq_step = get_num_value(self.df_lineEdit)  * 1e3
+        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3
+
+        savefile = get_filename(
+            file_type="LO", chan_name=chan_name, mkdir=True
+        )
+        savefile = savefile.with_stem(f'{savefile.stem}_blind')
+
+        blind_sweep = BlindSweep(rfsoc, chan, savefile, freq_step, full_span)
+        blind_sweep.run()
+
+
     def run_sweep(self, rfsoc: RFSOCWrapper, chan: int):
         chan_name = rfsoc.get_channel_name(chan)
 
@@ -187,16 +205,31 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         sweep_thread = Thread(target=sweep.run_sweep, args=(increment_progress,))
         sweep_thread.start()
 
-        while pd.value() < pd.maximum() and not sweep._cancel:
+        while not (sweep._processed or sweep._cancel):
             QApplication.processEvents()
             time.sleep(0.1)
         
         sweep_thread.join()
+        if sweep._cancel:
+            _logger.info('LO Sweep Cancelled')
+            return
 
         # TODO
         # Fit sweep if requested...
         #    Multiprocessing???
         # Show diagnostics dialog if requested...
+        sweep_data = sweep.data
+        sweep_data.set_diff_to_flag(get_num_value(self.flagging_lineEdit, float) * 1e3)
+        self.save_sweep(savefile, sweep_data)
+
+        pd = QThreadJobProgressDialog(
+            labelText='Fitting LO Sweep...',
+            maximum=sweep_data.ngoodchan,
+            parent=self,
+        )
+        pd.setAutoClose(False)
+        self._save_and_fit_sweep(sweep, pd, savefile, rfsoc, chan, False)
+
 
     @ensure_path(3)
     def _save_and_fit_sweep(self, sweep: LoSweep, pd: QThreadJobProgressDialog, savefile: Path, rfsoc: RFSOCWrapper, chan: int, second_sweep: bool=False):

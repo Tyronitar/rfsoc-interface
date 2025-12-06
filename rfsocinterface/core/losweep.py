@@ -613,19 +613,12 @@ class LoSweep:
             chanmask = np.ones(np.size(self.tone_list), dtype=int)
 
         self._processed = False
-        if len(self.tone_list) > 1:
-            tone_diff = np.diff(self.tone_list)[0]
-        else:
-            tone_diff = 0
-        if self.freq_step > 0:
-            flo_step = self.freq_step
-        else:
-            flo_step = tone_diff / self.n_steps
+        flo_step = self.freq_step
 
         flo_start = self.f_center - flo_step * self.n_steps / 2.0
         flo_stop = self.f_center  + flo_step * self.n_steps / 2.0
 
-        self.flos = np.arange(flo_start, flo_stop, flo_step)
+        self.flos = np.arange(flo_start, flo_stop + flo_step, flo_step)
 
         # Perform LO Sweep
         _logger.info('Starting LO sweep...')
@@ -659,7 +652,79 @@ class LoSweep:
 
         # Set the LO back to the original frequency
         self.rfsoc.set_frequency(self.chan, self.f_center)
+        self.data = data
         return data
+
+from kidpy3.measure import losweep, ResonatorFinder
+
+class BlindSweep:
+    def __init__(
+        self,
+        rfsoc: RFSOCWrapper,
+        chan: int,
+        savefile: Path,
+        freq_step: float,
+        full_span: float,
+    ):
+        self.rfsoc = rfsoc
+        self.chan = chan
+        self.valon = rfsoc.get_valon(chan)
+        self.savefile = savefile
+        self.freq_step = freq_step
+        self.full_span = full_span
+        self.f_center = rfsoc.get_channel(chan).lo_freq
+
+        rfsoc.set_frequency(chan, self.f_center)
+
+        self.rfchan = rfsoc.get_channel(chan)
+
+
+        self.baseband_freqs = rfsoc.get_tone_list(chan)[0]
+        self._processed = False
+        self._cancel = False
+
+    @property
+    def n_steps(self) -> int:
+        """Number of steps in the LO sweep."""
+        return self.full_span // self.freq_step
+
+    def run(self):
+        sweep_data = losweep(
+            self.valon,
+            self.rfchan,
+            self.f_center * 1e-6,
+            self.baseband_freqs,
+            N_steps=self.n_steps,
+            freq_step=self.freq_step * 1e-6,
+        )
+
+        plt.figure(figsize=(12,8))
+        sfreq, s21 = sweep_data
+        s21_full = s21.flatten()
+        s21_sqrd = s21_full.real ** 2 + s21_full.imag ** 2
+        s21_pow = 10 * np.log10(s21_sqrd)
+        plt.plot(sfreq.flatten()/1e6, s21_pow)
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.xlabel("Frequency (MHz)", fontsize=18)
+        plt.ylabel("dB", fontsize=18)
+        plt.legend(["S21 of resonator sweep"], fontsize=18)
+        plt.show()
+
+        # finder = ResonatorFinder(
+        #     sweep_data,
+        #     self.f_center,
+        #     self.freq_step,
+        # )
+        # freqs = finder.find_resonators(
+        #     6,
+        #     1,
+        #     1e8,
+        # )
+
+        # finder.plot()
+        pdb.set_trace()
+    
 
 
 if __name__ == '__main__':

@@ -21,25 +21,28 @@ Be231102p2_LO_freq = 300e6
 
 if __name__ == "__main__":
     # lo_freq = 4e8
-    lo_freq = 430e6
-    # n_tones = 30
+    lo_freq = 4e8
+    n_tones = 1000
     # baseband_freqs = np.concatenate([np.linspace(-246e6, -11e6, n_tones // 2), np.linspace(10e6, 245e6, n_tones // 2)])
+    baseband_freqs = np.arange(-200e6, 200e6 + 1, 400e3)
     # tile_name = f'{n_tones}_tone_uniform_202050829'
 
     # Add 58 more tones
-    baseband_freqs = np.concatenate([
-        Be231102p2_tones,
-        np.linspace(218, 244, 27) * 1e6,
-        np.linspace(344, 365, 22) * 1e6,
-        np.linspace(284, 302, 9) * 1e6,
-    ])
-    sorted_indices = baseband_freqs.argsort()
+    # baseband_freqs = np.concatenate([
+    #     Be231102p2_tones,
+    #     np.linspace(218, 244, 27) * 1e6,
+    #     np.linspace(344, 365, 22) * 1e6,
+    #     np.linspace(284, 302, 9) * 1e6,
+    # ])
+    # sorted_indices = baseband_freqs.argsort()
 
-    baseband_freqs = baseband_freqs[sorted_indices] - lo_freq
+    # baseband_freqs = baseband_freqs[sorted_indices] - lo_freq
 
     
-    tile_name = 'Be231102p2_100_tones'
-    # tile_name = 'Device_aSi1_Channel2'
+    # tile_name = 'Be231102p2_100_tones'
+    # tile_name = 'Device_aSi1_Channel3'
+    tile_name = 'Device_aSi1_Channel2_blind'
+    # baseband_freqs = baseband_freqs - lo_freq
     # baseband_freqs =  np.load('/home/onrkids/readout/host/params/Default_tone_list.npy')
 
     #needs to be the same length as baseband
@@ -51,8 +54,8 @@ if __name__ == "__main__":
     # tone_powers = np.load('/home/onrkids/onrkidpy/params/Device_aSi1_Channel2_max_readout_power_dB.npy')
     # df_overf_per_mK = np.load('/home/onrkids/readout/host/params/dfoverf_per_mK_tile2.npy')
     detdx = detdy = chanmask = det_beam_ampl = det_pol = tone_powers = df_overf_per_mK = None
-    chanmask = np.zeros_like(baseband_freqs)
-    chanmask[np.where(sorted_indices < len(Be231102p2_tones))[0]] = 1
+    # chanmask = np.zeros_like(baseband_freqs)
+    # chanmask[np.where(sorted_indices < len(Be231102p2_tones))[0]] = 1
 
 
     initialize_params_file(tile_name, baseband_freqs, lo_freq, DEFAULT_PARAMS_DIRECTORY)
