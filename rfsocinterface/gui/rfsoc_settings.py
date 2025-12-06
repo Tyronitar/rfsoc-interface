@@ -325,11 +325,11 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     def set_attenuation(self, attenuation: str):
         match attenuation:
             case 'in':
-                addr = self.channel + 1
+                addr = 2 if self.channel == 1 else 4
                 lineEdit = self.rfin_lineEdit
                 error_label = self.rfin_error_label
             case 'out':
-                addr = self.channel + 0
+                addr = 1 if self.channel == 1 else 3
                 lineEdit = self.rfout_lineEdit
                 error_label = self.rfout_error_label
             case _:

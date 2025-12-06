@@ -276,7 +276,7 @@ class RFSOCWrapper:
             rfchan.attenuator_settings = old_atten
 
             # Update settings
-            _logger.debug(f'RFSoC {self.name} succesfully set attenuation for {attenuator} (address ={addr}) to {value:.2f} dB')
+            _logger.info(f'RFSoC {self.name} succesfully set attenuation for {attenuator} (address ={addr}) to {value:.2f} dB')
             self.channel_settings(channel)[attenuator] = value
         else:
             _logger.error(f'RFSoC {self.name} failed to set attenuation for {attenuator} (address={addr}). Message: "{msg}"')
