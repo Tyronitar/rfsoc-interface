@@ -6,7 +6,6 @@ from pathlib import Path
 import glob
 import pdb
 import time
-import inspect
 import logging
 from itertools import chain, batched
 import typing
@@ -34,9 +33,7 @@ from rfsocinterface.core.utils import (
     get_file_stub,
     get_map_file_template,
     get_beammap_file_template,
-    get_params_file_template,
     DATA_DIRECTORY,
-    DEFAULT_PARAMS_DIRECTORY,
     ensure_path
 )
 
@@ -56,18 +53,6 @@ AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
 RFSOC_TIME_OFFSET = -0.012  # -12 ms, empirically determined
-# RFSOC_TIME_OFFSET = 0.0 
-
-PARAM_FILE_N_TONE_ATTRIBUTES = [
-    'baseband_freqs',
-    'tone_powers',
-    'detector_delta_x',
-    'detector_delta_y',
-    'detector_pol',
-    'detector_beam_ampl',
-    'dfoverf_per_mK',
-    'chanmask',
-]
 
 DYNAMIC_PROCESSED_DATA_FIELDS = [
     'carrier_amplitudes',
@@ -1911,124 +1896,6 @@ def plot_map(
         plt.xlabel('Azimuth (degrees)')
     plt.ylabel('ZA (degrees)')
     plt.xlim(xlim), plt.ylim(ylim)
-
-
-#
-# Parameter Files
-#
-
-def initialize_params_file(
-    tile_name: str,
-    baseband_freqs: npt.NDArray,
-    lo_freq: float,
-    params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
-):
-    params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
-    if not params_tile_file.exists():
-        params_tile_file.touch(PERMISSIONS_ALL_FULL)
-    n_tones = np.size(baseband_freqs)
-    with tables.open_file(params_tile_file, 'w') as params_fh:
-        params_fh.root._v_attrs.n_tones = n_tones
-        params_fh.root._v_attrs.tile_name = tile_name
-        params_fh.root._v_attrs.tile_number = 0
-        params_fh.root._v_attrs.chan_number = 0
-        params_fh.root._v_attrs.ifslice_number = 0
-        chanmask = params_fh.create_array(
-            '/',
-            'chanmask',
-            atom=tables.Int8Atom(),
-            shape=(n_tones,),
-        )
-        chanmask[:] = 1
-        params_fh.create_array(
-            '/',
-            'baseband_freqs',
-            obj=baseband_freqs,
-        )
-        params_fh.create_array(
-            '/',
-            'tone_powers',
-            obj=np.ones(n_tones, dtype=np.float32),
-        )
-        params_fh.create_array(
-            '/',
-            'lo_freq',
-            obj=lo_freq,
-        )
-        params_fh.create_array(
-            '/',
-            'detector_delta_x',
-            atom=tables.Float32Atom(),
-            shape=(n_tones,),
-        )
-        params_fh.create_array(
-            '/',
-            'detector_delta_y',
-            atom=tables.Float32Atom(),
-            shape=(n_tones,),
-        )
-        det_beam_ampl = params_fh.create_array(
-            '/',
-            'detector_beam_ampl',
-            atom=tables.Float32Atom(),
-            shape=(n_tones,),
-        )
-        det_beam_ampl[:] = 1
-        det_pol = params_fh.create_array(
-            '/',
-            'detector_pol',
-            atom=tables.Int8Atom(),
-            shape=(n_tones,),
-        )
-        det_pol[:] = 1
-        dfoveref_per_mK = params_fh.create_array(
-            '/',
-            'dfoverf_per_mK',
-            atom=tables.Float64Atom(),
-            shape=(n_tones,),
-        )
-        dfoveref_per_mK[:] = 1
-    _logger.info(f'Initialized params file {params_tile_file}')
-
-
-def update_params_file(
-    tile_name: str,
-    params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
-    baseband_freqs: npt.NDArray=None,
-    lo_freq: float=None,
-    detector_delta_x: npt.NDArray=None,
-    detector_delta_y: npt.NDArray=None,
-    detector_beam_ampl: npt.NDArray=None,
-    detector_pol: npt.NDArray=None,
-    dfoverf_per_mK: npt.NDArray=None,
-    chanmask: npt.NDArray=None,
-    tone_powers: npt.NDArray=None,
-):
-    params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
-    if not params_tile_file.exists():
-        raise FileExistsError(f'Params file {params_tile_file} does not exist')
-    
-    signature = inspect.signature(update_params_file)
-    keyword_args = {
-        param.name: param.default
-        for param in signature.parameters.values()
-        if param.default is not inspect.Parameter.empty
-    }
-
-    with tables.open_file(params_tile_file, 'a') as fh:
-        for k in keyword_args:  # Check all of the keyword arguments
-            if k == 'params_dir':
-                continue  # We only care about the parameters
-            v = locals()[k]
-            if v is None:
-                continue  # The value is not being updated, so skip it
-            # Check the array is the correct size if needed
-            if k in PARAM_FILE_N_TONE_ATTRIBUTES:
-                if np.size(v) != fh.root._v_attrs.n_tones:
-                    raise ValueError(
-                        f'{k} size {np.size(v)} does not match n_tones {fh.root._v_attrs.n_tones}'
-                    )
-            fh.get_node('/', k)[:] = v
 
 
 if __name__ == '__main__':

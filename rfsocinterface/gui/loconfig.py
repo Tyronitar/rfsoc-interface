@@ -4,15 +4,16 @@ from pathlib import Path
 from typing import Literal, TYPE_CHECKING
 import logging
 from threading import Thread
+import pdb
 
 import matplotlib.pyplot as plt
-
 from PySide6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog, QProgressDialog
 from PySide6.QtCore import Signal
+from kidpy3.measure import ResonatorFinder
 
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
-from rfsocinterface.core.losweep import LoSweepData, LoSweep, BlindSweep
+from rfsocinterface.core.losweep import LoSweepData, LoSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
 from rfsocinterface.gui.utils import get_num_value
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
@@ -139,6 +140,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # Get values from GUI, converting KHz to Hz
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
+        diff_to_flag = get_num_value(self.flagging_lineEdit, float) * 1e3
         freq_step = get_num_value(self.df_lineEdit)  * 1e3
         full_span = get_num_value(self.deltaf_lineEdit)  * 1e3
 
@@ -146,9 +148,89 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             file_type="LO", chan_name=chan_name, mkdir=True
         )
         savefile = savefile.with_stem(f'{savefile.stem}_blind')
+        match self.buttonGroup.checkedButton():
+            case self.filename_elevation_radioButton:
+                savefile = savefile.with_stem(f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}')
+            case self.filename_temperature_radioButton:
+                savefile = savefile.with_stem(f'{savefile.stem}_temp_{self.filename_temperature_lineEdit.text()}')
+            case _:
+                pass
 
-        blind_sweep = BlindSweep(rfsoc, chan, savefile, freq_step, full_span)
-        blind_sweep.run()
+        pd = QProgressDialog(
+            'Setting Up LO Sweep...',
+            'Cancel',
+            0,
+            100,
+            parent=self,
+        )
+        pd.setAutoClose(True)
+        pd.show()
+        QApplication.processEvents()
+        
+        # For running on ONR compupter
+        sweep = LoSweep(
+            rfsoc,
+            chan,
+            savefile,
+            tone_shift,
+            freq_step,
+            full_span,
+            diff_to_flag=diff_to_flag,
+        )
+        pd.canceled.connect(sweep.cancel)
+        pd.setValue(0)
+        pd.setMinimum(0)
+        pd.setMaximum(sweep.n_steps)
+
+        def increment_progress():
+            nonlocal pd
+            pd.setValue(pd.value() + 1)
+
+        pd.setLabelText('Running LO Sweep...')
+        sweep_thread = Thread(target=sweep.run_sweep, args=(increment_progress,))
+        sweep_thread.start()
+
+        while not (sweep._processed or sweep._cancel):
+            QApplication.processEvents()
+            time.sleep(0.1)
+        
+        sweep_thread.join()
+        if sweep._cancel:
+            _logger.info('LO Sweep Cancelled')
+            return
+
+        # TODO
+        # Fit sweep if requested...
+        #    Multiprocessing???
+        # Show diagnostics dialog if requested...
+        sweep_data = sweep.data
+        self.save_sweep(savefile, sweep_data)
+
+        sfreq, z = sweep_data.data
+        s21_sqrd = z.real ** 2 + z.imag ** 2
+        s21_pow = 10 * np.log10(s21_sqrd)
+        for i in range(sweep_data.nchan):
+            plt.plot(sfreq[i] / 1e6, s21_pow[i])
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.xlabel("Frequency (MHz)", fontsize=18)
+        plt.ylabel("dB", fontsize=18)
+        plt.legend(["S21 of resonator sweep"], fontsize=18)
+        plt.show()
+
+
+
+        # finder.plot()
+
+        finder = ResonatorFinder(
+            sweep_data.data,
+            sweep_data.f_center,
+            freq_step,
+        )
+        freqs, depths = finder.find_resonators()
+        pdb.set_trace()
+
+
 
 
     def run_sweep(self, rfsoc: RFSOCWrapper, chan: int):

@@ -25,6 +25,7 @@ from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from kidpy3 import capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
+from kidpy3.measure import ResonatorFinder
 
 
 _logger = logging.getLogger(__name__)
@@ -486,6 +487,11 @@ class LoSweepData:
         with np.printoptions(threshold=20):
             _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
         return rotation_angle, adc_units_to_hz
+    
+    def find_resonances(self) -> tuple[npt.NDArray, npt.NDArray]:
+        rf = ResonatorFinder(self.data, self.f_center, self.df)
+        res_freq, res_depth = rf.find_resonators()
+        return res_freq, res_depth
 
 
 def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
@@ -654,81 +660,38 @@ class LoSweep:
         self.rfsoc.set_frequency(self.chan, self.f_center)
         self.data = data
         return data
-
-from kidpy3.measure import losweep, ResonatorFinder
-
-class BlindSweep:
-    def __init__(
-        self,
-        rfsoc: RFSOCWrapper,
-        chan: int,
-        savefile: Path,
-        freq_step: float,
-        full_span: float,
-    ):
-        self.rfsoc = rfsoc
-        self.chan = chan
-        self.valon = rfsoc.get_valon(chan)
-        self.savefile = savefile
-        self.freq_step = freq_step
-        self.full_span = full_span
-        self.f_center = rfsoc.get_channel(chan).lo_freq
-
-        rfsoc.set_frequency(chan, self.f_center)
-
-        self.rfchan = rfsoc.get_channel(chan)
-
-
-        self.baseband_freqs = rfsoc.get_tone_list(chan)[0]
-        self._processed = False
-        self._cancel = False
-
-    @property
-    def n_steps(self) -> int:
-        """Number of steps in the LO sweep."""
-        return self.full_span // self.freq_step
-
-    def run(self):
-        sweep_data = losweep(
-            self.valon,
-            self.rfchan,
-            self.f_center * 1e-6,
-            self.baseband_freqs,
-            N_steps=self.n_steps,
-            freq_step=self.freq_step * 1e-6,
-        )
-
-        plt.figure(figsize=(12,8))
-        sfreq, s21 = sweep_data
-        s21_full = s21.flatten()
-        s21_sqrd = s21_full.real ** 2 + s21_full.imag ** 2
-        s21_pow = 10 * np.log10(s21_sqrd)
-        plt.plot(sfreq.flatten()/1e6, s21_pow)
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
-        plt.xlabel("Frequency (MHz)", fontsize=18)
-        plt.ylabel("dB", fontsize=18)
-        plt.legend(["S21 of resonator sweep"], fontsize=18)
-        plt.show()
-
-        # finder = ResonatorFinder(
-        #     sweep_data,
-        #     self.f_center,
-        #     self.freq_step,
-        # )
-        # freqs = finder.find_resonators(
-        #     6,
-        #     1,
-        #     1e8,
-        # )
-
-        # finder.plot()
-        pdb.set_trace()
     
 
 
 if __name__ == '__main__':
     import pdb
 
-    data = LoSweepData.from_h5('/data/20250409/20250409_rfsoc2_LO_Sweep_hour16p6986.h5')
+    # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
+    # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
+    data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
+    sfreq, z = data.data
+
+    # NOTE: This is reversed for channel 2 only
+    sfreq = sfreq[::-1]
+
+    s21_sqrd = z.real ** 2 + z.imag ** 2
+    s21_pow = 10 * np.log10(s21_sqrd)
+    for i in range(data.nchan):
+        plt.plot(sfreq[i] / 1e6, s21_pow[i])
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.xlabel("Frequency (MHz)", fontsize=18)
+    plt.ylabel("dB", fontsize=18)
+    plt.legend(["S21 of resonator sweep"], fontsize=18)
+    plt.show()
+
+
+    # finder.plot()
+
+    finder = ResonatorFinder(
+        (sfreq, z),
+        data.f_center,
+        1e3,
+    )
+    freqs = finder.find_resonators()
     pdb.set_trace()
