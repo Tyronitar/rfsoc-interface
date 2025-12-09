@@ -13,7 +13,7 @@ from kidpy3.measure import ResonatorFinder
 
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
-from rfsocinterface.core.losweep import LoSweepData, LoSweep
+from rfsocinterface.core.losweep import LoSweepData, LoSweep, PowerSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
 from rfsocinterface.gui.utils import get_num_value
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
@@ -147,7 +147,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         savefile = get_filename(
             file_type="LO", chan_name=chan_name, mkdir=True
         )
-        savefile = savefile.with_stem(f'{savefile.stem}_blind')
+        savefile = savefile.with_stem(f'{savefile.stem}')
         match self.buttonGroup.checkedButton():
             case self.filename_elevation_radioButton:
                 savefile = savefile.with_stem(f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}')
@@ -168,14 +168,16 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         QApplication.processEvents()
         
         # For running on ONR compupter
-        sweep = LoSweep(
+        # sweep = LoSweep(
+        sweep = PowerSweep(
             rfsoc,
             chan,
             savefile,
+            [-2, 0, 2],
             tone_shift,
             freq_step,
             full_span,
-            diff_to_flag=diff_to_flag,
+            # diff_to_flag=diff_to_flag,
         )
         pd.canceled.connect(sweep.cancel)
         pd.setValue(0)
@@ -268,7 +270,6 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         sweep = LoSweep(
             rfsoc,
             chan,
-            savefile,
             tone_shift,
             freq_step,
             full_span,

@@ -660,6 +660,82 @@ class LoSweep:
         self.rfsoc.set_frequency(self.chan, self.f_center)
         self.data = data
         return data
+
+
+class PowerSweep:
+
+    def __init__(
+            self,
+            rfsoc: RFSOCWrapper,
+            chan: int,
+            savefile: Path,
+            power_levels: npt.NDArray,
+            tone_shift: float,
+            freq_step: float,
+            full_span: float,
+    ):
+        """Initialize a PowerSweep
+        
+        Arguments: 
+            power_levels (npt.NDArray): Power at the resonator relative to the nominal
+                rfout and rfin values, in dB.
+        """
+        _logger.info(f'Initializing Power Sweep with {rfsoc.get_channel_name(chan)}...')
+
+        self.rfsoc = rfsoc
+        self.chan = chan
+        self.valon = rfsoc.get_valon(chan)
+        self.savefile = savefile
+        self.power_levels = power_levels
+        self.tone_shift = tone_shift
+        self.freq_step = freq_step
+        self.full_span = full_span
+        self.f_center = rfsoc.get_channel(chan).lo_freq
+
+        self.rfchan = rfsoc.get_channel(chan)
+        self.tone_list = rfsoc.get_tone_list(chan)[0]
+
+
+        self._processed = False
+        self._cancel = False
+
+    @property
+    def n_steps(self) -> int:
+        """Number of steps in the power sweep."""
+        return (self.full_span // self.freq_step) * len(self.power_levels)
+
+    def cancel(self):
+        """Cancel the LO sweep."""
+        self._cancel = True
+    
+    def run_sweep(self, callback: Callable | None=None) -> ...:
+        starting_rfin = self.rfsoc.get_rfin(self.chan)
+        starting_rfout = self.rfsoc.get_rfout(self.chan)
+        data = []
+        for power_level in self.power_levels:
+            this_rfout = starting_rfout - power_level
+            this_rfin = starting_rfin + power_level
+            if this_rfin < 0 or this_rfin > 31.75 or this_rfout < 0 or this_rfout > 31.75:
+                raise ValueError(f'All power levels must be in range [0, 31.75].')
+            self.rfsoc.set_rfin(self.chan, this_rfin)
+            self.rfsoc.set_rfout(self.chan, this_rfout)
+
+            this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{power_level}dB')
+
+            sweep = LoSweep(
+                self.rfsoc, self.chan, this_savefile, self.tone_shift,
+                self.freq_step, self.full_span,
+            )
+            this_sweep_data = sweep.run_sweep(callback=callback)
+            data.append(this_sweep_data)
+        
+        self.rfsoc.set_rfin(self.chan, starting_rfin)
+        self.rfsoc.set_rfout(self.chan, starting_rfout)
+        pdb.set_trace()
+
+
+
+
     
 
 

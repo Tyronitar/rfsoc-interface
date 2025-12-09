@@ -259,20 +259,32 @@ class RFSOCWrapper:
         channel = 1 if addr < 3 else 2
         rfchan = self.get_channel(channel)
         return rfchan.attenuator_settings[(addr - 1) % 2]
+
+    def get_rfin(self, channel: int) -> float:
+        """Get rfin for the specified channel."""
+        addr = 2 if channel == 1 else 4
+        rfchan = self.get_channel(channel)
+        return rfchan.attenuator_settings[0]
+
+    def get_rfout(self, channel: int) -> float:
+        """Get rfout for the specified channel."""
+        addr = 1 if channel == 1 else 3
+        rfchan = self.get_channel(channel)
+        return rfchan.attenuator_settings[1]
     
     def set_atten(self, addr: int, value: float) -> bool:
         """Set the attenuation for the specified address."""
         attenuator = 'rfin' if addr % 2 == 0 else 'rfout'
+        channel = 1 if addr < 3 else 2
         response = self.atten_transceiver.set_atten(addr, value)
         success = response[0]
         msg = response[1]
         if success:
             
             # Update the RFChan object
-            channel = 1 if addr < 3 else 2
             rfchan = self.get_channel(channel)
             old_atten = list(rfchan.attenuator_settings)
-            old_atten[(addr - 1) % 2]
+            old_atten[(addr - 1) % 2] = value
             rfchan.attenuator_settings = old_atten
 
             # Update settings
@@ -282,6 +294,14 @@ class RFSOCWrapper:
             _logger.error(f'RFSoC {self.name} failed to set attenuation for {attenuator} (address={addr}). Message: "{msg}"')
         return success
     
+    def set_rfin(self, channel: int, value: float) -> bool:
+        addr = 2 if channel == 1 else 4
+        return self.set_atten(addr, value)
+
+    def set_rfout(self, channel: int, value: float) -> bool:
+        addr = 1 if channel == 1 else 3
+        return self.set_atten(addr, value)
+
     def configure_hardware(self):
         res = self.rfsoc.config_hardware()
         if res:
