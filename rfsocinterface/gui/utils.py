@@ -6,7 +6,7 @@ from typing import Callable, Type
 
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QValidator
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLayout, QLineEdit, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLayout, QLineEdit, QWidget, QProgressDialog
 
 from rfsocinterface.core.data import (
     DECIMATE_ORDER,
@@ -151,3 +151,11 @@ class PathValidator(QValidator):
         if not text.is_file():
             return QValidator.State.Intermediate
         return QValidator.State.Acceptable
+
+
+def make_progress_dialog_incrementer(pd: QProgressDialog) -> Callable:
+    """Create a function that increments a progress dialog by 1."""
+    def incrementer():
+        pd.setValue(pd.value() + 1)
+        QCoreApplication.processEvents()
+    return incrementer

@@ -4,6 +4,8 @@ import pdb
 
 from concurrent.futures import Future
 from typing import Callable
+from multiprocessing import Lock
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
 
 from pathlib import Path
 from PySide6.QtWidgets import QProgressDialog
@@ -48,25 +50,26 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
     #set up some preliminary values that we'll need
     n_freq = np.size(freq)
     old_tone_freq = tone_list
-    center_ind = np.argwhere(abs(freq - old_tone_freq) == min(abs(freq - old_tone_freq)))[0]
+    center_ind = np.argwhere(abs(freq - old_tone_freq) == min(abs(freq - old_tone_freq))).flatten()[0]
 
     #smooth the data
     x = s21
     s21 = savgol_filter(s21, 7, 3, mode='mirror')
 
     #search for local minima
-    if s21[center_ind[0]] != min(s21):
+    if s21[center_ind] != min(s21):
        keepgoing = True
        while keepgoing:
-          lo_ind = int(max(center_ind-1,0))
-          hi_ind = int(min(center_ind+2,n_freq))
-          min_ind = np.argwhere(s21[lo_ind:hi_ind] == min(s21[lo_ind:hi_ind]))[0]
-          if min_ind[0] == (center_ind[0] - lo_ind):
-             keepgoing = False
-          else:
-             center_ind = lo_ind + min_ind
+            lo_ind = int(max(center_ind-1,0))
+            hi_ind = int(min(center_ind+2,n_freq))
+            # min_ind = np.argwhere(s21[lo_ind:hi_ind] == min(s21[lo_ind:hi_ind])).flatten()[0]
+            min_ind = np.argmin(s21[lo_ind:hi_ind])
+            if min_ind == (center_ind - lo_ind):
+                keepgoing = False
+            else:
+                center_ind = lo_ind + min_ind
 
-    f0 = freq[center_ind[0]]
+    f0 = freq[center_ind]
     return f0
 
 
@@ -224,7 +227,7 @@ class ResonatorData:
         """float: The span of the frequency window for the resonator, in Hz."""
         return np.ptp(self.freq)
 
-    def fit(self, df: float, start: float = None) -> tuple[float, float, float]:
+    def fit(self, df: float, start: float = None, callback: Callable | None=None) -> tuple[float, float, float]:
         """Perform a fit to find the resonance frequency."""
         if start is None:
             start = self.tone
@@ -232,6 +235,8 @@ class ResonatorData:
         fit_qi = 0.0
         fit_qc = 0.0
 
+        if callback is not None:
+            callback()
         return fit_f0, fit_qi, fit_qc
 
 
@@ -279,6 +284,8 @@ class LoSweepData:
         self.fit_qc = np.zeros(self.nchan)
         self.fit_f0[self.offres_ind] = self.tone_list[self.offres_ind]
         self.set_diff_to_flag(val=diff_to_flag)
+        self._fitted = False
+        self._fit_cancelled = False
     
     def set_diff_to_flag(self, val: float=3e3):
         """Set the flagging threshold.
@@ -336,7 +343,7 @@ class LoSweepData:
     @property
     def ngoodchan(self) -> int:
         """The number of good resonators."""
-        return np.size(np.where(self.chanmask == 1))
+        return np.size(self.onres_ind)
 
     @property
     def df(self) -> float:
@@ -346,12 +353,12 @@ class LoSweepData:
     @property
     def onres_ind(self) -> npt.NDArray:
         """The indices of frequencies that are on-resonance."""
-        return np.argwhere(self.chanmask == 1)
+        return np.argwhere(self.chanmask == 1).flatten()
 
     @property
     def offres_ind(self) -> npt.NDArray:
         """The indices of frequencies that are off-resonance."""
-        return np.argwhere(self.chanmask == 0)
+        return np.argwhere(self.chanmask == 0).flatten()
 
     @property
     def data_I(self) -> npt.NDArray:
@@ -372,16 +379,35 @@ class LoSweepData:
     def new_tone_list(self) -> npt.NDArray:
         """The new base band frequencies, based on the fit"""
         return self.fit_f0 - self.f_center
-
-    def fit(self, pd: QThreadJobProgressDialog | None=None) -> Future:
-        """Perform a fit to determine the resoncance frequencies of each resonator."""
-        _logger.debug('Fitting LO sweep results...')
-        if pd is None:
-            pd = QThreadJobPool(parent=self)
-        return pd.map(self._fit_i, np.argwhere(self.chanmask == 1))
-        for i_chan in np.argwhere(self.chanmask == 1):
-            self._fit_i(i_chan)
     
+    def cancel_fit(self):
+        self._fit_cancelled = True
+
+    def fit(self, callback: Callable | None=None, max_workers: int=4):
+        """Perform a fit to determine the resoncance frequencies of each resonator."""
+        self._fitted = False
+        self._fit_cancelled = False
+        _logger.debug('Fitting LO sweep results...')
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            res = executor.map(
+                simple_derivative_fits,
+                (self.df for _ in range(self.ngoodchan)),
+                self.freq[self.onres_ind, :],
+                self.tone_list[self.onres_ind],
+                self.s21[self.onres_ind, :],
+            )
+            for _ in res:
+                if self._fit_cancelled:
+                    return
+                callback()
+            
+        for i, f0, in zip(self.onres_ind, res):
+            self.fit_f0[i] = f0
+            self.fit_qc[i] = 0.0
+            self.fit_qi[i] = 0.0
+        
+        self._fitted = True
+
     def _fit_i(self, i_chan):
             # pull in the sweep data for this tone
             i = i_chan[0]
@@ -666,32 +692,69 @@ class LoSweep:
 if __name__ == '__main__':
     import pdb
 
-    # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
-    # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
-    sfreq, z = data.data
+    # Lab Testing
+    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
+    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
+    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p1558.h5')
+    # data = LoSweepData.from_h5('/data/20251204/20251204_100_tone_uniform_202050829_LO_Sweep_hour16p4036.h5')
+    data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
 
-    # NOTE: This is reversed for channel 2 only
-    sfreq = sfreq[::-1]
+    class Incrementer:
+        def __init__(self):
+            self.val = 0
+            self.lock = Lock()
 
-    s21_sqrd = z.real ** 2 + z.imag ** 2
-    s21_pow = 10 * np.log10(s21_sqrd)
-    for i in range(data.nchan):
-        plt.plot(sfreq[i] / 1e6, s21_pow[i])
-    plt.xticks(fontsize=16)
-    plt.yticks(fontsize=16)
-    plt.xlabel("Frequency (MHz)", fontsize=18)
-    plt.ylabel("dB", fontsize=18)
-    plt.legend(["S21 of resonator sweep"], fontsize=18)
-    plt.show()
-
-
-    # finder.plot()
-
-    finder = ResonatorFinder(
-        (sfreq, z),
-        data.f_center,
-        1e3,
-    )
-    freqs = finder.find_resonators()
+        def __call__(self):
+            self.val += 1
+            # print(f'LO Sweep progress: {self.val}', flush=True)
+    inc = Incrementer()
+    def callback():
+        with inc.lock:
+            inc()
+    # import timeit
+    fit = data.fit(callback=callback)
+    # time = timeit.timeit('fit = data.fit(callback=callback)', globals=globals(), number=10)
+    # print(time)
+    # print([f for f in fit])
     pdb.set_trace()
+    # i_res = 10
+    # plt.figure()
+    # plt.title('IQ Circle')
+    # plt.plot(data.data_I[i_res], data.data_Q[i_res])
+    # plt.xlabel('Data I')
+    # plt.ylabel('Data Q')
+    # plt.figure()
+    # plt.title('S21')
+    # plt.plot(data.freq[i_res], data.s21[i_res])
+    # plt.xlabel('Frequency (Hz)')
+    # plt.ylabel('S21')
+    # plt.show()
+    # pdb.set_trace()
+
+    # Telescope Testing
+    # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
+    # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
+    # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
+    # sfreq, z = data.data
+
+    # # NOTE: This is reversed for channel 2 only
+    # sfreq = sfreq[::-1]
+
+    # s21_sqrd = z.real ** 2 + z.imag ** 2
+    # s21_pow = 10 * np.log10(s21_sqrd)
+    # for i in range(data.nchan):
+    #     plt.plot(sfreq[i] / 1e6, s21_pow[i])
+    # plt.xticks(fontsize=16)
+    # plt.yticks(fontsize=16)
+    # plt.xlabel("Frequency (MHz)", fontsize=18)
+    # plt.ylabel("dB", fontsize=18)
+    # plt.legend(["S21 of resonator sweep"], fontsize=18)
+    # plt.show()
+
+    # finder = ResonatorFinder(
+    #     (sfreq, z),
+    #     data.f_center,
+    #     1e3,
+    # )
+    # freqs = finder.find_resonators()
+    # pdb.set_trace()
