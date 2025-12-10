@@ -3,6 +3,7 @@ from enum import IntEnum
 from numbers import Number
 from pathlib import Path
 from typing import Callable, Type
+from threading import Lock
 
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QValidator
@@ -152,10 +153,20 @@ class PathValidator(QValidator):
             return QValidator.State.Intermediate
         return QValidator.State.Acceptable
 
+class LockableProgressDialog(QProgressDialog):
+
+    def __init__(self, *args, **kwargs):
+        super.__init__(*args, **kwargs)
+        self.lock = Lock()
+
 
 def make_progress_dialog_incrementer(pd: QProgressDialog) -> Callable:
     """Create a function that increments a progress dialog by 1."""
     def incrementer():
+        if isinstance(pd, LockableProgressDialog):
+            pd.lock.acquire()
         pd.setValue(pd.value() + 1)
+        if isinstance(pd, LockableProgressDialog):
+            pd.lock.release()
         QCoreApplication.processEvents()
     return incrementer

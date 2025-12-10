@@ -174,7 +174,10 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             _logger.info('LO Sweep Cancelled')
             return
 
+        # TODO: Make this optional
         self.fit_sweeps(selected_channels, sweeps)
+
+        # TODO: Plot the fit results, if requested
         return
         sweep_data = [sweep.data for sweep in sweeps]
 
@@ -228,7 +231,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     def fit_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]], sweeps: list[LoSweep]):
         # Setup progress dialog 
-        total_steps = sum(sweep.ngoodchan for sweep in sweeps)
+        total_steps = sum(sweep.data.ngoodchan for sweep in sweeps)
         pd = QProgressDialog(
             f'Fitting LO Sweep{"s" if len(sweeps) > 1 else ""}...',
             'Cancel',
@@ -249,11 +252,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             fitting_threads.append(thread)
             pd.canceled.connect(sweep_data.cancel_fit)
 
-            # Make diagnostics window and setup connections
-            dw = DiagnosticsDialog(sweep, sweep.savefile, parent=self)
-            dw.finished.connect(lambda result: self._finish_sweep(result, sweep.savefile, sweep_data, rfsoc, chan, dw, False))
-            dw.upload_pushButton.clicked.connect(lambda: self._write_new_tones(sweep_data, rfsoc, chan))
-            dialogs.append(dw)
+            # # Make diagnostics window and setup connections
+            # dw = DiagnosticsDialog(sweep, sweep.savefile, parent=self)
+            # dw.finished.connect(lambda result: self._finish_sweep(result, sweep.savefile, sweep_data, rfsoc, chan, dw, False))
+            # dw.upload_pushButton.clicked.connect(lambda: self._write_new_tones(sweep_data, rfsoc, chan))
+            # dialogs.append(dw)
         
         for thread in fitting_threads:
             thread.start()
@@ -263,8 +266,12 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             QApplication.processEvents()
             time.sleep(0.1)
         
-        pdb.set_trace()
+        for thread in fitting_threads:
+            thread.join()
 
+        if pd.wasCanceled():
+            _logger.info('LO Sweep Cancelled')
+            return
 
         # pd.setValue(0)
         # pd.setLabelText('Fitting sweep results...')
