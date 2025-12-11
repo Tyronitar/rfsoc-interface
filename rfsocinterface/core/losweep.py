@@ -13,7 +13,8 @@ import numpy.typing as npt
 from numpy.polynomial import Polynomial
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
-from scipy.signal import savgol_filter
+from scipy.signal import savgol_filter, find_peaks
+import scraps as scr
 import h5py
 
 from PySide6.QtWidgets import QApplication
@@ -62,8 +63,9 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
              keepgoing = False
           else:
              center_ind = lo_ind + min_ind
-
-    f0 = freq[center_ind[0]]
+    peak = find_peaks(-s21, prominence=3, distance=1e3)[0]
+    #f0 = freq[center_ind[0]]
+    f0 = freq[peak[0]]
     return f0
 
 
@@ -221,14 +223,27 @@ class ResonatorData:
         """float: The span of the frequency window for the resonator, in Hz."""
         return np.ptp(self.freq)
 
-    def fit(self, df: float, start: float = None) -> tuple[float, float, float]:
+    def fit(self, df: float, start: float = None, scraps_fit = False) -> tuple[float, float, float]:
         """Perform a fit to find the resonance frequency."""
         if start is None:
             start = self.tone
-        fit_f0 = simple_derivative_fits(df, self.freq, start, self.s21)
-        fit_qi = 0.0
-        fit_qc = 0.0
-
+        if scraps_fit == False:
+            fit_f0 = simple_derivative_fits(df, self.freq, start, self.s21)
+            fit_qi = 0.0
+            fit_qc = 0.0
+        else:
+            #TODO : Get proper calls to get resonator temp and pwr from LoSweepData
+            scr_data_dict = {
+                'freq': np.ravel(self.data.freq[self.idx]), 'I':np.ravel(self.data.data_I[self.idx]), 
+                'Q':np.ravel(self.data.data_Q[self.idx]), 'temp':0.240, 'pwr':0, 'name':'Be231102p2'}
+            f0_init = simple_derivative_fits(df, self.freq, start, self.s21)
+            scr_res = scr.makeResFromData(scr_data_dict)
+            scr_res.load_params( scr.cmplxIQ_params,hardware='VNA',)
+            scr_res.do_lmfit(scr.cmplxIQ_fit, f0 = f0_init)
+           
+            fit_f0 = scr_res.lmfit_result['default']['result'].params['f0'].value
+            fit_qi = scr_res.lmfit_result['default']['result'].params['qi'].value
+            fit_qc = scr_res.lmfit_result['default']['result'].params['qc'].value
         return fit_f0, fit_qi, fit_qc
 
 

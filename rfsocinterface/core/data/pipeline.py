@@ -195,8 +195,8 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
-    date = '20251006'
-    setnum = 1007
+    date = '20251211'
+    setnum = 1002
 
     dataset = 'data_freq'
     beam_map_mode = False 
@@ -210,7 +210,7 @@ if __name__ == '__main__':
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
-    # psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
 
     pipeline = DataPipeline(
         ds_factor=ds_factor,
@@ -221,11 +221,11 @@ if __name__ == '__main__':
         do_electronics_noise_removal=do_electronics_noise_removal,
         max_modes=2,
     )
-    pipeline.add_routine(hpfilt)
-    pipeline.add_routine(lpfilt)
-    # pipeline.add_routine(psd)
-    pipeline.add_routine(cleaner)
-    pipeline.add_routine(binner)
+    #pipeline.add_routine(hpfilt)
+    #pipeline.add_routine(lpfilt)
+    pipeline.add_routine(psd)
+    #pipeline.add_routine(cleaner)
+    #pipeline.add_routine(binner)
 
     data = pipeline.run_pipeline(date, setnum)
 #     from rfsocinterface.analysis.psd import plot_psd
