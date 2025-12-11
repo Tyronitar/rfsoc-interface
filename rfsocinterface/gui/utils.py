@@ -3,10 +3,11 @@ from enum import IntEnum
 from numbers import Number
 from pathlib import Path
 from typing import Callable, Type
+from threading import Lock
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, Signal, Slot
 from PySide6.QtGui import QValidator
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLayout, QLineEdit, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLayout, QLineEdit, QWidget, QProgressDialog
 
 from rfsocinterface.core.data import (
     DECIMATE_ORDER,
@@ -151,3 +152,22 @@ class PathValidator(QValidator):
         if not text.is_file():
             return QValidator.State.Intermediate
         return QValidator.State.Acceptable
+
+class IncrementalProgressDialog(QProgressDialog):
+    incremented = Signal()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.incremented.connect(self.increment)
+    
+    @Slot()
+    def increment(self):
+        self.setValue(self.value() + 1)
+
+
+def make_progress_dialog_incrementer(pd: IncrementalProgressDialog) -> Callable:
+    """Create a function that increments a progress dialog by 1."""
+    def incrementer():
+        pd.incremented.emit()
+        QCoreApplication.processEvents()
+    return incrementer

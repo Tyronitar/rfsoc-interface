@@ -38,12 +38,12 @@ class MainWidget(QWidget):
                 item.setCheckState(Qt.CheckState.Unchecked)
                 total += 1
 
-    def get_selected_channels(self, combob_box: CheckableComboBox) -> Iterator[tuple[RFSOCWrapper, int]]:
+    def get_selected_channels(self, combob_box: CheckableComboBox) -> list[tuple[RFSOCWrapper, int]]:
         checked_ids = combob_box.checked_indices()
         checked_text = [combob_box.itemText(i) for i in checked_ids]
         if not checked_text:
             raise SettingsError('No channel selected')
-        return map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text)
+        return list(map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text))
     
     def closeEvent(self, event):
         return super().closeEvent(event)
