@@ -309,6 +309,24 @@ class RFSOCWrapper:
 
     def get_ntones(self, chan: int) -> int:
         return self.get_channel(chan).n_tones
+    
+    def get_min_resonance_frequency(self, chan: int) -> float:
+        return self.channel_settings(chan)['minResonanceFrequency']
+
+    def set_min_resonance_frequency(self, chan: int, freq: float):
+        self.channel_settings(chan)['minResonanceFrequency'] = freq
+
+    def get_max_resonance_frequency(self, chan: int) -> float:
+        return self.channel_settings(chan)['maxResonanceFrequency']
+
+    def set_max_resonance_frequency(self, chan: int, freq: float):
+        self.channel_settings(chan)['maxResonanceFrequency'] = freq
+
+    def get_min_distance_from_lo(self, chan: int) -> float:
+        return self.channel_settings(chan)['minResonanceDistanceFromLo']
+
+    def set_min_distance_from_lo(self, chan: int, x: float) -> float:
+        self.channel_settings(chan)['minResonanceDistanceFromLo'] = x
 
     def get_chanmask_file(self, chan: int) -> Path | None:
         return self.settings[f'channel{chan}'].get('chanmask', None)

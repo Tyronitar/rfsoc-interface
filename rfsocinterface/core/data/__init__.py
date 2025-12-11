@@ -6,11 +6,8 @@ from rfsocinterface.core.data.data import (
     MapData,
     DEFAULT_MAP_DPIX,
     N_POLARIZATION,
-    PARAM_FILE_N_TONE_ATTRIBUTES,
     DECIMATE_ORDER,
     BUTTER_ORDER,
-    initialize_params_file,
-    update_params_file,
     flag_outliers,
 )
 from rfsocinterface.core.data.routines import (
@@ -28,6 +25,7 @@ from rfsocinterface.core.data.map import (
     BinTODIntoMap,
 )
 from rfsocinterface.core.data.pipeline import DataPipeline, RoutineApplier
+from rfsocinterface.core.params import PARAM_FILE_N_TONE_ATTRIBUTES, initialize_params_file, update_params_file
 
 ROUTINE_NAME_MAP = {
     'Downsample': Downsample,
