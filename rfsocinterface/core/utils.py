@@ -9,13 +9,21 @@ from dataclasses import dataclass
 from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Literal
 from datetime import datetime
 import logging
-from concurrent.futures import Future, CancelledError
+from concurrent.futures import Future, CancelledError, ProcessPoolExecutor
 import itertools
 from itertools import islice
 import copy
 import sys
 from multiprocessing.connection import Connection
 import stat
+
+import io
+from copy import deepcopy
+from PIL import Image
+from functools import partial
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from matplotlib.figure import Figure
 
 import numpy as np
 import numpy.typing as npt
@@ -734,8 +742,73 @@ def get_beammap_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTO
 
 def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
     return f'{params_dir}/params_tile_{tile_name}.h5'
-    #
+
+#
+# Parallelized Plotting
+#
+
+def rasterize(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', dpi=300)
+    buf.seek(0)
+    pil_img = deepcopy(Image.open(buf))
+    buf.close()
+    
+    return pil_img
+
+def _parallel_plot_worker(*args, plot_fn):
+    fig = plt.figure()
+    mpl.font_manager._get_font.cache_clear()  # necessary to reduce text corruption artifacts
+    ax = plt.axes()
+    
+    plot_fn(fig, ax, *args)
+    pil_img = rasterize(fig)
+    plt.close()
+    
+    return pil_img
+
+def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, callback: Callable | None=None):
+    with ProcessPoolExecutor() as executor:
+        plots = executor.map(
+            partial(_parallel_plot_worker, plot_fn=plot_fn),
+            *iterables,
+        )
+        for ax, rastered in zip(np.ravel(axes), plots):
+            ax.imshow(rastered)
+            
+            # The following code hides axes
+            ax.get_xaxis().set_ticks([])
+            ax.get_yaxis().set_ticks([])
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            if callback is not None:
+                callback()
+
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0, hspace=0, wspace=0)
+    
+    return fig
+
+
 if __name__ == '__main__':
+    def plot_function(fig, ax, x, y):
+        ax.plot(x, y)
+    
+    grid_shape = (3, 2)
+    callback = lambda: print('hi')
+    fig, axes = plt.subplots(*grid_shape)
+
+    fig = parallel_plot(
+        fig,
+        axes,
+        plot_function,
+        np.random.random((6, 10)),
+        np.random.random((6, 10)),
+        callback=callback,
+    )
+    fig.show()
+    plt.show()
+    exit()
+
     import timeit, functools
     from scipy.signal import decimate
     n = 100000000

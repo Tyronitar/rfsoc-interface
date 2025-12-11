@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QAbstractButton
 )
 
-from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list
+from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list, LoSweep, DEFAULT_NCOLS
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
@@ -275,7 +275,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         sweep (LoSweepData): The relevant LO sweep data.
     """
 
-    def __init__(self, sweep: LoSweepData, savefile: PathLike, parent: QWidget | None = None):
+    def __init__(self, sweep: LoSweep, savefile: PathLike, parent: QWidget | None = None):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
@@ -293,8 +293,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         elif self.buttonBox.buttonRole(button) == QDialogButtonBox.ButtonRole.AcceptRole:
             self.accept()
     
-    def set_sweep(self, sweep: LoSweepData):
+    def set_sweep(self, sweep: LoSweep):
         self.sweep = sweep
+        self.sweep_data = sweep.data
         self.update_median_shift()
     
     def save_plots(self):
@@ -363,7 +364,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
             # If double clicking, open a new resonator window
             if event.dblclick:
                 idx = self.canvas.canvas.figure.axes.index(axes)
-                resonator = self.sweep.resonator_data[idx]
+                resonator = self.sweep_data.resonator_data[idx]
                 self.make_resonator_window(resonator, axes)
 
     def redraw_axes(self, resonator: ResonatorData, ax: plt.Axes):
@@ -377,7 +378,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     
     def update_median_shift(self):
         self.median_shift_label.setText(
-            f'Median shift (KHz): {np.median(self.sweep.difference[self.sweep.onres_ind]) * 1e-3:.2f}'
+            f'Median shift (KHz): {np.median(self.sweep_data.difference[self.sweep_data.onres_ind]) * 1e-3:.2f}'
         )
     
     def set_edited(self):
@@ -397,20 +398,40 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def set_figure(self, fig: Figure):
         fig.canvas.mpl_connect('button_press_event', self.click_plot)
         self.canvas.set_figure(fig)
-        self.canvas.set_flagged(self.sweep.flagged)
+        self.canvas.set_flagged(self.sweep_data.flagged)
+    
+    def get_width_in_inches(self) -> float:
+        width_pixels = self.canvas.width()
+        screen_dpix = self.screen().logicalDotsPerInchX()
+        return width_pixels / screen_dpix
 
-    def plot(self, fig_width=15, pd: QThreadJobProgressDialog | None=None) -> tuple[Figure, Future]:
+    def plot(self, callback: Callable | None=None, fig: Figure | None=None) -> Figure | None:
         """Plot all of the resonators."""
-        return self.make_plot(fig_width=fig_width, pd=pd)
-        fig = self.make_plot(fig_width=fig_width, pd=pd)
-        self.set_figure(fig)
+        if not self.isHidden():
+            # Get the width of the window and determine how many columns will fit
+            width = self.get_width_in_inches()
+            ncols = int(np.floor(width))
+        else:
+            ncols = DEFAULT_NCOLS
+
+        if fig is None:
+            nrows = int(np.ceil(self.sweep_data.nchan / ncols))
+            fig = plt.figure(figsize=(nrows, ncols))
+            fig.subplots(nrows, ncols)
+
+        res = self.sweep_data.plot(ncols, callback=callback, fig=fig)
+        
+        # Only continue it if the plotting wasn't canceled
+        if res is not None:
+        #     # self.set_figure(res)
+            return res
     
     def make_plot(self, fig_width=15, pd: QThreadJobProgressDialog | None=None) -> tuple[Figure, Future]:
-        return self.sweep.plot(ncols=fig_width, pd=pd)
+        return self.sweep_data.plot(ncols=fig_width, pd=pd)
 
     def toggle_unflagged(self):
         """Toggle whether the unflagged resonator plots are shown."""
-        self.canvas.set_flagged(self.sweep.flagged)
+        self.canvas.set_flagged(self.sweep_data.flagged)
         if self.flagged_checkBox.isChecked():
             self.canvas.hide_unflagged()
         else:

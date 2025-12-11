@@ -16,11 +16,12 @@ import numpy.typing as npt
 from numpy.polynomial import Polynomial
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
+from matplotlib.gridspec import GridSpec
 from scipy.signal import savgol_filter
 import h5py
 
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW
+from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW, parallel_plot
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
@@ -31,6 +32,8 @@ from kidpy3.measure import ResonatorFinder
 
 
 _logger = logging.getLogger(__name__)
+
+DEFAULT_NCOLS = 10
 
 
 def resonator_plot_formatter(x: float, pos: int) -> str:
@@ -73,6 +76,55 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
     return f0
 
 
+def create_resonator_mini_plot(
+        fig: Figure,
+        ax: plt.Axes,
+        idx: int,
+        freq: npt.NDArray,
+        s21: npt.NDArray,
+        fit_f0: float,
+        onres: bool,
+        flagged: bool,
+):
+    ax.set_facecolor('white')
+    ax.set_yticks([])
+    ax.set_xticks([])
+    ax.plot(freq, s21)
+    ax.axvline(x=fit_f0, color='r')
+
+    # Scale the span of the plot based on the frequency ratio
+    xlim = (freq.min(), freq.max())
+    ax.set_xlim(*xlim)
+
+    # Add a label showing the resonator number
+    if onres:
+        ax.legend(
+            [f'{idx:d}'],
+            fontsize=30,
+            loc=3,
+            frameon=False,
+            framealpha=0,
+            handlelength=0,
+            alignment='center',
+            edgecolor='black',
+        )
+        if flagged:
+            ax.set_facecolor('yellow')
+    else:
+        ax.legend(
+            [f'{idx:d}, dS21={np.ptp(s21):4.1f}'],
+            fontsize=30,
+            loc=3,
+            frameon=False,
+            framealpha=0,
+            handlelength=0,
+            alignment='center',
+            edgecolor='black',
+            )
+        ax.set_facecolor('orange')
+
+
+
 class ResonatorData:
     """Class for accessing and plotting the data of a single resonator.
 
@@ -105,22 +157,27 @@ class ResonatorData:
                 no axes was provided.
         """
         return_fig = False
-        # If not axes provided, create a new figure
-        if ax is None:
-            fig = plt.figure(figsize=(8, 5))
-            ax = plt.subplot()
-            return_fig = True
-            ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
-            ax.set_xlabel('Frequency (MHz)')
-            # ax.ticklabel_format(useOffset=False, style='plain')
-            ax.set_ylabel(r'$|S_{21}|$')
-            # ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-            ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
-        # Otherwise, just plot inside the existing axes
-        else:
-            ax.set_facecolor('white')
-            ax.set_yticks([])
-            ax.set_xticks([])
+        # If axes is provided, make the mini plot inside
+        if ax is not None:
+            create_resonator_mini_plot(
+                None,
+                ax,
+                self.idx,
+                self.freq,
+                self.s21,
+                self.fit_f0,
+                self.is_onres,
+                self.flagged,
+            )
+            return
+
+        # If axes not provided, create a new figure
+        fig = plt.figure(figsize=(8, 5))
+        ax = plt.subplot()
+        ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
+        ax.set_xlabel('Frequency (MHz)')
+        ax.set_ylabel(r'$|S_{21}|$')
+        ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
 
         ax.plot(self.freq, self.s21)
         ax.axvline(x=self.fit_f0, color='r', animated=animated)
@@ -155,9 +212,7 @@ class ResonatorData:
             )
             ax.set_facecolor('orange')
 
-        if return_fig:
-            return fig
-        return None
+        return fig
 
     @property
     def baseband_tone(self) -> float:
@@ -285,7 +340,9 @@ class LoSweepData:
         self.fit_f0[self.offres_ind] = self.tone_list[self.offres_ind]
         self.set_diff_to_flag(val=diff_to_flag)
         self._fitted = False
+        self._plotted = False
         self._fit_cancelled = False
+        self._plot_cancelled = False
     
     def set_diff_to_flag(self, val: float=3e3):
         """Set the flagging threshold.
@@ -383,6 +440,9 @@ class LoSweepData:
     def cancel_fit(self):
         self._fit_cancelled = True
 
+    def cancel_plot(self):
+        self._plot_cancelled = True
+
     def fit(self, callback: Callable | None=None, max_workers: int=4):
         """Perform a fit to determine the resoncance frequencies of each resonator."""
         self._fitted = False
@@ -396,16 +456,16 @@ class LoSweepData:
                 self.tone_list[self.onres_ind],
                 self.s21[self.onres_ind, :],
             )
-            for _ in res:
+            for i, f0 in enumerate(res):
                 if self._fit_cancelled:
                     return
-                callback()
+                if i in self.onres_ind:
+                    self.fit_f0[i] = f0
+                    self.fit_qc[i] = 0.0
+                    self.fit_qi[i] = 0.0
+                if callback is not None:
+                    callback()
             
-        for i, f0, in zip(self.onres_ind, res):
-            self.fit_f0[i] = f0
-            self.fit_qc[i] = 0.0
-            self.fit_qi[i] = 0.0
-        
         self._fitted = True
 
     def _fit_i(self, i_chan):
@@ -431,7 +491,7 @@ class LoSweepData:
                 _logger.info(string)
 
 
-    def plot(self, ncols: int = 18, pd: QThreadJobProgressDialog | None=None) -> tuple[Figure, Future]:
+    def plot(self, ncols: int=DEFAULT_NCOLS, callback: Callable | None=None, fig: Figure=None) -> Figure:
         """Plot the results of fitting the LO sweep.
 
         Arguments:
@@ -441,20 +501,60 @@ class LoSweepData:
         Returns:
             (Figure): The generated figure showing the plot for each resonator.
         """
+        self._plotted = False
+        self._plot_cancelled = False
+
         # Setup for plots
-        nrows = int(np.ceil(self.nchan / ncols))
-
-        fig = plt.figure(figsize=(ncols, nrows))
-        # fig, subplots = plt.subplots(nrows, ncols, figsize=(ncols, nrows))
+        nchan = self.nchan
+        # nchan = 35
+        nrows = int(np.ceil(nchan / ncols))
+        if fig is None:
+            fig = plt.figure(figsize=(ncols, nrows))
+            axes = fig.subplots(nrows, ncols)
+        else:
+            axes = fig.axes
         plt.rc('font', size=8)
+        for i in range(nchan, np.size(axes)):
+            np.ravel(axes)[i].set_axis_off()
 
-        # loop over resonators to perform fit
-        subplots = []
-        for i in range(self.nchan):
-            subplot = plt.subplot2grid(
-                (nrows, ncols), (i // ncols, np.mod(i, ncols))
+        # Make this wrapper so `parallel_plot` can be canceled
+        def callback_wrapper():
+            if self._plot_cancelled:
+                raise InterruptedError('Plotting Cancelled')
+            if callback is not None:
+                callback()
+
+        try:
+            parallel_plot(
+                fig,
+                axes,
+                create_resonator_mini_plot,
+                np.arange(nchan),
+                self.freq[:nchan],
+                self.s21[:nchan],
+                self.fit_f0[:nchan],
+                np.isin(np.arange(nchan), self.onres_ind[:nchan]),
+                np.isin(np.arange(nchan), self.flagged[:nchan]),
+                callback=callback_wrapper,
             )
-            subplots.append(subplot)
+        except InterruptedError:
+            return
+
+        # _logger.debug('Plotting LO sweep...')
+        # with ThreadPoolExecutor() as executor:
+        #     res = executor.map(
+        #         ResonatorData.plot,
+        #         np.ravel(axes),
+        #     )
+        #     for _ in res:
+        #         if self._plot_cancelled:
+        #             return
+        #         callback()
+        
+        self._plotted = True
+        return fig
+
+    def _fit_i(self, i_chan):
         if pd is None:
             pd = QThreadJobPool(parent=self)
         return fig, pd.map(ResonatorData.plot, self.resonator_data, subplots)
@@ -697,26 +797,26 @@ if __name__ == '__main__':
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p1558.h5')
     # data = LoSweepData.from_h5('/data/20251204/20251204_100_tone_uniform_202050829_LO_Sweep_hour16p4036.h5')
-    data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
+    # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
 
-    class Incrementer:
-        def __init__(self):
-            self.val = 0
-            self.lock = Lock()
+    # class Incrementer:
+    #     def __init__(self):
+    #         self.val = 0
+    #         self.lock = Lock()
 
-        def __call__(self):
-            self.val += 1
-            # print(f'LO Sweep progress: {self.val}', flush=True)
-    inc = Incrementer()
-    def callback():
-        with inc.lock:
-            inc()
-    # import timeit
-    fit = data.fit(callback=callback)
-    # time = timeit.timeit('fit = data.fit(callback=callback)', globals=globals(), number=10)
-    # print(time)
-    # print([f for f in fit])
-    pdb.set_trace()
+    #     def __call__(self):
+    #         self.val += 1
+    #         # print(f'LO Sweep progress: {self.val}', flush=True)
+    # inc = Incrementer()
+    # def callback():
+    #     with inc.lock:
+    #         inc()
+    # # import timeit
+    # fit = data.fit(callback=callback)
+    # # time = timeit.timeit('fit = data.fit(callback=callback)', globals=globals(), number=10)
+    # # print(time)
+    # # print([f for f in fit])
+    # pdb.set_trace()
     # i_res = 10
     # plt.figure()
     # plt.title('IQ Circle')
@@ -734,7 +834,12 @@ if __name__ == '__main__':
     # Telescope Testing
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
+    data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
+    data.fit()
+    fig = data.plot()
+    # plt.tight_layout()
+    plt.show()
+    pdb.set_trace()
     # sfreq, z = data.data
 
     # # NOTE: This is reversed for channel 2 only
