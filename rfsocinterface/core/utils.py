@@ -749,7 +749,7 @@ def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRE
 
 def rasterize(fig):
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', dpi=300)
+    fig.savefig(buf, format='png', bbox_inches='tight', dpi=200, pad_inches=0)
     buf.seek(0)
     pil_img = deepcopy(Image.open(buf))
     buf.close()
@@ -757,9 +757,9 @@ def rasterize(fig):
     return pil_img
 
 def _parallel_plot_worker(*args, plot_fn):
-    fig = plt.figure()
+    fig = plt.figure(figsize=(1,1))
     mpl.font_manager._get_font.cache_clear()  # necessary to reduce text corruption artifacts
-    ax = plt.axes()
+    ax = fig.add_subplot(xticks=[], yticks=[])
     
     plot_fn(fig, ax, *args)
     pil_img = rasterize(fig)
@@ -768,23 +768,24 @@ def _parallel_plot_worker(*args, plot_fn):
     return pil_img
 
 def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, callback: Callable | None=None):
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=1) as executor:
         plots = executor.map(
             partial(_parallel_plot_worker, plot_fn=plot_fn),
             *iterables,
         )
         for ax, rastered in zip(np.ravel(axes), plots):
-            ax.imshow(rastered)
+            im = ax.imshow(rastered)
             
-            # The following code hides axes
-            ax.get_xaxis().set_ticks([])
-            ax.get_yaxis().set_ticks([])
-            for spine in ax.spines.values():
-                spine.set_visible(False)
+            ax.draw_artist(ax.patch)
+            ax.draw_artist(im)
+            # ax.set_aspect('equal', adjustable='box')
+            fig.canvas.update()
+            fig.canvas.flush_events()
             if callback is not None:
                 callback()
 
-    fig.subplots_adjust(left=0, right=1, top=1, bottom=0, hspace=0, wspace=0)
+    # fig.subplots_adjust(left=0, right=1, top=1, bottom=0, hspace=0, wspace=0)
+    fig.tight_layout()
     
     return fig
 

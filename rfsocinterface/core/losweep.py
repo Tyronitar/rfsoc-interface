@@ -100,7 +100,7 @@ def create_resonator_mini_plot(
     if onres:
         ax.legend(
             [f'{idx:d}'],
-            fontsize=30,
+            fontsize=8,
             loc=3,
             frameon=False,
             framealpha=0,
@@ -113,7 +113,7 @@ def create_resonator_mini_plot(
     else:
         ax.legend(
             [f'{idx:d}, dS21={np.ptp(s21):4.1f}'],
-            fontsize=30,
+            fontsize=8,
             loc=3,
             frameon=False,
             framealpha=0,
@@ -505,17 +505,17 @@ class LoSweepData:
         self._plot_cancelled = False
 
         # Setup for plots
-        nchan = self.nchan
-        # nchan = 35
-        nrows = int(np.ceil(nchan / ncols))
+        # nchan = self.nchan
+        nchan = 50
         if fig is None:
-            fig = plt.figure(figsize=(ncols, nrows))
-            axes = fig.subplots(nrows, ncols)
-        else:
-            axes = fig.axes
-        plt.rc('font', size=8)
-        for i in range(nchan, np.size(axes)):
-            np.ravel(axes)[i].set_axis_off()
+            nrows = int(np.ceil(nchan / ncols))
+            fig = plt.figure(figsize=(ncols, nrows), dpi=100)
+            for i in range(1, nchan + 1):
+                fig.add_subplot(nrows, ncols, i, frame_on=False, xticks=[], yticks=[], aspect='equal')
+        axes = fig.axes
+        # plt.rc('font', size=8)
+        # for i in range(nchan, np.size(axes)):
+        #     np.ravel(axes)[i].set_axis_off()
 
         # Make this wrapper so `parallel_plot` can be canceled
         def callback_wrapper():
@@ -799,18 +799,18 @@ if __name__ == '__main__':
     # data = LoSweepData.from_h5('/data/20251204/20251204_100_tone_uniform_202050829_LO_Sweep_hour16p4036.h5')
     # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
 
-    # class Incrementer:
-    #     def __init__(self):
-    #         self.val = 0
-    #         self.lock = Lock()
+    class Incrementer:
+        def __init__(self):
+            self.val = 0
+            self.lock = Lock()
 
-    #     def __call__(self):
-    #         self.val += 1
-    #         # print(f'LO Sweep progress: {self.val}', flush=True)
-    # inc = Incrementer()
-    # def callback():
-    #     with inc.lock:
-    #         inc()
+        def __call__(self):
+            self.val += 1
+            print(f'LO Sweep progress: {self.val}', flush=True)
+    inc = Incrementer()
+    def callback():
+        with inc.lock:
+            inc()
     # # import timeit
     # fit = data.fit(callback=callback)
     # # time = timeit.timeit('fit = data.fit(callback=callback)', globals=globals(), number=10)
@@ -835,11 +835,11 @@ if __name__ == '__main__':
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
     data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
-    data.fit()
-    fig = data.plot()
+    data.fit(callback=callback)
+    fig = data.plot(callback=callback)
     # plt.tight_layout()
     plt.show()
-    pdb.set_trace()
+    # pdb.set_trace()
     # sfreq, z = data.data
 
     # # NOTE: This is reversed for channel 2 only

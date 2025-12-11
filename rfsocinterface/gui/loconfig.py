@@ -314,23 +314,27 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             dw.upload_pushButton.clicked.connect(lambda: self._write_new_tones(sweep_data, rfsoc, chan))
             dialogs.append(dw)
 
+            QApplication.processEvents()
+
             ncols = DEFAULT_NCOLS
             nrows = int(np.ceil(sweep_data.nchan / ncols))
-            fig = plt.figure(figsize=(ncols, nrows))
-            fig.subplots(nrows, ncols)
+            fig = plt.figure(figsize=(ncols, nrows), dpi=100)
+            for i in range(1, sweep_data.nchan + 1):
+                fig.add_subplot(nrows, ncols, i, aspect='equal', xticks=[], yticks=[])
             figs.append(fig)
             thread = Thread(target=dw.plot, kwargs={'fig': fig, 'callback': increment_progress})
             plotting_threads.append(thread)
             pd.canceled.connect(sweep_data.cancel_plot)
         
+        pd.setLabelText(f'Plotting LO sweep{"s" if len(sweeps) > 1 else ""}...')
         QApplication.processEvents()
+
         for thread in plotting_threads:
             thread.start()
 
-        pd.setLabelText(f'Plotting LO sweep{"s" if len(sweeps) > 1 else ""}...')
-
         # Wait for all fits to finish or cancel
         while not all ((sweep.data._plotted or sweep.data._plot_cancelled) for sweep in sweeps):
+            pd.show()
             QApplication.processEvents()
             time.sleep(0.1)
         
@@ -341,15 +345,16 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         
         if pd.wasCanceled():
             # TODO: Handle cancel (i.e. destroy the plots and the dialogs)
-            pass
+            _logger.info('LO Sweep Plotting Cancelled')
+            return
+        pd.close()
 
         for dw, fig in zip(dialogs, figs):
             dw.set_figure(fig)
+            QApplication.processEvents()
             # fig.tight_layout()
             dw.show()
         
-
-    
     def run_blind_sweep(self, rfsoc: RFSOCWrapper, chan: int):
         chan_name = rfsoc.get_channel_name(chan)
 
