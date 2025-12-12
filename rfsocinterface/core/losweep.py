@@ -505,8 +505,8 @@ class LoSweepData:
         self._plot_cancelled = False
 
         # Setup for plots
-        # nchan = self.nchan
-        nchan = 50
+        nchan = self.nchan
+        # nchan = 50
         if fig is None:
             nrows = int(np.ceil(nchan / ncols))
             fig = plt.figure(figsize=(ncols, nrows), dpi=100)
@@ -539,17 +539,6 @@ class LoSweepData:
             )
         except InterruptedError:
             return
-
-        # _logger.debug('Plotting LO sweep...')
-        # with ThreadPoolExecutor() as executor:
-        #     res = executor.map(
-        #         ResonatorData.plot,
-        #         np.ravel(axes),
-        #     )
-        #     for _ in res:
-        #         if self._plot_cancelled:
-        #             return
-        #         callback()
         
         self._plotted = True
         return fig
@@ -651,6 +640,7 @@ class LoSweep:
         self.full_span = full_span
         self.f_center = rfsoc.get_channel(chan).lo_freq
         self.diff_to_flag = diff_to_flag
+        self._data = None
 
         rfsoc.set_frequency(chan, self.f_center)
         if tone_shift != 0:
@@ -684,6 +674,12 @@ class LoSweep:
     def cancel(self):
         """Cancel the LO sweep."""
         self._cancel = True
+    
+    @property
+    def data(self) -> LoSweepData:
+        if self._data is None:
+            raise RuntimeWarning('Attempting to access nonexistant data of an LO sweep. Has the sweep been run yet?')
+        return self._data
 
     def _get_data_at(self, lo_freq: float) -> npt.NDArray:
         """
@@ -784,7 +780,7 @@ class LoSweep:
 
         # Set the LO back to the original frequency
         self.rfsoc.set_frequency(self.chan, self.f_center)
-        self.data = data
+        self._data = data
         return data
     
 
