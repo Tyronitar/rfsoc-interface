@@ -229,16 +229,17 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
-    date = '20251125'
-    setnum = 1025
+    date = '20251212'
+    setnums = [1009, 1010]
+    # setnums = [1006]
 
     dataset = 'data_mK'
-    beam_map_mode = False 
+    beam_map_mode = False
     do_electronics_noise_removal = True
     primary_direction = 'az'
 
     ds_factor = 8
-    hp_filt_freq = 0.05
+    hp_filt_freq = 0.25
     lp_filt_freq = 30
 
     hpfilt = HighPassFilter(hp_filt_freq)
@@ -262,13 +263,14 @@ if __name__ == '__main__':
     pipeline.add_routine(cleaner)
     pipeline.add_routine(binner)
 
-    data = pipeline.run_pipeline(date, setnum)
+    for setnum in setnums:
+        data = pipeline.run_pipeline(date, setnum)
+        data.plot(show=False)
+        data.close()
+    plt.show()
 #     from rfsocinterface.analysis.psd import plot_psd
 #     freq = data.get_node_value('freq')[:]
 #     psd = data.get_node_value('psd_gain_phase')[:]
 #     plot_psd(freq, psd, 'test.pdf', basis='gp')
 #     plt.show()
-    find_peaks(data, primary_direction=primary_direction)
-    data.plot()
-    # pdb.set_trace()
-    data.close()
+    # find_peaks(data, primary_direction=primary_direction)

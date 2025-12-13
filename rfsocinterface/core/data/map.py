@@ -194,6 +194,14 @@ def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, 
     if not beam_map_mode:
         map_y += 0.1  # 0.1 accounts for assymmetry in array
 
+    # if map.setnum in [1007, 1009]:
+    #     np.savez('map_size.npz', n_pix_x, n_pix_y, map_x, map_y)
+    # elif map.setnum in [1008, 1010]:
+    #     data = np.load('map_size.npz')
+    #     n_pix_x = data['arr_0']
+    #     n_pix_y = data['arr_1']
+    #     map_x = data['arr_2']
+    #     map_y = data['arr_3']
     return n_pix_x, n_pix_y, map_x, map_y
 
 class BinTODIntoMap(DataRoutine):
@@ -234,10 +242,11 @@ class BinTODIntoMap(DataRoutine):
         wind = signal.get_window('hamming', md.n_samples)
 
         # data = getattr(md, self.dataset)[:]
-        if self.beam_map_mode:
-            data = md.get_data_freq()
-        else:
-            data = md.data_mK[:]
+        # if self.beam_map_mode:
+        #     data = md.get_data_freq()
+        # else:
+        #     data = md.data_mK[:]
+        data = md.data_mK[:]
         sum_map = np.zeros(md.sum_map.shape)
         hits_map = np.zeros(md.hits_map.shape)
 

@@ -459,10 +459,10 @@ class LoSweepData:
             for i, f0 in enumerate(res):
                 if self._fit_cancelled:
                     return
-                if i in self.onres_ind:
-                    self.fit_f0[i] = f0
-                    self.fit_qc[i] = 0.0
-                    self.fit_qi[i] = 0.0
+                i_res = self.onres_ind[i]
+                self.fit_f0[i_res] = f0
+                self.fit_qc[i_res] = 0.0
+                self.fit_qi[i_res] = 0.0
                 if callback is not None:
                     callback()
             
