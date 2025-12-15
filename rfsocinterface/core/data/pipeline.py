@@ -225,19 +225,19 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    # date = '20250916'
-    # setnum = 1017
+    date = '20251214'
+    setnum = 1003
 
     #Telescope Testing
-    date = '20251211'
-    setnum = 1002
+    # date = '20251211'
+    # setnum = 1003
 
-    dataset = 'data_mK'
+    dataset = 'data_freq'
     beam_map_mode = False 
     do_electronics_noise_removal = True
     primary_direction = 'az'
 
-    ds_factor = 8
+    ds_factor = 1
     hp_filt_freq = 0.05
     lp_filt_freq = 30
 
@@ -263,12 +263,13 @@ if __name__ == '__main__':
     #pipeline.add_routine(binner)
 
     data = pipeline.run_pipeline(date, setnum)
-#     from rfsocinterface.analysis.psd import plot_psd
-#     freq = data.get_node_value('freq')[:]
-#     psd = data.get_node_value('psd_gain_phase')[:]
-#     plot_psd(freq, psd, 'test.pdf', basis='gp')
-#     plt.show()
-    find_peaks(data, primary_direction=primary_direction)
-    data.plot()
-    # pdb.set_trace()
-    data.close()
+    from rfsocinterface.analysis.psd import plot_psd
+    freq = data.get_node_value('freq')[:]
+    psd = data.get_node_value('psd_freq_diss')[:]
+    plot_psd(freq, psd, 'test.pdf', basis=PsdBasis.FREQ_DISS)
+    plt.show()
+    pdb.set_trace()
+    # find_peaks(data, primary_direction=primary_direction)
+    # data.plot()
+    # # pdb.set_trace()
+    # data.close()

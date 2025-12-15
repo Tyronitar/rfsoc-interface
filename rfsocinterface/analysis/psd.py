@@ -114,7 +114,7 @@ def plot_psd(
         max_percentile: float=84,
         title: str | None=None,
         basis: PsdBasis=PsdBasis.GAIN_PHASE,
-        resonators: list[int]=[0],
+        resonators: list[int]=None,
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -141,6 +141,8 @@ def plot_psd(
     # cutoff = 250  # Number of data points to cut off at the end
     # psd = psd[:, :, :-cutoff]
     # freq = freq[:-cutoff]
+    if resonators is None:
+        resonators = np.arange(psd.shape[1])
 
     if title is None:
         title = 'RFSoC Loopback PSD'

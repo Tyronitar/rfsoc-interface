@@ -1254,7 +1254,10 @@ class ProcessedDataL1(ProcessedData):
         for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
             self._file.create_external_link(lo_group, node._v_name, node.target)
         lo_group._v_attrs.lo_freq = target.lo_freq
-        self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
+        if isinstance(target.get_node('baseband_freqs'), ExternalLink):
+            self._file.create_external_link(global_data_group, 'baseband_freqs', target.get_node('baseband_freqs').target)
+        else:
+            self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
         
         # Copy global data
         self.create_external_link(global_data_group, 'dfoverf_per_mK', f'{target.filename}:/{target.dfoverf_per_mK._v_pathname}')
@@ -1537,8 +1540,8 @@ class ExternalLinkProcessedData(ProcessedData):
         for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
             self._file.create_external_link(lo_group, node._v_name, node.target)
         lo_group._v_attrs.lo_freq = target.lo_freq
-        if isinstance(target, ProcessedDataLN):
-            self._file.create_external_link(global_data_group, 'baseband_freqs', target.global_data_group.baseband_freqs.target)
+        if isinstance(target.get_node('baseband_freqs'), ExternalLink):
+            self._file.create_external_link(global_data_group, 'baseband_freqs', target.get_node('baseband_freqs').target)
         else:
             self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
 

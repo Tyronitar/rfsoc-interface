@@ -29,7 +29,7 @@ from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from kidpy3 import capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
-from kidpy3.measure import ResonatorFinder
+# from kidpy3.measure import ResonatorFinder
 
 
 _logger = logging.getLogger(__name__)
@@ -72,12 +72,23 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
                 keepgoing = False
             else:
                 center_ind = lo_ind + min_ind
+
     peak = find_peaks(-s21, prominence=3, distance=1e3)[0]
-    #f0 = freq[center_ind]
-    f0 = freq[peak[0]]
+
+    if len(peak)==0:
+        f0 = freq[center_ind]
+    else:
+        f0 = freq[peak[0]]
     return f0
 
-
+def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, scraps_fit: bool=False):
+    if scraps_fit == False:
+        fit_f0 = simple_derivative_fits(df, freq, tone_list, s21)
+        fit_qi = 0.0
+        fit_qc = 0.0
+        return fit_f0, fit_qc, fit_qi
+    else:
+        return 0, 0, 0
 def create_resonator_mini_plot(
         fig: Figure,
         ax: plt.Axes,
@@ -288,26 +299,8 @@ class ResonatorData:
         """Perform a fit to find the resonance frequency."""
         if start is None:
             start = self.tone
-        if scraps_fit == False:
-            fit_f0 = simple_derivative_fits(df, self.freq, start, self.s21)
-            fit_qi = 0.0
-            fit_qc = 0.0
-        else:
-            #TODO : Get proper calls to get resonator temp and pwr from LoSweepData
-            scr_data_dict = {
-                'freq': np.ravel(self.data.freq[self.idx]), 'I':np.ravel(self.data.data_I[self.idx]), 
-                'Q':np.ravel(self.data.data_Q[self.idx]), 'temp':0.240, 'pwr':0, 'name':'Be231102p2'}
-            f0_init = simple_derivative_fits(df, self.freq, start, self.s21)
-            scr_res = scr.makeResFromData(scr_data_dict)
-            scr_res.load_params( scr.cmplxIQ_params,hardware='VNA',)
-            scr_res.do_lmfit(scr.cmplxIQ_fit, f0 = f0_init)
-           
-            fit_f0 = scr_res.lmfit_result['default']['result'].params['f0'].value
-            fit_qi = scr_res.lmfit_result['default']['result'].params['qi'].value
-            fit_qc = scr_res.lmfit_result['default']['result'].params['qc'].value
-        if callback is not None:
-            callback()
-        return fit_f0, fit_qi, fit_qc
+
+        return fit_resonance(df, self.freq, self.tone, self.s21, scraps_fit=scraps_fit)
 
 
 class LoSweepData:
@@ -465,19 +458,19 @@ class LoSweepData:
         _logger.debug('Fitting LO sweep results...')
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             res = executor.map(
-                simple_derivative_fits,
+                fit_resonance,
                 (self.df for _ in range(self.ngoodchan)),
                 self.freq[self.onres_ind, :],
                 self.tone_list[self.onres_ind],
                 self.s21[self.onres_ind, :],
             )
-            for i, f0 in enumerate(res):
+            for i, (fit_f0, fit_qi, fit_qc) in zip(self.onres_ind, res):
                 if self._fit_cancelled:
                     return
                 if i in self.onres_ind:
-                    self.fit_f0[i] = f0
-                    self.fit_qc[i] = 0.0
-                    self.fit_qi[i] = 0.0
+                    self.fit_f0[i] = fit_f0
+                    self.fit_qc[i] = fit_qi
+                    self.fit_qi[i] =fit_qc
                 if callback is not None:
                     callback()
             
