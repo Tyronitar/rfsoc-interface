@@ -14,7 +14,7 @@ import numpy as np
 from matplotlib.backend_bases import MouseButton, MouseEvent
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
-from PySide6.QtCore import Qt, SignalInstance
+from PySide6.QtCore import Qt, SignalInstance, Slot
 from PySide6.QtGui import QDoubleValidator, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -35,7 +35,8 @@ from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_lis
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
-from rfsocinterface.core.utils import ensure_path
+from rfsocinterface.core.utils import ensure_path, PathLike
+from rfsocinterface.gui.utils import IncrementalProgressDialog, make_progress_dialog_incrementer
 
 _logger = logging.getLogger(__name__)
 
@@ -275,12 +276,12 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         sweep (LoSweepData): The relevant LO sweep data.
     """
 
-    def __init__(self, sweep: LoSweep, savefile: PathLike, parent: QWidget | None = None):
+    def __init__(self, sweep_data: LoSweepData, savefile: PathLike, parent: QWidget | None = None):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
         self.setSizeGripEnabled(True)
-        self.set_sweep(sweep)
+        self.set_sweep(sweep_data)
         self.savefile = Path(savefile)
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
         self.buttonBox.clicked.connect(self.click_button_box)
@@ -294,9 +295,8 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         elif self.buttonBox.buttonRole(button) == QDialogButtonBox.ButtonRole.AcceptRole:
             self.accept()
     
-    def set_sweep(self, sweep: LoSweep):
-        self.sweep = sweep
-        self.sweep_data = sweep.data
+    def set_sweep(self, sweep_data: LoSweepData):
+        self.sweep_data = sweep_data
         self.update_median_shift()
     
     def save_plots(self):
@@ -376,6 +376,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.get_figure().draw_artist(ax)
         self.canvas.select_axis(self.canvas.selected_axes)
         self.update_median_shift()
+        self.get_figure().tight_layout()
     
     def update_median_shift(self):
         self.median_shift_label.setText(
@@ -385,14 +386,25 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def set_edited(self):
         self.edited = True
         self.setWindowTitle('*LO Sweep Diagnostics')
-
+    
+    def get_ax_by_index(self, idx: int) -> plt.Axes:
+        return self.get_figure().get_axes()[idx]
+    
+    @Slot(int)
+    def handle_resonator_window_finish(self, result: int):
+        dialog: ResonatorDialog = self.sender()
+        resonator = dialog.resonator
+        ax = self.get_ax_by_index(resonator.idx)
+        if result == QDialog.DialogCode.Accepted:
+            self.set_edited()
+        self.redraw_axes(resonator, ax)
 
     def make_resonator_window(self, resonator: ResonatorData, ax: plt.Axes):
         """Create and open a ResonatorWindow using the provided ResonatorData."""
 
         rw = ResonatorDialog(resonator, parent=self)
-        rw.finished.connect(lambda _: self.redraw_axes(resonator, ax))
-        rw.accepted.connect(self.set_edited)
+        rw.finished.connect(self.handle_resonator_window_finish)
+        # rw.accepted.connect(self.set_edited)
 
         rw.show()
 
@@ -417,8 +429,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
         if fig is None:
             nrows = int(np.ceil(self.sweep_data.nchan / ncols))
-            fig = plt.figure(figsize=(nrows, ncols))
-            fig.subplots(nrows, ncols)
+            fig = plt.figure(figsize=(ncols, nrows), dpi=100)
+            for i in range(1, self.sweep_data.nchan + 1):
+                fig.add_subplot(nrows, ncols, i, aspect='equal', xticks=[], yticks=[])
 
         res = self.sweep_data.plot(ncols, callback=callback, fig=fig)
         
@@ -446,66 +459,35 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     @ensure_path(1)
     def from_h5(cls, filepath: Path, parent: QWidget | None = None) -> DiagnosticsDialog:
         """Create a DiagnosticsDialog from an HDF5 file."""
-        sweep = LoSweepData.from_h5(filepath)
-        dialog = cls(sweep, savefile=filepath, parent=parent)
+        sweep_data = LoSweepData.from_h5(filepath)
+        dialog = cls(sweep_data, savefile=filepath, parent=parent)
 
-        pd = QThreadJobProgressDialog(labelText='Plotting LO Sweep...', maximum=sweep.nchan, parent=parent)
+        pd = IncrementalProgressDialog(
+            f'Plotting LO sweep...',
+            'Cancel',
+            0,
+            sweep_data.nchan,
+            parent=parent,
+        )
+        pd.setAutoClose(True)
+        pd.setValue(0)
         pd.show()
 
-        fig, future = dialog.plot(pd=pd)
+        QApplication.processEvents()
+        increment_progress = make_progress_dialog_incrementer(pd)
+
+        fig = dialog.plot(callback=increment_progress)
         dialog.set_figure(fig)
 
-        future.add_done_callback(lambda _: fig.tight_layout())
-        future.add_done_callback(lambda _: dialog.update_median_shift())
-        # future.add_done_callback(lambda _: dial.set_figure(fig))
         return dialog
 
 
 if __name__ == '__main__':
     from concurrent.futures import wait
     import pdb
+
     app = QApplication()
-    sweep = LoSweepData.from_h5('/data/20250916/20250916_Be231102p2_100_tones_LO_Sweep_hour15p8722_high_res.npy')
-    pdb.set_trace()
 
-
-    win = QMainWindow()
-    pbutt = QPushButton('Start', parent=win)
-    win.setCentralWidget(pbutt)
-
-    def fit(sweep):
-        pd = QThreadJobProgressDialog(labelText='Fitting LO Sweep...',  maximum=sweep.ngoodchan, parent=win)
-        pd.setAutoClose(False)
-        pd.show()
-        QApplication.processEvents()
-
-        # future = sweep.fit(pd=pd)
-        # wait([future])
-        # future.result()
-        plot(sweep, pd)
-        # future.add_done_callback(lambda _: plot(sweep, pd))
-    
-    def plot(sweep, pd):
-        pd.setValue(0)
-        pd.setLabelText('Plotting fit results...')
-        pd.setMaximum(sweep.nchan)
-        pd.setAutoClose(True)
-        QApplication.processEvents()
-        dw = DiagnosticsDialog(sweep, 'test.h5', parent=win)
-        fig, future = dw.plot(pd=pd)
-        dw.set_figure(fig)
-        future.result()
-        plt.tight_layout()
-        QApplication.processEvents()
-        dw.show()
-        # future.add_done_callback(lambda _: dw.show())
-    
-
-    # pd.setWindowFlags(Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint)
-    # pd.move(self.geometry().center() - pd.geometry().center())
-    pbutt.clicked.connect(lambda: fit(sweep))
-
-
-
-    win.show()
+    dw = DiagnosticsDialog.from_h5('/data/20251212/20251212_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour14p1672.h5')
+    dw.show()
     app.exec()
