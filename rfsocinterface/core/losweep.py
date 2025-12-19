@@ -86,15 +86,14 @@ def create_resonator_mini_plot(
         onres: bool,
         flagged: bool,
 ):
+    ax.set_box_aspect(1.0)
     ax.set_facecolor('white')
     ax.set_yticks([])
     ax.set_xticks([])
     ax.plot(freq, s21)
     ax.axvline(x=fit_f0, color='r')
 
-    # Scale the span of the plot based on the frequency ratio
-    xlim = (freq.min(), freq.max())
-    ax.set_xlim(*xlim)
+    ax.set_xlim(freq.min(), freq.max())
 
     # Add a label showing the resonator number
     if onres:
@@ -141,7 +140,6 @@ class ResonatorData:
         """Initialize a ResonatorData object."""
         self.data = data
         self.idx = idx
-        self.flagged = False
 
     def plot(self, ax: plt.Axes | None = None, animated: bool = False) -> Figure | None:
         """Plot the results of the LO sweep fitting for this resonator.
@@ -182,7 +180,6 @@ class ResonatorData:
         ax.plot(self.freq, self.s21)
         ax.axvline(x=self.fit_f0, color='r', animated=animated)
 
-        # Scale the span of the plot based on the frequency ratio
         ax.set_xlim(self.freq.min(), self.freq.max())
 
         # Add a label showing the resonator number
@@ -257,7 +254,10 @@ class ResonatorData:
     @fit_f0.setter
     def fit_f0(self, val: float):
         self.data.fit_f0[self.idx] = val
-        self.flagged = np.abs(self.difference) > self.data.diff_to_flag[self.idx]
+    
+    @property
+    def flagged(self) -> bool:
+        return np.abs(self.difference) > self.data.diff_to_flag[self.idx]
 
     @property
     def fit_qi(self) -> float:
@@ -506,16 +506,12 @@ class LoSweepData:
 
         # Setup for plots
         nchan = self.nchan
-        # nchan = 50
         if fig is None:
             nrows = int(np.ceil(nchan / ncols))
             fig = plt.figure(figsize=(ncols, nrows), dpi=100)
-            for i in range(1, nchan + 1):
-                fig.add_subplot(nrows, ncols, i, frame_on=False, xticks=[], yticks=[], aspect='equal')
+            for i in range(1, self.sweep_data.nchan + 1):
+                fig.add_subplot(nrows, ncols, i, aspect='equal', xticks=[], yticks=[])
         axes = fig.axes
-        # plt.rc('font', size=8)
-        # for i in range(nchan, np.size(axes)):
-        #     np.ravel(axes)[i].set_axis_off()
 
         # Make this wrapper so `parallel_plot` can be canceled
         def callback_wrapper():

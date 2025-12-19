@@ -35,7 +35,7 @@ from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_lis
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
-from rfsocinterface.core.utils import ensure_path, PathLike
+from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes
 from rfsocinterface.gui.utils import IncrementalProgressDialog, make_progress_dialog_incrementer
 
 _logger = logging.getLogger(__name__)
@@ -206,6 +206,8 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.figcanvas.mpl_connect('button_release_event', self.mouse_release)
         self.figcanvas.mpl_connect('motion_notify_event', self.mouse_move)
 
+        self.adjustSize()
+
     def close_to_line(self, xdata: float, epsilon: float = EPSILON) -> bool:
         """Return whether a value is close to the line."""
         return np.allclose(self.canvas.line.get_xdata()[0], xdata, rtol=epsilon)
@@ -370,13 +372,16 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
     def redraw_axes(self, resonator: ResonatorData, ax: plt.Axes):
         """Redraw the specified axes."""
-        ax.cla()
+        reset_axes(ax)
         resonator.plot(ax)
-        self.get_figure().draw_artist(ax.patch)
-        self.get_figure().draw_artist(ax)
+        # ax.set_box_aspect(1.0)
+
+        fig = self.get_figure()
+        fig.draw_artist(ax.patch)
+        fig.draw_artist(ax)
+
         self.canvas.select_axis(self.canvas.selected_axes)
         self.update_median_shift()
-        self.get_figure().tight_layout()
     
     def update_median_shift(self):
         self.median_shift_label.setText(
@@ -429,9 +434,11 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
         if fig is None:
             nrows = int(np.ceil(self.sweep_data.nchan / ncols))
-            fig = plt.figure(figsize=(ncols, nrows), dpi=100)
+            fig = plt.figure(figsize=(ncols, nrows))
             for i in range(1, self.sweep_data.nchan + 1):
-                fig.add_subplot(nrows, ncols, i, aspect='equal', xticks=[], yticks=[])
+                ax = fig.add_subplot(nrows, ncols, i, xticks=[], yticks=[])
+                # ax.set_aspect('equal', adjustable='box')
+                ax.set_box_aspect(1.0)
 
         res = self.sweep_data.plot(ncols, callback=callback, fig=fig)
         

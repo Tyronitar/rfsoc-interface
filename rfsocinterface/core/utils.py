@@ -790,6 +790,40 @@ def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, ca
     return fig
 
 
+def reset_axes(ax: plt.Axes):
+    """Restore a Matplotlib Axes to a clean, default state.
+    
+    Useful after imshow(), pcolormesh(), etc. cine they change state that isn't reset
+    by ax.cla().
+    """
+    ax.cla()
+
+    # Reset aspect and layout
+    ax.set_aspect('auto', adjustable='box')
+
+    # Autoscaling
+    ax.autoscale(enable=True, axis="both", tight=False)
+    ax.set_autoscale_on(True)
+
+    # Remove fixed limits (important after imshow)
+    ax.set_xlim(auto=True)
+    ax.set_ylim(auto=True)
+
+    # Turn off image-style behavior
+    for im in ax.images:
+        im.remove()
+
+    # Reset scale (in case log/symlog was used)
+    ax.set_xscale("linear")
+    ax.set_yscale("linear")
+
+    # Reset margins to Matplotlib defaults
+    ax.margins(x=0.05, y=0.05)
+
+    # Grid & ticks (optional, but predictable)
+    ax.grid(False)
+
+
 if __name__ == '__main__':
     def plot_function(fig, ax, x, y):
         ax.plot(x, y)
