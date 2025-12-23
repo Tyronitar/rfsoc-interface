@@ -768,7 +768,7 @@ def _parallel_plot_worker(*args, plot_fn):
     return pil_img
 
 def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, callback: Callable | None=None):
-    with ProcessPoolExecutor(max_workers=1) as executor:
+    with ProcessPoolExecutor(max_workers=8) as executor:
         plots = executor.map(
             partial(_parallel_plot_worker, plot_fn=plot_fn),
             *iterables,

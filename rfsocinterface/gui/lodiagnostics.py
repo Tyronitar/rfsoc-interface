@@ -279,6 +279,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
+        self.setSizeGripEnabled(True)
         self.set_sweep(sweep)
         self.savefile = Path(savefile)
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)

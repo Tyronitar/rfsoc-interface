@@ -255,9 +255,9 @@ def analyze_beammap(
 if __name__ == '__main__':
     # date = '20250729'
     # setnum = 1012
-    date = '20251006'
+    date = '20251212'
 
-    setnum = 1009
+    setnum = 1003
 
     # md = MapData.from_file(date, setnum, 'r')
     md = MapData.from_file(date, setnum)
