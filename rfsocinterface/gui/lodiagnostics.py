@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list, LoSweep, DEFAULT_NCOLS
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
-from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog, QThreadJobProgressDialog
+from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
 from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes
 from rfsocinterface.gui.widgets.progress_bar import make_progress_dialog_incrementer
 

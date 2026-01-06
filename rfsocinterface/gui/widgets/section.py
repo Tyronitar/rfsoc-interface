@@ -22,8 +22,8 @@ from PySide6.QtCore import Qt, QEvent, QChildEvent
 import PySide6.QtWidgets as wd
 from PySide6.QtGui import QMouseEvent
 
-from rfsocinterface.gui.utils import layout_widgets
-from rfsocinterface.gui.utils import get_total_height
+from rfsocinterface.gui.widgets.utils import layout_widgets
+from rfsocinterface.gui.widgets.utils import get_total_height
 
 TOGGLE_BUTTON_CSS = """
         QToolButton {

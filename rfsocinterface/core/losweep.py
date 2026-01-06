@@ -24,7 +24,6 @@ from PySide6.QtWidgets import QApplication
 from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW, parallel_plot
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
 from kidpy3 import capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
@@ -655,7 +654,6 @@ class LoSweep:
             )
             rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
 
-        self.rfchan = rfsoc.get_channel(chan)
         self.tone_list = rfsoc.get_tone_list(chan)[0]
 
 
@@ -701,11 +699,11 @@ class LoSweep:
 
         # Read values and trash initial read, suspecting linear delay is cause..
         # toss 20 packets in the garbage
-        packets = capture_packets(self.rfchan, 20)
+        packets = self.rfsoc.capture_packets(self.chan, 20)
 
         # Actually use this data
         Naccums = 100
-        packets = capture_packets(self.rfchan, Naccums)
+        packets = self.rfsoc.capture_packets(self.chan, Naccums)
         I = []
         Q = []
         # for packet in packets:
@@ -731,7 +729,7 @@ class LoSweep:
         """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file"""
         _logger.info('Performing final setup before LO sweep...')
         # Final setup before sweep
-        chanmask = self.rfchan.chanmask
+        chanmask = self.rfsoc.get_chanmask(self.chan)
 
         if np.size(chanmask) == 0:  # Chanmask hasn't been set, so use all ones
             chanmask = np.ones(np.size(self.tone_list), dtype=int)

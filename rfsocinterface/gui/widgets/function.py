@@ -6,7 +6,7 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QFormLayout, QWidget, QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedWidget, QScrollArea, QLabel
 
 from rfsocinterface.core.utils import P, R, Q
-from rfsocinterface.gui.utils import ArgumentType
+from rfsocinterface.gui.widgets.utils import ArgumentType
 from rfsocinterface.gui.widgets.drag_and_drop import ClickableDragWidget, ClickableDragItem, ClickableMultiSectionDragWidget
 
 

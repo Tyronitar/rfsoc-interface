@@ -12,11 +12,11 @@ from kidpy3 import capture
 
 from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
-from rfsocinterface.gui.main_widget import TelescopeMainWidget
+from rfsocinterface.gui.main_widget import TelescopeMainWidget, DataCollectionMainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW
-from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS, ArgumentType
-from rfsocinterface.gui.widgets.function import FunctionWidget
+from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
+from rfsocinterface.gui.widgets import FunctionWidget, ArgumentType
 from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.data import (
     ProcessedData,
@@ -50,7 +50,7 @@ class DitherPatternWidget(FunctionWidget):
         file = self.file_func()
         self.fn(self.command, file, *values)
 
-class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
+class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWidget):
     startMapping = Signal()
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None) -> None:
@@ -209,19 +209,9 @@ class ImagingWidget(TelescopeMainWidget, Ui_ImagingWidget):
         print(self.pipeline.all_routines())
     
     def run(self):
-        chans = self.get_selected_channels(self.channel_comboBox)
-        rfchans = []
         # Update the current save file
         self.update_current_file()
-        for rfsoc, chan in chans:
-            rfchan = rfsoc.get_channel(chan)
-            save_location = self.save_location_widget.get_chosen_save_location(chan_name=f'{rfchan.tile_name}', mkdir=True, touch_file=True, mode=PERMISSIONS_USR_RW)
-            # save_location.parent.mkdir(parents=True, exist_ok=True)
-            # Ensure the TOD file exists before getting the AZEL and optcam filenames
-            # with h5py.File(save_location, 'w'):
-            #     pass
-            rfchan.raw_filename = str(save_location)
-            rfchans.append(rfchan)
+        rfchans, _, _ = self.setup_data_collection()
 
         # Take optical image
         self.cam_ctrl.take_pic(save=True)

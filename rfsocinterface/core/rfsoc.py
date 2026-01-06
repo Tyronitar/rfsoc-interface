@@ -1,20 +1,20 @@
 import yaml
 from pathlib import Path
 from re import match
-from typing import Any
+from typing import Any, Callable
 import numpy as np
 import numpy.typing as npt
 import logging
 from serial import SerialException
 
-from kidpy3 import RFSOC
+from kidpy3 import RFSOC, capture, capture_packets
 from kidpy3.rfsoc import RedisConnection
 from kidpy3.data_handler import Rfchan
 from kidpy3.hardware import Valon5009, Transceiver320d
 from kidpy3.hardware.Valon5009 import SYNTH_B
 import tables
 
-from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY
+from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, P, R, PathLike
 from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
 from rfsocinterface.core.utils import convert_path, recursive_update, ensure_path
 
@@ -396,6 +396,36 @@ class RFSOCWrapper:
 
         
         _logger.info(f'RFSoC {self.name} loaded parameters from {params_filename} for channel {channel}')
+    
+    @ensure_path(1)
+    def setup_capture(self, file: Path, channels: list[int]) -> list[Rfchan]:
+        """Setup data capture for the specified channels"""
+        rfchans = []
+        for channel in channels:
+            rfchan = self.get_channel(channel)
+            rfchan.raw_filename = str(file)
+            rfchans.append(rfchan)
+        return rfchans
+    
+    def capture(self, channels: list[int], file: PathLike, fn: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
+        """Capture data from this RFSoC."""
+        rfchans = self.setup_capture(file, channels)
+        return capture(rfchans, fn, *args, **kwargs)
+    
+    def capture_packets(self, channel: int, n_packets: int) -> npt.NDArray:
+        """Capture the specified number of packets from the specified channel.
+        
+        Arguments:
+            channel (int): The channel number to capture packets from (1 or 2).
+            n_packets (int): The number of packets to capture.
+        
+        Returns:
+            npt.NDArray: The captured packets. Has shape (2052, n_packets), with 
+                each even row being I data and the next odd row being the corresponding
+                Q data.
+        """
+        return capture_packets(self.get_channel(channel), n_packets)
+
 
 def get_channel_from_text(text: str, rfsocs: list[RFSOCWrapper]) -> tuple[RFSOCWrapper, int]:
     if text == '':

@@ -28,7 +28,8 @@ from rfsocinterface.gui.widgets.function import (
 from rfsocinterface.gui.widgets.icon_label import (
     IconLabel,
     highlight_error_line_edit,
-    verify_lineEdit
+    verify_lineEdit,
+    ERROR_ICON_CODE
 )
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from rfsocinterface.gui.widgets.progress_bar import (
@@ -37,6 +38,14 @@ from rfsocinterface.gui.widgets.progress_bar import (
 )
 from rfsocinterface.gui.widgets.save_location import SaveLocationWidget
 from rfsocinterface.gui.widgets.section import Section
+from rfsocinterface.gui.widgets.utils import (
+    get_lineEdit_text,
+    PathValidator,
+    layout_widgets,
+    get_total_height,
+    get_num_value,
+    ArgumentType,
+)
 
 __all__ = [
     ScrollableCanvas,
@@ -62,9 +71,16 @@ __all__ = [
     IconLabel,
     highlight_error_line_edit,
     verify_lineEdit,
+    ERROR_ICON_CODE,
     ClickableLineEdit,
     IncrementalProgressDialog,
     make_progress_dialog_incrementer,
     SaveLocationWidget,
     Section,
+    get_lineEdit_text,
+    PathValidator,
+    layout_widgets,
+    get_total_height,
+    get_num_value,
+    ArgumentType,
 ]
