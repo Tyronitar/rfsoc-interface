@@ -25,7 +25,7 @@ from rfsocinterface.core.data.routines import (
 from rfsocinterface.core.data.map import (
     BinTODIntoMap,
 )
-from rfsocinterface.core.data.pipeline import DataPipeline, RoutineApplier
+from rfsocinterface.core.data.pipeline import DataPipeline, RoutineApplier, find_peaks
 from rfsocinterface.core.params import PARAM_FILE_N_TONE_ATTRIBUTES, initialize_params_file, update_params_file
 
 ROUTINE_NAME_MAP = {
@@ -63,4 +63,5 @@ __all__ = [
     update_params_file,
     flag_outliers,
     plot_map,
+    find_peaks,
 ]
