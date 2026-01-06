@@ -695,41 +695,41 @@ if __name__ == '__main__':
     # Lab Testing
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
-    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p1558.h5')
+    data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p1558.h5')
     # data = LoSweepData.from_h5('/data/20251204/20251204_100_tone_uniform_202050829_LO_Sweep_hour16p4036.h5')
-    data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
+    # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
 
-    class Incrementer:
-        def __init__(self):
-            self.val = 0
-            self.lock = Lock()
+    # """  """class Incrementer:
+    #     def __init__(self):
+    #         self.val = 0
+    #         self.lock = Lock()
 
-        def __call__(self):
-            self.val += 1
-            # print(f'LO Sweep progress: {self.val}', flush=True)
-    inc = Incrementer()
-    def callback():
-        with inc.lock:
-            inc()
-    # import timeit
-    fit = data.fit(callback=callback)
-    # time = timeit.timeit('fit = data.fit(callback=callback)', globals=globals(), number=10)
-    # print(time)
-    # print([f for f in fit])
-    pdb.set_trace()
-    # i_res = 10
-    # plt.figure()
-    # plt.title('IQ Circle')
-    # plt.plot(data.data_I[i_res], data.data_Q[i_res])
-    # plt.xlabel('Data I')
-    # plt.ylabel('Data Q')
-    # plt.figure()
-    # plt.title('S21')
-    # plt.plot(data.freq[i_res], data.s21[i_res])
-    # plt.xlabel('Frequency (Hz)')
-    # plt.ylabel('S21')
-    # plt.show()
+    #     def __call__(self):
+    #         self.val += 1
+    #         # print(f'LO Sweep progress: {self.val}', flush=True)
+    # inc = Incrementer()
+    # def callback():
+    #     with inc.lock:
+    #         inc()
+    # # import timeit
+    # fit = data.fit(callback=callback)
+    # # time = timeit.timeit('fit = data.fit(callback=callback)', globals=globals(), number=10)
+    # # print(time)
+    # # print([f for f in fit])
     # pdb.set_trace()
+    i_res = 10
+    plt.figure()
+    plt.title('IQ Circle')
+    plt.plot(data.data_I[i_res], data.data_Q[i_res])
+    plt.xlabel('Data I')
+    plt.ylabel('Data Q')
+    plt.figure()
+    plt.title('S21')
+    plt.plot(data.freq[i_res], data.s21[i_res])
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('S21')
+    plt.show()
+    pdb.set_trace()
 
     # Telescope Testing
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
