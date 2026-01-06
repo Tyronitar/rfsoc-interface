@@ -151,6 +151,8 @@ class DiagnosticsCanvas(ScrollableCanvas):
     def hide_unflagged(self):
         """Hide all the unflagged axes."""
         for ax in self.unflagged:
+            if self.selected_axes == ax:
+                self.select_axis(None)
             ax.set_visible(False)
             ax.patch.set_visible(False)
         self.bm.update()

@@ -9,6 +9,7 @@ from rfsocinterface.core.data.data import (
     DECIMATE_ORDER,
     BUTTER_ORDER,
     flag_outliers,
+    plot_map,
 )
 from rfsocinterface.core.data.routines import (
     DataRoutine,
@@ -61,4 +62,5 @@ __all__ = [
     initialize_params_file,
     update_params_file,
     flag_outliers,
+    plot_map,
 ]

@@ -21,6 +21,7 @@ from scipy.stats import linregress
 from scipy import signal
 from scipy.stats import linregress
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_FULL
 from rfsocinterface.core.losweep import LoSweepData
@@ -1866,14 +1867,14 @@ def plot_map(
         cmap: str='Greys_r',
         title: str='',
         add_x_label: bool=True,
-):
+) -> Figure:
     xlim = min(map_x),max(map_x)
     ylim = max(map_y),min(map_y)
 
     if max_abs is None:
         max_abs = np.nanmax(np.abs(map))
 
-    plt.figure()
+    fig = plt.figure()
     plt.imshow(
         np.flip(np.transpose(map[::-1]),1),
         aspect='equal',
@@ -1896,6 +1897,8 @@ def plot_map(
         plt.xlabel('Azimuth (degrees)')
     plt.ylabel('ZA (degrees)')
     plt.xlim(xlim), plt.ylim(ylim)
+
+    return fig
 
 
 if __name__ == '__main__':
