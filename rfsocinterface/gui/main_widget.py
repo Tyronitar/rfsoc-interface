@@ -38,9 +38,9 @@ class MainWidget(QWidget):
                 item.setCheckState(Qt.CheckState.Unchecked)
                 total += 1
 
-    def get_selected_channels(self, combob_box: CheckableComboBox) -> list[tuple[RFSOCWrapper, int]]:
-        checked_ids = combob_box.checked_indices()
-        checked_text = [combob_box.itemText(i) for i in checked_ids]
+    def get_selected_channels(self, combo_box: CheckableComboBox) -> list[tuple[RFSOCWrapper, int]]:
+        checked_ids = combo_box.checked_indices()
+        checked_text = [combo_box.itemText(i) for i in checked_ids]
         if not checked_text:
             raise SettingsError('No channel selected')
         return list(map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text))
@@ -84,3 +84,13 @@ class TelescopeMainWidget(MainWidget):
 
     def closeEvent(self, event):
         return super().closeEvent(event)
+
+
+class DataCollectionWidget(MainWidget):
+    channelComboBox: CheckableComboBox
+    save_location_widget: Sa
+    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent=None):
+        super().__init__(main_window, rfsocs, settings, parent=parent)
+    
+    def setup_data_collection(self):
+        assert 'save_location_widget' in vars(self)

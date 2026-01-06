@@ -367,41 +367,41 @@ class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
         self.activeItemChanged.emit(section, item)
 
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.multi_drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Horizontal, parent=self)
-        n_sections = 2
-        counter = 0
-        for i_sec, section_name in enumerate([f'Section {i + 1}' for i in range(n_sections)]):
-            self.multi_drag.add_section(section_name)
-            for l in ["A", "B", "C", "D"]:
-                item = ClickableDragItem(l)
-                item.set_data(counter)  # Store the data.
-                counter += 1
-                self.multi_drag.add_item(i_sec, item)
-        # self.drag = DragWidget(orientation=Qt.Orientation.Vertical)
-        # for n, l in enumerate(["A", "B", "C", "D"]):
-        #     item = DragItem(l)
-        #     item.set_data(n)  # Store the data.
-        #     self.drag.add_item(item)
-
-        # Print out the changed order.
-        # self.drag.orderChanged.connect(print)
-        self.multi_drag.orderChanged.connect(lambda _, l: print(l))
-
-        container = QWidget()
-        layout = QVBoxLayout()
-        layout.addStretch(1)
-        # layout.addWidget(self.drag)
-        layout.addWidget(self.multi_drag)
-        layout.addStretch(1)
-        container.setLayout(layout)
-
-        self.setCentralWidget(container)
-
-
 if __name__ == '__main__':
+    class MainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.multi_drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Horizontal, parent=self)
+            n_sections = 2
+            counter = 0
+            for i_sec, section_name in enumerate([f'Section {i + 1}' for i in range(n_sections)]):
+                self.multi_drag.add_section(section_name)
+                for l in ["A", "B", "C", "D"]:
+                    item = ClickableDragItem(l)
+                    item.set_data(counter)  # Store the data.
+                    counter += 1
+                    self.multi_drag.add_item(i_sec, item)
+            # self.drag = DragWidget(orientation=Qt.Orientation.Vertical)
+            # for n, l in enumerate(["A", "B", "C", "D"]):
+            #     item = DragItem(l)
+            #     item.set_data(n)  # Store the data.
+            #     self.drag.add_item(item)
+
+            # Print out the changed order.
+            # self.drag.orderChanged.connect(print)
+            self.multi_drag.orderChanged.connect(lambda _, l: print(l))
+
+            container = QWidget()
+            layout = QVBoxLayout()
+            layout.addStretch(1)
+            # layout.addWidget(self.drag)
+            layout.addWidget(self.multi_drag)
+            layout.addStretch(1)
+            container.setLayout(layout)
+
+            self.setCentralWidget(container)
+
+
     app = QApplication([])
     w = MainWindow()
     w.show()

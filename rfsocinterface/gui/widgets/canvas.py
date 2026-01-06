@@ -1,4 +1,8 @@
+import warnings
+
 import matplotlib as mpl
+mpl.use('QtAgg')
+
 import numpy as np
 import numpy.typing as npt
 from PySide6.QtCore import QEvent, QObject, Qt
@@ -9,9 +13,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import warnings
-
-mpl.use('QtAgg')
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
