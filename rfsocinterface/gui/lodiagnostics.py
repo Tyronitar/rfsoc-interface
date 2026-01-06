@@ -149,7 +149,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     def refit(self):
         """Refit the resonator."""
         fit_f0, fit_qc, fit_qi = self.resonator.fit(
-            self.resonator.data.df, self.temp_fit_f0
+            self.resonator.data.df, start=self.temp_fit_f0,
         )
         self.temp_fit_f0 = fit_f0
         self.temp_fit_qc = fit_qc

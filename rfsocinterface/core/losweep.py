@@ -73,12 +73,10 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
             else:
                 center_ind = lo_ind + min_ind
 
-    peak = find_peaks(-s21, prominence=3, distance=1e3)[0]
+   
 
-    if len(peak)==0:
-        f0 = freq[center_ind]
-    else:
-        f0 = freq[peak[0]]
+    f0 = freq[center_ind]
+   
     return f0
 
 def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, scraps_fit: bool=False):
@@ -464,13 +462,13 @@ class LoSweepData:
                 self.tone_list[self.onres_ind],
                 self.s21[self.onres_ind, :],
             )
-            for i, (fit_f0, fit_qi, fit_qc) in zip(self.onres_ind, res):
+            for i_res, (fit_f0, fit_qi, fit_qc) in zip(self.onres_ind, res):
                 if self._fit_cancelled:
                     return
-                i_res = self.onres_ind[i]
-                self.fit_f0[i_res] = f0
-                self.fit_qc[i_res] = 0.0
-                self.fit_qi[i_res] = 0.0
+                # i_res = self.onres_ind[i]
+                self.fit_f0[i_res] = fit_f0
+                self.fit_qi[i_res] = fit_qi
+                self.fit_qc[i_res] = fit_qc
                 if callback is not None:
                     callback()
             

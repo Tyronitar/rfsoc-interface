@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib .figure import Figure
 from PySide6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog, QProgressDialog
 from PySide6.QtCore import Signal, Slot
-from kidpy3.measure import ResonatorFinder
+# from kidpy3.measure import ResonatorFinder
 
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget

@@ -1052,13 +1052,15 @@ class ProcessedDataL0(BaseProcessedData):
                 if i == 0:  # Only should make this once, since it's never changed
                     raw_timestamp = raw_time_ordered_data.timestamp[:n_samples]
                     print('finding missed packets...')
-                    missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
-                    this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
-                    # this_corrected_packet_index -= this_corrected_packet_index[0]
-                    # missed_packets, this_corrected_packet_index = find_missed_packets(
-                    #     raw_timestamp,
-                    #     n_samples
-                    # )
+                    if not test_node(f, 'pkt_idx'):
+                        # this_corrected_packet_index -= this_corrected_packet_index[0]
+                        missed_packets, this_corrected_packet_index = find_missed_packets(
+                            raw_timestamp,
+                            n_samples
+                        )
+                    else:
+                        missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
+                        this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
                     n_missed = np.sum(missed_packets[:, 1])
                     total_samples = n_samples + n_missed
                     time_ordered_data_group._v_attrs.n_samples = total_samples
@@ -1236,7 +1238,7 @@ class ProcessedData(BaseProcessedData):
 class ProcessedDataL1(ProcessedData):
     
     @classmethod
-    def from_file(cls, date: str, setnum: int, mode: str='r') -> ProcessedDataL0:
+    def from_file(cls, date: str, setnum: int, mode: str='r') -> ProcessedDataL1:
         return super(ProcessedDataL1, cls).from_file(date, setnum, mode=mode, level=1)
 
     def link_to_l0(self, target: ProcessedDataL0):
@@ -1419,7 +1421,7 @@ class ProcessedDataL1(ProcessedData):
             detector_az = new_data.create_external_link(new_data.data_group, 'detector_az', f'{l0.filename}:{l0.detector_az._v_pathname}')
             detector_za = new_data.create_external_link(new_data.data_group, 'detector_za', f'{l0.filename}:{l0.detector_za._v_pathname}')
             interpolated_indices = new_data.create_external_link(new_data.data_group, 'interpolated_indices', f'{l0.filename}:{l0.interpolated_indices._v_pathname}')
-        carrier_amplitudes[:] = np.nanmedian(new_data.data_IQ[:])
+        carrier_amplitudes[:] = np.nanmedian(new_data.data_IQ[:], axis=2)
 
         # Rotate to Gain / Phase
         IQ_to_gain_phase_angle[:] = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])  # N_chan

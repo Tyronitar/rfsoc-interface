@@ -225,8 +225,10 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20251216'
-    setnum = 1011
+    date = '20250829'
+    setnum = 1021
+    # date = '20250829'
+    # setnum = 1012
 
     #Telescope Testing
     # date = '20251211'
@@ -234,12 +236,12 @@ if __name__ == '__main__':
 
     dataset = 'data_freq'
     beam_map_mode = False 
-    do_electronics_noise_removal =  False
+    do_electronics_noise_removal = True 
     primary_direction = 'az'
 
-    ds_factor = 10
+    ds_factor = 1
     hp_filt_freq = 0.05
-    lp_filt_freq = 30
+    lp_filt_freq = 225
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
@@ -254,7 +256,7 @@ if __name__ == '__main__':
         dataset=dataset,
         beam_map_mode=beam_map_mode,
         do_electronics_noise_removal=do_electronics_noise_removal,
-        max_modes=2,
+        max_modes=10,
     )
     #pipeline.add_routine(hpfilt)
     #pipeline.add_routine(lpfilt)
@@ -265,11 +267,10 @@ if __name__ == '__main__':
     data = pipeline.run_pipeline(date, setnum)
     from rfsocinterface.analysis.psd import plot_psd
     freq = data.get_node_value('freq')[:]
-    psd_fd = data.get_node_value('psd_freq_diss')[:]
-    plot_psd(freq, psd_fd, 'noise_freq_dis.pdf', basis=PsdBasis.FREQ_DISS)
     psd_gp = data.get_node_value('psd_gain_phase')[:]
-    plot_psd(freq, psd_gp, 'noise_gain_phase.pdf', basis=PsdBasis.GAIN_PHASE)
-    # plt.show()
+    plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnum}.pdf', basis=PsdBasis.GAIN_PHASE)
+    # psd_fd = data.get_node_value('psd_freq_diss')[:]
+    # plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf', basis=PsdBasis.FREQ_DISS)
     # pdb.set_trace()
     # find_peaks(data, primary_direction=primary_direction)
     # data.plot()
