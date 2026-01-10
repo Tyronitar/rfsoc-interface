@@ -35,7 +35,8 @@ from rfsocinterface.core.utils import (
     get_map_file_template,
     get_beammap_file_template,
     DATA_DIRECTORY,
-    ensure_path
+    ensure_path,
+    pad_to_length
 )
 
 _logger = logging.getLogger(__name__)
@@ -208,13 +209,25 @@ def rotate_basis(
         in_data: tables.Array,
         out_data: tables.Array,
         rotation_angle: tables.Array,
+        i_chan: int=0,
+        valid_tone_indices: npt.NDArray | None=None,
         ):
     """Compute change of basis, rotating with the specified angle."""
 
     # new_data = np.zeros(shape=(2, np.size(tone_index), data_1.shape[-1]))
     # pdb.set_trace()
-    out_data[0, :] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0, :] - np.sin(rotation_angle)[:, np.newaxis] * in_data[1, :]
-    out_data[1, :] = np.sin(rotation_angle)[:, np.newaxis] * in_data[0, :] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
+    out_data[i_chan, 0, valid_tone_indices] = \
+        np.cos(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
+        in_data[i_chan, 0, valid_tone_indices] - \
+        np.sin(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
+        in_data[i_chan, 1, valid_tone_indices]
+
+    out_data[i_chan, 1, valid_tone_indices] = \
+        np.sin(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
+        in_data[i_chan, 0, valid_tone_indices] - \
+        np.sin(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
+        in_data[i_chan, 1, valid_tone_indices]
+    out_data[i_chan, 1, valid_tone_indices] = np.sin(rotation_angle)[valid_tone_indices, np.newaxis] * in_data[i_chan, 0, valid_tone_indices] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
 
 
 def generate_calibrated_data(data_group: tables.Group, global_data_group: tables.Group):
@@ -520,13 +533,15 @@ def find_missed_packets(
 def interpolate_timestamp(
     raw_timestamp: npt.NDArray,
     new_timestamp: tables.Array,
+    chan_index: int,
     packet_indices: npt.NDArray,
 ) -> npt.NDArray:
     normalized_packet_indices = packet_indices - packet_indices[0]
-    n_samples = len(new_timestamp)
+    n_samples = new_timestamp.shape[1]
     fit = linregress(normalized_packet_indices, raw_timestamp[:])
-    new_timestamp[:] = fit.slope * np.arange(n_samples) + fit.intercept + RFSOC_TIME_OFFSET
-    return fit.slope * normalized_packet_indices + fit.intercept
+    interpolated_timestamp = fit.slope * np.arange(n_samples) + fit.intercept + RFSOC_TIME_OFFSET
+    new_timestamp[chan_index, :] = interpolated_timestamp
+    return interpolated_timestamp
 
     
 def interpolate_missing_data(
@@ -624,7 +639,7 @@ class PyTablesDataset:
             self._data = new_array
         self._data[key] = value
     
-    def __getitem__(self, key):
+    def __getitem__(self, key: slice):
         # Dereference link if necessary
         if isinstance(self._data, ExternalLink):
             return self._data(mode='r')[key]
@@ -639,7 +654,7 @@ class PyTablesDataset:
     @property
     def ndim(self) -> int:
         return len(self.shape)
-
+    
 class DataStorage:
     """Class contianing data from processed TOD files."""
     def __init__(self, file: tables.File):
@@ -823,7 +838,7 @@ class BaseProcessedData(DataStorage):
     def lo_sweep_group(self) -> tables.Group:
         return self._file.root.lo_sweep
     
-    def get_lo_sweep_data(self) -> npt.NDArray:
+    def get_combined_lo_sweep_data_array(self) -> npt.NDArray:
         lo_sweep = None
         for node in self.lo_sweep_group._f_walknodes('ExternalLink'):
             this_lo_sweep = node(mode='r')[:]
@@ -832,30 +847,65 @@ class BaseProcessedData(DataStorage):
             else:
                 lo_sweep = np.append(lo_sweep, this_lo_sweep, axis=1)
         return lo_sweep
+
+    def get_lo_sweep_data_array(self, i_chan: int) -> npt.NDArray:
+        total_array = self.get_combined_lo_sweep_data_array()
+        return total_array[: np.sum(self.tones_per_channel[:i_chan]): np.sum(self.tones_per_channel[:i_chan + 1]))
+    
+    def get_lo_sweep_data(self, i_chan: int) -> LoSweepData:
+        return LoSweepData(
+            self.get_baseband_freqs(i_chan),
+            self.lo_freq[i_chan],
+            self.get_lo_sweep_data_array(i_chan),
+            self.get_chanmask(i_chan),
+        )
     
     @property
-    def lo_freq(self) -> float:
-        return self.lo_sweep_group._v_attrs.lo_freq
+    def lo_freq(self) -> tables.Array:
+        return self.get_node_value('lo_freq')
 
-    @lo_freq.setter
-    def lo_freq(self, lo_freq: float):
-        self.lo_sweep_group._v_attrs.lo_freq = lo_freq
+    def get_lo_freq(self, i_chan: int) -> float:
+        return self.lo_freq[i_chan]
     
+    @property
+    def tones_per_channel(self) -> tables.Array:
+        return self.get_node_value('tones_per_channel')
+
     @property
     def baseband_freqs(self) -> tables.Array:
         return self.get_node_value('baseband_freqs')
+    
+    def get_baseband_freqs(self, i_chan: int) -> npt.NDArray:
+        return self.baseband_freqs[i_chan, :self.tones_per_channel[i_chan]]
 
     @property
     def tones(self) -> npt.NDArray:
         return self.baseband_freqs[:] + self.lo_freq
-
-    @property
-    def n_tones(self) -> int:
-        return self._file.root.data._v_attrs.n_tones 
     
-    @n_tones.setter
-    def n_tones(self, n_tones: int):
-        self._file.root.data._v_attrs.n_tones = n_tones
+    def get_tones(self, i_chan: int) -> npt.NDArray:
+        return self.get_baseband_freqs(i_chan) + self.lo_freq
+
+    def tones_per_channel(self) -> tables.Array:
+        return self.get_node_value('tones_per_channel')
+
+    def get_n_tones(self, i_chan: int) -> int:
+        return self.tones_per_channel[i_chan]
+    
+    @property
+    def max_n_tones(self) -> int:
+        return max(self.tones_per_channel[:])
+    
+    @property
+    def n_tones_total(self) -> int:
+        return np.sum(self.tones_per_channel[:])
+    
+    @property
+    def n_channels(self) -> int:
+        return self._file.root.global_data._v_attrs.n_channels
+    
+    @n_channels.setter
+    def n_channels(self, n_channels: int):
+        self._file.root.global_data._v_attrs.n_channels = n_channels
 
     @property
     def n_samples(self) -> int:
@@ -873,39 +923,71 @@ class BaseProcessedData(DataStorage):
     def data_IQ(self) -> tables.Array:
         return self.get_node_value('data_IQ')
     
-    def get_data_I(self) -> npt.NDArray:
-        return self.data_IQ[0]
+    def get_data_IQ(self, i_chan: int) -> npt.NDArray:
+        return self.data_IQ[i_chan, :, :self.tones_per_channel[i_chan]]
+    
+    def get_all_data_I(self) -> npt.NDArray:
+        return self.data_IQ[:, 0, :]
+    
+    def get_data_I(self, i_chan: int) -> npt.NDArray:
+        return self.data_IQ[i_chan, 0, :self.tones_per_channel[i_chan]]
+    
+    def get_all_data_Q(self) -> npt.NDArray:
+        return self.data_IQ[:, 1, :]
 
-    def get_data_Q(self) -> npt.NDArray:
-        return self.data_IQ[1]
+    def get_data_Q(self, i_chan: int) -> npt.NDArray:
+        return self.data_IQ[i_chan, 1, :self.tones_per_channel[i_chan]]
 
     @property
     def interpolated_indices(self) -> tables.Array:
         return self.get_node_value('interpolated_indices')
+    
+    def get_interpolated_indices(self, i_chan: int) -> npt.NDArray:
+        return self.interpolated_indices[i_chan, :]
   
     @property
     def timestamp(self) -> tables.Array:
         return self.get_node_value('timestamp')
+    
+    def get_timestamp(self, i_chan: int) -> npt.NDArray:
+        return self.timestamp[i_chan, :]
 
     @property
     def time(self) -> npt.NDArray:
         return self.timestamp[:] - self.timestamp[0]
     
+    def get_time(self, i_chan: int) -> npt.NDArray:
+        timestamp = self.get_timestamp(i_chan)
+        return timestamp - timestamp[0]
+    
     @property
-    def delta_t(self) -> float:
-        return np.median(self.time - np.roll(self.time, 1))
+    def delta_t(self) -> npt.NDarray:
+        return np.median(self.time - np.roll(self.time, 1), axis=1)
+    
+    def get_delta_t(self, i_chan: int) -> float:
+        time = self.get_time(i_chan)
+        return np.median(time - np.roll(time, 1))
 
     @property
-    def fs(self) -> float:
+    def fs(self) -> npt.NDArray:
         return 1 / self.delta_t
+    
+    def get_fs(self, i_chan: int) -> float:
+        return 1 / self.get_delta_t(i_chan)
     
     @property
     def detector_az(self) -> tables.Array:
         return self.get_node_value('detector_az')
+    
+    def get_detector_az(self, i_chan: int) -> npt.NDArray:
+        return self.detector_az[i_chan, :self.tones_per_channel[i_chan]]
 
     @property
     def detector_za(self) -> tables.Array:
         return self.get_node_value('detector_za')
+    
+    def get_detector_za(self, i_chan: int) -> npt.NDArray:
+        return self.detector_za[i_chan, :self.tones_per_channel[i_chan]]
 
     @property
     def optical_visibility(self) -> tables.Array:
@@ -914,18 +996,30 @@ class BaseProcessedData(DataStorage):
     @property
     def dfoverf_per_mK(self) -> tables.Array:
         return self.get_node_value('dfoverf_per_mK')
+    
+    def get_dfoverf_per_mK(self, i_chan: int) -> npt.NDArray:
+        return self.dfoverf_per_mK[i_chan, :self.tones_per_channel[i_chan]]
         
     @property
     def detector_beam_ampl(self) -> tables.Array:
         return self.get_node_value('detector_beam_ampl')
+    
+    def get_detector_beam_ampl(self, i_chan: int) -> npt.NDArray:
+        return self.detector_beam_ampl[i_chan, :self.tones_per_channel[i_chan]]
 
     @property
     def detector_pol(self) -> tables.Array:
         return self.get_node_value('detector_pol')
     
+    def get_detector_pol(self, i_chan: int) -> npt.NDArray:
+        return self.detector_pol[i_chan, :self.tones_per_channel[i_chan]]
+    
     @property
     def chanmask(self) -> tables.Array:
         return self.get_node_value('chanmask')
+    
+    def get_chanmask(self, i_chan: int) -> npt.NDArray:
+        return self.chanmask[i_chan, :self.tones_per_channel[i_chan]]
 
 
 class ProcessedDataL0(BaseProcessedData):
@@ -960,25 +1054,56 @@ class ProcessedDataL0(BaseProcessedData):
 
         # Find TOD files
         todlist = glob.glob(todtemplate)
-        ntod = len(todlist)
-        if ntod == 0:
+        nchan = len(todlist)
+        if nchan == 0:
             raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
 
         # Get the n_tones and n_samples from all TOD files to determine array sizes
         sample_counts = []
         tone_counts = []
+        missed_sample_counts = []
+        missed_packets_list = []
+        corrected_packet_index_list = []
         for file in todlist:
             with tables.open_file(file, 'r') as f:
+                # Find number of tones
+                raw_dimension = f.root.dimension
+                n_tones = raw_dimension.n_tones[0]
+                tone_counts.append(n_tones)
+
+                # Find the total number of samples accounting for missed packets
                 raw_time_ordered_data = f.root.time_ordered_data
                 # NOTE: Temporary fix until n_sample is fixed in the raw files
                 # n_samples = raw_dimension.n_sample[0]
                 n_samples = raw_time_ordered_data.adc_i.shape[-1]
-                sample_counts.append(n_samples)
-                raw_dimension = f.root.dimension
-                tone_counts.append(raw_dimension.n_tones[0])
-        n_samples = min(sample_counts)
-        total_samples = n_samples
-        n_tones = sum(tone_counts)
+                raw_timestamp = raw_time_ordered_data.timestamp[:n_samples]
+                print('finding missed packets...')
+                missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
+                this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
+                # this_corrected_packet_index -= this_corrected_packet_index[0]
+                # missed_packets, this_corrected_packet_index = find_missed_packets(
+                #     raw_timestamp,
+                #     n_samples
+                # )
+                corrected_packet_index_list.append(this_corrected_packet_index)
+                n_missed = int(np.sum(missed_packets[:, 1]))
+                missed_sample_counts.append(n_missed)
+                total_samples = n_samples + n_missed
+                sample_counts.append(total_samples)
+                missed_packets_list.append(missed_packets)
+
+        max_n_tones = int(sum(tone_counts))
+        max_missed_samples = int(max(missed_sample_counts))
+        tones_per_channel = np.array(tone_counts, dtype=np.uint32)
+
+        # Normalize samle counts to the minimum across all channels
+        total_samples = min(np.add(sample_counts, missed_sample_counts))
+
+        # NOTE: I forsee a potnetial bug where we try to interpolate the data for channel
+        # say 2, which missed packet X, but channel 0 only had X - 1 total packets, so
+        # trying to operate on packet X would be out of bounds. For now, we will just
+        # limit the total samples to the minimum across all channels, and hope that this
+        # doesn't happen.
 
         if azel_exists:
             # pdb.set_trace()
@@ -1006,6 +1131,7 @@ class ProcessedDataL0(BaseProcessedData):
 
         time_ordered_data_group = pfile.create_group('/', 'data')
         global_data_group = pfile.create_group('/', 'global_data')
+        global_data_group._v_attrs.n_channels = nchan
         if optcam_exists:
             # optical_image = optcam_file.root.optical_image
             pfile.create_array(global_data_group, 'optical_image', obj=optcam_file.root.optical_image[:])
@@ -1013,26 +1139,47 @@ class ProcessedDataL0(BaseProcessedData):
         else:
             pfile.create_array(global_data_group, 'optical_image', obj=np.array([]))
             optical_image = None
-        dfoverf_per_mK = pfile.create_earray(global_data_group, 'dfoverf_per_mK', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
-        detector_beam_amplitude = pfile.create_earray(global_data_group, 'detector_beam_ampl', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
-        chanmask = pfile.create_earray(global_data_group, 'chanmask', shape=(0,), expectedrows=n_tones, atom=tables.Int8Atom(dflt=1))
-        baseband_freqs = pfile.create_earray(global_data_group, 'baseband_freqs', shape=(0,), expectedrows=n_tones, atom=tables.Float64Atom())
+        dfoverf_per_mK = pfile.create_array(global_data_group, 'dfoverf_per_mK', shape=(nchan, max_n_tones), atom=tables.Float64Atom())
+        detector_beam_amplitude = pfile.create_array(global_data_group, 'detector_beam_ampl', shape=(nchan, max_n_tones), atom=tables.Float64Atom())
+        chanmask = pfile.create_array(global_data_group, 'chanmask', shape=(nchan, max_n_tones), atom=tables.Int8Atom(dflt=1))
+        baseband_freqs = pfile.create_array(global_data_group, 'baseband_freqs', shape=(nchan, max_n_tones), atom=tables.Float64Atom())
         # chanmask[:] = 1
-        detector_pol = pfile.create_earray(global_data_group, 'detector_pol', shape=(0,), expectedrows=n_tones, atom=tables.Int8Atom())
+        detector_pol = pfile.create_array(global_data_group, 'detector_pol', shape=(nchan, max_n_tones), atom=tables.Int8Atom())
         optical_visibility = pfile.create_array(global_data_group, 'optical_visibility', obj=vis)
+        tones_per_channel_array = pfile.create_array(global_data_group, 'tones_per_channel', obj=tones_per_channel)
+        lo_freq_array = pfile.create_array(global_data_group, 'lo_freq', shape=(nchan,), atom=tables.Float64Atom())
 
-        time_ordered_data_group._v_attrs.n_tones = n_tones
-        time_ordered_data_group._v_attrs.n_samples = n_samples
-        corrected_packet_index = pfile.create_earray(time_ordered_data_group, 'packet_index', shape=(0,), expectedrows=n_samples, atom=tables.UInt32Atom())
-        interpolated_indices = pfile.create_earray(time_ordered_data_group, 'interpolated_indices', shape=(0,), atom=tables.UInt32Atom())
         lo_group = pfile.create_group('/', 'lo_sweep')
+
+        # Can now initialize time-ordered data arrays
+        time_ordered_data_group._v_attrs.n_samples = total_samples
+        timestamp = pfile.create_array(time_ordered_data_group, 'timestamp', shape=(nchan, total_samples,), atom=tables.Float64Atom())
+        corrected_packet_index = pfile.create_array(time_ordered_data_group, 'packet_index', shape=(nchan, total_samples), atom=tables.UInt32Atom())
+        interpolated_indices = pfile.create_vlarray(time_ordered_data_group, 'interpolated_indices', expectedrows=max_missed_samples, atom=tables.UInt32Atom())
+        chunkshape = (1, 1, int(5e5))
+        clevel = 4
+        cname = 'lz4'
+        tables_filters = tables.Filters(
+            complevel=clevel,
+            complib="blosc2:%s" % cname,
+            shuffle=True,
+        )
+        # data_IQ = pfile.create_array(time_ordered_data_group, 'data_IQ', shape=(2, n_tones, total_samples), atom=tables.Float64Atom())
+        data_IQ = pfile.create_array(time_ordered_data_group, 'data_IQ', shape=(nchan, 2, max_n_tones, total_samples), atom=tables.Float64Atom())
+        azel_shape = (nchan, max_n_tones, n_samples) if azel_exists else (nchan, max_n_tones, 1)
+        detector_az = pfile.create_array(time_ordered_data_group, 'detector_az', shape=azel_shape, atom=tables.Float64Atom())
+        detector_za = pfile.create_array(time_ordered_data_group, 'detector_za', shape=azel_shape, atom=tables.Float64Atom())
 
         # Iterate over the TOD Files, extracting IQ data and calibration info
         for i, file in enumerate(todlist):
             with tables.open_file(file, 'r') as f:
                 raw_global_data = f.root.global_data
                 raw_time_ordered_data = f.root.time_ordered_data
-                this_n_tones = tone_counts[i]
+                this_n_tones = tones_per_channel[i]
+                this_missed_packets = missed_packets_list[i]
+                this_n_missed = missed_sample_counts[i]
+
+                raw_timestamp = raw_time_ordered_data.timestamp[:total_samples]
 
                 # Get the correct tone indices in the TOD file
                 if int(date[:4]) < 2025:
@@ -1043,102 +1190,70 @@ class ProcessedDataL0(BaseProcessedData):
                 else:
                     valid_tone_index = np.arange(this_n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
 
-                tone_indices = np.arange(sum(tone_counts[:i]), sum(tone_counts[:i+1]), dtype=int)
+                this_corrected_packet_index = corrected_packet_index_list[i][:total_samples]
+                normalized_packet_indices = this_corrected_packet_index - this_corrected_packet_index[0]
+                corrected_packet_index[i, :] = this_corrected_packet_index
 
-                if raw_global_data.lo_sweep is None:
-                    raise RuntimeError('No LO sweep provided. Canceliing processing of file.')
-
-               # Initialize timestamp
-                if i == 0:  # Only should make this once, since it's never changed
-                    raw_timestamp = raw_time_ordered_data.timestamp[:n_samples]
-                    print('finding missed packets...')
-                    missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
-                    this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
-                    # this_corrected_packet_index -= this_corrected_packet_index[0]
-                    # missed_packets, this_corrected_packet_index = find_missed_packets(
-                    #     raw_timestamp,
-                    #     n_samples
-                    # )
-                    n_missed = np.sum(missed_packets[:, 1])
-                    total_samples = n_samples + n_missed
-                    time_ordered_data_group._v_attrs.n_samples = total_samples
-                    # Can now initialize time-ordered data arrays
-                    # chunksize = int(1e5)
-                    timestamp = pfile.create_array(time_ordered_data_group, 'timestamp', shape=(total_samples,), atom=tables.Float64Atom())
-                    chunkshape = (1, 1, int(5e5))
-                    clevel = 4
-                    cname = 'lz4'
-                    tables_filters = tables.Filters(
-                        complevel=clevel,
-                        complib="blosc2:%s" % cname,
-                        shuffle=True,
-                    )
-                    # data_IQ = pfile.create_array(time_ordered_data_group, 'data_IQ', shape=(2, n_tones, total_samples), atom=tables.Float64Atom())
-                    data_IQ = pfile.create_earray(time_ordered_data_group, 'data_IQ', shape=(2, 0, total_samples), atom=tables.Float64Atom(), filters=tables_filters)
-                    azel_shape = (0, total_samples) if azel_exists else (1, 0)
-                    detector_az = pfile.create_earray(time_ordered_data_group, 'detector_az', shape=azel_shape, expectedrows=n_tones, atom=tables.Float64Atom())
-                    detector_za = pfile.create_earray(time_ordered_data_group, 'detector_za', shape=azel_shape, expectedrows=n_tones, atom=tables.Float64Atom())
-                    normalized_packet_indices = this_corrected_packet_index - this_corrected_packet_index[0]
-                    corrected_packet_index.append(this_corrected_packet_index)
-
-                    print('interpolating timestamp...')
-                    correct_timestamp = interpolate_timestamp(
-                        raw_timestamp,
-                        timestamp,
-                        corrected_packet_index[:],
-                    )
+                print('interpolating timestamp...')
+                interpolated_timestamp = interpolate_timestamp(
+                    raw_timestamp,
+                    timestamp,
+                    i,
+                    this_corrected_packet_index,
+                )
 
                 this_data_IQ = np.zeros((2, 1024, total_samples))
                 # Interpolate Data
-                if n_missed > 0:
+                if this_n_missed > 0:
                     print('interpolating data...')
                     this_interpolated_indices, interpolated_data = interpolate_missing_data(
                         raw_time_ordered_data.adc_i,
                         raw_time_ordered_data.adc_q,
-                        timestamp,
-                        missed_packets,
-                        corrected_packet_index[:],
+                        interpolated_timestamp,
+                        this_missed_packets,
+                        this_corrected_packet_index,
                         valid_tone_index
                     )
                     interpolated_indices.append(this_interpolated_indices)
+                else:
+                    interpolated_indices.append([])
 
-                # TODO: Fix this for multi channel readout (not using `tone_indices`)
                 # Read IQ data
-                print('copying data')
+                print('copying IQ data from raw file...')
                 this_data_IQ[0, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_i[:]
                 this_data_IQ[1, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_q[:]
                 this_data_IQ = this_data_IQ[:, valid_tone_index]
-                if n_missed > 0:
+                if this_n_missed > 0:
                     this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
-                data_IQ.append(this_data_IQ)
+                data_IQ[i, :] = this_data_IQ[:, :max_n_tones]
                 print('done copying data')
 
                 # Link to LO sweep
                 pfile.create_external_link(lo_group, f'lo_sweep_{i}', f'{file}:/global_data/lo_sweep')
                 lo_freq = raw_global_data.lo_freq[:]
-                baseband_freqs.append(raw_global_data.baseband_freqs[:])
-                lo_group._v_attrs.lo_freq = lo_freq
+                lo_freq_array[i] = lo_freq
+                baseband_freqs[i, :] = pad_to_length(raw_global_data.baseband_freqs[:], max_n_tones)
             
                 # Copy calibration factors
                 this_detector_pol = raw_global_data.detector_pol[:]
                 if np.count_nonzero(this_detector_pol) == 0:
                     this_detector_pol = np.ones_like(this_detector_pol)
-                detector_pol.append(this_detector_pol)
+                detector_pol[i, :] = pad_to_length(this_detector_pol, max_n_tones))
 
                 this_detector_beam_ampl = raw_global_data.detector_beam_ampl[:]
                 if np.count_nonzero(this_detector_beam_ampl) == 0:
                     this_detector_beam_ampl = np.ones_like(this_detector_beam_ampl)
-                detector_beam_amplitude.append(this_detector_beam_ampl)
+                detector_beam_amplitude[i, :] = pad_to_length(this_detector_beam_ampl, max_n_tones)
 
                 this_dfoverf_per_mK = raw_global_data.dfoverf_per_mK[:] * -1
                 if np.count_nonzero(this_dfoverf_per_mK) == 0:
                     this_dfoverf_per_mK = np.ones_like(this_dfoverf_per_mK)
-                dfoverf_per_mK.append(this_dfoverf_per_mK)
+                dfoverf_per_mK[i, :] = pad_to_length(this_dfoverf_per_mK, max_n_tones)
 
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
-                    this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
-                    this_za_tel = np.interp(timestamp, timestamp_tel, za_tel)
+                    this_az_tel = np.interp(interpolated_timestamp, timestamp_tel, az_tel)
+                    this_za_tel = np.interp(interpolated_timestamp, timestamp_tel, za_tel)
                     this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
                     this_detector_delta_x = raw_global_data.detector_delta_x[:]
                     this_detector_delta_y = raw_global_data.detector_delta_y[:]
@@ -1146,16 +1261,15 @@ class ProcessedDataL0(BaseProcessedData):
                         this_detector_delta_x *= 0
                         this_detector_delta_y *= 0
                     #save the az/el information to the file
-                    detector_az.append(
-                        np.outer(this_detector_delta_x, np.cos(this_ang)) - \
-                        np.outer(this_detector_delta_y, np.sin(this_ang)) + \
-                        np.outer(np.ones(n_tones), this_az_tel)
-                    )
-                    detector_za.append(
+                    detector_az[i, :] = \
+                            np.outer(this_detector_delta_x, np.cos(this_ang)) - \
+                            np.outer(this_detector_delta_y, np.sin(this_ang)) + \
+                            np.outer(np.ones(max_n_tones), this_az_tel)
+                    
+                    detector_za[i, :] = \
                         np.outer(this_detector_delta_y, np.cos(this_ang)) + \
                         np.outer(this_detector_delta_x, np.sin(this_ang)) + \
-                        np.outer(np.ones(n_tones), this_za_tel)
-                    )
+                        np.outer(np.ones(max_n_tones), this_za_tel)
                 
                 # Store chanmask from TOD
                 this_chanmask = raw_global_data.chanmask[:]
@@ -1164,7 +1278,7 @@ class ProcessedDataL0(BaseProcessedData):
                 this_chanmask[no_pol] = -1
                 # Preserve off-resonance indices
                 this_chanmask[off_res] = 0
-                chanmask.append(this_chanmask)
+                chanmask[i, :] = pad_to_length(this_chanmask, max_n_tones, constant_values=-1)
 
         # Close telescope file as it's no longer needed
         if azel_exists:
@@ -1178,60 +1292,102 @@ class ProcessedData(BaseProcessedData):
    
     def carrier_amplitude_norm(self) -> npt.NDArray:
         Z = self.carrier_amp_I + 1j*self.carrier_amp_Q
-        return np.mean(np.abs(Z), axis=0)
+        return np.mean(np.abs(Z), axis=1)
 
     @property
     def carrier_amplitudes(self) -> tables.Array:
         return self.get_node_value('carrier_amplitudes')
+    
+    def get_carrier_amplitudes(self, i_chan: int) -> npt.NDArray:
+        return self.carrier_amplitudes[i_chan, :, :self.tones_per_channel[i_chan]]
 
     @property
-    def carrier_amp_I(self) -> tables.Array:
-        return self.carrier_amplitudes[0]
+    def carrier_amp_I(self) -> npt.NDArray:
+        return self.carrier_amplitudes[:, 0]
+    
+    def get_carrier_amp_I(self, i_chan) -> npt.NDArray:
+        return self.get_carrier_amplitudes(i_chan)[0]
     
     @property
-    def carrier_amp_Q(self) -> tables.Array:
+    def carrier_amp_Q(self) -> npt.NDArray:
         return self.carrier_amplitudes[1]
+
+    def get_carrier_amp_Q(self, i_chan) -> npt.NDArray:
+        return self.get_carrier_amplitudes(i_chan)[q]
 
     @property
     def df_per_mK(self) -> tables.Array:
         return self.get_node_value('df_per_mK')
+    
+    def get_df_per_mK(self, i_chan: int) -> npt.NDArray:
+        return self.df_per_mK[i_chan, :self.tones_per_channel[i_chan]]
 
     @property
     def IQ_to_gain_phase_angle(self) -> tables.Array:
         return self.get_node_value('IQ_to_gain_phase_angle')
+    
+    def get_IQ_to_gain_phase_angle(self, i_chan: int) -> npt.NDArray:
+        return self.IQ_to_gain_phase_angle[i_chan, :self.tones_per_channel[i_chan]]
 
     @property
     def IQ_to_freq_diss_angle(self) -> tables.Array:
         return self.get_node_value('IQ_to_freq_diss_angle')
     
+    def get_IQ_to_freq_diss_angle(self, i_chan: int) -> npt.NDArray:
+        return self.IQ_to_freq_diss_angle[i_chan, :self.tones_per_channel[i_chan]]
+    
     @property
     def adc_units_to_hz(self) -> tables.Array:
         return self.get_node_value('adc_units_to_hz')
+    
+    def get_adc_units_to_hz(self, i_chan: int) -> npt.NDArray:
+        return self.adc_units_to_hz[i_chan, :self.tones_per_channel[i_chan]]
 
     @property
     def data_freq_diss(self) -> tables.Array:
         return self.get_node_value('data_freq_diss')
-
-    def get_data_freq(self) -> npt.NDArray:
-        return self.data_freq_diss[0]
     
-    def get_data_diss(self) -> npt.NDArray:
-        return self.data_freq_diss[0]
+    def get_data_freq_diss(self, i_chan: int) -> npt.NDArray:
+        return self.data_freq_diss[i_chan, :, :self.tones_per_channel[i_chan]]
+
+    def get_all_data_freq(self) -> npt.NDArray:
+        return self.data_freq_diss[:, 0]
+    
+    def get_data_freq(self, i_chan: int) -> npt.NDArray:
+        return self.get_data_freq_diss(i_chan)[0]
+    
+    def get_all_data_diss(self) -> npt.NDArray:
+        return self.data_freq_diss[:, 0]
+    
+    def get_data_diss(self, i_chan: int) -> npt.NDArray:
+        return self.get_data_freq_diss(i_chan)[1]
     
     @property
     def data_mK(self) -> tables.Array:
         return self.get_node_value('data_mK')
     
+    def get_data_mK(self, i_chan: int) -> npt.NDArray:
+        return self.data_mK[i_chan, :self.tones_per_channel[i_chan]]
+    
     @property
     def data_gain_phase(self) -> tables.Array:
         return self.get_node_value('data_gain_phase')
     
-    def get_data_gain(self) -> npt.NDArray:
-        return self.data_gain_phase[0]
+    def get_data_gain_phase(self, i_chan: int) -> npt.NDArray:
+        return self.data_gain_phase[i_chan, :, :self.tones_per_channel[i_chan]]
     
-    def get_data_phase(self) -> npt.NDArray:
-        return self.data_gain_phase[1]
-  
+    def get_all_data_gain(self) -> npt.NDArray:
+        return self.data_gain_phase[:, 0]
+    
+    def get_data_gain(self, i_chan: int) -> npt.NDArray:
+        return self.get_data_gain_phase(i_chan)[0]
+    
+    def get_all_data_phase(self) -> npt.NDArray:
+        return self.data_gain_phase[:, 1]
+    
+    def get_data_phase(self, i_chan: int) -> npt.NDArray:
+        return self.get_data_gain_phase(i_chan)[1]
+    
     
 class ProcessedDataL1(ProcessedData):
     
@@ -1240,24 +1396,25 @@ class ProcessedDataL1(ProcessedData):
         return super(ProcessedDataL1, cls).from_file(date, setnum, mode=mode, level=1)
 
     def link_to_l0(self, target: ProcessedDataL0):
-        global_data_group = self._file.create_group('/', 'global_data')
-        data_group = self._file.create_group('/', 'data')
-        lo_group = self._file.create_group('/', 'lo_sweep')
+        global_data_group = self.create_group('/', 'global_data')
+        data_group = self.create_group('/', 'data')
+        lo_group = self.create_group('/', 'lo_sweep')
 
         # Copy attributes
-        self._file.root._v_attrs.date = target.date
-        self._file.root._v_attrs.setnum = target.setnum
-        self._file.root._v_attrs.receipt = target.receipt
-        data_group._v_attrs.n_tones = target.n_tones
-        # data_group._v_attrs.n_samples = target.n_samples
+        self.date = target.date
+        self.setnum = target.setnum
+        self.add_receipt(target.receipt)
+        self.n_samples = target.n_samples
+        self.n_channels = target.n_channels
 
         # Copy LO sweep external links
         for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
-            self._file.create_external_link(lo_group, node._v_name, node.target)
-        lo_group._v_attrs.lo_freq = target.lo_freq
-        self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
-        
+            self.create_external_link(lo_group, node._v_name, node.target)
+
         # Copy global data
+        self.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
+        self.create_external_link(global_data_group, 'lo_freq', f'{target.filename}:/{target.lo_freq._v_pathname}')
+        self.create_external_link(global_data_group, 'tones_per_channel', f'{target.filename}:/{target.tones_per_channel._v_pathname}')
         self.create_external_link(global_data_group, 'dfoverf_per_mK', f'{target.filename}:/{target.dfoverf_per_mK._v_pathname}')
         self.create_external_link(global_data_group, 'chanmask', f'{target.filename}:/{target.chanmask._v_pathname}')
         self.create_external_link(global_data_group, 'detector_pol', f'{target.filename}:/{target.detector_pol._v_pathname}')
@@ -1282,7 +1439,8 @@ class ProcessedDataL1(ProcessedData):
 
         total_samples = l0.n_samples
         n_samples_ds = int(np.ceil(total_samples / ds_factor))
-        n_tones = l0.n_tones
+        max_n_tones = l0.max_n_tones
+        nchan = l0.n_channels
 
         new_data = cls(pfile, level=1)
         l0.close()
@@ -1295,88 +1453,87 @@ class ProcessedDataL1(ProcessedData):
         data_gain_phase = new_data.create_array(
             new_data.data_group,
             'data_gain_phase',
-            shape=(2, n_tones, n_samples_ds),
+            shape=(nchan, 2, max_n_tones, n_samples_ds),
             atom=tables.Float64Atom(),
         )
         data_freq_diss = new_data.create_array(
             new_data.data_group,
             'data_freq_diss',
-            shape=(2, n_tones, n_samples_ds),
+            shape=(nchan, 2, max_n_tones, n_samples_ds),
             atom=tables.Float64Atom(),
         )
         data_mK = new_data.create_array(
             new_data.data_group,
             'data_mK',
-            shape=(n_tones, n_samples_ds),
+            shape=(nchan, max_n_tones, n_samples_ds),
             atom=tables.Float64Atom(),
         )
-        azel_shape = (1, 0) if l0.detector_az.shape[-1] == 0 else (n_tones, n_samples_ds) 
+        azel_shape = (nchan, max_n_tones, 1) if l0.detector_az.shape[-1] == 1 else (nchan, max_n_tones, n_samples_ds) 
 
 
         carrier_amplitudes = new_data.create_array(
             new_data.data_group,
             'carrier_amplitudes',
-            shape=(2, n_tones),
+            shape=(nchan, 2, max_n_tones),
             atom=tables.Float64Atom(),
         )
         adc_units_to_hz = new_data.create_array(
             new_data.data_group,
             'adc_units_to_hz',
-            shape=(n_tones,),
+            shape=(nchan, max_n_tones),
             atom=tables.Float64Atom(),
         )
         IQ_to_gain_phase_angle = new_data.create_array(
             new_data.data_group,
             'IQ_to_gain_phase_angle',
-            shape=(n_tones,),
+            shape=(nchan, max_n_tones),
             atom=tables.Float64Atom(),
         )
         IQ_to_freq_diss_angle = new_data.create_array(
             new_data.data_group,
             'IQ_to_freq_diss_angle',
-            shape=(n_tones,),
+            shape=(nchan, max_n_tones),
             atom=tables.Float64Atom(),
         )
         df_per_mK = new_data.create_array(
             new_data.global_data_group,
             'df_per_mK',
-            shape=(n_tones,),
+            shape=(nchan, max_n_tones),
             atom=tables.Float64Atom(),
         )
 
-        # Load LO sweep
-        lo_sweep_data = new_data.get_lo_sweep_data()
-        sweep = LoSweepData(
-            new_data.baseband_freqs[:],
-            new_data.lo_freq,
-            lo_sweep_data,
-            new_data.chanmask[:],
-        )
-        # Get frequency direction
-        this_IQ_to_freq_diss_angle, this_adc_units_to_hz = sweep.freq_direction()
-        IQ_to_freq_diss_angle[:] = this_IQ_to_freq_diss_angle
-        adc_units_to_hz[:] = this_adc_units_to_hz
+        # Load LO sweeps
+        for i_chan in range(nchan):
+            sweep = new_data.get_lo_sweep_data(i_chan)
 
-        detector_f = sweep.tone_list
-        df_per_mK[:] = compute_df_per_mK(
-            new_data.detector_pol[:],
-            new_data.detector_beam_ampl,
-            detector_f,
-            new_data.dfoverf_per_mK,
-        ) 
+            # Get frequency direction
+            this_IQ_to_freq_diss_angle, this_adc_units_to_hz = sweep.freq_direction()
+            IQ_to_freq_diss_angle[i_chan, :] = pad_to_length(this_IQ_to_freq_diss_angle, max_n_tones)
+            adc_units_to_hz[i_chan, :] = pad_to_length(this_adc_units_to_hz, max_n_tones)
+
+            detector_f = sweep.tone_list
+            df_per_mK[i_chan, :] = pad_to_length(
+                compute_df_per_mK(
+                    new_data.get_detector_pol(i_chan),
+                    new_data.get_detector_beam_ampl(i_chan),
+                    detector_f,
+                    new_data.get_df_per_mK(i_chan),
+                ),
+                max_n_tones,
+            )
 
         # Downsample IQ data
         if ds_factor > 1:
             data_IQ = new_data.create_array(
                 new_data.data_group,
                 'data_IQ',
-                shape=(2, n_tones, n_samples_ds),
+                shape=(nchan, 2, max_n_tones, n_samples_ds),
                 atom=tables.Float64Atom(),
             )
             timestamp = new_data.create_array(
                 new_data.data_group,
                 'timestamp',
-                shape=(n_samples_ds,),
+                shape=(nchan, n_samples_ds),
                 atom=tables.Float64Atom(),
             )
             detector_az = new_data.create_array(
@@ -1391,40 +1548,42 @@ class ProcessedDataL1(ProcessedData):
                 shape=azel_shape,
                 atom=tables.Float64Atom(),
             )
-            interpolated_indices = new_data.create_earray(
+            interpolated_indices = new_data.create_vlarray(
                 new_data.data_group,
                 'interpolated_indices',
-                shape=(0,),
-                expectedrows=len(l0.interpolated_indices),
-                atom=tables.Float64Atom(),
+                atom=tables.UInt32Atom(),
             )
             # TODO: Decimate the data in a memory-efficient manner
             # decimate_in_chunks(time_ordered_data.adc_i[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[0, :])
             # decimate_in_chunks(time_ordered_data.adc_q[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[1, :])
             data_IQ[:] = signal.decimate(l0.data_IQ[:], ds_factor)
-            timestamp[:] = l0.timestamp[::ds_factor]
+            timestamp[:] = l0.timestamp[:, ::ds_factor]
             if azel_shape[1] == 0:
                 detector_az[:] = l0.detector_az[:]
                 detector_za[:] = l0.detector_za[:]
             else:
-                detector_az[:] = l0.detector_az[:, ::ds_factor]
-                detector_za[:] = l0.detector_za[:, ::ds_factor]
-            interpolated_indices.append(l0.interpolated_indices[l0.interpolated_indices[:] % ds_factor == 0] // ds_factor)
+                detector_az[:] = l0.detector_az[:, :, ::ds_factor]
+                detector_za[:] = l0.detector_za[:, :, ::ds_factor]
+            for i_chan in range(nchan):
+                interpolated_indices.append(l0.interpolated_indices[i_chan, l0.interpolated_indices[i_chan, :] % ds_factor == 0] // ds_factor)
         else:
             data_IQ = new_data.create_external_link(new_data.data_group, 'data_IQ', f'{l0.filename}:{l0.data_IQ._v_pathname}')
             timestamp = new_data.create_external_link(new_data.data_group, 'timestamp', f'{l0.filename}:{l0.timestamp._v_pathname}')
             detector_az = new_data.create_external_link(new_data.data_group, 'detector_az', f'{l0.filename}:{l0.detector_az._v_pathname}')
             detector_za = new_data.create_external_link(new_data.data_group, 'detector_za', f'{l0.filename}:{l0.detector_za._v_pathname}')
             interpolated_indices = new_data.create_external_link(new_data.data_group, 'interpolated_indices', f'{l0.filename}:{l0.interpolated_indices._v_pathname}')
-        carrier_amplitudes[:] = np.nanmedian(new_data.data_IQ[:])
+        carrier_amplitudes[:] = np.nanmedian(new_data.data_IQ[:], axis=-1)
 
         # Rotate to Gain / Phase
-        IQ_to_gain_phase_angle[:] = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])  # N_chan
-        rotate_basis(
-            new_data.data_IQ[:],
-            data_gain_phase,
-            IQ_to_gain_phase_angle,
-        )
+        IQ_to_gain_phase_angle[:] = np.atan2(carrier_amplitudes[:, 0], carrier_amplitudes[:, 1])  # N_chan
+        for i_chan in range(nchan):
+            rotate_basis(
+                new_data.data_IQ[:],
+                data_gain_phase,
+                IQ_to_gain_phase_angle,
+                i_chan=i_chan,
+                valid_tone_indices=np.arange(l0.tones_per_channel[i_chan]),
+            )
         fs = 1 / np.median(np.diff(new_data.timestamp[:]))
 
         # Remove electronics noise if specified
@@ -1903,13 +2062,14 @@ def plot_map(
 
 if __name__ == '__main__':
     # Telescope Testing
-    date = '20251006'
-    setnum = 1009
+    # date = '20251006'
+    # setnum = 1009
     # Lab Testing
-    # date = '20250916'
-    # setnum = 1017
+    date = '20251223'
+    setnum = 1005
 
     pd = ProcessedDataL0.from_tod(date, setnum, beam_map_mode=True)
+    pdb.set_trace()
     # pd = ProcessedDataL0.from_file(date, setnum)
     pd1 = ProcessedDataL1.from_level0(pd, ds_factor=12, do_electronics_noise_removal=False)
     # f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')

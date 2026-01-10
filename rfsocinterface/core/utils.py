@@ -420,6 +420,23 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
         elif response.lower() == 'err':
             raise RuntimeError(f'{err_msg}: {data}')
 
+def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_values=0) -> npt.NDArray:
+    """Pad an array with zeros along an axis to a target length.
+
+    Parameters:
+        x (npt.NDArray): The input array.
+        target_length (int): The target length along the specified axis.
+        axis (int): The axis along which to pad.
+
+    Returns:
+        npt.NDArray: The padded array.
+    """
+    pad_widths = [(0, 0)] * x.ndim
+    pad_amount = target_length - x.shape[axis]
+    if pad_amount < 0:
+        raise ValueError(f'Target length {target_length} is less than current length {x.shape[axis]} along axis {axis}.')
+    pad_widths[axis] = (0, pad_amount)
+    return np.pad(x, pad_widths, mode='constant', constant_values=constant_values)
 
 #
 # Scipy signal processing utils
