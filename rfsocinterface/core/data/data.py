@@ -215,7 +215,6 @@ def rotate_basis(
     """Compute change of basis, rotating with the specified angle."""
 
     # new_data = np.zeros(shape=(2, np.size(tone_index), data_1.shape[-1]))
-    # pdb.set_trace()
     out_data[i_chan, 0, valid_tone_indices] = \
         np.cos(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
         in_data[i_chan, 0, valid_tone_indices] - \
@@ -227,15 +226,18 @@ def rotate_basis(
         in_data[i_chan, 0, valid_tone_indices] - \
         np.sin(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
         in_data[i_chan, 1, valid_tone_indices]
-    out_data[i_chan, 1, valid_tone_indices] = np.sin(rotation_angle)[valid_tone_indices, np.newaxis] * in_data[i_chan, 0, valid_tone_indices] + np.cos(rotation_angle)[:, np.newaxis] * in_data[1, :]
 
 
 def generate_calibrated_data(data_group: tables.Group, global_data_group: tables.Group):
-    rotate_basis(
-        data_group.data_gain_phase,
-        data_group.data_IQ,
-        -data_group.IQ_to_gain_phase_angle[:],
-    )
+    nchan = global_data_group._v_attrs.n_channels
+    for i_chan in range(nchan):
+        rotate_basis(
+            data_group.data_gain_phase[:],
+            data_group.data_IQ,
+            -data_group.IQ_to_gain_phase_angle[:],
+            i_chan=i_chan,
+            valid_tone_indices=np.arange(global_data_group.tones_per_channel[i_chan]),
+        )
     data_group.data_IQ[:] = data_group.data_IQ[:] - np.mean(data_group.data_IQ[:], axis=2, keepdims=True)
     # data.data_IQ[0, :] = data.data_IQ[0, :] - np.mean(data.data_IQ[0, :], axis=1, keepdims=True)
     # data.data_IQ[1, :] = data.data_IQ[1, :] - np.mean(data.data_IQ[1, :], axis=1, keepdims=True)
@@ -246,6 +248,14 @@ def generate_calibrated_data(data_group: tables.Group, global_data_group: tables
     #in each direction (assuming the noise is identical in I and Q)
     #this will then yield data_f
 
+    for i_chan in range(nchan):
+        rotate_basis(
+            data_group.data_IQ[:] / data_group.adc_units_to_hz[:][:, np.newaxis],
+            data_group.data_freq_diss,
+            data_group.IQ_to_freq_diss_angle[:],
+            i_chan=i_chan,
+            valid_tone_indices=np.arange(global_data_group.tones_per_channel[i_chan]),
+        )
     rotate_basis(data_group.data_IQ[:] / data_group.adc_units_to_hz[:][:, np.newaxis], data_group.data_freq_diss, data_group.IQ_to_freq_diss_angle[:])
     # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
 
@@ -255,16 +265,20 @@ def generate_calibrated_data(data_group: tables.Group, global_data_group: tables
 
 def new_generate_calibrated_data(pd: ProcessedDataL1):
     if isinstance(pd.get_node('data_IQ'), ExternalLink):
-        data_IQ = np.zeros(pd.data_IQ.shape, pd.data_IQ.dtype)
-    else:
-        data_IQ = pd.data_IQ
+        data = pd.data_IQ[:]
+        pd.remove_node('/data', 'data_IQ')
+        pd.create_array('/data', 'data_IQ', obj=data)
+    data_IQ = pd.data_IQ
         
 
-    rotate_basis(
-        pd.data_gain_phase,
-        data_IQ,
-        -pd.IQ_to_gain_phase_angle[:],
-    )
+    for i_chan in range(pd.n_channels):
+        rotate_basis(
+            pd.data_gain_phase[:],
+            data_IQ,
+            -pd.IQ_to_gain_phase_angle[:],
+            i_chan=i_chan,
+            valid_tone_indices=np.arange(pd.get_n_tones(i_chan))
+        )
     data_IQ[:] = data_IQ[:] - np.mean(data_IQ[:], axis=2, keepdims=True)
     # data.data_IQ[0, :] = data.data_IQ[0, :] - np.mean(data.data_IQ[0, :], axis=1, keepdims=True)
     # data.data_IQ[1, :] = data.data_IQ[1, :] - np.mean(data.data_IQ[1, :], axis=1, keepdims=True)
@@ -275,11 +289,18 @@ def new_generate_calibrated_data(pd: ProcessedDataL1):
     #in each direction (assuming the noise is identical in I and Q)
     #this will then yield data_f
 
-    rotate_basis(data_IQ[:] / pd.adc_units_to_hz[:][:, np.newaxis], pd.data_freq_diss, pd.IQ_to_freq_diss_angle[:])
+    for i_chan in range(pd.n_channels):
+        rotate_basis(
+            data_IQ[:] / pd.adc_units_to_hz[:][:, :, np.newaxis],
+            pd.data_freq_diss,
+            pd.IQ_to_freq_diss_angle[:],
+            i_chan=i_chan,
+            valid_tone_indices=np.arange(pd.get_n_tones(i_chan))
+        )
     # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
 
     # Finally, we need to get data_mK
-    pd.data_mK[:] = np.divide(pd.data_freq_diss[0, :], pd.df_per_mK[:][:, np.newaxis])
+    pd.data_mK[:] = np.divide(pd.data_freq_diss[:, 0], pd.df_per_mK[:][:, :, np.newaxis])
     # data.data_mK[:] = np.where(np.isinf(data.data_mK), np.nan, data.data_mK)
 
 #
@@ -342,32 +363,35 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     return templates
 
 
-def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30) -> npt.NDArray:
+def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: float=10, max_modes: int=30) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
     Args:
-        data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
+        data (npt.NDArray): Input data (N_chan x 2 x N_tones x N_samples). Data should
             be in the gain/phase basis.
-        fs (float): Sampling frequency of the data.
+        fs (npt.NDArray): Sampling frequency of the data, per channel.
         lp_filt_freq (float, optional): Low-pass filter frequency for the templates. Defaults to 10 Hz.
 
     Returns:
-        npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
+        npt.NDarray: Cleaned data (N_chan x 2 x N_tones x N_samples).
     """
-    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
+    # filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
     # data_lp = signal.sosfiltfilt(filt_sos, data)
-    data_lp = data
+    out_data = np.zeros_like(data)
 
-    templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
-    n_modes = templates.shape[1]
-    denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
+    for i_chan in range(data.shape[0]):
+        data_lp = data[i_chan]
+        templates = compute_templates(data_lp, max_modes=max_modes)  # 2 x N_modes x N_samples
+        n_modes = templates.shape[1]
+        denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
 
-    for i in range(n_modes):
-        numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # N_chan x N_detector
-        corr = numerator / denominator[:, i:i+1]  # N_chan x N_detector
-        data = data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # N_chan x N_detector x N_samples
-        # data_lp = signal.sosfiltfilt(filt_sos, data)
-        data_lp = data
+        for i in range(n_modes):
+            numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # 2 x N_tones
+            corr = numerator / denominator[:, i:i+1]  # N_chan x N_tones
+            data_lp = data_lp - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # 2 x N_tones x N_samples
+            # data_lp = signal.sosfiltfilt(filt_sos, data)
+        
+        out_data[i_chan] = data_lp
 
     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
     # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
@@ -379,12 +403,12 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
     # numerator1 = np.einsum('ijk,ik->ij', deproj_lp, templates[:, 1])  # N_chan x N_detector
     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
     # clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
-    return data 
+    return out_data
 
 
 def remove_electronics_noise_tables(
     data_gain_phase: tables.Array,
-    fs: float,
+    fs: npt.NDArray,
     lp_filt_freq: float=10,
     max_modes: int=30,
 ):
@@ -400,6 +424,7 @@ def remove_electronics_noise_tables(
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
     clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
+    pdb.set_trace()
     data_gain_phase[:] = clean_data
     # for i_chan in range(data_gain_phase.shape[0]):
     #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
@@ -715,11 +740,24 @@ class DataStorage:
     ) -> tables.Array:
         return self._file.create_earray(where, name, shape=shape, obj=obj, atom=atom, expectedrows=expectedrows)
     
+    def create_vlarray(
+            self,
+            where: tables.Group | str,
+            name: str,
+            obj: npt.NDArray | None=None,
+            atom: tables.Atom | None=None,
+            expectedrows: int=1000,
+    ) -> tables.Array:
+        return self._file.create_vlarray(where, name, obj=obj, atom=atom, expectedrows=expectedrows)
+    
     def create_group(self, where: tables.Group | str, name: str) -> tables.Group:
         return self._file.create_group(where, name)
     
     def create_external_link(self, where: tables.Group | str, name: str, target: str) -> ExternalLink:
         return self._file.create_external_link(where, name, target)
+    
+    def remove_node(self, where: tables.Group | str, name: str):
+        self._file.remove_node(where, name)
 
     @property
     def tod_template(self) -> str:
@@ -850,7 +888,7 @@ class BaseProcessedData(DataStorage):
 
     def get_lo_sweep_data_array(self, i_chan: int) -> npt.NDArray:
         total_array = self.get_combined_lo_sweep_data_array()
-        return total_array[: np.sum(self.tones_per_channel[:i_chan]): np.sum(self.tones_per_channel[:i_chan + 1]))
+        return total_array[:, np.sum(self.tones_per_channel[:i_chan]):np.sum(self.tones_per_channel[:i_chan + 1])]
     
     def get_lo_sweep_data(self, i_chan: int) -> LoSweepData:
         return LoSweepData(
@@ -885,6 +923,7 @@ class BaseProcessedData(DataStorage):
     def get_tones(self, i_chan: int) -> npt.NDArray:
         return self.get_baseband_freqs(i_chan) + self.lo_freq
 
+    @property
     def tones_per_channel(self) -> tables.Array:
         return self.get_node_value('tones_per_channel')
 
@@ -939,7 +978,7 @@ class BaseProcessedData(DataStorage):
         return self.data_IQ[i_chan, 1, :self.tones_per_channel[i_chan]]
 
     @property
-    def interpolated_indices(self) -> tables.Array:
+    def interpolated_indices(self) -> tables.VLArray:
         return self.get_node_value('interpolated_indices')
     
     def get_interpolated_indices(self, i_chan: int) -> npt.NDArray:
@@ -1238,7 +1277,7 @@ class ProcessedDataL0(BaseProcessedData):
                 this_detector_pol = raw_global_data.detector_pol[:]
                 if np.count_nonzero(this_detector_pol) == 0:
                     this_detector_pol = np.ones_like(this_detector_pol)
-                detector_pol[i, :] = pad_to_length(this_detector_pol, max_n_tones))
+                detector_pol[i, :] = pad_to_length(this_detector_pol, max_n_tones)
 
                 this_detector_beam_ampl = raw_global_data.detector_beam_ampl[:]
                 if np.count_nonzero(this_detector_beam_ampl) == 0:
@@ -1565,7 +1604,7 @@ class ProcessedDataL1(ProcessedData):
                 detector_az[:] = l0.detector_az[:, :, ::ds_factor]
                 detector_za[:] = l0.detector_za[:, :, ::ds_factor]
             for i_chan in range(nchan):
-                interpolated_indices.append(l0.interpolated_indices[i_chan, l0.interpolated_indices[i_chan, :] % ds_factor == 0] // ds_factor)
+                interpolated_indices.append(l0.interpolated_indices[i_chan][l0.interpolated_indices[i_chan] % ds_factor == 0] // ds_factor)
         else:
             data_IQ = new_data.create_external_link(new_data.data_group, 'data_IQ', f'{l0.filename}:{l0.data_IQ._v_pathname}')
             timestamp = new_data.create_external_link(new_data.data_group, 'timestamp', f'{l0.filename}:{l0.timestamp._v_pathname}')
@@ -1584,7 +1623,7 @@ class ProcessedDataL1(ProcessedData):
                 i_chan=i_chan,
                 valid_tone_indices=np.arange(l0.tones_per_channel[i_chan]),
             )
-        fs = 1 / np.median(np.diff(new_data.timestamp[:]))
+        fs = 1 / np.median(np.diff(new_data.timestamp[:], axis=-1), axis=-1)
 
         # Remove electronics noise if specified
         if do_electronics_noise_removal:
@@ -2065,13 +2104,12 @@ if __name__ == '__main__':
     # date = '20251006'
     # setnum = 1009
     # Lab Testing
-    date = '20251223'
+    date = '20260105'
     setnum = 1005
 
-    pd = ProcessedDataL0.from_tod(date, setnum, beam_map_mode=True)
-    pdb.set_trace()
+    pd = ProcessedDataL0.from_tod(date, setnum, beam_map_mode=False)
     # pd = ProcessedDataL0.from_file(date, setnum)
-    pd1 = ProcessedDataL1.from_level0(pd, ds_factor=12, do_electronics_noise_removal=False)
+    pd1 = ProcessedDataL1.from_level0(pd, ds_factor=1, do_electronics_noise_removal=True)
     # f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')
     # corrected_timestamp, missed_packets, corrected_packet_index = compute_timestamp(f, sigma=2.0)
     # data_I = f.root.time_ordered_data.adc_i
