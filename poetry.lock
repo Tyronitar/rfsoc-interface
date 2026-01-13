@@ -2920,6 +2920,18 @@ py-cpuinfo = "*"
 typing-extensions = ">=4.4.0"
 
 [[package]]
+name = "telnetlib3"
+version = "2.0.8"
+description = "Python 3 asyncio Telnet server and client Protocol library"
+optional = false
+python-versions = ">=3.7"
+groups = ["main"]
+files = [
+    {file = "telnetlib3-2.0.8-py2.py3-none-any.whl", hash = "sha256:9c5b762d359581af61b7872c5abd1aa82d8fd49044d12b4eb5a7c88660901dbd"},
+    {file = "telnetlib3-2.0.8.tar.gz", hash = "sha256:08a2a7a3a6790f89617442b7d491da8b531d87706fffd6a33eeff57ac440b752"},
+]
+
+[[package]]
 name = "textual"
 version = "6.6.0"
 description = "Modern Text User Interface framework"
@@ -3076,4 +3088,4 @@ test = ["coverage", "flake8", "flake8-junit-report", "mypy", "unittest-xml-repor
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "e35d718bd638ca30dea03ea22cdad5f6b632c34ed7c1ea13454e6a7d7d6e5c5c"
+content-hash = "7f0646fefdc5bd2dc331e3df86649136b0cf49d89c69b143c433ebbcf31a3e43"

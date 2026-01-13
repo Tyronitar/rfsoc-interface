@@ -24,6 +24,7 @@ tables = "^3.10.2"
 gitpython = "^3.1.44"
 numpy = "^2.3.1"
 scipy = "^1.16.0"
+telnetlib3 = "^2.0.8"
 
 [tool.poetry.group.gui.dependencies]
 shiboken6 = "6.8.1"
