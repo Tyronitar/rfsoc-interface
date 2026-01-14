@@ -5,6 +5,7 @@ import abc
 import pdb
 
 import numpy as np
+import numpy.typing as npt
 from scipy import signal
 import tables
 
@@ -194,13 +195,20 @@ class ComputeNoisePSD(DataRoutine):
             *bases: PsdBasis,
             nominal_block_length: float=10,
             cut_time: float=0.0,
+            tone_indices: npt.ArrayLike | str=None,
     ):
         super().__init__()
         self.bases = bases
         self.nominal_block_length = nominal_block_length
         self.cut_time = cut_time
+        self.tone_indices = tone_indices 
     
     def forward(self, pd: ProcessedData):
+        
+        if self.tone_indices is None or self.tone_indices == 'onres':
+            self.tone_indices = pd.onres_ind
+        elif self.tone_indices == 'offres':
+            self.tone_indices = pd.offres_ind
         # Initialize PSD group in the file if needed
         if not pd.test_node('psd'):
             psd_group = pd.create_group('/', 'psd')
@@ -234,7 +242,7 @@ class ComputeNoisePSD(DataRoutine):
             
             # Compute the PSD
             freq, psd = signal.welch(
-                data[:, np.argwhere(pd.chanmask[:] == 1).flatten(), :],
+                data[:, self.tone_indices, :],
                 pd.fs,
                 nperseg=n_samples_per_block,
             )

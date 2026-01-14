@@ -72,7 +72,7 @@ def compute_noise_psd(
         n_blocks = 1
         n_samples_per_block = n_samples
     
-    freq, psd = _compute_psd(new_input_data[:, np.where(chanmask == 1)[0], :], fs, n_samples_per_block)
+    freq, psd = _compute_psd(new_input_data[:,:,:], fs, n_samples_per_block)
     return chanmask, freq, psd
 
 
@@ -112,6 +112,7 @@ def plot_psd(
         filename: Path,
         min_percentile: float=16,
         max_percentile: float=84,
+        f0: float | None= None,
         title: str | None=None,
         basis: PsdBasis=PsdBasis.GAIN_PHASE,
         resonators: list[int]=None,
@@ -141,6 +142,7 @@ def plot_psd(
     # cutoff = 250  # Number of data points to cut off at the end
     # psd = psd[:, :, :-cutoff]
     # freq = freq[:-cutoff]
+    figs = []
     if resonators is None:
         resonators = np.arange(psd.shape[1])
 
@@ -156,7 +158,10 @@ def plot_psd(
             ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
         case PsdBasis.FREQ_DISS:
-            return plot_psd_df_over_f(freq, psd, filename, title=title, resonators=resonators)
+            titles = [title + ' - Frequency', title + ' - Dissipation']
+            ylabel = r'Sdf/f ($Hz^{-1}$)'
+            yscale = 'linear'
+            figs = plot_psd_df_over_f(freq, psd, filename, f0, title=title, resonators=resonators)
         case _:
             raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
 
@@ -178,9 +183,7 @@ def plot_psd(
     # Plot 
     if not filename.exists():
         filename.touch(PERMISSIONS_ALL_FULL)
-    figs = []
-    with PdfPages(filename) as pdf:
-        for i in range(n_plots):
+    for i in range(n_plots):
             fig = create_plot(
                 freq,
                 plot_data_min[i],
@@ -191,19 +194,22 @@ def plot_psd(
                 ylabel=ylabel,
                 yscale=yscale,
             )
-            pdf.savefig(fig)
             figs.append(fig)
-        average_fig = create_plot(
-            freq,
-            np.sum(plot_data_min, axis=0) / n_plots,
-            np.sum(plot_data_med, axis=0) / n_plots,
-            np.sum(plot_data_max, axis=0) / n_plots,
-            percentiles=(min_percentile, max_percentile),
-            title= title + ' - Averaged',
-            ylabel=ylabel,
-            yscale=yscale,
-        )
-        pdf.savefig(average_fig)
+    average_fig = create_plot(
+        freq,
+        np.sum(plot_data_min, axis=0) / n_plots,
+        np.sum(plot_data_med, axis=0) / n_plots,
+        np.sum(plot_data_max, axis=0) / n_plots,
+        percentiles=(min_percentile, max_percentile),
+        title= title + ' - Averaged',
+        ylabel=ylabel,
+        yscale=yscale,
+    )
+    figs.append(average_fig)
+    with PdfPages(filename) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
+        
 
     return figs
 
@@ -212,6 +218,7 @@ def plot_psd_df_over_f(
         freq: npt.NDArray,
         psd: npt.NDArray,
         filename: Path,
+        f0: float | None= None,
         title: str | None=None,
         resonators: list[int]=[0],
 ) -> list[Figure]:
@@ -234,20 +241,21 @@ def plot_psd_df_over_f(
     if not filename.exists():
         filename.touch(PERMISSIONS_ALL_FULL)
     figs = []
-    with PdfPages(filename) as pdf:
-        for i, res in enumerate(resonators):
-            res_title = title + f' - Resonator {res}'
-            fig = plot_df_over_f(
-                freq,
-                psd[:, i, :],
-                ylabel=ylabel,
-                title=res_title,
-            )
-            pdf.savefig(fig)
-            plt.close(fig)
-            figs.append(fig)
-        return figs
-
+    for i, res in enumerate(resonators):
+        res_title = title + f' - Resonator {res}'
+        if f0 is not None and i < len(f0):
+            res_title += f' (f0 = {f0[i]/1e6:.3f} MHz)'
+        fig = plot_df_over_f(
+            freq,
+            psd[:, i, :],
+            ylabel=ylabel,
+            title=res_title,
+        )
+        
+        plt.close(fig)
+        figs.append(fig)
+    return figs
+        
 
 def plot_df_over_f(
     x_data: npt.NDArray,
@@ -261,7 +269,7 @@ def plot_df_over_f(
     for j, label in enumerate(['Frequency', 'Dissipation']):
         ax.plot(x_data, y_data[j], label=label)
     ax.set_xscale('log')
-    ax.set_xlim(1, 250)
+    #ax.set_xlim(1, 250)
     ax.set_yscale('log')
     # ax.set_ylim(1e-17,1e-15)
 

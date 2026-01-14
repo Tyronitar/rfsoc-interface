@@ -6,7 +6,8 @@ from itertools import chain
 import git
 import json
 import time
-
+import numpy as np
+import angle_plots
 import rfsocinterface
 from rfsocinterface.core.data.data import ProcessedData, ProcessedDataL1, ProcessedDataLN, MapData, ProcessedDataL0
 from rfsocinterface.core.data.map import BinTODIntoMap
@@ -239,15 +240,16 @@ if __name__ == '__main__':
     do_electronics_noise_removal = True 
     primary_direction = 'az'
 
-    ds_factor = 10
-    hp_filt_freq = 0.01
-    lp_filt_freq = 1000
+    ds_factor = 1
+    hp_filt_freq = 0.005
+    lp_filt_freq = 250
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
-    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices='offres')
+    
 
     pipeline = DataPipeline(
         ds_factor=ds_factor,
@@ -261,18 +263,20 @@ if __name__ == '__main__':
     #pipeline.add_routine(hpfilt)
     #pipeline.add_routine(lpfilt)
     pipeline.add_routine(psd)
-    #pipeline.add_routine(cleaner)
+    pipeline.add_routine(cleaner)
     #pipeline.add_routine(binner)
 
     data = pipeline.run_pipeline(date, setnum)
     from rfsocinterface.analysis.psd import plot_psd
     freq = data.get_node_value('freq')[:]
+    lo_sweep = data.get_lo_sweep_data()[0]
+    chanmask = data.chanmask
+    
+    res_f0 = np.array([])
+    for i, c in enumerate(chanmask):
+        if c !=0:
+            res_f0 = np.append(res_f0, np.real(np.median(lo_sweep[i])))
     psd_gp = data.get_node_value('psd_gain_phase')[:]
     plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnum}.pdf', basis=PsdBasis.GAIN_PHASE)
     psd_fd = data.get_node_value('psd_freq_diss')[:]
-    plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf', basis=PsdBasis.FREQ_DISS)
-    # pdb.set_trace()
-    # find_peaks(data, primary_direction=primary_direction)
-    # data.plot()
-    # # pdb.set_trace()
-    # data.close()
+    plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = res_f0, basis=PsdBasis.FREQ_DISS)

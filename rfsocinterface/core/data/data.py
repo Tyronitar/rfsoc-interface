@@ -48,7 +48,7 @@ DEFAULT_MAP_DPIX = 0.03
 
 N_POLARIZATION = 2
 
-BUTTER_ORDER = 6
+BUTTER_ORDER = 1
 DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
@@ -165,7 +165,7 @@ def flag(data: npt.NDArray, fs: float, sigma: float=2):
 
 
 def flag_outliers(data: npt.NDArray, fs: float, chanmask: npt.NDArray, sigma: float=2) -> npt.NDArray:
-    good_channels = np.where(chanmask == 1)[0]
+    good_channels = np.where(chanmask == 1 )[0]
     n_flag, timestream_rms = flag(data[:, good_channels], fs, sigma=sigma)
     med_flag = np.median(n_flag)
     chanmask[np.where(np.any(n_flag > 2. * med_flag, axis=0))] = -1
@@ -329,7 +329,7 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     return templates
 
 
-def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30) -> npt.NDArray:
+def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
     Args:
@@ -341,11 +341,21 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
-    # data_lp = signal.sosfiltfilt(filt_sos, data)
-    data_lp = data
+    if lp_filt_freq<fs/2:
+        filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
+        data_lp = signal.sosfiltfilt(filt_sos, data)
+    else:
+        data_lp = data
+    if template_data_selection is not None:
+        template_data_lp = data_lp[:,template_data_selection, :]
+        templates = compute_templates(template_data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
+        
+    else:
+        templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
 
-    templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
+
+    # data_lp = data
+
     n_modes = templates.shape[1]
     denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
 
@@ -374,6 +384,8 @@ def remove_electronics_noise_tables(
     fs: float,
     lp_filt_freq: float=10,
     max_modes: int=30,
+    chanmask: npt.NDArray | None=None, 
+    template_data_selection: npt.NDArray|None = None,
 ):
     """Remove correlated electronics noise templates from data stored with PyTables.
 
@@ -386,7 +398,8 @@ def remove_electronics_noise_tables(
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
+    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq = lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
+
     data_gain_phase[:] = clean_data
     # for i_chan in range(data_gain_phase.shape[0]):
     #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
@@ -926,6 +939,14 @@ class BaseProcessedData(DataStorage):
     @property
     def chanmask(self) -> tables.Array:
         return self.get_node_value('chanmask')
+    
+    @property
+    def onres_ind(self) -> npt.NDArray:
+        return np.where(self.chanmask[:] == 1)[0]
+    
+    @property
+    def offres_ind(self) -> npt.NDArray:
+        return np.where(self.chanmask[:] == 0)[0]
 
 
 class ProcessedDataL0(BaseProcessedData):
@@ -1434,8 +1455,7 @@ class ProcessedDataL1(ProcessedData):
 
         # Remove electronics noise if specified
         if do_electronics_noise_removal:
-            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=electronics_noise_lp_filt_freq, max_modes=max_modes)
-
+            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
         # Create calibrated data
         new_generate_calibrated_data(new_data)
         
