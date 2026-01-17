@@ -226,8 +226,8 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260107'
-    setnum = 1005
+    date = '20260116'
+    setnum = 1001
     # date = '20250829'
     # setnum = 1012
 
@@ -240,15 +240,15 @@ if __name__ == '__main__':
     do_electronics_noise_removal = True 
     primary_direction = 'az'
 
-    ds_factor = 1
-    hp_filt_freq = 0.005
+    ds_factor = 10
+    hp_filt_freq = 0.1
     lp_filt_freq = 250
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
-    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices='offres')
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices='onres')
     
 
     pipeline = DataPipeline(
@@ -280,3 +280,4 @@ if __name__ == '__main__':
     plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnum}.pdf', basis=PsdBasis.GAIN_PHASE)
     psd_fd = data.get_node_value('psd_freq_diss')[:]
     plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = res_f0, basis=PsdBasis.FREQ_DISS)
+    L0_data = ProcessedDataL0.from_file(date, setnum)

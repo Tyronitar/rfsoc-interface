@@ -139,7 +139,55 @@ def create_resonator_mini_plot(
             edgecolor='black',
             )
         ax.set_facecolor('orange')
+def create_IQCircle_mini_plot(
+        fig: Figure,
+        ax: plt.Axes,
+        idx: int,
+        I: npt.NDArray,
+        Q: npt.NDArray,
+        freq: np.ndarray,
+        tone_freq: float,
+        freq_direction: float,
+        onres: bool,
+        flagged: bool,
+):
+    ax.set_facecolor('white')
+    ax.set_yticks([])
+    ax.set_xticks([])
+    ax.plot(I, Q)
+    ax.set_aspect('equal')
+    f0_ind = np.argmin(np.abs(freq-tone_freq))
+    #ax.plot(I[f0_ind], Q[f0_ind], color = 'red', marker = '*')
+    length = 0.005
+    ax.quiver(I[f0_ind], Q[f0_ind], length*np.cos(freq_direction), length*np.sin(freq_direction), scale = 0.01, width = 0.05)
+    
 
+    # Add a label showing the resonator number
+    if onres:
+        ax.legend(
+            [f'{idx:d}'],
+            fontsize=8,
+            loc=3,
+            frameon=False,
+            framealpha=0,
+            handlelength=0,
+            alignment='center',
+            edgecolor='black',
+        )
+        if flagged:
+            ax.set_facecolor('yellow')
+    #else:
+        #ax.legend(
+        #    [f'{idx:d}, dS21={np.ptp(s21):4.1f}'],
+        #    fontsize=8,
+        #    loc=3,
+        #    frameon=False,
+        #    framealpha=0,
+        #    handlelength=0,
+        #   alignment='center',
+        #    edgecolor='black',
+        #    )
+        #ax.set_facecolor('orange')
 
 
 class ResonatorData:
@@ -165,7 +213,7 @@ class ResonatorData:
 
         Arguments:
             ax (plt.Axes | None): The axes to place the plot in. If None, this method
-                will create a new figure. Defaults to None.
+                will create a new figure. Defaults to None.fit_f0
             animated (bool): Whether to make the vertical line animated. Defaults to
                 False.
 
@@ -176,13 +224,13 @@ class ResonatorData:
         return_fig = False
         # If axes is provided, make the mini plot inside
         if ax is not None:
-            create_resonator_mini_plot(
+            create_IQCircle_mini_plot(
                 None,
                 ax,
                 self.idx,
                 self.freq,
                 self.s21,
-                self.fit_f0,
+                self.tone,
                 self.is_onres,
                 self.flagged,
             )
@@ -501,9 +549,10 @@ class LoSweepData:
                     f'difference (kHz) = {diff * 1e-3:+5.3f}',
                 ])
                 _logger.info(string)
+            self.tone_list = f0
 
 
-    def plot(self, ncols: int=DEFAULT_NCOLS, callback: Callable | None=None, fig: Figure=None) -> Figure:
+    def plot(self, ncols: int=DEFAULT_NCOLS, callback: Callable | None=None, fig: Figure=None, plot_IQ_Circle: bool = False) -> Figure:
         """Plot the results of fitting the LO sweep.
 
         Arguments:
@@ -537,18 +586,35 @@ class LoSweepData:
                 callback()
 
         try:
-            parallel_plot(
-                fig,
-                axes,
-                create_resonator_mini_plot,
-                np.arange(nchan),
-                self.freq[:nchan],
-                self.s21[:nchan],
-                self.fit_f0[:nchan],
-                np.isin(np.arange(nchan), self.onres_ind[:nchan]),
-                np.isin(np.arange(nchan), self.flagged[:nchan]),
-                callback=callback_wrapper,
-            )
+            if plot_IQ_Circle:
+                print(self.freq_direction()[0],"freq_direction")
+                parallel_plot(
+                    fig,
+                    axes,
+                    create_IQCircle_mini_plot,
+                    np.arange(nchan),
+                    self.data_I[:nchan],
+                    self.data_Q[:nchan],
+                    self.freq[:nchan],
+                    self.tone_list[:nchan],
+                    self.freq_direction()[0],
+                    np.isin(np.arange(nchan), self.onres_ind[:nchan]),
+                    np.isin(np.arange(nchan), self.flagged[:nchan]),
+                    callback=callback_wrapper,
+                )
+            else:
+                parallel_plot(
+                    fig,
+                    axes,
+                    create_resonator_mini_plot,
+                    np.arange(nchan),
+                    self.freq[:nchan],
+                    self.s21[:nchan],
+                    self.fit_f0[:nchan],
+                    np.isin(np.arange(nchan), self.onres_ind[:nchan]),
+                    np.isin(np.arange(nchan), self.flagged[:nchan]),
+                    callback=callback_wrapper,
+                )
         except InterruptedError:
             return
         
@@ -588,32 +654,59 @@ class LoSweepData:
             fh.create_dataset('global_data/fit_qc', data=self.fit_qc)
         _logger.info(f'LoSweepData saved to {str(fname)}')
     
-    def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
-        dIQ_df = np.zeros((2, self.nchan))
-        mid_ind = self.nfreq // 2
-        edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
-        ind_val = np.arange(edge_indices[0], edge_indices[1])
-        freq_val = self.freq[:, ind_val] - self.tone_list[:, np.newaxis]
 
+
+    def get_IQ_center(self, I, Q):
+        mid_ind = self.nfreq//2
+        I, Q = I[:, np.newaxis], Q[:, np.newaxis]
+        A = np.hstack(([2*I, 2*Q, np.ones_like(I)]))
+        B = (I**2 + Q**2)
+        C, _, _, _, = np.linalg.lstsq(A,B, rcond=None)
+
+        return C[0], C[1]
+    
+    def freq_direction(self, interval: int = 10):
+        freq_direction = np.zeros(self.nchan)
         for i_chan in range(0, self.nchan):
-            fit_I = Polynomial.fit(freq_val[i_chan], self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
-            fit_I_deriv = fit_I.deriv()
-            dIQ_df[0, i_chan] = fit_I_deriv(freq_val[i_chan, deriv_length])
-            fit_Q = Polynomial.fit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
-            fit_Q_deriv = fit_Q.deriv()
-            dIQ_df[1, i_chan] = fit_Q_deriv(freq_val[i_chan, deriv_length])
+            I, Q = self.data_I[i_chan], self.data_Q[i_chan]
+            tone_index = np.argmin(np.abs(self.freq[i_chan]-self.tone_list[i_chan]))
 
-        # Q in y direction, I in x direction
-        # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
-        # Negative because we're rotating the coordinate axes, not the point
-        rotation_angle = -np.atan2(dIQ_df[1, :], dIQ_df[0, :])
+            I_C, Q_C= self.get_IQ_center(I[tone_index-interval:tone_index + interval], Q[tone_index-interval:tone_index + interval])
+            C_vec = I_C + 1j*Q_C
+            r_vec = I[tone_index] + 1j*Q[tone_index]
+            r_hat = r_vec/np.abs(r_vec)
+            t_hat = 1j*r_hat
+            freq_direction[i_chan] = np.angle(t_hat)
+            print(self.tone_list[i_chan], self.fit_f0[i_chan],i_chan)
+        return freq_direction, 0
+
+
+    #def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
+    #    dIQ_df = np.zeros((2, self.nchan))
+    #    mid_ind = self.nfreq // 2
+    #    edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
+    #    ind_val = np.arange(edge_indices[0], edge_indices[1])
+    #    freq_val = self.freq[:, ind_val] - self.tone_list[:, np.newaxis]
+
+    #    for i_chan in range(0, self.nchan):
+    #        fit_I = Polynomial.fit(freq_val[i_chan], self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+    #        fit_I_deriv = fit_I.deriv()
+    #        dIQ_df[0, i_chan] = fit_I_deriv(freq_val[i_chan, deriv_length])
+    #        fit_Q = Polynomial.fit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+    #        fit_Q_deriv = fit_Q.deriv()
+    #        dIQ_df[1, i_chan] = fit_Q_deriv(freq_val[i_chan, deriv_length])
+
+    #    # Q in y direction, I in x direction
+    #    # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
+    #    # Negative because we're rotating the coordinate axes, not the point
+    #    rotation_angle = np.atan2(dIQ_df[1, :], dIQ_df[0, :])-np.pi/2
 
         # For a fixed readout tone, a positive shift in the resonance freq appears 
         # as a perceived positive shift in the I/Q data, which thus necessitates the positive sign
-        adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
-        with np.printoptions(threshold=20):
-            _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
-        return rotation_angle, adc_units_to_hz
+    #    adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
+    #    with np.printoptions(threshold=20):
+    #        _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
+    #    return rotation_angle, adc_units_to_hz
     
     def find_resonances(self) -> tuple[npt.NDArray, npt.NDArray]:
         rf = ResonatorFinder(self.data, self.f_center, self.df)
@@ -814,7 +907,7 @@ if __name__ == '__main__':
 
         def __call__(self):
             self.val += 1
-            print(f'LO Sweep progress: {self.val}', flush=True)
+            #print(f'LO Sweep progress: {self.val}', flush=True)
     inc = Incrementer()
     def callback():
         with inc.lock:
@@ -842,9 +935,12 @@ if __name__ == '__main__':
     # Telescope Testing
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
+    data = LoSweepData.from_h5('/data/20260116/20260116_Be231102p2_100_tones_LO_Sweep_hour14p8633_high_res.h5')
     data.fit(callback=callback)
-    fig = data.plot(callback=callback)
+    fig = data.plot(callback=callback, plot_IQ_Circle=False)
+    # plt.tight_layout()
+    plt.show()
+    fig = data.plot(callback=callback, plot_IQ_Circle=True)
     # plt.tight_layout()
     plt.show()
     # pdb.set_trace()
