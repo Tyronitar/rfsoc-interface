@@ -226,8 +226,8 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260107'
-    setnum = 1005
+    date = '20260120'
+    setnum = 1004
     # date = '20250829'
     # setnum = 1012
 
@@ -240,7 +240,7 @@ if __name__ == '__main__':
     do_electronics_noise_removal = True 
     primary_direction = 'az'
 
-    ds_factor = 10
+    ds_factor = 1
     hp_filt_freq = 0.1
     lp_filt_freq = 250
 

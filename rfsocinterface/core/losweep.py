@@ -160,7 +160,7 @@ def create_IQCircle_mini_plot(
     f0_ind = np.argmin(np.abs(freq-tone_freq))
     #ax.plot(I[f0_ind], Q[f0_ind], color = 'red', marker = '*')
     length = 0.005
-    ax.quiver(I[f0_ind], Q[f0_ind], length*np.cos(freq_direction), length*np.sin(freq_direction), scale = 0.01, width = 0.05)
+    ax.quiver(I[f0_ind], Q[f0_ind], length*np.cos(-freq_direction), length*np.sin(-freq_direction), scale = 0.01, width = 0.05)
     
 
     # Add a label showing the resonator number
@@ -913,7 +913,7 @@ if __name__ == '__main__':
     # Telescope Testing
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    data = LoSweepData.from_h5('/data/20260116/20260116_Be231102p2_100_tones_LO_Sweep_hour14p8633_high_res.h5')
+    data = LoSweepData.from_h5('/data/20260120/20260120_Be231102p2_100_tones_LO_Sweep_hour13p6072_high_res.h5')
     data.fit(callback=callback)
     fig = data.plot(callback=callback, plot_IQ_Circle=False)
     # plt.tight_layout()
