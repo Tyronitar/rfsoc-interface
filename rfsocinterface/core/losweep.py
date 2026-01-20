@@ -154,7 +154,8 @@ def create_IQCircle_mini_plot(
     ax.set_facecolor('white')
     ax.set_yticks([])
     ax.set_xticks([])
-    ax.plot(I, Q)
+    color = np.arange(len(I))
+    ax.scatter(I, Q, c = color, s = 0.1, cmap='viridis')
     ax.set_aspect('equal')
     f0_ind = np.argmin(np.abs(freq-tone_freq))
     #ax.plot(I[f0_ind], Q[f0_ind], color = 'red', marker = '*')
@@ -656,57 +657,34 @@ class LoSweepData:
     
 
 
-    def get_IQ_center(self, I, Q):
-        mid_ind = self.nfreq//2
-        I, Q = I[:, np.newaxis], Q[:, np.newaxis]
-        A = np.hstack(([2*I, 2*Q, np.ones_like(I)]))
-        B = (I**2 + Q**2)
-        C, _, _, _, = np.linalg.lstsq(A,B, rcond=None)
-
-        return C[0], C[1]
     
-    def freq_direction(self, interval: int = 10):
-        freq_direction = np.zeros(self.nchan)
+
+
+    def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
+        dIQ_df = np.zeros((2, self.nchan))
+        mid_ind = self.nfreq // 2
+        edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
+        ind_val = np.arange(edge_indices[0], edge_indices[1])
+        freq_val = self.freq[:, ind_val] - self.tone_list[:, np.newaxis]
+
         for i_chan in range(0, self.nchan):
-            I, Q = self.data_I[i_chan], self.data_Q[i_chan]
-            tone_index = np.argmin(np.abs(self.freq[i_chan]-self.tone_list[i_chan]))
-
-            I_C, Q_C= self.get_IQ_center(I[tone_index-interval:tone_index + interval], Q[tone_index-interval:tone_index + interval])
-            C_vec = I_C + 1j*Q_C
-            r_vec = I[tone_index] + 1j*Q[tone_index]
-            r_hat = r_vec/np.abs(r_vec)
-            t_hat = 1j*r_hat
-            freq_direction[i_chan] = np.angle(t_hat)
-            print(self.tone_list[i_chan], self.fit_f0[i_chan],i_chan)
-        return freq_direction, 0
-
-
-    #def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
-    #    dIQ_df = np.zeros((2, self.nchan))
-    #    mid_ind = self.nfreq // 2
-    #    edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
-    #    ind_val = np.arange(edge_indices[0], edge_indices[1])
-    #    freq_val = self.freq[:, ind_val] - self.tone_list[:, np.newaxis]
-
-    #    for i_chan in range(0, self.nchan):
-    #        fit_I = Polynomial.fit(freq_val[i_chan], self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
-    #        fit_I_deriv = fit_I.deriv()
-    #        dIQ_df[0, i_chan] = fit_I_deriv(freq_val[i_chan, deriv_length])
-    #        fit_Q = Polynomial.fit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
-    #        fit_Q_deriv = fit_Q.deriv()
-    #        dIQ_df[1, i_chan] = fit_Q_deriv(freq_val[i_chan, deriv_length])
-
-    #    # Q in y direction, I in x direction
-    #    # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
-    #    # Negative because we're rotating the coordinate axes, not the point
-    #    rotation_angle = np.atan2(dIQ_df[1, :], dIQ_df[0, :])-np.pi/2
+            fit_I = Polynomial.fit(freq_val[i_chan], self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            fit_I_deriv = fit_I.deriv()
+            dIQ_df[0, i_chan] = fit_I_deriv(freq_val[i_chan, deriv_length])
+            fit_Q = Polynomial.fit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            fit_Q_deriv = fit_Q.deriv()
+            dIQ_df[1, i_chan] = fit_Q_deriv(freq_val[i_chan, deriv_length])
+        # Q in y direction, I in x direction
+        # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
+        # Negative because we're rotating the coordinate axes, not the point
+        rotation_angle = -np.atan2(dIQ_df[1, :], dIQ_df[0, :])
 
         # For a fixed readout tone, a positive shift in the resonance freq appears 
         # as a perceived positive shift in the I/Q data, which thus necessitates the positive sign
-    #    adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
-    #    with np.printoptions(threshold=20):
-    #        _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
-    #    return rotation_angle, adc_units_to_hz
+        adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
+        with np.printoptions(threshold=20):
+            _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
+        return rotation_angle, adc_units_to_hz
     
     def find_resonances(self) -> tuple[npt.NDArray, npt.NDArray]:
         rf = ResonatorFinder(self.data, self.f_center, self.df)

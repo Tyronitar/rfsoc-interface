@@ -226,8 +226,8 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260116'
-    setnum = 1001
+    date = '20260107'
+    setnum = 1005
     # date = '20250829'
     # setnum = 1012
 
