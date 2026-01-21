@@ -225,12 +225,12 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    # date = '20250916'
-    # setnum = 1017
+    date = '20250828'
+    setnums = [1003]
 
     #Telescope Testing
-    date = '20251212'
-    setnums = [1009, 1010]
+    # date = '20251212'
+    # setnums = [1009, 1010]
     # setnums = [1006]
 
     dataset = 'data_mK'
@@ -242,11 +242,11 @@ if __name__ == '__main__':
     hp_filt_freq = 0.25
     lp_filt_freq = 30
 
-    hpfilt = HighPassFilter(hp_filt_freq)
-    lpfilt = LowPassFilter(lp_filt_freq)
-    cleaner = CleanTOD()
-    binner = BinTODIntoMap()
-    # psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
+    # hpfilt = HighPassFilter(hp_filt_freq)
+    # lpfilt = LowPassFilter(lp_filt_freq)
+    # cleaner = CleanTOD()
+    # binner = BinTODIntoMap()
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
 
     pipeline = DataPipeline(
         ds_factor=ds_factor,
@@ -257,20 +257,20 @@ if __name__ == '__main__':
         do_electronics_noise_removal=do_electronics_noise_removal,
         max_modes=2,
     )
-    pipeline.add_routine(hpfilt)
-    pipeline.add_routine(lpfilt)
-    # pipeline.add_routine(psd)
-    pipeline.add_routine(cleaner)
-    pipeline.add_routine(binner)
+    # pipeline.add_routine(hpfilt)
+    # pipeline.add_routine(lpfilt)
+    pipeline.add_routine(psd)
+    # pipeline.add_routine(cleaner)
+    # pipeline.add_routine(binner)
 
     for setnum in setnums:
         data = pipeline.run_pipeline(date, setnum)
-        data.plot(show=False)
-        data.close()
+        # data.plot(show=False)
+
+    from rfsocinterface.analysis.psd import plot_psd
+    from rfsocinterface.core.data.routines import PsdBasis
+    freq = data.get_node_value('freq')[:]
+    psd = data.get_node_value('psd_gain_phase')[:]
+    plot_psd(freq, psd, 'test.pdf', basis=PsdBasis.GAIN_PHASE)
     plt.show()
-#     from rfsocinterface.analysis.psd import plot_psd
-#     freq = data.get_node_value('freq')[:]
-#     psd = data.get_node_value('psd_gain_phase')[:]
-#     plot_psd(freq, psd, 'test.pdf', basis='gp')
-#     plt.show()
     # find_peaks(data, primary_direction=primary_direction)

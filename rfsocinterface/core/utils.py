@@ -553,6 +553,43 @@ def axis_slice(a, start=None, stop=None, step=None, axis=-1):
     b = a[tuple(a_slice)]
     return b
 
+def axis_index(a: npt.NDArray, indices: npt.ArrayLike | tuple[npt.ArrayLike, ...], axis: int | tuple[int, ...]=-1):
+    """Index `a` along axis `axis` with `indices`.
+
+    Parameters
+    ----------
+    a : numpy.ndarray
+        The array to be indexed.
+    indices : array-like
+        The indices to use for indexing.
+    axis : int, optional
+        The axis of `a` to be indexed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from scipy.signal._arraytools import axis_index
+    >>> a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> axis_index(a, [0, 2], axis=1)
+    array([[1, 3],
+           [4, 6],
+           [7, 9]])
+    >>> axis_index(a, [1, 2], axis=0)
+    array([[4, 5, 6],
+           [7, 8, 9]])
+    """
+    if isinstance(axis, tuple):
+        if len(indices) != len(axis):
+            raise ValueError("If axis is a tuple, indices must be a tuple of the same length.")
+    a_index = [slice(None)] * a.ndim
+    if isinstance(axis, tuple):
+        for i, ax in enumerate(axis):
+            a_index[ax] = indices[i]
+    else:
+        a_index[axis] = indices
+    b = a[tuple(a_index)]
+    return b
+
 def axis_reverse(a, axis=-1):
     """Reverse the 1-D slices of `a` along axis `axis`.
 

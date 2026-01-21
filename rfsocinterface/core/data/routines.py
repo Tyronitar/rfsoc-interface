@@ -10,7 +10,7 @@ import tables
 
 from rfsocinterface.core.data.data import ProcessedData, BaseProcessedData, generate_calibrated_data, remove_electronics_noise_tables
 from rfsocinterface.core.data.data import DECIMATE_ORDER
-from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter
+from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index
 
 class ProcessingStage:
     """Enum for the different stages of data processing."""
@@ -68,12 +68,9 @@ class CutoffFilter(DataRoutine):
             data = pd.data_freq_diss
         else:
             data = getattr(pd, self.dataset)
-        filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs, output='sos', analog=False)
-
-        # Apply cutoff filter
-        # pd.data_gain_phase[:] = signal.sosfiltfilt(filt_sos, pd.data_gain_phase)
-        # pd.data_freq_diss[:] = signal.sosfiltfilt(filt_sos, pd.data_freq_diss)
-        data[:] = signal.sosfiltfilt(filt_sos, data[:])
+        for i_chan in range(pd.n_channels):
+            filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs[i_chan], output='sos', analog=False)
+            data[i_chan, :] = signal.sosfiltfilt(filt_sos, data[i_chan, :])
 
 
 class LowPassFilter(CutoffFilter):
@@ -154,20 +151,23 @@ class CleanTOD(DataRoutine):
 
         # TODO: Does this need to still support the "good_sample" stuff?
         #average template subtraction
-        goodchan = np.ndarray.flatten(np.argwhere(pd.chanmask[:] == 1))
-        if self.dataset == 'data_freq':
-            data = pd.data_freq_diss
-            array_slice = (0, goodchan, slice(None))
-        else:
-            # BUG: This breaks if data has shape (2, n_tones, n_samples)
-            data = getattr(pd, self.dataset)
-            array_slice = (goodchan, slice(None))
-        template = np.nansum(data[array_slice], axis=0)
-        template = template - np.mean(template)
-        template_corr = np.sum(np.multiply(data[array_slice],template), axis=1) / \
-                        np.sum(np.multiply(template,template))
-        # TODO: This edits the original processed file...
-        data[array_slice] = data[array_slice] - np.outer(template_corr, template)
+        for i_chan in range(pd.n_channels):
+            good_tones = np.argwhere(pd.chanmask[i_chan] == 1).flatten()
+            if self.dataset == 'data_freq':
+                data = pd.data_freq_diss
+                array_slice = (i_chan, 0, good_tones, slice(None))
+            else:
+                # BUG: This breaks if data has shape (2, n_tones, n_samples)
+                data = getattr(pd, self.dataset)
+                if data.ndim == 4:
+                    array_slice = (i_chan, slice(None), good_tones, slice(None))
+                else:
+                    array_slice = (i_chan, good_tones, slice(None))
+            template = np.nansum(data[array_slice], axis=0)
+            template = template - np.mean(template)
+            template_corr = np.sum(np.multiply(data[array_slice],template), axis=1) / \
+                            np.sum(np.multiply(template,template))
+            data[array_slice] = data[array_slice] - np.outer(template_corr, template)
 
         # with tables.File(pd.cleaned_file_template, 'w') as cfile:
         #     cfile.create_array('/', 'chanmask', pd.chanmask[:])
@@ -215,8 +215,8 @@ class ComputeNoisePSD(DataRoutine):
                 case PsdBasis.GAIN_PHASE:
                     data = pd.data_gain_phase[:] / pd.carrier_amplitude_norm()
                 case PsdBasis.FREQ_DISS:
-                    f = pd.baseband_freqs[:] + pd.lo_freq
-                    data = pd.data_freq_diss[:] / f[np.newaxis, :, np.newaxis]
+                    f = pd.baseband_freqs[:] + pd.lo_freq[:]
+                    data = pd.data_freq_diss[:] / f[:, np.newaxis, :, np.newaxis]
                 case _:
                     raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')
             if self.cut_time > 0:
@@ -233,16 +233,23 @@ class ComputeNoisePSD(DataRoutine):
                 n_samples_per_block = n_samples
             
             # Compute the PSD
-            freq, psd = signal.welch(
-                data[:, np.argwhere(pd.chanmask[:] == 1).flatten(), :],
-                pd.fs,
-                nperseg=n_samples_per_block,
-            )
+            for i_chan in range(pd.n_channels):
+                good_tones = np.argwhere(pd.chanmask[i_chan, :] == 1).flatten()
+                freq, psd = signal.welch(
+                    axis_index(data[i_chan], good_tones, axis=-2),
+                    pd.fs[i_chan],
+                    nperseg=n_samples_per_block,
+                )
 
-            # Save to the file
-            if not pd.test_node('freq'):
-                pd.create_array(psd_group, 'freq', obj=freq)
-            pd.create_array(psd_group, f'psd_{basis}', obj=psd)
+                # Save to the file
+                if not pd.test_node('freq'):
+                    pd.create_array(psd_group, 'freq', obj=freq)
+                if not pd.test_node(f'psd_{basis}'):
+                    psd_shape = (pd.n_channels, *psd.shape)
+                    psd_dtype = psd.dtype
+                    psd_array = pd.create_array(psd_group, f'psd_{basis}', shape=psd_shape, atom=tables.Atom.from_dtype(psd_dtype))
+                psd_array[i_chan, :] = psd
+                
 
     def get_receipt_entry(self) -> str:
         return f'ComputeNoisePSD: {{\n' \
