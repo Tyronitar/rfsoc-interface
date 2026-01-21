@@ -1380,6 +1380,7 @@ class ProcessedDataL1(ProcessedData):
         )
         # Get frequency direction
         this_IQ_to_freq_diss_angle, this_adc_units_to_hz = sweep.freq_direction()
+        print(this_IQ_to_freq_diss_angle)
         IQ_to_freq_diss_angle[:] = this_IQ_to_freq_diss_angle
         adc_units_to_hz[:] = this_adc_units_to_hz
 

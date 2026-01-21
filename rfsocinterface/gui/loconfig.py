@@ -269,7 +269,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 chan,
                 savefile,
                 tone_shift,
-                freq_step/10 if second_sweep else freq_step,
+                freq_step,
                 full_span / 5 if second_sweep else full_span,
                 diff_to_flag=diff_to_flag,
             ))
@@ -766,4 +766,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 raise RuntimeError(
                     f'Invalid `active_suffix` encountered: {self.active_suffix}'
                 )
+    def power_sweep(self, rfsoc: RFSOCWrapper, chan: int, output_power: np.ndarray, input_power: np.ndarray|None=None):
+        """Perform a power sweep (not yet implemented)."""
+        for p_in, p_out in zip(input_power, output_power):
+            Lo
+        pass
 

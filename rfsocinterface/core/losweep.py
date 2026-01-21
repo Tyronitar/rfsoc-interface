@@ -662,7 +662,7 @@ class LoSweepData:
 
     def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.nchan))
-        mid_ind = self.nfreq // 2
+        mid_ind = np.argmin(abs(self.tone_list[:,np.newaxis] - self.freq[0, :]))
         edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
         ind_val = np.arange(edge_indices[0], edge_indices[1])
         freq_val = self.freq[:, ind_val] - self.tone_list[:, np.newaxis]
@@ -865,8 +865,13 @@ class LoSweep:
         self.rfsoc.set_frequency(self.chan, self.f_center)
         self._data = data
         return data
-    
 
+class PowerSweep:
+    """Class for performing a power sweep"""
+
+    def __init__(self):
+        """Initialize a PowerSweep"""
+        pass
 
 if __name__ == '__main__':
     import pdb
@@ -913,7 +918,7 @@ if __name__ == '__main__':
     # Telescope Testing
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    data = LoSweepData.from_h5('/data/20260120/20260120_Be231102p2_100_tones_LO_Sweep_hour13p6072_high_res.h5')
+    data = LoSweepData.from_h5('/data/20260120/20260120_Be231102p2_100_tones_LO_Sweep_hour15p5350_high_res.h5')
     data.fit(callback=callback)
     fig = data.plot(callback=callback, plot_IQ_Circle=False)
     # plt.tight_layout()
