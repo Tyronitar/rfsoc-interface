@@ -68,17 +68,26 @@ DYNAMIC_PROCESSED_DATA_FIELDS = [
     'chanmask',
 ]
 
-STATIC_PROCESSED_DATA_FIELDS = [
-    'df_per_mK',
-    'detector_az',
-    'detector_za',
+STATIC_BASE_PROCESSED_DATA_FIELDS = [
+    'dfoverf_per_mK',
     'detector_pol',
+    'detector_beam_ampl',
     'optical_visibility',
     'optical_image',
-    'interpolated_indices',
+    'baseband_freqs',
+    'lo_freq',
+    'tones_per_channel'
 ]
 
-ALL_PROCESSED_DATA_FIELDS = DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS
+
+STATIC_PROCESSED_DATA_FIELDS = [
+    'detector_az',
+    'detector_za',
+    'interpolated_indices',
+    'df_per_mK',
+]
+
+ALL_PROCESSED_DATA_FIELDS = DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS + STATIC_BASE_PROCESSED_DATA_FIELDS
 
 MAP_DATA_FIELDS = [
     'hits_map',
@@ -108,7 +117,12 @@ PROCESSED_DATA_FIELD_LOCATIONS = {
     'vis': '/global_data',
     'df_per_mK': '/global_data',
     'detector_pol': '/global_data',
+    'detector_beam_ampl': '/global_data',
     'optical_visibility': '/global_data',
+    'baseband_freqs': '/global_data',
+    'lo_freq': '/global_data',
+    'tones_per_channel': '/global_data',
+    'dfoverf_per_mK': '/global_data',
 }
 
 
@@ -424,7 +438,6 @@ def remove_electronics_noise_tables(
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
     clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
-    pdb.set_trace()
     data_gain_phase[:] = clean_data
     # for i_chan in range(data_gain_phase.shape[0]):
     #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
@@ -993,7 +1006,7 @@ class BaseProcessedData(DataStorage):
 
     @property
     def time(self) -> npt.NDArray:
-        return self.timestamp[:] - self.timestamp[0]
+        return self.timestamp[:] - self.timestamp[:, 0]
     
     def get_time(self, i_chan: int) -> npt.NDArray:
         timestamp = self.get_timestamp(i_chan)
@@ -1117,18 +1130,20 @@ class ProcessedDataL0(BaseProcessedData):
                 n_samples = raw_time_ordered_data.adc_i.shape[-1]
                 raw_timestamp = raw_time_ordered_data.timestamp[:n_samples]
                 print('finding missed packets...')
-                missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
-                this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
-                # this_corrected_packet_index -= this_corrected_packet_index[0]
-                # missed_packets, this_corrected_packet_index = find_missed_packets(
-                #     raw_timestamp,
-                #     n_samples
-                # )
+                if hasattr(raw_time_ordered_data, 'pkt_idx'):
+                    print('using pkt_idx to find missed packets')
+                    missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
+                    this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
+                else:
+                    missed_packets, this_corrected_packet_index = find_missed_packets(
+                        raw_timestamp,
+                        n_samples
+                    )
                 corrected_packet_index_list.append(this_corrected_packet_index)
                 n_missed = int(np.sum(missed_packets[:, 1]))
                 missed_sample_counts.append(n_missed)
-                total_samples = n_samples + n_missed
-                sample_counts.append(total_samples)
+                # total_samples = n_samples + n_missed
+                sample_counts.append(n_samples)
                 missed_packets_list.append(missed_packets)
 
         max_n_tones = int(sum(tone_counts))
@@ -1193,7 +1208,6 @@ class ProcessedDataL0(BaseProcessedData):
         # Can now initialize time-ordered data arrays
         time_ordered_data_group._v_attrs.n_samples = total_samples
         timestamp = pfile.create_array(time_ordered_data_group, 'timestamp', shape=(nchan, total_samples,), atom=tables.Float64Atom())
-        corrected_packet_index = pfile.create_array(time_ordered_data_group, 'packet_index', shape=(nchan, total_samples), atom=tables.UInt32Atom())
         interpolated_indices = pfile.create_vlarray(time_ordered_data_group, 'interpolated_indices', expectedrows=max_missed_samples, atom=tables.UInt32Atom())
         chunkshape = (1, 1, int(5e5))
         clevel = 4
@@ -1231,7 +1245,6 @@ class ProcessedDataL0(BaseProcessedData):
 
                 this_corrected_packet_index = corrected_packet_index_list[i][:total_samples]
                 normalized_packet_indices = this_corrected_packet_index - this_corrected_packet_index[0]
-                corrected_packet_index[i, :] = this_corrected_packet_index
 
                 print('interpolating timestamp...')
                 interpolated_timestamp = interpolate_timestamp(
@@ -1349,10 +1362,10 @@ class ProcessedData(BaseProcessedData):
     
     @property
     def carrier_amp_Q(self) -> npt.NDArray:
-        return self.carrier_amplitudes[1]
+        return self.carrier_amplitudes[:, 1]
 
     def get_carrier_amp_Q(self, i_chan) -> npt.NDArray:
-        return self.get_carrier_amplitudes(i_chan)[q]
+        return self.get_carrier_amplitudes(i_chan)[1]
 
     @property
     def df_per_mK(self) -> tables.Array:
@@ -1451,15 +1464,14 @@ class ProcessedDataL1(ProcessedData):
             self.create_external_link(lo_group, node._v_name, node.target)
 
         # Copy global data
-        self.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
-        self.create_external_link(global_data_group, 'lo_freq', f'{target.filename}:/{target.lo_freq._v_pathname}')
-        self.create_external_link(global_data_group, 'tones_per_channel', f'{target.filename}:/{target.tones_per_channel._v_pathname}')
-        self.create_external_link(global_data_group, 'dfoverf_per_mK', f'{target.filename}:/{target.dfoverf_per_mK._v_pathname}')
-        self.create_external_link(global_data_group, 'chanmask', f'{target.filename}:/{target.chanmask._v_pathname}')
-        self.create_external_link(global_data_group, 'detector_pol', f'{target.filename}:/{target.detector_pol._v_pathname}')
-        self.create_external_link(global_data_group, 'detector_beam_ampl', f'{target.filename}:/{target.detector_beam_ampl._v_pathname}')
-        self.create_external_link(global_data_group, 'optical_visibility', f'{target.filename}:/{target.optical_visibility._v_pathname}')
-        self.create_external_link(global_data_group, 'optical_image', f'{target.filename}:/{target.optical_image._v_pathname}')
+        for node_name in STATIC_BASE_PROCESSED_DATA_FIELDS + ['chanmask']:
+            node = target.get_node(node_name)
+            parent_path = node._v_parent._v_pathname
+            if isinstance(node, ExternalLink):
+                target_path = node.target
+            else:
+                target_path = f'{target.filename}:{node._v_pathname}'
+            self.create_external_link(parent_path, node_name, target_path)
         
     
     @classmethod
@@ -1726,23 +1738,18 @@ class ExternalLinkProcessedData(ProcessedData):
         lo_group = self._file.create_group('/', 'lo_sweep')
 
         # Copy attributes
-        self._file.root._v_attrs.date = target.date
-        self._file.root._v_attrs.setnum = target.setnum
-        self._file.root._v_attrs.receipt = target.receipt
-        data_group._v_attrs.n_tones = target.n_tones
-        data_group._v_attrs.n_samples = target.n_samples
+        self.date = target.date
+        self.setnum = target.setnum
+        self.add_receipt(target.receipt)
+        self.n_samples = target.n_samples
+        self.n_channels = target.n_channels
 
         # Copy LO sweep external links
         for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
             self._file.create_external_link(lo_group, node._v_name, node.target)
-        lo_group._v_attrs.lo_freq = target.lo_freq
-        if isinstance(target, ProcessedDataLN):
-            self._file.create_external_link(global_data_group, 'baseband_freqs', target.global_data_group.baseband_freqs.target)
-        else:
-            self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
 
         # Create external links for all datasets
-        for node_name in DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS:
+        for node_name in ALL_PROCESSED_DATA_FIELDS:
             node = target.get_node(node_name)
             parent_path = node._v_parent._v_pathname
             if isinstance(node, ExternalLink):
