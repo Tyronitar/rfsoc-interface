@@ -674,6 +674,8 @@ class LoSweepData:
             fit_Q = Polynomial.fit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
             fit_Q_deriv = fit_Q.deriv()
             dIQ_df[1, i_chan] = fit_Q_deriv(freq_val[i_chan, deriv_length])
+            if self.chanmask[i_chan] == 0:
+                dIQ_df[:, i_chan] = [1,0]#Make sure off resonances tones are not scaled or rotated. 
         # Q in y direction, I in x direction
         # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
         # Negative because we're rotating the coordinate axes, not the point
@@ -918,7 +920,7 @@ if __name__ == '__main__':
     # Telescope Testing
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    data = LoSweepData.from_h5('/data/20260120/20260120_Be231102p2_100_tones_LO_Sweep_hour15p5350_high_res.h5')
+    data = LoSweepData.from_h5('/data/20260122/20260122_Be231102p2_100_tones_LO_Sweep_hour16p1156.h5')
     data.fit(callback=callback)
     fig = data.plot(callback=callback, plot_IQ_Circle=False)
     # plt.tight_layout()

@@ -269,14 +269,21 @@ if __name__ == '__main__':
     data = pipeline.run_pipeline(date, setnum)
     
     from rfsocinterface.analysis.psd import plot_psd
+
+    #Get information from processed data
     freq = data.get_node_value('freq')[:]
-    lo_sweep = data.get_lo_sweep_data()[0]
-    chanmask = data.chanmask
-    probe_freq = data.baseband_freqs[:] + 430e6
+    adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:]
+    chanmask = data.chanmask[:]
+    probe_freq = data.baseband_freqs[:] + data.lo_freq
+
+    # Sort it into resonator and nonresonator data. 
     sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
+    chanmask = chanmask[sorted_indices]
     probe_freq = probe_freq[sorted_indices]
+    adc_units_to_hz = adc_units_to_hz[sorted_indices]
+
+    # Plot it
     psd_gp = data.get_node_value('psd_gain_phase')[:]
     plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnum}.pdf', basis=PsdBasis.GAIN_PHASE)
     psd_fd = data.get_node_value('psd_freq_diss')[:]
-    plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = probe_freq, basis=PsdBasis.FREQ_DISS,resonators = np.where(chanmask[:]==1))
-    L0_data = ProcessedDataL0.from_file(date, setnum)
+    plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1)

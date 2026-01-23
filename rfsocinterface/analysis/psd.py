@@ -113,9 +113,11 @@ def plot_psd(
         min_percentile: float=16,
         max_percentile: float=84,
         f0: float | None= None,
+         adc_units_to_hz: npt.NDArray | None=None,
         title: str | None=None,
         basis: PsdBasis=PsdBasis.GAIN_PHASE,
         resonators: list[int]=None,
+        chanmask: npt.NDArray | None=None
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -158,10 +160,10 @@ def plot_psd(
             ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
         case PsdBasis.FREQ_DISS:
-            titles = [title + ' - Frequency', title + ' - Dissipation']
             ylabel = r'Sdf/f ($Hz^{-1}$)'
             yscale = 'linear'
-            figs = plot_psd_df_over_f(freq, psd, filename, f0, title=title, resonators=resonators)
+            figs = plot_psd_df_over_f(freq, psd, filename, f0, title=title, resonators=resonators,adc_units_to_hz=adc_units_to_hz)
+            return figs
         case _:
             raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
 
@@ -219,8 +221,11 @@ def plot_psd_df_over_f(
         psd: npt.NDArray,
         filename: Path,
         f0: float | None= None,
+        adc_units_to_hz: npt.NDArray | None=None,
+        min_percentile: float=16,
+        max_percentile: float=84,
         title: str | None=None,
-        resonators: list[int]=[0],
+        resonators: list[int]=[0]
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -241,38 +246,98 @@ def plot_psd_df_over_f(
     if not filename.exists():
         filename.touch(PERMISSIONS_ALL_FULL)
     figs = []
-    for i, res in enumerate(resonators):
-        res_title = title + f' - Resonator {res}'
+    yscale = 'log'
+    onres_psd = psd[:,resonators, :]
+    offres_mean = np.mean(psd[:, ~resonators, :],axis=1)
+    for i in np.arange(psd.shape[1]):
+        res_title = title + f' - Resonator {i}'
         if f0 is not None and i < len(f0):
             res_title += f' (f0 = {f0[i]/1e6:.3f} MHz)'
-        fig = plot_df_over_f(
-            freq,
-            psd[:, i, :],
-            ylabel=ylabel,
-            title=res_title,
-        )
+        if resonators[i]:
+            fig = plot_df_over_f(
+                freq,
+                psd[:, i, :],
+                offres_mean=offres_mean,
+                adc_units_to_hz=adc_units_to_hz[i],
+                ylabel=ylabel,
+                title=res_title
+            )
+            
+            plt.close(fig)
+            figs.append(fig)
+
+
+    figs+=(average_plots(
+        freq,
+        onres_psd,
+        [title + ' - On-Resonance Frequency', title + ' - On-Resonance Dissipation'],
+        title,
+        min_percentile,
+        max_percentile,
+        ylabel,
+        yscale,
+    ))
+    with PdfPages(filename) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
         
-        plt.close(fig)
-        figs.append(fig)
     return figs
         
+def average_plots(freq, psd, titles,title, min_percentile, max_percentile, ylabel, yscale):
+    n_plots = psd.shape[0]
+    psd_med = np.median(psd, axis=1)
+    psd_min = np.percentile(psd, min_percentile,axis=1)
+    psd_max = np.percentile(psd, max_percentile,axis=1)
+    figs = []
+    for i in range(n_plots):
+        fig = create_plot(
+            freq,
+            psd_min[i],
+            psd_med[i],
+            psd_max[i],
+            percentiles=(min_percentile, max_percentile),
+            title=titles[i],
+            ylabel=ylabel,
+            yscale=yscale,
+        )
+        figs.append(fig)
+
+    average_fig = create_plot(
+        freq,
+        np.sum(psd_min, axis=0) / n_plots,
+        np.sum(psd_med, axis=0) / n_plots,
+        np.sum(psd_max, axis=0) / n_plots,
+        percentiles=(min_percentile, max_percentile),
+        title= title + ' - Averaged',
+        ylabel=ylabel,
+        yscale='log',
+    )
+    figs.append(average_fig)
+    return figs
+
 
 def plot_df_over_f(
     x_data: npt.NDArray,
     y_data: npt.ArrayLike,
+    offres_mean: npt.ArrayLike| None=None,
+    adc_units_to_hz: npt.NDArray | None=None,
     title: str | None=None,
     ylabel: str='Noise PSD (df / f)',
 ) -> Figure:
     """Create a plot of the noise PSD in df/f units."""
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
+    if offres_mean is not None and adc_units_to_hz is not None:
+        offres_mean = offres_mean / adc_units_to_hz**2
     for j, label in enumerate(['Frequency', 'Dissipation']):
         ax.plot(x_data, y_data[j], label=label)
+        if offres_mean is not None:
+            ax.plot(x_data, offres_mean[j], linestyle='dashed', color='gray', label=f'Off-Resonance {label} Median')
     ax.set_xscale('log')
     #ax.set_xlim(1, 250)
     ax.set_yscale('log')
     # ax.set_ylim(1e-17,1e-15)
-
+   
     ax.set_xlabel('Frequency (Hz)', fontsize=16)
         
     ax.set_ylabel(ylabel, fontsize=16)

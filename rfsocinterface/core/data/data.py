@@ -48,7 +48,7 @@ DEFAULT_MAP_DPIX = 0.03
 
 N_POLARIZATION = 2
 
-BUTTER_ORDER = 1
+BUTTER_ORDER = 2
 DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
@@ -298,6 +298,14 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
     sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
     sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
+
+
+    plt.figure()
+    plt.loglog(sorted_eigen_values[0],'-o')
+    plt.xlabel('Eigenvalue Index')
+    plt.ylabel('Eigenvalue')
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.show()
     
     if n_tones < 25:
         sigma_mult = 1.5
@@ -328,7 +336,30 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
 
+def plot_corellation_matrices( data: tables.Array, savepath: Path|None = None):
+    """Plot correlation matrices for each channel.
 
+    Args:
+        corelation_matrices (npt.NDArray): Correlation matrices (N_chan x N_detector x N_detector).
+        savepath (Path or None, optional): If provided, save the figure to this path. Defaults to None.
+    """
+    # subtract the mean from each detector
+    # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    deproj = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    n_tones = data.shape[1]
+
+    # select only the middle few detectors
+    # deproj = data_meansub[:, 8:1008, :]
+
+    # create a separate correlation matrix for all data channels
+    correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
+    diag = np.sqrt(np.diag(np.real(correlation_matrices[0])))
+    correlation_coefficient = correlation_matrices[0] / np.outer(diag, diag)
+    n_chan = correlation_matrices.shape[0]
+    plt.figure(figsize=(6,5))   
+    im = plt.imshow(np.real(correlation_coefficient), aspect='auto', origin='lower')
+    plt.colorbar(im, label='Correlation')
+    plt.show()
 def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
@@ -360,11 +391,10 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
     denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
 
     for i in range(n_modes):
-        numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # N_chan x N_detector
+        numerator = np.einsum('ijk,ik->ij', data, templates[:, i])  # N_chan x N_detector
         corr = numerator / denominator[:, i:i+1]  # N_chan x N_detector
         data = data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # N_chan x N_detector x N_samples
         # data_lp = signal.sosfiltfilt(filt_sos, data)
-        data_lp = data
 
     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
     # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
@@ -1380,7 +1410,6 @@ class ProcessedDataL1(ProcessedData):
         )
         # Get frequency direction
         this_IQ_to_freq_diss_angle, this_adc_units_to_hz = sweep.freq_direction()
-        print(this_IQ_to_freq_diss_angle)
         IQ_to_freq_diss_angle[:] = this_IQ_to_freq_diss_angle
         adc_units_to_hz[:] = this_adc_units_to_hz
 
@@ -1456,7 +1485,20 @@ class ProcessedDataL1(ProcessedData):
 
         # Remove electronics noise if specified
         if do_electronics_noise_removal:
+            onres_data = data_gain_phase[:, new_data.onres_ind, :]
+            offres_data = data_gain_phase[:, new_data.offres_ind, :]
+          
+            plot_corellation_matrices(data_gain_phase)
+
+
             remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=0.2, max_modes=max_modes, template_data_selection=new_data.onres_ind)
+
+            onres_data = data_gain_phase[:, new_data.onres_ind, :]
+            offres_data = data_gain_phase[:, new_data.offres_ind, :]
+            plot_corellation_matrices(onres_data)
+            plot_corellation_matrices(offres_data)
+            plot_corellation_matrices(data_gain_phase)
         # Create calibrated data
         new_generate_calibrated_data(new_data)
         
