@@ -273,7 +273,7 @@ def new_generate_calibrated_data(pd: ProcessedDataL1):
 # Electronics Noise Removal
 #
 
-def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
+def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bool=False) -> npt.NDArray:
     """Compute templates for correlated noise removal.
 
     Args:
@@ -299,14 +299,15 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
     sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
 
-
-    plt.figure()
-    plt.loglog(sorted_eigen_values[0],'-o')
-    plt.xlabel('Eigenvalue Index')
-    plt.ylabel('Eigenvalue')
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-    plt.show()
-    
+    if plot_eigenvalues:
+        plt.figure()
+        plt.loglog(sorted_eigen_values[0],'-o')
+        plt.xlabel('Eigenvalue Index')
+        plt.ylabel('Eigenvalue')
+        plt.title('Eigenvalues of Correlation Matrix')
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.show()
+        
     if n_tones < 25:
         sigma_mult = 1.5
     elif n_tones < 50:
@@ -356,10 +357,71 @@ def plot_corellation_matrices( data: tables.Array, savepath: Path|None = None):
     diag = np.sqrt(np.diag(np.real(correlation_matrices[0])))
     correlation_coefficient = correlation_matrices[0] / np.outer(diag, diag)
     n_chan = correlation_matrices.shape[0]
-    plt.figure(figsize=(6,5))   
+    plt.figure(figsize=(6,5))
+    plt.title('Correlation Coefficient Matrix')
+    plt.xlabel('Detector Index')
+    plt.ylabel('Detector Index')   
     im = plt.imshow(np.real(correlation_coefficient), aspect='auto', origin='lower')
     plt.colorbar(im, label='Correlation')
     plt.show()
+def plot_noise_blob( data_gain_phase: npt.NDArray,fs: float, lp_filt_freq: float = 0, IQ_to_freq_diss_angle:npt.NDArray = None, IQ_to_gain_phase_angle:npt.NDArray = None, savepath: Path|None = None):
+    """Plot noise blobs for each detector."""
+    # subtract the mean from each detector
+    rotate_basis(data_gain_phase, data_IQ := np.zeros_like(data_gain_phase), -np.array(IQ_to_gain_phase_angle))
+    deproj_IQ = data_IQ - np.mean(data_IQ, axis=2)[:, :, np.newaxis]
+    if lp_filt_freq>0:
+        Ds_coef = int(fs/(5*lp_filt_freq)) #down sampling coefficient
+        filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
+        deproj_IQ = signal.sosfiltfilt(filt_sos, deproj_IQ)
+        deproj_IQ = signal.decimate(deproj_IQ, Ds_coef, axis=2, ftype='iir', zero_phase=True)
+    n_det = deproj_IQ.shape[1]
+    ncols = int(np.ceil(np.sqrt(n_det)))
+    nrows = int(np.ceil(n_det / ncols)+1)
+    color = np.arange(len(deproj_IQ[0,0].ravel()))  # Color by detector index
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(4 * ncols, 4 * nrows),
+        squeeze=True
+    )
+
+    labelIQ = 'IQ Noise Data'
+    labelFreqDiss = 'Freq/Diss Axis'
+    labelGainPhase = 'Gain/Phase Axis'
+    for det, ax in enumerate(axes.flat):
+        if det >= n_det:
+            ax.axis('off')
+            continue
+        if det != 0:
+            labelIQ = None
+            labelFreqDiss = None
+            labelGainPhase = None
+        ax.scatter(
+            deproj_IQ[0, det].ravel(),
+            deproj_IQ[1, det].ravel(),
+            s=1,
+            alpha=0.5,
+            c = color,
+            label =labelIQ
+        )
+
+        if IQ_to_freq_diss_angle is not None:
+            ax.axline((0, 0),
+                    slope=np.tan(-IQ_to_freq_diss_angle[det]), label = labelFreqDiss,
+                    color='red', linestyle='--')
+
+        if IQ_to_gain_phase_angle is not None:
+            ax.axline((0, 0),
+                    slope=np.tan(-IQ_to_gain_phase_angle[det]),
+                    color='blue', linestyle='--', label = labelGainPhase)
+
+        ax.set_title(f'Detector {det}')
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+    fig.legend()
+    fig.suptitle('Noise Blobs', fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
 def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
@@ -379,7 +441,7 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
         data_lp = data
     if template_data_selection is not None:
         template_data_lp = data_lp[:,template_data_selection, :]
-        templates = compute_templates(template_data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
+        templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # N_chan x 2 x N_samples
         
     else:
         templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
@@ -1482,26 +1544,19 @@ class ProcessedDataL1(ProcessedData):
             IQ_to_gain_phase_angle,
         )
         fs = 1 / np.median(np.diff(new_data.timestamp[:]))
+        plot_noise_blob(data_gain_phase[:, new_data.onres_ind, :],fs,lp_filt_freq = 1, IQ_to_freq_diss_angle=IQ_to_freq_diss_angle[new_data.onres_ind], IQ_to_gain_phase_angle=IQ_to_gain_phase_angle[new_data.onres_ind])
 
         # Remove electronics noise if specified
         if do_electronics_noise_removal:
-            onres_data = data_gain_phase[:, new_data.onres_ind, :]
-            offres_data = data_gain_phase[:, new_data.offres_ind, :]
-          
-            plot_corellation_matrices(data_gain_phase)
-
-
+            #plot_corellation_matrices(data_gain_phase)
             remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
             remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=0.2, max_modes=max_modes, template_data_selection=new_data.onres_ind)
-
-            onres_data = data_gain_phase[:, new_data.onres_ind, :]
-            offres_data = data_gain_phase[:, new_data.offres_ind, :]
-            plot_corellation_matrices(onres_data)
-            plot_corellation_matrices(offres_data)
-            plot_corellation_matrices(data_gain_phase)
+            #plot_corellation_matrices(data_gain_phase)
         # Create calibrated data
+
         new_generate_calibrated_data(new_data)
-        
+        plot_noise_blob(data_gain_phase[:, new_data.onres_ind, :],fs,lp_filt_freq = 1, IQ_to_freq_diss_angle=IQ_to_freq_diss_angle[new_data.onres_ind], IQ_to_gain_phase_angle=IQ_to_gain_phase_angle[new_data.onres_ind])
+
         return new_data
 
 
