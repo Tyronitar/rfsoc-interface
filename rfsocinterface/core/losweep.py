@@ -74,25 +74,29 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
                 center_ind = lo_ind + min_ind
 
    
-    peaks = find_peaks(-s21, prominence=2)
-    if len(peaks[0]) != 0:
-        prominances = peaks[1]['prominences']
-        highest_prom_index = np.argmax(prominances)
-        #print(freq[peaks[0][highest_prom_index]])
-        f0 = freq[peaks[0][highest_prom_index]]
-    else:
-        f0 = freq[center_ind]
+    #peaks = find_peaks(-s21, prominence=2)
+    #if len(peaks[0]) != 0:
+    #    prominances = peaks[1]['prominences']
+    #    highest_prom_index = np.argmax(prominances)
+    #    #print(freq[peaks[0][highest_prom_index]])
+    #    f0 = freq[peaks[0][highest_prom_index]]
+   # else:
+    f0 = freq[center_ind]
     
     return f0
 
 def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, scraps_fit: bool=False):
-    if scraps_fit == False:
-        fit_f0 = simple_derivative_fits(df, freq, tone_list, s21)
-        fit_qi = 0.0
-        fit_qc = 0.0
-        return fit_f0, fit_qc, fit_qi
-    else:
-        return 0, 0, 0
+
+       
+    fit_f0 = simple_derivative_fits(df, freq, tone_list, s21)
+    fit_qi = 0.0
+    fit_qc = 0.0
+    return fit_f0, fit_qc, fit_qi
+
+def get_scraps_fit(I: npt.NDArray,Q:np.NDarray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, power: npt.NDArray = None, temp:npt.NDArray = None):
+    data_dict = {'I': I, 'Q': Q, 'freq': freq, 'name': name, 'pwr': power, 'temp': temp}
+    res_obj = scr.makeResFromData(data_dict, paramsFn=scr.cmplxIQ_params, fitFn=scr.cmplxIQ_fit)
+    return res_obj
 def create_resonator_mini_plot(
         fig: Figure,
         ax: plt.Axes,
@@ -385,6 +389,7 @@ class LoSweepData:
         sweep_data: npt.NDArray,
         chanmask: npt.NDArray, 
         diff_to_flag: float=3e3,
+        scraps_fit: bool = False,
     ) -> None:
         """Initialize a LoSweepData object."""
         self.data = sweep_data
@@ -394,7 +399,6 @@ class LoSweepData:
         self.s21 = np.real(10.0 * np.log10(np.abs(self.data[1, :, :])))
         self.chanmask = chanmask
         self.resonator_data = [ResonatorData(self, i) for i in range(self.nchan)]
-
         self.fit_f0 = self.tone_list.copy()
         self.fit_qi = np.zeros(self.nchan)
         self.fit_qc = np.zeros(self.nchan)
@@ -504,12 +508,31 @@ class LoSweepData:
     def cancel_plot(self):
         self._plot_cancelled = True
 
-    def fit(self, callback: Callable | None=None, max_workers: int=4):
+    def fit(self, callback: Callable | None=None, max_workers: int=4, scraps_fit: bool =True) -> None:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
         self._fitted = False
         self._fit_cancelled = False
         _logger.debug('Fitting LO sweep results...')
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            if scraps_fit:
+                res = executor.map(
+                    get_scraps_fit,
+                    self.data_I[self.onres_ind, :],
+                    self.data_Q[self.onres_ind, :],
+                    self.freq[self.onres_ind, :],
+                    self.tone_list[self.onres_ind],
+                    self.s21[self.onres_ind, :],
+                )
+                for i_res, res_obj in zip(self.onres_ind, res):
+                    self.fit_f0[i_res] = res_obj.lmfit_result['default']['result'].params['f0'].value
+                    self.fit_qi[i_res] = res_obj.lmfit_result['default']['result'].params['qi'].value
+                    self.fit_qc[i_res] = res_obj.lmfit_result['default']['result'].params['qc'].value
+                    if self._fit_cancelled:
+                        return
+                    if callback is not None:
+                        callback()
+                self._fitted = True
+                return
             res = executor.map(
                 fit_resonance,
                 (self.df for _ in range(self.ngoodchan)),
@@ -588,7 +611,6 @@ class LoSweepData:
 
         try:
             if plot_IQ_Circle:
-                print(self.freq_direction()[0],"freq_direction")
                 parallel_plot(
                     fig,
                     axes,
@@ -868,12 +890,69 @@ class LoSweep:
         self._data = data
         return data
 
-class PowerSweep:
+class PowerSweep_data:
     """Class for performing a power sweep"""
 
-    def __init__(self):
-        """Initialize a PowerSweep"""
-        pass
+    def __init__(
+            self,
+            sweeps: list[LoSweepData],
+            output_attenuations: list[float]=None,
+            input_attenuations: list[float]=None,
+    ):
+        """Initialize an PowerSweep_data"""
+        sorted_indices = np.argsort(output_attenuations)
+        self.sweeps = np.array([sweeps[i] for i in sorted_indices])
+        for sweep in self.sweeps:
+            sweep.fit() 
+        self.input_attenuations = np.array([input_attenuations[i] for i in sorted_indices])
+        self.output_attenuations = np.array([output_attenuations[i] for i in sorted_indices])
+    def plot_f0_vs_output_power(self):
+        """Plot f0 vs output attenuation for all active resonators."""
+
+        # Find active resonators
+        resonator_indices =np.where(self.sweeps[0].chanmask == 1)[0]
+        if len(self.output_attenuations) != len(self.sweeps):
+            raise ValueError("output_attenuations must have the same length as sweeps")
+
+        # Collect f0 values: shape = (num_sweeps, num_resonators)
+        f0_list = []
+        qi_list = []
+        qc_list = []
+
+        for sweep in self.sweeps:
+            f0_list.append([sweep.fit_f0[i] for i in resonator_indices])
+            qi_list.append( [sweep.fit_qi[i] for i in resonator_indices])
+            qc_list.append( [sweep.fit_qc[i] for i in resonator_indices])
+
+        f0_list = np.array(f0_list)
+
+        qi_list = np.array(qi_list)
+        qc_list = np.array(qc_list)
+        qr_list = (qi_list * qc_list) / (qi_list + qc_list)
+       
+        plot_list = [0,1]
+        for i, resonator_index in enumerate(resonator_indices):
+            x = (f0_list[:, i]-f0_list[-1, i])/f0_list[-1, i]
+            y = qr_list[:, i]*x
+            a = y*(1+4*y**2)
+            plt.plot(
+                self.output_attenuations,
+                a,
+                marker='o',
+                label=f"Resonator {resonator_index}"
+            )
+
+
+        plt.xlabel('Output Attenuation (dB)')
+        plt.ylabel('Nonlinearity (Hz)')
+        plt.title('F0 vs Output Attenuation')
+        plt.grid(True)
+        plt.legend(loc='lower right', fontsize='small', ncol=1)
+        plt.tight_layout()
+        plt.show()
+
+
+
 
 if __name__ == '__main__':
     import pdb
@@ -916,18 +995,34 @@ if __name__ == '__main__':
     # plt.ylabel('S21')
     # plt.show()
     # pdb.set_trace()
+    # Power Sweep Testing
+    files = list(Path('/data/20260123/').glob('*.h5'))
+    print(files)
+    sweeps = []
+    output_attenuations = []
+    input_attenuations = []
+    for file in files:
+        sweep = LoSweepData.from_h5(file)
+        sweeps.append(sweep)
+        name = file.stem
+        parts = name.split('_')
+        output_attenuations.append(int(parts[-1]))
+        input_attenuations.append(int(parts[-3]))
+    psweep = PowerSweep_data(sweeps, output_attenuations=output_attenuations, input_attenuations=input_attenuations)
+    psweep.plot_f0_vs_output_power()
+
 
     # Telescope Testing
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    data = LoSweepData.from_h5('/data/20260122/20260122_Be231102p2_100_tones_LO_Sweep_hour16p1156.h5')
-    data.fit(callback=callback)
-    fig = data.plot(callback=callback, plot_IQ_Circle=False)
-    # plt.tight_layout()
-    plt.show()
-    fig = data.plot(callback=callback, plot_IQ_Circle=True)
-    # plt.tight_layout()
-    plt.show()
+    #data = LoSweepData.from_h5('/data/20260122/20260122_Be231102p2_100_tones_LO_Sweep_hour16p1156.h5')
+    #data.fit(callback=callback)
+    #fig = data.plot(callback=callback, plot_IQ_Circle=False)
+    #plt.tight_layout()
+    #plt.show()
+    #fig = data.plot(callback=callback, plot_IQ_Circle=True)
+    #plt.tight_layout()
+    #plt.show()
     # pdb.set_trace()
     # sfreq, z = data.data
 
