@@ -1834,10 +1834,10 @@ class MapData(ProcessedDataLN):
         self.create_array('/map', 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
         self.create_array('/map', 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
         self.create_array('/map', 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self.create_array('/map', 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
-        initial_good_samples = np.arange(self.n_samples)
-        good_samples = np.setdiff1d(initial_good_samples, self.interpolated_indices)
-        self.create_earray('/map', 'good_samples', expectedrows=self.n_samples, obj=good_samples)
+        self.create_array('/map', 'netd', shape=(self.n_channels, self.max_n_tones,), atom=tables.Float64Atom())
+        good_samples = self.create_vlarray('/map', 'good_samples', expectedrows=self.n_channels, atom=tables.UInt32Atom())
+        for i_chan in range(self.n_channels):
+            good_samples.append(np.setdiff1d(np.arange(self.n_samples), self.interpolated_indices[i_chan]))
     
     @ensure_path(1)
     def compile_to_file(self, path: Path, datasets: list[str]=None, mode: str='w') -> tables.File:
