@@ -4,7 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from kidpy3 import RawDataFile
-from rfsocinterface.core.data import ProcessedDataLN, find_peaks
+from rfsocinterface.analysis.peak import check_focus
+from rfsocinterface.core.data import ProcessedDataLN
 
 
 if __name__ == '__main__':
@@ -27,6 +28,6 @@ if __name__ == '__main__':
     # plt.axvline(data.timestamp[max_sample], color='r')
     # plt.show()
 
-    find_peaks(data, 241, slice_around_max)
+    check_focus(data, 241, slice_around_max)
 
 

@@ -824,6 +824,10 @@ def reset_axes(ax: plt.Axes):
     ax.grid(False)
 
 
+def sigma_to_fwhm(sigma: float) -> float:
+    return 2 * np.sqrt(2 * np.log(2)) * sigma
+
+
 if __name__ == '__main__':
     def plot_function(fig, ax, x, y):
         ax.plot(x, y)
