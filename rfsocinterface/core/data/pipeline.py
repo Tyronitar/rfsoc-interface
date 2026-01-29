@@ -226,8 +226,10 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260107'
-    setnum = 1005
+    date = '20260129'
+    setnum = 1001
+
+
     # date = '20250829'
     # setnum = 1012
 
@@ -237,18 +239,18 @@ if __name__ == '__main__':
 
     dataset = 'data_freq'
     beam_map_mode = False 
-    do_electronics_noise_removal = True 
+    do_electronics_noise_removal = True
     primary_direction = 'az'
 
     ds_factor = 1
-    hp_filt_freq = 0.001
+    hp_filt_freq = 0.00
     lp_filt_freq = 250
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
-    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None)
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=100)
     
 
     pipeline = DataPipeline(
@@ -273,6 +275,9 @@ if __name__ == '__main__':
     #Get information from processed data
     freq = data.get_node_value('freq')[:]
     adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:]
+
+    IQ_to_freq_diss_angle = data.get_node_value('IQ_to_freq_diss_angle')[:]
+
     chanmask = data.chanmask[:]
     probe_freq = data.baseband_freqs[:] + data.lo_freq
 

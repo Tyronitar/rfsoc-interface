@@ -59,6 +59,7 @@ DYNAMIC_PROCESSED_DATA_FIELDS = [
     'carrier_amplitudes',
     'data_IQ',
     'IQ_to_gain_phase_angle',
+    'IQ_to_freq_diss_angle',
     'adc_units_to_hz',
     'data_gain_phase',
     'data_freq_diss',
@@ -94,6 +95,7 @@ PROCESSED_DATA_FIELD_LOCATIONS = {
     'carrier_amplitudes': '/data',
     'data_IQ': '/data',
     'IQ_to_gain_phase_angle': '/data',
+    'IQ_to_freq_diss_angle' : '/data',
     'adc_units_to_hz': '/data',
     'data_gain_phase': '/data',
     'data_freq_diss': '/data',
@@ -337,7 +339,7 @@ def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bo
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
 
-def plot_corellation_matrices( data: tables.Array, savepath: Path|None = None):
+def plot_corellation_matrices( data: tables.Array,fs, savepath: Path|None = None, lp_filt_freq:float = 0):
     """Plot correlation matrices for each channel.
 
     Args:
@@ -347,6 +349,10 @@ def plot_corellation_matrices( data: tables.Array, savepath: Path|None = None):
     # subtract the mean from each detector
     # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
     deproj = data - np.mean(data, axis=2)[:, :, np.newaxis]
+
+    if lp_filt_freq>0:
+        filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
+        deproj = signal.sosfiltfilt(filt_sos, deproj)
     n_tones = data.shape[1]
 
     # select only the middle few detectors
@@ -421,6 +427,8 @@ def plot_noise_blob( data_gain_phase: npt.NDArray,fs: float, lp_filt_freq: float
     fig.suptitle('Noise Blobs', fontsize=16)
     plt.tight_layout()
     plt.show()
+
+
 
 def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
@@ -508,6 +516,44 @@ def remove_electronics_noise_tables(
     #     # pdb.set_trace()
     #     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
     #     data_gain_phase[i_chan, :] = clean_data.squeeze()
+def remove_electronics_noise_blocks(
+    input_blocked_data_gain_phase: tables.Array,
+    fs: float,
+    lp_filt_freq: float=10,
+    max_modes: int=30,
+    chanmask: npt.NDArray | None=None, 
+    template_data_selection: npt.NDArray|None = None,
+):
+    """Remove correlated electronics noise templates from data stored with PyTables.
+
+    Args:
+        data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
+            be in the gain/phase basis.
+        fs (float): Sampling frequency of the data.
+        lp_filt_freq (float, optional): Low-pass filter frequency for the templates. Defaults to 10 Hz.
+
+    Returns:
+        npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
+    """
+    clean_data = np.zeros_like(input_blocked_data_gain_phase)
+    for i in range(input_blocked_data_gain_phase.shape[2]):
+        clean_data[:, :, i, :] = remove_electronics_noise(input_blocked_data_gain_phase[:, :, i,:],  fs, lp_filt_freq = lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
+    # for i_chan in range(data_gain_phase.shape[0]):
+    #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
+    #     # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
+
+    #     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 1 x 2
+    #     # pdb.set_trace()
+    #     # numerator0 = np.einsum('jk,k->j', data_gain_phase[i_chan], templates[0])  # N_detector
+    #     # pdb.set_trace()
+    #     # corr0 = numerator0 / denominator[:, 0:1]  # N_detector
+    #     # deproj = data_gain_phase[i_chan] - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
+
+    #     # numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
+    #     # pdb.set_trace()
+    #     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+    #     data_gain_phase[i_chan, :] = clean_data.squeeze()
+    return clean_data
 
 #
 # Code for recitifying the timestamp
@@ -1039,6 +1085,23 @@ class BaseProcessedData(DataStorage):
     @property
     def offres_ind(self) -> npt.NDArray:
         return np.where(self.chanmask[:] == 0)[0]
+    
+    def get_array_in_blocks(self, dataset: str, block_length_sec: float) -> npt.NDArray:
+        """Return an array split into blocks of the specified length.
+        
+        If the desired array has shape (n_tones x n_samples) the result will be shape
+        (n_tones x n_blocks x block_size). The last block will be discarded if it is
+        shorter than the block size.
+        """
+        block_length_samples = int(self.fs * block_length_sec)
+        data = self.get_node_value(dataset)
+        n_blocks = self.n_samples // block_length_samples
+        blocked_data = np.zeros((*data.shape[:-1], n_blocks, block_length_samples), dtype=data.dtype)
+        for i in range(n_blocks):
+            blocked_data[..., i, :] = data[..., i * block_length_samples:(i+1) * block_length_samples]
+
+        return blocked_data
+
 
 
 class ProcessedDataL0(BaseProcessedData):
@@ -1449,6 +1512,7 @@ class ProcessedDataL1(ProcessedData):
             shape=(n_tones,),
             atom=tables.Float64Atom(),
         )
+        
         IQ_to_freq_diss_angle = new_data.create_array(
             new_data.data_group,
             'IQ_to_freq_diss_angle',
@@ -1544,18 +1608,29 @@ class ProcessedDataL1(ProcessedData):
             IQ_to_gain_phase_angle,
         )
         fs = 1 / np.median(np.diff(new_data.timestamp[:]))
-        plot_noise_blob(data_gain_phase[:, new_data.onres_ind, :],fs,lp_filt_freq = 1, IQ_to_freq_diss_angle=IQ_to_freq_diss_angle[new_data.onres_ind], IQ_to_gain_phase_angle=IQ_to_gain_phase_angle[new_data.onres_ind])
-
-        # Remove electronics noise if specified
+        
         if do_electronics_noise_removal:
-            #plot_corellation_matrices(data_gain_phase)
-            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
-            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=0.2, max_modes=max_modes, template_data_selection=new_data.onres_ind)
-            #plot_corellation_matrices(data_gain_phase)
-        # Create calibrated data
+            plot_corellation_matrices(data_gain_phase, fs)
+            
+            offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', 100), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+            onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=0.2, max_modes=max_modes, template_data_selection=new_data.onres_ind)
+
+            #Finally remove blocking of data clumps
+            data_set_mean = np.mean(data_gain_phase, axis = 2)
+            for i in range(onres_clean_data.shape[2]):
+                block_mean = np.mean(onres_clean_data[:, :, i, :], axis = 2)
+                onres_clean_data[:, :, i, :]-= block_mean[:, :, None]
+                onres_clean_data[:, :, i, :]+= data_set_mean[:, :, None]
+            unblocked_clean_data = onres_clean_data.reshape(*onres_clean_data.shape[:2], -1)
+            n = unblocked_clean_data.shape[-1]
+            data_gain_phase[..., :n] = unblocked_clean_data
+            data_gain_phase[..., n:] = unblocked_clean_data[..., -1:]
+            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=0.1, max_modes=max_modes)
+
+        plot_corellation_matrices(data_gain_phase, fs)
+        plot_noise_blob(data_gain_phase[:, new_data.onres_ind, :],fs,lp_filt_freq = 1, IQ_to_freq_diss_angle=IQ_to_freq_diss_angle[new_data.onres_ind], IQ_to_gain_phase_angle=IQ_to_gain_phase_angle[new_data.onres_ind])
 
         new_generate_calibrated_data(new_data)
-        plot_noise_blob(data_gain_phase[:, new_data.onres_ind, :],fs,lp_filt_freq = 1, IQ_to_freq_diss_angle=IQ_to_freq_diss_angle[new_data.onres_ind], IQ_to_gain_phase_angle=IQ_to_gain_phase_angle[new_data.onres_ind])
 
         return new_data
 
@@ -1596,6 +1671,14 @@ class ExternalLinkProcessedData(ProcessedData):
     @IQ_to_gain_phase_angle.setter
     def IQ_to_gain_phase_angle(self, IQ_to_gain_phase_angle: tables.Array | ExternalLink):
         self._IQ_to_gain_phase_angle = PyTablesDataset(IQ_to_gain_phase_angle, self._file)
+        
+    @property
+    def IQ_to_freq_diss_angle(self) -> PyTablesDataset:
+        return self._IQ_to_freq_diss_angle
+
+    @IQ_to_freq_diss_angle.setter
+    def IQ_to_freq_diss_angle(self, IQ_to_freq_diss_angle: tables.Array | ExternalLink):
+        self._IQ_to_freq_diss_angle = PyTablesDataset(IQ_to_freq_diss_angle, self._file)
     
     @property
     def adc_units_to_hz(self) -> PyTablesDataset:
