@@ -277,6 +277,10 @@ def plot_psd_df_over_f(
         ylabel,
         yscale,
     ))
+
+    figs.append(plot_freq_hist(freq, onres_psd,1.0,"Hist Freq at 1 Hz"  ))
+    figs.append(plot_freq_hist(freq, onres_psd,10.0,"Hist Freq at 10 Hz"  ))
+    figs.append(plot_freq_hist(freq, onres_psd,100.0,"Hist Freq at 100 Hz"  ))
     with PdfPages(filename) as pdf:
         for fig in figs:
             pdf.savefig(fig)
@@ -315,6 +319,30 @@ def average_plots(freq, psd, titles,title, min_percentile, max_percentile, ylabe
     figs.append(average_fig)
     return figs
 
+
+def plot_freq_hist(
+    x_data: npt.NDArray,
+    y_data: npt.ArrayLike,
+    hist_freq: float,
+    title: str | None=None,
+    ylabel: str='Num Values',
+) -> Figure:
+    """Create a plot of the noise PSD in df/f units."""
+    fig = plt.figure(figsize=(9, 6))
+    ax = plt.subplot()
+    
+    freq_index = np.argmin(np.abs(x_data-hist_freq))
+    for j, label in enumerate(['Frequency', 'Dissipation']):
+        ax.hist(np.log10(y_data[j, :, freq_index]), label = label, alpha = 0.5, bins = 20)
+    ax.set_xlabel(f'log Sdf/f PSD value at {hist_freq}(Hz)', fontsize=16)
+    ax.set_xlim(-19,-16)
+    ax.set_ylabel(ylabel, fontsize=16)
+    ax.tick_params(labelsize=14)
+    ax.legend(fontsize=14, loc='best')
+    if title is not None:
+        ax.set_title(title, fontsize=16)
+    plt.tight_layout()
+    return fig
 
 def plot_df_over_f(
     x_data: npt.NDArray,

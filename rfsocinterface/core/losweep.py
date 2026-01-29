@@ -74,18 +74,18 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
                 center_ind = lo_ind + min_ind
 
    
-    #peaks = find_peaks(-s21, prominence=2)
-    #if len(peaks[0]) != 0:
-    #    prominances = peaks[1]['prominences']
-    #    highest_prom_index = np.argmax(prominances)
-    #    #print(freq[peaks[0][highest_prom_index]])
-    #    f0 = freq[peaks[0][highest_prom_index]]
-   # else:
-    f0 = freq[center_ind]
+    peaks = find_peaks(-s21, prominence=2)
+    if len(peaks[0]) != 0:
+        prominances = peaks[1]['prominences']
+        highest_prom_index = np.argmax(prominances)
+        #print(freq[peaks[0][highest_prom_index]])
+        f0 = freq[peaks[0][highest_prom_index]]
+    else:
+        f0 = freq[center_ind]
     
     return f0
 
-def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, scraps_fit: bool=False):
+def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
 
        
     fit_f0 = simple_derivative_fits(df, freq, tone_list, s21)
@@ -94,8 +94,10 @@ def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s2
     return fit_f0, fit_qc, fit_qi
 
 def get_scraps_fit(I: npt.NDArray,Q:np.NDarray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, power: npt.NDArray = None, temp:npt.NDArray = None):
-    data_dict = {'I': I, 'Q': Q, 'freq': freq, 'name': name, 'pwr': power, 'temp': temp}
-    res_obj = scr.makeResFromData(data_dict, paramsFn=scr.cmplxIQ_params, fitFn=scr.cmplxIQ_fit)
+    data_dict = {'I': I, 'Q': Q, 'freq': freq, 'name': "resonance", 'pwr': power, 'temp': temp}
+    res_obj = scr.makeResFromData(data_dict)
+    res_obj.load_params(scr.hanger_params)
+    res_obj.do_lmfit(scr.hanger_fit)
     return res_obj
 def create_resonator_mini_plot(
         fig: Figure,
@@ -352,12 +354,12 @@ class ResonatorData:
         """float: The span of the frequency window for the resonator, in Hz."""
         return np.ptp(self.freq)
 
-    def fit(self, df: float, start: float = None, scraps_fit = False, callback: Callable | None=None) -> tuple[float, float, float]:
+    def fit(self, df: float, start: float = None, callback: Callable | None=None) -> tuple[float, float, float]:
         """Perform a fit to find the resonance frequency."""
         if start is None:
             start = self.tone
 
-        return fit_resonance(df, self.freq, self.tone, self.s21, scraps_fit=scraps_fit)
+        return fit_resonance(df, self.freq, self.tone, self.s21)
 
 
 class LoSweepData:
@@ -524,6 +526,7 @@ class LoSweepData:
                     self.s21[self.onres_ind, :],
                 )
                 for i_res, res_obj in zip(self.onres_ind, res):
+                    
                     self.fit_f0[i_res] = res_obj.lmfit_result['default']['result'].params['f0'].value
                     self.fit_qi[i_res] = res_obj.lmfit_result['default']['result'].params['qi'].value
                     self.fit_qc[i_res] = res_obj.lmfit_result['default']['result'].params['qc'].value
@@ -676,11 +679,6 @@ class LoSweepData:
             fh.create_dataset('global_data/fit_qi', data=self.fit_qi)
             fh.create_dataset('global_data/fit_qc', data=self.fit_qc)
         _logger.info(f'LoSweepData saved to {str(fname)}')
-    
-
-
-    
-
 
     def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.nchan))
@@ -931,23 +929,24 @@ class PowerSweep_data:
         qr_list = (qi_list * qc_list) / (qi_list + qc_list)
        
         plot_list = [0,1]
+        bad_resonances = [29,39,50,51,52,97,98,99]
         for i, resonator_index in enumerate(resonator_indices):
-            x = (f0_list[:, i]-f0_list[-1, i])/f0_list[-1, i]
-            y = qr_list[:, i]*x
-            a = y*(1+4*y**2)
-            plt.plot(
-                self.output_attenuations,
-                a,
-                marker='o',
-                label=f"Resonator {resonator_index}"
-            )
-
-
+            if ~np.isin(resonator_index, bad_resonances):
+                
+                x = (f0_list[:, i]-f0_list[-1, i])/f0_list[-1, i]
+                y = qr_list[:, i]*x
+                
+                plt.plot(
+                    self.output_attenuations,
+                    y,
+                    marker='o',
+                    label=f"Resonator {resonator_index}"
+                )
         plt.xlabel('Output Attenuation (dB)')
-        plt.ylabel('Nonlinearity (Hz)')
-        plt.title('F0 vs Output Attenuation')
+        plt.ylabel(r'Nonlinearity Factor (a)')
+        plt.title(r'Nonlinearity Factor (a) vs Output Attenuation')
         plt.grid(True)
-        plt.legend(loc='lower right', fontsize='small', ncol=1)
+        #plt.legend(loc='lower right', fontsize='small', ncol=1)
         plt.tight_layout()
         plt.show()
 
@@ -996,7 +995,7 @@ if __name__ == '__main__':
     # plt.show()
     # pdb.set_trace()
     # Power Sweep Testing
-    files = list(Path('/data/20260123/').glob('*.h5'))
+    files = list(Path('/data/20260126_power_sweep/').glob('*.h5'))
     print(files)
     sweeps = []
     output_attenuations = []
@@ -1015,7 +1014,7 @@ if __name__ == '__main__':
     # Telescope Testing
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
     # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    #data = LoSweepData.from_h5('/data/20260122/20260122_Be231102p2_100_tones_LO_Sweep_hour16p1156.h5')
+    #data = LoSweepData.from_h5('/data/20260126/20260126_Be231102p2_100_tones_LO_Sweep_hour17p4189_high_res.h5')
     #data.fit(callback=callback)
     #fig = data.plot(callback=callback, plot_IQ_Circle=False)
     #plt.tight_layout()
@@ -1023,8 +1022,8 @@ if __name__ == '__main__':
     #fig = data.plot(callback=callback, plot_IQ_Circle=True)
     #plt.tight_layout()
     #plt.show()
-    # pdb.set_trace()
-    # sfreq, z = data.data
+    #pdb.set_trace()
+    #sfreq, z = data.data
 
     # # NOTE: This is reversed for channel 2 only
     # sfreq = sfreq[::-1]
