@@ -226,6 +226,8 @@ class ComputeNoisePSD(DataRoutine):
                     data = pd.data_gain_phase[:] / pd.carrier_amplitude_norm()
                 case PsdBasis.FREQ_DISS:
                     f = pd.baseband_freqs[:] + pd.lo_freq
+                    f[pd.offres_ind] = 1
+                    print(f)
                     data = pd.data_freq_diss[:] / f[np.newaxis, :, np.newaxis]
                 case _:
                     raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')

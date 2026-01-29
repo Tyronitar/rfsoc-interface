@@ -258,6 +258,7 @@ def plot_psd_df_over_f(
                 freq,
                 psd[:, i, :],
                 offres_mean=offres_mean,
+                f0 = f0[i],
                 adc_units_to_hz=adc_units_to_hz[i],
                 ylabel=ylabel,
                 title=res_title
@@ -349,6 +350,7 @@ def plot_df_over_f(
     y_data: npt.ArrayLike,
     offres_mean: npt.ArrayLike| None=None,
     adc_units_to_hz: npt.NDArray | None=None,
+    f0:float = 1,
     title: str | None=None,
     ylabel: str='Noise PSD (df / f)',
 ) -> Figure:
@@ -356,7 +358,7 @@ def plot_df_over_f(
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
     if offres_mean is not None and adc_units_to_hz is not None:
-        offres_mean = offres_mean / adc_units_to_hz**2
+        offres_mean = offres_mean /( adc_units_to_hz * f0)**2
     for j, label in enumerate(['Frequency', 'Dissipation']):
         ax.plot(x_data, y_data[j], label=label)
         if offres_mean is not None:

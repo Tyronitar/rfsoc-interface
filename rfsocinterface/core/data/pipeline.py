@@ -226,8 +226,8 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260129'
-    setnum = 1001
+    date = '20260107'
+    setnum = 1005
 
 
     # date = '20250829'
@@ -243,7 +243,7 @@ if __name__ == '__main__':
     primary_direction = 'az'
 
     ds_factor = 1
-    hp_filt_freq = 0.00
+    hp_filt_freq = 0.01
     lp_filt_freq = 250
 
     hpfilt = HighPassFilter(hp_filt_freq)

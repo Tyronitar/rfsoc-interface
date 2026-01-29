@@ -1093,7 +1093,8 @@ class BaseProcessedData(DataStorage):
         (n_tones x n_blocks x block_size). The last block will be discarded if it is
         shorter than the block size.
         """
-        block_length_samples = int(self.fs * block_length_sec)
+
+        block_length_samples = int(2**np.ceil(np.log2(block_length_sec * self.fs)))
         data = self.get_node_value(dataset)
         n_blocks = self.n_samples // block_length_samples
         blocked_data = np.zeros((*data.shape[:-1], n_blocks, block_length_samples), dtype=data.dtype)
@@ -1610,7 +1611,6 @@ class ProcessedDataL1(ProcessedData):
         fs = 1 / np.median(np.diff(new_data.timestamp[:]))
         
         if do_electronics_noise_removal:
-            plot_corellation_matrices(data_gain_phase, fs)
             
             offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', 100), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
             onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=0.2, max_modes=max_modes, template_data_selection=new_data.onres_ind)
@@ -1625,10 +1625,6 @@ class ProcessedDataL1(ProcessedData):
             n = unblocked_clean_data.shape[-1]
             data_gain_phase[..., :n] = unblocked_clean_data
             data_gain_phase[..., n:] = unblocked_clean_data[..., -1:]
-            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=0.1, max_modes=max_modes)
-
-        plot_corellation_matrices(data_gain_phase, fs)
-        plot_noise_blob(data_gain_phase[:, new_data.onres_ind, :],fs,lp_filt_freq = 1, IQ_to_freq_diss_angle=IQ_to_freq_diss_angle[new_data.onres_ind], IQ_to_gain_phase_angle=IQ_to_gain_phase_angle[new_data.onres_ind])
 
         new_generate_calibrated_data(new_data)
 
