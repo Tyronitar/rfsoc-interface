@@ -43,7 +43,7 @@ _tele_logger = logging.getLogger('telescopeControl')
 IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
 MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
 
-BAD_RFSOC_TONE_START_INDEX = 8  # First 8 ones are bad...
+BAD_RFSOC_TONE_START_INDEX = 0  # TODO: Remove all references to this
 
 GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
 USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
