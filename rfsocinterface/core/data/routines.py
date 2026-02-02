@@ -186,6 +186,7 @@ class PsdBasis:
     IQ = 'iq'
     GAIN_PHASE = 'gain_phase'
     FREQ_DISS = 'freq_diss'
+    SNqp = 'quasi_particle'
 
 class ComputeNoisePSD(DataRoutine):
     stage = ProcessingStage.PROCESSING_L2
@@ -227,7 +228,6 @@ class ComputeNoisePSD(DataRoutine):
                 case PsdBasis.FREQ_DISS:
                     f = pd.baseband_freqs[:] + pd.lo_freq
                     f[pd.offres_ind] = 1
-                    print(f)
                     data = pd.data_freq_diss[:] / f[np.newaxis, :, np.newaxis]
                 case _:
                     raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')
@@ -255,6 +255,9 @@ class ComputeNoisePSD(DataRoutine):
             if not pd.test_node('freq'):
                 pd.create_array(psd_group, 'freq', obj=freq)
             pd.create_array(psd_group, f'psd_{basis}', obj=psd)
+            if PsdBasis.FREQ_DISS:
+                freq, csd = signal.csd(data[0, self.tone_indices, :], data[1, self.tone_indices,:], pd.fs, nperseg=n_samples_per_block)
+                pd.create_array(psd_group, f'csd_{basis}', obj = csd)
 
     def get_receipt_entry(self) -> str:
         return f'ComputeNoisePSD: {{\n' \

@@ -11,6 +11,8 @@ from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 from argparse import ArgumentParser
 import tables
+import h5py
+import scipy.special as sp
 
 from kidpy3 import RawDataFile
 
@@ -27,8 +29,11 @@ from rfsocinterface.core.utils import DATA_DIRECTORY, ensure_path, get_tod_templ
 XLIM = (0.1, 250)
 YLIM = (-110, -60)
 VALID_BASES = ['gp', 'iq', 'fd']
-
-
+N0 = 1.71e10 # Singel spin electron density of states at the Fermi level
+kb_ev = 8.617342e-5 #[eV/K] Boltzman n Constant
+h_ev = 4.135e-15
+hbar_ev = h_ev/(2*np.pi)
+V = 3224 #Inductor volume in um^3. 
 def compute_noise_psd(
     input_time_ordered_data: npt.NDArray,
     timestamp: npt.NDArray,
@@ -74,8 +79,12 @@ def compute_noise_psd(
     
     freq, psd = _compute_psd(new_input_data[:,:,:], fs, n_samples_per_block)
     return chanmask, freq, psd
-
-
+def get_SNqp(fres, T, Sdff_freq, delta_0,alpha, V):
+    omega = fres*2*np.pi
+    xi = lambda omega, T: (hbar_ev * omega)/(2*kb_ev * T)
+    k2 = 1/(2*N0*delta_0)*(1+np.sqrt(2*delta_0/(np.pi*kb_ev*T))*np.exp(-xi(omega,T)*sp.iv(0, xi(omega, T))))
+    SNqp = 4*V**2 * Sdff_freq/(alpha**2 * k2**2)
+    return SNqp
 def _compute_psd(
         data: npt.NDArray,
         fs: float,
@@ -113,11 +122,12 @@ def plot_psd(
         min_percentile: float=16,
         max_percentile: float=84,
         f0: float | None= None,
-         adc_units_to_hz: npt.NDArray | None=None,
+        adc_units_to_hz: npt.NDArray | None=None,
         title: str | None=None,
         basis: PsdBasis=PsdBasis.GAIN_PHASE,
         resonators: list[int]=None,
-        chanmask: npt.NDArray | None=None
+        csd: npt.NDArray = None,
+
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -162,8 +172,14 @@ def plot_psd(
         case PsdBasis.FREQ_DISS:
             ylabel = r'Sdf/f ($Hz^{-1}$)'
             yscale = 'linear'
-            figs = plot_psd_df_over_f(freq, psd, filename, f0, title=title, resonators=resonators,adc_units_to_hz=adc_units_to_hz)
+            figs = plot_psd_df_over_f(freq, psd, filename, f0, title=title, resonators=resonators,adc_units_to_hz=adc_units_to_hz, csd = csd)
             return figs
+        case PsdBasis.SNqp:
+            ylabel = r'Sdf/f ($Hz^{-1}$)'
+            yscale = 'linear'
+            title = title + "SNqp"
+            figs = plot_SNqp(freq, psd[:,resonators, : ], filename,f0[resonators], title = title)
+            return
         case _:
             raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
 
@@ -188,20 +204,20 @@ def plot_psd(
     for i in range(n_plots):
             fig = create_plot(
                 freq,
-                plot_data_min[i],
                 plot_data_med[i],
-                plot_data_max[i],
+                ydata_min = plot_data_min[i],
+                ydata_max = plot_data_max[i],
                 percentiles=(min_percentile, max_percentile),
                 title=titles[i],
                 ylabel=ylabel,
-                yscale=yscale,
+                yscale=yscale
             )
             figs.append(fig)
     average_fig = create_plot(
         freq,
-        np.sum(plot_data_min, axis=0) / n_plots,
         np.sum(plot_data_med, axis=0) / n_plots,
-        np.sum(plot_data_max, axis=0) / n_plots,
+        ydata_min= np.sum(plot_data_min, axis=0) / n_plots,   
+        ydata_max= np.sum(plot_data_max, axis=0) / n_plots,
         percentiles=(min_percentile, max_percentile),
         title= title + ' - Averaged',
         ylabel=ylabel,
@@ -214,6 +230,105 @@ def plot_psd(
         
 
     return figs
+def mb_from_h5(path: Path) -> dict:
+    """Create a LoSweepData object from a sweep file."""
+    path = path.with_suffix('.h5')
+    mb_dict = {'res':[],'delta_0':[],'alpha':[], 'f0':[]}
+    with h5py.File(path, 'r') as f:
+        res_list = f['Dark_Load/MB_fit']
+        index_name = ['res' +str(j).zfill(3) for j in range(0,len(res_list))]
+        for i in range(0,len(res_list)):
+            mb_dict['res'].append(i)
+            D = res_list[index_name[i]]['Fres_fit']['Delta'][()]
+            a = res_list[index_name[i]]['Fres_fit']['alpha'][()]
+            f = res_list[index_name[i]]['Fres_fit']['f0'][()]
+
+            mb_dict['alpha'].append(a)
+            mb_dict['delta_0'].append(D)
+            mb_dict['f0'].append(f)
+
+    return mb_dict
+@ensure_path(2)
+def plot_SNqp(
+        freq: npt.NDArray,
+        psd: npt.NDArray,
+        filename: Path,
+        f0: npt.NDArray,
+        min_percentile: float=16,
+        max_percentile: float=84,
+        title: str | None=None,
+        mb_file_name = "Be231102d2_AR_BS_dark_processed.h5"
+) -> list[Figure]:
+    """Create plots for the psd.
+    
+    Args:
+        freq (npt.NDArray): Array of frequencies (N_freq).
+        psd: (npt.NDArray): PSD (N_chan x N_resonators x N_freq).
+        filename (Path): PDF filename to save the  plots to.
+        title (str, optional): Title to give to each plot. Defaults to None.
+    
+    Returns:
+        (list[Figure]): N_chan plots corresponding to the PSD for each resonator.
+    
+    Raises:
+        ValueError: If the length of `resonators` is greater than the number of resonators
+    """
+    base_temp = 0.243 #K, TODO assumed and will be updated to match thermometry value. 
+    mb_file_path = Path(f'{DATA_DIRECTORY}/params/{mb_file_name}')
+    mb_data = mb_from_h5(path = mb_file_path)
+
+    ylabel = r'Sdf/f ($Hz^{-1}$)'
+    # Plot 
+    if not filename.exists():
+        filename.touch(PERMISSIONS_ALL_FULL)
+    figs = []
+    yscale = 'log'
+    SNqp_array = []
+    for i in np.arange(psd.shape[1]):
+        res_title = title + f' - Resonator {i}'
+        if f0 is not None and i < len(f0):
+            res_title += f' (f0 = {f0[i]/1e6:.3f} MHz)'
+            mb_index = np.argmin(np.abs(f0[i]-mb_data['f0']))
+            print(mb_index)
+            alpha = mb_data['alpha'][mb_index]
+            delta = mb_data['delta_0'][mb_index]
+            print(f0[i], alpha, delta)
+            SNqp = get_SNqp(f0[i],base_temp,np.array(psd[0, i, :]),delta, alpha, V )
+            SNqp_array.append(SNqp)
+            fig = create_plot(
+            freq,
+            SNqp,
+            percentiles=(min_percentile, max_percentile),
+            title= res_title,
+            ylabel='Noise PSD (Nqp)',
+            yscale='log',
+            )
+            figs.append(fig)
+
+
+    psd_med = np.median(SNqp_array, axis=0)
+
+
+    psd_min = np.percentile(SNqp_array, min_percentile, axis=0)
+    psd_max = np.percentile(SNqp_array, max_percentile, axis=0)
+
+    average_fig = create_plot(
+        freq,
+        psd_med,
+        ydata_min = psd_min,
+        ydata_max = psd_max,
+        percentiles=(min_percentile, max_percentile),
+        title= title + ' - Averaged',
+        ylabel=ylabel,
+        yscale=yscale,
+    )
+    figs.append(average_fig)
+    with PdfPages(filename) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
+        
+    return figs
+        
 
 @ensure_path(2)
 def plot_psd_df_over_f(
@@ -225,7 +340,8 @@ def plot_psd_df_over_f(
         min_percentile: float=16,
         max_percentile: float=84,
         title: str | None=None,
-        resonators: list[int]=[0]
+        resonators: list[int]=[0],
+        csd: npt.NDArray = None
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -261,7 +377,8 @@ def plot_psd_df_over_f(
                 f0 = f0[i],
                 adc_units_to_hz=adc_units_to_hz[i],
                 ylabel=ylabel,
-                title=res_title
+                title=res_title,
+                csd = csd[i,:]
             )
             
             plt.close(fig)
@@ -297,9 +414,9 @@ def average_plots(freq, psd, titles,title, min_percentile, max_percentile, ylabe
     for i in range(n_plots):
         fig = create_plot(
             freq,
-            psd_min[i],
             psd_med[i],
-            psd_max[i],
+            ydata_min = psd_min[i],
+            ydata_max = psd_max[i],
             percentiles=(min_percentile, max_percentile),
             title=titles[i],
             ylabel=ylabel,
@@ -309,9 +426,9 @@ def average_plots(freq, psd, titles,title, min_percentile, max_percentile, ylabe
 
     average_fig = create_plot(
         freq,
-        np.sum(psd_min, axis=0) / n_plots,
         np.sum(psd_med, axis=0) / n_plots,
-        np.sum(psd_max, axis=0) / n_plots,
+        ydata_min= np.sum(psd_min, axis=0) / n_plots,
+        ydata_max= np.sum(psd_max, axis=0) / n_plots,
         percentiles=(min_percentile, max_percentile),
         title= title + ' - Averaged',
         ylabel=ylabel,
@@ -353,6 +470,7 @@ def plot_df_over_f(
     f0:float = 1,
     title: str | None=None,
     ylabel: str='Noise PSD (df / f)',
+    csd: npt.NDArray = None
 ) -> Figure:
     """Create a plot of the noise PSD in df/f units."""
     fig = plt.figure(figsize=(9, 6))
@@ -363,6 +481,8 @@ def plot_df_over_f(
         ax.plot(x_data, y_data[j], label=label)
         if offres_mean is not None:
             ax.plot(x_data, offres_mean[j], linestyle='dashed', color='gray', label=f'Off-Resonance {label} Median')
+    if csd is not None:
+        ax.plot(x_data, abs(csd), label = 'CSD')
     ax.set_xscale('log')
     #ax.set_xlim(1, 250)
     ax.set_yscale('log')
@@ -381,9 +501,9 @@ def plot_df_over_f(
 
 def create_plot(
     xdata: npt.ArrayLike,
-    ydata_min: npt.ArrayLike,
     ydata_med: npt.ArrayLike,
-    ydata_max: npt.ArrayLike,
+    ydata_min: npt.ArrayLike = None,
+    ydata_max: npt.ArrayLike = None,
     percentiles: tuple[float, float]=(16., 84.),
     label: str='Median Measured Noise',
     title: str | None=None,
@@ -397,15 +517,16 @@ def create_plot(
     ax.plot(xdata, ydata_med, color='b', label=label)
     flat_spectrum_idx = np.where((xdata > 10) & (xdata < 50))
     flat_spectrum_noise = np.median(ydata_med[flat_spectrum_idx])
-    plt.hlines(flat_spectrum_noise, XLIM[0], XLIM[1], colors='r', linestyles='dashed', label=f'Flat Spectrum Level = {flat_spectrum_noise:.1f} dBc/Hz')
-    ax.fill_between(
-        xdata,
-        ydata_min,
-        ydata_max,
-        facecolor='c',
-        alpha=0.5,
-        label=f'{ordinal(int(percentiles[0]))} Percentile to {ordinal(int(percentiles[1]))} Percentile'
-    )
+    if ydata_min is not None and ydata_max is not None:
+        plt.hlines(flat_spectrum_noise, XLIM[0], XLIM[1], colors='r', linestyles='dashed', label=f'Flat Spectrum Level = {flat_spectrum_noise:.1f} dBc/Hz')
+        ax.fill_between(
+            xdata,
+            ydata_min,
+            ydata_max,
+            facecolor='c',
+            alpha=0.5,
+            label=f'{ordinal(int(percentiles[0]))} Percentile to {ordinal(int(percentiles[1]))} Percentile'
+        )
     ax.set_xscale('log')
     ax.set_xlim(*XLIM)
     ax.set_yscale(yscale)

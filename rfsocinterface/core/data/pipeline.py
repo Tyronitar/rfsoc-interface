@@ -243,7 +243,7 @@ if __name__ == '__main__':
     primary_direction = 'az'
 
     ds_factor = 1
-    hp_filt_freq = 0.01
+    hp_filt_freq = 0.00
     lp_filt_freq = 250
 
     hpfilt = HighPassFilter(hp_filt_freq)
@@ -291,4 +291,6 @@ if __name__ == '__main__':
     psd_gp = data.get_node_value('psd_gain_phase')[:]
     plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnum}.pdf', basis=PsdBasis.GAIN_PHASE)
     psd_fd = data.get_node_value('psd_freq_diss')[:]
-    plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1)
+    csd_fd = data.get_node_value('csd_freq_diss')[:]
+    plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_fd)
+    plot_psd(freq, psd_fd, f'noise_SNqp_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_fd)
