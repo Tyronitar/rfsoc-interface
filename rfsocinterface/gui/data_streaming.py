@@ -14,8 +14,8 @@ from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.utils import get_filename, PERMISSIONS_USR_RW, get_tod_template
 from rfsocinterface.core.data import ProcessedData
-from rfsocinterface.gui.main_widget import MainWidget
-from rfsocinterface.gui.utils import PathValidator, get_lineEdit_text, get_num_value
+from rfsocinterface.gui.main_widget import DataCollectionMainWidget
+from rfsocinterface.gui.widgets import PathValidator, get_lineEdit_text, get_num_value
 
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
+class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent=None):
         super().__init__(main_window, rfsocs, settings, parent=parent)
@@ -67,17 +67,9 @@ class DataStreamingWidget(MainWidget, Ui_DataStreamingWidget):
         # _logger.info('Processing data')
     
     def start_streaming(self):
-        # TODO: Do this in another thread
-        chans = self.get_selected_channels(self.channel_comboBox)
-        rfchans = []
-        for rfsoc, chan in chans:
-            rfchan = rfsoc.get_channel(chan)
-            save_location = self.save_location_widget.get_chosen_save_location(chan_name=rfchan.tile_name, touch_file=True, mode=PERMISSIONS_USR_RW, mkdir=True)
-            rfchan.raw_filename = str(save_location)
-            rfchans.append(rfchan)
+        rfchans, date, setnum = self.setup_data_collection()
         duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)
-        date = save_location.stem[:8]
-        setnum = int(save_location.stem[-4:])
+
         _logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
         capture(rfchans, self.wait_for_TOD, duration)
         _logger.info('Completed data streaming')

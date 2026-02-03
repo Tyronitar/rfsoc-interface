@@ -4,6 +4,8 @@ import pdb
 
 from concurrent.futures import Future
 from typing import Callable
+from multiprocessing import Lock
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
 
 from pathlib import Path
 from PySide6.QtWidgets import QProgressDialog
@@ -14,14 +16,18 @@ import numpy.typing as npt
 from numpy.polynomial import Polynomial
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
+from matplotlib.gridspec import GridSpec
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.lines import Line2D
 from scipy.signal import savgol_filter
 import h5py
+import tables
 
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW
+from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW, parallel_plot
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.gui.widgets.progress_bar import QThreadJobProgressDialog
+from rfsocinterface.core.params import initialize_params_file, update_params_file
 from kidpy3 import capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
@@ -29,6 +35,8 @@ from kidpy3.measure import ResonatorFinder
 
 
 _logger = logging.getLogger(__name__)
+
+DEFAULT_NCOLS = 10
 
 
 def resonator_plot_formatter(x: float, pos: int) -> str:
@@ -48,26 +56,75 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
     #set up some preliminary values that we'll need
     n_freq = np.size(freq)
     old_tone_freq = tone_list
-    center_ind = np.argwhere(abs(freq - old_tone_freq) == min(abs(freq - old_tone_freq)))[0]
+    center_ind = np.argwhere(abs(freq - old_tone_freq) == min(abs(freq - old_tone_freq))).flatten()[0]
 
     #smooth the data
     x = s21
     s21 = savgol_filter(s21, 7, 3, mode='mirror')
 
     #search for local minima
-    if s21[center_ind[0]] != min(s21):
+    if s21[center_ind] != min(s21):
        keepgoing = True
        while keepgoing:
-          lo_ind = int(max(center_ind-1,0))
-          hi_ind = int(min(center_ind+2,n_freq))
-          min_ind = np.argwhere(s21[lo_ind:hi_ind] == min(s21[lo_ind:hi_ind]))[0]
-          if min_ind[0] == (center_ind[0] - lo_ind):
-             keepgoing = False
-          else:
-             center_ind = lo_ind + min_ind
+            lo_ind = int(max(center_ind-1,0))
+            hi_ind = int(min(center_ind+2,n_freq))
+            # min_ind = np.argwhere(s21[lo_ind:hi_ind] == min(s21[lo_ind:hi_ind])).flatten()[0]
+            min_ind = np.argmin(s21[lo_ind:hi_ind])
+            if min_ind == (center_ind - lo_ind):
+                keepgoing = False
+            else:
+                center_ind = lo_ind + min_ind
 
-    f0 = freq[center_ind[0]]
+    f0 = freq[center_ind]
     return f0
+
+
+def create_resonator_mini_plot(
+        fig: Figure,
+        ax: plt.Axes,
+        idx: int,
+        freq: npt.NDArray,
+        s21: npt.NDArray,
+        fit_f0: float,
+        onres: bool,
+        flagged: bool,
+):
+    ax.set_box_aspect(1.0)
+    ax.set_facecolor('white')
+    ax.set_yticks([])
+    ax.set_xticks([])
+    ax.plot(freq, s21)
+    ax.axvline(x=fit_f0, color='r')
+
+    ax.set_xlim(freq.min(), freq.max())
+
+    # Add a label showing the resonator number
+    if onres:
+        ax.legend(
+            [f'{idx:d}'],
+            fontsize=8,
+            loc=3,
+            frameon=False,
+            framealpha=0,
+            handlelength=0,
+            alignment='center',
+            edgecolor='black',
+        )
+        if flagged:
+            ax.set_facecolor('yellow')
+    else:
+        ax.legend(
+            [f'{idx:d}, dS21={np.ptp(s21):4.1f}'],
+            fontsize=8,
+            loc=3,
+            frameon=False,
+            framealpha=0,
+            handlelength=0,
+            alignment='center',
+            edgecolor='black',
+            )
+        ax.set_facecolor('orange')
+
 
 
 class ResonatorData:
@@ -86,7 +143,6 @@ class ResonatorData:
         """Initialize a ResonatorData object."""
         self.data = data
         self.idx = idx
-        self.flagged = False
 
     def plot(self, ax: plt.Axes | None = None, animated: bool = False) -> Figure | None:
         """Plot the results of the LO sweep fitting for this resonator.
@@ -102,27 +158,31 @@ class ResonatorData:
                 no axes was provided.
         """
         return_fig = False
-        # If not axes provided, create a new figure
-        if ax is None:
-            fig = plt.figure(figsize=(8, 5))
-            ax = plt.subplot()
-            return_fig = True
-            ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
-            ax.set_xlabel('Frequency (MHz)')
-            # ax.ticklabel_format(useOffset=False, style='plain')
-            ax.set_ylabel(r'$|S_{21}|$')
-            # ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-            ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
-        # Otherwise, just plot inside the existing axes
-        else:
-            ax.set_facecolor('white')
-            ax.set_yticks([])
-            ax.set_xticks([])
+        # If axes is provided, make the mini plot inside
+        if ax is not None:
+            create_resonator_mini_plot(
+                None,
+                ax,
+                self.idx,
+                self.freq,
+                self.s21,
+                self.fit_f0,
+                self.is_onres,
+                self.flagged,
+            )
+            return
+
+        # If axes not provided, create a new figure
+        fig = plt.figure(figsize=(8, 5))
+        ax = plt.subplot()
+        ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
+        ax.set_xlabel('Frequency (MHz)')
+        ax.set_ylabel(r'$|S_{21}|$')
+        ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
 
         ax.plot(self.freq, self.s21)
         ax.axvline(x=self.fit_f0, color='r', animated=animated)
 
-        # Scale the span of the plot based on the frequency ratio
         ax.set_xlim(self.freq.min(), self.freq.max())
 
         # Add a label showing the resonator number
@@ -152,9 +212,7 @@ class ResonatorData:
             )
             ax.set_facecolor('orange')
 
-        if return_fig:
-            return fig
-        return None
+        return fig
 
     @property
     def baseband_tone(self) -> float:
@@ -199,7 +257,10 @@ class ResonatorData:
     @fit_f0.setter
     def fit_f0(self, val: float):
         self.data.fit_f0[self.idx] = val
-        self.flagged = np.abs(self.difference) > self.data.diff_to_flag[self.idx]
+    
+    @property
+    def flagged(self) -> bool:
+        return np.abs(self.difference) > self.data.diff_to_flag[self.idx]
 
     @property
     def fit_qi(self) -> float:
@@ -224,7 +285,7 @@ class ResonatorData:
         """float: The span of the frequency window for the resonator, in Hz."""
         return np.ptp(self.freq)
 
-    def fit(self, df: float, start: float = None) -> tuple[float, float, float]:
+    def fit(self, df: float, start: float = None, callback: Callable | None=None) -> tuple[float, float, float]:
         """Perform a fit to find the resonance frequency."""
         if start is None:
             start = self.tone
@@ -232,6 +293,8 @@ class ResonatorData:
         fit_qi = 0.0
         fit_qc = 0.0
 
+        if callback is not None:
+            callback()
         return fit_f0, fit_qi, fit_qc
 
 
@@ -279,6 +342,10 @@ class LoSweepData:
         self.fit_qc = np.zeros(self.nchan)
         self.fit_f0[self.offres_ind] = self.tone_list[self.offres_ind]
         self.set_diff_to_flag(val=diff_to_flag)
+        self._fitted = False
+        self._plotted = False
+        self._fit_cancelled = False
+        self._plot_cancelled = False
     
     def set_diff_to_flag(self, val: float=3e3):
         """Set the flagging threshold.
@@ -336,7 +403,7 @@ class LoSweepData:
     @property
     def ngoodchan(self) -> int:
         """The number of good resonators."""
-        return np.size(np.where(self.chanmask == 1))
+        return np.size(self.onres_ind)
 
     @property
     def df(self) -> float:
@@ -346,12 +413,12 @@ class LoSweepData:
     @property
     def onres_ind(self) -> npt.NDArray:
         """The indices of frequencies that are on-resonance."""
-        return np.argwhere(self.chanmask == 1)
+        return np.argwhere(self.chanmask == 1).flatten()
 
     @property
     def offres_ind(self) -> npt.NDArray:
         """The indices of frequencies that are off-resonance."""
-        return np.argwhere(self.chanmask == 0)
+        return np.argwhere(self.chanmask == 0).flatten()
 
     @property
     def data_I(self) -> npt.NDArray:
@@ -372,16 +439,38 @@ class LoSweepData:
     def new_tone_list(self) -> npt.NDArray:
         """The new base band frequencies, based on the fit"""
         return self.fit_f0 - self.f_center
-
-    def fit(self, pd: QThreadJobProgressDialog | None=None) -> Future:
-        """Perform a fit to determine the resoncance frequencies of each resonator."""
-        _logger.debug('Fitting LO sweep results...')
-        if pd is None:
-            pd = QThreadJobPool(parent=self)
-        return pd.map(self._fit_i, np.argwhere(self.chanmask == 1))
-        for i_chan in np.argwhere(self.chanmask == 1):
-            self._fit_i(i_chan)
     
+    def cancel_fit(self):
+        self._fit_cancelled = True
+
+    def cancel_plot(self):
+        self._plot_cancelled = True
+
+    def fit(self, callback: Callable | None=None, max_workers: int=4):
+        """Perform a fit to determine the resoncance frequencies of each resonator."""
+        self._fitted = False
+        self._fit_cancelled = False
+        _logger.debug('Fitting LO sweep results...')
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            res = executor.map(
+                simple_derivative_fits,
+                (self.df for _ in range(self.ngoodchan)),
+                self.freq[self.onres_ind, :],
+                self.tone_list[self.onres_ind],
+                self.s21[self.onres_ind, :],
+            )
+            for i, f0 in enumerate(res):
+                if self._fit_cancelled:
+                    return
+                i_res = self.onres_ind[i]
+                self.fit_f0[i_res] = f0
+                self.fit_qc[i_res] = 0.0
+                self.fit_qi[i_res] = 0.0
+                if callback is not None:
+                    callback()
+            
+        self._fitted = True
+
     def _fit_i(self, i_chan):
             # pull in the sweep data for this tone
             i = i_chan[0]
@@ -405,7 +494,7 @@ class LoSweepData:
                 _logger.info(string)
 
 
-    def plot(self, ncols: int = 18, pd: QThreadJobProgressDialog | None=None) -> tuple[Figure, Future]:
+    def plot(self, ncols: int=DEFAULT_NCOLS, callback: Callable | None=None, fig: Figure=None) -> Figure:
         """Plot the results of fitting the LO sweep.
 
         Arguments:
@@ -415,20 +504,45 @@ class LoSweepData:
         Returns:
             (Figure): The generated figure showing the plot for each resonator.
         """
+        self._plotted = False
+        self._plot_cancelled = False
+
         # Setup for plots
-        nrows = int(np.ceil(self.nchan / ncols))
+        nchan = self.nchan
+        if fig is None:
+            nrows = int(np.ceil(nchan / ncols))
+            fig = plt.figure(figsize=(ncols, nrows), dpi=100)
+            for i in range(1, self.sweep_data.nchan + 1):
+                fig.add_subplot(nrows, ncols, i, aspect='equal', xticks=[], yticks=[])
+        axes = fig.axes
 
-        fig = plt.figure(figsize=(ncols, nrows))
-        # fig, subplots = plt.subplots(nrows, ncols, figsize=(ncols, nrows))
-        plt.rc('font', size=8)
+        # Make this wrapper so `parallel_plot` can be canceled
+        def callback_wrapper():
+            if self._plot_cancelled:
+                raise InterruptedError('Plotting Cancelled')
+            if callback is not None:
+                callback()
 
-        # loop over resonators to perform fit
-        subplots = []
-        for i in range(self.nchan):
-            subplot = plt.subplot2grid(
-                (nrows, ncols), (i // ncols, np.mod(i, ncols))
+        try:
+            parallel_plot(
+                fig,
+                axes,
+                create_resonator_mini_plot,
+                np.arange(nchan),
+                self.freq[:nchan],
+                self.s21[:nchan],
+                self.fit_f0[:nchan],
+                np.isin(np.arange(nchan), self.onres_ind[:nchan]),
+                np.isin(np.arange(nchan), self.flagged[:nchan]),
+                callback=callback_wrapper,
             )
-            subplots.append(subplot)
+        except InterruptedError:
+            return
+        
+        self._plotted = True
+        return fig
+
+    def _fit_i(self, i_chan):
         if pd is None:
             pd = QThreadJobPool(parent=self)
         return fig, pd.map(ResonatorData.plot, self.resonator_data, subplots)
@@ -490,8 +604,67 @@ class LoSweepData:
     
     def find_resonances(self) -> tuple[npt.NDArray, npt.NDArray]:
         rf = ResonatorFinder(self.data, self.f_center, self.df)
-        res_freq, res_depth = rf.find_resonators()
-        return res_freq, res_depth
+        res_freq, res_depth = rf.find_resonators(min_resonance_depth_dB=0.3, spacing_threshold_Hz=3e3, min_samples_per_resonance=2)
+        return res_freq , res_depth
+    
+    def plot_new_resonances(self, tile_name: str, f0: npt.NDArray, old_f0: npt.NDArray | None=None, nrows: int=4, ncols: int=3):
+        with PdfPages(f'{tile_name}_new_tones.pdf') as pdf:
+            custom_lines = [
+                Line2D([0], [0], color='blue', linestyle='-'),
+                Line2D([0], [0], color='red', linestyle='-'),
+            ]
+            custom_labels = [r'$S_{21}$', 'New Resonances']
+            if old_f0 is not None:
+                custom_lines.append(Line2D([0], [0], color='green', linestyle='--'))
+                custom_labels.append('Old Resonances')
+            group_size = nrows * ncols
+            group_starts = np.arange(0, self.nchan + group_size, group_size, dtype=int)
+            for start_idx, end_idx in zip(group_starts, group_starts[1:]):
+                fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
+                for i, i_tone in enumerate(range(start_idx, min(end_idx, self.nchan))):
+                    ax = np.ravel(axes)[i]
+                    ax.set_title(f'Tone {i_tone + 1}')
+                    this_freq = self.freq[i_tone]
+                    ax.plot(this_freq, self.s21[i_tone], color='blue')
+                    this_f0 = f0[(this_freq.min() <= f0) & (f0 <= this_freq.max())]
+                    for resonance in this_f0:
+                        ax.axvline(resonance, linestyle='-', color='red')
+                    if old_f0 is not None:
+                        this_old_f0 = old_f0[(this_freq.min() <= old_f0) & (old_f0 <= this_freq.max())]
+                        for resonance in this_old_f0:
+                            ax.axvline(resonance, linestyle='--', color='green')
+                    ax.set_xlabel('Frequency (MHz)')
+                    ax.set_ylabel(r'$|S_{21}|$')
+                    ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
+                fig.legend(
+                    custom_lines,
+                    custom_labels,
+                    loc='lower center',
+                    bbox_to_anchor=(0.5, 0.0),
+                    bbox_transform=fig.transFigure,
+                    ncol=3 if old_f0 is not None else 2,
+                )
+                fig.tight_layout(rect=[0, 0.05, 1, 1])
+                pdf.savefig(fig)
+                # plt.show()
+                plt.close(fig)
+                # pdb.set_trace()
+
+    
+    def generate_new_params_file(self, tile_name: str, old_params: tables.File | None=None, plot: bool=False):
+        f0, depths = self.find_resonances()
+        if plot:
+            old_f0 = None
+            if old_params is not None:
+                old_f0 = old_params.root.baseband_freqs[:] + old_params.root.lo_freq[()]
+            self.plot_new_resonances(tile_name, f0, old_f0)
+            
+        initialize_params_file(
+            tile_name,
+            f0 - self.f_center,
+            self.f_center,
+        )
+        pdb.set_trace()
 
 
 def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
@@ -525,6 +698,7 @@ class LoSweep:
         self.full_span = full_span
         self.f_center = rfsoc.get_channel(chan).lo_freq
         self.diff_to_flag = diff_to_flag
+        self._data = None
 
         rfsoc.set_frequency(chan, self.f_center)
         if tone_shift != 0:
@@ -543,7 +717,6 @@ class LoSweep:
             )
             rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
 
-        self.rfchan = rfsoc.get_channel(chan)
         self.tone_list = rfsoc.get_tone_list(chan)[0]
 
 
@@ -558,6 +731,12 @@ class LoSweep:
     def cancel(self):
         """Cancel the LO sweep."""
         self._cancel = True
+    
+    @property
+    def data(self) -> LoSweepData:
+        if self._data is None:
+            raise RuntimeWarning('Attempting to access nonexistant data of an LO sweep. Has the sweep been run yet?')
+        return self._data
 
     def _get_data_at(self, lo_freq: float) -> npt.NDArray:
         """
@@ -583,11 +762,12 @@ class LoSweep:
 
         # Read values and trash initial read, suspecting linear delay is cause..
         # toss 20 packets in the garbage
-        packets = capture_packets(self.rfchan, 20)
+        packets = self.rfsoc.capture_packets(self.chan, 20)
 
         # Actually use this data
+        # TODO: Can reduce Naccums to speed up LO sweep
         Naccums = 100
-        packets = capture_packets(self.rfchan, Naccums)
+        packets = self.rfsoc.capture_packets(self.chan, Naccums)
         I = []
         Q = []
         # for packet in packets:
@@ -613,7 +793,7 @@ class LoSweep:
         """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file"""
         _logger.info('Performing final setup before LO sweep...')
         # Final setup before sweep
-        chanmask = self.rfchan.chanmask
+        chanmask = self.rfsoc.get_chanmask(self.chan)
 
         if np.size(chanmask) == 0:  # Chanmask hasn't been set, so use all ones
             chanmask = np.ones(np.size(self.tone_list), dtype=int)
@@ -658,7 +838,7 @@ class LoSweep:
 
         # Set the LO back to the original frequency
         self.rfsoc.set_frequency(self.chan, self.f_center)
-        self.data = data
+        self._data = data
         return data
 
 
@@ -742,32 +922,81 @@ class PowerSweep:
 if __name__ == '__main__':
     import pdb
 
-    # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
-    # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
-    sfreq, z = data.data
-
-    # NOTE: This is reversed for channel 2 only
-    sfreq = sfreq[::-1]
-
-    s21_sqrd = z.real ** 2 + z.imag ** 2
-    s21_pow = 10 * np.log10(s21_sqrd)
-    for i in range(data.nchan):
-        plt.plot(sfreq[i] / 1e6, s21_pow[i])
-    plt.xticks(fontsize=16)
-    plt.yticks(fontsize=16)
-    plt.xlabel("Frequency (MHz)", fontsize=18)
-    plt.ylabel("dB", fontsize=18)
-    plt.legend(["S21 of resonator sweep"], fontsize=18)
-    plt.show()
-
-
-    # finder.plot()
-
-    finder = ResonatorFinder(
-        (sfreq, z),
-        data.f_center,
-        1e3,
-    )
-    freqs = finder.find_resonators()
+    # Lab Testing
+    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
+    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
+    tile_name = 'Device_aSi1_Channel3'
+    data = LoSweepData.from_h5(f'/data/20260127/20260127_{tile_name}_blind_LO_Sweep_hour13p8542.h5')
+    # old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
+    old_params = None
     pdb.set_trace()
+    data.generate_new_params_file(tile_name, old_params, plot=True)
+    pdb.set_trace()
+    # data = LoSweepData.from_h5('/data/20251204/20251204_100_tone_uniform_202050829_LO_Sweep_hour16p4036.h5')
+    # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
+    # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
+
+    # """  """class Incrementer:
+    #     def __init__(self):
+    #         self.val = 0
+    #         self.lock = Lock()
+
+    #     def __call__(self):
+    #         self.val += 1
+    #         # print(f'LO Sweep progress: {self.val}', flush=True)
+    # inc = Incrementer()
+    # def callback():
+    #     with inc.lock:
+    #         inc()
+    # # import timeit
+    # fit = data.fit(callback=callback)
+    # # time = timeit.timeit('fit = data.fit(callback=callback)', globals=globals(), number=10)
+    # # print(time)
+    # # print([f for f in fit])
+    # pdb.set_trace()
+    i_res = 10
+    plt.figure()
+    plt.title('IQ Circle')
+    plt.plot(data.data_I[i_res], data.data_Q[i_res])
+    plt.xlabel('Data I')
+    plt.ylabel('Data Q')
+    plt.figure()
+    plt.title('S21')
+    plt.plot(data.freq[i_res], data.s21[i_res])
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('S21')
+    plt.show()
+    pdb.set_trace()
+
+    # Telescope Testing
+    # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
+    # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
+    data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
+    data.fit(callback=callback)
+    fig = data.plot(callback=callback)
+    # plt.tight_layout()
+    plt.show()
+    # pdb.set_trace()
+    # sfreq, z = data.data
+
+    # # NOTE: This is reversed for channel 2 only
+    # sfreq = sfreq[::-1]
+
+    # s21_sqrd = z.real ** 2 + z.imag ** 2
+    # s21_pow = 10 * np.log10(s21_sqrd)
+    # for i in range(data.nchan):
+    #     plt.plot(sfreq[i] / 1e6, s21_pow[i])
+    # plt.xticks(fontsize=16)
+    # plt.yticks(fontsize=16)
+    # plt.xlabel("Frequency (MHz)", fontsize=18)
+    # plt.ylabel("dB", fontsize=18)
+    # plt.legend(["S21 of resonator sweep"], fontsize=18)
+    # plt.show()
+
+    # finder = ResonatorFinder(
+    #     (sfreq, z),
+    #     data.f_center,
+    #     1e3,
+    # )
+    # freqs = finder.find_resonators()
+    # pdb.set_trace()

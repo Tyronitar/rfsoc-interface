@@ -9,13 +9,21 @@ from dataclasses import dataclass
 from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Literal
 from datetime import datetime
 import logging
-from concurrent.futures import Future, CancelledError
+from concurrent.futures import Future, CancelledError, ProcessPoolExecutor
 import itertools
 from itertools import islice
 import copy
 import sys
 from multiprocessing.connection import Connection
 import stat
+
+import io
+from copy import deepcopy
+from PIL import Image
+from functools import partial
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from matplotlib.figure import Figure
 
 import numpy as np
 import numpy.typing as npt
@@ -35,7 +43,7 @@ _tele_logger = logging.getLogger('telescopeControl')
 IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
 MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
 
-BAD_RFSOC_TONE_START_INDEX = 8  # First 8 ones are bad...
+BAD_RFSOC_TONE_START_INDEX = 0  # TODO: Remove all references to this
 
 GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
 USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
@@ -412,6 +420,23 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
         elif response.lower() == 'err':
             raise RuntimeError(f'{err_msg}: {data}')
 
+def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_values=0) -> npt.NDArray:
+    """Pad an array with zeros along an axis to a target length.
+
+    Parameters:
+        x (npt.NDArray): The input array.
+        target_length (int): The target length along the specified axis.
+        axis (int): The axis along which to pad.
+
+    Returns:
+        npt.NDArray: The padded array.
+    """
+    pad_widths = [(0, 0)] * x.ndim
+    pad_amount = target_length - x.shape[axis]
+    if pad_amount < 0:
+        raise ValueError(f'Target length {target_length} is less than current length {x.shape[axis]} along axis {axis}.')
+    pad_widths[axis] = (0, pad_amount)
+    return np.pad(x, pad_widths, mode='constant', constant_values=constant_values)
 
 #
 # Scipy signal processing utils
@@ -526,6 +551,43 @@ def axis_slice(a, start=None, stop=None, step=None, axis=-1):
     a_slice = [slice(None)] * a.ndim
     a_slice[axis] = slice(start, stop, step)
     b = a[tuple(a_slice)]
+    return b
+
+def axis_index(a: npt.NDArray, indices: npt.ArrayLike | tuple[npt.ArrayLike, ...], axis: int | tuple[int, ...]=-1):
+    """Index `a` along axis `axis` with `indices`.
+
+    Parameters
+    ----------
+    a : numpy.ndarray
+        The array to be indexed.
+    indices : array-like
+        The indices to use for indexing.
+    axis : int, optional
+        The axis of `a` to be indexed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from scipy.signal._arraytools import axis_index
+    >>> a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> axis_index(a, [0, 2], axis=1)
+    array([[1, 3],
+           [4, 6],
+           [7, 9]])
+    >>> axis_index(a, [1, 2], axis=0)
+    array([[4, 5, 6],
+           [7, 8, 9]])
+    """
+    if isinstance(axis, tuple):
+        if len(indices) != len(axis):
+            raise ValueError("If axis is a tuple, indices must be a tuple of the same length.")
+    a_index = [slice(None)] * a.ndim
+    if isinstance(axis, tuple):
+        for i, ax in enumerate(axis):
+            a_index[ax] = indices[i]
+    else:
+        a_index[axis] = indices
+    b = a[tuple(a_index)]
     return b
 
 def axis_reverse(a, axis=-1):
@@ -734,8 +796,108 @@ def get_beammap_file_template(date: str, setnum: int, data_dir: str=DATA_DIRECTO
 
 def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
     return f'{params_dir}/params_tile_{tile_name}.h5'
-    #
+
+#
+# Parallelized Plotting
+#
+
+def rasterize(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', dpi=200, pad_inches=0)
+    buf.seek(0)
+    pil_img = deepcopy(Image.open(buf))
+    buf.close()
+    
+    return pil_img
+
+def _parallel_plot_worker(*args, plot_fn):
+    fig = plt.figure(figsize=(1,1))
+    mpl.font_manager._get_font.cache_clear()  # necessary to reduce text corruption artifacts
+    ax = fig.add_subplot(xticks=[], yticks=[])
+    
+    plot_fn(fig, ax, *args)
+    pil_img = rasterize(fig)
+    plt.close()
+    
+    return pil_img
+
+def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, callback: Callable | None=None):
+    with ProcessPoolExecutor(max_workers=8) as executor:
+        plots = executor.map(
+            partial(_parallel_plot_worker, plot_fn=plot_fn),
+            *iterables,
+        )
+        for ax, rastered in zip(np.ravel(axes), plots):
+            im = ax.imshow(rastered)
+            
+            ax.draw_artist(ax.patch)
+            ax.draw_artist(im)
+            # ax.set_aspect('equal', adjustable='box')
+            fig.canvas.update()
+            fig.canvas.flush_events()
+            if callback is not None:
+                callback()
+
+    # fig.subplots_adjust(left=0, right=1, top=1, bottom=0, hspace=0, wspace=0)
+    fig.tight_layout()
+    
+    return fig
+
+
+def reset_axes(ax: plt.Axes):
+    """Restore a Matplotlib Axes to a clean, default state.
+    
+    Useful after imshow(), pcolormesh(), etc. cine they change state that isn't reset
+    by ax.cla().
+    """
+    ax.cla()
+
+    # Reset aspect and layout
+    ax.set_aspect('auto', adjustable='box')
+
+    # Autoscaling
+    ax.autoscale(enable=True, axis="both", tight=False)
+    ax.set_autoscale_on(True)
+
+    # Remove fixed limits (important after imshow)
+    ax.set_xlim(auto=True)
+    ax.set_ylim(auto=True)
+
+    # Turn off image-style behavior
+    for im in ax.images:
+        im.remove()
+
+    # Reset scale (in case log/symlog was used)
+    ax.set_xscale("linear")
+    ax.set_yscale("linear")
+
+    # Reset margins to Matplotlib defaults
+    ax.margins(x=0.05, y=0.05)
+
+    # Grid & ticks (optional, but predictable)
+    ax.grid(False)
+
+
 if __name__ == '__main__':
+    def plot_function(fig, ax, x, y):
+        ax.plot(x, y)
+    
+    grid_shape = (3, 2)
+    callback = lambda: print('hi')
+    fig, axes = plt.subplots(*grid_shape)
+
+    fig = parallel_plot(
+        fig,
+        axes,
+        plot_function,
+        np.random.random((6, 10)),
+        np.random.random((6, 10)),
+        callback=callback,
+    )
+    fig.show()
+    plt.show()
+    exit()
+
     import timeit, functools
     from scipy.signal import decimate
     n = 100000000

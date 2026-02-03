@@ -1,15 +1,17 @@
-from typing import TYPE_CHECKING, Iterator, Callable
+from typing import TYPE_CHECKING, Iterator, Callable, Protocol
 from functools import partial
 from multiprocessing import Queue, Pipe
 import time
+from abc import ABC, abstractmethod
 
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, Signal, QCoreApplication
+from kidpy3.data_handler import Rfchan
 
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.settings import SettingsError
-from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
-from rfsocinterface.core.utils import wait_for_telescope_command
+from rfsocinterface.core.utils import wait_for_telescope_command, PERMISSIONS_USR_RW
+from rfsocinterface.gui.widgets import CheckableComboBox, SaveLocationWidget
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
@@ -38,12 +40,12 @@ class MainWidget(QWidget):
                 item.setCheckState(Qt.CheckState.Unchecked)
                 total += 1
 
-    def get_selected_channels(self, combob_box: CheckableComboBox) -> Iterator[tuple[RFSOCWrapper, int]]:
-        checked_ids = combob_box.checked_indices()
-        checked_text = [combob_box.itemText(i) for i in checked_ids]
+    def get_selected_channels(self, combo_box: CheckableComboBox) -> list[tuple[RFSOCWrapper, int]]:
+        checked_ids = combo_box.checked_indices()
+        checked_text = [combo_box.itemText(i) for i in checked_ids]
         if not checked_text:
             raise SettingsError('No channel selected')
-        return map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text)
+        return list(map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text))
     
     def closeEvent(self, event):
         return super().closeEvent(event)
@@ -84,3 +86,23 @@ class TelescopeMainWidget(MainWidget):
 
     def closeEvent(self, event):
         return super().closeEvent(event)
+
+
+class DataCollectionMainWidget(MainWidget):
+    channelComboBox: CheckableComboBox
+    save_location_widget: SaveLocationWidget
+
+    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent=None):
+        super().__init__(main_window, rfsocs, settings, parent=parent)
+    
+    def setup_data_collection(self) -> tuple[list[Rfchan], str, int]:
+        chans = self.get_selected_channels(self.channel_comboBox)
+        rfchans = []
+        for rfsoc, chan in chans:
+            rfchan = rfsoc.get_channel(chan)
+            save_location = self.save_location_widget.get_chosen_save_location(chan_name=rfchan.tile_name, touch_file=True, mode=PERMISSIONS_USR_RW, mkdir=True)
+            rfchan.raw_filename = str(save_location)
+            rfchans.extend(rfsoc.setup_capture(save_location, [chan]))
+        date = save_location.stem[:8]
+        setnum = int(save_location.stem[-4:])
+        return rfchans, date, setnum

@@ -14,16 +14,16 @@
     along with Elypson/qt-collapsible-section. If not, see <http:#www.gnu.org/licenses/>.
 '''
 
+import sys
+import time
+
 import PySide6.QtCore as cr
 from PySide6.QtCore import Qt, QEvent, QChildEvent
 import PySide6.QtWidgets as wd
 from PySide6.QtGui import QMouseEvent
-# import PyQt5.QtGui as gui
-import sys
-import time
-from rfsocinterface.gui.utils import layout_widgets
-from rfsocinterface.gui.utils import get_total_height
-from rfsocinterface.gui.widgets.icon_label import IconLabel
+
+from rfsocinterface.gui.widgets.utils import layout_widgets
+from rfsocinterface.gui.widgets.utils import get_total_height
 
 TOGGLE_BUTTON_CSS = """
         QToolButton {
