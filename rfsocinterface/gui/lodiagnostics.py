@@ -498,6 +498,6 @@ if __name__ == '__main__':
 
     app = QApplication()
 
-    dw = DiagnosticsDialog.from_h5('/data/20260127/20260127_Device_aSi1_Channel3_blind_LO_Sweep_hour13p6814.h5')
+    dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
     dw.show()
     app.exec()

@@ -604,7 +604,13 @@ class LoSweepData:
     
     def find_resonances(self) -> tuple[npt.NDArray, npt.NDArray]:
         rf = ResonatorFinder(self.data, self.f_center, self.df)
-        res_freq, res_depth = rf.find_resonators(min_resonance_depth_dB=0.3, spacing_threshold_Hz=3e3, min_samples_per_resonance=2)
+        res_freq, res_depth = rf.find_resonators(
+            min_resonance_depth_dB=0.2,
+            spacing_threshold_Hz=3e3,
+            min_samples_per_resonance=2,
+            max_resonance_width=30e3,
+            max_noise_fluctuation_dB=0.05,
+        )
         return res_freq , res_depth
     
     def plot_new_resonances(self, tile_name: str, f0: npt.NDArray, old_f0: npt.NDArray | None=None, nrows: int=4, ncols: int=3):
@@ -618,10 +624,11 @@ class LoSweepData:
                 custom_lines.append(Line2D([0], [0], color='green', linestyle='--'))
                 custom_labels.append('Old Resonances')
             group_size = nrows * ncols
-            group_starts = np.arange(0, self.nchan + group_size, group_size, dtype=int)
+            stop = self.nchan
+            group_starts = np.arange(0, stop + group_size, group_size, dtype=int)
             for start_idx, end_idx in zip(group_starts, group_starts[1:]):
                 fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
-                for i, i_tone in enumerate(range(start_idx, min(end_idx, self.nchan))):
+                for i, i_tone in enumerate(range(start_idx, min(end_idx, stop))):
                     ax = np.ravel(axes)[i]
                     ax.set_title(f'Tone {i_tone + 1}')
                     this_freq = self.freq[i_tone]
@@ -664,7 +671,6 @@ class LoSweepData:
             f0 - self.f_center,
             self.f_center,
         )
-        pdb.set_trace()
 
 
 def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
@@ -832,14 +838,54 @@ class LoSweep:
             _logger.debug(f'Shape of LO sweep data: {sweep_data.shape}')
 
             data = LoSweepData(self.tone_list, self.f_center, sweep_data, chanmask, diff_to_flag=self.diff_to_flag)
-            self._processed = True
-            _logger.info('Finished processing sweep results')
             data.saveh5(self.savefile)
 
         # Set the LO back to the original frequency
         self.rfsoc.set_frequency(self.chan, self.f_center)
         self._data = data
+
+        self._processed = True
+        _logger.info('Finished processing sweep results')
         return data
+
+
+class PowerSweepData:
+    def __init__(
+        self,
+        tone_list: npt.NDArray,
+        f_center: float,
+        sweeps: list[LoSweepData],
+        power_levels: npt.NDArray,
+        rfin: float,
+        rfout: float,
+    ):
+        self.f_ceter = f_center
+        self.tone_list = tone_list
+        self.sweeps = sweeps
+        self.power_levels = power_levels
+        self.rfin = rfin
+        self.rfout = rfout
+    
+    @property
+    def chanmask(self) -> npt.NDArray:
+        """npt.NDArray: The channel mask from the first sweep."""
+        return np.concatenate([sweep.chanmask for sweep in self.sweeps], axis=0)
+    
+    @ensure_path(1)
+    def saveh5(self, fname: Path):
+        """Save the power sweep to an HDF5 file."""
+        path = fname.with_suffix('.h5')
+        path.touch(PERMISSIONS_USR_RW)
+        with h5py.File(path, 'w') as fh:
+            for i, sweep in enumerate(self.sweeps):
+                fh.create_dataset(f'global_data/sweep_{i}', data=sweep.data)
+            fh.create_dataset('global_data/lo_freq', data=self.f_center)
+            fh.create_dataset('global_data/baseband_freqs', data=self.tone_list - self.f_center)
+            fh.create_dataset('global_data/chanmask', data=self.chanmask)
+            fh.create_dataset('global_data/power_levels', data=self.power_levels)
+            fh.create_dataset('global_data/rfin', data=self.rfin)
+            fh.create_dataset('global_data/rfout', data=self.rfout)
+        _logger.info(f'PowerSweepData saved to {str(fname)}')
 
 
 class PowerSweep:
@@ -871,6 +917,8 @@ class PowerSweep:
         self.freq_step = freq_step
         self.full_span = full_span
         self.f_center = rfsoc.get_channel(chan).lo_freq
+        self._data = []
+        self._sweeps = []
 
         self.rfchan = rfsoc.get_channel(chan)
         self.tone_list = rfsoc.get_tone_list(chan)[0]
@@ -878,6 +926,13 @@ class PowerSweep:
 
         self._processed = False
         self._cancel = False
+
+
+    @property
+    def data(self) -> npt.NDArray:
+        if self._data is None:
+            raise RuntimeWarning('Attempting to access nonexistant data of a power sweep. Has the sweep been run yet?')
+        return self._data
 
     @property
     def n_steps(self) -> int:
@@ -887,12 +942,18 @@ class PowerSweep:
     def cancel(self):
         """Cancel the LO sweep."""
         self._cancel = True
+        for sweep in self._sweeps:
+            sweep.cancel()
+
     
     def run_sweep(self, callback: Callable | None=None) -> ...:
         starting_rfin = self.rfsoc.get_rfin(self.chan)
         starting_rfout = self.rfsoc.get_rfout(self.chan)
         data = []
         for power_level in self.power_levels:
+            if self._cancel:
+                data = None
+                break
             this_rfout = starting_rfout - power_level
             this_rfin = starting_rfin + power_level
             if this_rfin < 0 or this_rfin > 31.75 or this_rfout < 0 or this_rfout > 31.75:
@@ -906,16 +967,21 @@ class PowerSweep:
                 self.rfsoc, self.chan, this_savefile, self.tone_shift,
                 self.freq_step, self.full_span,
             )
+            self._sweeps.append(sweep)
             this_sweep_data = sweep.run_sweep(callback=callback)
             data.append(this_sweep_data)
+
+        if data is None:
+            _logger.info('Sweep cancelled. Exiting...')
+            self._data = None
+        else:
+            self._data = np.array([sweep.data for sweep in data])
+            self._data = PowerSweepData(self.tone_list, self.f_center, data, self.power_levels, starting_rfin, starting_rfout)
+            self._data.saveh5(self.savefile)
         
+        # Reset to original power levels
         self.rfsoc.set_rfin(self.chan, starting_rfin)
         self.rfsoc.set_rfout(self.chan, starting_rfout)
-        pdb.set_trace()
-
-
-
-
     
 
 
@@ -925,12 +991,16 @@ if __name__ == '__main__':
     # Lab Testing
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
-    tile_name = 'Device_aSi1_Channel3'
-    data = LoSweepData.from_h5(f'/data/20260127/20260127_{tile_name}_blind_LO_Sweep_hour13p8542.h5')
-    # old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
-    old_params = None
-    pdb.set_trace()
-    data.generate_new_params_file(tile_name, old_params, plot=True)
+
+    tile_name = 'Device_aSi1_Channel2'
+    old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
+
+    # tile_name = 'Device_aSi2_Channel3'
+    # old_params = None
+
+    data = LoSweepData.from_h5(f'/data/20260203/20260203_{tile_name}_blind_LO_Sweep_hour14p2056.h5')
+    data.generate_new_params_file(tile_name, old_params, plot=False)
+    exit()
     pdb.set_trace()
     # data = LoSweepData.from_h5('/data/20251204/20251204_100_tone_uniform_202050829_LO_Sweep_hour16p4036.h5')
     # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')

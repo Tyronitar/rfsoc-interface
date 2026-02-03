@@ -197,7 +197,7 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
 
     #provide the name of the file
     match file_type.lower():
-        case 'lo' | 'tonelist':
+        case 'lo' | 'tonelist' | 'power':
             hour = float(datetime.now().strftime('%H')) \
                 + float(datetime.now().strftime('%M'))/60. \
                 + float(datetime.now().strftime('%S'))/3600.
@@ -207,6 +207,8 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
                     strings = [yymmdd, chan_name, 'LO_Sweep', hour_str]
                 case 'tonelist':
                     strings = [yymmdd, chan_name, 'tone_list', hour_str]
+                case 'power':
+                    strings = [yymmdd, chan_name, 'Power_Sweep', hour_str]
         case 'tod' | 'azel' | 'optcam':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:

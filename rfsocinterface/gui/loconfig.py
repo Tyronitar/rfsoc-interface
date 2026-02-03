@@ -127,6 +127,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     
     @Slot()
     def perform_sweep(self):
+        if self.buttonGroup.checkedButton() == self.power_sweep_radioButton:
+            return self.perform_power_sweep()
+
         try:
             selected_channels = self.get_selected_channels(self.channel_comboBox)
         except SettingsError:
@@ -410,6 +413,114 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             QApplication.processEvents()
             time.sleep(0.1)
         _logger.debug('All LO diagnostics dialogs finished')
+
+  
+    @Slot()
+    def perform_power_sweep(self):
+        try:
+            selected_channels = self.get_selected_channels(self.channel_comboBox)
+        except SettingsError:
+            self.channel_error_label.show()
+            return
+        self.channel_error_label.hide()
+
+        _logger.info('Beginning power sweep...')
+        sweep_succesful = self.run_power_sweeps(
+            selected_channels,
+        )
+
+        if not sweep_succesful:
+            _logger.info('Cancelling after first sweep...')
+            return
+
+    def run_power_sweeps(
+            self,
+            selected_channels: list[tuple[RFSOCWrapper, int]],
+    ) -> bool:
+
+        pd = IncrementalProgressDialog(
+            f'Setting Up Power Sweep...',
+            'Cancel',
+            0,
+            100,
+            parent=self,
+        )
+        pd.setAutoClose(True)
+        pd.show()
+        QApplication.processEvents()
+        increment_progress = make_progress_dialog_incrementer(pd)
+
+
+        # Setup sweeps for each selected channel
+        sweeps = self.setup_power_sweeps(selected_channels)
+
+        # Update progress dialog values
+        pd.setValue(0)
+        pd.setMinimum(0)
+        pd.setMaximum(sum(sweep.n_steps for sweep in sweeps))
+
+        # Create separate thread for each sweep
+        sweep_threads = []
+        for sweep in sweeps:
+            pd.canceled.connect(sweep.cancel)
+            sweep_threads.append(Thread(target=sweep.run_sweep, args=(increment_progress,)))
+
+        pd.setLabelText(f'Running Power Sweep{"s" if len(sweep_threads) > 1 else ""}...')
+        for sweep_thread in sweep_threads:
+            sweep_thread.start()
+
+        # Wait for all sweeps to finish or cancel
+        while not all ((sweep._processed or sweep._cancel) for sweep in sweeps):
+            QApplication.processEvents()
+            time.sleep(0.1)
+        
+        for sweep_thread in sweep_threads:
+            sweep_thread.join()
+
+        QApplication.processEvents()
+
+        if pd.wasCanceled():
+            _logger.info('Power Sweep Cancelled')
+            return False
+        
+        pd.close()
+
+        return True
+    
+    def setup_power_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]]) -> list[PowerSweep]:
+        # Get values from GUI, converting KHz to Hz
+        tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
+        freq_step = get_num_value(self.df_lineEdit)  * 1e3
+        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3
+        power_levels = [float(x.strip()) for x in self.power_levels_lineEdit.text().split(',')]
+        
+        sweeps = []
+        for rfsoc, chan in selected_channels:
+            chan_name = rfsoc.get_channel_name(chan)
+
+
+            savefile = get_filename(
+                file_type="power", chan_name=chan_name, mkdir=True
+            )
+            match self.buttonGroup.checkedButton():
+                case self.filename_elevation_radioButton:
+                    savefile = savefile.with_stem(f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}')
+                case self.filename_temperature_radioButton:
+                    savefile = savefile.with_stem(f'{savefile.stem}_temp_{self.filename_temperature_lineEdit.text()}')
+                case _:
+                    pass
+            sweeps.append(PowerSweep(
+                rfsoc,
+                chan,
+                savefile,
+                power_levels,
+                tone_shift,
+                freq_step,
+                full_span,
+            ))
+            
+        return sweeps
+
         
     def run_blind_sweep(self, rfsoc: RFSOCWrapper, chan: int):
         chan_name = rfsoc.get_channel_name(chan)
