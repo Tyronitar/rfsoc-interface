@@ -7,98 +7,174 @@ from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
 
 from rfsocinterface.core.utils import DATA_DIRECTORY
-
-
-def plot_timestream_errors( data_IQ,fs: float, lp_filt_freq:float = 10.0, onres_ind:npt.NDArray = None ):
+from matplotlib.backends.backend_pdf import PdfPages
+def plot_timestream_errors( data_freq_diss,fs: float, lp_filt_freq:float = 10.0, onres_ind:npt.NDArray = None, num_processing_blocks: int = 10 ):
     """Plot noise blobs for each detector."""
     # subtract the mean from each detector
 
-    if lp_filt_freq>0:
-        Ds_coef = int(fs/(1*lp_filt_freq)) #down sampling coefficient
-        filt_sos = signal.butter(5, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
-        data_IQ = signal.sosfiltfilt(filt_sos, data_IQ)
-        data_IQ = signal.decimate(data_IQ, Ds_coef, axis=2, ftype='iir', zero_phase=True)
-        fs = lp_filt_freq
-    n_det = len(data_IQ[0,:,0])
-    if onres_ind is None:
-        ncols = 1  
-    else:
-        ncols = 2
+    time_stream_size = data_freq_diss.shape[2]
+    n_det = len(onres_ind)
+    colors = plt.cm.viridis(np.linspace(0, 1, len(data_freq_diss[0, :, 0])))
+    block_freqndices = np.linspace(
+        0, time_stream_size, num_processing_blocks + 1, dtype=int
+    )
+    z_freq = np.zeros_like(data_freq_diss[0, :, :])
+    z_diss = np.zeros_like(data_freq_diss[1, :, :])
+    block_freqndices = np.linspace(
+            0, time_stream_size, num_processing_blocks + 1, dtype=int
+        )
+
+    for i in range(num_processing_blocks):
+        start, end = block_freqndices[i], block_freqndices[i + 1]
+        I = data_freq_diss[0, :, start:end]
+        diss = data_freq_diss[1, :, start:end]
+
+        mean_freq = np.mean(I, axis=1)
+        mean_diss = np.mean(diss, axis=1)
+        std_freq  = np.std(I, axis=1)
+        std_diss  = np.std(diss, axis=1)
+
+        std_freq[std_freq == 0] = np.nan
+        std_diss[std_diss == 0] = np.nan
+
+        z_freq[:, start:end] = np.abs(I[:] - mean_freq[:, None]) / std_freq[:, None]
+        z_diss[:, start:end] = np.abs(diss[:] - mean_diss[:, None]) / std_diss[:, None]
+
+        tone_set = np.arange(0, len(data_freq_diss[0, :, 0]))
+        offres_ind_mask = ~np.isin(tone_set, onres_ind)
+        offres_ind = tone_set[offres_ind_mask]
+
+    z_freq_plot = z_freq[:,:]
+    z_diss_plot = z_diss[:,:]
+    num_nongaussian_freq = np.zeros_like(z_freq_plot[0, :])
+    num_nongaussian_diss = np.zeros_like(z_freq_plot[0, :])
+
     nrows = 2
-    colors = plt.cm.viridis(np.linspace(0, 1, n_det))
+    ncols = 2
     fig, axes = plt.subplots(
         nrows, ncols,
         figsize=(4 * ncols, 4 * nrows),
         squeeze=True
     )
-    t_final = len(data_IQ[0, 0])/fs
-    t = np.arange(0, t_final, fs)
+    for det in onres_ind:
+        axes[0, 0].plot(z_freq_plot[det], color = colors[det])
+        axes[0, 1].plot(z_diss_plot[det], color = colors[det])
+        nongaussian_mask_freq =[1 if i >=5 else 0 for i in z_freq_plot[det]]
+        num_nongaussian_freq += nongaussian_mask_freq
+        nongaussian_mask_diss =[1 if i >=5 else 0 for i in z_diss_plot[det]]
+        num_nongaussian_diss += nongaussian_mask_diss
+    axes[0,0].plot(num_nongaussian_freq, color = 'red', label = "number of non gaussian detectors")
+    axes[0,1].plot(num_nongaussian_diss, color = 'red', label = "number of non gaussian detectors")
 
+    for det in offres_ind:
+        axes[1, 0].plot(z_freq_plot[det], color = colors[det])
+        axes[1, 1].plot(z_diss_plot[det], color = colors[det])
+    axes[0,0].set_ylabel('Z Score (I)', fontsize=16)
+    axes[1,0].set_ylabel('Z Score (I)', fontsize=16)
 
-    det_std_I  = np.std(data_IQ[0], axis=1)
-    det_std_Q  = np.std(data_IQ[1], axis=1)
-    det_mean_I  = np.mean(data_IQ[0], axis=1)
-    det_mean_Q  = np.mean(data_IQ[1], axis=1)
+    axes[0,1].set_ylabel('Z Score (diss)', fontsize=16)
+    axes[1,1].set_ylabel('Z Score (diss)', fontsize=16)
 
-    for det in range(n_det):
-        if det_std_I[det] == 0 or det_std_Q[det] == 0:
-            continue
-
-        var_I = (data_IQ[0, det, :]-det_mean_I[det]) / det_std_I[det]
-        var_Q = (data_IQ[1, det, :]-det_mean_Q[det]) / det_std_Q[det]
-        if onres_ind is None:
-            axes[0].plot(var_I, '.', color=colors[det])
-            axes[1].plot(var_Q, '.', color=colors[det])
-            axes[0].set_ylabel('Z Score(I)')
-            axes[1].set_ylabel('Z Score(Q)')
-
-        else:
-            if det in onres_ind:
-                axes[0, 0].plot(var_I, '.', color=colors[det])
-                axes[0, 1].plot(var_Q, '.', color=colors[det])
-            else:
-                axes[1, 0].plot(var_I, '.', color=colors[det])
-                axes[1, 1].plot(var_Q, '.', color=colors[det])
-           
-            axes[0,0].set_ylabel('Z Score (I)', fontsize=16)
-            axes[1,0].set_ylabel('Z Score (I)', fontsize=16)
-
-            axes[0,1].set_ylabel('Z Score (Q)', fontsize=16)
-            axes[1,1].set_ylabel('Z Score (Q)', fontsize=16)
-
-            axes[0,0].set_title('Z Score vs Index for on resonance I')
-            axes[0,1].set_title('Z Score vs Index for on resonance Q')
-            axes[1,0].set_title('Z Score vs Index for off resonance I')
-            axes[1,1].set_title('Z Score vs Index for off resonance Q')
-
-
-
-            
-
-    if onres_ind is None:
-        mean_var_I = np.mean(abs(data_IQ[0, :, :]-det_mean_I[:, None]) / det_std_I[:, None], axis = 0)
-        mean_var_Q = np.mean(abs(data_IQ[1, :, :]-det_mean_Q[:, None]) / det_std_Q[:, None], axis = 0)
-
-        axes[0].plot(mean_var_I, color = 'red', label = 'average')
-        axes[1].plot(mean_var_Q, color = 'red', label = 'average')
-    else:
-        onres_mean_var_I = np.mean(abs(data_IQ[0, onres_ind, :]-det_mean_I[onres_ind, None]) / det_std_I[onres_ind, None], axis = 0)
-        onres_mean_var_Q = np.mean(abs(data_IQ[1, onres_ind, :]-det_mean_Q[onres_ind, None]) / det_std_Q[onres_ind, None], axis = 0)
-
-        tone_set = np.arange(0, len(data_IQ[0, :, 0]))
-        offres_ind_mask = ~np.isin(tone_set, onres_ind)
-        offres_ind = tone_set[offres_ind_mask]
-        offres_mean_var_I = np.mean(abs(data_IQ[0, offres_ind, :]-det_mean_I[offres_ind, None]) / det_std_I[offres_ind, None], axis = 0)
-        offres_mean_var_Q = np.mean(abs(data_IQ[1, offres_ind, :]-det_mean_Q[offres_ind, None]) / det_std_Q[offres_ind, None], axis = 0)
-
-        axes[0, 0].plot(onres_mean_var_I, color = 'red', label = 'average')
-        axes[0, 1].plot(onres_mean_var_Q, color = 'red', label = 'average')
-        axes[1, 0].plot(offres_mean_var_I, color = 'red', label = 'average')
-        axes[1, 1].plot(offres_mean_var_Q, color = 'red', label = 'average')
-
-        bad_indices_I = np.where(onres_mean_var_I>= 3)
-        bad_indices_Q = np.where(onres_mean_var_Q >= 3)
-    plt.legend()
-    fig.suptitle('timestream_data', fontsize=16)
-    plt.tight_layout()
+    axes[0,0].set_title('Z Score vs Index for on resonance I')
+    axes[0,1].set_title('Z Score vs Index for on resonance diss')
+    axes[1,0].set_title('Z Score vs Index for off resonance I')
+    axes[1,1].set_title('Z Score vs Index for off resonance diss')
+    axes[0,0].legend()
+    axes[0,1].legend()
     plt.show()
+
+    fig = plt.figure(figsize=(9, 6))
+    ax = plt.subplot()
+    #z_freq_on = z_freq[onres_ind, :]
+    #z_diss_on = z_diss[onres_ind, :]
+    #z_freq_off = z_freq[offres_ind, :]
+    #z_diss_off = z_diss[offres_ind, :]
+    #on_med = (
+    #    (np.median(z_freq_on, axis=0)*num_nongaussian_freq + np.median(z_diss_on, axis=0)*num_nongaussian_diss)/2
+    #)
+    #cr_metric = on_med
+    #fig = plt.figure(figsize=(9, 6))
+    #ax = plt.subplot()
+    
+    #ax.hist(cr_metric, alpha = 0.5, bins = 50)
+    #ax.set_xlabel(f'CR Metric', fontsize=16)
+    #ax.set_yscale('log')
+    #ax.set_ylabel("Num at CR Metric", fontsize=16)
+    #ax.tick_params(labelsize=14)
+    #ax.legend(fontsize=14, loc='best')
+    #plt.show()
+
+
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from scipy import signal
+
+def make_freq_freq_noise_blob_report(
+    z_freq: np.ndarray,
+    onres_ind: np.ndarray,
+    output_pdf: str = "freq_freq_noise_blobs.pdf",
+    lp_filt_freq: float = 1.0,
+    fs: float = 488
+):
+    """
+    Create a PDF with one plot per resonator.
+    Each plot overlays freq–freq noise blobs of that resonator
+    against all other resonators.
+    """
+
+    n_det = len(onres_ind)
+    colors = plt.cm.viridis(np.linspace(0, 1, n_det))
+
+    # Filter setup (once)
+    if lp_filt_freq > 0:
+        Ds_coef = int(fs / (5 * lp_filt_freq))
+        filt_sos = signal.butter(
+            5, lp_filt_freq, btype="low", fs=fs, output="sos"
+        )
+
+    # Pre-filter and decimate once per detector
+    z_proc = {}
+    for det in onres_ind:
+        x = z_freq[det]
+        if lp_filt_freq > 0:
+            x = signal.sosfiltfilt(filt_sos, x)
+            x = signal.decimate(x, Ds_coef, ftype="iir", zero_phase=True)
+        z_proc[det] = x
+
+    with PdfPages(output_pdf) as pdf:
+        for i, det_i in enumerate(onres_ind):
+            fig, ax = plt.subplots(figsize=(6, 6))
+
+            x = z_proc[det_i]
+
+            for j, det_j in enumerate(onres_ind):
+                if det_j == det_i:
+                    continue
+
+                y = z_proc[det_j]
+
+                ax.scatter(
+                    x, y,
+                    s=2,
+                    alpha=0.25,
+                    color=colors[j],
+                    label=f"{det_j}"
+                )
+
+            ax.set_title(f"Freq–Freq Noise Blobs\nResonator {det_i}")
+            ax.set_xlabel(f"Z(freq) – det {det_i}")
+            ax.set_ylabel("Z(freq) – other resonators")
+            ax.set_aspect("equal", adjustable="box")
+            ax.grid(alpha=0.2)
+
+            # Optional: legend for small N
+            if n_det <= 12:
+                ax.legend(markerscale=3, fontsize=8)
+
+            pdf.savefig(fig)
+            plt.close(fig)
+
+    print(f"Saved PDF report to {output_pdf}")

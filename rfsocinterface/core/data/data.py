@@ -551,13 +551,13 @@ def find_non_gaussian_packets(
         z_Q_off = np.abs(Q[offres_ind] - mean_Q[offres_ind, None]) / std_Q[offres_ind, None]
 
         on_med = (
-            (np.mean(z_I_on, axis=0) + np.mean(z_Q_on, axis=0))/2
+            (np.median(z_I_on, axis=0) + np.median(z_Q_on, axis=0))/2
         )
         off_med= (
-            (np.mean(z_I_off, axis=0) + np.mean(z_Q_off, axis=0))/2
+            (np.median(z_I_off, axis=0) + np.median(z_Q_off, axis=0))/2
         )
         cr_metric[start:end] = on_med - off_med
-    bad_indices = np.where(cr_metric>1)[0]
+    bad_indices = np.where(cr_metric>2)[0]
     missed_packets = np.empty((0, 2), dtype=int)
 
     for i in bad_indices.flatten():
@@ -1311,7 +1311,6 @@ class ProcessedDataL0(BaseProcessedData):
                         this_data_IQ[:, :, non_gaussian_interpolated_indices] = non_gaussian_interpolated_data
 
                 data_IQ.append(this_data_IQ)
-                #time_streams.plot_timestream_errors(this_data_IQ,fs, lp_filt_freq=50, onres_ind = on_res)
 
                 #Remove artifacts at beginning and end of timestream
                 print('done copying data')
@@ -1634,7 +1633,6 @@ class ProcessedDataL1(ProcessedData):
             IQ_to_gain_phase_angle,
         )
         fs = 1 / np.median(np.diff(new_data.timestamp[:]))
-        time_streams.plot_timestream_errors(new_data.data_IQ[:],fs, lp_filt_freq=50, onres_ind = new_data.onres_ind)
 
         if do_electronics_noise_removal:
             
@@ -1653,6 +1651,7 @@ class ProcessedDataL1(ProcessedData):
             data_gain_phase[..., n:] = unblocked_clean_data[..., -1:]
 
         new_generate_calibrated_data(new_data)
+        time_streams.plot_timestream_errors(new_data.data_freq_diss[:],fs, lp_filt_freq=50, onres_ind = new_data.onres_ind)
 
         return new_data
 
