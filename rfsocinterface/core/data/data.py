@@ -23,6 +23,8 @@ from scipy.stats import linregress
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
+from rfsocinterface.analysis import time_streams
+
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_FULL
 from rfsocinterface.core.losweep import LoSweepData
 from rfsocinterface.core.utils import (
@@ -512,6 +514,60 @@ def find_missed_packets_with_indices(
     print(f'{np.sum(missed_packets[:, 1])} missed packets')
     return missed_packets
 
+def find_non_gaussian_packets(
+        data_IQ: npt.NDArray,
+        num_processing_blocks: int,
+        onres_ind: npt.NDArray 
+) -> npt.NDArray:
+    time_stream_size = data_IQ.shape[2]
+    cr_metric = np.zeros(time_stream_size)
+    cr_metric_off = np.zeros(time_stream_size)
+
+    block_indices = np.linspace(
+        0, time_stream_size, num_processing_blocks + 1, dtype=int
+    )
+
+    for i in range(num_processing_blocks):
+        start, end = block_indices[i], block_indices[i + 1]
+
+        I = data_IQ[0, :, start:end]
+        Q = data_IQ[1, :, start:end]
+
+        mean_I = np.mean(I, axis=1)
+        mean_Q = np.mean(Q, axis=1)
+        std_I  = np.std(I, axis=1)
+        std_Q  = np.std(Q, axis=1)
+
+        std_I[std_I == 0] = np.nan
+        std_Q[std_Q == 0] = np.nan
+
+        z_I_on = np.abs(I[onres_ind] - mean_I[onres_ind, None]) / std_I[onres_ind, None]
+        z_Q_on = np.abs(Q[onres_ind] - mean_Q[onres_ind, None]) / std_Q[onres_ind, None]
+
+        tone_set = np.arange(0, len(data_IQ[0, :, 0]))
+        offres_ind_mask = ~np.isin(tone_set, onres_ind)
+        offres_ind = tone_set[offres_ind_mask]
+        z_I_off = np.abs(I[offres_ind] - mean_I[offres_ind, None]) / std_I[offres_ind, None]
+        z_Q_off = np.abs(Q[offres_ind] - mean_Q[offres_ind, None]) / std_Q[offres_ind, None]
+
+        on_med = (
+            (np.mean(z_I_on, axis=0) + np.mean(z_Q_on, axis=0))/2
+        )
+        off_med= (
+            (np.mean(z_I_off, axis=0) + np.mean(z_Q_off, axis=0))/2
+        )
+        cr_metric[start:end] = on_med - off_med
+    bad_indices = np.where(cr_metric>1)[0]
+    missed_packets = np.empty((0, 2), dtype=int)
+
+    for i in bad_indices.flatten():
+        index = i  # np.diff has shape n - 1
+        missed_packets = np.vstack([missed_packets, [index, 1]])
+    print(f'{np.sum(missed_packets[:, 1])} missed packets')
+    return missed_packets
+
+
+
 
 def find_missed_packets(
     raw_timestamp: tables.Array,
@@ -887,6 +943,7 @@ class BaseProcessedData(DataStorage):
             path.touch(PERMISSIONS_ALL_FULL)
         new_file = tables.open_file(path, mode=mode)
 
+
         new_file.root._v_attrs.date = self.date
         new_file.root._v_attrs.setnum = self.setnum
         new_file.root._v_attrs.receipt = self.receipt
@@ -1060,7 +1117,7 @@ class ProcessedDataL0(BaseProcessedData):
         setnum: int,
         beam_map_mode: bool=False,
     ) -> ProcessedDataL0:
-
+        remove_CR = False
         folder = Path(f'{DATA_DIRECTORY}/{date}')
         todtemplate = get_tod_template(date, setnum)
         tele_template = Path(get_azel_template(date, setnum))
@@ -1179,6 +1236,7 @@ class ProcessedDataL0(BaseProcessedData):
                     else:
                         missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
                         this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
+
                     n_missed = np.sum(missed_packets[:, 1])
                     total_samples = n_samples + n_missed
                     time_ordered_data_group._v_attrs.n_samples = total_samples
@@ -1228,9 +1286,34 @@ class ProcessedDataL0(BaseProcessedData):
                 this_data_IQ[0, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_i[:]
                 this_data_IQ[1, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_q[:]
                 this_data_IQ = this_data_IQ[:, valid_tone_index]
+
                 if n_missed > 0:
                     this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
+                if remove_CR:
+                    this_chanmask = raw_global_data.chanmask[:]
+                    on_res = np.argwhere(this_chanmask == 1).flatten()
+                    non_gaussian_packets = find_non_gaussian_packets(this_data_IQ, 10, on_res)
+                    n_non_gaussian = np.sum(non_gaussian_packets)
+
+                    if n_non_gaussian >0:
+                        non_gaussian_interpolated_indices, non_gaussian_interpolated_data = interpolate_missing_data(
+                                this_data_IQ[0, :, :],
+                                this_data_IQ[1, :, :],
+                                timestamp,
+                                non_gaussian_packets,
+                                corrected_packet_index[:],
+                                np.arange(0, len(valid_tone_index), 1)
+                            )
+                        # A little ugly from trying to reuse the interpolation code TODO ask Nia how to fix this
+                        non_gaussian_interpolated_indices = non_gaussian_packets[:, 0].flatten()
+
+
+                        this_data_IQ[:, :, non_gaussian_interpolated_indices] = non_gaussian_interpolated_data
+
                 data_IQ.append(this_data_IQ)
+                #time_streams.plot_timestream_errors(this_data_IQ,fs, lp_filt_freq=50, onres_ind = on_res)
+
+                #Remove artifacts at beginning and end of timestream
                 print('done copying data')
 
                 # Link to LO sweep
@@ -1397,6 +1480,7 @@ class ProcessedDataL1(ProcessedData):
         electronics_noise_lp_filt_freq: float=10,
         ds_factor: int=1,
         max_modes: int=30,
+        block_length: float = 100,
     ) -> ProcessedDataL1:
         pfile_path = Path(get_processed_file_template(l0.date, l0.setnum, level=1))
         if not pfile_path.exists():
@@ -1550,10 +1634,11 @@ class ProcessedDataL1(ProcessedData):
             IQ_to_gain_phase_angle,
         )
         fs = 1 / np.median(np.diff(new_data.timestamp[:]))
-        
+        time_streams.plot_timestream_errors(new_data.data_IQ[:],fs, lp_filt_freq=50, onres_ind = new_data.onres_ind)
+
         if do_electronics_noise_removal:
             
-            offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', 100), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+            offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
             onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=0.2, max_modes=max_modes, template_data_selection=new_data.onres_ind)
 
             #Finally remove blocking of data clumps

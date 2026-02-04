@@ -19,7 +19,6 @@ def plot_timestream_errors( data_IQ,fs: float, lp_filt_freq:float = 10.0, onres_
         data_IQ = signal.sosfiltfilt(filt_sos, data_IQ)
         data_IQ = signal.decimate(data_IQ, Ds_coef, axis=2, ftype='iir', zero_phase=True)
         fs = lp_filt_freq
-    print(onres_ind)
     n_det = len(data_IQ[0,:,0])
     if onres_ind is None:
         ncols = 1  
@@ -33,7 +32,6 @@ def plot_timestream_errors( data_IQ,fs: float, lp_filt_freq:float = 10.0, onres_
         squeeze=True
     )
     t_final = len(data_IQ[0, 0])/fs
-    print(t_final)
     t = np.arange(0, t_final, fs)
 
 
@@ -96,7 +94,10 @@ def plot_timestream_errors( data_IQ,fs: float, lp_filt_freq:float = 10.0, onres_
         axes[0, 0].plot(onres_mean_var_I, color = 'red', label = 'average')
         axes[0, 1].plot(onres_mean_var_Q, color = 'red', label = 'average')
         axes[1, 0].plot(offres_mean_var_I, color = 'red', label = 'average')
-        axes[1, 1].plot(offres_mean_var_I, color = 'red', label = 'average')
+        axes[1, 1].plot(offres_mean_var_Q, color = 'red', label = 'average')
+
+        bad_indices_I = np.where(onres_mean_var_I>= 3)
+        bad_indices_Q = np.where(onres_mean_var_Q >= 3)
     plt.legend()
     fig.suptitle('timestream_data', fontsize=16)
     plt.tight_layout()

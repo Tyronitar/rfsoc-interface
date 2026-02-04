@@ -289,10 +289,8 @@ def plot_SNqp(
         if f0 is not None and i < len(f0):
             res_title += f' (f0 = {f0[i]/1e6:.3f} MHz)'
             mb_index = np.argmin(np.abs(f0[i]-mb_data['f0']))
-            print(mb_index)
             alpha = mb_data['alpha'][mb_index]
             delta = mb_data['delta_0'][mb_index]
-            print(f0[i], alpha, delta)
             SNqp = get_SNqp(f0[i],base_temp,np.array(psd[0, i, :]),delta, alpha, V )
             SNqp_array.append(SNqp)
             fig = create_plot(
@@ -364,7 +362,7 @@ def plot_psd_df_over_f(
     figs = []
     yscale = 'log'
     onres_psd = psd[:,resonators, :]
-    offres_mean = np.mean(psd[:, ~resonators, :],axis=1)
+    offres_median = np.median(psd[:, ~resonators, :],axis=1)
     for i in np.arange(psd.shape[1]):
         res_title = title + f' - Resonator {i}'
         if f0 is not None and i < len(f0):
@@ -373,7 +371,7 @@ def plot_psd_df_over_f(
             fig = plot_df_over_f(
                 freq,
                 psd[:, i, :],
-                offres_mean=offres_mean,
+                offres_median=offres_median,
                 f0 = f0[i],
                 adc_units_to_hz=adc_units_to_hz[i],
                 ylabel=ylabel,
@@ -465,7 +463,7 @@ def plot_freq_hist(
 def plot_df_over_f(
     x_data: npt.NDArray,
     y_data: npt.ArrayLike,
-    offres_mean: npt.ArrayLike| None=None,
+    offres_median: npt.ArrayLike| None=None,
     adc_units_to_hz: npt.NDArray | None=None,
     f0:float = 1,
     title: str | None=None,
@@ -475,12 +473,12 @@ def plot_df_over_f(
     """Create a plot of the noise PSD in df/f units."""
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
-    if offres_mean is not None and adc_units_to_hz is not None:
-        offres_mean = offres_mean /( adc_units_to_hz * f0)**2
+    if offres_median is not None and adc_units_to_hz is not None:
+        offres_median = offres_median /( adc_units_to_hz * f0)**2
     for j, label in enumerate(['Frequency', 'Dissipation']):
         ax.plot(x_data, y_data[j], label=label)
-        if offres_mean is not None:
-            ax.plot(x_data, offres_mean[j], linestyle='dashed', color='gray', label=f'Off-Resonance {label} Median')
+        if offres_median is not None:
+            ax.plot(x_data, offres_median[j], linestyle='dashed', color='gray', label=f'Off-Resonance {label} Median')
     if csd is not None:
         ax.plot(x_data, abs(csd), label = 'CSD')
     ax.set_xscale('log')
