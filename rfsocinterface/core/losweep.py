@@ -605,7 +605,7 @@ class LoSweepData:
     def plot_full_trace(self, ax: plt.Axes | None=None) -> Figure | None:
         # Only return if we're creating a new figure
         if ax is None:
-            fig, ax = plt.subplots()
+            fig, ax = plt.subplots(figsize=(10, 6))
 
             ax.set_xlabel('Frequency (MHz)')
             ax.set_ylabel(r'$|S_{21}|$')

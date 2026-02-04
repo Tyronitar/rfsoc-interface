@@ -95,8 +95,8 @@ class ToolbarCanvas(QWidget):
         super().__init__(parent)
         if fig is None:
             fig = Figure(figsize=(8, 5))
-        self.canvas = ScrollableCanvas(self)
-        self.canvas.set_figure(fig)
+        self.canvas = FigureCanvas(fig)
+        self.canvas.figure = fig
 
         self.manager = FigureManagerQT(self.canvas, 1)
         self.canvas.manager = self.manager
@@ -122,7 +122,12 @@ class ToolbarCanvas(QWidget):
 
     def set_figure(self, fig: Figure | None):
         """Set the figure of this widget."""
-        self.canvas.set_figure(fig)
+        self.canvas.figure = fig
+        # del self.manager, self.nav
+        # self.manager = FigureManagerQT(self.canvas, 1)
+        # self.canvas.manager = self.manager
+        # self.nav = self.manager.toolbar
+        # self.layout().insertWidget(0, self.nav)
 
 
 
