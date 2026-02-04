@@ -602,6 +602,47 @@ class LoSweepData:
             _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
         return rotation_angle, adc_units_to_hz
     
+    def plot_full_trace(self, ax: plt.Axes | None=None) -> Figure | None:
+        # Only return if we're creating a new figure
+        if ax is None:
+            fig, ax = plt.subplots()
+
+            ax.set_xlabel('Frequency (MHz)')
+            ax.set_ylabel(r'$|S_{21}|$')
+            ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
+        else:
+            fig = None
+
+
+        for i_tone in range(self.nchan):
+            ax.plot(self.freq[i_tone], self.s21[i_tone], color='blue')
+        
+        return fig
+    
+    def plot_blind_sweep(self, f0: npt.NDArray) -> Figure:
+        fig = self.plot_full_trace()
+        ax = fig.axes[0]
+        for resonance in f0:
+            ax.axvline(resonance, linestyle='-', color='red')
+
+        custom_lines = [
+            Line2D([0], [0], color='blue', linestyle='-'),
+            Line2D([0], [0], color='red', linestyle='-'),
+        ]
+
+        custom_labels = [r'$S_{21}$', 'New Resonances']
+        fig.legend(
+            custom_lines,
+            custom_labels,
+            loc='lower center',
+            bbox_to_anchor=(0.5, 0.0),
+            bbox_transform=fig.transFigure,
+            ncol=2,
+        )
+        fig.tight_layout(rect=[0, 0.05, 1, 1])
+        
+        return fig
+    
     def find_resonances(self) -> tuple[npt.NDArray, npt.NDArray]:
         rf = ResonatorFinder(self.data, self.f_center, self.df)
         res_freq, res_depth = rf.find_resonators(

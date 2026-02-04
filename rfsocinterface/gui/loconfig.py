@@ -15,7 +15,7 @@ from kidpy3.measure import ResonatorFinder
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.core.losweep import LoSweepData, LoSweep, DEFAULT_NCOLS, PowerSweep
-from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
+from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog, BlindSweepDialog
 from rfsocinterface.gui.widgets import (
     get_num_value,
     IncrementalProgressDialog,
@@ -252,9 +252,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # Below this comment, we're only dealing with the first sweep
 
-        fit_complete = self.fit_sweeps(sweeps)
-        if not fit_complete:
-            return False
+        # fit_complete = self.fit_sweeps(sweeps)
+        # if not fit_complete:
+        #     return False
 
         if show_diagnostics:
             plot_complete = self.plot_sweeps(selected_channels, sweeps)
@@ -354,6 +354,18 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return True
     
     def plot_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]], sweeps: list[LoSweep]):
+
+        for (rfsoc, chan), sweep in zip(selected_channels, sweeps):
+            sweep_data = sweep.data
+            dialog = BlindSweepDialog(sweep_data, parent=self)
+            dialog.set_window_name(rfsoc.get_channel(chan).tile_name)
+            dialog.plot()
+            dialog.exec()
+        
+
+        pdb.set_trace()
+
+
         # Setup progress dialog 
         total_steps = sum(sweep.data.nchan for sweep in sweeps)
         pd = IncrementalProgressDialog(

@@ -53,6 +53,10 @@ class ScrollableCanvas(QScrollArea):
         self.setLayout(layout)
         self.layout().addWidget(self.canvas)
         self.layout().installEventFilter(self)
+    
+    @property
+    def figure(self) -> Figure:
+        return self.canvas.figure
 
     def set_figure(self, fig: Figure):
         """Set the figure for this widget's canvas."""
@@ -82,6 +86,44 @@ class ScrollableCanvas(QScrollArea):
                 hbar.setValue(min(hbar.maximum(), hbar.value() - hangle / 2))
             return True
         return super().eventFilter(obj, event)
+
+class ToolbarCanvas(QWidget):
+    """Widget canvas that contains the navbar."""
+
+    def __init__(self, parent=None, fig: Figure | None = None, add_edit: bool=False):
+        """Initialize a ResonatorCanvas."""
+        super().__init__(parent)
+        if fig is None:
+            fig = Figure(figsize=(8, 5))
+        self.canvas = ScrollableCanvas(self)
+        self.canvas.set_figure(fig)
+
+        self.manager = FigureManagerQT(self.canvas, 1)
+        self.canvas.manager = self.manager
+        self.nav = self.manager.toolbar
+
+        if add_edit:
+            self.add_edit_button()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+        layout.addWidget(self.nav)
+        layout.addWidget(self.canvas)
+    
+    def add_edit_button(self):
+        # Add an edit option to the tool bar, in the same group as zoom and pan
+        self.manager.toolmanager.add_tool('edit', EditTool)
+        self.manager.toolbar.add_tool('edit', 'zoompan')
+
+    def update_figure(self):
+        """Update the figure of this widget."""
+        self.update()
+
+    def set_figure(self, fig: Figure | None):
+        """Set the figure of this widget."""
+        self.canvas.set_figure(fig)
+
 
 
 class ResonatorCanvas(QWidget):

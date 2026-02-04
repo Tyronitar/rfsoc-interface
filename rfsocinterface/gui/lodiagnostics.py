@@ -28,7 +28,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizeGrip,
     QFileDialog,
-    QAbstractButton
+    QAbstractButton,
+    QVBoxLayout,
 )
 
 from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list, LoSweep, DEFAULT_NCOLS
@@ -37,6 +38,7 @@ from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialo
 from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
 from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes
 from rfsocinterface.gui.widgets.progress_bar import make_progress_dialog_incrementer
+from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
 
 _logger = logging.getLogger(__name__)
 
@@ -490,6 +492,111 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         dialog.set_figure(fig)
 
         return dialog
+
+
+class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
+    def __init__(self, data: LoSweepData, parent: QWidget | None=None):
+        super().__init__(parent)
+        self.setupUi(self)
+        self.canvas.add_edit_button()
+
+        self.data = data
+
+    def set_window_name(self, name: str):
+        self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
+    
+    def plot(self):
+        f0, depths = self.data.find_resonances()
+        self.f0 = f0
+        self.depths = depths
+        
+        fig = self.data.plot_blind_sweep(f0)
+        self.set_figure(fig)
+
+    @property
+    def _editing(self) -> bool:
+        """Return whether the plot is in editing mode."""
+        return self.canvas.manager.toolmanager.active_toggle['default'] == 'edit'
+    
+    def set_figure(self, fig: Figure):
+        """Change the figure in the canvas."""
+        self.canvas.set_figure(fig)
+
+        self.ax = fig.axes[0]
+        self.figcanvas = self.canvas.canvas
+
+        pdb.set_trace()
+
+        # Setup the event handling logic to click and drag the line
+        self.figcanvas.mpl_connect('button_press_event', self.mouse_press)
+        self.figcanvas.mpl_connect('button_release_event', self.mouse_release)
+        self.figcanvas.mpl_connect('motion_notify_event', self.mouse_move)
+
+        self.adjustSize()
+
+
+    def close_to_line(self, xdata: float, epsilon: float = EPSILON) -> bool:
+        """Return whether a value is close to a line."""
+        return np.allclose(self.canvas.line.get_xdata()[0], xdata, rtol=epsilon)
+
+    def mouse_release(self, event: MouseEvent):
+        """Handle releasing a mouse button."""
+        if not self._editing:
+            return 
+        if event.button != 1:
+            return  # Not left click
+        if event.inaxes != self.ax:
+            return  # Not inside the plot
+
+        if self.dragging:
+            # Stop dragging and update the line's position
+            self.dragging = False
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            self.move_line(event.xdata)
+
+    def mouse_press(self, event: MouseEvent):
+        """Handle left clicking."""
+        if not self._editing:
+            return 
+        if event.button != 1:
+            return  # Not left button
+        if event.inaxes != self.ax:
+            return  # Not in the plot
+
+        # Move the line to the mouse when double clicking
+        if event.dblclick:
+            self.move_line(event.xdata)
+
+        # Begin dragging if close to the line
+        if self.close_to_line(event.xdata):
+            self.dragging = True
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def mouse_move(self, event: MouseEvent):
+        """Handle mouse movement."""
+        if not self._editing:
+            return 
+        # If mouse moves out of plot, unhighlight the line and stop dragging
+        if event.inaxes != self.ax:
+            self.canvas.line.set_linewidth('1.5')
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.dragging = False
+            self.figcanvas.draw_idle()
+            return
+        if not self.dragging:
+            # Check if the mouse is close to the line and highlight it if so
+            if self.close_to_line(event.xdata):
+                self.canvas.line.set_linewidth('3')
+                self.setCursor(Qt.CursorShape.OpenHandCursor)
+            else:
+                self.canvas.line.set_linewidth('1.5')
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.figcanvas.draw_idle()
+            return
+
+        # Moving while holding left mouse and dragging, so update the line's position
+        self.move_line(event.xdata)
+
 
 
 if __name__ == '__main__':
