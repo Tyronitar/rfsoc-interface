@@ -65,7 +65,29 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.update_channel_choices(self.channel_comboBox)
         main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
 
-        self.buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
+        self.lo_sweep_widgets = [
+            self.show_diagnostics_checkBox,
+            self.upload_checkBox,
+            self.save_plots_CheckBox,
+            self.only_flag_checkBox,
+            self.review_tones_checkbox,
+            self.flagging_label,
+            self.flagging_lineEdit,
+        ]
+
+        self.second_sweep_widgets = [
+            self.second_sweep_checkBox,
+            self.second_sweep_df_label,
+            self.second_sweep_df_lineEdit,
+            self.second_sweep_save_plots_checkBox,
+        ]
+        self.power_sweep_widgets = [
+            self.power_levels_Label,
+            self.power_levels_lineEdit,
+        ]
+
+        self.filename_buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
+        self.sweep_type_buttonGroup.buttonClicked.connect(self.select_sweep_type)
         self.second_sweep_checkBox.clicked.connect(self.check_second_sweep)
         self.show_diagnostics_checkBox.clicked.connect(self.check_diagnostics)
         self.filename_temperature_lineEdit.textEdited.connect(
@@ -127,9 +149,6 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     
     @Slot()
     def perform_sweep(self):
-        if self.buttonGroup.checkedButton() == self.power_sweep_radioButton:
-            return self.perform_power_sweep()
-
         try:
             selected_channels = self.get_selected_channels(self.channel_comboBox)
         except SettingsError:
@@ -137,30 +156,41 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             return
         self.channel_error_label.hide()
 
-        # Always have to upload the new tones before the second sweep
-        do_second_sweep = self.second_sweep_checkBox.isChecked()
-        do_upload = True if do_second_sweep else self.upload_checkBox.isChecked()
+        match self.sweep_type_buttonGroup.checkedButton():
+            case self.lo_sweep_radioButton:
+                # Always have to upload the new tones before the second sweep
+                do_second_sweep = self.second_sweep_checkBox.isChecked()
+                do_upload = True if do_second_sweep else self.upload_checkBox.isChecked()
 
-        _logger.info('Beginning LO sweep...')
-        sweep_succesful = self.run_sweeps(
-            selected_channels,
-            show_diagnostics=self.show_diagnostics_checkBox.isChecked(),
-            upload_all_new_tone_lists=do_upload,
-            second_sweep=False,
-        )
+                _logger.info('Beginning LO sweep...')
+                sweep_succesful = self.run_sweeps(
+                    selected_channels,
+                    show_diagnostics=self.show_diagnostics_checkBox.isChecked(),
+                    upload_all_new_tone_lists=do_upload,
+                    second_sweep=False,
+                )
 
-        if not sweep_succesful:
-            _logger.info('Cancelling after first sweep...')
-            return
+                if not sweep_succesful:
+                    _logger.info('Cancelling after first sweep...')
+                    return
 
-        if do_second_sweep:
-            _logger.info('Beginning Second LO sweep...')
-            self.run_sweeps(
-                selected_channels,
-                show_diagnostics=False,
-                upload_all_new_tone_lists=False,
-                second_sweep=True,
-            )
+                if do_second_sweep:
+                    _logger.info('Beginning Second LO sweep...')
+                    self.run_sweeps(
+                        selected_channels,
+                        show_diagnostics=False,
+                        upload_all_new_tone_lists=False,
+                        second_sweep=True,
+                    )
+            case self.power_sweep_radioButton:
+                _logger.info('Beginning power sweep...')
+                sweep_succesful = self.run_power_sweeps(selected_channels)
+                if not sweep_succesful:
+                    _logger.info('Power sweep cancelled...')
+                
+
+
+       
     
     def run_sweeps(
             self,
@@ -255,7 +285,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             savefile = get_filename(
                 file_type="LO", chan_name=chan_name, mkdir=True
             )
-            match self.buttonGroup.checkedButton():
+            match self.filename_buttonGroup.checkedButton():
                 case self.filename_elevation_radioButton:
                     savefile = savefile.with_stem(f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}')
                 case self.filename_temperature_radioButton:
@@ -414,25 +444,6 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             time.sleep(0.1)
         _logger.debug('All LO diagnostics dialogs finished')
 
-  
-    @Slot()
-    def perform_power_sweep(self):
-        try:
-            selected_channels = self.get_selected_channels(self.channel_comboBox)
-        except SettingsError:
-            self.channel_error_label.show()
-            return
-        self.channel_error_label.hide()
-
-        _logger.info('Beginning power sweep...')
-        sweep_succesful = self.run_power_sweeps(
-            selected_channels,
-        )
-
-        if not sweep_succesful:
-            _logger.info('Cancelling after first sweep...')
-            return
-
     def run_power_sweeps(
             self,
             selected_channels: list[tuple[RFSOCWrapper, int]],
@@ -479,6 +490,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
+        pdb.set_trace()
+
         if pd.wasCanceled():
             _logger.info('Power Sweep Cancelled')
             return False
@@ -502,7 +515,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             savefile = get_filename(
                 file_type="power", chan_name=chan_name, mkdir=True
             )
-            match self.buttonGroup.checkedButton():
+            match self.filename_buttonGroup.checkedButton():
                 case self.filename_elevation_radioButton:
                     savefile = savefile.with_stem(f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}')
                 case self.filename_temperature_radioButton:
@@ -535,7 +548,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             file_type="LO", chan_name=chan_name, mkdir=True
         )
         savefile = savefile.with_stem(f'{savefile.stem}')
-        match self.buttonGroup.checkedButton():
+        match self.filename_buttonGroup.checkedButton():
             case self.filename_elevation_radioButton:
                 savefile = savefile.with_stem(f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}')
             case self.filename_temperature_radioButton:
@@ -675,6 +688,24 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 self.filename_elevation_lineEdit.setEnabled(True)
 
         self.update_filename_example()
+    
+    def select_sweep_type(self, button: QRadioButton):
+        """Callback for when the sweep type is changed."""
+        match button:
+            case self.lo_sweep_radioButton:
+                for widget in self.power_sweep_widgets:
+                    widget.hide()
+                for widget in self.lo_sweep_widgets + self.second_sweep_widgets:
+                    widget.show()
+                self.check_diagnostics()
+                self.check_second_sweep()
+            case self.power_sweep_radioButton:
+                for widget in self.lo_sweep_widgets + self.second_sweep_widgets:
+                    widget.hide()
+                for widget in self.power_sweep_widgets:
+                    widget.show()
+            case _:
+                raise ValueError(f'Unexpected button {button} received.')
 
     def update_filename_example(self):
         """Update the example filename box to reflect the chosen suffix."""
@@ -694,3 +725,12 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                     f'Invalid `active_suffix` encountered: {self.active_suffix}'
                 )
 
+if __name__ == '__main__':
+    from PySide6.QtWidgets import QApplication, QMainWindow
+    app = QApplication()
+    win = QMainWindow()
+    wid = LoConfigWidget(None, [], {})
+    win.setCentralWidget(wid)
+    win.show()
+
+    app.exec()

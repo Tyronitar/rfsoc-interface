@@ -25,7 +25,7 @@
         <x>0</x>
         <y>0</y>
         <width>827</width>
-        <height>705</height>
+        <height>708</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -38,7 +38,7 @@
           <bool>true</bool>
          </property>
          <attribute name="buttonGroup">
-          <string notr="true">buttonGroup</string>
+          <string notr="true">sweep_type_buttonGroup</string>
          </attribute>
         </widget>
        </item>
@@ -48,7 +48,7 @@
           <string>Power Sweep</string>
          </property>
          <attribute name="buttonGroup">
-          <string notr="true">buttonGroup</string>
+          <string notr="true">sweep_type_buttonGroup</string>
          </attribute>
         </widget>
        </item>
@@ -145,10 +145,10 @@
                 <string>None</string>
                </property>
                <property name="checked">
-                <bool>false</bool>
+                <bool>true</bool>
                </property>
                <attribute name="buttonGroup">
-                <string notr="true">buttonGroup</string>
+                <string notr="true">filename_buttonGroup</string>
                </attribute>
               </widget>
              </item>
@@ -164,7 +164,7 @@
                 <bool>false</bool>
                </property>
                <attribute name="buttonGroup">
-                <string notr="true">buttonGroup</string>
+                <string notr="true">filename_buttonGroup</string>
                </attribute>
               </widget>
              </item>
@@ -190,7 +190,7 @@
                 <string>Telescope elevation (deg)</string>
                </property>
                <attribute name="buttonGroup">
-                <string notr="true">buttonGroup</string>
+                <string notr="true">filename_buttonGroup</string>
                </attribute>
               </widget>
              </item>
@@ -552,6 +552,7 @@
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup"/>
+  <buttongroup name="filename_buttonGroup"/>
+  <buttongroup name="sweep_type_buttonGroup"/>
  </buttongroups>
 </ui>

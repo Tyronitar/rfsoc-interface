@@ -732,7 +732,7 @@ class LoSweep:
     @property
     def n_steps(self) -> int:
         """Number of steps in the LO sweep."""
-        return self.full_span // self.freq_step
+        return self.full_span // self.freq_step + 1
     
     def cancel(self):
         """Cancel the LO sweep."""
@@ -795,7 +795,7 @@ class LoSweep:
         return Z
 
 
-    def run_sweep(self, callback: Callable | None=None) -> LoSweepData | None:
+    def run_sweep(self, callback: Callable | None=None, save: bool=True) -> LoSweepData | None:
         """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file"""
         _logger.info('Performing final setup before LO sweep...')
         # Final setup before sweep
@@ -838,7 +838,8 @@ class LoSweep:
             _logger.debug(f'Shape of LO sweep data: {sweep_data.shape}')
 
             data = LoSweepData(self.tone_list, self.f_center, sweep_data, chanmask, diff_to_flag=self.diff_to_flag)
-            data.saveh5(self.savefile)
+            if save:
+                data.saveh5(self.savefile)
 
         # Set the LO back to the original frequency
         self.rfsoc.set_frequency(self.chan, self.f_center)
@@ -859,7 +860,7 @@ class PowerSweepData:
         rfin: float,
         rfout: float,
     ):
-        self.f_ceter = f_center
+        self.f_center = f_center
         self.tone_list = tone_list
         self.sweeps = sweeps
         self.power_levels = power_levels
@@ -868,8 +869,16 @@ class PowerSweepData:
     
     @property
     def chanmask(self) -> npt.NDArray:
-        """npt.NDArray: The channel mask from the first sweep."""
-        return np.concatenate([sweep.chanmask for sweep in self.sweeps], axis=0)
+        """The chanmask used during the power sweep."""
+        return self.sweeps[0].chanmask
+    
+    @property
+    def combined_sweep_array(self) -> npt.NDArray:
+        """The LO sweep data from each lo sweep as one array.
+
+        Resulting array will have shape (N_sweeps, 2, N_tones, N_samples) 
+        """
+        return np.stack([sweep.data for sweep in self.sweeps], axis=0)
     
     @ensure_path(1)
     def saveh5(self, fname: Path):
@@ -877,8 +886,7 @@ class PowerSweepData:
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
         with h5py.File(path, 'w') as fh:
-            for i, sweep in enumerate(self.sweeps):
-                fh.create_dataset(f'global_data/sweep_{i}', data=sweep.data)
+            fh.create_dataset(f'global_data/sweeps', data=self.combined_sweep_array)
             fh.create_dataset('global_data/lo_freq', data=self.f_center)
             fh.create_dataset('global_data/baseband_freqs', data=self.tone_list - self.f_center)
             fh.create_dataset('global_data/chanmask', data=self.chanmask)
@@ -886,7 +894,7 @@ class PowerSweepData:
             fh.create_dataset('global_data/rfin', data=self.rfin)
             fh.create_dataset('global_data/rfout', data=self.rfout)
         _logger.info(f'PowerSweepData saved to {str(fname)}')
-
+    
 
 class PowerSweep:
 
@@ -937,7 +945,7 @@ class PowerSweep:
     @property
     def n_steps(self) -> int:
         """Number of steps in the power sweep."""
-        return (self.full_span // self.freq_step) * len(self.power_levels)
+        return (self.full_span // self.freq_step + 1) * len(self.power_levels)
 
     def cancel(self):
         """Cancel the LO sweep."""
@@ -961,21 +969,22 @@ class PowerSweep:
             self.rfsoc.set_rfin(self.chan, this_rfin)
             self.rfsoc.set_rfout(self.chan, this_rfout)
 
-            this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{power_level}dB')
+            this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{power_level:+f}dB'.replace('.', '_'))
 
             sweep = LoSweep(
                 self.rfsoc, self.chan, this_savefile, self.tone_shift,
                 self.freq_step, self.full_span,
             )
+
+        for sweep in self._sweeps:
             self._sweeps.append(sweep)
-            this_sweep_data = sweep.run_sweep(callback=callback)
+            this_sweep_data = sweep.run_sweep(callback=callback, save=False)
             data.append(this_sweep_data)
 
         if data is None:
             _logger.info('Sweep cancelled. Exiting...')
             self._data = None
         else:
-            self._data = np.array([sweep.data for sweep in data])
             self._data = PowerSweepData(self.tone_list, self.f_center, data, self.power_levels, starting_rfin, starting_rfout)
             self._data.saveh5(self.savefile)
         
