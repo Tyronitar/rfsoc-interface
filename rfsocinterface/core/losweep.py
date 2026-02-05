@@ -20,6 +20,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.lines import Line2D
 from scipy.signal import savgol_filter
+from scipy.optimize import curve_fit
 import h5py
 import tables
 
@@ -37,6 +38,8 @@ from kidpy3.measure import ResonatorFinder
 _logger = logging.getLogger(__name__)
 
 DEFAULT_NCOLS = 10
+POWER_SWEEP_FRACTIONAL_FREQ_SHIFT = 1e-5
+POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB = 5
 
 
 def resonator_plot_formatter(x: float, pos: int) -> str:
@@ -890,6 +893,10 @@ class LoSweep:
         _logger.info('Finished processing sweep results')
         return data
 
+def power_sweep_fit_function(x: npt.NDArray, amp: float, cutoff: float):
+    vals = amp * (cutoff - x)
+    vals[x <= cutoff] = 0
+    return vals
 
 class PowerSweepData:
     def __init__(
@@ -904,9 +911,11 @@ class PowerSweepData:
         self.f_center = f_center
         self.tone_list = tone_list
         self.sweeps = sweeps
-        self.power_levels = power_levels
+        self.power_levels = np.array(power_levels)
         self.rfin = rfin
         self.rfout = rfout
+        self.max_readout_power = np.zeros(self.n_tones)
+        self.fit_f0 = np.zeros(self.n_tones)
     
     @property
     def chanmask(self) -> npt.NDArray:
@@ -921,6 +930,24 @@ class PowerSweepData:
         """
         return np.stack([sweep.data for sweep in self.sweeps], axis=0)
     
+    @property
+    def n_tones(self) -> int:
+        return self.sweeps[0].nchan
+    
+    @property
+    def n_sweeps(self) -> int:
+        return len(self.power_levels)
+    
+    def get_fit_f0(self) -> npt.NDArray:
+        fit_f0 = np.stack([sweep.fit_f0 for sweep in self.sweeps], axis=0)
+        self.fit_f0 = fit_f0
+        return fit_f0
+    
+    def fit(self):
+        for sweep in self.sweeps:
+            sweep.fit()
+        self.get_fit_f0()
+
     @ensure_path(1)
     def saveh5(self, fname: Path):
         """Save the power sweep to an HDF5 file."""
@@ -934,8 +961,95 @@ class PowerSweepData:
             fh.create_dataset('global_data/power_levels', data=self.power_levels)
             fh.create_dataset('global_data/rfin', data=self.rfin)
             fh.create_dataset('global_data/rfout', data=self.rfout)
+            fh.create_dataset('global_data/fit_f0', data=self.fit_f0)
+            fh.create_dataset('global_data/max_readout_power', data=self.max_readout_power)
         _logger.info(f'PowerSweepData saved to {str(fname)}')
     
+    @classmethod
+    @ensure_path(1)
+    def from_h5(cls, fname: Path) -> PowerSweepData:
+        with h5py.File(fname, 'r') as fh:
+            tone_list = fh['global_data/baseband_freqs'][:]
+            f_center = fh['global_data/lo_freq'][()]
+            power_levels = fh['global_data/power_levels'][:]
+            rfin = fh['global_data/rfin'][()]
+            rfout = fh['global_data/rfout'][()]
+            chanmask = fh['global_data/chanmask'][:]
+            sweep_data = fh['global_data/sweeps'][:]
+            fit_f0 = fh['global_data/fit_f0'][:]
+            max_readout_power = fh['global_data/max_readout_power'][:]
+
+            sweeps = []
+            for this_fit_f0, arr in zip(fit_f0, sweep_data):
+            # for arr in sweep_data:
+                sweep = LoSweepData(tone_list, f_center, arr, chanmask)
+                sweep.fit_f0[:] = this_fit_f0
+                sweeps.append(sweep)
+
+        power_sweep = cls(tone_list, f_center, sweeps, power_levels, rfin, rfout)
+        power_sweep.get_fit_f0()
+        power_sweep.max_readout_power = max_readout_power
+
+        return power_sweep
+
+
+    def find_optimal_readout_power(self):
+
+        f0_data = self.fit_f0[:]
+        power_levels = self.power_levels[:]
+
+        sorted_data_ind = np.argsort(power_levels)
+        power_levels = power_levels[sorted_data_ind]
+        f0_data = f0_data[sorted_data_ind, :]
+        power_level_non_linear = np.zeros(self.n_tones)
+
+        for i_res in range(self.n_tones):
+
+            # First let's remove f0 values that are invalid at high power
+            this_power_level = power_levels[:]
+            this_df = (f0_data[:, i_res] - f0_data[0,i_res]) / f0_data[0, i_res]
+            this_deriv = np.diff(this_df)
+            
+            # Only look at the f0 values at the highest 25% of powers
+            bad_power_indices = np.argwhere(this_deriv > 0).flatten()
+            valid_bad = np.argwhere(bad_power_indices >= 0.75 * self.n_sweeps).flatten()
+            bad_power_indices = bad_power_indices[valid_bad]
+
+            if np.size(bad_power_indices) > 0:
+                stop_index = np.min(bad_power_indices)
+                this_power_level = this_power_level[:stop_index]
+                this_df = this_df[:stop_index]
+
+            try:
+                popt = curve_fit(
+                    power_sweep_fit_function,
+                    this_power_level,
+                    this_df,
+                    p0=(
+                        POWER_SWEEP_FRACTIONAL_FREQ_SHIFT,
+                        POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB,
+                    ),
+                )
+                power_level_non_linear[i_res] = popt[0][1]
+            except RuntimeError:
+                power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
+
+            # plt.plot(this_power_level, this_df, 'o')
+            # plt.plot(this_power_level, power_sweep_fit_function(this_power_level, popt[0][0], popt[0][1]))
+            # plt.xlabel('Power Level (dB)')
+            # plt.ylabel('df0 / f0')
+            # plt.show()
+            # pdb.set_trace()
+
+        med = np.median(power_level_non_linear)
+        std = np.std(power_level_non_linear)
+        bad_ind = np.argwhere(np.abs(power_level_non_linear - med) / std > 2.5).flatten()
+        power_level_non_linear[bad_ind] = med
+        max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
+        self.max_readout_power = max_readout_power
+
+        return max_readout_power
+        
 
 class PowerSweep:
 
@@ -1044,6 +1158,23 @@ if __name__ == '__main__':
 
     tile_name = 'Device_aSi1_Channel2'
     old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
+    
+    # lo_sweep_files = [
+    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_-3.h5',
+    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_0.h5',
+    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_3.h5',
+    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_6.h5',
+    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_9.h5',
+    # ]
+    # sweeps = [LoSweepData.from_h5(filename) for filename in lo_sweep_files]
+    # sweep_data = PowerSweepData(sweeps[0].tone_list, sweeps[0].f_center, sweeps, np.array([-3, 0, 3, 6, 9]), 17, 13)
+
+    sweep_data = PowerSweepData.from_h5('/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464.h5')
+    sweep_data.fit()
+    sweep_data.find_optimal_readout_power()
+    sweep_data.saveh5('/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464.h5')
+
+    pdb.set_trace()
 
     # tile_name = 'Device_aSi2_Channel3'
     # old_params = None
