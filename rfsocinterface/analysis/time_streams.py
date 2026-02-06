@@ -1,4 +1,5 @@
 
+import pdb
 import numpy as np
 import numpy.typing as npt
 import matplotlib.pyplot as plt
@@ -8,109 +9,116 @@ from kidpy3 import RawDataFile
 
 from rfsocinterface.core.utils import DATA_DIRECTORY
 from matplotlib.backends.backend_pdf import PdfPages
-def plot_timestream_errors( data_freq_diss,fs: float, lp_filt_freq:float = 10.0, onres_ind:npt.NDArray = None, num_processing_blocks: int = 10 ):
+def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 488.24,lp_filt_freq:float = 10.0, onres_ind:npt.NDArray = None, num_processing_blocks: int = 100 ):
     """Plot noise blobs for each detector."""
     # subtract the mean from each detector
 
-    time_stream_size = data_freq_diss.shape[2]
-    n_det = len(onres_ind)
-    colors = plt.cm.viridis(np.linspace(0, 1, len(data_freq_diss[0, :, 0])))
-    block_freqndices = np.linspace(
-        0, time_stream_size, num_processing_blocks + 1, dtype=int
-    )
-    z_freq = np.zeros_like(data_freq_diss[0, :, :])
-    z_diss = np.zeros_like(data_freq_diss[1, :, :])
-    block_freqndices = np.linspace(
-            0, time_stream_size, num_processing_blocks + 1, dtype=int
+
+    detection_mask_array_f = np.array(z_freq>5)
+    detection_mask_array_d = np.zeros_like(z_diss>5)
+
+
+    nrows, ncols = 1, 1
+
+    fig = plt.figure(figsize=(4 * ncols, 4 * nrows))
+    axes = np.empty((nrows, ncols), dtype=object)
+
+    axes = fig.add_subplot(1, 1, 1, projection='3d')
+   
+    # Time axis (based on one detector trace)
+    nsamples = len(z_freq[onres_ind[0]])
+    t = np.arange(nsamples) / fs
+
+    for det_idx, det in enumerate(onres_ind):
+
+        nongaussian_mask_freq = np.array(z_freq[det]) >= 5
+        nongaussian_mask_diss = np.array(z_diss[det]) >= 5
+
+        detection_mask_array_f[det] = nongaussian_mask_freq.astype(int)
+        detection_mask_array_d[det] = nongaussian_mask_diss.astype(int)
+
+    for det_idx, det in enumerate(onres_ind):
+
+        mask = detection_mask_array_f[det].astype(bool)
+        x = np.full(np.sum(mask), det_idx)
+        colors = np.where(
+            np.sum(detection_mask_array_f[:,mask], axis = 0) > 5,
+            'red',
+            'blue'
+        )
+        axes.scatter(
+            x,
+            t[mask],
+            np.array(z_freq[det])[mask],
+            s=5, c = colors 
+
+        )
+        mask = detection_mask_array_d[det].astype(bool)
+        x = np.full(np.sum(mask), det_idx)
+        colors = np.where(
+            np.sum(detection_mask_array_d[:,mask], axis = 0) > 5,
+            'green',
+            'yellow'
+        )
+        axes.scatter(
+            x,
+            t[mask],
+            np.array(z_diss[det])[mask],
+            s=5, c = colors 
+
         )
 
-    for i in range(num_processing_blocks):
-        start, end = block_freqndices[i], block_freqndices[i + 1]
-        I = data_freq_diss[0, :, start:end]
-        diss = data_freq_diss[1, :, start:end]
+    axes.set_xlabel("Detector index")
+    axes.set_ylabel("Time (s)")
+    axes.set_zlabel("z_freq")
 
-        mean_freq = np.mean(I, axis=1)
-        mean_diss = np.mean(diss, axis=1)
-        std_freq  = np.std(I, axis=1)
-        std_diss  = np.std(diss, axis=1)
-
-        std_freq[std_freq == 0] = np.nan
-        std_diss[std_diss == 0] = np.nan
-
-        z_freq[:, start:end] = np.abs(I[:] - mean_freq[:, None]) / std_freq[:, None]
-        z_diss[:, start:end] = np.abs(diss[:] - mean_diss[:, None]) / std_diss[:, None]
-
-        tone_set = np.arange(0, len(data_freq_diss[0, :, 0]))
-        offres_ind_mask = ~np.isin(tone_set, onres_ind)
-        offres_ind = tone_set[offres_ind_mask]
-
-    z_freq_plot = z_freq[:,:]
-    z_diss_plot = z_diss[:,:]
-    num_nongaussian_freq = np.zeros_like(z_freq_plot[0, :])
-    num_nongaussian_diss = np.zeros_like(z_freq_plot[0, :])
-
-    nrows = 2
-    ncols = 2
-    fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(4 * ncols, 4 * nrows),
-        squeeze=True
-    )
-    for det in onres_ind:
-        axes[0, 0].plot(z_freq_plot[det], color = colors[det])
-        axes[0, 1].plot(z_diss_plot[det], color = colors[det])
-        nongaussian_mask_freq =[1 if i >=5 else 0 for i in z_freq_plot[det]]
-        num_nongaussian_freq += nongaussian_mask_freq
-        nongaussian_mask_diss =[1 if i >=5 else 0 for i in z_diss_plot[det]]
-        num_nongaussian_diss += nongaussian_mask_diss
-    axes[0,0].plot(num_nongaussian_freq, color = 'red', label = "number of non gaussian detectors")
-    axes[0,1].plot(num_nongaussian_diss, color = 'red', label = "number of non gaussian detectors")
-
-    for det in offres_ind:
-        axes[1, 0].plot(z_freq_plot[det], color = colors[det])
-        axes[1, 1].plot(z_diss_plot[det], color = colors[det])
-    axes[0,0].set_ylabel('Z Score (I)', fontsize=16)
-    axes[1,0].set_ylabel('Z Score (I)', fontsize=16)
-
-    axes[0,1].set_ylabel('Z Score (diss)', fontsize=16)
-    axes[1,1].set_ylabel('Z Score (diss)', fontsize=16)
-
-    axes[0,0].set_title('Z Score vs Index for on resonance I')
-    axes[0,1].set_title('Z Score vs Index for on resonance diss')
-    axes[1,0].set_title('Z Score vs Index for off resonance I')
-    axes[1,1].set_title('Z Score vs Index for off resonance diss')
-    axes[0,0].legend()
-    axes[0,1].legend()
     plt.show()
 
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
-    #z_freq_on = z_freq[onres_ind, :]
-    #z_diss_on = z_diss[onres_ind, :]
-    #z_freq_off = z_freq[offres_ind, :]
-    #z_diss_off = z_diss[offres_ind, :]
-    #on_med = (
-    #    (np.median(z_freq_on, axis=0)*num_nongaussian_freq + np.median(z_diss_on, axis=0)*num_nongaussian_diss)/2
-    #)
-    #cr_metric = on_med
-    #fig = plt.figure(figsize=(9, 6))
-    #ax = plt.subplot()
     
-    #ax.hist(cr_metric, alpha = 0.5, bins = 50)
-    #ax.set_xlabel(f'CR Metric', fontsize=16)
-    #ax.set_yscale('log')
-    #ax.set_ylabel("Num at CR Metric", fontsize=16)
-    #ax.tick_params(labelsize=14)
-    #ax.legend(fontsize=14, loc='best')
-    #plt.show()
+
+
+    multiplicity_f = np.sum(detection_mask_array_f, axis = 0)
+    multiplicity_d = np.sum(detection_mask_array_d, axis = 0)
+
+    max_multiplicity = int(np.max(multiplicity_f ))
+    
+    num_glitches_f, num_glitches_d = np.arange(max_multiplicity), np.arange(max_multiplicity)
+    for i in range(1, max_multiplicity):
+
+        num_glitches_f[i] = np.sum(multiplicity_f  == i) 
+        num_glitches_d[i] = np.sum(multiplicity_d == i) 
+
+    ax.scatter(np.arange(max_multiplicity), num_glitches_f, color = 'blue', label = 'frequency')
+    ax.scatter(np.arange(max_multiplicity), num_glitches_d, color = 'orange', label = 'dissapation')
+    ax.scatter(np.arange(max_multiplicity), num_glitches_d + num_glitches_f, color = 'black', label = 'combined')
+
+    ax.set_yscale('log')
+    ax.legend()
+    plt.show()
+
+
+    mutlplicity_mask = np.array(multiplicity_f + multiplicity_d)>=1
+
+    detection_mask_array = detection_mask_array_d + detection_mask_array_f
+
+
+    detection_mask_array = detection_mask_array[:, mutlplicity_mask]
+    num_events = np.sum(detection_mask_array[onres_ind], axis = 1)*(60/1000)
+    print(np.sum(num_events))
+    fig = plt.figure(figsize=(9, 6))
+    ax = plt.subplot()
+
+    ax.hist(num_events)
+    det_num = np.arange(len(onres_ind))
+    ax.set_xlabel('Number of events per minute')
+    ax.scatter(num_events, det_num, color = 'red')
+    
+    plt.show()
 
 
 
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from scipy import signal
 
 def make_freq_freq_noise_blob_report(
     z_freq: np.ndarray,

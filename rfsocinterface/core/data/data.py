@@ -514,24 +514,25 @@ def find_missed_packets_with_indices(
     print(f'{np.sum(missed_packets[:, 1])} missed packets')
     return missed_packets
 
-def find_non_gaussian_packets(
-        data_IQ: npt.NDArray,
+def get_z_arrays(
+        data: npt.NDArray,
         num_processing_blocks: int,
-        onres_ind: npt.NDArray 
 ) -> npt.NDArray:
-    time_stream_size = data_IQ.shape[2]
-    cr_metric = np.zeros(time_stream_size)
-    cr_metric_off = np.zeros(time_stream_size)
+    time_stream_size = data.shape[2]
+
 
     block_indices = np.linspace(
         0, time_stream_size, num_processing_blocks + 1, dtype=int
     )
+    
+    z_I = np.zeros_like(data[0, :, :])
+    z_Q = np.zeros_like(data[0, :, :])
 
     for i in range(num_processing_blocks):
         start, end = block_indices[i], block_indices[i + 1]
 
-        I = data_IQ[0, :, start:end]
-        Q = data_IQ[1, :, start:end]
+        I = data[0, :, start:end]
+        Q = data[1, :, start:end]
 
         mean_I = np.mean(I, axis=1)
         mean_Q = np.mean(Q, axis=1)
@@ -541,30 +542,50 @@ def find_non_gaussian_packets(
         std_I[std_I == 0] = np.nan
         std_Q[std_Q == 0] = np.nan
 
-        z_I_on = np.abs(I[onres_ind] - mean_I[onres_ind, None]) / std_I[onres_ind, None]
-        z_Q_on = np.abs(Q[onres_ind] - mean_Q[onres_ind, None]) / std_Q[onres_ind, None]
+        z_I[:, start:end]= np.abs(I - mean_I[:, None]) / std_I[:, None]
+        z_Q[:, start:end] = np.abs(Q[:] - mean_Q[:, None]) / std_Q[:, None]
 
-        tone_set = np.arange(0, len(data_IQ[0, :, 0]))
-        offres_ind_mask = ~np.isin(tone_set, onres_ind)
-        offres_ind = tone_set[offres_ind_mask]
-        z_I_off = np.abs(I[offres_ind] - mean_I[offres_ind, None]) / std_I[offres_ind, None]
-        z_Q_off = np.abs(Q[offres_ind] - mean_Q[offres_ind, None]) / std_Q[offres_ind, None]
+    return z_I, z_Q
 
-        on_med = (
-            (np.median(z_I_on, axis=0) + np.median(z_Q_on, axis=0))/2
-        )
-        off_med= (
-            (np.median(z_I_off, axis=0) + np.median(z_Q_off, axis=0))/2
-        )
-        cr_metric[start:end] = on_med - off_med
-    bad_indices = np.where(cr_metric>2)[0]
-    missed_packets = np.empty((0, 2), dtype=int)
+def interpolate_CR_packets(data_IQ:npt.NDArray, glitch_mask_I:npt.NDArray, glitch_mask_Q:npt.NDArray, window: int = 10):
+    timestream_packets = len(data_IQ[0, 0, :])
+    tone_list = np.arange(len(data_IQ[0, :, 0]))
+    timestream = np.arange(timestream_packets)
+    for t in range(timestream_packets):
+        start = int(max(0, t-window))
+        end = int(min(timestream_packets, t + window))
+        
 
-    for i in bad_indices.flatten():
-        index = i  # np.diff has shape n - 1
-        missed_packets = np.vstack([missed_packets, [index, 1]])
-    print(f'{np.sum(missed_packets[:, 1])} missed packets')
-    return missed_packets
+        glitchy_tones_I = tone_list[glitch_mask_I[:,t].T]
+        glitchy_tones_Q = tone_list[glitch_mask_Q[:,t].T]
+        glitchy_tones = list(set(glitchy_tones_I)|set(glitchy_tones_Q))
+        if len(glitchy_tones) != 0:
+
+            times = np.concatenate((
+                timestream[start:t],
+                timestream[t+1:end]
+            ))
+
+            data = np.concatenate((
+                data_IQ[:, glitchy_tones, start:t],
+                data_IQ[:, glitchy_tones, t+1:end]
+            ), axis=2)
+
+            # Center time axis
+            x = times - timestream[t]
+
+            # Fit along time axis
+            fit_I = poly.polyfit(x, data[0].T, deg=4)
+            fit_Q = poly.polyfit(x, data[1].T, deg=4)
+
+            # Evaluate polynomial at x = 0
+            interpolated_I_val = poly.polyval(0, fit_I)
+            interpolated_Q_val = poly.polyval(0, fit_Q)
+
+            print(interpolated_I_val-data_IQ[0,glitchy_tones, t])
+            print(interpolated_Q_val-data_IQ[1,glitchy_tones, t])
+            data_IQ[0,glitchy_tones,t] = interpolated_I_val
+            data_IQ[1,glitchy_tones,t] = interpolated_Q_val
 
 
 
@@ -650,7 +671,7 @@ def find_missed_packets(
             corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
         i += 1
 
-    # new_timestamp.append(fit.slope * corrected_packet_idx + fit.intercept)
+    # new_timestamp.append(fit.sget_z_arralope * corrected_packet_idx + fit.intercept)
     print(f'{np.sum(missed_packets[:, 1])} missed packets')
 
     # Plotting Code for Debugging
@@ -1117,7 +1138,7 @@ class ProcessedDataL0(BaseProcessedData):
         setnum: int,
         beam_map_mode: bool=False,
     ) -> ProcessedDataL0:
-        remove_CR = False
+        remove_CR = True
         folder = Path(f'{DATA_DIRECTORY}/{date}')
         todtemplate = get_tod_template(date, setnum)
         tele_template = Path(get_azel_template(date, setnum))
@@ -1290,25 +1311,13 @@ class ProcessedDataL0(BaseProcessedData):
                 if n_missed > 0:
                     this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
                 if remove_CR:
-                    this_chanmask = raw_global_data.chanmask[:]
-                    on_res = np.argwhere(this_chanmask == 1).flatten()
-                    non_gaussian_packets = find_non_gaussian_packets(this_data_IQ, 10, on_res)
-                    n_non_gaussian = np.sum(non_gaussian_packets)
+                    z_I, z_Q = get_z_arrays(this_data_IQ, 10)
+                    glitch_mask_I = np.array(z_I)>5
+                    glitch_mask_Q = np.array(z_Q)>5
+                    interpolate_CR_packets(this_data_IQ, glitch_mask_I, glitch_mask_Q)
 
-                    if n_non_gaussian >0:
-                        non_gaussian_interpolated_indices, non_gaussian_interpolated_data = interpolate_missing_data(
-                                this_data_IQ[0, :, :],
-                                this_data_IQ[1, :, :],
-                                timestamp,
-                                non_gaussian_packets,
-                                corrected_packet_index[:],
-                                np.arange(0, len(valid_tone_index), 1)
-                            )
-                        # A little ugly from trying to reuse the interpolation code TODO ask Nia how to fix this
-                        non_gaussian_interpolated_indices = non_gaussian_packets[:, 0].flatten()
+                    pdb.set_trace()
 
-
-                        this_data_IQ[:, :, non_gaussian_interpolated_indices] = non_gaussian_interpolated_data
 
                 data_IQ.append(this_data_IQ)
 
@@ -1633,6 +1642,10 @@ class ProcessedDataL1(ProcessedData):
             IQ_to_gain_phase_angle,
         )
         fs = 1 / np.median(np.diff(new_data.timestamp[:]))
+        plot_data_fd = np.ones_like(data_gain_phase)
+        rotate_basis(new_data.data_IQ[:], plot_data_fd, IQ_to_freq_diss_angle)
+        z_freq, z_diss = get_z_arrays(plot_data_fd, 10)
+        time_streams.plot_timestream_errors(z_freq, z_diss,fs, lp_filt_freq=50, onres_ind = new_data.onres_ind)
 
         if do_electronics_noise_removal:
             
@@ -1651,7 +1664,6 @@ class ProcessedDataL1(ProcessedData):
             data_gain_phase[..., n:] = unblocked_clean_data[..., -1:]
 
         new_generate_calibrated_data(new_data)
-        time_streams.plot_timestream_errors(new_data.data_freq_diss[:],fs, lp_filt_freq=50, onres_ind = new_data.onres_ind)
 
         return new_data
 

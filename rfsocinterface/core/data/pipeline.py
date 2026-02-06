@@ -9,10 +9,10 @@ import time
 import numpy as np
 import angle_plots
 import rfsocinterface
+from rfsocinterface.analysis import time_streams
 from rfsocinterface.core.data.data import ProcessedData, ProcessedDataL1, ProcessedDataLN, MapData, ProcessedDataL0
 from rfsocinterface.core.data.map import BinTODIntoMap
 from rfsocinterface.core.data.routines import ProcessingStage, DataRoutine, Downsample, HighPassFilter, LowPassFilter, CleanTOD, ComputeNoisePSD, PsdBasis
-
 _logger = logging.getLogger(__name__)
 
 class RoutineApplier:
@@ -56,7 +56,7 @@ class DataPipeline:
         l0_applier (RoutineApplier): Wrapper for routines to apply before processing 
             the data e.g. RemovePointLomaPickup.
         l1_applier (RoutineApplier): Wrapper for routines that are applied in processing
-            e.g. Downsample, RemoveElectronicsNoise, etc.
+            e.g. Downsample, RemoveElectronicsNoiseNoise Blobs, etc.
         l2_applier (RoutineApplier): Wrapper for routines to apply after creating
             the processed data file, e.g. HighPassFilter, LowPassFilter, CleanTOD, etc.
         mapping_applier (RoutineApplier): Wrapper for routines to apply during map creation
@@ -166,6 +166,7 @@ class DataPipeline:
             pd,
             ds_factor=self.shared_values['ds_factor'],
             do_electronics_noise_removal=self.shared_values.get('do_electronics_noise_removal', True),
+            block_length=self.shared_values.get('block_length', 100),
             max_modes=self.shared_values.get('max_modes', 30),
         )
         self.l1_applier.apply_routines(pd1)
@@ -243,14 +244,16 @@ if __name__ == '__main__':
     primary_direction = 'az'
 
     ds_factor = 1
+    lp_filt_freq = 500
+    block_length = 100
     hp_filt_freq = 0.00
-    lp_filt_freq = 250
+
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
-    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=100)
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
     
 
     pipeline = DataPipeline(
@@ -260,6 +263,7 @@ if __name__ == '__main__':
         dataset=dataset,
         beam_map_mode=beam_map_mode,
         do_electronics_noise_removal=do_electronics_noise_removal,
+        block_length = block_length,
         max_modes=10,
     )
     #pipeline.add_routine(hpfilt)
@@ -275,9 +279,6 @@ if __name__ == '__main__':
     #Get information from processed data
     freq = data.get_node_value('freq')[:]
     adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:]
-
-    IQ_to_freq_diss_angle = data.get_node_value('IQ_to_freq_diss_angle')[:]
-
     chanmask = data.chanmask[:]
     probe_freq = data.baseband_freqs[:] + data.lo_freq
 
@@ -289,8 +290,9 @@ if __name__ == '__main__':
 
     # Plot it
     psd_gp = data.get_node_value('psd_gain_phase')[:]
-    plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnum}.pdf', basis=PsdBasis.GAIN_PHASE)
+    #plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnum}.pdf', basis=PsdBasis.GAIN_PHASE)
     psd_fd = data.get_node_value('psd_freq_diss')[:]
     csd_fd = data.get_node_value('csd_freq_diss')[:]
     plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_fd)
     plot_psd(freq, psd_fd, f'noise_SNqp_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_fd)
+    data_IQ = data.get_node_value('data_IQ')

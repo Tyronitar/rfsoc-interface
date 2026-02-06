@@ -320,7 +320,14 @@ def plot_SNqp(
         ylabel=ylabel,
         yscale=yscale,
     )
+    SNqp_array = np.array(SNqp_array)
+    print(SNqp_array.shape)
     figs.append(average_fig)
+    figs.append(plot_hist(freq, SNqp_array,1.0,"Hist Freq at 1 Hz"  ))
+    figs.append(plot_hist(freq, SNqp_array,10.0,"Hist Freq at 10 Hz"  ))
+    figs.append(plot_hist(freq, SNqp_array,100.0,"Hist Freq at 100 Hz"  ))
+    figs.append(plot_hist(freq, SNqp_array,400.0,"Hist Freq at 400 Hz"  ))
+
     with PdfPages(filename) as pdf:
         for fig in figs:
             pdf.savefig(fig)
@@ -394,9 +401,11 @@ def plot_psd_df_over_f(
         yscale,
     ))
 
-    figs.append(plot_freq_hist(freq, onres_psd,1.0,"Hist Freq at 1 Hz"  ))
-    figs.append(plot_freq_hist(freq, onres_psd,10.0,"Hist Freq at 10 Hz"  ))
-    figs.append(plot_freq_hist(freq, onres_psd,100.0,"Hist Freq at 100 Hz"  ))
+    figs.append(plot_hist(freq, onres_psd,1.0,"Hist Freq at 1 Hz" , components=["Frequency", "Dissapation"] ))
+    figs.append(plot_hist(freq, onres_psd,10.0,"Hist Freq at 10 Hz" ,components=["Frequency", "Dissapation"]  ))
+    figs.append(plot_hist(freq, onres_psd,100.0,"Hist Freq at 100 Hz",components=["Frequency", "Dissapation"]   ))
+    figs.append(plot_hist(freq, onres_psd,400.0,"Hist Freq at 400 Hz" ,components=["Frequency", "Dissapation"]  ))
+
     with PdfPages(filename) as pdf:
         for fig in figs:
             pdf.savefig(fig)
@@ -436,22 +445,33 @@ def average_plots(freq, psd, titles,title, min_percentile, max_percentile, ylabe
     return figs
 
 
-def plot_freq_hist(
+def plot_hist(
     x_data: npt.NDArray,
     y_data: npt.ArrayLike,
     hist_freq: float,
     title: str | None=None,
     ylabel: str='Num Values',
+    components: npt.NDArray = None,
+    n_avg: int = 5
 ) -> Figure:
     """Create a plot of the noise PSD in df/f units."""
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
     
     freq_index = np.argmin(np.abs(x_data-hist_freq))
-    for j, label in enumerate(['Frequency', 'Dissipation']):
-        ax.hist(np.log10(y_data[j, :, freq_index]), label = label, alpha = 0.5, bins = 20)
+    if components is not None:
+        for j, label in enumerate(components):
+            plot_data = np.mean(y_data[j, :, freq_index-n_avg: freq_index + n_avg], axis = 1)
+
+            ax.hist(np.log10(plot_data), label = label, alpha = 0.5, bins = 20)
+    else:
+        plot_data = np.mean(y_data[:, freq_index-n_avg: freq_index + n_avg], axis = 1)
+        y = np.arange(0 ,len(plot_data))
+        ax.hist(np.log10(plot_data), alpha = 0.5, bins = 20)
+        ax.scatter(np.log10(plot_data),y)
+
+
     ax.set_xlabel(f'log Sdf/f PSD value at {hist_freq}(Hz)', fontsize=16)
-    ax.set_xlim(-19,-16)
     ax.set_ylabel(ylabel, fontsize=16)
     ax.tick_params(labelsize=14)
     ax.legend(fontsize=14, loc='best')
