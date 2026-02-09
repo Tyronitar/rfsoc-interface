@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt import FigureManagerQT, NavigationToolbar2QT
-from matplotlib.backend_tools import ToolToggleBase, Cursors
+from matplotlib.backend_tools import ToolToggleBase, Cursors, ToolBase
 from matplotlib.figure import Figure
 
 from rfsocinterface.gui.blit_manager import BlitManager
@@ -39,6 +39,23 @@ class EditTool(ToolToggleBase):
     image = '../../../ui_resources/edit_icon'
     radio_group = 'default'
     # cursor = Cursors.
+
+class AddTool(ToolBase):
+    description = 'Add a vertical line to the plot'
+
+    def trigger(self, sender, event, data=None):
+        fig = self.figure
+        ax = fig.get_axes()[0]
+        xlims = ax.get_xlim()
+        x = (xlims[0] + xlims[1]) / 2
+        ax.axvline(x, color='red')
+        fig.canvas.draw_idle()
+
+class RemoveTool(ToolBase):
+    description = 'Remove the currently selected artist from the plot'
+
+    def trigger(self, sender, event, data=None):
+        print(data)
 
 class ScrollableCanvas(QScrollArea):
     """Widget for displating a Matplotlib canvas in a scroll area."""
@@ -130,7 +147,15 @@ class ToolbarCanvas(QWidget):
     def add_edit_button(self):
         # Add an edit option to the tool bar, in the same group as zoom and pan
         self.manager.toolmanager.add_tool('edit', EditTool)
-        self.manager.toolbar.add_tool('edit', 'zoompan')
+        self.manager.toolbar.add_tool('edit', 'extras')
+    
+    def add_add_button(self):
+        self.manager.toolmanager.add_tool('add', AddTool)
+        self.manager.toolbar.add_tool('add', 'extras')
+
+    def add_remove_button(self):
+        self.manager.toolmanager.add_tool('remove', RemoveTool)
+        self.manager.toolbar.add_tool('remove', 'extras')
 
     def update_figure(self):
         """Update the figure of this widget."""

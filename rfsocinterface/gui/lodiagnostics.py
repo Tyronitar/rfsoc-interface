@@ -531,6 +531,8 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.setupUi(self)
         self.setSizeGripEnabled(True)
         self.canvas.add_edit_button()
+        self.canvas.add_add_button()
+        self.canvas.add_remove_button()
         self.setup_connections()
 
         self.data = data
