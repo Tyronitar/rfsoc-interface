@@ -8,6 +8,8 @@ from typing import Callable, Concatenate
 from pathlib import Path
 from concurrent.futures import Future
 import logging
+import pdb
+from matplotlib.artist import Artist
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -520,12 +522,24 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
     def __init__(self, data: LoSweepData, parent: QWidget | None=None):
         super().__init__(parent)
         self.setupUi(self)
-        self.canvas.add_edit_button()
+        # self.canvas.add_edit_button()
+        self.figcanvas = self.canvas.canvas
 
         self.data = data
+        self.selected_line = None
+        self.dragging = False
 
     def set_window_name(self, name: str):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
+    
+    @property
+    def n_tones(self) -> int:
+        return self.data.nchan
+    
+    def get_vlines(self) -> list[plt.Line2D]:
+        """Get the vertical lines in the plot."""
+        # The first n_tones lines should be the S21 traces for each tone
+        return self.ax.lines[self.n_tones:]
     
     def plot(self):
         f0, depths = self.data.find_resonances()
@@ -534,6 +548,12 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         
         fig = self.data.plot_blind_sweep(f0)
         self.set_figure(fig)
+    
+    def closest_vline(self, x: float) -> tuple[int, plt.Line2D]:
+        lines = self.get_vlines()
+        x_pos = [line.get_xdata()[0] for line in lines]
+        closest_idx = np.argmin(np.abs(np.subtract(x_pos, x)))
+        return closest_idx, lines[closest_idx]
 
     @property
     def _editing(self) -> bool:
@@ -547,7 +567,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.ax = fig.axes[0]
         self.figcanvas = self.canvas.scrollable_canvas
 
-        pdb.set_trace()
+        self.ax = fig.axes[0]
 
         # Setup the event handling logic to click and drag the line
         self.figcanvas.mpl_connect('button_press_event', self.mouse_press)
@@ -556,10 +576,14 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
 
         self.adjustSize()
 
+    def move_selected_line(self, x: float):
+        """Move the currentyl selected line to the specified x value."""
+        self.selected_line.set_xdata([x, x])
+        self.figcanvas.draw_idle()
 
-    def close_to_line(self, xdata: float, epsilon: float = EPSILON) -> bool:
+    def close_to_line(self, line: plt.Line2D, xdata: float, epsilon: float = EPSILON) -> bool:
         """Return whether a value is close to a line."""
-        return np.allclose(self.canvas.line.get_xdata()[0], xdata, rtol=epsilon)
+        return np.allclose(line.get_xdata()[0], xdata, rtol=epsilon)
 
     def mouse_release(self, event: MouseEvent):
         """Handle releasing a mouse button."""
@@ -574,7 +598,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
             # Stop dragging and update the line's position
             self.dragging = False
             self.setCursor(Qt.CursorShape.OpenHandCursor)
-            self.move_line(event.xdata)
+            self.move_selected_line(event.xdata)
 
     def mouse_press(self, event: MouseEvent):
         """Handle left clicking."""
@@ -586,12 +610,14 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
             return  # Not in the plot
 
         # Move the line to the mouse when double clicking
-        if event.dblclick:
-            self.move_line(event.xdata)
+        # if event.dblclick:
+        #     self.move_line(event.xdata)
 
-        # Begin dragging if close to the line
-        if self.close_to_line(event.xdata):
+        # Begin dragging if close to a line
+        i, closest_line = self.closest_vline(event.xdata)
+        if self.close_to_line(closest_line, event.xdata):
             self.dragging = True
+            self.selected_line = closest_line
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouse_move(self, event: MouseEvent):
@@ -600,24 +626,26 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
             return 
         # If mouse moves out of plot, unhighlight the line and stop dragging
         if event.inaxes != self.ax:
-            self.canvas.line.set_linewidth('1.5')
+            if self.selected_line is not None:
+                self.selected_line.set_linewidth('1.5')
             self.setCursor(Qt.CursorShape.ArrowCursor)
             self.dragging = False
             self.figcanvas.draw_idle()
             return
         if not self.dragging:
             # Check if the mouse is close to the line and highlight it if so
-            if self.close_to_line(event.xdata):
-                self.canvas.line.set_linewidth('3')
+            i, closest_line = self.closest_vline(event.xdata)
+            if self.close_to_line(closest_line, event.xdata):
+                closest_line.set_linewidth('3')
                 self.setCursor(Qt.CursorShape.OpenHandCursor)
             else:
-                self.canvas.line.set_linewidth('1.5')
+                closest_line.set_linewidth('1.5')
                 self.setCursor(Qt.CursorShape.ArrowCursor)
             self.figcanvas.draw_idle()
             return
 
         # Moving while holding left mouse and dragging, so update the line's position
-        self.move_line(event.xdata)
+        self.move_selected_line(event.xdata)
 
 
 
