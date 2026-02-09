@@ -531,8 +531,8 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.setupUi(self)
         self.setSizeGripEnabled(True)
         self.canvas.add_edit_button()
-        self.canvas.add_add_button()
-        self.canvas.add_remove_button()
+        self.canvas.add_add_button(self.add_line)
+        self.canvas.add_remove_button(self.remove_line)
         self.setup_connections()
 
         self.data = data
@@ -585,7 +585,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
 
     def setup_connections(self):
         # Setup the event handling logic to click and drag the line
-        # self.figure_canvas.mpl_connect('button_press_event', self.mouse_press)
+        self.figure_canvas.mpl_connect('button_press_event', self.mouse_press)
         self.figure_canvas.mpl_connect('button_release_event', self.mouse_release)
         self.figure_canvas.mpl_connect('motion_notify_event', self.mouse_move)
         self.figure_canvas.mpl_connect('pick_event', self.pick_line)
@@ -619,8 +619,26 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         """Return whether a value is close to a line."""
         return np.allclose(line.get_xdata()[0], xdata, atol=epsilon)
     
+    def add_line(self, sender, event, data=None):
+        if not self._editing:
+            return
+        xlims = self.ax.get_xlim()
+        x = (xlims[0] + xlims[1]) / 2
+        l = self.ax.axvline(x, color='red')
+        self.figure_canvas.draw_idle()
+        l.set_picker(line_picker)
+        l.set_pickradius(10)
+    
+    def remove_line(self, sender, event, data=None):
+        if not self._editing:
+            return
+        if self.selected_line is not None:
+            self.selected_line.remove()
+            self.selected_line = None
     
     def pick_line(self, event: PickEvent):
+        if not self._editing:
+            return
         self.selected_line = event.artist
         self.dragging = True
         QApplication.restoreOverrideCursor()
@@ -642,6 +660,21 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
             QApplication.restoreOverrideCursor()
             # QApplication.setOverrideCursor(Qt.CursorShape.OpenHandCursor)
             self.move_selected_line(event.xdata)
+    
+    def mouse_press(self, event: MouseEvent):
+        if not self._editing:
+            return 
+        if event.button != 1:
+            return  # Not left click
+        if event.inaxes != self.ax:
+            return  # Not inside the plot
+
+        # clicking far away from lines deselects the current line
+        i, closest_line = self.closest_vline(event.xdata)
+        if not self.close_to_line(closest_line, event.xdata):
+            self.selected_line = None
+            closest_line.set_linewidth('1.5')
+
 
     def mouse_move(self, event: MouseEvent):
         """Handle mouse movement."""
@@ -649,10 +682,10 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
             return 
         # If mouse moves out of plot, unhighlight the line and stop dragging
         if event.inaxes != self.ax:
-            if self.selected_line is not None:
-                self.selected_line.set_linewidth('1.5')
+            # if self.selected_line is not None:
+            #     self.selected_line.set_linewidth('1.5')
             # self.setCursor(Qt.CursorShape.ArrowCursor)
-            QApplication.restoreOverrideCursor()
+            # QApplication.restoreOverrideCursor()
             self.dragging = False
             self.figure_canvas.draw_idle()
             return
@@ -663,12 +696,16 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
                 closest_line.set_linewidth('3')
                 QApplication.setOverrideCursor(Qt.CursorShape.OpenHandCursor)
             else:
+                # TODO: The highlighting isn't quite right but ah well
+
                 # Not close to any lines, so unhighlight all lines and reset the cursor
-                for line in self.get_vlines():
-                    line.set_linewidth('1.5')
+                # for line in self.get_vlines():
+                #     if line != self.selected_line:
+                #         line.set_linewidth('1.5')
                 # if self.selected_line is not None:
                 #     self.selected_line.set_linewidth('1.5')
-                # closest_line.set_linewidth('1.5')
+                if closest_line != self.selected_line:
+                    closest_line.set_linewidth('1.5')
                 QApplication.restoreOverrideCursor()
             self.figure_canvas.draw_idle()
             return

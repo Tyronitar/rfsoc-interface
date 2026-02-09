@@ -43,19 +43,22 @@ class EditTool(ToolToggleBase):
 class AddTool(ToolBase):
     description = 'Add a vertical line to the plot'
 
+    def __init__(self, toolmanager, name, fn: Callable):
+        super().__init__(toolmanager, name)
+        self.fn = fn
+
     def trigger(self, sender, event, data=None):
-        fig = self.figure
-        ax = fig.get_axes()[0]
-        xlims = ax.get_xlim()
-        x = (xlims[0] + xlims[1]) / 2
-        ax.axvline(x, color='red')
-        fig.canvas.draw_idle()
+        self.fn(sender, event, data)
 
 class RemoveTool(ToolBase):
     description = 'Remove the currently selected artist from the plot'
 
+    def __init__(self, toolmanager, name, fn: Callable):
+        super().__init__(toolmanager, name)
+        self.fn = fn
+
     def trigger(self, sender, event, data=None):
-        print(data)
+        self.fn(sender, event, data)
 
 class ScrollableCanvas(QScrollArea):
     """Widget for displating a Matplotlib canvas in a scroll area."""
@@ -149,12 +152,12 @@ class ToolbarCanvas(QWidget):
         self.manager.toolmanager.add_tool('edit', EditTool)
         self.manager.toolbar.add_tool('edit', 'extras')
     
-    def add_add_button(self):
-        self.manager.toolmanager.add_tool('add', AddTool)
+    def add_add_button(self, fn: Callable):
+        self.manager.toolmanager.add_tool('add', AddTool, fn)
         self.manager.toolbar.add_tool('add', 'extras')
 
-    def add_remove_button(self):
-        self.manager.toolmanager.add_tool('remove', RemoveTool)
+    def add_remove_button(self, fn: Callable):
+        self.manager.toolmanager.add_tool('remove', RemoveTool, fn)
         self.manager.toolbar.add_tool('remove', 'extras')
 
     def update_figure(self):
