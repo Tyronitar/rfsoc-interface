@@ -523,7 +523,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         super().__init__(parent)
         self.setupUi(self)
         # self.canvas.add_edit_button()
-        self.figcanvas = self.canvas.canvas
+        self.setup_connections()
 
         self.data = data
         self.selected_line = None
@@ -531,11 +531,28 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
 
     def set_window_name(self, name: str):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
+
+    @property
+    def figure_canvas(self) -> Figure:
+        return self.canvas.figure_canvas
+
+    @property
+    def figure(self) -> Figure:
+        return self.canvas.figure
+    
+    @property
+    def ax(self) -> plt.Axes:
+        return self.figure.axes[0]
+    
+    @property
+    def _editing(self) -> bool:
+        """Return whether the plot is in editing mode."""
+        return self.canvas.manager.toolmanager.active_toggle['default'] == 'edit'
     
     @property
     def n_tones(self) -> int:
         return self.data.nchan
-    
+
     def get_vlines(self) -> list[plt.Line2D]:
         """Get the vertical lines in the plot."""
         # The first n_tones lines should be the S21 traces for each tone
@@ -546,8 +563,9 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.f0 = f0
         self.depths = depths
         
-        fig = self.data.plot_blind_sweep(f0)
-        self.set_figure(fig)
+        self.replot_figure(self.data.plot_blind_sweep, f0)
+        # fig = self.data.plot_blind_sweep(f0)
+        # self.set_figure(fig)
     
     def closest_vline(self, x: float) -> tuple[int, plt.Line2D]:
         lines = self.get_vlines()
@@ -555,31 +573,32 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         closest_idx = np.argmin(np.abs(np.subtract(x_pos, x)))
         return closest_idx, lines[closest_idx]
 
-    @property
-    def _editing(self) -> bool:
-        """Return whether the plot is in editing mode."""
-        return self.canvas.manager.toolmanager.active_toggle['default'] == 'edit'
-    
+    def setup_connections(self):
+        # Setup the event handling logic to click and drag the line
+        self.figure_canvas.mpl_connect('button_press_event', self.mouse_press)
+        self.figure_canvas.mpl_connect('button_release_event', self.mouse_release)
+        self.figure_canvas.mpl_connect('button_release_event', self.mouse_release)
+
+    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+        self.canvas.replot_figure(plotting_function, *args, **kwargs)
+
     def set_figure(self, fig: Figure):
         """Change the figure in the canvas."""
         self.canvas.set_figure(fig)
 
         self.ax = fig.axes[0]
-        self.figcanvas = self.canvas.scrollable_canvas
+        self.figure_canvas = self.canvas.scrollable_canvas
 
         self.ax = fig.axes[0]
-
-        # Setup the event handling logic to click and drag the line
-        self.figcanvas.mpl_connect('button_press_event', self.mouse_press)
-        self.figcanvas.mpl_connect('button_release_event', self.mouse_release)
-        self.figcanvas.mpl_connect('motion_notify_event', self.mouse_move)
+        
+        self.setup_connections()
 
         self.adjustSize()
 
     def move_selected_line(self, x: float):
         """Move the currentyl selected line to the specified x value."""
         self.selected_line.set_xdata([x, x])
-        self.figcanvas.draw_idle()
+        self.figure_canvas.draw_idle()
 
     def close_to_line(self, line: plt.Line2D, xdata: float, epsilon: float = EPSILON) -> bool:
         """Return whether a value is close to a line."""
@@ -630,7 +649,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
                 self.selected_line.set_linewidth('1.5')
             self.setCursor(Qt.CursorShape.ArrowCursor)
             self.dragging = False
-            self.figcanvas.draw_idle()
+            self.figure_canvas.draw_idle()
             return
         if not self.dragging:
             # Check if the mouse is close to the line and highlight it if so
@@ -641,7 +660,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
             else:
                 closest_line.set_linewidth('1.5')
                 self.setCursor(Qt.CursorShape.ArrowCursor)
-            self.figcanvas.draw_idle()
+            self.figure_canvas.draw_idle()
             return
 
         # Moving while holding left mouse and dragging, so update the line's position
@@ -688,6 +707,11 @@ if __name__ == '__main__':
     # win = MainWindow()
     # win.show()
     # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
-    dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    dw.show()
+    # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
+    data = LoSweepData.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
+    win = BlindSweepDialog(data)
+    win.plot()
+    win.show()
+
+    # dw.show()
     app.exec()

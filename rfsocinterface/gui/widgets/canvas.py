@@ -93,7 +93,7 @@ class ScrollableCanvas(QScrollArea):
 
     def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
         self.figure.clf()
-        plotting_function(self.figure, *args, **kwargs)
+        plotting_function(*args, fig=self.figure, **kwargs)
 
 class ToolbarCanvas(QWidget):
     """Widget canvas that contains the navbar."""

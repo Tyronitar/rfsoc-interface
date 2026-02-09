@@ -606,25 +606,27 @@ class LoSweepData:
             _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
         return rotation_angle, adc_units_to_hz
     
-    def plot_full_trace(self, ax: plt.Axes | None=None) -> Figure | None:
+    def plot_full_trace(self, fig: Figure=None) -> Figure | None:
         # Only return if we're creating a new figure
-        if ax is None:
+        if fig is None:
             fig, ax = plt.subplots(figsize=(10, 6))
 
-            ax.set_xlabel('Frequency (MHz)')
-            ax.set_ylabel(r'$|S_{21}|$')
-            ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
+        if len(fig.axes) == 0:
+            ax = fig.add_subplot()
         else:
-            fig = None
+            ax = fig.axes[0]
 
+        ax.set_xlabel('Frequency (MHz)')
+        ax.set_ylabel(r'$|S_{21}|$')
+        ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
 
         for i_tone in range(self.nchan):
             ax.plot(self.freq[i_tone], self.s21[i_tone], color='blue')
         
         return fig
     
-    def plot_blind_sweep(self, f0: npt.NDArray) -> Figure:
-        fig = self.plot_full_trace()
+    def plot_blind_sweep(self, f0: npt.NDArray, fig: Figure=None) -> Figure:
+        self.plot_full_trace(fig=fig)
         ax = fig.axes[0]
         for resonance in f0:
             ax.axvline(resonance, linestyle='-', color='red')
