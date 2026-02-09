@@ -4,7 +4,7 @@ import matplotlib as mpl
 
 mpl.use('QtAgg')
 
-from typing import Callable
+from typing import Callable, Concatenate
 from pathlib import Path
 from concurrent.futures import Future
 import logging
@@ -36,7 +36,7 @@ from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_lis
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
-from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes
+from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P
 from rfsocinterface.gui.widgets.progress_bar import make_progress_dialog_incrementer
 from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
 
@@ -68,6 +68,8 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.setupUi(self)
         self.layout().addWidget(QSizeGrip(self))
         self.layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self.setSizeGripEnabled(True)
+
         self.resonator = resonator
         self.dragging = False
         self.error_label = None
@@ -75,8 +77,10 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.setWindowTitle(f'Resonator {self.resonator.idx}')
 
         # Setup the plot
-        fig = self.resonator.plot()
-        self.set_figure(fig)
+        self.setup_connections()
+        self.replot_figure(self.resonator.plot)
+        # fig = self.resonator.plot()
+        # self.set_figure(fig)
         self.canvas.line.set_label('New Frequency')
         self.ax.axvline(
             self.resonator.tone,
@@ -118,7 +122,18 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
 
         # This line will call change_freq since the signal has been connected
         self.move_line(self.resonator.fit_f0)
+    
+    @property
+    def figure_canvas(self) -> Figure:
+        return self.canvas.figure_canvas
 
+    @property
+    def figure(self) -> Figure:
+        return self.canvas.figure
+    
+    @property
+    def ax(self) -> plt.Axes:
+        return self.figure.axes[0]
     
     @property
     def _editing(self) -> bool:
@@ -130,19 +145,19 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.resonator.fit_f0 = self.temp_fit_f0
         self.resonator.fit_qc = self.temp_fit_qc
         self.resonator.fit_qi = self.temp_fit_qi
-        plt.close(self.canvas.canvas.figure)
+        plt.close(self.figure)
         self.accept()
 
     def reject_changes(self):
         """Handle rejecting changes."""
-        plt.close(self.canvas.canvas.figure)
+        plt.close(self.figure)
         self.reject()
     
     def move_line(self, x: float, update_line_edit: bool=True):
         """Move the line to the specified x value."""
         self.temp_fit_f0 = x
         self.canvas.line.set_xdata([x, x])
-        self.figcanvas.draw_idle()
+        self.figure_canvas.draw_idle()
         self.delta_value_label.setText(
             f'{(x - self.resonator.tone) * 1e-3:.3f}'
         )
@@ -195,20 +210,27 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             # Update the line's position
             new_freq = float(new_freq) * 1e6  # Convert MHz to Hz
             self.move_line(new_freq, update_line_edit=False)
+    
+    def setup_connections(self):
+        # Setup the event handling logic to click and drag the line
+        self.figure_canvas.mpl_connect('button_press_event', self.mouse_press)
+        self.figure_canvas.mpl_connect('button_release_event', self.mouse_release)
+        self.figure_canvas.mpl_connect('motion_notify_event', self.mouse_move)
 
     def set_figure(self, fig: Figure):
         """Change the figure in the canvas."""
         self.canvas.set_figure(fig)
 
         self.ax = fig.axes[0]
-        self.figcanvas = self.canvas.canvas
+        # self.figcanvas = self.canvas.canvas
 
-        # Setup the event handling logic to click and drag the line
-        self.figcanvas.mpl_connect('button_press_event', self.mouse_press)
-        self.figcanvas.mpl_connect('button_release_event', self.mouse_release)
-        self.figcanvas.mpl_connect('motion_notify_event', self.mouse_move)
+        self.setup_connections()
+
 
         self.adjustSize()
+
+    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+        self.canvas.replot_figure(plotting_function, *args, **kwargs)
 
     def close_to_line(self, xdata: float, epsilon: float = EPSILON) -> bool:
         """Return whether a value is close to the line."""
@@ -256,7 +278,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             self.canvas.line.set_linewidth('1.5')
             self.setCursor(Qt.CursorShape.ArrowCursor)
             self.dragging = False
-            self.figcanvas.draw_idle()
+            self.figure_canvas.draw_idle()
             return
         if not self.dragging:
             # Check if the mouse is close to the line and highlight it if so
@@ -266,7 +288,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             else:
                 self.canvas.line.set_linewidth('1.5')
                 self.setCursor(Qt.CursorShape.ArrowCursor)
-            self.figcanvas.draw_idle()
+            self.figure_canvas.draw_idle()
             return
 
         # Moving while holding left mouse and dragging, so update the line's position
@@ -378,7 +400,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def redraw_axes(self, resonator: ResonatorData, ax: plt.Axes):
         """Redraw the specified axes."""
         reset_axes(ax)
-        resonator.plot(ax)
+        resonator.plot(ax=ax)
         # ax.set_box_aspect(1.0)
 
         fig = self.get_figure()
@@ -523,7 +545,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.canvas.set_figure(fig)
 
         self.ax = fig.axes[0]
-        self.figcanvas = self.canvas.canvas
+        self.figcanvas = self.canvas.scrollable_canvas
 
         pdb.set_trace()
 
@@ -600,11 +622,44 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
 
 
 if __name__ == '__main__':
+
     from concurrent.futures import wait
     import pdb
 
     app = QApplication()
 
-    dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.backends.backend_qt import FigureManagerQT
+    from matplotlib.backend_tools import ToolToggleBase
+    from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
+    def plot_fn(fig: Figure, size: int=10):
+        if len(fig.axes) == 0:
+            ax = fig.add_subplot()
+        else:
+            ax = fig.axes[0]
+        ax.plot(np.arange(size), np.random.random(size))
+
+    # class MainWindow(QDialog):
+    #     def __init__(self, parent=None):
+    #         super().__init__(parent)
+
+    #         self.canvas = ToolbarCanvas(self)
+    #         self.canvas.add_edit_button()
+    #         self.canvas.replot_figure(plot_fn)
+    #         # self.canvas = FigureCanvas(fig)
+    #         # self.manager = FigureManagerQT(self.canvas, 1)
+    #         # self.canvas.manager = self.manager
+    #         # self.nav = self.manager.toolbar
+
+    #         layout = QVBoxLayout(self)
+    #         layout.setContentsMargins(0, 0, 0, 0)
+    #         self.setLayout(layout)
+    #         # layout.addWidget(self.nav)
+    #         layout.addWidget(self.canvas)
+
+    # win = MainWindow()
+    # win.show()
+    # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
+    dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
     dw.show()
     app.exec()

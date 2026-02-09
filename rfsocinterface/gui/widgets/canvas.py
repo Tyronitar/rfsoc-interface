@@ -1,4 +1,6 @@
 import warnings
+from typing import Callable, Concatenate
+
 
 import matplotlib as mpl
 mpl.use('QtAgg')
@@ -16,11 +18,13 @@ from PySide6.QtWidgets import (
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt import FigureManagerQT
-from matplotlib.backend_tools import ToolToggleBase
+from matplotlib.backends.backend_qt import FigureManagerQT, NavigationToolbar2QT
+from matplotlib.backend_tools import ToolToggleBase, Cursors
 from matplotlib.figure import Figure
 
 from rfsocinterface.gui.blit_manager import BlitManager
+from rfsocinterface.gui.widgets.utils import layout_widgets
+from rfsocinterface.core.utils import P
 
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
@@ -34,7 +38,7 @@ class EditTool(ToolToggleBase):
     default_toggled = False
     image = '../../../ui_resources/edit_icon'
     radio_group = 'default'
-    cursor = 'hand'
+    cursor = Cursors.HAND
 
 class ScrollableCanvas(QScrollArea):
     """Widget for displating a Matplotlib canvas in a scroll area."""
@@ -87,6 +91,10 @@ class ScrollableCanvas(QScrollArea):
             return True
         return super().eventFilter(obj, event)
 
+    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+        self.figure.clf()
+        plotting_function(self.figure, *args, **kwargs)
+
 class ToolbarCanvas(QWidget):
     """Widget canvas that contains the navbar."""
 
@@ -95,11 +103,11 @@ class ToolbarCanvas(QWidget):
         super().__init__(parent)
         if fig is None:
             fig = Figure(figsize=(8, 5))
-        self.canvas = ScrollableCanvas(self)
-        self.canvas.set_figure(fig)
+        self.scrollable_canvas = ScrollableCanvas(self)
+        self.scrollable_canvas.set_figure(fig)
 
-        self.manager = FigureManagerQT(self.canvas, 1)
-        self.canvas.manager = self.manager
+        self.manager = FigureManagerQT(self.scrollable_canvas, 1)
+        self.scrollable_canvas.manager = self.manager
         self.nav = self.manager.toolbar
 
         if add_edit:
@@ -109,7 +117,15 @@ class ToolbarCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
         layout.addWidget(self.nav)
-        layout.addWidget(self.canvas)
+        layout.addWidget(self.scrollable_canvas)
+
+    @property
+    def figure(self) -> Figure:
+        return self.scrollable_canvas.figure
+
+    @property
+    def figure_canvas(self) -> Figure:
+        return self.scrollable_canvas.canvas
     
     def add_edit_button(self):
         # Add an edit option to the tool bar, in the same group as zoom and pan
@@ -122,8 +138,22 @@ class ToolbarCanvas(QWidget):
 
     def set_figure(self, fig: Figure | None):
         """Set the figure of this widget."""
-        self.canvas.set_figure(fig)
+        self.scrollable_canvas.set_figure(fig)
+        layout = self.layout()
+        print(f'Before removal: {layout_widgets(layout)}')
+        # layout.removeWidget(self.nav)
+        # print(f'After removal: {layout_widgets(layout)}')
 
+        old_nav = self.nav
+        self.manager = FigureManagerQT(self.scrollable_canvas, 1)
+        self.scrollable_canvas.manager = self.manager
+        self.nav = self.manager.toolbar
+        layout.replaceWidget(old_nav, self.nav)
+        print(f'End Result: {layout_widgets(layout)} total = {layout.count()}')
+        print(self.scrollable_canvas)
+    
+    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+        self.scrollable_canvas.replot_figure(plotting_function, *args, **kwargs)
 
 
 class ResonatorCanvas(QWidget):
@@ -134,29 +164,42 @@ class ResonatorCanvas(QWidget):
         super().__init__(parent)
         if fig is None:
             fig = Figure(figsize=(8, 5))
-        self.canvas = FigureCanvas(fig)
-        self.canvas.figure = fig
-
-        self.manager = FigureManagerQT(self.canvas, 1)
-        self.canvas.manager = self.manager
-        self.nav = self.manager.toolbar
-
-        # Add an edit option to the tool bar, in the same group as zoom and pan
-        self.manager.toolmanager.add_tool('edit', EditTool)
-        self.manager.toolbar.add_tool('edit', 'zoompan')
+        self.canvas = ToolbarCanvas(parent=self, fig=fig, add_edit=True)
+        self.line = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
         layout.addWidget(self.nav)
         layout.addWidget(self.canvas)
+    
+    @property
+    def manager(self) -> FigureManagerQT:
+        return self.canvas.manager
+    
+    @property
+    def nav(self) -> NavigationToolbar2QT:
+        return self.canvas.nav
+
+    @property
+    def figure(self) -> Figure:
+        return self.canvas.figure
+
+    @property
+    def figure_canvas(self) -> Figure:
+        return self.canvas.figure_canvas
 
     def update_figure(self):
         """Update the figure of this widget."""
         self.update()
 
+    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+        self.canvas.replot_figure(plotting_function, *args, **kwargs)
+        self.line = self.figure.axes[0].get_lines()[1]
+
     def set_figure(self, fig: Figure | None):
         """Set the figure of this widget."""
+        self.canvas.set_figure(fig)
         self.canvas.figure = fig
         if fig is not None:
             ax = fig.get_axes()[0]

@@ -144,7 +144,7 @@ class ResonatorData:
         self.data = data
         self.idx = idx
 
-    def plot(self, ax: plt.Axes | None = None, animated: bool = False) -> Figure | None:
+    def plot(self, fig: Figure=None, ax: plt.Axes | None = None, animated: bool = False) -> Figure | None:
         """Plot the results of the LO sweep fitting for this resonator.
 
         Arguments:
@@ -173,8 +173,9 @@ class ResonatorData:
             return
 
         # If axes not provided, create a new figure
-        fig = plt.figure(figsize=(8, 5))
-        ax = plt.subplot()
+        if fig is None:
+            fig = plt.figure(figsize=(8, 5))
+        ax = fig.add_subplot()
         ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
         ax.set_xlabel('Frequency (MHz)')
         ax.set_ylabel(r'$|S_{21}|$')
