@@ -38,7 +38,7 @@ class EditTool(ToolToggleBase):
     default_toggled = False
     image = '../../../ui_resources/edit_icon'
     radio_group = 'default'
-    cursor = Cursors.HAND
+    # cursor = Cursors.
 
 class ScrollableCanvas(QScrollArea):
     """Widget for displating a Matplotlib canvas in a scroll area."""
@@ -124,7 +124,7 @@ class ToolbarCanvas(QWidget):
         return self.scrollable_canvas.figure
 
     @property
-    def figure_canvas(self) -> Figure:
+    def figure_canvas(self) -> FigureCanvas:
         return self.scrollable_canvas.canvas
     
     def add_edit_button(self):
@@ -186,7 +186,7 @@ class ResonatorCanvas(QWidget):
         return self.canvas.figure
 
     @property
-    def figure_canvas(self) -> Figure:
+    def figure_canvas(self) -> FigureCanvas:
         return self.canvas.figure_canvas
 
     def update_figure(self):

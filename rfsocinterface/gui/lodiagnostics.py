@@ -13,7 +13,8 @@ from matplotlib.artist import Artist
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.backend_bases import MouseButton, MouseEvent
+from matplotlib.backend_bases import MouseButton, MouseEvent, PickEvent
+from matplotlib.backend_tools import Cursors
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, SignalInstance, Slot, QCoreApplication
@@ -46,7 +47,9 @@ _logger = logging.getLogger(__name__)
 
 DPI = 100
 
-EPSILON = 1e-6  # Max x difference in Hz to count as the mouse being close to the line
+# Max x difference in Hz to count as the mouse being close to the line
+RTOL_EPSILON = 1e-6  
+ATOL_EPSILON = 50e3  # 50 KHz
 
 
 class ResonatorDialog(QDialog, Ui_ResonatorDialog):
@@ -126,7 +129,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.move_line(self.resonator.fit_f0)
     
     @property
-    def figure_canvas(self) -> Figure:
+    def figure_canvas(self) -> FigureCanvas:
         return self.canvas.figure_canvas
 
     @property
@@ -234,7 +237,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
         self.canvas.replot_figure(plotting_function, *args, **kwargs)
 
-    def close_to_line(self, xdata: float, epsilon: float = EPSILON) -> bool:
+    def close_to_line(self, xdata: float, epsilon: float = RTOL_EPSILON) -> bool:
         """Return whether a value is close to the line."""
         return np.allclose(self.canvas.line.get_xdata()[0], xdata, rtol=epsilon)
     
@@ -250,6 +253,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         if self.dragging:
             # Stop dragging and update the line's position
             self.dragging = False
+            self.figure_canvas.set
             self.setCursor(Qt.CursorShape.OpenHandCursor)
             self.move_line(event.xdata)
 
@@ -518,11 +522,15 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         return dialog
 
 
+def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON):
+    return np.allclose(line.get_xdata()[0], event.xdata, atol=epsilon), {}
+
 class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
     def __init__(self, data: LoSweepData, parent: QWidget | None=None):
         super().__init__(parent)
         self.setupUi(self)
-        # self.canvas.add_edit_button()
+        self.setSizeGripEnabled(True)
+        self.canvas.add_edit_button()
         self.setup_connections()
 
         self.data = data
@@ -533,7 +541,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
 
     @property
-    def figure_canvas(self) -> Figure:
+    def figure_canvas(self) -> FigureCanvas:
         return self.canvas.figure_canvas
 
     @property
@@ -575,12 +583,16 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
 
     def setup_connections(self):
         # Setup the event handling logic to click and drag the line
-        self.figure_canvas.mpl_connect('button_press_event', self.mouse_press)
+        # self.figure_canvas.mpl_connect('button_press_event', self.mouse_press)
         self.figure_canvas.mpl_connect('button_release_event', self.mouse_release)
-        self.figure_canvas.mpl_connect('button_release_event', self.mouse_release)
+        self.figure_canvas.mpl_connect('motion_notify_event', self.mouse_move)
+        self.figure_canvas.mpl_connect('pick_event', self.pick_line)
 
     def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
         self.canvas.replot_figure(plotting_function, *args, **kwargs)
+        for l in self.get_vlines():
+            l.set_picker(line_picker)
+            l.set_pickradius(10)
 
     def set_figure(self, fig: Figure):
         """Change the figure in the canvas."""
@@ -598,11 +610,19 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
     def move_selected_line(self, x: float):
         """Move the currentyl selected line to the specified x value."""
         self.selected_line.set_xdata([x, x])
+        self.ax.draw_artist(self.selected_line)
         self.figure_canvas.draw_idle()
 
-    def close_to_line(self, line: plt.Line2D, xdata: float, epsilon: float = EPSILON) -> bool:
+    def close_to_line(self, line: plt.Line2D, xdata: float, epsilon: float=ATOL_EPSILON) -> bool:
         """Return whether a value is close to a line."""
-        return np.allclose(line.get_xdata()[0], xdata, rtol=epsilon)
+        return np.allclose(line.get_xdata()[0], xdata, atol=epsilon)
+    
+    
+    def pick_line(self, event: PickEvent):
+        self.selected_line = event.artist
+        self.dragging = True
+        QApplication.restoreOverrideCursor()
+        QApplication.setOverrideCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouse_release(self, event: MouseEvent):
         """Handle releasing a mouse button."""
@@ -616,28 +636,10 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         if self.dragging:
             # Stop dragging and update the line's position
             self.dragging = False
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            # self.figure_canvas.set_cursor(Cursors.HAND)
+            QApplication.restoreOverrideCursor()
+            # QApplication.setOverrideCursor(Qt.CursorShape.OpenHandCursor)
             self.move_selected_line(event.xdata)
-
-    def mouse_press(self, event: MouseEvent):
-        """Handle left clicking."""
-        if not self._editing:
-            return 
-        if event.button != 1:
-            return  # Not left button
-        if event.inaxes != self.ax:
-            return  # Not in the plot
-
-        # Move the line to the mouse when double clicking
-        # if event.dblclick:
-        #     self.move_line(event.xdata)
-
-        # Begin dragging if close to a line
-        i, closest_line = self.closest_vline(event.xdata)
-        if self.close_to_line(closest_line, event.xdata):
-            self.dragging = True
-            self.selected_line = closest_line
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouse_move(self, event: MouseEvent):
         """Handle mouse movement."""
@@ -647,19 +649,25 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         if event.inaxes != self.ax:
             if self.selected_line is not None:
                 self.selected_line.set_linewidth('1.5')
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            # self.setCursor(Qt.CursorShape.ArrowCursor)
+            QApplication.restoreOverrideCursor()
             self.dragging = False
             self.figure_canvas.draw_idle()
             return
         if not self.dragging:
-            # Check if the mouse is close to the line and highlight it if so
+            # Check if the mouse is close to a line and highlight it if so
             i, closest_line = self.closest_vline(event.xdata)
             if self.close_to_line(closest_line, event.xdata):
                 closest_line.set_linewidth('3')
-                self.setCursor(Qt.CursorShape.OpenHandCursor)
+                QApplication.setOverrideCursor(Qt.CursorShape.OpenHandCursor)
             else:
-                closest_line.set_linewidth('1.5')
-                self.setCursor(Qt.CursorShape.ArrowCursor)
+                # Not close to any lines, so unhighlight all lines and reset the cursor
+                for line in self.get_vlines():
+                    line.set_linewidth('1.5')
+                # if self.selected_line is not None:
+                #     self.selected_line.set_linewidth('1.5')
+                # closest_line.set_linewidth('1.5')
+                QApplication.restoreOverrideCursor()
             self.figure_canvas.draw_idle()
             return
 
@@ -708,7 +716,7 @@ if __name__ == '__main__':
     # win.show()
     # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
     # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    data = LoSweepData.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
+    data = LoSweepData.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
     win = BlindSweepDialog(data)
     win.plot()
     win.show()
