@@ -582,8 +582,8 @@ def interpolate_CR_packets(data_IQ:npt.NDArray, glitch_mask_I:npt.NDArray, glitc
             interpolated_I_val = poly.polyval(0, fit_I)
             interpolated_Q_val = poly.polyval(0, fit_Q)
 
-            print(interpolated_I_val-data_IQ[0,glitchy_tones, t])
-            print(interpolated_Q_val-data_IQ[1,glitchy_tones, t])
+            #print(interpolated_I_val-data_IQ[0,glitchy_tones, t])
+            #print(interpolated_Q_val-data_IQ[1,glitchy_tones, t])
             data_IQ[0,glitchy_tones,t] = interpolated_I_val
             data_IQ[1,glitchy_tones,t] = interpolated_Q_val
 
@@ -1316,7 +1316,7 @@ class ProcessedDataL0(BaseProcessedData):
                     glitch_mask_Q = np.array(z_Q)>5
                     interpolate_CR_packets(this_data_IQ, glitch_mask_I, glitch_mask_Q)
 
-                    pdb.set_trace()
+                    #pdb.set_trace()
 
 
                 data_IQ.append(this_data_IQ)
@@ -1645,7 +1645,7 @@ class ProcessedDataL1(ProcessedData):
         plot_data_fd = np.ones_like(data_gain_phase)
         rotate_basis(new_data.data_IQ[:], plot_data_fd, IQ_to_freq_diss_angle)
         z_freq, z_diss = get_z_arrays(plot_data_fd, 10)
-        time_streams.plot_timestream_errors(z_freq, z_diss,fs, lp_filt_freq=50, onres_ind = new_data.onres_ind)
+        #time_streams.plot_timestream_errors(z_freq, z_diss,fs, lp_filt_freq=50, onres_ind = new_data.onres_ind)
 
         if do_electronics_noise_removal:
             

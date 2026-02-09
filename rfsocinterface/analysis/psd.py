@@ -326,7 +326,7 @@ def plot_SNqp(
     figs.append(plot_hist(freq, SNqp_array,1.0,"Hist Freq at 1 Hz"  ))
     figs.append(plot_hist(freq, SNqp_array,10.0,"Hist Freq at 10 Hz"  ))
     figs.append(plot_hist(freq, SNqp_array,100.0,"Hist Freq at 100 Hz"  ))
-    figs.append(plot_hist(freq, SNqp_array,400.0,"Hist Freq at 400 Hz"  ))
+    figs.append(plot_hist(freq, SNqp_array,200.0,"Hist Freq at 200 Hz"  ))
 
     with PdfPages(filename) as pdf:
         for fig in figs:
@@ -404,7 +404,7 @@ def plot_psd_df_over_f(
     figs.append(plot_hist(freq, onres_psd,1.0,"Hist Freq at 1 Hz" , components=["Frequency", "Dissapation"] ))
     figs.append(plot_hist(freq, onres_psd,10.0,"Hist Freq at 10 Hz" ,components=["Frequency", "Dissapation"]  ))
     figs.append(plot_hist(freq, onres_psd,100.0,"Hist Freq at 100 Hz",components=["Frequency", "Dissapation"]   ))
-    figs.append(plot_hist(freq, onres_psd,400.0,"Hist Freq at 400 Hz" ,components=["Frequency", "Dissapation"]  ))
+    figs.append(plot_hist(freq, onres_psd,200.0,"Hist Freq at 200 Hz" ,components=["Frequency", "Dissapation"]  ))
 
     with PdfPages(filename) as pdf:
         for fig in figs:
@@ -442,6 +442,7 @@ def average_plots(freq, psd, titles,title, min_percentile, max_percentile, ylabe
         yscale='log',
     )
     figs.append(average_fig)
+    plt.close()
     return figs
 
 
@@ -462,8 +463,10 @@ def plot_hist(
     if components is not None:
         for j, label in enumerate(components):
             plot_data = np.mean(y_data[j, :, freq_index-n_avg: freq_index + n_avg], axis = 1)
+            y = np.arange(0 ,len(plot_data))
 
             ax.hist(np.log10(plot_data), label = label, alpha = 0.5, bins = 20)
+            ax.scatter(np.log10(plot_data),y)
     else:
         plot_data = np.mean(y_data[:, freq_index-n_avg: freq_index + n_avg], axis = 1)
         y = np.arange(0 ,len(plot_data))
@@ -478,6 +481,7 @@ def plot_hist(
     if title is not None:
         ax.set_title(title, fontsize=16)
     plt.tight_layout()
+    plt.close()
     return fig
 
 def plot_df_over_f(
@@ -488,19 +492,29 @@ def plot_df_over_f(
     f0:float = 1,
     title: str | None=None,
     ylabel: str='Noise PSD (df / f)',
-    csd: npt.NDArray = None
+    csd: npt.NDArray = None,
+    make_angle_plot: bool = True
 ) -> Figure:
     """Create a plot of the noise PSD in df/f units."""
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
     if offres_median is not None and adc_units_to_hz is not None:
         offres_median = offres_median /( adc_units_to_hz * f0)**2
+
     for j, label in enumerate(['Frequency', 'Dissipation']):
         ax.plot(x_data, y_data[j], label=label)
         if offres_median is not None:
             ax.plot(x_data, offres_median[j], linestyle='dashed', color='gray', label=f'Off-Resonance {label} Median')
     if csd is not None:
         ax.plot(x_data, abs(csd), label = 'CSD')
+        if make_angle_plot:
+            angle = 0.5*np.arctan2(2*np.real(csd), y_data[0]-y_data[1])
+            freq_start = np.argmin(np.abs(x_data-20))
+            freq_stop = np.argmin(np.abs(x_data-400))
+
+            mean_angle = np.mean(angle[freq_start:freq_stop])
+            ax2 = ax.twinx()
+            ax2.hlines( mean_angle,x_data[0], x_data[-1], label = 'Residual Rotation Angle',color = 'red',linestyles='dashed', alpha = 0.3)
     ax.set_xscale('log')
     #ax.set_xlim(1, 250)
     ax.set_yscale('log')
@@ -511,9 +525,11 @@ def plot_df_over_f(
     ax.set_ylabel(ylabel, fontsize=16)
     ax.tick_params(labelsize=14)
     ax.legend(fontsize=14, loc='best')
+    ax2.legend(fontsize = 14, loc = 'best' )
     if title is not None:
         ax.set_title(title, fontsize=16)
     plt.tight_layout()
+    plt.close()
     return fig
 
 

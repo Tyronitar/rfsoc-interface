@@ -222,6 +222,37 @@ def find_peaks(data: ProcessedData, primary_direction: str='az'):
     plt.legend()
     plt.show()
 
+def rotate_optimally(freq, psd, csd, chanmask, start_freq, end_freq):
+    start_index = np.argmin(abs(freq-start_freq))
+    stop_index = np.argmin(abs(freq-end_freq))
+    psd_out = psd.copy()
+    csd_out = csd.copy()
+    tones = np.arange(len(psd[0, :, 0]))
+    onres_ind = tones[chanmask]
+    for det in onres_ind:
+        print(det)
+        #pdb.set_trace()
+        Sfd =np.real(csd[det, :])
+        Sff = psd[0, det, :]
+        Sdd = psd[1, det, :]
+        angle = 0.5*np.arctan2(2*Sfd, Sff-Sdd)
+
+        mean_angle = np.mean(angle[start_index:stop_index])
+
+        c = np.cos(mean_angle)
+        s = np.sin(mean_angle)
+
+        Sff_p = c**2 *Sff + s**2 * Sdd + 2*c*s*Sfd
+        Sdd_p = s**2 *Sff + c**2 * Sdd - 2*c*s*Sfd
+        Sfd_p = (c**2-s**2)*Sfd + c*s*(Sdd -Sff)
+
+        psd_out[0, det] = Sff_p
+        psd_out[1, det] = Sdd_p
+        csd_out[det] = Sfd_p
+    return psd_out,csd_out
+        
+
+
 
 if __name__ == '__main__':
     import pdb
@@ -295,4 +326,6 @@ if __name__ == '__main__':
     csd_fd = data.get_node_value('csd_freq_diss')[:]
     plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_fd)
     plot_psd(freq, psd_fd, f'noise_SNqp_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_fd)
-    data_IQ = data.get_node_value('data_IQ')
+    psd_opt, csd_opt = rotate_optimally(freq, psd_fd, csd_fd,chanmask[:]==1, 20, 200)
+    plot_psd(freq, psd_opt, f'noise_freq_dis_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_opt)
+    plot_psd(freq, psd_opt, f'noise_SNqp_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_opt)
