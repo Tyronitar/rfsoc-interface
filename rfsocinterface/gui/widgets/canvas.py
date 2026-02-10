@@ -60,6 +60,27 @@ class RemoveTool(ToolBase):
     def trigger(self, sender, event, data=None):
         self.fn(sender, event, data)
 
+
+class UndoTool(ToolBase):
+    description = 'Undo the last action'
+
+    def __init__(self, toolmanager, name, fn: Callable):
+        super().__init__(toolmanager, name)
+        self.fn = fn
+
+    def trigger(self, sender, event, data=None):
+        self.fn(sender, event, data)
+
+class RedoTool(ToolBase):
+    description = 'Redo the last action'
+
+    def __init__(self, toolmanager, name, fn: Callable):
+        super().__init__(toolmanager, name)
+        self.fn = fn
+
+    def trigger(self, sender, event, data=None):
+        self.fn(sender, event, data)
+
 class ScrollableCanvas(QScrollArea):
     """Widget for displating a Matplotlib canvas in a scroll area."""
 
@@ -159,6 +180,14 @@ class ToolbarCanvas(QWidget):
     def add_remove_button(self, fn: Callable):
         self.manager.toolmanager.add_tool('remove', RemoveTool, fn)
         self.manager.toolbar.add_tool('remove', 'extras')
+
+    def add_undo_button(self, fn: Callable):
+        self.manager.toolmanager.add_tool('undo', UndoTool, fn)
+        self.manager.toolbar.add_tool('undo', 'extras')
+
+    def add_redo_button(self, fn: Callable):
+        self.manager.toolmanager.add_tool('redo', RedoTool, fn)
+        self.manager.toolbar.add_tool('redo', 'extras')
 
     def update_figure(self):
         """Update the figure of this widget."""

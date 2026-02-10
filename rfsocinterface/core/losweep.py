@@ -655,7 +655,6 @@ class LoSweepData:
             min_resonance_depth_dB=0.2,
             spacing_threshold_Hz=3e3,
             min_samples_per_resonance=2,
-            max_resonance_width=30e3,
             max_noise_fluctuation_dB=0.05,
         )
         return res_freq , res_depth
