@@ -36,10 +36,11 @@ from PySide6.QtWidgets import (
 )
 
 from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list, LoSweep, DEFAULT_NCOLS
+from rfsocinterface.core.params import update_params_file, initialize_params_file
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
-from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P
+from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P, PERMISSIONS_USR_RW
 from rfsocinterface.gui.widgets.progress_bar import make_progress_dialog_incrementer
 from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
 
@@ -544,7 +545,25 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.stack_pointer = -1
 
     def set_window_name(self, name: str):
-        self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
+        self.setWindowTitle(QCoreApplication.translate("Dialog", f'Fitted Resonance Adjustment - {name}', None))
+    
+    def accept(self):
+        fname, _ = QFileDialog.getSaveFileName(
+            parent=self,
+            caption='Save Tones to Parameters File',
+            dir='/data/params',
+            filter='HDF5 (*.h5);;All Files (*)'
+        )
+        if fname:
+            f0 = [line.get_xdata()[0] for line in self.get_vlines()]
+            path = Path(fname).with_suffix('.h5')
+            if not path.exists():
+                # TODO: Get the actual tile name
+                tile_name = path.stem[12:]
+                initialize_params_file(tile_name, f0, self.data.f_center)
+            else:
+                update_params_file(path, baseband_freqs=f0)
+            return super().accept()
 
     @property
     def figure_canvas(self) -> FigureCanvas:
