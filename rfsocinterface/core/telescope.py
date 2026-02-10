@@ -234,29 +234,65 @@ class TelescopeMotorController:
             self.send('done')
             return
 
-        self.ser_ze.write(b'DRV.ACTIVE\r\n')
-        status_string = self.ser_ze.read_until(b'\r', 0.1).decode()
+        status_string = self.write_ser_ze('DRV.ACTIVE', timeout=0.1)
         status = float(status_string.split('\r')[0])
         if status == 1:
             _tele_logger.debug('ZA motor connected and software already enabled.')
         else:
-            self.ser_ze.write(b'DRV.EN\r\n')
-            sw_en = self.ser_ze.read_until(b'\r', 0.1)
+            sw_en = self.write_ser_ze('DRV.EN', timeout=0.1)
             _tele_logger.debug('ZA motor connected and software enabled by Python.')
 
         # Allow continuous reading of last ZE position synced with PPS
-        # self.ser_ze.write(b'CAP0.TRIGGER 1\r\n')
-        # self.ser_ze.write(b'EDGE 1\r\n')
-        # self.ser_ze.write(b'MODE 1\r\n')
+        self.write_ser_ze('DIN1.FILTER 0', timeout=0.1)
+
+        self.write_ser_ze('CAP0.EVENT', timeout=0.1)
+        self.write_ser_ze('CAP0.TRIGGER 1', timeout=0.1)
+        self.write_ser_ze('CAP0.EDGE 1', timeout=0.1)
+        self.write_ser_ze('CAP0.MODE 0', timeout=0.1)
+        self.write_ser_ze('CAP0.EN 1', timeout=0.1)
+        self.write_ser_ze('CAP0.STATE', timeout=0.1)
 
         # Initialize ZE values
         self.ze_pos = 0
         self.get_ser_ze_pos(timeout=0.1)
         _tele_logger.info(f'Telescope ZA position is: {self.ze_pos}')
-        # self.ze_pps_pos = 0
-        # self.get_ser_ze_pps_pos()
+        self.ze_pps_pos = self.ze_pos
+        self.get_ser_ze_pps_pos()
         self._initialized = True
 
+    def write_ser_az(self, command: str | bytes, stop: str=b'\r\n', timeout: float=None) -> str:
+        if timeout is not None:
+            self.ser_az.timeout = timeout
+
+        data = command
+        if not isinstance(data, bytes):
+            if command[-2:] != '\r\n':
+                data = data + '\r\n'
+            data = data.encode()
+
+        start_time = time.time()
+        self.ser_az.write(data)
+        self.ser_az.readline()
+        status = self.ser_az.read_until(stop).decode()  # Empty buffer
+        elapsed = time.time() - start_time
+        _tele_logger.debug(f'AZ Command {repr(data)} returned result {repr(status)} in {elapsed*1e3:.2f} ms')
+        self.ser_az.reset_input_buffer()
+        self.ser_az.reset_output_buffer()
+        return status
+    
+    def write_ser_ze(self, command: str | bytes, stop: str=b'\r\n', timeout: float=None) -> str:
+        data = command
+        if not isinstance(data, bytes):
+            if command[-2:] != '\r\n':
+                data = data + '\r\n'
+            data = data.encode()
+        start_time = time.time()
+        self.ser_ze.write(data)
+        status = self.ser_ze.read_until(stop, timeout).decode()  # Empty buffer
+        elapsed = time.time() - start_time
+        _tele_logger.debug(f'ZA Command {repr(data)} returned result {repr(status)} in {elapsed*1e3:.2f} ms')
+        return status
+    
     def close(self):
         self._run = False
         self.set_ao_zero()
@@ -278,13 +314,7 @@ class TelescopeMotorController:
     # Azimuth settings
     def set_az_home(self):
         if self.ser_az.is_open:
-            command = "NREF\r\n"
-            command = command.encode()
-            self.ser_az.write(command)
-            self.ser_az.readline()
-            pfb = self.ser_az.read_until(b"\r\n")
-            self.ser_az.reset_input_buffer()
-            self.ser_az.reset_output_buffer()
+            pfb = self.write_ser_az('NREF')
             _logger.info("Home Set.")
         else:
             _tele_logger.error("Home command not executed. Check connection with S700")
@@ -297,12 +327,8 @@ class TelescopeMotorController:
         old_pfb = self.az_pos
         try:
             if self.ser_az.is_open:
-                self.ser_az.write(b'PFB\r\n')
-                self.ser_az.readline()
-                pfb = self.ser_az.read_until(b'\r\n')
-                pfb = float(pfb.decode()) / 10000.0
-                self.ser_az.reset_input_buffer()
-                self.ser_az.reset_output_buffer()
+                pfb = self.write_ser_az('PFB')
+                pfb = float(pfb) / 10000.0
                 self.az_pos = pfb
                 if self._initialized:
                     self.send('az_pos', pfb, timeout=0.25)
@@ -333,6 +359,7 @@ class TelescopeMotorController:
         pfb = self.get_ser_az_pos()
         if scan_mode:
             this_ze = self.get_ser_ze_pos()
+            this_pps = self.get_ser_ze_pps_pos()
             position_data = []
         counter = 0
         ##Run loop
@@ -378,7 +405,7 @@ class TelescopeMotorController:
                 # self.conn.send(['az_pos', pfb])
 
                 if scan_mode:
-                    position_data = np.append(position_data, [pfb, this_ze, pfb_time])
+                    position_data = np.append(position_data, [pfb, this_ze, pfb_time, this_pps])
 
                 counter = counter + 1
 
@@ -536,12 +563,8 @@ class TelescopeMotorController:
         if self.ser_az.is_open:
             command = "VSCALE1 " + str(rpm_per_ten_volt) + "\r\n"
             command = command.encode()
-            self.ser_az.write(command)
-            self.ser_az.readline()
-            az_speed = self.ser_az.read_until(b"\r\n")
+            az_speed = self.write_ser_az(command)
             _logger.info(f'AZ speed relation set to: {rpm_per_ten_volt * 10} RPM / V')
-            self.ser_az.reset_input_buffer()
-            self.ser_az.reset_output_buffer()
 
     # Zenith angle settings
     def set_ze_home(self):
@@ -562,28 +585,39 @@ class TelescopeMotorController:
     def get_ser_ze_pps_pos(self) -> float | None:
         old_pos = self.ze_pps_pos
         try:
-            self.ser_ze.write('CAP0.PLFB\r\n'.encode('ASCII'))
-            pos_str = self.ser_ze.read_until(b']', AZ_SAMPLING_TIME)
-            pos = float(pos_str.split(' ')[0].split('>')[-1])
+            pos_str = self.write_ser_ze('CAP0.PLFB', timeout=AZ_SAMPLING_TIME)
+            split_string = pos_str.split(' ')[0].split('>')
+            if len(split_string[-1]) == 0:
+                # Not receiving pulse
+                self.send(
+                    'err',
+                    'NON-CRITICAL',
+                    'Attempted to access PPS position from ZA controller; No pulse detected; '
+                    f'PPS position set to most recent read ({old_pos:.2f})',
+                )
+                return old_pos
+
+            pos = float(split_string[-1])
             self.ze_pps_pos = pos
             if self._initialized:
                 self.send('ze_pps_pos', pos, timeout=0.25)
             return pos
         except ValueError:
-            _tele_logger.error(
+            self.send(
+                'err',
+                'NON-CRITICAL',
                 'Error communicating with ZA controller; '
-                f'PPS position set to most recent read ({old_pos:.2f})'
+                f'PPS position set to most recent read ({old_pos:.2f})',
             )
             return old_pos
 
     def get_ser_ze_pos(self, timeout: float=0.1) -> float | None:
         old_pos = self.ze_pos
         try:
-            self.ser_ze.write('PL.FB\r\n'.encode('ASCII'))
-            # TODO: Upgrade to telnetlib3, because this is janky
-            # read_until is ALWAYS timing out, despite the string containing a match
-            pos_str = self.ser_ze.read_until(b']', timeout).decode()
-            _tele_logger.debug(f'ZE position string: {repr(pos_str)}')
+            pos_str = self.write_ser_ze('PL.FB', timeout=timeout)
+            # self.ser_ze.write('PL.FB\r\n'.encode('ASCII'))
+            # pos_str = self.ser_ze.read_until(b']', timeout).decode()
+            # _tele_logger.debug(f'ZA Command "PL.FB" returned result "{repr(pos_str)}"')
             pos = float(pos_str.split(' ')[0].split('>')[-1])
             self.ze_pos = pos
             if self._initialized:
@@ -614,6 +648,7 @@ class TelescopeMotorController:
         # self.conn.send(['ze_pos', pos])
         if scan_mode:
             this_az = self.get_ser_az_pos()
+            this_pps = self.get_ser_ze_pps_pos()
             position_data = []
         if scan_mode and primary_scan_direction.lower() == 'za':
             tolerance = ZE_POS_TOL_DEG * 5
@@ -659,7 +694,7 @@ class TelescopeMotorController:
                 if scan_mode:
                     _tele_logger.debug('appending scan mode position data')
                     position_data = np.append(
-                        position_data, [this_az, pos, time.time()]
+                        position_data, [this_az, pos, time.time(), this_pps]
                     )
                 counter = counter + 1
                 if counter % 500 == 0:
@@ -775,7 +810,7 @@ class TelescopeMotorController:
         rep_times = []
         for i_rep in np.arange(n_repeats):
             rep_start_time = time.time()
-            _tele_logger.info(f'Dither Pattern: Starting repeat {i_rep + 1} of {n_repeats}')
+            _tele_logger.info(f'Dither Pattern: Starting repeat {i_rep + 1} of {n_repeats} ---------------------------------------------')
             label_text = \
                 f'Running Dither Pattern\n' \
                 f'Repeat {i_rep + 1} / {n_repeats}'
@@ -850,9 +885,10 @@ class TelescopeMotorController:
         
         path = Path(file)
         with h5py.File(path, 'w') as f:
-            f.create_dataset("az_tel", data=position_data[0::3])
-            f.create_dataset("za_tel", data=position_data[1::3])
-            f.create_dataset("timestamp_tel", data=position_data[2::3])
+            f.create_dataset("az_tel", data=position_data[0::4])
+            f.create_dataset("za_tel", data=position_data[1::4])
+            f.create_dataset("timestamp_tel", data=position_data[2::4])
+            f.create_dataset('pps', data=position_data[3::4])
             f.create_dataset("optical_visibility", data=['****'])
         path.chmod(PERMISSIONS_USR_RW)
         if primary_az:
