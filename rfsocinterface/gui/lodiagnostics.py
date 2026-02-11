@@ -43,6 +43,7 @@ from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
 from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P, PERMISSIONS_USR_RW
 from rfsocinterface.gui.widgets.progress_bar import make_progress_dialog_incrementer
 from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
+from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
 
 _logger = logging.getLogger(__name__)
 
@@ -524,18 +525,20 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
 
 def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON):
-    return np.allclose(line.get_xdata()[0], event.xdata, atol=epsilon), {}
+    res = np.allclose(line.get_xdata()[0], event.xdata, atol=epsilon), {}
+    print(res)
+    return res
 
-class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
+class BlindSweepDialog(QDialog):
     def __init__(self, data: LoSweepData, parent: QWidget | None=None):
         super().__init__(parent)
-        self.setupUi(self)
+        self.setupUi()
         self.setSizeGripEnabled(True)
-        self.canvas.add_edit_button()
-        self.canvas.add_add_button(self.add_line)
-        self.canvas.add_remove_button(self.remove_line)
-        self.canvas.add_undo_button(self.undo)
-        self.canvas.add_redo_button(self.redo)
+        # self.canvas.add_edit_button()
+        # self.canvas.add_add_button(self.add_line)
+        # self.canvas.add_remove_button(self.remove_line)
+        # self.canvas.add_undo_button(self.undo)
+        # self.canvas.add_redo_button(self.redo)
         self.setup_connections()
 
         self.data = data
@@ -543,6 +546,29 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.dragging = False
         self.action_stack: list[tuple[str, Any]]= []
         self.stack_pointer = -1
+    
+    def setupUi(self):
+        layout = QVBoxLayout(self)
+
+        self.canvas = ToolbarCanvas(
+            parent=self,
+            add_edit=True,
+            add_function=self.add_line,
+            remove_function=self.remove_line,
+            undo_function=self.undo,
+            redo_function=self.redo
+        )
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+
+        layout.addWidget(self.canvas)
+        layout.addWidget(button_box)
+        self.setLayout(layout)
+
 
     def set_window_name(self, name: str):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'Fitted Resonance Adjustment - {name}', None))
@@ -580,7 +606,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
     @property
     def _editing(self) -> bool:
         """Return whether the plot is in editing mode."""
-        return self.canvas.manager.toolmanager.active_toggle['default'] == 'edit'
+        return self.canvas.editing
     
     @property
     def n_tones(self) -> int:
@@ -646,7 +672,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         """Return whether a value is close to a line."""
         return np.allclose(line.get_xdata()[0], xdata, atol=epsilon)
     
-    def add_line(self, sender, event, data=None):
+    def add_line(self):
         if not self._editing:
             return
         xlims = self.ax.get_xlim()
@@ -664,7 +690,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.action_stack.append((action, *data))
         print(f'Pushed action "{action}" to stack with data {data}')
     
-    def undo(self, sender, event, data=None):
+    def undo(self):
         print(f'Called UNDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
         # If nothing to undo return
         if len(self.action_stack[:self.stack_pointer + 1]) == 0:
@@ -689,7 +715,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.figure_canvas.draw_idle()
         self.stack_pointer -= 1
 
-    def redo(self, sender, event, data=None):
+    def redo(self):
         print(f'Called REDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
         # If nothing to redo return
         if self.stack_pointer + 2 > len(self.action_stack):
@@ -728,7 +754,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
             self.selected_line.set_linewidth('3')
             self.selected_line.set_linestyle('--')
     
-    def remove_line(self, sender, event, data=None):
+    def remove_line(self):
         if not self._editing:
             return
         if self.selected_line is not None:
