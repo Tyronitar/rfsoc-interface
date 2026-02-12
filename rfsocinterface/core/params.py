@@ -8,7 +8,7 @@ import numpy as np
 import numpy.typing as npt
 import tables
 
-from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, PERMISSIONS_ALL_FULL, get_params_file_template
+from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, PERMISSIONS_ALL_FULL, get_params_file_template, pad_to_length
 
 
 _logger = logging.getLogger(__name__)
@@ -146,6 +146,10 @@ def update_params_file(
     }
 
     with tables.open_file(params_tile_file, 'a') as fh:
+        if baseband_freqs is not None:
+            fh.root._v_attrs.n_tones = len(baseband_freqs)
+            # TODO: need to extend existing arrays to match the new number of tones
+
         for k in keyword_args:  # Check all of the keyword arguments
             if k == 'params_dir':
                 continue  # We only care about the parameters
