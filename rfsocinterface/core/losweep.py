@@ -510,7 +510,7 @@ class LoSweepData:
     def cancel_plot(self):
         self._plot_cancelled = True
 
-    def fit(self, callback: Callable | None=None, max_workers: int=4, scraps_fit: bool =True) -> None:
+    def fit(self, callback: Callable | None=None, max_workers: int=4, scraps_fit: bool =False) -> None:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
         self._fitted = False
         self._fit_cancelled = False
@@ -934,14 +934,18 @@ class PowerSweep_data:
             if ~np.isin(resonator_index, bad_resonances):
                 
                 x = (f0_list[:, i]-f0_list[-1, i])/f0_list[-1, i]
+                d_pwr = self.get_power_at_device(f0_list[:, i], -self.output_attenuations)
                 y = qr_list[:, i]*x
                 
                 plt.plot(
-                    self.output_attenuations,
+                    d_pwr,
                     y,
                     marker='o',
                     label=f"Resonator {resonator_index}"
                 )
+                crossings = np.where(np.diff(np.sign(y - 0.1)))[0]
+                print(crossings)
+                
         plt.xlabel('Output Attenuation (dB)')
         plt.ylabel(r'Nonlinearity Factor (a)')
         plt.title(r'Nonlinearity Factor (a) vs Output Attenuation')
@@ -949,6 +953,11 @@ class PowerSweep_data:
         #plt.legend(loc='lower right', fontsize='small', ncol=1)
         plt.tight_layout()
         plt.show()
+    def get_power_at_device(self, freq:float, rf_out:float, mini_c_out:float = -4.5, output_tone_power:float = -20.4):
+        dev_pwr = output_tone_power + rf_out + mini_c_out + self.get_atten_inside_cryo(freq)
+        return dev_pwr
+    def get_atten_inside_cryo(self, freq):
+        return -8.75e-10*freq-41.5
 
 
 

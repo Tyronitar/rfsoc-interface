@@ -14,8 +14,22 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
     # subtract the mean from each detector
 
 
-    detection_mask_array_f = np.array(z_freq>5)
-    detection_mask_array_d = np.zeros_like(z_diss>5)
+    detection_mask_array_f = (z_freq > 7)
+    detection_mask_array_d = (z_diss > 7)
+
+    gap = 4
+
+    # union mask: detection in either channel
+    combined = detection_mask_array_f | detection_mask_array_d
+
+    # suppress contiguous detections based on the union
+    for k in range(1, gap + 1):
+        combined[:, k:] &= ~combined[:, :-k]
+
+    # apply the suppression back to both
+    detection_mask_array_f &= combined
+    detection_mask_array_d &= combined
+
 
 
     nrows, ncols = 1, 1
@@ -28,14 +42,6 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
     # Time axis (based on one detector trace)
     nsamples = len(z_freq[onres_ind[0]])
     t = np.arange(nsamples) / fs
-
-    for det_idx, det in enumerate(onres_ind):
-
-        nongaussian_mask_freq = np.array(z_freq[det]) >= 5
-        nongaussian_mask_diss = np.array(z_diss[det]) >= 5
-
-        detection_mask_array_f[det] = nongaussian_mask_freq.astype(int)
-        detection_mask_array_d[det] = nongaussian_mask_diss.astype(int)
 
     for det_idx, det in enumerate(onres_ind):
 
@@ -70,7 +76,7 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
 
     axes.set_xlabel("Detector index")
     axes.set_ylabel("Time (s)")
-    axes.set_zlabel("z_freq")
+    axes.set_zlabel("z")
 
     plt.show()
 
@@ -78,35 +84,57 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
     ax = plt.subplot()
     
 
+    multiplicity_f = np.sum(detection_mask_array_f[onres_ind], axis=0)
+    multiplicity_d = np.sum(detection_mask_array_d[onres_ind], axis=0)
 
-    multiplicity_f = np.sum(detection_mask_array_f, axis = 0)
-    multiplicity_d = np.sum(detection_mask_array_d, axis = 0)
+    multiplicity_tot = multiplicity_f + multiplicity_d
 
-    max_multiplicity = int(np.max(multiplicity_f ))
-    
-    num_glitches_f, num_glitches_d = np.arange(max_multiplicity), np.arange(max_multiplicity)
-    for i in range(1, max_multiplicity):
+    max_multiplicity = int(np.max(multiplicity_tot))
 
-        num_glitches_f[i] = np.sum(multiplicity_f  == i) 
-        num_glitches_d[i] = np.sum(multiplicity_d == i) 
+    num_glitches_f = np.zeros(max_multiplicity + 1, dtype=int)
+    num_glitches_d = np.zeros(max_multiplicity + 1, dtype=int)
+    num_glitches   = np.zeros(max_multiplicity + 1, dtype=int)
 
-    ax.scatter(np.arange(max_multiplicity), num_glitches_f, color = 'blue', label = 'frequency')
-    ax.scatter(np.arange(max_multiplicity), num_glitches_d, color = 'orange', label = 'dissapation')
-    ax.scatter(np.arange(max_multiplicity), num_glitches_d + num_glitches_f, color = 'black', label = 'combined')
+    for i in range(1, max_multiplicity + 1):
+        num_glitches_f[i] = np.sum(multiplicity_f == i)
+        num_glitches_d[i] = np.sum(multiplicity_d == i)
+        num_glitches[i]   = np.sum(multiplicity_tot == i)
+
+
+    ax.scatter(np.arange(max_multiplicity+1), num_glitches_f, color = 'blue', label = 'frequency')
+    ax.scatter(np.arange(max_multiplicity+1), num_glitches_d, color = 'orange', label = 'dissapation')
+    ax.scatter(np.arange(max_multiplicity+1), num_glitches, color = 'black', label = 'combined')
+    ax.set_xlabel("Glitch Multiplicity")
+    ax.set_ylabel("Number of Glitches")
+
 
     ax.set_yscale('log')
     ax.legend()
     plt.show()
 
 
-    mutlplicity_mask = np.array(multiplicity_f + multiplicity_d)>=1
+    # mask time bins with at least one detection
+    multiplicity_mask = multiplicity_tot >= 1
 
-    detection_mask_array = detection_mask_array_d + detection_mask_array_f
+    # combine detections per resonator
+    detection_mask_array = (
+        detection_mask_array_f[onres_ind] |
+        detection_mask_array_d[onres_ind]
+    )
+
+    # keep only time bins with detections
+    detection_mask_array = detection_mask_array[:, multiplicity_mask]
+
+    # event rate per resonator
+    num_events = np.sum(detection_mask_array, axis=1) * (60 / t[-1])
+
+    # reporting
+    #print(num_glitches_f * (60 / 1000))
+    #print(np.sum(num_glitches_f[6:]) * (60 / 1000),
+    #    np.sum(num_glitches_f) * (60 / 1000))
+    #print(np.sum(detection_mask_array, axis = 0)* (60 / 1000))
 
 
-    detection_mask_array = detection_mask_array[:, mutlplicity_mask]
-    num_events = np.sum(detection_mask_array[onres_ind], axis = 1)*(60/1000)
-    print(np.sum(num_events))
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
 

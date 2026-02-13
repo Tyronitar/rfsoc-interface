@@ -71,7 +71,7 @@ def compute_noise_psd(
 
     # Determine the number of blocks for computing the PSD
     n_samples = np.size(timestamp)
-    n_samples_per_block = int(2**np.ceil(np.log2(nominal_block_length * fs)))
+    n_samples_per_block = nominal_block_length * fs
     n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
     if n_blocks == 0:
         n_blocks = 1
@@ -127,6 +127,7 @@ def plot_psd(
         basis: PsdBasis=PsdBasis.GAIN_PHASE,
         resonators: list[int]=None,
         csd: npt.NDArray = None,
+        dev_pwr:npt.NDArray = None
 
 ) -> list[Figure]:
     """Create plots for the psd.
@@ -172,7 +173,7 @@ def plot_psd(
         case PsdBasis.FREQ_DISS:
             ylabel = r'Sdf/f ($Hz^{-1}$)'
             yscale = 'linear'
-            figs = plot_psd_df_over_f(freq, psd, filename, f0, title=title, resonators=resonators,adc_units_to_hz=adc_units_to_hz, csd = csd)
+            figs = plot_psd_df_over_f(freq, psd, filename, f0, title=title, resonators=resonators,adc_units_to_hz=adc_units_to_hz, csds = csd, dev_pwr = dev_pwr)
             return figs
         case PsdBasis.SNqp:
             ylabel = r'Sdf/f ($Hz^{-1}$)'
@@ -346,7 +347,8 @@ def plot_psd_df_over_f(
         max_percentile: float=84,
         title: str | None=None,
         resonators: list[int]=[0],
-        csd: npt.NDArray = None
+        csds: npt.NDArray = None,
+        dev_pwr:npt.NDArray = None
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -374,7 +376,13 @@ def plot_psd_df_over_f(
         res_title = title + f' - Resonator {i}'
         if f0 is not None and i < len(f0):
             res_title += f' (f0 = {f0[i]/1e6:.3f} MHz)'
+        if dev_pwr is not None and i < len(dev_pwr):
+            res_title += f' at dev_pwr {dev_pwr[i]}'
         if resonators[i]:
+            if csds is not None:
+                csd = csds[i,:]
+            else:
+                csd = None
             fig = plot_df_over_f(
                 freq,
                 psd[:, i, :],
@@ -383,7 +391,7 @@ def plot_psd_df_over_f(
                 adc_units_to_hz=adc_units_to_hz[i],
                 ylabel=ylabel,
                 title=res_title,
-                csd = csd[i,:]
+                csd = csd
             )
             
             plt.close(fig)
@@ -493,7 +501,8 @@ def plot_df_over_f(
     title: str | None=None,
     ylabel: str='Noise PSD (df / f)',
     csd: npt.NDArray = None,
-    make_angle_plot: bool = True
+    make_angle_plot: bool = True,
+    dev_pwr:float = 0,
 ) -> Figure:
     """Create a plot of the noise PSD in df/f units."""
     fig = plt.figure(figsize=(9, 6))
@@ -514,18 +523,19 @@ def plot_df_over_f(
 
             mean_angle = np.mean(angle[freq_start:freq_stop])
             ax2 = ax.twinx()
+            ax2.legend(fontsize = 14, loc = 'best' )
+
             ax2.hlines( mean_angle,x_data[0], x_data[-1], label = 'Residual Rotation Angle',color = 'red',linestyles='dashed', alpha = 0.3)
     ax.set_xscale('log')
     #ax.set_xlim(1, 250)
     ax.set_yscale('log')
-    # ax.set_ylim(1e-17,1e-15)
+    #ax.set_ylim(1e-21,1e-15)
    
     ax.set_xlabel('Frequency (Hz)', fontsize=16)
         
     ax.set_ylabel(ylabel, fontsize=16)
     ax.tick_params(labelsize=14)
     ax.legend(fontsize=14, loc='best')
-    ax2.legend(fontsize = 14, loc = 'best' )
     if title is not None:
         ax.set_title(title, fontsize=16)
     plt.tight_layout()

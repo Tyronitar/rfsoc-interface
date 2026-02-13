@@ -1113,7 +1113,8 @@ class BaseProcessedData(DataStorage):
         shorter than the block size.
         """
 
-        block_length_samples = int(2**np.ceil(np.log2(block_length_sec * self.fs)))
+        block_length_samples = int(block_length_sec * self.fs)
+        print(block_length_samples/self.fs)
         data = self.get_node_value(dataset)
         n_blocks = self.n_samples // block_length_samples
         blocked_data = np.zeros((*data.shape[:-1], n_blocks, block_length_samples), dtype=data.dtype)
@@ -1662,6 +1663,7 @@ class ProcessedDataL1(ProcessedData):
             n = unblocked_clean_data.shape[-1]
             data_gain_phase[..., :n] = unblocked_clean_data
             data_gain_phase[..., n:] = unblocked_clean_data[..., -1:]
+            #plot_corellation_matrices(data_gain_phase, fs = fs, lp_filt_freq=5)
 
         new_generate_calibrated_data(new_data)
 

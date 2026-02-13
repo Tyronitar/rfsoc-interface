@@ -230,7 +230,6 @@ def rotate_optimally(freq, psd, csd, chanmask, start_freq, end_freq):
     tones = np.arange(len(psd[0, :, 0]))
     onres_ind = tones[chanmask]
     for det in onres_ind:
-        print(det)
         #pdb.set_trace()
         Sfd =np.real(csd[det, :])
         Sff = psd[0, det, :]
@@ -238,6 +237,7 @@ def rotate_optimally(freq, psd, csd, chanmask, start_freq, end_freq):
         angle = 0.5*np.arctan2(2*Sfd, Sff-Sdd)
 
         mean_angle = np.mean(angle[start_index:stop_index])
+        print(mean_angle)
 
         c = np.cos(mean_angle)
         s = np.sin(mean_angle)
@@ -250,7 +250,12 @@ def rotate_optimally(freq, psd, csd, chanmask, start_freq, end_freq):
         psd_out[1, det] = Sdd_p
         csd_out[det] = Sfd_p
     return psd_out,csd_out
-        
+def get_power_at_device(freq:float, rf_out:float = -15, mini_c_out:float = -2.5, output_tone_power:float = -20.4):
+    dev_pwr = output_tone_power + rf_out + mini_c_out + get_atten_inside_cryo(freq)
+    return dev_pwr
+def get_atten_inside_cryo(freq):
+    return -8.75e-10*freq-41.5
+       
 
 
 
@@ -258,10 +263,15 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260107'
-    setnum = 1005
-
-
+    #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
+    date = '20260212'
+    #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
+    #Good Dataset, miniC = [0.5, 0] No 30dB Warm Amp
+    #date = '20260212'
+    setnums = np.array([1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021])
+    #High Quality Dataset, miniC = [8.5, 0] with Rf_in at 9 db to compensate on input power
+    #date = '20260212'
+    #setnums = np.array([1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032])
     # date = '20250829'
     # setnum = 1012
 
@@ -284,48 +294,61 @@ if __name__ == '__main__':
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
-    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
     
 
-    pipeline = DataPipeline(
-        ds_factor=ds_factor,
-        hp_filter_freq=hp_filt_freq,
-        lp_filter_freq=lp_filt_freq,
-        dataset=dataset,
-        beam_map_mode=beam_map_mode,
-        do_electronics_noise_removal=do_electronics_noise_removal,
-        block_length = block_length,
-        max_modes=10,
-    )
+
     #pipeline.add_routine(hpfilt)
     #pipeline.add_routine(lpfilt)
-    pipeline.add_routine(psd)
-    pipeline.add_routine(cleaner)
+
     #pipeline.add_routine(binner)
+    psds = []
+    csds = []
+    for setnum in setnums:
+        psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
 
-    data = pipeline.run_pipeline(date, setnum)
+        pipeline = DataPipeline(
+            ds_factor=ds_factor,
+            hp_filter_freq=hp_filt_freq,
+            lp_filter_freq=lp_filt_freq,
+            dataset=dataset,
+            beam_map_mode=beam_map_mode,
+            do_electronics_noise_removal=do_electronics_noise_removal,
+            block_length = block_length,
+            max_modes=10
+        )
+        pipeline.add_routine(psd)
+        pipeline.add_routine(cleaner)
+
+        data = pipeline.run_pipeline(date, setnum)
+        psd_fd = data.get_node_value('psd_freq_diss')[:]
+        csd_fd = data.get_node_value('csd_freq_diss')[:]
+        freq = data.get_node_value('freq')[:]
+        adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:]
+        chanmask = data.chanmask[:]
+        probe_freq = data.baseband_freqs[:] + data.lo_freq
+
+        # Sort it into resonator and nonresonator data. 
+        sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
+        chanmask = chanmask[sorted_indices]
+        probe_freq = probe_freq[sorted_indices]
+        adc_units_to_hz = adc_units_to_hz[sorted_indices]
+        psd_opt, csd_opt = rotate_optimally(freq, psd_fd, csd_fd,chanmask[:]==1, 20, 200)
+
+        psds.append(psd_opt)
+        csds.append(csd_opt)
+
+    psd_avg = np.mean(psds, axis = 0)
+    csd_avg = np.mean(csds, axis = 0)
+
     
+
     from rfsocinterface.analysis.psd import plot_psd
-
-    #Get information from processed data
-    freq = data.get_node_value('freq')[:]
-    adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:]
-    chanmask = data.chanmask[:]
-    probe_freq = data.baseband_freqs[:] + data.lo_freq
-
-    # Sort it into resonator and nonresonator data. 
-    sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
-    chanmask = chanmask[sorted_indices]
-    probe_freq = probe_freq[sorted_indices]
-    adc_units_to_hz = adc_units_to_hz[sorted_indices]
 
     # Plot it
     psd_gp = data.get_node_value('psd_gain_phase')[:]
     #plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnum}.pdf', basis=PsdBasis.GAIN_PHASE)
-    psd_fd = data.get_node_value('psd_freq_diss')[:]
-    csd_fd = data.get_node_value('csd_freq_diss')[:]
-    plot_psd(freq, psd_fd, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_fd)
-    plot_psd(freq, psd_fd, f'noise_SNqp_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_fd)
-    psd_opt, csd_opt = rotate_optimally(freq, psd_fd, csd_fd,chanmask[:]==1, 20, 200)
-    plot_psd(freq, psd_opt, f'noise_freq_dis_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_opt)
-    plot_psd(freq, psd_opt, f'noise_SNqp_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_opt)
+    dev_pwr = get_power_at_device(freq = probe_freq)
+    plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = None, dev_pwr = dev_pwr)
+    plot_psd(freq, psd_avg, f'noise_SNqp_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, dev_pwr = dev_pwr)
+    #plot_psd(freq, psd_opt, f'noise_freq_dis_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_opt)
+    #plot_psd(freq, psd_opt, f'noise_SNqp_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_opt)
