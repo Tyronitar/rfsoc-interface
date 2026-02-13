@@ -755,7 +755,7 @@ if __name__ == '__main__':
     # win.show()
     # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
     # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    data = LoSweepData.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
+    data = LoSweepData.from_h5('/data/20260203/20260203_Device_aSi1_Channel4_blind_LO_Sweep_hour13p9728.h5')
     win = BlindSweepDialog(data)
     win.plot()
     win.show()
