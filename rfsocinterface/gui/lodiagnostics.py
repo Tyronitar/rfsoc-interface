@@ -526,7 +526,6 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
 def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON):
     res = np.allclose(line.get_xdata()[0], event.xdata, atol=epsilon), {}
-    print(res)
     return res
 
 class BlindSweepDialog(QDialog):
@@ -554,7 +553,9 @@ class BlindSweepDialog(QDialog):
             parent=self,
             add_edit=True,
             add_function=self.add_line,
+            add_description='Add a vertical line to the plot.',
             remove_function=self.remove_line,
+            remove_description='Remove the currently selected line from the plot.',
             undo_function=self.undo,
             redo_function=self.redo
         )
@@ -769,7 +770,6 @@ class BlindSweepDialog(QDialog):
         self.set_selected_line(event.artist)
         # self.dragging = True
         QApplication.restoreOverrideCursor()
-        QApplication.setOverrideCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouse_release(self, event: MouseEvent):
         """Handle releasing a mouse button."""
@@ -818,6 +818,7 @@ class BlindSweepDialog(QDialog):
             return
         if event.button == MouseButton.LEFT and self.selected_line is not None:
             self.dragging = True
+            QApplication.setOverrideCursor(Qt.CursorShape.ClosedHandCursor)
         if not self.dragging:
             # Check if the mouse is close to a line and highlight it if so
             i, closest_line = self.closest_vline(event.xdata)

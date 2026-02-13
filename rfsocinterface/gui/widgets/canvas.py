@@ -3,7 +3,6 @@ from typing import Callable, Concatenate
 from pathlib import Path
 from enum import Enum
 
-
 import matplotlib as mpl
 mpl.use('QtAgg')
 mpl.rcParams['toolbar'] = 'toolbar2'
@@ -11,7 +10,7 @@ mpl.rcParams['toolbar'] = 'toolbar2'
 import numpy as np
 import numpy.typing as npt
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QWheelEvent, QIcon, QPixmap
+from PySide6.QtGui import QWheelEvent, QIcon, QPixmap, QAction
 from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
@@ -31,11 +30,6 @@ from rfsocinterface.gui.widgets.utils import layout_widgets
 from rfsocinterface.core.utils import P
 from rfsocinterface.gui.uic import icons_rc
 
-# with warnings.catch_warnings():
-#     warnings.simplefilter('ignore')
-#     # Set the default toolbar to use the tool manager
-#     plt.rcParams['toolbar'] = 'toolmanager'
-
 
 class EditTool(ToolToggleBase):
     default_keymap = 'e'
@@ -45,7 +39,7 @@ class EditTool(ToolToggleBase):
     radio_group = 'default'
 
 class AddTool(ToolBase):
-    description = 'Add a vertical line to the plot'
+    description = 'Add an artist to the plot'
     image = ':/icons/plus.svg'
 
     def __init__(self, toolmanager, name, fn: Callable):
@@ -54,6 +48,7 @@ class AddTool(ToolBase):
 
     def trigger(self, sender, event, data=None):
         self.fn(sender, event, data)
+
 
 class RemoveTool(ToolBase):
     description = 'Remove the currently selected artist from the plot'
@@ -78,6 +73,7 @@ class UndoTool(ToolBase):
     def trigger(self, sender, event, data=None):
         self.fn(sender, event, data)
 
+
 class RedoTool(ToolBase):
     description = 'Redo the last action'
     image = ':/icons/redo.svg'
@@ -88,6 +84,7 @@ class RedoTool(ToolBase):
 
     def trigger(self, sender, event, data=None):
         self.fn(sender, event, data)
+
 
 class ScrollableCanvas(QScrollArea):
     """Widget for displating a Matplotlib canvas in a scroll area."""
@@ -160,10 +157,15 @@ class EditToolBar(NavigationToolbar2QT):
             coordinates=True,
             add_group: bool=False,
             add_edit_button: bool=False,
+            edit_description: str=EditTool.description,
             add_function: Callable=None,
+            add_description: str=AddTool.description,
             remove_function: Callable=None,
+            remove_description: str=RemoveTool.description,
             undo_function: Callable=None,
+            undo_description: str=UndoTool.description,
             redo_function: Callable=None,
+            redo_description: str=RedoTool.description,
             ):
         self.add_function = add_function
         self.remove_function = remove_function
@@ -178,15 +180,15 @@ class EditToolBar(NavigationToolbar2QT):
         if add_group:
             new_group.append((None, None, None, None))
         if add_edit_button:
-            new_group.append(('Edit', EditTool.description, EditTool.image, 'toggle_edit'))
+            new_group.append(('Edit', edit_description, EditTool.image, 'toggle_edit'))
         if add_function is not None:
-            new_group.append(('Add', AddTool.description, AddTool.image, 'add'))
+            new_group.append(('Add', add_description, AddTool.image, 'add'))
         if remove_function is not None:
-            new_group.append(('Remove', RemoveTool.description, RemoveTool.image, 'remove'))
+            new_group.append(('Remove', remove_description, RemoveTool.image, 'remove'))
         if undo_function is not None:
-            new_group.append(('Undo', UndoTool.description, UndoTool.image, 'undo'))
+            new_group.append(('Undo', undo_description, UndoTool.image, 'undo'))
         if redo_function is not None:
-            new_group.append(('Redo', RedoTool.description, RedoTool.image, 'redo'))
+            new_group.append(('Redo', redo_description, RedoTool.image, 'redo'))
 
         # Insert new group after 'customize'
         toolitems = [*NavigationToolbar2QT.toolitems]
@@ -196,11 +198,12 @@ class EditToolBar(NavigationToolbar2QT):
             i += 1
         self.toolitems = toolitems
 
-
         super().__init__(canvas, parent, coordinates)
+
         if add_edit_button:
             self._actions['toggle_edit'].setCheckable(True)
-    
+        self.set_edit_actions_enabled(False)
+
     def _icon(self, name: str):
         if name[0] == ':':
             # We're attempting to access a QResource File
@@ -213,11 +216,30 @@ class EditToolBar(NavigationToolbar2QT):
     def editing(self) -> bool:
         return self.mode == EditMode.EDIT
     
+    def set_edit_actions_enabled(self, enabled: bool):
+        for action in ['add', 'remove', 'undo', 'redo']:
+            if action in self._actions:
+                self._actions[action].setVisible(enabled)
+    
+    def pan(self, *args):
+        super().pan(*args)
+        self.set_edit_actions_enabled(False)
+    
+    def zoom(self, *args):
+        super().zoom(*args)
+        self.set_edit_actions_enabled(False)
+    
     def toggle_edit(self):
+        if self.mode in [_Mode.PAN, _Mode.ZOOM]:
+            # Need to release the lock in order to draw on the canvas
+            self.canvas.widgetlock.release(self)
+
         if self.editing:
             self.mode = _Mode.NONE
+            self.set_edit_actions_enabled(False)
         else:
             self.mode = EditMode.EDIT
+            self.set_edit_actions_enabled(True)
         self._update_buttons_checked()
     
     def add(self):
@@ -245,11 +267,16 @@ class ToolbarCanvas(QWidget):
             parent=None,
             fig: Figure | None=None,
             add_edit: bool=False,
+            edit_description: str=EditTool.description,
             coordinates: bool=True,
             add_function: Callable=None,
+            add_description: str=AddTool.description,
             remove_function: Callable=None,
+            remove_description: str=RemoveTool.description,
             undo_function: Callable=None,
+            undo_description: str=UndoTool.description,
             redo_function: Callable=None,
+            redo_description: str=RedoTool.description,
             ):
         """Initialize a ResonatorCanvas."""
         super().__init__(parent)
@@ -262,10 +289,15 @@ class ToolbarCanvas(QWidget):
             parent,
             coordinates=coordinates,
             add_edit_button=add_edit,
+            edit_description=edit_description,
             add_function=add_function,
+            add_description=add_description,
             remove_function=remove_function,
+            remove_description=remove_description,
             undo_function=undo_function,
+            undo_description=undo_description,
             redo_function=redo_function,
+            redo_description=redo_description,
         )
 
         layout = QVBoxLayout(self)
@@ -294,17 +326,12 @@ class ToolbarCanvas(QWidget):
         """Set the figure of this widget."""
         self.scrollable_canvas.set_figure(fig)
         layout = self.layout()
-        print(f'Before removal: {layout_widgets(layout)}')
-        # layout.removeWidget(self.nav)
-        # print(f'After removal: {layout_widgets(layout)}')
 
         old_nav = self.nav
         self.manager = FigureManagerQT(self.scrollable_canvas, 1)
         self.scrollable_canvas.manager = self.manager
         self.nav = self.manager.toolbar
         layout.replaceWidget(old_nav, self.nav)
-        print(f'End Result: {layout_widgets(layout)} total = {layout.count()}')
-        print(self.scrollable_canvas)
     
     def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
         self.scrollable_canvas.replot_figure(plotting_function, *args, **kwargs)
