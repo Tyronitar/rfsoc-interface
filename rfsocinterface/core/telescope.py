@@ -281,8 +281,26 @@ class TelescopeMotorController:
         return status
     
     def write_ser_ze(self, command: str | bytes, stop: str=b'\r\n', timeout: float=None) -> str:
+        """Write a command to the zenith angle motor.
+        
+        Possible commands include:
+            AIN.VSCALE <X>: Set the speed of the motor to X RPM/V.
+            CAP0.EDGE <X>:
+            CAP0.EN <X>"
+            CAP0.EVENT:
+            CAP0.MODE <X>:
+            CAP0.PLFB:
+            CAP0.STATE:
+            CAP0.TRIGGER <X>:
+            DIN1.FILTER (X):
+            DRV.ACTIVE: check whether the motor is engaged.
+            DRV.DIS: Disengage the motor.
+            DRV.EN: Engage the motor.
+            FB1.OFFSET:
+            PL.FB: Get the current position of the motor in degrees.
+        """
         data = command
-        if not isinstance(data, bytes):
+        if not isinstance[data, bytes]:
             if command[-2:] != '\r\n':
                 data = data + '\r\n'
             data = data.encode()
