@@ -4,7 +4,7 @@ import matplotlib as mpl
 
 mpl.use('QtAgg')
 
-from typing import Callable, Concatenate
+from typing import Callable, Concatenate, Any
 from pathlib import Path
 from concurrent.futures import Future
 import logging
@@ -36,12 +36,14 @@ from PySide6.QtWidgets import (
 )
 
 from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list, LoSweep, DEFAULT_NCOLS
+from rfsocinterface.core.params import update_params_file, initialize_params_file
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
-from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P
+from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P, PERMISSIONS_USR_RW
 from rfsocinterface.gui.widgets.progress_bar import make_progress_dialog_incrementer
 from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
+from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
 
 _logger = logging.getLogger(__name__)
 
@@ -523,24 +525,71 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
 
 def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON):
-    return np.allclose(line.get_xdata()[0], event.xdata, atol=epsilon), {}
+    res = np.allclose(line.get_xdata()[0], event.xdata, atol=epsilon), {}
+    print(res)
+    return res
 
-class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
+class BlindSweepDialog(QDialog):
     def __init__(self, data: LoSweepData, parent: QWidget | None=None):
         super().__init__(parent)
-        self.setupUi(self)
+        self.setupUi()
         self.setSizeGripEnabled(True)
-        self.canvas.add_edit_button()
-        self.canvas.add_add_button(self.add_line)
-        self.canvas.add_remove_button(self.remove_line)
+        # self.canvas.add_edit_button()
+        # self.canvas.add_add_button(self.add_line)
+        # self.canvas.add_remove_button(self.remove_line)
+        # self.canvas.add_undo_button(self.undo)
+        # self.canvas.add_redo_button(self.redo)
         self.setup_connections()
 
         self.data = data
         self.selected_line = None
         self.dragging = False
+        self.action_stack: list[tuple[str, Any]]= []
+        self.stack_pointer = -1
+    
+    def setupUi(self):
+        layout = QVBoxLayout(self)
+
+        self.canvas = ToolbarCanvas(
+            parent=self,
+            add_edit=True,
+            add_function=self.add_line,
+            remove_function=self.remove_line,
+            undo_function=self.undo,
+            redo_function=self.redo
+        )
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+
+        layout.addWidget(self.canvas)
+        layout.addWidget(button_box)
+        self.setLayout(layout)
+
 
     def set_window_name(self, name: str):
-        self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
+        self.setWindowTitle(QCoreApplication.translate("Dialog", f'Fitted Resonance Adjustment - {name}', None))
+    
+    def accept(self):
+        fname, _ = QFileDialog.getSaveFileName(
+            parent=self,
+            caption='Save Tones to Parameters File',
+            dir='/data/params',
+            filter='HDF5 (*.h5);;All Files (*)'
+        )
+        if fname:
+            f0 = [line.get_xdata()[0] for line in self.get_vlines()]
+            path = Path(fname).with_suffix('.h5')
+            if not path.exists():
+                # TODO: Get the actual tile name
+                tile_name = path.stem[12:]
+                initialize_params_file(tile_name, f0, self.data.f_center)
+            else:
+                update_params_file(path, baseband_freqs=f0)
+            return super().accept()
 
     @property
     def figure_canvas(self) -> FigureCanvas:
@@ -557,7 +606,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
     @property
     def _editing(self) -> bool:
         """Return whether the plot is in editing mode."""
-        return self.canvas.manager.toolmanager.active_toggle['default'] == 'edit'
+        return self.canvas.editing
     
     @property
     def n_tones(self) -> int:
@@ -609,17 +658,21 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
 
         self.adjustSize()
 
-    def move_selected_line(self, x: float):
+    def move_selected_line(self, x: float, add_to_stack: bool=False):
         """Move the currentyl selected line to the specified x value."""
+        if add_to_stack:
+            self.push_to_stack('move_line', self.selected_line, self.selected_line_start, x)
+
         self.selected_line.set_xdata([x, x])
         self.ax.draw_artist(self.selected_line)
         self.figure_canvas.draw_idle()
+        
 
     def close_to_line(self, line: plt.Line2D, xdata: float, epsilon: float=ATOL_EPSILON) -> bool:
         """Return whether a value is close to a line."""
         return np.allclose(line.get_xdata()[0], xdata, atol=epsilon)
     
-    def add_line(self, sender, event, data=None):
+    def add_line(self):
         if not self._editing:
             return
         xlims = self.ax.get_xlim()
@@ -628,19 +681,93 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         self.figure_canvas.draw_idle()
         l.set_picker(line_picker)
         l.set_pickradius(10)
+
+        self.push_to_stack('add_line', l, x)
     
-    def remove_line(self, sender, event, data=None):
+    def push_to_stack(self, action: str, *data):
+        self.stack_pointer += 1
+        self.action_stack = self.action_stack[:self.stack_pointer]
+        self.action_stack.append((action, *data))
+        print(f'Pushed action "{action}" to stack with data {data}')
+    
+    def undo(self):
+        print(f'Called UNDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
+        # If nothing to undo return
+        if len(self.action_stack[:self.stack_pointer + 1]) == 0:
+            return
+        action, *data = self.action_stack[self.stack_pointer]
+        print(f'UNDO: action={action} with data {data}')
+        match action:
+            case 'move_line':
+                line, old_x, new_x = data
+                line.set_xdata([old_x, old_x])
+            case 'add_line':
+                line, x, = data
+                line.remove()
+            case 'remove_line':
+                line, x = data
+                self.ax.add_artist(line)
+                # line.set_picker(line_picker)
+                # line.set_pickradius(10)
+            case _:
+                raise NotImplementedError(f'Undoing action "{action}" is not yet supported.')
+        
+        self.figure_canvas.draw_idle()
+        self.stack_pointer -= 1
+
+    def redo(self):
+        print(f'Called REDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
+        # If nothing to redo return
+        if self.stack_pointer + 2 > len(self.action_stack):
+            return
+        action, *data = self.action_stack[self.stack_pointer + 1]
+        print(f'REDO: action={action} with data {data}')
+        match action:
+            case 'move_line':
+                line, old_x, new_x = data
+                line.set_xdata([new_x, new_x])
+            case 'add_line':
+                line, x = data
+                self.ax.add_artist(line)
+                # line.set_picker(line_picker)
+                # line.set_pickradius(10)
+                # line.set_xdata([old_x, old_x])
+            case 'remove_line':
+                line, x = data
+                line.remove()
+            case _:
+                raise NotImplementedError(f'Redoing action "{action}" is not yet supported.')
+        
+        self.figure_canvas.draw_idle()
+        self.stack_pointer += 1
+
+    def set_selected_line(self, line: plt.Line2D):
+        # Reset previously selected line
+        if self.selected_line is not None:
+            self.selected_line.set_linewidth('1.5')
+            self.selected_line.set_linestyle('-')
+
+        self.selected_line = line
+
+        if line is not None:
+            self.selected_line_start = self.selected_line.get_xdata()[0]
+            self.selected_line.set_linewidth('3')
+            self.selected_line.set_linestyle('--')
+    
+    def remove_line(self):
         if not self._editing:
             return
         if self.selected_line is not None:
+            self.push_to_stack('remove_line', self.selected_line, self.selected_line.get_xdata()[0])
             self.selected_line.remove()
             self.selected_line = None
     
     def pick_line(self, event: PickEvent):
         if not self._editing:
             return
-        self.selected_line = event.artist
-        self.dragging = True
+        
+        self.set_selected_line(event.artist)
+        # self.dragging = True
         QApplication.restoreOverrideCursor()
         QApplication.setOverrideCursor(Qt.CursorShape.ClosedHandCursor)
 
@@ -659,7 +786,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
             # self.figure_canvas.set_cursor(Cursors.HAND)
             QApplication.restoreOverrideCursor()
             # QApplication.setOverrideCursor(Qt.CursorShape.OpenHandCursor)
-            self.move_selected_line(event.xdata)
+            self.move_selected_line(event.xdata, add_to_stack=True)
     
     def mouse_press(self, event: MouseEvent):
         if not self._editing:
@@ -672,7 +799,7 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
         # clicking far away from lines deselects the current line
         i, closest_line = self.closest_vline(event.xdata)
         if not self.close_to_line(closest_line, event.xdata):
-            self.selected_line = None
+            self.set_selected_line(None)
             closest_line.set_linewidth('1.5')
 
 
@@ -689,6 +816,8 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
             self.dragging = False
             self.figure_canvas.draw_idle()
             return
+        if event.button == MouseButton.LEFT and self.selected_line is not None:
+            self.dragging = True
         if not self.dragging:
             # Check if the mouse is close to a line and highlight it if so
             i, closest_line = self.closest_vline(event.xdata)
@@ -708,10 +837,9 @@ class BlindSweepDialog(QDialog, Ui_BlindSweepDialog):
                     closest_line.set_linewidth('1.5')
                 QApplication.restoreOverrideCursor()
             self.figure_canvas.draw_idle()
-            return
-
-        # Moving while holding left mouse and dragging, so update the line's position
-        self.move_selected_line(event.xdata)
+        else:
+            # Moving while holding left mouse and dragging, so update the line's position
+            self.move_selected_line(event.xdata)
 
 
 
@@ -755,7 +883,7 @@ if __name__ == '__main__':
     # win.show()
     # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
     # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    data = LoSweepData.from_h5('/data/20260203/20260203_Device_aSi1_Channel4_blind_LO_Sweep_hour13p9728.h5')
+    data = LoSweepData.from_h5('/data/20260203/20260203_Device_aSi2_Channel3_blind_LO_Sweep_hour14p2056.h5')
     win = BlindSweepDialog(data)
     win.plot()
     win.show()
