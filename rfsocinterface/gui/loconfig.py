@@ -73,6 +73,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             self.review_tones_checkbox,
             self.flagging_label,
             self.flagging_lineEdit,
+            self.global_shift_label,
+            self.global_shift_lineEdit
         ]
 
         self.second_sweep_widgets = [
@@ -84,6 +86,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.power_sweep_widgets = [
             self.power_levels_Label,
             self.power_levels_lineEdit,
+            self.global_shift_label,
+            self.global_shift_lineEdit
+        ]
+        self.blind_sweep_widgets = [
+            self.show_diagnostics_checkBox,
         ]
 
         self.filename_buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
@@ -182,6 +189,20 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                         upload_all_new_tone_lists=False,
                         second_sweep=True,
                     )
+            case self.blind_sweep_radioButton:
+                _logger.info('Beginning blind sweep...')
+                sweep_succesful = self.run_sweeps(
+                    selected_channels,
+                    show_diagnostics=self.show_diagnostics_checkBox.isChecked(),
+                    upload_all_new_tone_lists=False,
+                    second_sweep=False,
+                    sweep_type='blind',
+                )
+
+                if not sweep_succesful:
+                    _logger.info('Cancelling after first sweep...')
+                    return
+
             case self.power_sweep_radioButton:
                 _logger.info('Beginning power sweep...')
                 sweep_succesful = self.run_power_sweeps(selected_channels)
@@ -198,10 +219,13 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             show_diagnostics: bool=True,
             upload_all_new_tone_lists: bool=True,
             second_sweep: bool=False,
+            sweep_type: Literal['lo', 'blind']='lo',
     ) -> bool:
 
+        blind_sweep = sweep_type == 'blind'
+
         pd = IncrementalProgressDialog(
-            f'Setting Up{" Second" if second_sweep else ""} LO Sweep...',
+            f'Setting Up{" Second" if second_sweep else ""} {"Blind" if blind_sweep else "LO"} Sweep...',
             'Cancel',
             0,
             100,
@@ -227,7 +251,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             pd.canceled.connect(sweep.cancel)
             sweep_threads.append(Thread(target=sweep.run_sweep, args=(increment_progress,)))
 
-        pd.setLabelText(f'Running LO Sweep{"s" if len(sweep_threads) > 1 else ""}...')
+        pd.setLabelText(f'Running {"Blind" if blind_sweep else "LO"} Sweep{"s" if len(sweep_threads) > 1 else ""}...')
         for sweep_thread in sweep_threads:
             sweep_thread.start()
 
@@ -247,15 +271,17 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         
         pd.close()
 
-        if second_sweep:
+        if not blind_sweep and second_sweep:
             return True  # No fitting or plotting for second sweep
 
         # Below this comment, we're only dealing with the first sweep
 
-        fit_complete = self.fit_sweeps(sweeps)
-        if not fit_complete:
-            return False
+        if not blind_sweep:
+            fit_complete = self.fit_sweeps(sweeps)
+            if not fit_complete:
+                return False
 
+        # TODO: Finish handling the blind sweep case for plotting
         if show_diagnostics:
             plot_complete = self.plot_sweeps(selected_channels, sweeps)
             if not plot_complete:
@@ -707,6 +733,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             case self.lo_sweep_radioButton:
                 for widget in self.power_sweep_widgets:
                     widget.hide()
+                for widget in self.blind_sweep_widgets:
+                    widget.hide()
                 for widget in self.lo_sweep_widgets + self.second_sweep_widgets:
                     widget.show()
                 self.check_diagnostics()
@@ -714,7 +742,16 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             case self.power_sweep_radioButton:
                 for widget in self.lo_sweep_widgets + self.second_sweep_widgets:
                     widget.hide()
+                for widget in self.blind_sweep_widgets:
+                    widget.hide()
                 for widget in self.power_sweep_widgets:
+                    widget.show()
+            case self.blind_sweep_radioButton:
+                for widget in self.lo_sweep_widgets + self.second_sweep_widgets:
+                    widget.hide()
+                for widget in self.power_sweep_widgets:
+                    widget.hide()
+                for widget in self.blind_sweep_widgets:
                     widget.show()
             case _:
                 raise ValueError(f'Unexpected button {button} received.')

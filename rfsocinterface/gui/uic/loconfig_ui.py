@@ -41,7 +41,7 @@ class Ui_LoConfigWidget(object):
         self.scrollArea.setWidgetResizable(True)
         self.scrollAreaWidgetContents = QWidget()
         self.scrollAreaWidgetContents.setObjectName(u"scrollAreaWidgetContents")
-        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 827, 708))
+        self.scrollAreaWidgetContents.setGeometry(QRect(0, 0, 827, 705))
         self.verticalLayout_3 = QVBoxLayout(self.scrollAreaWidgetContents)
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
         self.lo_sweep_radioButton = QRadioButton(self.scrollAreaWidgetContents)
@@ -58,6 +58,12 @@ class Ui_LoConfigWidget(object):
         self.power_sweep_radioButton.setObjectName(u"power_sweep_radioButton")
 
         self.verticalLayout_3.addWidget(self.power_sweep_radioButton)
+
+        self.blind_sweep_radioButton = QRadioButton(self.scrollAreaWidgetContents)
+        self.sweep_type_buttonGroup.addButton(self.blind_sweep_radioButton)
+        self.blind_sweep_radioButton.setObjectName(u"blind_sweep_radioButton")
+
+        self.verticalLayout_3.addWidget(self.blind_sweep_radioButton)
 
         self.lo_settings_groupBox = QGroupBox(self.scrollAreaWidgetContents)
         self.lo_settings_groupBox.setObjectName(u"lo_settings_groupBox")
@@ -319,6 +325,7 @@ class Ui_LoConfigWidget(object):
 #endif // QT_CONFIG(tooltip)
         self.lo_sweep_radioButton.setText(QCoreApplication.translate("LoConfigWidget", u"LO Sweep", None))
         self.power_sweep_radioButton.setText(QCoreApplication.translate("LoConfigWidget", u"Power Sweep", None))
+        self.blind_sweep_radioButton.setText(QCoreApplication.translate("LoConfigWidget", u"Blind Sweep", None))
         self.lo_settings_groupBox.setTitle(QCoreApplication.translate("LoConfigWidget", u"Sweep Settings", None))
         self.channel_error_label.setText("")
         self.df_lineEdit.setPlaceholderText(QCoreApplication.translate("LoConfigWidget", u"1", None))
