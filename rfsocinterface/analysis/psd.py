@@ -231,6 +231,97 @@ def plot_psd(
         
 
     return figs
+@ensure_path(0)
+def compare_psds(
+        filename: Path,
+        freq: npt.NDArray,
+        psd_list: list,
+        alpha_list:list,
+        label_list:list,
+        f0: float | None= None,
+        title: str | None=None,
+        basis: PsdBasis=PsdBasis.GAIN_PHASE,
+        resonators: list[int]=None,
+        dev_pwr:npt.NDArray = None
+
+) -> list[Figure]:
+    """Create plots for the psd.
+    
+    Args:
+        freq (npt.NDArray): Array of frequencies (N_freq).
+        psd: (npt.NDArray): PSD (N_chan x N_resonators x N_freq).
+        filename (Path): PDF filename to save the  plots to.
+        min_perncentile (float, optional): Percentile of lower error bound for the plot.
+            Defaults to 16.
+        max_perncentile (float, optional): Percentile of upper error bound for the plot
+            Defaults to 84.
+        title (str, optional): Title to give to each plot. Defaults to None.
+        basis (str, optional): The basis of the data. Either IQ ('iq'), 
+            Gain/Phase ('gp'), or Frequency/Dissipation ('fd'). Defaults to 'gp.'
+    
+    Returns:
+        (list[Figure]): N_chan + 1 plots corresponding to the PSD along the
+            first basis direction, second direction, and mean across both directions.
+    
+    Raises:
+        ValueError: If `basis` is not a valid basis (see `VALID_BASES`).
+    """
+
+    # cutoff = 250  # Number of data points to cut off at the end
+    # psd = psd[:, :, :-cutoff]
+    # freq = freq[:-cutoff]
+    figs = []
+    if resonators is None:
+        resonators = np.arange(psd.shape[1])
+
+    if title is None:
+        title = 'RFSoC Loopback PSD'
+    match basis:
+        case PsdBasis.FREQ_DISS:
+            for i in range(psd_list[0].shape[1]):
+
+                if resonators is not None and not resonators[i]:
+                    continue
+
+                res_title = title + f' - Resonator {i}'
+
+                if f0 is not None and i < len(f0):
+                    res_title += f' (f0 = {f0[i]/1e6:.3f} MHz)'
+
+                if dev_pwr is not None and i < len(dev_pwr):
+                    res_title += f' at dev_pwr {dev_pwr[i]}'
+
+                fig, ax = plt.subplots(figsize=(9, 6))
+                for k in range(len(psd_list)):
+                    for j, label in enumerate(['Frequency', 'Dissipation']):
+                        psd = psd_list[k]
+                        ax.plot(
+                            freq,
+                            psd[j, i, :],
+                            label=f'{label} ( {label_list[k]})',
+                            alpha=alpha_list[k]
+                        )
+                ax.set_xscale('log')
+                #ax.set_xlim(1, 250)
+                ax.set_yscale('log')
+                ax.set_ylim(1e-21,1e-15)
+            
+                ax.set_xlabel('Frequency (Hz)', fontsize=16)
+                    
+                ax.tick_params(labelsize=14)
+                ax.set_title(res_title)
+                ax.set_xlabel('Frequency (Hz)')
+                ax.set_ylabel(r'Sdf/f ($Hz^{-1}$)')
+                ax.legend()
+
+                figs.append(fig)
+
+    with PdfPages(filename) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
+        
+
+    return figs
 def mb_from_h5(path: Path) -> dict:
     """Create a LoSweepData object from a sweep file."""
     path = path.with_suffix('.h5')

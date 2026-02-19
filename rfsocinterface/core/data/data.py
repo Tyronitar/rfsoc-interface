@@ -1138,8 +1138,9 @@ class ProcessedDataL0(BaseProcessedData):
         date: str,
         setnum: int,
         beam_map_mode: bool=False,
+        do_cr_removal = True,
+
     ) -> ProcessedDataL0:
-        remove_CR = True
         folder = Path(f'{DATA_DIRECTORY}/{date}')
         todtemplate = get_tod_template(date, setnum)
         tele_template = Path(get_azel_template(date, setnum))
@@ -1197,6 +1198,7 @@ class ProcessedDataL0(BaseProcessedData):
         if not pfile_path.exists():
             pfile_path.touch(PERMISSIONS_ALL_FULL)
         pfile = tables.open_file(pfile_path, 'w')
+        
         pfile.root._v_attrs.date = date
         pfile.root._v_attrs.setnum = setnum
         pfile.root._v_attrs.receipt = ''
@@ -1311,8 +1313,8 @@ class ProcessedDataL0(BaseProcessedData):
 
                 if n_missed > 0:
                     this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
-                if remove_CR:
-                    z_I, z_Q = get_z_arrays(this_data_IQ, 10)
+                if do_cr_removal:
+                    z_I, z_Q = get_z_arrays(this_data_IQ, 1)
                     glitch_mask_I = np.array(z_I)>5
                     glitch_mask_Q = np.array(z_Q)>5
                     interpolate_CR_packets(this_data_IQ, glitch_mask_I, glitch_mask_Q)
@@ -1381,7 +1383,6 @@ class ProcessedDataL0(BaseProcessedData):
         # Close telescope file as it's no longer needed
         if azel_exists:
             azel_file.close()
-
         return cls(pfile)
 
 
@@ -1651,7 +1652,7 @@ class ProcessedDataL1(ProcessedData):
         if do_electronics_noise_removal:
             
             offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
-            onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=0.2, max_modes=max_modes, template_data_selection=new_data.onres_ind)
+            onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.onres_ind)
 
             #Finally remove blocking of data clumps
             data_set_mean = np.mean(data_gain_phase, axis = 2)

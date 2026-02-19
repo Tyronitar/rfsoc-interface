@@ -159,7 +159,8 @@ class DataPipeline:
         pd = ProcessedDataL0.from_tod(
             date,
             setnum,
-            beam_map_mode=self.shared_values['beam_map_mode']
+            beam_map_mode=self.shared_values['beam_map_mode'],
+            do_cr_removal=self.shared_values['do_cr_removal']
         )
         _logger.info('Creating level 1 processed data...')
         pd1 = ProcessedDataL1.from_level0(
@@ -184,6 +185,8 @@ class DataPipeline:
             self.mapping_applier.apply_routines(md)
             md.add_receipt(self.generate_receipt())
             output = md
+        pd.close()
+        pd1.close()
         stop_time = time.time()
         _logger.info(f'Data pipeline completed in {stop_time - start_time:.3f} seconds.')
         return output
@@ -255,7 +258,38 @@ def get_power_at_device(freq:float, rf_out:float = -15, mini_c_out:float = -2.5,
     return dev_pwr
 def get_atten_inside_cryo(freq):
     return -8.75e-10*freq-41.5
+
+def run_multi_run_dataset(date:str, setnums:np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    psds = []
+    csds = []
+    for setnum in setnums:
+        pipeline = DataPipeline(
+            ds_factor=ds_factor,
+            hp_filter_freq=hp_filt_freq,
+            lp_filter_freq=lp_filt_freq,
+            dataset=dataset,
+            beam_map_mode=beam_map_mode,
+            do_electronics_noise_removal= do_electronics_noise_removal,
+            block_length = block_length,
+            do_cr_removal = do_cr_removal,
+            max_modes=10
+        )
+    
+        psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
+        pipeline.add_routine(psd)
+        pipeline.add_routine(cleaner)
+        data = pipeline.run_pipeline(date, setnum)
+        psd_fd = data.get_node_value('psd_freq_diss')[:]
+        csd_fd = data.get_node_value('csd_freq_diss')[:]
+        #psd_opt, csd_opt = rotate_optimally(freq, psd_fd, csd_fd,chanmask[:]==1, 20, 200)
+        data.close()
+        psds.append(psd_fd)
+        csds.append(csd_fd)
+    return psds, csds
+
+ 
        
+
 
 
 
@@ -263,12 +297,14 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
+    date = '20260219'
+    setnums = np.array(['1004'])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
-    date = '20260212'
-    #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
-    #Good Dataset, miniC = [0.5, 0] No 30dB Warm Amp
     #date = '20260212'
-    setnums = np.array([1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021])
+    #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
+    #Good Dataset, miniC = [0.5, 0] No 30dB Warm Amp #Not compensated for increase in output power, so may be wrong
+    #date = '20260212'
+    #setnums = np.array([1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021])
     #High Quality Dataset, miniC = [8.5, 0] with Rf_in at 9 db to compensate on input power
     #date = '20260212'
     #setnums = np.array([1023, 1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032])
@@ -282,73 +318,104 @@ if __name__ == '__main__':
     dataset = 'data_freq'
     beam_map_mode = False 
     do_electronics_noise_removal = True
+    do_cr_removal = True
     primary_direction = 'az'
 
     ds_factor = 1
     lp_filt_freq = 500
     block_length = 100
-    hp_filt_freq = 0.00
+    hp_filt_freq = 1/block_length
 
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
+
+    #psds, csds = run_multi_run_dataset(date, setnums)
+    #psd_avg = np.mean(psds, axis = 0)
+    #csd_avg = np.mean(csds, axis = 0)
+    #TODO This is really innefficient and stupid, but I wasn't sure how to do it better
+    pipeline = DataPipeline(
+        ds_factor=ds_factor,
+        hp_filter_freq=hp_filt_freq,
+        lp_filter_freq=lp_filt_freq,
+        dataset=dataset,
+        beam_map_mode=beam_map_mode,
+        do_electronics_noise_removal= do_electronics_noise_removal,
+        block_length = block_length,
+        do_cr_removal = do_cr_removal,
+        max_modes=10
+    )
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
+    pipeline.add_routine(psd)
+    pipeline.add_routine(cleaner)
     
+    data = pipeline.run_pipeline(date, setnums[-1])
+    freq = data.get_node_value('freq')[:]
+    adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:]
+    chanmask = data.chanmask[:]
+    probe_freq = data.baseband_freqs[:] + data.lo_freq
 
+    # Sort it into resonator and nonresonator data. 
+    sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
+    chanmask = chanmask[sorted_indices]
+    probe_freq = probe_freq[sorted_indices]
+    adc_units_to_hz = adc_units_to_hz[sorted_indices]
+    psd_gp = data.get_node_value('psd_gain_phase')
 
-    #pipeline.add_routine(hpfilt)
-    #pipeline.add_routine(lpfilt)
-
-    #pipeline.add_routine(binner)
-    psds = []
-    csds = []
-    for setnum in setnums:
-        psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
-
-        pipeline = DataPipeline(
-            ds_factor=ds_factor,
-            hp_filter_freq=hp_filt_freq,
-            lp_filter_freq=lp_filt_freq,
-            dataset=dataset,
-            beam_map_mode=beam_map_mode,
-            do_electronics_noise_removal=do_electronics_noise_removal,
-            block_length = block_length,
-            max_modes=10
-        )
-        pipeline.add_routine(psd)
-        pipeline.add_routine(cleaner)
-
-        data = pipeline.run_pipeline(date, setnum)
-        psd_fd = data.get_node_value('psd_freq_diss')[:]
-        csd_fd = data.get_node_value('csd_freq_diss')[:]
-        freq = data.get_node_value('freq')[:]
-        adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:]
-        chanmask = data.chanmask[:]
-        probe_freq = data.baseband_freqs[:] + data.lo_freq
-
-        # Sort it into resonator and nonresonator data. 
-        sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
-        chanmask = chanmask[sorted_indices]
-        probe_freq = probe_freq[sorted_indices]
-        adc_units_to_hz = adc_units_to_hz[sorted_indices]
-        psd_opt, csd_opt = rotate_optimally(freq, psd_fd, csd_fd,chanmask[:]==1, 20, 200)
-
-        psds.append(psd_opt)
-        csds.append(csd_opt)
-
-    psd_avg = np.mean(psds, axis = 0)
-    csd_avg = np.mean(csds, axis = 0)
-
-    
-
-    from rfsocinterface.analysis.psd import plot_psd
+    from rfsocinterface.analysis.psd import plot_psd, compare_psds
 
     # Plot it
-    psd_gp = data.get_node_value('psd_gain_phase')[:]
-    #plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnum}.pdf', basis=PsdBasis.GAIN_PHASE)
-    dev_pwr = get_power_at_device(freq = probe_freq)
-    plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = None, dev_pwr = dev_pwr)
-    plot_psd(freq, psd_avg, f'noise_SNqp_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, dev_pwr = dev_pwr)
+    plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnums[-1]}.pdf', basis=PsdBasis.GAIN_PHASE)
+    #dev_pwr = get_power_at_device(freq = probe_freq)
+    """
+    plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnums[-1]}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = None, dev_pwr = dev_pwr)
+    plot_psd(freq, psd_avg, f'noise_SNqp_{date}_set{setnums[-1]}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, dev_pwr = dev_pwr)
     #plot_psd(freq, psd_opt, f'noise_freq_dis_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_opt)
     #plot_psd(freq, psd_opt, f'noise_SNqp_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_opt)
+    
+    
+    
+    
+    pipeline = DataPipeline(
+        ds_factor=ds_factor,
+        hp_filter_freq=hp_filt_freq,
+        lp_filter_freq=lp_filt_freq,
+        dataset=dataset,
+        beam_map_mode=beam_map_mode,
+        do_electronics_noise_removal= not do_electronics_noise_removal,
+        block_length = block_length,
+        do_cr_removal = do_cr_removal,
+        max_modes=10
+    )
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
+    pipeline.add_routine(psd)
+    pipeline.add_routine(cleaner)
+    psds1, csds1 = run_multi_run_dataset(dapipelinete, setnums[:-1])
+
+    psd_nc_avg = np.mean(psds1, axis = 0)
+    csd_nc_avg = np.mean(csds1, axis = 0)
+
+                     
+    compare_psds(f'psd_ER_comparison_{date}_set{setnums[-1]}.pdf',freq,[psd_avg,psd_nc_avg],[1.0, 0.5],['Cleaned', 'Not Cleaned'],f0 = probe_freq,basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, )
+    pipeline = DataPipeline(
+        ds_factor=ds_factor,
+        hp_filter_freq=hp_filt_freq,
+        lp_filter_freq=lp_filt_freq,
+        dataset=dataset,
+        beam_map_mode=beam_map_mode,
+        do_electronics_noise_removal= not do_electronics_noise_removal,
+        block_length = block_length,
+        do_cr_removal = do_cr_removal,
+        max_modes=10
+    )
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
+    pipeline.add_routine(psd)
+    pipeline.add_routine(cleaner)
+    psds2, csds2 = run_multi_run_dataset(date, setnums[:-1])
+
+    psd_ncr_avg = np.mean(psds2, axis = 0)
+    csd_ncr_avg = np.mean(csds2, axis = 0)
+    compare_psds(f'psd_CR_comparison_{date}_set{setnums[-1]}.pdf',freq,[psd_nc_avg,psd_ncr_avg],[1.0, 0.5],['CR_Removal', 'No CR Removal'],f0 = probe_freq,basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, )
+"""
