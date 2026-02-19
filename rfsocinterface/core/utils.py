@@ -824,6 +824,16 @@ def reset_axes(ax: plt.Axes):
     ax.grid(False)
 
 
+def closest(x: npt.NDArray, y: float) -> float:
+    """Find the closest value in x to y."""
+    return x[np.argmin(np.abs(x - y))]
+
+def argclosest(x: npt.NDArray, y: float) -> int:
+    """Find the index of the closest value in x to y."""
+    return np.argmin(np.abs(x - y))
+
+
+
 if __name__ == '__main__':
     def plot_function(fig, ax, x, y):
         ax.plot(x, y)

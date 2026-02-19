@@ -229,8 +229,8 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
-    date = '20251212'
-    setnums = [1009, 1010]
+    date = '20260218'
+    setnums = [1004]
     # setnums = [1006]
 
     dataset = 'data_mK'
@@ -257,16 +257,16 @@ if __name__ == '__main__':
         do_electronics_noise_removal=do_electronics_noise_removal,
         max_modes=2,
     )
-    pipeline.add_routine(hpfilt)
-    pipeline.add_routine(lpfilt)
+    # pipeline.add_routine(hpfilt)
+    # pipeline.add_routine(lpfilt)
     # pipeline.add_routine(psd)
-    pipeline.add_routine(cleaner)
-    pipeline.add_routine(binner)
+    # pipeline.add_routine(cleaner)
+    # pipeline.add_routine(binner)
 
     for setnum in setnums:
         data = pipeline.run_pipeline(date, setnum)
-        data.plot(show=False)
-        data.close()
+        # data.plot(show=False)
+        # data.close()
     plt.show()
 #     from rfsocinterface.analysis.psd import plot_psd
 #     freq = data.get_node_value('freq')[:]

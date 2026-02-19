@@ -35,7 +35,9 @@ from rfsocinterface.core.utils import (
     get_map_file_template,
     get_beammap_file_template,
     DATA_DIRECTORY,
-    ensure_path
+    ensure_path,
+    argclosest,
+    closest
 )
 
 _logger = logging.getLogger(__name__)
@@ -528,6 +530,50 @@ def interpolate_timestamp(
     new_timestamp[:] = fit.slope * np.arange(n_samples) + fit.intercept + RFSOC_TIME_OFFSET
     return fit.slope * normalized_packet_indices + fit.intercept
 
+
+def interpolate_telescope_position(
+    data_timestamp: npt.NDArray,
+    telescope_timestamp: npt.NDArray,
+    tel_position: npt.NDArray,
+    pps_position: npt.NDArray,
+    data_pps: npt.NDArray,
+) -> npt.NDArray:
+
+    # first upsample the telescope positions
+    interpolated_tel_pos = np.interp(
+        data_timestamp,
+        telescope_timestamp,
+        tel_position,
+    )
+
+    # Now shift the upsampled positions so that the PPS is synced between the
+    # raw data and the telescope data.
+    pps_tel_idx = np.where(np.diff(pps_position) != 0)[0] + 1  # Indices where the pps changes
+    pps_tel_pos = pps_position[pps_tel_idx]
+
+    pps_samples_tel = np.zeros(pps_tel_idx.shape, dtype=int)
+
+    pps_samples_data = np.where(data_pps == 1)[0]
+    pps_times_data = data_timestamp[pps_samples_data]
+    pps_times_tel = telescope_timestamp[pps_tel_idx]
+
+    for i in range(len(pps_tel_idx)):
+        closest_index = argclosest(pps_times_data, pps_times_tel[i])
+        sample = pps_samples_data[closest_index]
+        pps_samples_tel[i] = argclosest(interpolated_tel_pos[sample-100:sample+101], pps_tel_pos[i]) + sample - 100
+
+    start_idx = argclosest(pps_samples_data, pps_samples_tel[0])
+    pps_offset = pps_samples_tel - pps_samples_data[start_idx:start_idx+len(pps_samples_tel)]
+    median_offset = np.round(np.median(pps_offset)).astype(int)
+    fixed_positions = np.roll(interpolated_tel_pos, median_offset)
+    
+    # Fill the array with nans where we shifted away from
+    if median_offset < 0:
+        fixed_positions[median_offset:] = np.nan
+    else:
+        fixed_positions[:median_offset] = np.nan
+    return fixed_positions
+
     
 def interpolate_missing_data(
     data_I: tables.Array,
@@ -988,6 +1034,7 @@ class ProcessedDataL0(BaseProcessedData):
             except:
                 za_tel = azel_file.rooe.el_tel
             timestamp_tel = azel_file.root.timestamp_tel
+            pps_za_tel = azel_file.root.pps
             # vis = azel_tfile.root.optical_visibility[0]
             vis = np.nan
             if isinstance(vis, bytes):
@@ -1045,8 +1092,8 @@ class ProcessedDataL0(BaseProcessedData):
 
                 tone_indices = np.arange(sum(tone_counts[:i]), sum(tone_counts[:i+1]), dtype=int)
 
-                if raw_global_data.lo_sweep is None:
-                    raise RuntimeError('No LO sweep provided. Canceliing processing of file.')
+                # if raw_global_data.lo_sweep is None:
+                #     raise RuntimeError('No LO sweep provided. Canceliing processing of file.')
 
                # Initialize timestamp
                 if i == 0:  # Only should make this once, since it's never changed
@@ -1138,7 +1185,14 @@ class ProcessedDataL0(BaseProcessedData):
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
                     this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
-                    this_za_tel = np.interp(timestamp, timestamp_tel, za_tel)
+                    this_za_tel = interpolate_telescope_position(
+                        timestamp,
+                        timestamp_tel[:],
+                        za_tel[:],
+                        pps_za_tel[:],
+                        raw_time_ordered_data.pps[:]
+
+                    )
                     this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
                     this_detector_delta_x = raw_global_data.detector_delta_x[:]
                     this_detector_delta_y = raw_global_data.detector_delta_y[:]
