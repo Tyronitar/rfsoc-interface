@@ -44,6 +44,9 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
 
+        self.azimuth_commanded_valLabel.setText('N/A')
+        self.zenith_commanded_valLabel.setText('N/A')
+
         self.interval = 200  # Milliseconds between update calls
         self.ze_jog_voltage = 1  # Degrees / second
         self.az_jog_voltage = 5  # Degrees / second
@@ -70,14 +73,15 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         # Initialize the numbers in the GUI
         self.az_pos = self.last_az = 0
         self.ze_pos = self.last_ze = 0
+        self.ze_pps_pos = None
 
         self.send_command('get_ser_az_pos')
         self.send_command('get_ser_ze_pos')
 
-        self.last_az_commanded = self.last_az
-        self.last_ze_commanded = self.last_ze
-        self.update_az_cmd(self.last_az_commanded)
-        self.update_ze_cmd(self.last_ze_commanded)
+        self.last_az_commanded = None
+        self.last_ze_commanded = None
+        # self.update_az_cmd(self.last_az_commanded)
+        # self.update_ze_cmd(self.last_ze_commanded)
 
         # Update Timer
         self.timer = QTimer(self)
@@ -146,10 +150,15 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def update_az_err(self, new_err: float):
         self.azimuth_error_valLabel.setText(f'{new_err:.3f}°')
 
-    @Slot(float)
-    def update_ze_pos(self, new_pos: float):
+    @Slot(float, float)
+    def update_ze_pos(self, new_pos: float, pps_pos: float | None):
         self.zenith_actual_valLabel.setText(f'{new_pos:.3f}°')
+        if pps_pos is None:
+            self.zenith_pps_valLabel.setText('N/A')
+        else:
+            self.zenith_pps_valLabel.setText(f'{pps_pos:.3f}°')
         self.ze_pos = new_pos
+        self.ze_pps_pos = pps_pos
 
     @Slot(float)
     def update_ze_cmd(self, new_pos: float):
@@ -168,15 +177,17 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         az_velocity = (self.az_pos - self.last_az) / self.interval * 1000
         ze_velocity = (self.ze_pos - self.last_ze) / self.interval * 1000
         self.update_az_pos(self.az_pos)
-        self.update_ze_pos(self.ze_pos)
+        self.update_ze_pos(self.ze_pos, self.ze_pps_pos)
         self.last_az = self.az_pos
         self.last_ze = self.ze_pos
         self.update_az_vel(az_velocity)
         self.update_ze_vel(ze_velocity)
-        az_err = self.az_pos - self.last_az_commanded
-        ze_err = self.ze_pos - self.last_ze_commanded
-        self.update_az_err(az_err)
-        self.update_ze_err(ze_err)
+        if self.last_az_commanded is not None:
+            az_err = self.az_pos - self.last_az_commanded
+            self.update_az_err(az_err)
+        if self.last_ze_commanded is not None:
+            ze_err = self.ze_pos - self.last_ze_commanded
+            self.update_ze_err(ze_err)
 
     def closeEvent(self, event):
         self.timer.stop()

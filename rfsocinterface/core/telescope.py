@@ -52,7 +52,7 @@ AZ_SAMPLING_TIME = 0.002
 AZ_BASE_SPEED = 1.5
 AZ_POS_TOL_DEG = .02
 AZ_HOME = 0
-ZE_BASE_SPEED = 0.3
+ZE_BASE_SPEED = 0.4
 ZE_POS_TOL_DEG = .01
 ZE_DEAFULT_RPM_PER_VOLT = 40
 ZE_SCAN_RPM_PER_VOLT = 4
@@ -249,15 +249,11 @@ class TelescopeMotorController:
         self.write_ser_ze('CAP0.TRIGGER 1', timeout=0.1)
         self.write_ser_ze('CAP0.EDGE 1', timeout=0.1)
         self.write_ser_ze('CAP0.MODE 0', timeout=0.1)
-        self.write_ser_ze('CAP0.EN 1', timeout=0.1)
-        self.write_ser_ze('CAP0.STATE', timeout=0.1)
 
         # Initialize ZE values
-        self.ze_pos = 0
+        self.ze_pos = self.ze_pps_pos = 0
         self.get_ser_ze_pos(timeout=0.1)
         _tele_logger.info(f'Telescope ZA position is: {self.ze_pos}')
-        self.ze_pps_pos = self.ze_pos
-        self.get_ser_ze_pps_pos()
         self._initialized = True
 
     def write_ser_az(self, command: str | bytes, stop: str=b'\r\n', timeout: float=None) -> str:
@@ -284,23 +280,24 @@ class TelescopeMotorController:
         """Write a command to the zenith angle motor.
         
         Possible commands include:
-            AIN.VSCALE <X>: Set the speed of the motor to X RPM/V.
-            CAP0.EDGE <X>:
-            CAP0.EN <X>"
-            CAP0.EVENT:
-            CAP0.MODE <X>:
-            CAP0.PLFB:
-            CAP0.STATE:
-            CAP0.TRIGGER <X>:
-            DIN1.FILTER (X):
-            DRV.ACTIVE: check whether the motor is engaged.
-            DRV.DIS: Disengage the motor.
-            DRV.EN: Engage the motor.
+            AIN.VSCALE <speed>: Set the speed of the motor in RPM/V.
+            CAP0.EDGE (0|1): Set to trigger on the falling/rising edge of the pulse. Set
+                during initialization.
+            CAP0.EN (0|1): Reset the latch of the specified channel.
+            CAP0.EVENT: ...
+            CAP0.MODE (0|1): Indicates digital latch. Should be set to 0 at initialization.
+            CAP0.PLFB: Get the position of the motor at the last pulse in degrees.
+            CAP0.STATE: Whether it has been latched (1) or not (0).
+            CAP0.TRIGGER (0|1): Set digital input channel. Set to 1 during initializaiton.
+            DIN1.FILTER (0|1): Disable/enable the filter.
+            DRV.ACTIVE: Check whether the motor is engaged (0 or 1).
+            DRV.DIS: Disable the motor.
+            DRV.EN: Enable the motor.
             FB1.OFFSET:
             PL.FB: Get the current position of the motor in degrees.
         """
         data = command
-        if not isinstance[data, bytes]:
+        if not isinstance(data, bytes):
             if command[-2:] != '\r\n':
                 data = data + '\r\n'
             data = data.encode()
@@ -376,8 +373,7 @@ class TelescopeMotorController:
         ##confirm position
         pfb = self.get_ser_az_pos()
         if scan_mode:
-            this_ze = self.get_ser_ze_pos()
-            this_pps = self.get_ser_ze_pps_pos()
+            this_ze, this_pps = self.get_ser_ze_pos()
             position_data = []
         counter = 0
         ##Run loop
@@ -480,7 +476,7 @@ class TelescopeMotorController:
         az_start_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         az_end_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         initial_az = self.get_ser_az_pos()
-        initial_ze = self.get_ser_ze_pos()
+        initial_ze, _ = self.get_ser_ze_pos()
         az_start += initial_az
         az_stop += initial_az
 
@@ -587,7 +583,7 @@ class TelescopeMotorController:
     # Zenith angle settings
     def set_ze_home(self):
         # Set current position of the motor to zero.
-        pos = self.get_ser_ze_pos()
+        pos, _ = self.get_ser_ze_pos()
         pdb.set_trace()
         self.ser_ze.write(b"DRV.DIS\r\n")
         sw_en = self.ser_ze.read_until(b"\r\n", 0.1)
@@ -600,54 +596,54 @@ class TelescopeMotorController:
         pdb.set_trace()
         _logger.info("EL Home Set.")
 
-    def get_ser_ze_pps_pos(self) -> float | None:
-        old_pos = self.ze_pps_pos
-        try:
-            pos_str = self.write_ser_ze('CAP0.PLFB', timeout=AZ_SAMPLING_TIME)
-            split_string = pos_str.split(' ')[0].split('>')
-            if len(split_string[-1]) == 0:
-                # Not receiving pulse
-                self.send(
-                    'err',
-                    'NON-CRITICAL',
-                    'Attempted to access PPS position from ZA controller; No pulse detected; '
-                    f'PPS position set to most recent read ({old_pos:.2f})',
-                )
-                return old_pos
-
-            pos = float(split_string[-1])
-            self.ze_pps_pos = pos
-            if self._initialized:
-                self.send('ze_pps_pos', pos, timeout=0.25)
-            return pos
-        except ValueError:
-            self.send(
-                'err',
-                'NON-CRITICAL',
-                'Error communicating with ZA controller; '
-                f'PPS position set to most recent read ({old_pos:.2f})',
-            )
-            return old_pos
-
-    def get_ser_ze_pos(self, timeout: float=0.1) -> float | None:
+    def get_ser_ze_pos(self, timeout: float=0.1) -> tuple[float, float]:
+        # Get old values as a fallback
         old_pos = self.ze_pos
+        old_pps_pos = self.ze_pps_pos
+
+        # Query the values from the motor
+        pos_str = self.write_ser_ze('PL.FB', timeout=timeout / 3)
+        state_str = self.write_ser_ze('CAP0.STATE', timeout=timeout / 3)
+        state = float(state_str.split(' ')[0].split('>')[-1])
+        if state == 1:
+            # It's been latched so get the position and reset the latch
+            pps_pos_str = self.write_ser_ze('CAP0.PLFB', timeout=timeout / 3)
+            self.write_ser_ze('CAP0.EN 1', timeout=timeout / 3)
+        else:
+            new_pps_pos = old_pps_pos
+
+        # Try to get the ZA position
         try:
-            pos_str = self.write_ser_ze('PL.FB', timeout=timeout)
-            # self.ser_ze.write('PL.FB\r\n'.encode('ASCII'))
-            # pos_str = self.ser_ze.read_until(b']', timeout).decode()
-            # _tele_logger.debug(f'ZA Command "PL.FB" returned result "{repr(pos_str)}"')
             pos = float(pos_str.split(' ')[0].split('>')[-1])
-            self.ze_pos = pos
-            if self._initialized:
-                _tele_logger.debug(f'Sending ze_pos to GUI')
-                self.send('ze_pos', pos, timeout=0.25)
-            return pos
+            new_pos = pos
         except ValueError:
-            _tele_logger.error(
-                'Error communicating with ZA controller; '
+            # Couldn't convert the string to a float
+            msg = 'Error communicating with ZA controller; ' \
                 f'position set to most recent read ({old_pos:.2f})'
-            )
-            return old_pos
+            _tele_logger.warning(msg)
+            self.send('err', 'NON-CRITICAL', msg)
+            new_pos = old_pos
+
+        # Check that the PPS position is accesible
+        if state == 1:
+            pps_split_string = pps_pos_str.split(' ')[0].split('>')
+            if len(pps_split_string[-1]) == 0:
+                # Not receiving pulse
+                msg = 'Attempted to access PPS position from ZA controller; No pulse detected; ' \
+                f'PPS position set to most recent read ({old_pps_pos:.2f})',
+                _tele_logger.warning(msg)
+                self.send('err', 'NON-CRITICAL', msg)
+                new_pps_pos = old_pps_pos
+            else:
+                new_pps_pos = float(pps_split_string[-1])
+  
+        self.ze_pos = new_pos
+        self.ze_pps_pos = new_pps_pos
+
+        if self._initialized:
+            # _tele_logger.debug(f'Sending ze_pos to GUI')
+            self.send('ze_pos', new_pos, new_pps_pos, timeout=timeout)
+        return new_pos, new_pps_pos
 
     def set_ze_pos(self, new_pos: float, scan_mode: bool=False, stop_run: bool=True, primary_scan_direction: str='ze'):
         # self.zenithCommanded.emit(new_pos)
@@ -662,11 +658,10 @@ class TelescopeMotorController:
         self.set_ao_zero()
 
         # confirm position
-        pos = self.get_ser_ze_pos()
+        pos, _ = self.get_ser_ze_pos()
         # self.conn.send(['ze_pos', pos])
         if scan_mode:
             this_az = self.get_ser_az_pos()
-            this_pps = self.get_ser_ze_pps_pos()
             position_data = []
         if scan_mode and primary_scan_direction.lower() == 'za':
             tolerance = ZE_POS_TOL_DEG * 5
@@ -705,14 +700,14 @@ class TelescopeMotorController:
 
                 self.set_ao_value(data_value, ZE_OUT_CHANNEL)
                 _tele_logger.debug('Getting ser ze pos')
-                pos = self.get_ser_ze_pos()
+                pos, pps_pos = self.get_ser_ze_pos()
                 if abs(pos - new_pos) <= tolerance:
                     self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
                 # self.conn.send(['ze_pos', pos])
                 if scan_mode:
                     _tele_logger.debug('appending scan mode position data')
                     position_data = np.append(
-                        position_data, [this_az, pos, time.time(), this_pps]
+                        position_data, [this_az, pos, time.time(), pps_pos]
                     )
                 counter = counter + 1
                 if counter % 500 == 0:
@@ -737,7 +732,7 @@ class TelescopeMotorController:
         # self.zenithVelocityChanged.emit(0)
         ## Read position again
         # time.sleep(0.1)
-        pos = self.get_ser_ze_pos()
+        pos, _ = self.get_ser_ze_pos()
         _tele_logger.debug(f'Finished setting ze_pos to {new_pos}. Actual={pos}, Error={pos - new_pos:.5f}')
         if scan_mode:
             return position_data
@@ -801,7 +796,7 @@ class TelescopeMotorController:
         primary_start_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         primary_end_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         initial_az = self.get_ser_az_pos()
-        initial_ze = self.get_ser_ze_pos()
+        initial_ze, _ = self.get_ser_ze_pos()
         if primary_az:
             primary_start += initial_az
             primary_stop += initial_az
