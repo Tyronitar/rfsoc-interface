@@ -376,6 +376,10 @@ def plot_SNqp(
     figs = []
     yscale = 'log'
     SNqp_array = []
+    combined_fig = plt.figure(figsize=(9, 6))
+    combined_fig_ax = plt.subplot()
+    cmap = plt.get_cmap('viridis')
+    
     for i in np.arange(psd.shape[1]):
         res_title = title + f' - Resonator {i}'
         if f0 is not None and i < len(f0):
@@ -394,7 +398,14 @@ def plot_SNqp(
             yscale='log',
             )
             figs.append(fig)
-
+            combined_fig_ax.plot(freq, SNqp, label = f'Resonator {i}', color = cmap(i/psd.shape[1]))
+    combined_fig_ax.set_xscale('log')
+    combined_fig_ax.set_yscale('log')
+    combined_fig_ax.set_xlabel('Frequency (Hz)', fontsize=16)
+    combined_fig_ax.set_ylabel('Noise PSD (Nqp)', fontsize=16)
+    combined_fig_ax.tick_params(labelsize=14)
+    combined_fig_ax.set_title(title + ' - SNqp Comparison', fontsize=16)
+    figs.append(combined_fig)
 
     psd_med = np.median(SNqp_array, axis=0)
 

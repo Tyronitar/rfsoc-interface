@@ -341,36 +341,69 @@ def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bo
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
 
-def plot_corellation_matrices( data: tables.Array,fs, savepath: Path|None = None, lp_filt_freq:float = 0):
-    """Plot correlation matrices for each channel.
+def plot_corellation_matrices(
+    data: tables.Array,
+    fs,
+    savepath: Path | None = None,
+    lp_filt_freqs: np.ndarray = np.array([0])
+):
+    """Plot correlation matrices (channel 0) for all LP frequencies in one figure."""
 
-    Args:
-        corelation_matrices (npt.NDArray): Correlation matrices (N_chan x N_detector x N_detector).
-        savepath (Path or None, optional): If provided, save the figure to this path. Defaults to None.
-    """
     # subtract the mean from each detector
-    # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
-    deproj = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
 
-    if lp_filt_freq>0:
-        filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
-        deproj = signal.sosfiltfilt(filt_sos, deproj)
-    n_tones = data.shape[1]
+    n_freqs = len(lp_filt_freqs)
+    n_chans = data.shape[0]
 
-    # select only the middle few detectors
-    # deproj = data_meansub[:, 8:1008, :]
+    fig, axes = plt.subplots(n_chans, n_freqs, figsize=(6*n_freqs, 5))
 
-    # create a separate correlation matrix for all data channels
-    correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
-    diag = np.sqrt(np.diag(np.real(correlation_matrices[0])))
-    correlation_coefficient = correlation_matrices[0] / np.outer(diag, diag)
-    n_chan = correlation_matrices.shape[0]
-    plt.figure(figsize=(6,5))
-    plt.title('Correlation Coefficient Matrix')
-    plt.xlabel('Detector Index')
-    plt.ylabel('Detector Index')   
-    im = plt.imshow(np.real(correlation_coefficient), aspect='auto', origin='lower')
-    plt.colorbar(im, label='Correlation')
+
+    if n_freqs == 1:
+        axes = [axes]
+
+    for i, lp_filt_freq in enumerate(lp_filt_freqs):
+
+        deproj = data_meansub.copy()
+
+        if lp_filt_freq > 0:
+            filt_sos = signal.butter(
+                BUTTER_ORDER,
+                lp_filt_freq,
+                btype='low',
+                fs=fs,
+                output='sos',
+                analog=False
+            )
+            deproj = signal.sosfiltfilt(filt_sos, deproj, axis=2)
+
+        # same computation as your original code
+        correlation_matrices = np.matmul(
+            deproj,
+            np.conj(np.transpose(deproj, axes=(0, 2, 1)))
+        )
+        for j in range(n_chans):
+            diag = np.sqrt(np.real(np.diag(correlation_matrices[j])))
+            correlation_coefficient = (
+                correlation_matrices[j] /
+                np.outer(diag, diag)
+            )
+            im = axes[j, i].imshow(
+                abs(np.real(correlation_coefficient)),
+                aspect='auto',
+                origin='lower'
+            )
+            axes[j, i].set_title(f'LP = {lp_filt_freq} Hz, Chan {j}')
+            axes[j, i].set_xlabel('Detector Index')
+            axes[j, i].set_ylabel('Detector Index')
+            fig.colorbar(im, ax=axes[j, i], label='Correlation')
+
+    fig.suptitle('Correlation Coefficient Matrices')
+    plt.tight_layout()
+
+    if savepath is not None:
+        fname = savepath / 'corr_matrices_all_lp.png'
+        plt.savefig(fname, dpi=300)
+
     plt.show()
 
 def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
@@ -1314,6 +1347,7 @@ class ProcessedDataL0(BaseProcessedData):
                 if n_missed > 0:
                     this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
                 if do_cr_removal:
+                    print("removing cosmic ray glitches...")
                     z_I, z_Q = get_z_arrays(this_data_IQ, 1)
                     glitch_mask_I = np.array(z_I)>5
                     glitch_mask_Q = np.array(z_Q)>5
@@ -1647,12 +1681,12 @@ class ProcessedDataL1(ProcessedData):
         plot_data_fd = np.ones_like(data_gain_phase)
         rotate_basis(new_data.data_IQ[:], plot_data_fd, IQ_to_freq_diss_angle)
         z_freq, z_diss = get_z_arrays(plot_data_fd, 10)
-        #time_streams.plot_timestream_errors(z_freq, z_diss,fs, lp_filt_freq=50, onres_ind = new_data.onres_ind)
+        #time_streams.plot_timestream_errors(z_freq, z_diss,fs, onres_ind = new_data.onres_ind)
 
         if do_electronics_noise_removal:
             
             offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
-            onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.onres_ind)
+            onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=None)
 
             #Finally remove blocking of data clumps
             data_set_mean = np.mean(data_gain_phase, axis = 2)
@@ -1664,9 +1698,11 @@ class ProcessedDataL1(ProcessedData):
             n = unblocked_clean_data.shape[-1]
             data_gain_phase[..., :n] = unblocked_clean_data
             data_gain_phase[..., n:] = unblocked_clean_data[..., -1:]
-            #plot_corellation_matrices(data_gain_phase, fs = fs, lp_filt_freq=5)
-
+          
+        
         new_generate_calibrated_data(new_data)
+        plot_data = np.concatenate((new_data.data_freq_diss[:,new_data.onres_ind, :], new_data.data_freq_diss[:,new_data.offres_ind, :]), axis=1)
+        plot_corellation_matrices(plot_data, fs = fs, lp_filt_freqs=[0.05, 0.1, 1.0, 10.0, 100])
 
         return new_data
 

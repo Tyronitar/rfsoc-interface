@@ -9,7 +9,7 @@ from kidpy3 import RawDataFile
 
 from rfsocinterface.core.utils import DATA_DIRECTORY
 from matplotlib.backends.backend_pdf import PdfPages
-def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 488.24,lp_filt_freq:float = 10.0, onres_ind:npt.NDArray = None, num_processing_blocks: int = 100 ):
+def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 488.24, onres_ind:npt.NDArray = None, num_processing_blocks: int = 100 ):
     """Plot noise blobs for each detector."""
     # subtract the mean from each detector
 
@@ -78,7 +78,7 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
     axes.set_ylabel("Time (s)")
     axes.set_zlabel("z")
 
-    plt.show()
+    #plt.show()
 
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
@@ -110,7 +110,7 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
 
     ax.set_yscale('log')
     ax.legend()
-    plt.show()
+    #plt.show()
 
 
     # mask time bins with at least one detection
