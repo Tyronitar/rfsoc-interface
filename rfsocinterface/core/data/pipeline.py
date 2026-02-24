@@ -186,7 +186,7 @@ class DataPipeline:
         _logger.info(f'Data pipeline completed in {stop_time - start_time:.3f} seconds.')
         return output
 
-def find_peaks(data: ProcessedData, primary_direction: str='az'):
+def find_peaks(data: ProcessedData, primary_direction: str='az', peak_radius: int=2):
     import numpy as np
     from numpy.polynomial import Polynomial
     # find peak going forward / back
@@ -202,8 +202,8 @@ def find_peaks(data: ProcessedData, primary_direction: str='az'):
     right_peak_idx = right_indices[np.argmax(data.data_mK[i_res, right_indices])]
     left_peak_idx = left_indices[np.argmax(data.data_mK[i_res, left_indices])]
 
-    right_slice = slice(right_peak_idx - 2, right_peak_idx + 3)
-    left_slice = slice(left_peak_idx - 2, left_peak_idx + 3)
+    right_slice = slice(right_peak_idx - peak_radius, right_peak_idx + peak_radius + 1)
+    left_slice = slice(left_peak_idx - peak_radius, left_peak_idx + peak_radius + 1)
 
     right_fit = Polynomial.fit(telescope_pos[right_slice], data.data_mK[i_res, right_slice], 2).convert()
     left_fit = Polynomial.fit(telescope_pos[left_slice], data.data_mK[i_res, left_slice], 2).convert()
@@ -229,14 +229,15 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
-    date = '20260218'
-    setnums = [1004]
+    date = '20260223'
+    # setnums = [1013]
+    setnums = range(1009, 1016)
     # setnums = [1006]
 
     dataset = 'data_mK'
     beam_map_mode = False
     do_electronics_noise_removal = True
-    primary_direction = 'az'
+    primary_direction = 'za'
 
     ds_factor = 8
     hp_filt_freq = 0.25
@@ -257,17 +258,18 @@ if __name__ == '__main__':
         do_electronics_noise_removal=do_electronics_noise_removal,
         max_modes=2,
     )
-    # pipeline.add_routine(hpfilt)
-    # pipeline.add_routine(lpfilt)
+    pipeline.add_routine(hpfilt)
+    pipeline.add_routine(lpfilt)
     # pipeline.add_routine(psd)
-    # pipeline.add_routine(cleaner)
+    pipeline.add_routine(cleaner)
     # pipeline.add_routine(binner)
 
     for setnum in setnums:
         data = pipeline.run_pipeline(date, setnum)
-        # data.plot(show=False)
+        # data.plot(show=True)
         # data.close()
-    plt.show()
+        find_peaks(data, primary_direction=primary_direction, peak_radius=4)
+        plt.show()
 #     from rfsocinterface.analysis.psd import plot_psd
 #     freq = data.get_node_value('freq')[:]
 #     psd = data.get_node_value('psd_gain_phase')[:]

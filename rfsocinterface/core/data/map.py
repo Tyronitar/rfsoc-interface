@@ -183,10 +183,10 @@ def outlier_removal(data):
 
 def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, beam_map_mode: bool=False) -> npt.NDArray:
 
-    max_az = np.max(map.detector_az) - az_trim
-    min_az = np.min(map.detector_az) + az_trim
-    max_za = np.max(map.detector_za) - za_trim
-    min_za = np.min(map.detector_za) + za_trim
+    max_az = np.nanmax(map.detector_az) - az_trim
+    min_az = np.nanmin(map.detector_az) + az_trim
+    max_za = np.nanmax(map.detector_za) - za_trim
+    min_za = np.nanmin(map.detector_za) + za_trim
     n_pix_x = int(np.ceil((max_az - min_az) / map_dpix))
     n_pix_y = int(np.ceil((max_za - min_za) / map_dpix))
     map_x = np.arange(n_pix_x) * map_dpix + min_az + map_dpix / 2.

@@ -249,6 +249,7 @@ class TelescopeMotorController:
         self.write_ser_ze('CAP0.TRIGGER 1', timeout=0.1)
         self.write_ser_ze('CAP0.EDGE 1', timeout=0.1)
         self.write_ser_ze('CAP0.MODE 0', timeout=0.1)
+        self.write_ser_ze('CAP0.EN 1', timeout=0.1)
 
         # Initialize ZE values
         self.ze_pos = self.ze_pps_pos = 0
