@@ -150,7 +150,7 @@ class DataPipeline:
             case _:
                 pass
 
-    def run_pipeline(self, date: str, setnum: int) -> ProcessedData:
+    def run_pipeline(self, date: str, setnum: int, output_pd1:bool = False) -> ProcessedData:
         self.synchronize_values()
         _logger.info(f'Beginning data pipeline for {date}set{setnum}')
         start_time = time.time()
@@ -186,10 +186,14 @@ class DataPipeline:
             md.add_receipt(self.generate_receipt())
             output = md
         pd.close()
-        pd1.close()
+       
         stop_time = time.time()
         _logger.info(f'Data pipeline completed in {stop_time - start_time:.3f} seconds.')
-        return output
+        if not output_pd1:
+            pd1.close()
+            return output
+
+        return output, pd1
 
 def find_peaks(data: ProcessedData, primary_direction: str='az'):
     import numpy as np
@@ -263,6 +267,7 @@ def run_multi_run_dataset(date:str, setnums:np.ndarray) -> tuple[np.ndarray, np.
     psds = []
     csds = []
     for setnum in setnums:
+        print(f'Running pipeline for {date} set {setnum}')
         pipeline = DataPipeline(
             ds_factor=ds_factor,
             hp_filter_freq=hp_filt_freq,
@@ -297,8 +302,8 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260219'
-    setnums = np.array(['1004'])
+    date = '20260223'
+    setnums = np.array([1004, 1006, 1007, 1009, 1010, 1011, 1013,  1015, 1016,  1018, 1019])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
     #date = '20260212'
     #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
@@ -332,9 +337,12 @@ if __name__ == '__main__':
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
 
-    #psds, csds = run_multi_run_dataset(date, setnums)
-    #psd_avg = np.mean(psds, axis = 0)
-    #csd_avg = np.mean(csds, axis = 0)
+    psds, csds = run_multi_run_dataset(date, setnums)
+    #pdb.set_trace()
+    min_len = np.min([len(psd[0,0,:]) for psd in psds])
+    print(min_len)
+    psd_avg = np.mean([psd[:, :, :min_len] for psd in psds], axis = 0)
+    csd_avg = np.mean([csd[:, :min_len] for csd in csds], axis = 0)
     #TODO This is really innefficient and stupid, but I wasn't sure how to do it better
     pipeline = DataPipeline(
         ds_factor=ds_factor,
@@ -352,10 +360,10 @@ if __name__ == '__main__':
     pipeline.add_routine(cleaner)
     
     data = pipeline.run_pipeline(date, setnums[-1])
-    freq = data.get_node_value('freq')[:]
-    adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:]
-    chanmask = data.chanmask[:]
-    probe_freq = data.baseband_freqs[:] + data.lo_freq
+    freq = data.get_node_value('freq')[:min_len]
+    adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:min_len]
+    chanmask = data.chanmask[:min_len]
+    probe_freq = data.baseband_freqs[:min_len] + data.lo_freq
 
     # Sort it into resonator and nonresonator data. 
     sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
@@ -368,10 +376,11 @@ if __name__ == '__main__':
 
     # Plot it
     plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnums[-1]}.pdf', basis=PsdBasis.GAIN_PHASE)
-    #dev_pwr = get_power_at_device(freq = probe_freq)
-    """
+    dev_pwr = get_power_at_device(freq = probe_freq)
+    
     plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnums[-1]}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = None, dev_pwr = dev_pwr)
-    plot_psd(freq, psd_avg, f'noise_SNqp_{date}_set{setnums[-1]}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, dev_pwr = dev_pwr)
+    """
+    #plot_psd(freq, psd_avg, f'noise_SNqp_{date}_set{setnums[-1]}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, dev_pwr = dev_pwr)
     #plot_psd(freq, psd_opt, f'noise_freq_dis_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_opt)
     #plot_psd(freq, psd_opt, f'noise_SNqp_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_opt)
     

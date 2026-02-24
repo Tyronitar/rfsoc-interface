@@ -1702,7 +1702,7 @@ class ProcessedDataL1(ProcessedData):
         
         new_generate_calibrated_data(new_data)
         plot_data = np.concatenate((new_data.data_freq_diss[:,new_data.onres_ind, :], new_data.data_freq_diss[:,new_data.offres_ind, :]), axis=1)
-        plot_corellation_matrices(plot_data, fs = fs, lp_filt_freqs=[0.05, 0.1, 1.0, 10.0, 100])
+        #plot_corellation_matrices(plot_data, fs = fs, lp_filt_freqs=[0.05, 0.1, 1.0, 10.0, 100])
 
         return new_data
 
