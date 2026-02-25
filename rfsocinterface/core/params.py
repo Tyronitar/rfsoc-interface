@@ -226,38 +226,62 @@ def create_params_file_from_VNA_sweep(
 
 
 if __name__ == "__main__":
-    # Be231102p2_tones = np.array([213078506, 214801178, 247405640, 255826241, 256855576, 260115494,
-    #     263857108, 265547813, 269670205, 270298250, 272671603, 274710449,
-    #     276383775, 278960930, 308519951, 312882861, 313150099, 314004392,
-    #     314391462, 318555194, 322412444, 323717312, 326364689, 328323325,
-    #     328705367, 335793390, 340651152, 368175878, 373470266, 375799889,
-    #     375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
-    #     393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
+    Be231102p2_tones = np.array([213078506, 214801178, 247405640, 255826241, 256855576, 260115494,
+         263857108, 265547813, 269670205, 270298250, 272671603, 274710449,
+         276383775, 278960930, 308519951, 312882861, 313150099, 314004392,
+         314391462, 318555194, 322412444, 323717312, 326364689, 328323325,
+         328705367, 335793390, 340651152, 368175878, 373470266, 375799889,
+         375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
+         393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
 
-    # Be231102p2_LO_freq = 300e6
+    Be231102p2_LO_freq = 430e6
     # lo_freq = 4e8
-    lo_freq = 4e8
+    #lo_freq = 4e8
     n_tones = 1
     # baseband_freqs = np.concatenate([np.linspace(-246e6, -11e6, n_tones // 2), np.linspace(10e6, 245e6, n_tones // 2)])
-    baseband_freqs = np.arange(-200e6, 200e6 + 1, 400e3)
-    n_tones = np.size(baseband_freqs)
+    #baseband_freqs = np.arange(-200e6, 200e6 + 1, 400e3)
+    #n_tones = np.size(baseband_freqs)
     # baseband_freqs = [450e6 - lo_freq]
     # tile_name = f'{n_tones}_tone_uniform_202050829'
+    
+    new_tones = []
 
-    # Add 58 more tones
-    # baseband_freqs = np.concatenate([
-    #     Be231102p2_tones,
-    #     np.linspace(218, 244, 27) * 1e6,
-    #     np.linspace(344, 365, 22) * 1e6,
-    #     np.linspace(284, 302, 9) * 1e6,
-    # ])
+    for i in range(len(Be231102p2_tones) - 1):
+        t0 = Be231102p2_tones[i]
+        t1 = Be231102p2_tones[i + 1]
+
+        new_tones.append(t0)
+        new_tones.append(t0 + (t1 - t0) / 2)  # midpoint
+
+    # add the last original tone
+    new_tones.append(Be231102p2_tones[-1])
+    difs = np.diff(Be231102p2_tones)
+
+   
+
+
+    while len(new_tones) < 100:
+        difs = np.diff(new_tones)
+        idx = np.argmax(difs)
+        new_tone = (new_tones[idx] + new_tones[idx + 1]) / 2
+        new_tones = np.insert(new_tones, idx + 1, new_tone)
+
+    # Final gap check
+    difs = np.diff(new_tones)
+    print(difs)
+    set_new_tones = set(new_tones)
+    original_tone_indices = [i for i,t in enumerate(new_tones) if t  in Be231102p2_tones]
+    print(f"Original tones not in new list: {original_tone_indices}")
+    baseband_freqs = np.array(new_tones) - Be231102p2_LO_freq
+
+
     # sorted_indices = baseband_freqs.argsort()
 
     # baseband_freqs = baseband_freqs[sorted_indices] - lo_freq
-
     
-    # tile_name = 'Be231102p2_100_tones'
-    tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
+    
+    tile_name = 'Simon_Be231102p2_100_tones'
+    #tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
     # tile_name = 'Device_aSi1_Channel2_blind'
     # baseband_freqs = baseband_freqs - lo_freq
     # baseband_freqs =  np.load('/home/onrkids/readout/host/params/Default_tone_list.npy')
@@ -271,11 +295,11 @@ if __name__ == "__main__":
     # tone_powers = np.load('/home/onrkids/onrkidpy/params/Device_aSi1_Channel2_max_readout_power_dB.npy')
     # df_overf_per_mK = np.load('/home/onrkids/readout/host/params/dfoverf_per_mK_tile2.npy')
     detdx = detdy = chanmask = det_beam_ampl = det_pol = tone_powers = df_overf_per_mK = None
-    # chanmask = np.zeros_like(baseband_freqs)
-    # chanmask[np.where(sorted_indices < len(Be231102p2_tones))[0]] = 1
+    chanmask = np.zeros_like(baseband_freqs)
+    chanmask[original_tone_indices] = 1
 
 
-    initialize_params_file(tile_name, baseband_freqs, lo_freq, DEFAULT_PARAMS_DIRECTORY)
+    initialize_params_file(tile_name, baseband_freqs, Be231102p2_LO_freq, DEFAULT_PARAMS_DIRECTORY)
     update_params_file(
         tile_name,
         params_dir=DEFAULT_PARAMS_DIRECTORY,
