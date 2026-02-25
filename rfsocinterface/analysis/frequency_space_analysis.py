@@ -8,8 +8,8 @@ from scipy.signal import get_window
 from numpy.lib.stride_tricks import sliding_window_view
 import matplotlib.pyplot as plt
 
-def get_fft(time_stream:npt.NDArray, fs:float = 488):
-
+def get_fft(time_stream:npt.NDArray):
+    time_stream = time_stream - np.mean(time_stream, axis=-1, keepdims=True)
     n_samples = time_stream.shape[2]
     window = get_window('hann', n_samples)
     scale = np.sum(window**2)
@@ -64,7 +64,7 @@ def spectral_pca(csds: npt.NDArray, freqs: npt.NDArray,bound_freqs: npt.NDArray,
         else:
             sigma_mult = 3
 
-        n_modes = 7
+        n_modes = 1
         #new_modes = -1
         #while new_modes != 0 and n_modes <= max_modes:
         #    log_eigen_values = np.log10(eigvals[n_modes:])
@@ -85,7 +85,7 @@ def spectral_pca(csds: npt.NDArray, freqs: npt.NDArray,bound_freqs: npt.NDArray,
 
     return np.array(eigvals_all).T, np.array(eigvecs_all)
 
-def clean_noise_modes(fft: npt.NDArray, eigvecs: npt.NDArray, freqs: npt.NDArray, bound_freqs: npt.NDArray) -> npt.NDArray:
+def clean_noise_modes(fft: npt.NDArray, eigvecs: npt.NDArray, freqs: npt.NDArray, bound_freqs: npt.NDArray, correlation_threshold: float = 0.0) -> npt.NDArray:
     # Project out the noise modes
     uncleaned_data = fft[0] + 1j * fft[1]
     n = len(uncleaned_data)
@@ -97,16 +97,28 @@ def clean_noise_modes(fft: npt.NDArray, eigvecs: npt.NDArray, freqs: npt.NDArray
     freq_indices = np.clip(freq_indices, 0, n_freqs_total-1)
     print(freqs[freq_indices])
     n_bound = len(bound_freqs)
-    for i in range(n_bound-1):
-        for j in range(eigvecs.shape[0]):
-            mode = eigvecs[i, :, j]
-            print(f"Cleaning mode {j} in frequency band {i}")
-           #print(freq_indices[i], freq_indices[i+1])
-            print(mode.shape)
-            print(cleaned_data[ :, freq_indices[i]:freq_indices[i+1]].shape)
-            for f in range(freq_indices[i], freq_indices[i+1]):
-                coeff = np.vdot(mode, cleaned_data[:, f])
-                cleaned_data[:, f] -= mode * coeff
+    for i in range(n_bound - 1):
+        f_slice = slice(freq_indices[i], freq_indices[i+1])
+        data_band = cleaned_data[:, f_slice]  # (n_channels, n_freqs_in_band)
+
+        for j in range(eigvecs.shape[-1]):
+            mode = eigvecs[i, :, j]  # (n_channels,)
+            mode_projection = mode.conj() @ data_band          # (n_freqs_in_band,)
+            mode_power = np.abs(mode_projection)**2
+
+            channel_power = np.sum(np.abs(data_band)**2, axis=1)  # (n_channels,)
+            total_mode_power = np.sum(mode_power)
+
+            corr = np.abs(mode.conj() * (data_band @ mode_projection.conj()))
+            corr /= np.sqrt(channel_power * total_mode_power + 1e-30)  # avoid div by zero
+            print(corr)
+            correlated_channels = corr > correlation_threshold  
+            print(f"Mode {j}, band {i}: {correlated_channels.sum()} correlated channels")
+
+            coeffs = mode.conj() @ data_band
+            cleaned_data[correlated_channels, f_slice] -= np.outer(
+                mode[correlated_channels], coeffs
+            )
 
     return np.array([np.real(cleaned_data), np.imag(cleaned_data)])
 
@@ -160,8 +172,8 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260212'
-    setnums = np.array(['1011'])
+    date = '20260224'
+    setnums = np.array(['1002'])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
     #date = '20260212'
     #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
@@ -222,20 +234,26 @@ if __name__ == '__main__':
     adc_units_to_hz = adc_units_to_hz[sorted_indices]
     onres_ind = np.where(chanmask == 1)[0]
     offres_ind = np.where(chanmask == 0)[0]
+
+
+
+
+
     gp_noise = pd1.get_node_value('data_gain_phase')[:]/ pd1.carrier_amplitude_norm()
-    gp_noise = gp_noise[:,  offres_ind]#np.concatenate((gp_noise[:, onres_ind], gp_noise[:, offres_ind]), axis=1)
+    gp_noise = np.concatenate((gp_noise[:, onres_ind], gp_noise[:, offres_ind]), axis=1)
     fs = 1 / np.median(np.diff(pd1.timestamp[:]))
-    fft, scale, n_samples = get_fft(gp_noise, fs)
+    fft, scale, n_samples = get_fft(gp_noise)
     freqs, psd, csd = get_csd_and_psd(fft, scale, fs, n_samples)
     bound_freqs=np.array([0.01, 0.1, 1.0, 10.0, 100, fs/2])
-    cleaning_bound_freqs = np.array([0.00, 0.1, 1.0, 5.0, 10.0, 100, fs/2])
+    cleaning_bound_freqs = bound_freqs=np.array([0.01, 0.1, 1.0, 10.0, 100, fs/2])
     plot_correlation_matrices(freqs, csd, bound_freqs)
     from psd import plot_psd
     plot_psd(freqs, psd, f'noise_gain_phase_{date}_set{setnums[-1]}.pdf', basis=PsdBasis.GAIN_PHASE)
     eigvals, eigvecs = spectral_pca(csd, freqs,bound_freqs = cleaning_bound_freqs)
     print(fft.shape)
     print(eigvecs.shape)
-    clean_fft = clean_noise_modes(fft, eigvecs, freqs,  cleaning_bound_freqs)
+    clean_fft = fft.copy()
+    clean_fft[:, :] = clean_noise_modes(fft, eigvecs, freqs,  cleaning_bound_freqs)
     freqs, psd_clean, csd_clean = get_csd_and_psd(clean_fft, scale, fs, n_samples)
     plot_correlation_matrices(freqs, csd_clean, bound_freqs)
     plot_psd(freqs, psd_clean, f'noise_gain_phase_clean_{date}_set{setnums[-1]}.pdf', basis=PsdBasis.GAIN_PHASE)
