@@ -249,21 +249,24 @@ if __name__ == "__main__":
     for i in range(len(Be231102p2_tones) - 1):
         t0 = Be231102p2_tones[i]
         t1 = Be231102p2_tones[i + 1]
-
+        dif = t1 - t0
+        print(dif)
+       
         new_tones.append(t0)
-        new_tones.append(t0 + (t1 - t0) / 2)  # midpoint
+        if dif > 2e6:
+            new_tones.append(np.round(t0 + (dif) / 2))  # midpoint
 
     # add the last original tone
     new_tones.append(Be231102p2_tones[-1])
     difs = np.diff(Be231102p2_tones)
-
    
 
 
     while len(new_tones) < 100:
         difs = np.diff(new_tones)
         idx = np.argmax(difs)
-        new_tone = (new_tones[idx] + new_tones[idx + 1]) / 2
+        print(f"Max gap: {difs[idx]} between {new_tones[idx]} and {new_tones[idx + 1]}")
+        new_tone = np.round((new_tones[idx] + new_tones[idx + 1]) / 2)
         new_tones = np.insert(new_tones, idx + 1, new_tone)
 
     # Final gap check
