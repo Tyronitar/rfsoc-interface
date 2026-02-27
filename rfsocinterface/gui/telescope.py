@@ -72,6 +72,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
         # Initialize the numbers in the GUI
         self.az_pos = self.last_az = 0
+        self.az_pps_pos = None
         self.ze_pos = self.last_ze = 0
         self.ze_pps_pos = None
 
@@ -132,10 +133,15 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         new_pos = get_num_value(self.zenith_setlineEdit)
         self.send_command('set_ze_pos', new_pos)
     
-    @Slot(float)
-    def update_az_pos(self, new_pos: float):
+    @Slot(float, float)
+    def update_az_pos(self, new_pos: float, pps_pos: float | None):
         self.azimuth_actual_valLabel.setText(f'{new_pos:.3f}°')
+        if pps_pos is None:
+            self.azimuth_pps_valLabel.setText('N/A')
+        else:
+            self.azimuth_pps_valLabel.setText(f'{pps_pos:.3f}°')
         self.az_pos = new_pos
+        self.az_pps_pos = pps_pos
     
     @Slot(float)
     def update_az_cmd(self, new_pos: float):
@@ -176,7 +182,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def update_ui(self):
         az_velocity = (self.az_pos - self.last_az) / self.interval * 1000
         ze_velocity = (self.ze_pos - self.last_ze) / self.interval * 1000
-        self.update_az_pos(self.az_pos)
+        self.update_az_pos(self.az_pos, self.az_pps_pos)
         self.update_ze_pos(self.ze_pos, self.ze_pps_pos)
         self.last_az = self.az_pos
         self.last_ze = self.ze_pos

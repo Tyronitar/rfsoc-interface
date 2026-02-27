@@ -111,7 +111,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.dither_comboBox.activated.connect(self.choose_pattern)
         self.start_pushButton.clicked.connect(self.run)
         self.mapping_pushButton.clicked.connect(self.choose_mapping_routines)
-        self.choose_pattern(0)
+        self.choose_pattern(1)
 
     
     def _add_default_routines(self):

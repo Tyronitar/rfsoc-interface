@@ -545,6 +545,10 @@ def interpolate_telescope_position(
     pps_tel_pos = pps_position[pps_tel_idx]
     pps_times_tel = telescope_timestamp[pps_tel_idx]
 
+    if pps_tel_idx.size == 0:
+        # The telescoep never mvoed in this direction, so aligning the times doesn't
+        # matter. Just upsample the positions.
+        return np.interp(data_timestamp, telescope_timestamp, tel_position)
 
     # Upsample the telescope positions ignoring the positions when the pulse is receivd,
     # since the extra commands slow the loop 
@@ -570,6 +574,7 @@ def interpolate_telescope_position(
         sample = pps_samples_data[closest_index]
         pps_samples_tel[i] = argclosest(interpolated_tel_pos[sample-search_radius:sample+search_radius+1], pps_tel_pos[i]) + sample - search_radius
 
+
     # The first pps pulse that was receied in both the raw data and the telescope data 
     start_idx = argclosest(pps_samples_data, pps_samples_tel[0])
 
@@ -588,6 +593,7 @@ def interpolate_telescope_position(
         fixed_positions[:-median_offset] = np.nan
     else:
         fixed_positions[-median_offset:] = np.nan
+
     return fixed_positions
 
     
@@ -1050,7 +1056,8 @@ class ProcessedDataL0(BaseProcessedData):
             except:
                 za_tel = azel_file.rooe.el_tel
             timestamp_tel = azel_file.root.timestamp_tel
-            pps_za_tel = azel_file.root.pps
+            az_pps_tel = azel_file.root.az_pps
+            za_pps_tel = azel_file.root.za_pps
             # vis = azel_tfile.root.optical_visibility[0]
             vis = np.nan
             if isinstance(vis, bytes):
@@ -1200,13 +1207,20 @@ class ProcessedDataL0(BaseProcessedData):
 
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
-                    this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
+                    # this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
+                    this_az_tel = interpolate_telescope_position(
+                        timestamp,
+                        timestamp_tel[:],
+                        az_tel[:],
+                        az_pps_tel[:],
+                        raw_time_ordered_data.pps[:]
+                    )
                     # this_za_tel = np.interp(timestamp, timestamp_tel, za_tel)
                     this_za_tel = interpolate_telescope_position(
                         timestamp,
                         timestamp_tel[:],
                         za_tel[:],
-                        pps_za_tel[:],
+                        za_pps_tel[:],
                         raw_time_ordered_data.pps[:]
                     )
                     this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
