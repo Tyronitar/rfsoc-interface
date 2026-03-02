@@ -68,7 +68,7 @@ def spectral_pca(
         else:
             sigma_mult = 3
 
-        n_modes = 1
+        n_modes = 2
         n_modes = min(n_modes, max_modes)
         print(f'Using {n_modes} eigen modes in band {i}')
 
@@ -88,6 +88,12 @@ def spectral_pca(
         result = result + (np.array(transfer_all),)
 
     return result
+
+def rotate_fft(fft:npt.NDArray, rotation_angle:float):
+    output_fft = np.zeros_like(fft)
+    output_fft[0] = np.cos(rotation_angle)[:, None]*fft[0] + np.sin(rotation_angle)[:, None]*fft[1]
+    output_fft[1] = np.sin(-rotation_angle)[:, None]*fft[0] + np.cos(rotation_angle)[:, None]*fft[1]
+    return output_fft
 
 def clean_noise_modes(fft: npt.NDArray, eigvecs: npt.NDArray, freqs: npt.NDArray, bound_freqs: npt.NDArray, template_ind:npt.NDArray = None, transfer_mat:npt.NDArray = None, ) -> npt.NDArray:
     # Project out the noise modes
@@ -117,7 +123,7 @@ def clean_noise_modes(fft: npt.NDArray, eigvecs: npt.NDArray, freqs: npt.NDArray
                 t_mat = transfer_mat[i]
                 coupling = t_mat@mode
                 coupled_noise = np.outer(coupling, coeffs)
-                cleaned_data[non_template_ind, f_slice] -= coupled_noise
+                #cleaned_data[non_template_ind, f_slice] -= coupled_noise
 
            
     return np.array([np.real(cleaned_data), np.imag(cleaned_data)])
@@ -166,7 +172,6 @@ def plot_correlation_matrices(freqs: npt.NDArray, csds: npt.NDArray, bound_freqs
     fig.suptitle('Correlation Coefficient Matrices')
     plt.tight_layout()
     fig.savefig("Current_CMatrixPlot.png")
-    input()
     plt.show()
 
 if __name__ == '__main__':
@@ -229,33 +234,34 @@ if __name__ == '__main__':
     probe_freq = pd2.baseband_freqs[:] + pd2.lo_freq
 
     # Sort it into resonator and nonresonator data. 
-    sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
-    #chanmask = chanmask[sorted_indices]
-    probe_freq = probe_freq[sorted_indices]
-    adc_units_to_hz = adc_units_to_hz[sorted_indices]
     onres_ind = np.where(chanmask == 1)[0]
     offres_ind = np.where(chanmask == 0)[0]
+    gain_phase_to_freq_diss_angle = -1*pd1.get_node_value('IQ_to_gain_phase_angle')[:]+pd1.get_node_value('IQ_to_freq_diss_angle')[:]
+    fs = 1 / np.median(np.diff(pd1.timestamp[:]))
 
-
-
+    bound_freqs=np.array([0.01, 0.1, 1.0, 10.0, 100, fs/2])
+    cleaning_bound_freqs = bound_freqs=np.array([0.01, 0.1, 1.0, 10.0, 100, fs/2])
 
 
     gp_noise = pd1.get_node_value('data_gain_phase')[:]/ pd1.carrier_amplitude_norm()
    # gp_noise = np.concatenate((gp_noise[:, onres_ind], gp_noise[:, offres_ind]), axis=1)
-    fs = 1 / np.median(np.diff(pd1.timestamp[:]))
     fft, scale, n_samples = get_fft(gp_noise)
+    
    
     from psd import plot_psd
     #plot_psd(freqs, psd, f'noise_gain_phase_{date}_set{setnums[-1]}.pdf', basis=PsdBasis.GAIN_PHASE)
-    for i in range(2):
-        freqs, psd, csd = get_csd_and_psd(fft, scale, fs, n_samples)
-        bound_freqs=np.array([0.01, 0.1, 1.0, 10.0, 100, fs/2])
-        cleaning_bound_freqs = bound_freqs=np.array([0.01, 0.1, 1.0, 10.0, 100, fs/2])
-        if i == 0:
-            plot_correlation_matrices(freqs, csd, bound_freqs)
-        eigvals, eigvecs, transfer_mat = spectral_pca(csd, freqs,bound_freqs = cleaning_bound_freqs, template_ind=offres_ind)
-        clean_fft = clean_noise_modes(fft, eigvecs, freqs, cleaning_bound_freqs, template_ind = offres_ind, transfer_mat = transfer_mat)
-        freqs, psd, csd = get_csd_and_psd(clean_fft, scale, fs, n_samples)
-        plot_correlation_matrices(freqs, csd, bound_freqs)
-        fft = clean_fft
+    freqs, psd, csd = get_csd_and_psd(fft, scale, fs, n_samples)
+
+
+
+
+    
+    bound_freqs=np.array([0.01, 0.1, 1.0, 10.0, 100, fs/2])
+    cleaning_bound_freqs = bound_freqs=np.array([0.01, 0.1, 1.0, 10.0, 100, fs/2])
+    plot_correlation_matrices(freqs, csd, bound_freqs)
+    eigvals, eigvecs, transfer_mat = spectral_pca(csd, freqs,bound_freqs = cleaning_bound_freqs, template_ind=offres_ind)
+    clean_fft = clean_noise_modes(fft, eigvecs, freqs, cleaning_bound_freqs, template_ind = offres_ind, transfer_mat = transfer_mat)
+    freqs, psd, csd = get_csd_and_psd(clean_fft, scale, fs, n_samples)
+    plot_correlation_matrices(freqs, csd, bound_freqs)
+    fft = clean_fft
     plot_psd(freqs, psd, f'noise_gain_phase_{date}_set{setnums[-1]}.pdf', basis=PsdBasis.GAIN_PHASE)

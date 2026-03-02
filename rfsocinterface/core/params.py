@@ -271,7 +271,6 @@ if __name__ == "__main__":
 
     # Final gap check
     difs = np.diff(new_tones)
-    print(difs)
     set_new_tones = set(new_tones)
     original_tone_indices = [i for i,t in enumerate(new_tones) if t  in Be231102p2_tones]
     print(f"Original tones not in new list: {original_tone_indices}")

@@ -450,7 +450,8 @@ def plot_psd_df_over_f(
         title: str | None=None,
         resonators: list[int]=[0],
         csds: npt.NDArray = None,
-        dev_pwr:npt.NDArray = None
+        dev_pwr:npt.NDArray = None,
+        plot_offres_median: bool = False
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -473,7 +474,10 @@ def plot_psd_df_over_f(
     figs = []
     yscale = 'log'
     onres_psd = psd[:,resonators, :]
-    offres_median = np.median(psd[:, ~resonators, :],axis=1)
+    if plot_offres_median:
+        offres_median = np.median(psd[:, ~resonators, :],axis=1)
+    else:
+        offres_median = None
     for i in np.arange(psd.shape[1]):
         res_title = title + f' - Resonator {i}'
         if f0 is not None and i < len(f0):
