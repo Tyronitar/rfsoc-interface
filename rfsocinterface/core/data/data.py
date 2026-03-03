@@ -11,6 +11,7 @@ from itertools import chain, batched
 import typing
 
 import tables
+import h5py
 from tables.link import ExternalLink
 import numpy as np
 import numpy.typing as npt
@@ -30,14 +31,14 @@ from rfsocinterface.core.utils import (
     get_azel_template,
     get_optcam_template,
     get_processed_file_template,
-    get_cleaned_file_template,
+    get_consolidated_file_template,
     get_file_stub,
-    get_map_file_template,
-    get_beammap_file_template,
-    DATA_DIRECTORY,
+    DEFAULT_DATA_DIRECTORY,
+    PathLike,
     ensure_path,
     pad_to_length
 )
+from kidpy3.data_handler import RawDataFile
 
 _logger = logging.getLogger(__name__)
 
@@ -459,25 +460,25 @@ def remove_electronics_noise_tables(
 # Code for recitifying the timestamp
 #
 def find_missed_packets_with_indices(
-        packet_idx: tables.Array,
+        packet_idx: h5py.Dataset,
 ) -> npt.NDArray:
-    bad_samples = np.argwhere(np.diff(packet_idx[:]) > 1)
     missed_packets = np.empty((0, 2), dtype=int)
 
-    for i in bad_samples.flatten():
-        index = i + 1  # np.diff has shape n - 1
-        this_missed_packets = packet_idx[index] - packet_idx[index - 1] - 1
-        missed_packets = np.vstack([missed_packets, [index, this_missed_packets]])
-    print(f'{np.sum(missed_packets[:, 1])} missed packets')
+    for i in range(1, packet_idx.size):
+        this_missed_packets = packet_idx[i] - packet_idx[i - 1] - 1
+        if this_missed_packets > 0:
+            missed_packets = np.vstack([missed_packets, [i, this_missed_packets]])
+
+    _logger.debug(f'{np.sum(missed_packets[:, 1])} missed packets')
     return missed_packets
 
 
 def find_missed_packets(
-    raw_timestamp: tables.Array,
+    raw_timestamp: h5py.Dataset,
     n_samples: int,
     window_size: int=5,
     sigma: float=3.0,
-) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+) -> npt.NDArray:
     dtime = np.diff(raw_timestamp)
     med_dtime = np.median(dtime)
     std_dtime = np.std(dtime)
@@ -496,7 +497,7 @@ def find_missed_packets(
     # plt.legend()
     # plt.show()
     # pdb.set_trace()
-    corrected_packet_idx = np.zeros(n_samples, dtype=int)
+    # corrected_packet_idx = np.zeros(n_samples, dtype=int)
     missed_packets = np.empty((0, 2), dtype=int)
     i = 1
     while i < n_samples:
@@ -533,28 +534,31 @@ def find_missed_packets(
                     # plt.show()
                     # pdb.set_trace()
                     missed_packets = np.vstack([missed_packets, [i, large_window_packets_missed]])
-                    corrected_packet_idx[i] = corrected_packet_idx[i - 1] + large_window_packets_missed + 1
+                    # corrected_packet_idx[i] = corrected_packet_idx[i - 1] + large_window_packets_missed + 1
 
                     # Don't need to re-evaluate the next few samples, since their offset
                     # was already accounted for.
-                    for j in range(i + 1, i + large_window_packets_missed + 1):
-                        corrected_packet_idx[j] = corrected_packet_idx[j - 1] + 1
+                    # for j in range(i + 1, i + large_window_packets_missed + 1):
+                    #     corrected_packet_idx[j] = corrected_packet_idx[j - 1] + 1
                     i = j
                     continue
                 else:
-                    corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
+                    # corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
+                    pass
             else:
-                corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
+                # corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
+                pass
 
             # plt.scatter(range(window_min_idx, window_max_idx + 1), timestamp_window)
             # plt.show()
             # pdb.set_trace()
         else:
-            corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
+            # corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
+            pass
         i += 1
 
     # new_timestamp.append(fit.slope * corrected_packet_idx + fit.intercept)
-    print(f'{np.sum(missed_packets[:, 1])} missed packets')
+    _logger.debug(f'{np.sum(missed_packets[:, 1])} missed packets')
 
     # Plotting Code for Debugging
     # fit = linregress(corrected_packet_idx, raw_timestamp[:])
@@ -565,7 +569,7 @@ def find_missed_packets(
     # plt.plot(x, y, color='red', linestyle='--')
     # plt.show()
     # pdb.set_trace()
-    return missed_packets, corrected_packet_idx
+    return missed_packets
 
 
 def interpolate_timestamp(
@@ -647,6 +651,282 @@ def interpolate_missing_data(
 #
 # Data Classes
 #
+
+class NewDataStorage:
+    """This wrapper around HDF5 files for data storage.
+    
+    Attributes:
+        file (h5py.File): The file that the file is stored in.
+    """
+    @ensure_path(1)
+    def __init__(self, filename: Path, mode: str='a'):
+        self.file = h5py.File(filename, mode=mode)
+    
+    def has(self, name: str) -> bool:
+        def search_fn(string: str):
+            if name in string:
+                return True
+        if self.file.visit(search_fn):
+            return True
+        return False
+    
+    def get(self, name: str) -> npt.NDArray:
+        return self.file[name]
+    
+    def create_group(
+        self,
+        name: str,
+        track_order: bool | None=None,
+        track_times: bool | None=None,
+    ) -> h5py.Group:
+        return self.file.create_group(name, track_order=track_order, track_times=track_times)
+    
+    def create_dataset(
+        self,
+        name: str,
+        shape: tuple | None=None,
+        dtype: npt.DTypeLike | None=None,
+        data: npt.ArrayLike | None=None,
+        chunks: tuple | bool | None=True,
+        **kwargs,
+    ) -> h5py.Dataset:
+        """Create a new dataset in the file.
+        
+        Auto chunking enabled by default.
+        """
+        return self.file.create_dataset(
+            name,
+            shape=shape,
+            dtype=dtype,
+            data=data,
+            chunks=chunks,
+            **kwargs,
+        )
+    
+    @property
+    def attrs(self) -> h5py.AttributeManager:
+        return self.file.attrs
+    
+    def list_datasets(self) -> list[h5py.Dataset]:
+        datasets = []
+        def search_fn(obj: h5py.Group | h5py.Dataset):
+            if isinstance(obj, h5py.Dataset):
+                datasets.append(obj)
+        self.file.visititems(search_fn)
+        return datasets
+
+    @property
+    def date(self) -> str:
+        return self.attrs['date']
+    
+    @date.setter
+    def date(self, date: str):
+        self.attrs['date'] = date
+
+    @property
+    def setnum(self) -> int:
+        return self.attrs['setnum']
+    
+    @setnum.setter
+    def setnum(self, setnum: int):
+        self.attrs['setnum'] = setnum
+
+    @property
+    def receipt(self) -> str:
+        return self.attrs['receipt']
+
+    @receipt.setter
+    def receipt(self, receipt: str):
+        """Add a receipt entry to the processed data file."""
+        self.attrs['receipt'] = receipt
+
+    @property
+    def tod_template(self) -> str:
+        return get_tod_template(self.date, self.setnum)
+
+    @property
+    def azel_template(self) -> str:
+        return get_azel_template(self.date, self.setnum)
+
+    @property
+    def optcam_template(self) -> str:
+        return get_optcam_template(self.date ,self.setnum)
+
+    @property
+    def consolidated_file_template(self) -> str:
+        return get_consolidated_file_template(self.date, self.setnum)
+    
+    @property
+    def processed_file_template(self) -> str:
+        return get_processed_file_template(self.date, self.setnum)
+
+    @property
+    def file_stub(self) -> str:
+        return get_file_stub(self.date, self.setnum)
+
+    @property
+    def filename(self) -> str:
+        return self.file.filename
+
+    @property
+    def folder(self) -> Path:
+        return Path(self.filename).parent
+
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.file.close()
+
+
+class ConsolidatedData(NewDataStorage):
+    """Class representing the data from the various sources consolidated into one file.
+    
+    Combines the data from the TOD files, LO sweeps, and params files into one file.
+    """
+
+    @classmethod
+    def from_tod(
+        cls,
+        date: str,
+        setnum: int,
+        data_dir: PathLike=DEFAULT_DATA_DIRECTORY,
+        downsampling_factor: int=1,
+    ) -> ConsolidatedData:
+        
+
+        folder = Path(f'{data_dir}/{date}')
+        todtemplate = get_tod_template(date, setnum)
+        tele_template = Path(get_azel_template(date, setnum))
+        optcam_template = Path(get_optcam_template(date , setnum))
+
+        azel_exists = tele_template.exists()
+        optcam_exists = optcam_template.exists()
+
+        if azel_exists:
+            azel_file = h5py.File(tele_template, 'r')
+        
+        if optcam_exists:
+            optcam_file = h5py.File(optcam_template, 'r')
+        
+
+        # Find TOD files
+        todlist = glob.glob(todtemplate)
+        nchan = len(todlist)
+        if nchan == 0:
+            raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
+
+        # Get the n_tones and n_samples from all TOD files to determine array sizes
+        sample_counts = []
+        tone_counts = []
+        missed_sample_counts = []
+        missed_packets_list = []
+        tile_names = []
+        for file in todlist:
+            f = RawDataFile(file, 'r')
+
+            # Temporary way to determine tile name from file names
+            this_file_stem = Path(file).stem
+            this_tile_name = this_file_stem[:this_file_stem.index('TOD')].split('_')[1]
+            tile_names.append(this_tile_name)
+
+            # Find number of tones
+            tone_counts.append(f.n_tones[0])
+
+            # Find the total number of samples accounting for missed packets
+            raw_time_ordered_data = f.root.time_ordered_data
+            # NOTE: Temporary fix until n_sample is fixed in the raw files
+            # n_samples = f.n_sample[0]
+            n_samples = f.adc_i.shape[-1]
+
+            _logger.debug('Using pkt_idx to find missed packets')
+            missed_packets = find_missed_packets_with_indices(f.pkt_idx)
+
+            n_missed = int(np.sum(missed_packets[:, 1]))
+            missed_sample_counts.append(n_missed)
+            # total_samples = n_samples + n_missed
+            sample_counts.append(n_samples)
+            missed_packets_list.append(missed_packets)
+
+            f.fh.close()
+
+        max_n_tones = int(sum(tone_counts))
+        max_missed_samples = int(max(missed_sample_counts))
+        tones_per_channel = np.array(tone_counts, dtype=np.uint32)
+
+        # Normalize samle counts to the minimum across all channels
+        total_samples = min(np.add(sample_counts, missed_sample_counts))
+
+        # NOTE: I forsee a potnetial bug where we try to interpolate the data for channel
+        # say 2, which missed packet X, but channel 0 only had X - 1 total packets, so
+        # trying to operate on packet X would be out of bounds. For now, we will just
+        # limit the total samples to the minimum across all channels, and hope that this
+        # doesn't happen.
+
+        if azel_exists:
+            # pdb.set_trace()
+            az_tel = azel_file.root.az_tel
+            try:
+                za_tel = azel_file.root.za_tel
+            except:
+                za_tel = azel_file.rooe.el_tel
+            timestamp_tel = azel_file.root.timestamp_tel
+            # vis = azel_tfile.root.optical_visibility[0]
+            vis = np.nan
+            if isinstance(vis, bytes):
+                vis = np.nan
+        else:
+            vis=0.
+
+        # Initialize coalesced data file
+        cfile_path = Path(get_consolidated_file_template(date, setnum, data_dir=data_dir))
+        if not cfile_path.exists():
+            cfile_path.touch(PERMISSIONS_ALL_FULL)
+        cdata = cls(cfile_path)
+        cdata.date = date
+        cdata.setnum = setnum
+        cdata.receipt = ''
+
+        # Initialize global data group
+        global_data_group = cdata.create_group('global_data')
+        global_data_group.attrs['n_channels'] = nchan
+        lo_group = global_data_group.create_group('lo_sweep')
+
+        # TODO: move this after attenuator settings are stored in the params file
+        global_data_group.create_dataset('attenuator_settings', shape=(nchan, 2), dtype=np.float16)
+
+        if optcam_exists:
+            # optical_image = optcam_file.root.optical_image
+            global_data_group.create_dataset('optical_image', data=optcam_file['optical_image'][:])
+            optcam_file.close()
+        else:
+            global_data_group.create_dataset('optical_image', data=np.array([]))
+            optical_image = None
+
+        global_data_group.create_dataset('tones_per_channel', data=tones_per_channel)
+        
+        # Arrays for all of the values stored in the tile parameter files
+        global_data_group.create_dataset('tile_names', shape=(nchan,), data=tile_names) 
+        baseband_freqs = global_data_group.create_dataset('baseband_freqs', shape=(nchan, max_n_tones), dtype=np.float64)
+        lo_freq_array = global_data_group.create_dataset('lo_freq', shape=(nchan,), dtype=np.float64)
+        detector_delta_x = global_data_group.create_dataset('detector_delta_x', shape=(nchan,), dtype=np.float64)
+        detector_delta_x = global_data_group.create_dataset('detector_delta_y', shape=(nchan,), dtype=np.float64)
+        detector_beam_amplitude = global_data_group.create_dataset('detector_beam_ampl', shape=(nchan, max_n_tones), dtype=np.float64)
+        detector_pol = global_data_group.create_dataset('detector_pol', shape=(nchan, max_n_tones), dtype=np.float64)
+        dfoverf_per_mK = global_data_group.create_dataset('dfoverf_per_mK', shape=(nchan, max_n_tones), dtype=np.float64)
+        chanmask = global_data_group.create_dataset('chanmask', shape=(nchan, max_n_tones), dtype=np.int8)
+        tone_powers = global_data_group.create_dataset('tone_powers', shape=(nchan, max_n_tones), dtype=np.float64)
+
+        optical_visibility = global_data_group.create_dataset('optical_visibility', data=vis)
+
+        # Initialize time ordered data
+        time_ordered_data_group = cdata.create_group('data')
+
+        ...
+
+        return cdata
+
+
 
 class PyTablesDataset:
     """Class for handling PyTables datasets and links.
@@ -806,7 +1086,7 @@ class DataStorage:
 
     @property
     def folder(self) -> Path:
-        return Path(f'{DATA_DIRECTORY}/{self.date}')
+        return Path(f'{DEFAULT_DATA_DIRECTORY}/{self.date}')
     
     @property
     def filename(self) -> str:
@@ -1089,7 +1369,7 @@ class ProcessedDataL0(BaseProcessedData):
         beam_map_mode: bool=False,
     ) -> ProcessedDataL0:
 
-        folder = Path(f'{DATA_DIRECTORY}/{date}')
+        folder = Path(f'{DEFAULT_DATA_DIRECTORY}/{date}')
         todtemplate = get_tod_template(date, setnum)
         tele_template = Path(get_azel_template(date, setnum))
         optcam_template = Path(get_optcam_template(date ,setnum))

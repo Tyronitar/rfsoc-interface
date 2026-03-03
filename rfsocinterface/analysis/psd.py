@@ -22,7 +22,7 @@ from rfsocinterface.core.data import (
     ProcessingStage,
     PsdBasis,
 )
-from rfsocinterface.core.utils import DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
+from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
 
 XLIM = (0.1, 250)
 YLIM = (-110, -60)
@@ -388,7 +388,7 @@ if __name__ == '__main__':
     max_modes = args.max_eigenmodes
     title = args.title
     if args.output == '':
-        output_file = f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_psd_{basis}_{title}.pdf'
+        output_file = f'{DEFAULT_DATA_DIRECTORY}/{date}/{date}_set{setnum}_psd_{basis}_{title}.pdf'
     else:
         output = args.output
 

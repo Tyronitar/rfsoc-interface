@@ -10,7 +10,7 @@ from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
 
-from rfsocinterface.core.utils import DATA_DIRECTORY
+from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY
 
 
 def plot_complex_datastreams_scatter_plot(
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     date = '20250916'
     setnum = 1017
     basis='fd'
-    output_file = f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_noise_blob_{basis}.pdf'
+    output_file = f'{DEFAULT_DATA_DIRECTORY}/{date}/{date}_set{setnum}_noise_blob_{basis}.pdf'
     ds_factor = 4
 
     pd = ProcessedData.from_tod(
