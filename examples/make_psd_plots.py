@@ -248,7 +248,7 @@ if __name__ == "__main__":
     psd_routine = ComputeNoisePSD(
         PsdBasis.GAIN_PHASE,
         cut_time=2,
-        chanmask=data_l2.get_off_resonance_chanmask(),
+        tone_indices='offres'
     )
     psd_routine(data_l2)
 
@@ -262,7 +262,7 @@ if __name__ == "__main__":
         ax = plt.subplot()
         ax.set_xscale('log')
         ax.set_yscale('linear')
-        ax.set_xlim(*XLIM)
+        # ax.set_xlim(*XLIM)
         # ylim = (-110, -70)
         # ax.set_ylim(*ylim)
         ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
@@ -281,7 +281,7 @@ if __name__ == "__main__":
         psd_routine = ComputeNoisePSD(
             PsdBasis.GAIN_PHASE,
             cut_time=2,
-            chanmask=data_l2.get_off_resonance_chanmask(),
+            tone_indices='offres',
         )
         psd_routine(data_l2)
         freq = data_l2.get_node_value('freq', '/psd')
