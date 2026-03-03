@@ -302,11 +302,11 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260223'
-    setnums = np.array([1004, 1006, 1007, 1009, 1010, 1011, 1013,  1015, 1016,  1018, 1019])
+    date = '20260224'
+    setnums = np.array([1008])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
-    #date = '20260212'
-    #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
+    date = '20260212'
+    setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
     #Good Dataset, miniC = [0.5, 0] No 30dB Warm Amp #Not compensated for increase in output power, so may be wrong
     #date = '20260212'
     #setnums = np.array([1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021])
