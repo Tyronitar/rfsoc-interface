@@ -927,6 +927,16 @@ class BaseProcessedData(DataStorage):
     def chanmask(self) -> tables.Array:
         return self.get_node_value('chanmask')
 
+    @property
+    def off_resonance_tones(self) -> npt.NDArray:
+        return np.where(self.chanmask[:] == 0)[0]
+    
+    def get_off_resonance_chanmask(self) -> npt.NDArray:
+        off_res_idx = self.off_resonance_tones
+        chanmask = np.zeros(self.n_tones)
+        chanmask[off_res_idx] = 1
+        return chanmask
+
 
 class ProcessedDataL0(BaseProcessedData):
     """Class for interpolating data where needed from the raw TOD files."""

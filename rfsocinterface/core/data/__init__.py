@@ -3,6 +3,8 @@
 from rfsocinterface.core.data.data import (
     ProcessedData,
     ProcessedDataLN,
+    ProcessedDataL0,
+    ProcessedDataL1,
     MapData,
     DEFAULT_MAP_DPIX,
     N_POLARIZATION,
@@ -21,6 +23,7 @@ from rfsocinterface.core.data.routines import (
     GaussianFilter,
     RemoveElectronicsNoise,
     PsdBasis,
+    ComputeNoisePSD
 )
 from rfsocinterface.core.data.map import (
     BinTODIntoMap,
@@ -41,9 +44,12 @@ ROUTINE_NAME_MAP = {
 __all__ = [
     ProcessedData,
     ProcessedDataLN,
+    ProcessedDataL0,
+    ProcessedDataL1,
     MapData,
     Downsample,
     CleanTOD,
+    ComputeNoisePSD,
     HighPassFilter,
     LowPassFilter,
     GaussianFilter,

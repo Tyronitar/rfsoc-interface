@@ -194,11 +194,13 @@ class ComputeNoisePSD(DataRoutine):
             *bases: PsdBasis,
             nominal_block_length: float=10,
             cut_time: float=0.0,
+            chanmask=None,
     ):
         super().__init__()
         self.bases = bases
         self.nominal_block_length = nominal_block_length
         self.cut_time = cut_time
+        self.chanmask=None
     
     def forward(self, pd: ProcessedData):
         # Initialize PSD group in the file if needed
@@ -206,6 +208,11 @@ class ComputeNoisePSD(DataRoutine):
             psd_group = pd.create_group('/', 'psd')
         else:
             psd_group = pd.get_node('psd')
+        
+        if self.chanmask is None:
+            chanmask = pd.chanmask[:]
+        else:
+            chanmask = self.chanmask 
 
         for basis in self.bases:
             time = pd.time
@@ -234,7 +241,7 @@ class ComputeNoisePSD(DataRoutine):
             
             # Compute the PSD
             freq, psd = signal.welch(
-                data[:, np.argwhere(pd.chanmask[:] == 1).flatten(), :],
+                data[:, np.argwhere(chanmask == 1).flatten(), :],
                 pd.fs,
                 nperseg=n_samples_per_block,
             )

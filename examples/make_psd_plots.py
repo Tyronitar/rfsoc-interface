@@ -8,7 +8,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 
 
-from rfsocinterface.core.data import ProcessedData
+from rfsocinterface.core.data import ProcessedData, ProcessedDataLN, ProcessedDataL0, ProcessedDataL1, ComputeNoisePSD, PsdBasis
 from rfsocinterface.analysis.psd import compute_noise_psd, XLIM
 from rfsocinterface.core.utils import ordinal
 
@@ -64,7 +64,7 @@ def plot_psd(
     plot_data_min = 10 * np.log10(psd_min)
     plot_data_max = 10 * np.log10(psd_max)
 
-    xdata = freq
+    xdata = freq[:]
     ydata_min = np.mean(plot_data_min, axis=0)
     ydata_med = np.mean(plot_data_med, axis=0)
     ydata_max = np.mean(plot_data_max, axis=0)
@@ -89,139 +89,185 @@ def plot_psd(
 
 
 if __name__ == "__main__":
-    # loopback = 'IF'
-    loopback = 'Digital'
-    if loopback == 'IF':
-        set1000 = 1018
-        set100 = 1021
-        set10 = 1024
-        set30 = 1026
-    else:
-        set1000 = 1028
-        set100 = 1029
-        set10 = 1031
-        set30 = 1033    
+    # # loopback = 'IF'
+    # loopback = 'Digital'
+    # if loopback == 'IF':
+    #     set1000 = 1018
+    #     set100 = 1021
+    #     set10 = 1024
+    #     set30 = 1026
+    # else:
+    #     set1000 = 1028
+    #     set100 = 1029
+    #     set10 = 1031
+    #     set30 = 1033    
 
-    # Make Raw Spectrum Plot
-    data_1000 = ProcessedData.from_tod(
-        '20250829',
-        set1000,
-        do_electronics_noise_removal=False,
+    # # Make Raw Spectrum Plot
+    # data_1000 = ProcessedData.from_tod(
+    #     '20250829',
+    #     set1000,
+    #     do_electronics_noise_removal=False,
+    # )
+    # input_data_1000 = data_1000.data_gain_phase / data_1000.carrier_amplitude_norm()
+    # _, freq_1000, psd_1000 = compute_noise_psd(
+    #     input_data_1000,
+    #     data_1000.timestamp,
+    #     chanmask=data_1000.chanmask[:],
+    #     nominal_block_length=10,
+    #     cut_time=10,
+    # )
+
+
+    # ylim = (-110, -70)
+    # with PdfPages(f'raw_psd_plots_{loopback}.pdf') as pdf:
+    #     fig = plt.figure(figsize=(9, 6))
+    #     ax = plt.subplot()
+    #     ax.set_xscale('log')
+    #     ax.set_yscale('linear')
+    #     ax.set_xlim(*XLIM)
+    #     ax.set_ylim(*ylim)
+    #     ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
+    #     ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
+    #     ax.tick_params(labelsize=TICK_SIZE)
+
+    #     plot_psd(ax, 'black', 'Raw Spectrum', freq_1000, psd_1000, flat_spectrum=False)
+
+
+    #     data_1000.close()
+
+    #     data_1000 = ProcessedData.from_tod(
+    #         '20250829',
+    #         set1000,
+    #         do_electronics_noise_removal=True,
+    #     )
+    #     input_data_1000 = data_1000.data_gain_phase / data_1000.carrier_amplitude_norm()
+    #     _, freq_1000, psd_1000 = compute_noise_psd(
+    #         input_data_1000,
+    #         data_1000.timestamp,
+    #         chanmask=data_1000.chanmask[:],
+    #         nominal_block_length=10,
+    #         cut_time=10,
+    #     )
+
+    #     plot_psd(ax, 'b', 'Clean Spectrum', freq_1000, psd_1000, flat_spectrum=False)
+
+    #     ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
+    #     ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=TITLE_SIZE)
+
+    #     plt.tight_layout()
+
+    #     pdf.savefig(fig)
+
+
+    # # Make Cleaned Spectrum Plots
+    # data_100 = ProcessedData.from_file('20250829', set100, mode='r')
+    # input_data_100 = data_100.data_gain_phase / data_100.carrier_amplitude_norm()
+    # _, freq_100, psd_100 = compute_noise_psd(
+    #     input_data_100,
+    #     data_100.timestamp,
+    #     chanmask=data_100.chanmask[:],
+    #     nominal_block_length=10,
+    #     cut_time=10,
+    # )
+
+    # data_10 = ProcessedData.from_file('20250829', set10, mode='r')
+    # input_data_10 = data_10.data_gain_phase / data_10.carrier_amplitude_norm()
+    # _, freq_10, psd_10 = compute_noise_psd(
+    #     input_data_10,
+    #     data_10.timestamp,
+    #     chanmask=data_10.chanmask[:],
+    #     nominal_block_length=10,
+    #     cut_time=10,
+    # )
+
+    # data_30 = ProcessedData.from_file('20250829', set30, mode='r')
+    # input_data_30 = data_30.data_gain_phase / data_30.carrier_amplitude_norm()
+    # _, freq_30, psd_30 = compute_noise_psd(
+    #     input_data_30,
+    #     data_30.timestamp,
+    #     chanmask=data_30.chanmask[:],
+    #     nominal_block_length=10,
+    #     cut_time=10,
+    # )
+
+    # ylim = (-135, -80)
+    # with PdfPages(f'psd_plots_{loopback}.pdf') as pdf:
+    #     fig = plt.figure(figsize=(9, 6))
+    #     ax = plt.subplot()
+    #     ax.set_xscale('log')
+    #     ax.set_yscale('linear')
+    #     ax.set_xlim(*XLIM)
+    #     ax.set_ylim(*ylim)
+    #     ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
+    #     ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
+    #     ax.tick_params(labelsize=TICK_SIZE)
+
+
+    #     plot_psd(ax, 'b', '1000 Tones', freq_1000, psd_1000)
+    #     plot_psd(ax, 'g', '10 Tones', freq_10, psd_10)
+    #     plot_psd(ax, 'r', '100 Tones', freq_100, psd_100)
+    #     handles, labels = plt.gca().get_legend_handles_labels()
+    #     order = [0,2,1]
+    #     ax.legend([handles[idx] for idx in order],[labels[idx] for idx in order], fontsize=LEGEND_SIZE, loc='upper right')
+
+    #     # ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
+
+    #     ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=TITLE_SIZE)
+
+    #     plt.tight_layout()
+
+    #     pdf.savefig(fig)
+    # # plt.show()
+
+    # data_1000.close()
+    # data_100.close()
+    # data_10.close()
+    # data_30.close()
+
+
+    date = '20260107'
+    setnum = 1005
+    # data_l0 = ProcessedDataL0.from_tod(
+    #     date,
+    #     setnum,
+    # )
+
+    # data_l1 = ProcessedDataL1.from_level0(
+    #     data_l0,
+    #     do_electronics_noise_removal=True,
+    # )
+
+    data_l1 = ProcessedDataL1.from_file(date, setnum)
+    data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+    # data_l2 = ProcessedDataLN.from_file(date, setnum, level=2, mode='a')
+
+    psd_routine = ComputeNoisePSD(
+        PsdBasis.GAIN_PHASE,
+        cut_time=2,
+        chanmask=data_l2.get_off_resonance_chanmask(),
     )
-    input_data_1000 = data_1000.data_gain_phase / data_1000.carrier_amplitude_norm()
-    _, freq_1000, psd_1000 = compute_noise_psd(
-        input_data_1000,
-        data_1000.timestamp,
-        chanmask=data_1000.chanmask[:],
-        nominal_block_length=10,
-        cut_time=10,
-    )
 
-    ylim = (-110, -70)
-    with PdfPages(f'raw_psd_plots_{loopback}.pdf') as pdf:
-        fig = plt.figure(figsize=(9, 6))
-        ax = plt.subplot()
-        ax.set_xscale('log')
-        ax.set_yscale('linear')
-        ax.set_xlim(*XLIM)
-        ax.set_ylim(*ylim)
-        ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
-        ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
-        ax.tick_params(labelsize=TICK_SIZE)
+    psd_routine(data_l2)
+    freq = data_l2.get_node_value('freq', '/psd')
+    psd = data_l2.get_node_value('psd_gain_phase', '/psd')
+    # ylim = (-110, -70)
+    # with PdfPages(f'raw_psd_plots_{loopback}.pdf') as pdf:
+    fig = plt.figure(figsize=(9, 6))
+    ax = plt.subplot()
+    ax.set_xscale('log')
+    ax.set_yscale('linear')
+    ax.set_xlim(*XLIM)
+    # ax.set_ylim(*ylim)
+    ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
+    ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
+    ax.tick_params(labelsize=TICK_SIZE)
+    figs = plot_psd(ax, 'black', 'Off-Resonance Tones', freq, psd, flat_spectrum=False)
+    plt.show()
 
-        plot_psd(ax, 'black', 'Raw Spectrum', freq_1000, psd_1000, flat_spectrum=False)
-
-
-        data_1000.close()
-
-        data_1000 = ProcessedData.from_tod(
-            '20250829',
-            set1000,
-            do_electronics_noise_removal=True,
-        )
-        input_data_1000 = data_1000.data_gain_phase / data_1000.carrier_amplitude_norm()
-        _, freq_1000, psd_1000 = compute_noise_psd(
-            input_data_1000,
-            data_1000.timestamp,
-            chanmask=data_1000.chanmask[:],
-            nominal_block_length=10,
-            cut_time=10,
-        )
-
-        plot_psd(ax, 'b', 'Clean Spectrum', freq_1000, psd_1000, flat_spectrum=False)
-
-        ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
-        ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=TITLE_SIZE)
-
-        plt.tight_layout()
-
-        pdf.savefig(fig)
-
-
-    # Make Cleaned Spectrum Plots
-    data_100 = ProcessedData.from_file('20250829', set100, mode='r')
-    input_data_100 = data_100.data_gain_phase / data_100.carrier_amplitude_norm()
-    _, freq_100, psd_100 = compute_noise_psd(
-        input_data_100,
-        data_100.timestamp,
-        chanmask=data_100.chanmask[:],
-        nominal_block_length=10,
-        cut_time=10,
-    )
-
-    data_10 = ProcessedData.from_file('20250829', set10, mode='r')
-    input_data_10 = data_10.data_gain_phase / data_10.carrier_amplitude_norm()
-    _, freq_10, psd_10 = compute_noise_psd(
-        input_data_10,
-        data_10.timestamp,
-        chanmask=data_10.chanmask[:],
-        nominal_block_length=10,
-        cut_time=10,
-    )
-
-    data_30 = ProcessedData.from_file('20250829', set30, mode='r')
-    input_data_30 = data_30.data_gain_phase / data_30.carrier_amplitude_norm()
-    _, freq_30, psd_30 = compute_noise_psd(
-        input_data_30,
-        data_30.timestamp,
-        chanmask=data_30.chanmask[:],
-        nominal_block_length=10,
-        cut_time=10,
-    )
-
-    ylim = (-135, -80)
-    with PdfPages(f'psd_plots_{loopback}.pdf') as pdf:
-        fig = plt.figure(figsize=(9, 6))
-        ax = plt.subplot()
-        ax.set_xscale('log')
-        ax.set_yscale('linear')
-        ax.set_xlim(*XLIM)
-        ax.set_ylim(*ylim)
-        ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
-        ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
-        ax.tick_params(labelsize=TICK_SIZE)
-
-
-        plot_psd(ax, 'b', '1000 Tones', freq_1000, psd_1000)
-        plot_psd(ax, 'g', '10 Tones', freq_10, psd_10)
-        plot_psd(ax, 'r', '100 Tones', freq_100, psd_100)
-        handles, labels = plt.gca().get_legend_handles_labels()
-        order = [0,2,1]
-        ax.legend([handles[idx] for idx in order],[labels[idx] for idx in order], fontsize=LEGEND_SIZE, loc='upper right')
-
-        # ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
-
-        ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=TITLE_SIZE)
-
-        plt.tight_layout()
-
-        pdf.savefig(fig)
-    # plt.show()
-
-    data_1000.close()
-    data_100.close()
-    data_10.close()
-    data_30.close()
-
-   
-
+    # _, freq_1000, psd_1000 = compute_noise_psd(
+    #     input_data_1000,
+    #     data_1000.timestamp,
+    #     chanmask=data_1000.chanmask[:],
+    #     nominal_block_length=10,
+    #     cut_time=10,
+    # )
