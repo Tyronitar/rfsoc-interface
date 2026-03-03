@@ -23,6 +23,8 @@ from scipy.stats import linregress
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
+from rfsocinterface.analysis import time_streams
+
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_FULL
 from rfsocinterface.core.losweep import LoSweepData
 from rfsocinterface.core.utils import (
@@ -48,7 +50,7 @@ DEFAULT_MAP_DPIX = 0.03
 
 N_POLARIZATION = 2
 
-BUTTER_ORDER = 6
+BUTTER_ORDER = 2
 DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
@@ -59,6 +61,7 @@ DYNAMIC_PROCESSED_DATA_FIELDS = [
     'carrier_amplitudes',
     'data_IQ',
     'IQ_to_gain_phase_angle',
+    'IQ_to_freq_diss_angle',
     'adc_units_to_hz',
     'data_gain_phase',
     'data_freq_diss',
@@ -94,6 +97,7 @@ PROCESSED_DATA_FIELD_LOCATIONS = {
     'carrier_amplitudes': '/data',
     'data_IQ': '/data',
     'IQ_to_gain_phase_angle': '/data',
+    'IQ_to_freq_diss_angle' : '/data',
     'adc_units_to_hz': '/data',
     'data_gain_phase': '/data',
     'data_freq_diss': '/data',
@@ -165,7 +169,7 @@ def flag(data: npt.NDArray, fs: float, sigma: float=2):
 
 
 def flag_outliers(data: npt.NDArray, fs: float, chanmask: npt.NDArray, sigma: float=2) -> npt.NDArray:
-    good_channels = np.where(chanmask == 1)[0]
+    good_channels = np.where(chanmask == 1 )[0]
     n_flag, timestream_rms = flag(data[:, good_channels], fs, sigma=sigma)
     med_flag = np.median(n_flag)
     chanmask[np.where(np.any(n_flag > 2. * med_flag, axis=0))] = -1
@@ -273,7 +277,7 @@ def new_generate_calibrated_data(pd: ProcessedDataL1):
 # Electronics Noise Removal
 #
 
-def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
+def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bool=False) -> npt.NDArray:
     """Compute templates for correlated noise removal.
 
     Args:
@@ -298,7 +302,16 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
     sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
     sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
-    
+
+    if plot_eigenvalues:
+        plt.figure()
+        plt.loglog(sorted_eigen_values[0],'-o')
+        plt.xlabel('Eigenvalue Index')
+        plt.ylabel('Eigenvalue')
+        plt.title('Eigenvalues of Correlation Matrix')
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.show()
+        
     if n_tones < 25:
         sigma_mult = 1.5
     elif n_tones < 50:
@@ -328,8 +341,72 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
 
+def plot_corellation_matrices(
+    data: tables.Array,
+    fs,
+    savepath: Path | None = None,
+    lp_filt_freqs: np.ndarray = np.array([0])
+):
+    """Plot correlation matrices (channel 0) for all LP frequencies in one figure."""
 
-def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30) -> npt.NDArray:
+    # subtract the mean from each detector
+    data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
+
+    n_freqs = len(lp_filt_freqs)
+    n_chans = data.shape[0]
+
+    fig, axes = plt.subplots(n_chans, n_freqs, figsize=(6*n_freqs, 5))
+
+
+    if n_freqs == 1:
+        axes = [axes]
+
+    for i, lp_filt_freq in enumerate(lp_filt_freqs):
+
+        deproj = data_meansub.copy()
+
+        if lp_filt_freq > 0:
+            filt_sos = signal.butter(
+                BUTTER_ORDER,
+                lp_filt_freq,
+                btype='low',
+                fs=fs,
+                output='sos',
+                analog=False
+            )
+            deproj = signal.sosfiltfilt(filt_sos, deproj, axis=2)
+
+        # same computation as your original code
+        correlation_matrices = np.matmul(
+            deproj,
+            np.conj(np.transpose(deproj, axes=(0, 2, 1)))
+        )
+        for j in range(n_chans):
+            diag = np.sqrt(np.real(np.diag(correlation_matrices[j])))
+            correlation_coefficient = (
+                correlation_matrices[j] /
+                np.outer(diag, diag)
+            )
+            im = axes[j, i].imshow(
+                abs(np.real(correlation_coefficient)),
+                aspect='auto',
+                origin='lower'
+            )
+            axes[j, i].set_title(f'LP = {lp_filt_freq} Hz, Chan {j}')
+            axes[j, i].set_xlabel('Detector Index')
+            axes[j, i].set_ylabel('Detector Index')
+            fig.colorbar(im, ax=axes[j, i], label='Correlation')
+
+    fig.suptitle('Correlation Coefficient Matrices')
+    plt.tight_layout()
+
+    if savepath is not None:
+        fname = savepath / 'corr_matrices_all_lp.png'
+        plt.savefig(fname, dpi=300)
+
+    plt.show()
+
+def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
     Args:
@@ -341,20 +418,29 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
-    # data_lp = signal.sosfiltfilt(filt_sos, data)
-    data_lp = data
+    if lp_filt_freq<fs/2:
+        filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
+        data_lp = signal.sosfiltfilt(filt_sos, data)
+    else:
+        data_lp = data
+    if template_data_selection is not None:
+        template_data_lp = data_lp[:,template_data_selection, :]
+        templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # N_chan x 2 x N_samples
+        
+    else:
+        templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
 
-    templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
+
+    # data_lp = data
+
     n_modes = templates.shape[1]
     denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
 
     for i in range(n_modes):
-        numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # N_chan x N_detector
+        numerator = np.einsum('ijk,ik->ij', data, templates[:, i])  # N_chan x N_detector
         corr = numerator / denominator[:, i:i+1]  # N_chan x N_detector
         data = data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # N_chan x N_detector x N_samples
         # data_lp = signal.sosfiltfilt(filt_sos, data)
-        data_lp = data
 
     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
     # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
@@ -374,6 +460,8 @@ def remove_electronics_noise_tables(
     fs: float,
     lp_filt_freq: float=10,
     max_modes: int=30,
+    chanmask: npt.NDArray | None=None, 
+    template_data_selection: npt.NDArray|None = None,
 ):
     """Remove correlated electronics noise templates from data stored with PyTables.
 
@@ -386,7 +474,8 @@ def remove_electronics_noise_tables(
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
+    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq = lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
+
     data_gain_phase[:] = clean_data
     # for i_chan in range(data_gain_phase.shape[0]):
     #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
@@ -403,6 +492,44 @@ def remove_electronics_noise_tables(
     #     # pdb.set_trace()
     #     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
     #     data_gain_phase[i_chan, :] = clean_data.squeeze()
+def remove_electronics_noise_blocks(
+    input_blocked_data_gain_phase: tables.Array,
+    fs: float,
+    lp_filt_freq: float=10,
+    max_modes: int=30,
+    chanmask: npt.NDArray | None=None, 
+    template_data_selection: npt.NDArray|None = None,
+):
+    """Remove correlated electronics noise templates from data stored with PyTables.
+
+    Args:
+        data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
+            be in the gain/phase basis.
+        fs (float): Sampling frequency of the data.
+        lp_filt_freq (float, optional): Low-pass filter frequency for the templates. Defaults to 10 Hz.
+
+    Returns:
+        npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
+    """
+    clean_data = np.zeros_like(input_blocked_data_gain_phase)
+    for i in range(input_blocked_data_gain_phase.shape[2]):
+        clean_data[:, :, i, :] = remove_electronics_noise(input_blocked_data_gain_phase[:, :, i,:],  fs, lp_filt_freq = lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
+    # for i_chan in range(data_gain_phase.shape[0]):
+    #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
+    #     # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
+
+    #     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 1 x 2
+    #     # pdb.set_trace()
+    #     # numerator0 = np.einsum('jk,k->j', data_gain_phase[i_chan], templates[0])  # N_detector
+    #     # pdb.set_trace()
+    #     # corr0 = numerator0 / denominator[:, 0:1]  # N_detector
+    #     # deproj = data_gain_phase[i_chan] - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
+
+    #     # numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
+    #     # pdb.set_trace()
+    #     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+    #     data_gain_phase[i_chan, :] = clean_data.squeeze()
+    return clean_data
 
 #
 # Code for recitifying the timestamp
@@ -419,6 +546,81 @@ def find_missed_packets_with_indices(
         missed_packets = np.vstack([missed_packets, [index, this_missed_packets]])
     print(f'{np.sum(missed_packets[:, 1])} missed packets')
     return missed_packets
+
+def get_z_arrays(
+        data: npt.NDArray,
+        num_processing_blocks: int,
+) -> npt.NDArray:
+    time_stream_size = data.shape[2]
+
+
+    block_indices = np.linspace(
+        0, time_stream_size, num_processing_blocks + 1, dtype=int
+    )
+    
+    z_I = np.zeros_like(data[0, :, :])
+    z_Q = np.zeros_like(data[0, :, :])
+
+    for i in range(num_processing_blocks):
+        start, end = block_indices[i], block_indices[i + 1]
+
+        I = data[0, :, start:end]
+        Q = data[1, :, start:end]
+
+        mean_I = np.mean(I, axis=1)
+        mean_Q = np.mean(Q, axis=1)
+        std_I  = np.std(I, axis=1)
+        std_Q  = np.std(Q, axis=1)
+
+        std_I[std_I == 0] = np.nan
+        std_Q[std_Q == 0] = np.nan
+
+        z_I[:, start:end]= np.abs(I - mean_I[:, None]) / std_I[:, None]
+        z_Q[:, start:end] = np.abs(Q[:] - mean_Q[:, None]) / std_Q[:, None]
+
+    return z_I, z_Q
+
+def interpolate_CR_packets(data_IQ:npt.NDArray, glitch_mask_I:npt.NDArray, glitch_mask_Q:npt.NDArray, window: int = 10):
+    timestream_packets = len(data_IQ[0, 0, :])
+    tone_list = np.arange(len(data_IQ[0, :, 0]))
+    timestream = np.arange(timestream_packets)
+    for t in range(timestream_packets):
+        start = int(max(0, t-window))
+        end = int(min(timestream_packets, t + window))
+        
+
+        glitchy_tones_I = tone_list[glitch_mask_I[:,t].T]
+        glitchy_tones_Q = tone_list[glitch_mask_Q[:,t].T]
+        glitchy_tones = list(set(glitchy_tones_I)|set(glitchy_tones_Q))
+        if len(glitchy_tones) != 0:
+
+            times = np.concatenate((
+                timestream[start:t],
+                timestream[t+1:end]
+            ))
+
+            data = np.concatenate((
+                data_IQ[:, glitchy_tones, start:t],
+                data_IQ[:, glitchy_tones, t+1:end]
+            ), axis=2)
+
+            # Center time axis
+            x = times - timestream[t]
+
+            # Fit along time axis
+            fit_I = poly.polyfit(x, data[0].T, deg=4)
+            fit_Q = poly.polyfit(x, data[1].T, deg=4)
+
+            # Evaluate polynomial at x = 0
+            interpolated_I_val = poly.polyval(0, fit_I)
+            interpolated_Q_val = poly.polyval(0, fit_Q)
+
+            #print(interpolated_I_val-data_IQ[0,glitchy_tones, t])
+            #print(interpolated_Q_val-data_IQ[1,glitchy_tones, t])
+            data_IQ[0,glitchy_tones,t] = interpolated_I_val
+            data_IQ[1,glitchy_tones,t] = interpolated_Q_val
+
+
 
 
 def find_missed_packets(
@@ -502,7 +704,7 @@ def find_missed_packets(
             corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
         i += 1
 
-    # new_timestamp.append(fit.slope * corrected_packet_idx + fit.intercept)
+    # new_timestamp.append(fit.sget_z_arralope * corrected_packet_idx + fit.intercept)
     print(f'{np.sum(missed_packets[:, 1])} missed packets')
 
     # Plotting Code for Debugging
@@ -795,6 +997,7 @@ class BaseProcessedData(DataStorage):
             path.touch(PERMISSIONS_ALL_FULL)
         new_file = tables.open_file(path, mode=mode)
 
+
         new_file.root._v_attrs.date = self.date
         new_file.root._v_attrs.setnum = self.setnum
         new_file.root._v_attrs.receipt = self.receipt
@@ -926,16 +1129,32 @@ class BaseProcessedData(DataStorage):
     @property
     def chanmask(self) -> tables.Array:
         return self.get_node_value('chanmask')
-
+    
     @property
-    def off_resonance_tones(self) -> npt.NDArray:
+    def onres_ind(self) -> npt.NDArray:
+        return np.where(self.chanmask[:] == 1)[0]
+    
+    @property
+    def offres_ind(self) -> npt.NDArray:
         return np.where(self.chanmask[:] == 0)[0]
     
-    def get_off_resonance_chanmask(self) -> npt.NDArray:
-        off_res_idx = self.off_resonance_tones
-        chanmask = np.zeros(self.n_tones)
-        chanmask[off_res_idx] = 1
-        return chanmask
+    def get_array_in_blocks(self, dataset: str, block_length_sec: float) -> npt.NDArray:
+        """Return an array split into blocks of the specified length.
+        
+        If the desired array has shape (n_tones x n_samples) the result will be shape
+        (n_tones x n_blocks x block_size). The last block will be discarded if it is
+        shorter than the block size.
+        """
+
+        block_length_samples = int(block_length_sec * self.fs)
+        print(block_length_samples/self.fs)
+        data = self.get_node_value(dataset)
+        n_blocks = self.n_samples // block_length_samples
+        blocked_data = np.zeros((*data.shape[:-1], n_blocks, block_length_samples), dtype=data.dtype)
+        for i in range(n_blocks):
+            blocked_data[..., i, :] = data[..., i * block_length_samples:(i+1) * block_length_samples]
+
+        return blocked_data
 
 
 class ProcessedDataL0(BaseProcessedData):
@@ -951,8 +1170,9 @@ class ProcessedDataL0(BaseProcessedData):
         date: str,
         setnum: int,
         beam_map_mode: bool=False,
-    ) -> ProcessedDataL0:
+        do_cr_removal = True,
 
+    ) -> ProcessedDataL0:
         folder = Path(f'{DATA_DIRECTORY}/{date}')
         todtemplate = get_tod_template(date, setnum)
         tele_template = Path(get_azel_template(date, setnum))
@@ -1010,6 +1230,7 @@ class ProcessedDataL0(BaseProcessedData):
         if not pfile_path.exists():
             pfile_path.touch(PERMISSIONS_ALL_FULL)
         pfile = tables.open_file(pfile_path, 'w')
+        
         pfile.root._v_attrs.date = date
         pfile.root._v_attrs.setnum = setnum
         pfile.root._v_attrs.receipt = ''
@@ -1062,13 +1283,16 @@ class ProcessedDataL0(BaseProcessedData):
                 if i == 0:  # Only should make this once, since it's never changed
                     raw_timestamp = raw_time_ordered_data.timestamp[:n_samples]
                     print('finding missed packets...')
-                    # missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
-                    # this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
-                    # this_corrected_packet_index -= this_corrected_packet_index[0]
-                    missed_packets, this_corrected_packet_index = find_missed_packets(
-                        raw_timestamp,
-                        n_samples
-                    )
+                    if not test_node(f, 'pkt_idx'):
+                        # this_corrected_packet_index -= this_corrected_packet_index[0]
+                        missed_packets, this_corrected_packet_index = find_missed_packets(
+                            raw_timestamp,
+                            n_samples
+                        )
+                    else:
+                        missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
+                        this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
+
                     n_missed = np.sum(missed_packets[:, 1])
                     total_samples = n_samples + n_missed
                     time_ordered_data_group._v_attrs.n_samples = total_samples
@@ -1118,9 +1342,22 @@ class ProcessedDataL0(BaseProcessedData):
                 this_data_IQ[0, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_i[:]
                 this_data_IQ[1, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_q[:]
                 this_data_IQ = this_data_IQ[:, valid_tone_index]
+
                 if n_missed > 0:
                     this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
+                if do_cr_removal:
+                    print("removing cosmic ray glitches...")
+                    z_I, z_Q = get_z_arrays(this_data_IQ, 1)
+                    glitch_mask_I = np.array(z_I)>5
+                    glitch_mask_Q = np.array(z_Q)>5
+                    interpolate_CR_packets(this_data_IQ, glitch_mask_I, glitch_mask_Q)
+
+                    #pdb.set_trace()
+
+
                 data_IQ.append(this_data_IQ)
+
+                #Remove artifacts at beginning and end of timestream
                 print('done copying data')
 
                 # Link to LO sweep
@@ -1179,7 +1416,6 @@ class ProcessedDataL0(BaseProcessedData):
         # Close telescope file as it's no longer needed
         if azel_exists:
             azel_file.close()
-
         return cls(pfile)
 
 
@@ -1246,7 +1482,7 @@ class ProcessedData(BaseProcessedData):
 class ProcessedDataL1(ProcessedData):
     
     @classmethod
-    def from_file(cls, date: str, setnum: int, mode: str='r') -> ProcessedDataL0:
+    def from_file(cls, date: str, setnum: int, mode: str='r') -> ProcessedDataL1:
         return super(ProcessedDataL1, cls).from_file(date, setnum, mode=mode, level=1)
 
     def link_to_l0(self, target: ProcessedDataL0):
@@ -1265,7 +1501,10 @@ class ProcessedDataL1(ProcessedData):
         for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
             self._file.create_external_link(lo_group, node._v_name, node.target)
         lo_group._v_attrs.lo_freq = target.lo_freq
-        self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
+        if isinstance(target.get_node('baseband_freqs'), ExternalLink):
+            self._file.create_external_link(global_data_group, 'baseband_freqs', target.get_node('baseband_freqs').target)
+        else:
+            self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
         
         # Copy global data
         self.create_external_link(global_data_group, 'dfoverf_per_mK', f'{target.filename}:/{target.dfoverf_per_mK._v_pathname}')
@@ -1284,6 +1523,7 @@ class ProcessedDataL1(ProcessedData):
         electronics_noise_lp_filt_freq: float=10,
         ds_factor: int=1,
         max_modes: int=30,
+        block_length: float = 100,
     ) -> ProcessedDataL1:
         pfile_path = Path(get_processed_file_template(l0.date, l0.setnum, level=1))
         if not pfile_path.exists():
@@ -1341,6 +1581,7 @@ class ProcessedDataL1(ProcessedData):
             shape=(n_tones,),
             atom=tables.Float64Atom(),
         )
+        
         IQ_to_freq_diss_angle = new_data.create_array(
             new_data.data_group,
             'IQ_to_freq_diss_angle',
@@ -1436,14 +1677,32 @@ class ProcessedDataL1(ProcessedData):
             IQ_to_gain_phase_angle,
         )
         fs = 1 / np.median(np.diff(new_data.timestamp[:]))
+        plot_data_fd = np.ones_like(data_gain_phase)
+        rotate_basis(new_data.data_IQ[:], plot_data_fd, IQ_to_freq_diss_angle)
+        z_freq, z_diss = get_z_arrays(plot_data_fd, 10)
+        #time_streams.plot_timestream_errors(z_freq, z_diss,fs, onres_ind = new_data.onres_ind)
 
-        # Remove electronics noise if specified
         if do_electronics_noise_removal:
-            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=electronics_noise_lp_filt_freq, max_modes=max_modes)
+            
+            offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+            onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=None)
 
-        # Create calibrated data
-        new_generate_calibrated_data(new_data)
+            #Finally remove blocking of data clumps
+            data_set_mean = np.mean(data_gain_phase, axis = 2)
+            for i in range(onres_clean_data.shape[2]):
+                block_mean = np.mean(onres_clean_data[:, :, i, :], axis = 2)
+                onres_clean_data[:, :, i, :]-= block_mean[:, :, None]
+                onres_clean_data[:, :, i, :]+= data_set_mean[:, :, None]
+            unblocked_clean_data = onres_clean_data.reshape(*onres_clean_data.shape[:2], -1)
+            n = unblocked_clean_data.shape[-1]
+            data_gain_phase[..., :n] = unblocked_clean_data
+            data_gain_phase[..., n:] = unblocked_clean_data[..., -1:]
+          
         
+        new_generate_calibrated_data(new_data)
+        plot_data = np.concatenate((new_data.data_freq_diss[:,new_data.onres_ind, :], new_data.data_freq_diss[:,new_data.offres_ind, :]), axis=1)
+        #plot_corellation_matrices(plot_data, fs = fs, lp_filt_freqs=[0.05, 0.1, 1.0, 10.0, 100])
+
         return new_data
 
 
@@ -1483,6 +1742,14 @@ class ExternalLinkProcessedData(ProcessedData):
     @IQ_to_gain_phase_angle.setter
     def IQ_to_gain_phase_angle(self, IQ_to_gain_phase_angle: tables.Array | ExternalLink):
         self._IQ_to_gain_phase_angle = PyTablesDataset(IQ_to_gain_phase_angle, self._file)
+        
+    @property
+    def IQ_to_freq_diss_angle(self) -> PyTablesDataset:
+        return self._IQ_to_freq_diss_angle
+
+    @IQ_to_freq_diss_angle.setter
+    def IQ_to_freq_diss_angle(self, IQ_to_freq_diss_angle: tables.Array | ExternalLink):
+        self._IQ_to_freq_diss_angle = PyTablesDataset(IQ_to_freq_diss_angle, self._file)
     
     @property
     def adc_units_to_hz(self) -> PyTablesDataset:
@@ -1548,8 +1815,8 @@ class ExternalLinkProcessedData(ProcessedData):
         for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
             self._file.create_external_link(lo_group, node._v_name, node.target)
         lo_group._v_attrs.lo_freq = target.lo_freq
-        if isinstance(target, ProcessedDataLN):
-            self._file.create_external_link(global_data_group, 'baseband_freqs', target.global_data_group.baseband_freqs.target)
+        if isinstance(target.get_node('baseband_freqs'), ExternalLink):
+            self._file.create_external_link(global_data_group, 'baseband_freqs', target.get_node('baseband_freqs').target)
         else:
             self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
 

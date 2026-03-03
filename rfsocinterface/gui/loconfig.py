@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib .figure import Figure
 from PySide6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog, QProgressDialog
 from PySide6.QtCore import Signal, Slot
-from kidpy3.measure import ResonatorFinder
+# from kidpy3.measure import ResonatorFinder
 
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
@@ -269,7 +269,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 chan,
                 savefile,
                 tone_shift,
-                freq_step,
+                freq_step/10 if second_sweep else freq_step,
                 full_span / 5 if second_sweep else full_span,
                 diff_to_flag=diff_to_flag,
             ))
@@ -657,14 +657,17 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         rfchan = rfsoc.get_channel(chan)
         tone_list = rfsoc.get_tone_list(chan)[0]
+
+        freq_step = get_num_value(self.second_sweep_df_lineEdit)  * 1e3  # KHz to Hz
+        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3 / 5  # KHz to Hz
         sweep = LoSweep(
             valon,
             rfchan,
             tone_list,
             lo_freq,
+            freq_step,
+            full_span
         )
-        freq_step = get_num_value(self.second_sweep_df_lineEdit)  * 1e3  # KHz to Hz
-        full_span = get_num_value(self.deltaf_lineEdit)  * 1e3 / 5  # KHz to Hz
         n_steps = full_span / freq_step
 
         pd = QThreadJobProgressDialog(labelText='Running Second LO Sweep...',  maximum=n_steps, max_workers=1, parent=self)
@@ -763,4 +766,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 raise RuntimeError(
                     f'Invalid `active_suffix` encountered: {self.active_suffix}'
                 )
+    def power_sweep(self, rfsoc: RFSOCWrapper, chan: int, output_power: np.ndarray, input_power: np.ndarray|None=None):
+        """Perform a power sweep (not yet implemented)."""
+        for p_in, p_out in zip(input_power, output_power):
+            Lo
+        pass
 

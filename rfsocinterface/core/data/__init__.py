@@ -2,6 +2,8 @@
 
 from rfsocinterface.core.data.data import (
     ProcessedData,
+    ProcessedDataL0,
+    ProcessedDataL1,
     ProcessedDataLN,
     ProcessedDataL0,
     ProcessedDataL1,
@@ -43,6 +45,8 @@ ROUTINE_NAME_MAP = {
 
 __all__ = [
     ProcessedData,
+    ProcessedDataL0,
+    ProcessedDataL1,
     ProcessedDataLN,
     ProcessedDataL0,
     ProcessedDataL1,

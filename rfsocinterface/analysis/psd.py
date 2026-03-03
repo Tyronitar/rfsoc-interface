@@ -11,6 +11,8 @@ from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 from argparse import ArgumentParser
 import tables
+import h5py
+import scipy.special as sp
 
 from kidpy3 import RawDataFile
 
@@ -24,11 +26,14 @@ from rfsocinterface.core.data import (
 )
 from rfsocinterface.core.utils import DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
 
-XLIM = (0.1, 250)
+XLIM = (0.01, 250)
 YLIM = (-110, -60)
 VALID_BASES = ['gp', 'iq', 'fd']
-
-
+N0 = 1.71e10 # Singel spin electron density of states at the Fermi level
+kb_ev = 8.617342e-5 #[eV/K] Boltzman n Constant
+h_ev = 4.135e-15
+hbar_ev = h_ev/(2*np.pi)
+V = 3224 #Inductor volume in um^3. 
 def compute_noise_psd(
     input_time_ordered_data: npt.NDArray,
     timestamp: npt.NDArray,
@@ -66,16 +71,20 @@ def compute_noise_psd(
 
     # Determine the number of blocks for computing the PSD
     n_samples = np.size(timestamp)
-    n_samples_per_block = int(2**np.ceil(np.log2(nominal_block_length * fs)))
+    n_samples_per_block = nominal_block_length * fs
     n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
     if n_blocks == 0:
         n_blocks = 1
         n_samples_per_block = n_samples
     
-    freq, psd = _compute_psd(new_input_data[:, np.where(chanmask == 1)[0], :], fs, n_samples_per_block)
+    freq, psd = _compute_psd(new_input_data[:,:,:], fs, n_samples_per_block)
     return chanmask, freq, psd
-
-
+def get_SNqp(fres, T, Sdff_freq, delta_0,alpha, V):
+    omega = fres*2*np.pi
+    xi = lambda omega, T: (hbar_ev * omega)/(2*kb_ev * T)
+    k2 = 1/(2*N0*delta_0)*(1+np.sqrt(2*delta_0/(np.pi*kb_ev*T))*np.exp(-xi(omega,T)*sp.iv(0, xi(omega, T))))
+    SNqp = 4*V**2 * Sdff_freq/(alpha**2 * k2**2)
+    return SNqp
 def _compute_psd(
         data: npt.NDArray,
         fs: float,
@@ -112,9 +121,14 @@ def plot_psd(
         filename: Path,
         min_percentile: float=16,
         max_percentile: float=84,
+        f0: float | None= None,
+        adc_units_to_hz: npt.NDArray | None=None,
         title: str | None=None,
         basis: PsdBasis=PsdBasis.GAIN_PHASE,
-        resonators: list[int]=[0],
+        resonators: list[int]=None,
+        csd: npt.NDArray = None,
+        dev_pwr:npt.NDArray = None
+
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -141,6 +155,9 @@ def plot_psd(
     # cutoff = 250  # Number of data points to cut off at the end
     # psd = psd[:, :, :-cutoff]
     # freq = freq[:-cutoff]
+    figs = []
+    if resonators is None:
+        resonators = np.arange(psd.shape[1])
 
     if title is None:
         title = 'RFSoC Loopback PSD'
@@ -154,7 +171,16 @@ def plot_psd(
             ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
         case PsdBasis.FREQ_DISS:
-            return plot_psd_df_over_f(freq, psd, filename, title=title, resonators=resonators)
+            ylabel = r'Sdf/f ($Hz^{-1}$)'
+            yscale = 'linear'
+            figs = plot_psd_df_over_f(freq, psd, filename, f0, title=title, resonators=resonators,adc_units_to_hz=adc_units_to_hz, csds = csd, dev_pwr = dev_pwr)
+            return figs
+        case PsdBasis.SNqp:
+            ylabel = r'Sdf/f ($Hz^{-1}$)'
+            yscale = 'linear'
+            title = title + "SNqp"
+            figs = plot_SNqp(freq, psd[:,resonators, : ], filename,f0[resonators], title = title)
+            return
         case _:
             raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
 
@@ -176,42 +202,256 @@ def plot_psd(
     # Plot 
     if not filename.exists():
         filename.touch(PERMISSIONS_ALL_FULL)
-    figs = []
-    with PdfPages(filename) as pdf:
-        for i in range(n_plots):
+    for i in range(n_plots):
             fig = create_plot(
                 freq,
-                plot_data_min[i],
                 plot_data_med[i],
-                plot_data_max[i],
+                ydata_min = plot_data_min[i],
+                ydata_max = plot_data_max[i],
                 percentiles=(min_percentile, max_percentile),
                 title=titles[i],
                 ylabel=ylabel,
-                yscale=yscale,
+                yscale=yscale
             )
-            pdf.savefig(fig)
             figs.append(fig)
-        average_fig = create_plot(
-            freq,
-            np.sum(plot_data_min, axis=0) / n_plots,
-            np.sum(plot_data_med, axis=0) / n_plots,
-            np.sum(plot_data_max, axis=0) / n_plots,
-            percentiles=(min_percentile, max_percentile),
-            title= title + ' - Averaged',
-            ylabel=ylabel,
-            yscale=yscale,
-        )
-        pdf.savefig(average_fig)
+    average_fig = create_plot(
+        freq,
+        np.sum(plot_data_med, axis=0) / n_plots,
+        ydata_min= np.sum(plot_data_min, axis=0) / n_plots,   
+        ydata_max= np.sum(plot_data_max, axis=0) / n_plots,
+        percentiles=(min_percentile, max_percentile),
+        title= title + ' - Averaged',
+        ylabel=ylabel,
+        yscale=yscale,
+    )
+    figs.append(average_fig)
+    with PdfPages(filename) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
+        
 
     return figs
+@ensure_path(0)
+def compare_psds(
+        filename: Path,
+        freq: npt.NDArray,
+        psd_list: list,
+        alpha_list:list,
+        label_list:list,
+        f0: float | None= None,
+        title: str | None=None,
+        basis: PsdBasis=PsdBasis.GAIN_PHASE,
+        resonators: list[int]=None,
+        dev_pwr:npt.NDArray = None
+
+) -> list[Figure]:
+    """Create plots for the psd.
+    
+    Args:
+        freq (npt.NDArray): Array of frequencies (N_freq).
+        psd: (npt.NDArray): PSD (N_chan x N_resonators x N_freq).
+        filename (Path): PDF filename to save the  plots to.
+        min_perncentile (float, optional): Percentile of lower error bound for the plot.
+            Defaults to 16.
+        max_perncentile (float, optional): Percentile of upper error bound for the plot
+            Defaults to 84.
+        title (str, optional): Title to give to each plot. Defaults to None.
+        basis (str, optional): The basis of the data. Either IQ ('iq'), 
+            Gain/Phase ('gp'), or Frequency/Dissipation ('fd'). Defaults to 'gp.'
+    
+    Returns:
+        (list[Figure]): N_chan + 1 plots corresponding to the PSD along the
+            first basis direction, second direction, and mean across both directions.
+    
+    Raises:
+        ValueError: If `basis` is not a valid basis (see `VALID_BASES`).
+    """
+
+    # cutoff = 250  # Number of data points to cut off at the end
+    # psd = psd[:, :, :-cutoff]
+    # freq = freq[:-cutoff]
+    figs = []
+    if resonators is None:
+        resonators = np.arange(psd.shape[1])
+
+    if title is None:
+        title = 'RFSoC Loopback PSD'
+    match basis:
+        case PsdBasis.FREQ_DISS:
+            for i in range(psd_list[0].shape[1]):
+
+                if resonators is not None and not resonators[i]:
+                    continue
+
+                res_title = title + f' - Resonator {i}'
+
+                if f0 is not None and i < len(f0):
+                    res_title += f' (f0 = {f0[i]/1e6:.3f} MHz)'
+
+                if dev_pwr is not None and i < len(dev_pwr):
+                    res_title += f' at dev_pwr {dev_pwr[i]}'
+
+                fig, ax = plt.subplots(figsize=(9, 6))
+                for k in range(len(psd_list)):
+                    for j, label in enumerate(['Frequency', 'Dissipation']):
+                        psd = psd_list[k]
+                        ax.plot(
+                            freq,
+                            psd[j, i, :],
+                            label=f'{label} ( {label_list[k]})',
+                            alpha=alpha_list[k]
+                        )
+                ax.set_xscale('log')
+                #ax.set_xlim(1, 250)
+                ax.set_yscale('log')
+                ax.set_ylim(1e-21,1e-15)
+            
+                ax.set_xlabel('Frequency (Hz)', fontsize=16)
+                    
+                ax.tick_params(labelsize=14)
+                ax.set_title(res_title)
+                ax.set_xlabel('Frequency (Hz)')
+                ax.set_ylabel(r'Sdf/f ($Hz^{-1}$)')
+                ax.legend()
+
+                figs.append(fig)
+
+    with PdfPages(filename) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
+        
+
+    return figs
+def mb_from_h5(path: Path) -> dict:
+    """Create a LoSweepData object from a sweep file."""
+    path = path.with_suffix('.h5')
+    mb_dict = {'res':[],'delta_0':[],'alpha':[], 'f0':[]}
+    with h5py.File(path, 'r') as f:
+        res_list = f['Dark_Load/MB_fit']
+        index_name = ['res' +str(j).zfill(3) for j in range(0,len(res_list))]
+        for i in range(0,len(res_list)):
+            mb_dict['res'].append(i)
+            D = res_list[index_name[i]]['Fres_fit']['Delta'][()]
+            a = res_list[index_name[i]]['Fres_fit']['alpha'][()]
+            f = res_list[index_name[i]]['Fres_fit']['f0'][()]
+
+            mb_dict['alpha'].append(a)
+            mb_dict['delta_0'].append(D)
+            mb_dict['f0'].append(f)
+
+    return mb_dict
+@ensure_path(2)
+def plot_SNqp(
+        freq: npt.NDArray,
+        psd: npt.NDArray,
+        filename: Path,
+        f0: npt.NDArray,
+        min_percentile: float=16,
+        max_percentile: float=84,
+        title: str | None=None,
+        mb_file_name = "Be231102d2_AR_BS_dark_processed.h5"
+) -> list[Figure]:
+    """Create plots for the psd.
+    
+    Args:
+        freq (npt.NDArray): Array of frequencies (N_freq).
+        psd: (npt.NDArray): PSD (N_chan x N_resonators x N_freq).
+        filename (Path): PDF filename to save the  plots to.
+        title (str, optional): Title to give to each plot. Defaults to None.
+    
+    Returns:
+        (list[Figure]): N_chan plots corresponding to the PSD for each resonator.
+    
+    Raises:
+        ValueError: If the length of `resonators` is greater than the number of resonators
+    """
+    base_temp = 0.243 #K, TODO assumed and will be updated to match thermometry value. 
+    mb_file_path = Path(f'{DATA_DIRECTORY}/params/{mb_file_name}')
+    mb_data = mb_from_h5(path = mb_file_path)
+
+    ylabel = r'Sdf/f ($Hz^{-1}$)'
+    # Plot 
+    if not filename.exists():
+        filename.touch(PERMISSIONS_ALL_FULL)
+    figs = []
+    yscale = 'log'
+    SNqp_array = []
+    combined_fig = plt.figure(figsize=(9, 6))
+    combined_fig_ax = plt.subplot()
+    cmap = plt.get_cmap('viridis')
+    
+    for i in np.arange(psd.shape[1]):
+        res_title = title + f' - Resonator {i}'
+        if f0 is not None and i < len(f0):
+            res_title += f' (f0 = {f0[i]/1e6:.3f} MHz)'
+            mb_index = np.argmin(np.abs(f0[i]-mb_data['f0']))
+            alpha = mb_data['alpha'][mb_index]
+            delta = mb_data['delta_0'][mb_index]
+            SNqp = get_SNqp(f0[i],base_temp,np.array(psd[0, i, :]),delta, alpha, V )
+            SNqp_array.append(SNqp)
+            fig = create_plot(
+            freq,
+            SNqp,
+            percentiles=(min_percentile, max_percentile),
+            title= res_title,
+            ylabel='Noise PSD (Nqp)',
+            yscale='log',
+            )
+            figs.append(fig)
+            combined_fig_ax.plot(freq, SNqp, label = f'Resonator {i}', color = cmap(i/psd.shape[1]))
+    combined_fig_ax.set_xscale('log')
+    combined_fig_ax.set_yscale('log')
+    combined_fig_ax.set_xlabel('Frequency (Hz)', fontsize=16)
+    combined_fig_ax.set_ylabel('Noise PSD (Nqp)', fontsize=16)
+    combined_fig_ax.tick_params(labelsize=14)
+    combined_fig_ax.set_title(title + ' - SNqp Comparison', fontsize=16)
+    figs.append(combined_fig)
+
+    psd_med = np.median(SNqp_array, axis=0)
+
+
+    psd_min = np.percentile(SNqp_array, min_percentile, axis=0)
+    psd_max = np.percentile(SNqp_array, max_percentile, axis=0)
+
+    average_fig = create_plot(
+        freq,
+        psd_med,
+        ydata_min = psd_min,
+        ydata_max = psd_max,
+        percentiles=(min_percentile, max_percentile),
+        title= title + ' - Averaged',
+        ylabel=ylabel,
+        yscale=yscale,
+    )
+    SNqp_array = np.array(SNqp_array)
+    print(SNqp_array.shape)
+    figs.append(average_fig)
+    figs.append(plot_hist(freq, SNqp_array,1.0,"Hist Freq at 1 Hz"  ))
+    figs.append(plot_hist(freq, SNqp_array,10.0,"Hist Freq at 10 Hz"  ))
+    figs.append(plot_hist(freq, SNqp_array,100.0,"Hist Freq at 100 Hz"  ))
+    figs.append(plot_hist(freq, SNqp_array,200.0,"Hist Freq at 200 Hz"  ))
+
+    with PdfPages(filename) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
+        
+    return figs
+        
 
 @ensure_path(2)
 def plot_psd_df_over_f(
         freq: npt.NDArray,
         psd: npt.NDArray,
         filename: Path,
+        f0: float | None= None,
+        adc_units_to_hz: npt.NDArray | None=None,
+        min_percentile: float=16,
+        max_percentile: float=84,
         title: str | None=None,
         resonators: list[int]=[0],
+        csds: npt.NDArray = None,
+        dev_pwr:npt.NDArray = None,
+        plot_offres_median: bool = False
 ) -> list[Figure]:
     """Create plots for the psd.
     
@@ -232,37 +472,171 @@ def plot_psd_df_over_f(
     if not filename.exists():
         filename.touch(PERMISSIONS_ALL_FULL)
     figs = []
-    with PdfPages(filename) as pdf:
-        for i, res in enumerate(resonators):
-            res_title = title + f' - Resonator {res}'
+    yscale = 'log'
+    onres_psd = psd[:,resonators, :]
+    if plot_offres_median:
+        offres_median = np.median(psd[:, ~resonators, :],axis=1)
+    else:
+        offres_median = None
+    for i in np.arange(psd.shape[1]):
+        res_title = title + f' - Resonator {i}'
+        if f0 is not None and i < len(f0):
+            res_title += f' (f0 = {f0[i]/1e6:.3f} MHz)'
+        if dev_pwr is not None and i < len(dev_pwr):
+            res_title += f' at dev_pwr {dev_pwr[i]}'
+        if resonators[i]:
+            if csds is not None:
+                csd = csds[i,:]
+            else:
+                csd = None
             fig = plot_df_over_f(
                 freq,
                 psd[:, i, :],
+                offres_median=offres_median,
+                f0 = f0[i],
+                adc_units_to_hz=adc_units_to_hz[i],
                 ylabel=ylabel,
                 title=res_title,
+                csd = csd
             )
-            pdf.savefig(fig)
+            
             plt.close(fig)
             figs.append(fig)
-        return figs
 
 
-def plot_df_over_f(
+    figs+=(average_plots(
+        freq,
+        onres_psd,
+        [title + ' - On-Resonance Frequency', title + ' - On-Resonance Dissipation'],
+        title,
+        min_percentile,
+        max_percentile,
+        ylabel,
+        yscale,
+    ))
+
+    figs.append(plot_hist(freq, onres_psd,1.0,"Hist Freq at 1 Hz" , components=["Frequency", "Dissapation"] ))
+    figs.append(plot_hist(freq, onres_psd,10.0,"Hist Freq at 10 Hz" ,components=["Frequency", "Dissapation"]  ))
+    figs.append(plot_hist(freq, onres_psd,100.0,"Hist Freq at 100 Hz",components=["Frequency", "Dissapation"]   ))
+    figs.append(plot_hist(freq, onres_psd,200.0,"Hist Freq at 200 Hz" ,components=["Frequency", "Dissapation"]  ))
+
+    with PdfPages(filename) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
+        
+    return figs
+        
+def average_plots(freq, psd, titles,title, min_percentile, max_percentile, ylabel, yscale):
+    n_plots = psd.shape[0]
+    psd_med = np.median(psd, axis=1)
+    psd_min = np.percentile(psd, min_percentile,axis=1)
+    psd_max = np.percentile(psd, max_percentile,axis=1)
+    figs = []
+    for i in range(n_plots):
+        fig = create_plot(
+            freq,
+            psd_med[i],
+            ydata_min = psd_min[i],
+            ydata_max = psd_max[i],
+            percentiles=(min_percentile, max_percentile),
+            title=titles[i],
+            ylabel=ylabel,
+            yscale=yscale,
+        )
+        figs.append(fig)
+
+    average_fig = create_plot(
+        freq,
+        np.sum(psd_med, axis=0) / n_plots,
+        ydata_min= np.sum(psd_min, axis=0) / n_plots,
+        ydata_max= np.sum(psd_max, axis=0) / n_plots,
+        percentiles=(min_percentile, max_percentile),
+        title= title + ' - Averaged',
+        ylabel=ylabel,
+        yscale='log',
+    )
+    figs.append(average_fig)
+    plt.close()
+    return figs
+
+
+def plot_hist(
     x_data: npt.NDArray,
     y_data: npt.ArrayLike,
+    hist_freq: float,
     title: str | None=None,
-    ylabel: str='Noise PSD (df / f)',
+    ylabel: str='Num Values',
+    components: npt.NDArray = None,
+    n_avg: int = 5
 ) -> Figure:
     """Create a plot of the noise PSD in df/f units."""
     fig = plt.figure(figsize=(9, 6))
     ax = plt.subplot()
+    
+    freq_index = np.argmin(np.abs(x_data-hist_freq))
+    if components is not None:
+        for j, label in enumerate(components):
+            plot_data = np.mean(y_data[j, :, freq_index-n_avg: freq_index + n_avg], axis = 1)
+            y = np.arange(0 ,len(plot_data))
+
+            ax.hist(np.log10(plot_data), label = label, alpha = 0.5, bins = 20)
+            ax.scatter(np.log10(plot_data),y)
+    else:
+        plot_data = np.mean(y_data[:, freq_index-n_avg: freq_index + n_avg], axis = 1)
+        y = np.arange(0 ,len(plot_data))
+        ax.hist(np.log10(plot_data), alpha = 0.5, bins = 20)
+        ax.scatter(np.log10(plot_data),y)
+
+
+    ax.set_xlabel(f'log Sdf/f PSD value at {hist_freq}(Hz)', fontsize=16)
+    ax.set_ylabel(ylabel, fontsize=16)
+    ax.tick_params(labelsize=14)
+    ax.legend(fontsize=14, loc='best')
+    if title is not None:
+        ax.set_title(title, fontsize=16)
+    plt.tight_layout()
+    plt.close()
+    return fig
+
+def plot_df_over_f(
+    x_data: npt.NDArray,
+    y_data: npt.ArrayLike,
+    offres_median: npt.ArrayLike| None=None,
+    adc_units_to_hz: npt.NDArray | None=None,
+    f0:float = 1,
+    title: str | None=None,
+    ylabel: str='Noise PSD (df / f)',
+    csd: npt.NDArray = None,
+    make_angle_plot: bool = True,
+    dev_pwr:float = 0,
+) -> Figure:
+    """Create a plot of the noise PSD in df/f units."""
+    fig = plt.figure(figsize=(9, 6))
+    ax = plt.subplot()
+    if offres_median is not None and adc_units_to_hz is not None:
+        offres_median = offres_median /( adc_units_to_hz * f0)**2
+
     for j, label in enumerate(['Frequency', 'Dissipation']):
         ax.plot(x_data, y_data[j], label=label)
-    ax.set_xscale('log')
-    ax.set_xlim(1, 250)
-    ax.set_yscale('log')
-    # ax.set_ylim(1e-17,1e-15)
+        if offres_median is not None:
+            ax.plot(x_data, offres_median[j], linestyle='dashed', color='gray', label=f'Off-Resonance {label} Median')
+    if csd is not None:
+        ax.plot(x_data, abs(csd), label = 'CSD')
+        if make_angle_plot:
+            angle = 0.5*np.arctan2(2*np.real(csd), y_data[0]-y_data[1])
+            freq_start = np.argmin(np.abs(x_data-20))
+            freq_stop = np.argmin(np.abs(x_data-400))
 
+            mean_angle = np.mean(angle[freq_start:freq_stop])
+            ax2 = ax.twinx()
+            ax2.legend(fontsize = 14, loc = 'best' )
+
+            ax2.hlines( mean_angle,x_data[0], x_data[-1], label = 'Residual Rotation Angle',color = 'red',linestyles='dashed', alpha = 0.3)
+    ax.set_xscale('log')
+    #ax.set_xlim(1, 250)
+    ax.set_yscale('log')
+    #ax.set_ylim(1e-21,1e-15)
+   
     ax.set_xlabel('Frequency (Hz)', fontsize=16)
         
     ax.set_ylabel(ylabel, fontsize=16)
@@ -271,14 +645,15 @@ def plot_df_over_f(
     if title is not None:
         ax.set_title(title, fontsize=16)
     plt.tight_layout()
+    plt.close()
     return fig
 
 
 def create_plot(
     xdata: npt.ArrayLike,
-    ydata_min: npt.ArrayLike,
     ydata_med: npt.ArrayLike,
-    ydata_max: npt.ArrayLike,
+    ydata_min: npt.ArrayLike = None,
+    ydata_max: npt.ArrayLike = None,
     percentiles: tuple[float, float]=(16., 84.),
     label: str='Median Measured Noise',
     title: str | None=None,
@@ -292,15 +667,16 @@ def create_plot(
     ax.plot(xdata, ydata_med, color='b', label=label)
     flat_spectrum_idx = np.where((xdata > 10) & (xdata < 50))
     flat_spectrum_noise = np.median(ydata_med[flat_spectrum_idx])
-    plt.hlines(flat_spectrum_noise, XLIM[0], XLIM[1], colors='r', linestyles='dashed', label=f'Flat Spectrum Level = {flat_spectrum_noise:.1f} dBc/Hz')
-    ax.fill_between(
-        xdata,
-        ydata_min,
-        ydata_max,
-        facecolor='c',
-        alpha=0.5,
-        label=f'{ordinal(int(percentiles[0]))} Percentile to {ordinal(int(percentiles[1]))} Percentile'
-    )
+    if ydata_min is not None and ydata_max is not None:
+        plt.hlines(flat_spectrum_noise, XLIM[0], XLIM[1], colors='r', linestyles='dashed', label=f'Flat Spectrum Level = {flat_spectrum_noise:.1f} dBc/Hz')
+        ax.fill_between(
+            xdata,
+            ydata_min,
+            ydata_max,
+            facecolor='c',
+            alpha=0.5,
+            label=f'{ordinal(int(percentiles[0]))} Percentile to {ordinal(int(percentiles[1]))} Percentile'
+        )
     ax.set_xscale('log')
     ax.set_xlim(*XLIM)
     ax.set_yscale(yscale)

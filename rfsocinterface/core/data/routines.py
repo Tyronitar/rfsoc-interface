@@ -5,6 +5,7 @@ import abc
 import pdb
 
 import numpy as np
+import numpy.typing as npt
 from scipy import signal
 import tables
 
@@ -185,6 +186,7 @@ class PsdBasis:
     IQ = 'iq'
     GAIN_PHASE = 'gain_phase'
     FREQ_DISS = 'freq_diss'
+    SNqp = 'quasi_particle'
 
 class ComputeNoisePSD(DataRoutine):
     stage = ProcessingStage.PROCESSING_L2
@@ -194,25 +196,27 @@ class ComputeNoisePSD(DataRoutine):
             *bases: PsdBasis,
             nominal_block_length: float=10,
             cut_time: float=0.0,
-            chanmask=None,
+            tone_indices: npt.ArrayLike | str=None,
     ):
         super().__init__()
         self.bases = bases
         self.nominal_block_length = nominal_block_length
         self.cut_time = cut_time
-        self.chanmask = chanmask
+        self.tone_indices = tone_indices 
     
     def forward(self, pd: ProcessedData):
+        
+        if self.tone_indices == 'onres':
+            self.tone_indices = pd.onres_ind
+        elif self.tone_indices == 'offres':
+            self.tone_indices = pd.offres_ind
+        else:
+            self.tone_indices = np.append(pd.onres_ind, pd.offres_ind)
         # Initialize PSD group in the file if needed
         if not pd.test_node('psd'):
             psd_group = pd.create_group('/', 'psd')
         else:
             psd_group = pd.get_node('psd')
-        
-        if self.chanmask is None:
-            chanmask = pd.chanmask[:]
-        else:
-            chanmask = self.chanmask 
 
         for basis in self.bases:
             time = pd.time
@@ -223,6 +227,7 @@ class ComputeNoisePSD(DataRoutine):
                     data = pd.data_gain_phase[:] / pd.carrier_amplitude_norm()
                 case PsdBasis.FREQ_DISS:
                     f = pd.baseband_freqs[:] + pd.lo_freq
+                    f[pd.offres_ind] = 1
                     data = pd.data_freq_diss[:] / f[np.newaxis, :, np.newaxis]
                 case _:
                     raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')
@@ -233,7 +238,7 @@ class ComputeNoisePSD(DataRoutine):
 
             # Determine the number of blocks for computing the PSD
             n_samples = np.size(time)
-            n_samples_per_block = int(2**np.ceil(np.log2(self.nominal_block_length * pd.fs)))
+            n_samples_per_block = int(self.nominal_block_length * pd.fs)
             n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
             if n_blocks == 0:
                 n_blocks = 1
@@ -241,7 +246,7 @@ class ComputeNoisePSD(DataRoutine):
             
             # Compute the PSD
             freq, psd = signal.welch(
-                data[:, np.argwhere(chanmask == 1).flatten(), :],
+                data[:, self.tone_indices, :],
                 pd.fs,
                 nperseg=n_samples_per_block,
             )
@@ -250,6 +255,9 @@ class ComputeNoisePSD(DataRoutine):
             if not pd.test_node('freq'):
                 pd.create_array(psd_group, 'freq', obj=freq)
             pd.create_array(psd_group, f'psd_{basis}', obj=psd)
+            if PsdBasis.FREQ_DISS:
+                freq, csd = signal.csd(data[0, self.tone_indices, :], data[1, self.tone_indices,:], pd.fs, nperseg=n_samples_per_block)
+                pd.create_array(psd_group, f'csd_{basis}', obj = csd)
 
     def get_receipt_entry(self) -> str:
         return f'ComputeNoisePSD: {{\n' \
