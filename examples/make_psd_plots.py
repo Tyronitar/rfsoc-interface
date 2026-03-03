@@ -35,16 +35,16 @@ def plot_psd(
     psd_med = np.median(psd, axis=1)
 
     match color.lower():
-        case 'b':
+        case 'b' | 'blue;':
             med_color = 'b'
             fill_color = 'cyan'
-        case 'r':
+        case 'r' | 'red':
             med_color = 'r'
             fill_color = 'lightcoral'
-        case 'g':
+        case 'g' | 'green':
             med_color = 'g'
             fill_color = 'lightgreen'
-        case 'black':
+        case 'k' | 'black':
             med_color = 'k'
             fill_color = 'lightgrey'
         # case 30:
@@ -225,19 +225,23 @@ if __name__ == "__main__":
     # data_30.close()
 
 
-    date = '20260107'
-    setnum = 1005
-    # data_l0 = ProcessedDataL0.from_tod(
-    #     date,
-    #     setnum,
-    # )
+    # date = '20250829'
+    # setnum = 1021
+    # date = '20260107'
+    # setnum = 1005
+    date = '20260212'
+    setnum = 1004
+    data_l0 = ProcessedDataL0.from_tod(
+        date,
+        setnum,
+    )
 
-    # data_l1 = ProcessedDataL1.from_level0(
-    #     data_l0,
-    #     do_electronics_noise_removal=True,
-    # )
+    data_l1 = ProcessedDataL1.from_level0(
+        data_l0,
+        do_electronics_noise_removal=False,
+    )
 
-    data_l1 = ProcessedDataL1.from_file(date, setnum)
+    # data_l1 = ProcessedDataL1.from_file(date, setnum)
     data_l2 = ProcessedDataLN.from_previous_level(data_l1)
     # data_l2 = ProcessedDataLN.from_file(date, setnum, level=2, mode='a')
 
@@ -246,23 +250,50 @@ if __name__ == "__main__":
         cut_time=2,
         chanmask=data_l2.get_off_resonance_chanmask(),
     )
-
     psd_routine(data_l2)
+
+    # data_l2 = ProcessedDataLN.from_file(date, setnum, level=2, mode='r')
+
     freq = data_l2.get_node_value('freq', '/psd')
     psd = data_l2.get_node_value('psd_gain_phase', '/psd')
-    # ylim = (-110, -70)
-    # with PdfPages(f'raw_psd_plots_{loopback}.pdf') as pdf:
-    fig = plt.figure(figsize=(9, 6))
-    ax = plt.subplot()
-    ax.set_xscale('log')
-    ax.set_yscale('linear')
-    ax.set_xlim(*XLIM)
-    # ax.set_ylim(*ylim)
-    ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
-    ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
-    ax.tick_params(labelsize=TICK_SIZE)
-    figs = plot_psd(ax, 'black', 'Off-Resonance Tones', freq, psd, flat_spectrum=False)
+
+    with PdfPages(f'noise_plot_{date}set{setnum}.pdf') as pdf:
+        fig = plt.figure(figsize=(9, 6))
+        ax = plt.subplot()
+        ax.set_xscale('log')
+        ax.set_yscale('linear')
+        ax.set_xlim(*XLIM)
+        # ylim = (-110, -70)
+        # ax.set_ylim(*ylim)
+        ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
+        ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
+        ax.tick_params(labelsize=TICK_SIZE)
+        plot_psd(ax, 'k', 'Raw Spectrum', freq, psd, flat_spectrum=True)
+
+        data_l2.close()
+        data_l1.close()
+
+        data_l1 = ProcessedDataL1.from_level0(
+            data_l0,
+            do_electronics_noise_removal=True,
+        )
+        data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+        psd_routine = ComputeNoisePSD(
+            PsdBasis.GAIN_PHASE,
+            cut_time=2,
+            chanmask=data_l2.get_off_resonance_chanmask(),
+        )
+        psd_routine(data_l2)
+        freq = data_l2.get_node_value('freq', '/psd')
+        psd = data_l2.get_node_value('psd_gain_phase', '/psd')
+        plot_psd(ax, 'b', 'Clean Spectrum', freq, psd, flat_spectrum=True)
+
+        ax.set_title(f'Noise from {date}_set{setnum}')
+        ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
+        fig.tight_layout()
+        pdf.savefig()
     plt.show()
+
 
     # _, freq_1000, psd_1000 = compute_noise_psd(
     #     input_data_1000,

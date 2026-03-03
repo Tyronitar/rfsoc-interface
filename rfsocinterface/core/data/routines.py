@@ -200,7 +200,7 @@ class ComputeNoisePSD(DataRoutine):
         self.bases = bases
         self.nominal_block_length = nominal_block_length
         self.cut_time = cut_time
-        self.chanmask=None
+        self.chanmask = chanmask
     
     def forward(self, pd: ProcessedData):
         # Initialize PSD group in the file if needed
