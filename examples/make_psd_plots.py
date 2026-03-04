@@ -47,6 +47,12 @@ def plot_psd(
         case 'k' | 'black':
             med_color = 'k'
             fill_color = 'lightgrey'
+        case 'o' | 'orange':
+            med_color = 'darkorange'
+            fill_color = 'bisque'
+        case 'gold':
+            med_color = 'gold'
+            fill_color = 'khaki'
         # case 30:
         #     med_color = 'g'
         #     fill_color = 'lightgreen'
@@ -238,7 +244,8 @@ if __name__ == "__main__":
 
     data_l1 = ProcessedDataL1.from_level0(
         data_l0,
-        do_electronics_noise_removal=False,
+        do_electronics_noise_removal=True,
+        only_use_offres_indices=True,
     )
 
     # data_l1 = ProcessedDataL1.from_file(date, setnum)
@@ -262,33 +269,36 @@ if __name__ == "__main__":
         ax = plt.subplot()
         ax.set_xscale('log')
         ax.set_yscale('linear')
-        # ax.set_xlim(*XLIM)
-        # ylim = (-110, -70)
-        # ax.set_ylim(*ylim)
+        ax.set_xlim(*XLIM)
+        ylim = (-110, -70)
+        ax.set_ylim(*ylim)
         ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
         ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
         ax.tick_params(labelsize=TICK_SIZE)
-        plot_psd(ax, 'k', 'Raw Spectrum', freq, psd, flat_spectrum=True)
+        
+        # Plot off-resonance PSD
+        plot_psd(ax, 'gold', 'Off Resonance', freq, psd, flat_spectrum=True)
 
+        # Now process the data for on-resonance PSD
         data_l2.close()
         data_l1.close()
-
         data_l1 = ProcessedDataL1.from_level0(
             data_l0,
             do_electronics_noise_removal=True,
         )
-        data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+
         psd_routine = ComputeNoisePSD(
             PsdBasis.GAIN_PHASE,
             cut_time=2,
-            tone_indices='offres',
+            tone_indices='onres'
         )
+        data_l2 = ProcessedDataLN.from_previous_level(data_l1)
         psd_routine(data_l2)
+
         freq = data_l2.get_node_value('freq', '/psd')
         psd = data_l2.get_node_value('psd_gain_phase', '/psd')
-        plot_psd(ax, 'b', 'Clean Spectrum', freq, psd, flat_spectrum=True)
+        plot_psd(ax, 'r', 'On Resonance', freq, psd, flat_spectrum=True)
 
-        ax.set_title(f'Noise from {date}_set{setnum}')
         ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
         fig.tight_layout()
         pdf.savefig()

@@ -26,7 +26,7 @@ from rfsocinterface.core.data import (
 )
 from rfsocinterface.core.utils import DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
 
-XLIM = (0.01, 250)
+XLIM = (0.1, 250)
 YLIM = (-110, -60)
 VALID_BASES = ['gp', 'iq', 'fd']
 N0 = 1.71e10 # Singel spin electron density of states at the Fermi level

@@ -1520,6 +1520,8 @@ class ProcessedDataL1(ProcessedData):
         cls,
         l0: ProcessedDataL0,
         do_electronics_noise_removal: bool=True,
+        only_use_offres_indices: bool=False,
+        only_use_onres_indices: bool=False,
         electronics_noise_lp_filt_freq: float=10,
         ds_factor: int=1,
         max_modes: int=30,
@@ -1684,8 +1686,15 @@ class ProcessedDataL1(ProcessedData):
 
         if do_electronics_noise_removal:
             
-            offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
-            onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=None)
+            if only_use_onres_indices:
+                offres_clean_data = new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length)
+            else:
+                offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+
+            if only_use_offres_indices:
+                onres_clean_data = offres_clean_data
+            else:
+                onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=None)
 
             #Finally remove blocking of data clumps
             data_set_mean = np.mean(data_gain_phase, axis = 2)

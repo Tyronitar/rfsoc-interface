@@ -238,7 +238,7 @@ class ComputeNoisePSD(DataRoutine):
 
             # Determine the number of blocks for computing the PSD
             n_samples = np.size(time)
-            n_samples_per_block = int(self.nominal_block_length * pd.fs)
+            n_samples_per_block = int(2**np.ceil(np.log2(self.nominal_block_length * pd.fs)))
             n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
             if n_blocks == 0:
                 n_blocks = 1
