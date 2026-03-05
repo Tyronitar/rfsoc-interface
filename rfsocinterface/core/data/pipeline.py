@@ -232,21 +232,22 @@ if __name__ == '__main__':
     date = '20260227'
     # setnums = [1013]
     # setnums = range(1009, 1016)
-    setnums = [1011]
+    setnums = [1010]
+    # setnums = range(1008, 1011)
 
 
-    data = MapData.from_file(date, setnums[0])
-    for i in range(240, 250):
-        plt.figure()
-        plt.plot(data.detector_az[i], data.data_mK[i])
-        plt.title(label=f'Resonator {i}')
-    plt.show()
-    pdb.set_trace()
+    # data = MapData.from_file(date, setnums[0])
+    # for i in range(240, 250):
+    #     plt.figure()
+    #     plt.plot(data.detector_az[i], data.data_mK[i])
+    #     plt.title(label=f'Resonator {i}')
+    # plt.show()
+    # pdb.set_trace()
 
     dataset = 'data_mK'
     beam_map_mode = False
     do_electronics_noise_removal = True
-    primary_direction = 'az'
+    primary_direction = 'za'
 
     ds_factor = 8
     hp_filt_freq = 0.25
@@ -276,9 +277,9 @@ if __name__ == '__main__':
     for setnum in setnums:
         data = pipeline.run_pipeline(date, setnum)
         data.plot(show=True)
-        # data.close()
+        data.close()
         # find_peaks(data, primary_direction=primary_direction, peak_radius=4)
-        plt.show()
+        # plt.show()
 #     from rfsocinterface.analysis.psd import plot_psd
 #     freq = data.get_node_value('freq')[:]
 #     psd = data.get_node_value('psd_gain_phase')[:]

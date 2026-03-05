@@ -239,6 +239,23 @@ class BinTODIntoMap(DataRoutine):
         md.map_az[:] = map_az
         md.map_za[:] = map_za
 
+        bad_tones = [
+            1, 3, 223, 278, 299,
+            303, 10, 69, 192, 820,
+            263, 483, 172, 574, 426,
+            569, 297, 167, 15, 717,
+            487, 842, 453, 13, 719,
+            92, 571, 630, 84, 220,
+            364, 516, 74, 726, 292,
+            519, 812, 302, 683, 537,
+            294, 534, 256, 661, 529,
+            737, 54, 782, 567, 103,
+            330, 133, 809, 460, 589,
+            387, 538, 213, 120, 79,
+            783, 612, 121, 117, 749
+        ]
+        md.chanmask[bad_tones] = -1
+
         wind = signal.get_window('hamming', md.n_samples)
 
         # data = getattr(md, self.dataset)[:]
@@ -334,31 +351,37 @@ class BinTODIntoMap(DataRoutine):
                f'}}'
 
 
+def find_bad_resonators_in_image(data: MapData, za_step: float=0.025):
+    bad_resonators = []
+    for za in np.arange(np.min(data.map_za), np.max(data.map_za), za_step):
+        fig, ax = plt.subplots()
+        slice_data = []
+        for i_tone in range(data.n_tones):
+            if data.chanmask[i_tone] != 1 or i_tone in bad_resonators:
+                continue
+            # Get the samples for this detector that are in the correct ZA slice
+            this_det_za = data.detector_za[i_tone]
+            samples = np.where((this_det_za >= za) & (this_det_za < za + za_step))[0]
+            if samples.size > 0:
+                slice_data.append((i_tone, samples))
+                ax.plot(data.detector_az[i_tone, samples], data.data_mK[i_tone, samples], label=f'Tone {i_tone}')
+        ax.set_title(f'ZA slice: {za:.2f} - {za + za_step:.2f}')
+        ax.set_xlabel('Detector Azimuth (degrees)')
+        ax.set_ylabel('Detector Response (mK)')
+        ax.legend()
+        fig.show()
+        pdb.set_trace()
+
+    return bad_resonators
+
+
+
 if __name__ == '__main__':
     from rfsocinterface.core.data.routines import DataRoutine, CleanTOD, HighPassFilter, LowPassFilter
-    date = '20250730'
-    setnum = 1005
-    dataset = 'data_mK'
+    date = '20260227'
+    setnum = 1009
 
-    ds_factor = 10
-    hp_filt_freq = 0.5
-    lp_filt_freq = 10
+    data = MapData.from_file(date, setnum)
+    find_bad_resonators_in_image(data)
 
-    # pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor)
-    pd = ProcessedData.from_tod(date, setnum, ds_factor=ds_factor, beam_map_mode=True)
-    # pd = PyTablesProcessedData.from_file(date, setnum)
-
-    hpfilt = HighPassFilter(hp_filt_freq, dataset=dataset)
-    lpfilt = LowPassFilter(lp_filt_freq, dataset=dataset)
-    cleaner = CleanTOD(dataset=dataset)
-
-    hpfilt(pd)
-    lpfilt(pd)
-    cleaner(pd)
-
-    md = MapData.from_processed_data(pd)
-    binner = BinTODIntoMap(dataset=dataset)
-    # binner = BinTODIntoMap(beam_map_mode=True)
-    binner(md)
-    md.plot()
     pdb.set_trace()
