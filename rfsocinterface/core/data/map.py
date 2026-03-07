@@ -249,55 +249,60 @@ class BinTODIntoMap(DataRoutine):
         data = md.data_mK[:]
         sum_map = np.zeros(md.sum_map.shape)
         hits_map = np.zeros(md.hits_map.shape)
+        netd = np.zeros(md.netd.shape)
 
         print('computing netd...')
         # Compute NETD values
-        for i_chan in np.where(md.chanmask[:] == 1)[0]:
-            this_freq, this_psd = signal.periodogram(data[i_chan, :], md.fs, window=wind)
-            valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
-            this_netd = np.sqrt(np.median(this_psd[valid_freq]))
-            md.netd[i_chan] = this_netd
+        for i_chan in range(md.n_channels):
+            fs = md.fs[i_chan]
+            for i_tone in np.where(md.get_chanmask(i_chan) == 1)[0]:
+                this_freq, this_psd = signal.periodogram(data[i_chan, i_tone, :], fs, window=wind)
+                valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
+                this_netd = np.sqrt(np.median(this_psd[valid_freq]))
+                netd[i_chan, i_tone] = this_netd
 
         print('netd done!')
 
         # Get rid of channels with bad weights
         new_chanmask = np.copy(md.chanmask[:])
-        good_idx = np.where(new_chanmask == 1)[0]
-        good_netd = md.netd[good_idx]
-        new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
+        for i_chan in range(md.n_channels):
+            this_n_tones = md.get_n_tones(i_chan)
+            good_idx = np.where(new_chanmask[i_chan, :this_n_tones] == 1)[0]
+            good_netd = netd[i_chan, good_idx]
+            new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[i_chan, good_idx])
 
-        good_idx = np.where(new_chanmask == 1)[0]
-        good_netd = md.netd[good_idx]
-        netd_med = np.median(np.log10(good_netd))
-        netd_std = np.std(np.log10(good_netd))
-        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
-        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
+            good_idx = np.where(new_chanmask[i_chan, :this_n_tones] == 1)[0]
+            good_netd = netd[i_chan, good_idx]
+            netd_med = np.median(np.log10(good_netd))
+            netd_std = np.std(np.log10(good_netd))
+            new_chanmask[i_chan, good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[i_chan, good_idx])
+            new_chanmask[i_chan, good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[i_chan, good_idx])
 
-        md.netd[new_chanmask != 1] = 0
+        netd[new_chanmask != 1] = 0
 
         if self.beam_map_mode:
-            channels_to_map = np.where(md.chanmask[:] != 0)[0]
+            tones_to_map = np.where(md.chanmask[:] != 0)[0]
         else:
-            channels_to_map = np.where(new_chanmask == 1)[0]
+            tones_to_map = np.where(new_chanmask == 1)[0]
 
         # Create map
         # for i_chan in channels_to_map[:10]:
         print('creating map...')
-        for n_loop, i_chan in enumerate(channels_to_map):
-            if n_loop == np.size(channels_to_map) // 2:
+        for n_loop, (i_chan, i_tone) in enumerate(tones_to_map):
+            if n_loop == np.size(tones_to_map) // 2:
                 print('halfway done...')
             if self.beam_map_mode:
-                map_idx = i_chan
+                map_idx = i_tone
                 weight = 1.
             else:
-                map_idx = md.detector_pol[i_chan] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
-                weight = 1./ md.netd[i_chan] ** 2.
+                map_idx = md.detector_pol[i_chan, i_tone] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
+                weight = 1./ netd[i_chan, i_tone] ** 2.
 
-            this_detector_az = md.detector_az[i_chan,:]
-            this_detector_za = md.detector_za[i_chan,:]
+            this_detector_az = md.detector_az[i_chan, i_tone,:]
+            this_detector_za = md.detector_za[i_chan, i_tone,:]
 
             # Get the good samples if they haven't been specified
-            this_clean_data = np.squeeze(data[i_chan,:])
+            this_clean_data = np.squeeze(data[i_chan, i_tone,:])
 
             # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
             x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/DEFAULT_MAP_DPIX))
@@ -306,7 +311,7 @@ class BinTODIntoMap(DataRoutine):
             y_ind = y_ind.astype('int64')
 
             #eliminate samples outside the map
-            good_samples = md.good_samples[:]
+            good_samples = md.good_samples[i_chan, :]
             valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
                 np.logical_and(x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x), \
                 np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
@@ -322,6 +327,7 @@ class BinTODIntoMap(DataRoutine):
         md.chanmask[:] = new_chanmask
         md.sum_map[:] = sum_map
         md.hits_map[:] = hits_map
+        md.netd[:] = netd
 
     def get_receipt_entry(self) -> str:
         return f'BinTODIntoMap: {{\n' \

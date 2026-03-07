@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QWidget
 
 from rfsocinterface.gui.uic.save_location_ui import Ui_SaveLocationWidget
 from rfsocinterface.core.utils import get_filename, PERMISSIONS_ALL_FULL
-from rfsocinterface.gui.utils import get_lineEdit_text
+from rfsocinterface.gui.widgets.utils import get_lineEdit_text
 
 
 class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):

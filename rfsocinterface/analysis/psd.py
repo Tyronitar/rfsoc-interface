@@ -163,11 +163,11 @@ def plot_psd(
         title = 'RFSoC Loopback PSD'
     match basis:
         case PsdBasis.GAIN_PHASE:
-            titles = [title + ' - Gain', title + ' - Phase']
+            titles = [[f'Tile {i_chan} {title} - Gain', f'Tile {i_chan} {title} - Phase'] for i_chan in range(psd.shape[0])]
             ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
         case PsdBasis.IQ:
-            titles = [title + ' - I', title + ' - Q']
+            titles = [[f'Tile {i_chan} {title} - I', f'Tile {i_chan} {title} - Q'] for i_chan in range(psd.shape[0])]
             ylabel = r'Noise PSD ($\text{dBc Hz}^{-1})$'
             yscale = 'linear'
         case PsdBasis.FREQ_DISS:
@@ -184,8 +184,8 @@ def plot_psd(
         case _:
             raise ValueError(f'Invalid basis {basis}; must be one of {VALID_BASES}')
 
-    n_plots = psd.shape[0]
-    psd_med = np.median(psd, axis=1)
+    n_plots = psd.shape[1]
+    psd_med = np.median(psd, axis=2)
 
     plot_data_med = 10 * np.log10(psd_med)
 
@@ -193,8 +193,8 @@ def plot_psd(
     psd_max = psd_med[:]
 
     if psd.shape[1] > 1:
-        psd_min = np.percentile(psd, min_percentile, axis=1)
-        psd_max = np.percentile(psd, max_percentile, axis=1)
+        psd_min = np.percentile(psd, min_percentile, axis=2)
+        psd_max = np.percentile(psd, max_percentile, axis=2)
 
     plot_data_min = 10 * np.log10(psd_min)
     plot_data_max = 10 * np.log10(psd_max)
@@ -202,33 +202,33 @@ def plot_psd(
     # Plot 
     if not filename.exists():
         filename.touch(PERMISSIONS_ALL_FULL)
-    for i in range(n_plots):
-            fig = create_plot(
-                freq,
-                plot_data_med[i],
-                ydata_min = plot_data_min[i],
-                ydata_max = plot_data_max[i],
-                percentiles=(min_percentile, max_percentile),
-                title=titles[i],
-                ylabel=ylabel,
-                yscale=yscale
-            )
-            figs.append(fig)
-    average_fig = create_plot(
-        freq,
-        np.sum(plot_data_med, axis=0) / n_plots,
-        ydata_min= np.sum(plot_data_min, axis=0) / n_plots,   
-        ydata_max= np.sum(plot_data_max, axis=0) / n_plots,
-        percentiles=(min_percentile, max_percentile),
-        title= title + ' - Averaged',
-        ylabel=ylabel,
-        yscale=yscale,
-    )
-    figs.append(average_fig)
+    figs = []
     with PdfPages(filename) as pdf:
-        for fig in figs:
-            pdf.savefig(fig)
-        
+        for i_chan in range(psd.shape[0]):
+            for i_plot in range(n_plots):
+                fig = create_plot(
+                    freq,
+                    plot_data_min[i_chan, i_plot],
+                    plot_data_med[i_chan, i_plot],
+                    plot_data_max[i_chan, i_plot],
+                    percentiles=(min_percentile, max_percentile),
+                    title=titles[i_chan][i_plot],
+                    ylabel=ylabel,
+                    yscale=yscale,
+                )
+                pdf.savefig(fig)
+                figs.append(fig)
+        average_fig = create_plot(
+            freq,
+            np.sum(plot_data_min[i_chan], axis=0) / n_plots,
+            np.sum(plot_data_med[i_chan], axis=0) / n_plots,
+            np.sum(plot_data_max[i_chan], axis=0) / n_plots,
+            percentiles=(min_percentile, max_percentile),
+            title= f'Tile {i_chan} {title} - Averaged',
+            ylabel=ylabel,
+            yscale=yscale,
+        )
+        pdf.savefig(average_fig)
 
     return figs
 @ensure_path(0)

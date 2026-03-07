@@ -8,7 +8,7 @@ import numpy as np
 import numpy.typing as npt
 import tables
 
-from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, PERMISSIONS_ALL_FULL, get_params_file_template
+from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, PERMISSIONS_ALL_FULL, get_params_file_template, pad_to_length
 
 
 _logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ def initialize_params_file(
 
 
 def update_params_file(
-    tile_name: str,
+    target: str,
     params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
     baseband_freqs: npt.NDArray=None,
     lo_freq: float=None,
@@ -129,9 +129,14 @@ def update_params_file(
     chanmask_isolated: npt.NDArray=None,
     tone_powers: npt.NDArray=None,
 ):
-    params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
-    if not params_tile_file.exists():
-        raise FileExistsError(f'Params file {params_tile_file} does not exist')
+    if Path(target).exists:
+        # the first argument was the path to the file
+        params_tile_file = Path(target)
+    else:
+        # the first argument was the name of the tile
+        params_tile_file = Path(get_params_file_template(target, params_dir=params_dir))
+        if not params_tile_file.exists():
+            raise FileExistsError(f'Params file {params_tile_file} does not exist')
 
     signature = inspect.signature(update_params_file)
     keyword_args = {
@@ -141,6 +146,10 @@ def update_params_file(
     }
 
     with tables.open_file(params_tile_file, 'a') as fh:
+        if baseband_freqs is not None:
+            fh.root._v_attrs.n_tones = len(baseband_freqs)
+            # TODO: need to extend existing arrays to match the new number of tones
+
         for k in keyword_args:  # Check all of the keyword arguments
             if k == 'params_dir':
                 continue  # We only care about the parameters

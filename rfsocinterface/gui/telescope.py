@@ -15,6 +15,7 @@ from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.utils import P, R
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
+from rfsocinterface.gui.widgets import get_num_value
 from typing import Callable, Concatenate, Any, TYPE_CHECKING
 import functools
 
@@ -31,7 +32,6 @@ from pyModbusTCP.client import ModbusClient
 import glob
 from pathlib import Path
 
-from rfsocinterface.gui.utils import get_num_value
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow

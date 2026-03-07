@@ -43,7 +43,7 @@ _tele_logger = logging.getLogger('telescopeControl')
 IPV4_REGEX = r'^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$'
 MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
 
-BAD_RFSOC_TONE_START_INDEX = 8  # First 8 ones are bad...
+BAD_RFSOC_TONE_START_INDEX = 0  # TODO: Remove all references to this
 
 GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
 USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
@@ -197,7 +197,7 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
 
     #provide the name of the file
     match file_type.lower():
-        case 'lo' | 'tonelist':
+        case 'lo' | 'tonelist' | 'power':
             hour = float(datetime.now().strftime('%H')) \
                 + float(datetime.now().strftime('%M'))/60. \
                 + float(datetime.now().strftime('%S'))/3600.
@@ -207,6 +207,8 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
                     strings = [yymmdd, chan_name, 'LO_Sweep', hour_str]
                 case 'tonelist':
                     strings = [yymmdd, chan_name, 'tone_list', hour_str]
+                case 'power':
+                    strings = [yymmdd, chan_name, 'Power_Sweep', hour_str]
         case 'tod' | 'azel' | 'optcam':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:
@@ -420,6 +422,23 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
         elif response.lower() == 'err':
             raise RuntimeError(f'{err_msg}: {data}')
 
+def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_values=0) -> npt.NDArray:
+    """Pad an array with zeros along an axis to a target length.
+
+    Parameters:
+        x (npt.NDArray): The input array.
+        target_length (int): The target length along the specified axis.
+        axis (int): The axis along which to pad.
+
+    Returns:
+        npt.NDArray: The padded array.
+    """
+    pad_widths = [(0, 0)] * x.ndim
+    pad_amount = target_length - x.shape[axis]
+    if pad_amount < 0:
+        raise ValueError(f'Target length {target_length} is less than current length {x.shape[axis]} along axis {axis}.')
+    pad_widths[axis] = (0, pad_amount)
+    return np.pad(x, pad_widths, mode='constant', constant_values=constant_values)
 
 #
 # Scipy signal processing utils
@@ -534,6 +553,43 @@ def axis_slice(a, start=None, stop=None, step=None, axis=-1):
     a_slice = [slice(None)] * a.ndim
     a_slice[axis] = slice(start, stop, step)
     b = a[tuple(a_slice)]
+    return b
+
+def axis_index(a: npt.NDArray, indices: npt.ArrayLike | tuple[npt.ArrayLike, ...], axis: int | tuple[int, ...]=-1):
+    """Index `a` along axis `axis` with `indices`.
+
+    Parameters
+    ----------
+    a : numpy.ndarray
+        The array to be indexed.
+    indices : array-like
+        The indices to use for indexing.
+    axis : int, optional
+        The axis of `a` to be indexed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from scipy.signal._arraytools import axis_index
+    >>> a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> axis_index(a, [0, 2], axis=1)
+    array([[1, 3],
+           [4, 6],
+           [7, 9]])
+    >>> axis_index(a, [1, 2], axis=0)
+    array([[4, 5, 6],
+           [7, 8, 9]])
+    """
+    if isinstance(axis, tuple):
+        if len(indices) != len(axis):
+            raise ValueError("If axis is a tuple, indices must be a tuple of the same length.")
+    a_index = [slice(None)] * a.ndim
+    if isinstance(axis, tuple):
+        for i, ax in enumerate(axis):
+            a_index[ax] = indices[i]
+    else:
+        a_index[axis] = indices
+    b = a[tuple(a_index)]
     return b
 
 def axis_reverse(a, axis=-1):
@@ -788,6 +844,40 @@ def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, ca
     fig.tight_layout()
     
     return fig
+
+
+def reset_axes(ax: plt.Axes):
+    """Restore a Matplotlib Axes to a clean, default state.
+    
+    Useful after imshow(), pcolormesh(), etc. cine they change state that isn't reset
+    by ax.cla().
+    """
+    ax.cla()
+
+    # Reset aspect and layout
+    ax.set_aspect('auto', adjustable='box')
+
+    # Autoscaling
+    ax.autoscale(enable=True, axis="both", tight=False)
+    ax.set_autoscale_on(True)
+
+    # Remove fixed limits (important after imshow)
+    ax.set_xlim(auto=True)
+    ax.set_ylim(auto=True)
+
+    # Turn off image-style behavior
+    for im in ax.images:
+        im.remove()
+
+    # Reset scale (in case log/symlog was used)
+    ax.set_xscale("linear")
+    ax.set_yscale("linear")
+
+    # Reset margins to Matplotlib defaults
+    ax.margins(x=0.05, y=0.05)
+
+    # Grid & ticks (optional, but predictable)
+    ax.grid(False)
 
 
 if __name__ == '__main__':

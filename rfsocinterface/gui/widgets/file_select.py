@@ -1,10 +1,9 @@
 from pathlib import Path
-from PySide6.QtCore import Qt, Signal, QCoreApplication, QMetaObject, QSize, Slot
-from PySide6.QtGui import QDoubleValidator, QIcon
-from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit, QHBoxLayout, QPushButton, QToolButton
-from typing import Callable, Any
 
-from rfsocinterface.gui.uic.file_upload_ui import Ui_FileUploadWidget
+from PySide6.QtCore import Signal, QCoreApplication, QMetaObject, QSize, Slot
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QWidget, QFileDialog, QHBoxLayout, QPushButton, QToolButton
+
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 
 DEFAULT_DIR = Path('./')
