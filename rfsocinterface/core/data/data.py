@@ -9,6 +9,7 @@ import time
 import logging
 from itertools import chain, batched
 import typing
+from importlib.metadata import version
 
 import tables
 import h5py
@@ -23,10 +24,16 @@ from scipy import signal
 from scipy.stats import linregress
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+import kidpy3
+from kidpy3.data_handler import RawDataFile
 
-from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_FULL
+from rfsocinterface import __version__ as VERSION
 from rfsocinterface.core.losweep import LoSweepData
 from rfsocinterface.core.utils import (
+    gaussian_filter,
+    GAUSSIAN_SIGMA,
+    BAD_RFSOC_TONE_START_INDEX,
+    PERMISSIONS_ALL_FULL,
     get_tod_template,
     get_azel_template,
     get_optcam_template,
@@ -36,9 +43,11 @@ from rfsocinterface.core.utils import (
     DEFAULT_DATA_DIRECTORY,
     PathLike,
     ensure_path,
-    pad_to_length
+    pad_to_length,
+    linregress_in_chunks,
+    iterate_chunks,
+    compute_chunk_shape,
 )
-from kidpy3.data_handler import RawDataFile
 
 _logger = logging.getLogger(__name__)
 
@@ -56,6 +65,7 @@ AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
 RFSOC_TIME_OFFSET = -0.012  # -12 ms, empirically determined
+
 
 DYNAMIC_PROCESSED_DATA_FIELDS = [
     'carrier_amplitudes',
@@ -127,13 +137,25 @@ PROCESSED_DATA_FIELD_LOCATIONS = {
 }
 
 
+TONES_TABLE_DTYPE = [
+    ('baseband_freq', 'f8'),
+    ('power', 'f8'),
+    ('delta_x', 'f8'),
+    ('delta_y', 'f8'),
+    ('beam_aplitude', 'f8'),
+    ('polarization', 'i1'),
+    ('dfoverf_per_mK', 'f8'),
+    ('chanmask', 'i1'),
+]
+
+
 def test_node(f: tables.File, name: str) -> bool:
     try:
         f.get_node('/', name)
         return True
     except tables.exceptions.NoSuchNodeError:
         return False
-        
+
 #
 # Outlier Removal and Flagging
 #
@@ -572,24 +594,36 @@ def find_missed_packets(
     return missed_packets
 
 
+# Note, I may have to move the downsampling unitl after all of the interpolation
+# I should look more into that though (i.e. ask ChatGPT)
 def interpolate_timestamp(
-    raw_timestamp: npt.NDArray,
-    new_timestamp: tables.Array,
-    chan_index: int,
-    packet_indices: npt.NDArray,
-) -> npt.NDArray:
+    raw_timestamp: h5py.Dataset,
+    new_timestamp: h5py.Dataset,
+    packet_indices: h5py.Dataset,
+    ds_factor: int=1,
+):
+    chunk_size = new_timestamp.chunks[-1]
+    chunk_size_ds = int(np.ceil(chunk_size / ds_factor))
+
+    # TODO: find a way to not have all of normalized_packet_indices in memory at once
+    # May require some code duplication, or storing an intermediate array on disk
     normalized_packet_indices = packet_indices - packet_indices[0]
-    n_samples = new_timestamp.shape[1]
-    fit = linregress(normalized_packet_indices, raw_timestamp[:])
-    interpolated_timestamp = fit.slope * np.arange(n_samples) + fit.intercept + RFSOC_TIME_OFFSET
-    new_timestamp[chan_index, :] = interpolated_timestamp
-    return interpolated_timestamp
+    n_samples = raw_timestamp.size
+    n_samples_ds = new_timestamp.size
+    a, b = linregress_in_chunks(normalized_packet_indices, raw_timestamp)
+    
+    # Compute the new timestamp in chunks while simultaneously downsampling
+    for i_chunk, chunk_start in enumerate(range(0, n_samples, chunk_size)):
+        this_new_timestamp = a * np.arange(chunk_start, chunk_start + chunk_size) + b + RFSOC_TIME_OFFSET
+        chunk_start_ds = i_chunk * chunk_size_ds
+        chunk_stop_ds = min(chunk_start_ds + chunk_size_ds, n_samples_ds)
+        new_timestamp[chunk_start_ds:chunk_stop_ds] = this_new_timestamp[::ds_factor]
 
     
 def interpolate_missing_data(
-    data_I: tables.Array,
-    data_Q: tables.Array,
-    timestamp: tables.Array,
+    data_I: h5py.Dataset,
+    data_Q: h5py.Dataset,
+    timestamp: h5py.Dataset,
     missed_packets: npt.NDArray,
     packet_indices: npt.NDArray,
     valid_tone_index: npt.NDArray,
@@ -597,23 +631,23 @@ def interpolate_missing_data(
     total_missed_packets = np.sum(missed_packets[:, 1])
     n_tones = np.size(valid_tone_index)
     n_samples = data_I.shape[-1]
-    # total_samples = raw_data_I.shape[-1] + total_missed_packets
 
     interpolated_indices = []
     interpolated_data = np.zeros((2, n_tones, total_missed_packets), dtype=data_I.dtype)
-    normalized_packet_indices = packet_indices - packet_indices[0]
 
     # Iterate over the spots where data was missed
     count = 0
     for i, this_missed_packets in missed_packets:
         window_size = 5 * this_missed_packets
-        index = normalized_packet_indices[i]
-        prev_index = normalized_packet_indices[i - 1]
+        index = packet_indices[i] - packet_indices[0]
+        prev_index = packet_indices[i - 1] - packet_indices[0]
+
         # Fit a spline using data from nearest (window_size * 2) packets
         min_t = max(0, i - window_size)
         max_t = min(n_samples, i + window_size)
         window = range(min_t, max_t + 1)
-        times = timestamp[normalized_packet_indices[window]]
+        window_packet_indices = packet_indices[window] - packet_indices[0]
+        times = timestamp[window_packet_indices]
         i_data = data_I[:, window][valid_tone_index, :]
         q_data = data_Q[:, window][valid_tone_index, :]
         fit_I = poly.polyfit(times - times[0], i_data.T, 4)
@@ -818,29 +852,26 @@ class ConsolidatedData(NewDataStorage):
 
         # Get the n_tones and n_samples from all TOD files to determine array sizes
         sample_counts = []
-        tone_counts = []
         missed_sample_counts = []
         missed_packets_list = []
         tile_names = []
         for file in todlist:
-            f = RawDataFile(file, 'r')
+            raw_data = RawDataFile(file, 'r')
 
+            # TODO: Make kidpy store the tile name in the file
             # Temporary way to determine tile name from file names
             this_file_stem = Path(file).stem
             this_tile_name = this_file_stem[:this_file_stem.index('TOD')].split('_')[1]
             tile_names.append(this_tile_name)
 
-            # Find number of tones
-            tone_counts.append(f.n_tones[0])
-
             # Find the total number of samples accounting for missed packets
-            raw_time_ordered_data = f.root.time_ordered_data
+            raw_time_ordered_data = raw_data.root.time_ordered_data
             # NOTE: Temporary fix until n_sample is fixed in the raw files
             # n_samples = f.n_sample[0]
-            n_samples = f.adc_i.shape[-1]
+            n_samples = raw_data.adc_i.shape[-1]
 
             _logger.debug('Using pkt_idx to find missed packets')
-            missed_packets = find_missed_packets_with_indices(f.pkt_idx)
+            missed_packets = find_missed_packets_with_indices(raw_data.pkt_idx)
 
             n_missed = int(np.sum(missed_packets[:, 1]))
             missed_sample_counts.append(n_missed)
@@ -848,14 +879,11 @@ class ConsolidatedData(NewDataStorage):
             sample_counts.append(n_samples)
             missed_packets_list.append(missed_packets)
 
-            f.fh.close()
-
-        max_n_tones = int(sum(tone_counts))
-        max_missed_samples = int(max(missed_sample_counts))
-        tones_per_channel = np.array(tone_counts, dtype=np.uint32)
+            raw_data.fh.close()
 
         # Normalize samle counts to the minimum across all channels
         total_samples = min(np.add(sample_counts, missed_sample_counts))
+        n_samples_ds = int(np.ceil(total_samples / downsampling_factor))
 
         # NOTE: I forsee a potnetial bug where we try to interpolate the data for channel
         # say 2, which missed packet X, but channel 0 only had X - 1 total packets, so
@@ -889,12 +917,17 @@ class ConsolidatedData(NewDataStorage):
 
         # Initialize global data group
         global_data_group = cdata.create_group('global_data')
-        global_data_group.attrs['n_channels'] = nchan
-        lo_group = global_data_group.create_group('lo_sweep')
+        global_data_group.attrs['n_samples'] = n_samples_ds
+        global_data_group.attrs['downsampling_factor'] = downsampling_factor
+        global_data_group.attrs['rfsocinterface_version'] = VERSION
+        try:
+            kidpy_version = version(kidpy3)
+        except Exception as e:
+            _logger.warning(f'kidpy3 version could not be accessed: {e}')
+            kidpy_version = 'N/A'
+        global_data_group.attrs['kidpy_version'] = kidpy_version
 
-        # TODO: move this after attenuator settings are stored in the params file
-        global_data_group.create_dataset('attenuator_settings', shape=(nchan, 2), dtype=np.float16)
-
+        # Optical image
         if optcam_exists:
             # optical_image = optcam_file.root.optical_image
             global_data_group.create_dataset('optical_image', data=optcam_file['optical_image'][:])
@@ -902,29 +935,103 @@ class ConsolidatedData(NewDataStorage):
         else:
             global_data_group.create_dataset('optical_image', data=np.array([]))
             optical_image = None
-
-        global_data_group.create_dataset('tones_per_channel', data=tones_per_channel)
-        
-        # Arrays for all of the values stored in the tile parameter files
-        global_data_group.create_dataset('tile_names', shape=(nchan,), data=tile_names) 
-        baseband_freqs = global_data_group.create_dataset('baseband_freqs', shape=(nchan, max_n_tones), dtype=np.float64)
-        lo_freq_array = global_data_group.create_dataset('lo_freq', shape=(nchan,), dtype=np.float64)
-        detector_delta_x = global_data_group.create_dataset('detector_delta_x', shape=(nchan,), dtype=np.float64)
-        detector_delta_x = global_data_group.create_dataset('detector_delta_y', shape=(nchan,), dtype=np.float64)
-        detector_beam_amplitude = global_data_group.create_dataset('detector_beam_ampl', shape=(nchan, max_n_tones), dtype=np.float64)
-        detector_pol = global_data_group.create_dataset('detector_pol', shape=(nchan, max_n_tones), dtype=np.float64)
-        dfoverf_per_mK = global_data_group.create_dataset('dfoverf_per_mK', shape=(nchan, max_n_tones), dtype=np.float64)
-        chanmask = global_data_group.create_dataset('chanmask', shape=(nchan, max_n_tones), dtype=np.int8)
-        tone_powers = global_data_group.create_dataset('tone_powers', shape=(nchan, max_n_tones), dtype=np.float64)
-
         optical_visibility = global_data_group.create_dataset('optical_visibility', data=vis)
 
-        # Initialize time ordered data
-        time_ordered_data_group = cdata.create_group('data')
+        # Intiialize group for storing data per-channel
+        all_channels_group = cdata.create_group('channels')
+        all_channels_group.attrs['n_channels'] = nchan
 
-        ...
 
-        return cdata
+        # Get the data from each channel
+        for i_chan, file in enumerate(todlist):
+            raw_data = RawDataFile(file, 'r')
+
+            this_missed_packets = missed_packets_list[i_chan]
+            this_n_missed = missed_sample_counts[i_chan]
+
+            # Create the HDF5 group for this channel
+            this_channel_group = all_channels_group.create_group(f'channel_{i_chan:03d}')
+            this_channel_group.attrs['tile_name'] = tile_names[i_chan]
+            this_channel_group.attrs['lo_freq'] = raw_data.lo_freq[0]
+            this_channel_group.attrs['detector_dx_dy_elevation_angle'] = raw_data.detector_dx_dy_elevation_angle[:]
+            this_channel_group.attrs['attenuator_settings'] = raw_data.attenuator_settings[:]
+
+            n_tones = raw_data.n_tones
+
+            # Store the tone parameters
+            tones_table = this_channel_group.create_dataset('tones', shape=(n_tones,), dtype=TONES_TABLE_DTYPE)
+            tones_table['baseband_freq'][:] = raw_data.baseband_freqs[:]
+            tones_table['power'] = raw_data.tone_powers[:]
+            tones_table['delta_x'] = raw_data.detector_delta_x[:]
+            tones_table['delta_y'] = raw_data.detector_delta_y[:]
+            tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
+            tones_table['polarization']  = raw_data.detector_pol[:]
+            tones_table['dfoverf_per_mK'] = raw_data. dfoverf_per_mK[:]
+            tones_table['chanmask'] = raw_data.chanmask[:]
+
+            # Copy LO sweep
+            this_channel_group.create_dataset('lo_sweep', data=raw_data.lo_sweep[:])
+
+            # Time ordered data
+            time_ordered_data_group = this_channel_group.create_group('time_ordered_data')
+            timestamp = time_ordered_data_group.create_dataset(
+                'timestamp',
+                shape=(n_samples_ds,),
+                chunks=compute_chunk_shape((n_samples_ds,), 8),
+                dtype=np.float64,
+            )
+            interpolated_samples = time_ordered_data_group.create_dataset('interpolated_samples', shape=(0,), maxshape=(None,), dtype=np.uint32)
+            data_IQ = time_ordered_data_group.create_dataset(
+                'data_IQ',
+                shape=(2, n_tones, n_samples_ds),
+                dtype=np.float64,
+                chunks=compute_chunk_shape((2, n_tones), 8),
+                compression='lzf',
+                shuffle=True,
+            )
+            azel_shape = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
+            detector_az = time_ordered_data_group.create_dataset(
+                'detector_az',
+                shape=azel_shape,
+                chunks=compute_chunk_shape((n_tones,), 8),
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+            detector_za = time_ordered_data_group.create_dataset(
+                'detector_za',
+                shape=azel_shape,
+                chunks=compute_chunk_shape((n_tones,), 8),
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+            
+
+            # Interpolate the timestamp
+            interpolate_timestamp(
+                raw_data.timestamp,
+                timestamp,
+                raw_data.pkt_idx,
+                ds_factor=downsampling_factor,
+            )
+
+            # Interpolate missing IQ data
+            if this_n_missed > 0:
+                print('interpolating data...')
+                this_interpolated_indices, interpolated_data = interpolate_missing_data(
+                    raw_time_ordered_data.adc_i,
+                    raw_time_ordered_data.adc_q,
+                    interpolated_timestamp,
+                    this_missed_packets,
+                    this_corrected_packet_index,
+                    valid_tone_index
+                )
+                interpolated_indices.append(this_interpolated_indices)
+            else:
+                interpolated_indices.append([])
+
+         return cdata
 
 
 

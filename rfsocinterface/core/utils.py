@@ -16,6 +16,7 @@ import copy
 import sys
 from multiprocessing.connection import Connection
 import stat
+from typing import Iterator
 
 import io
 from copy import deepcopy
@@ -24,6 +25,7 @@ from functools import partial
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.figure import Figure
+import h5py
 
 import numpy as np
 import numpy.typing as npt
@@ -72,6 +74,8 @@ Q = ParamSpec('Q')
 PERMISSIONS_USR_RW = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
 PERMISSIONS_ALL_RW = PERMISSIONS_USR_RW | stat.S_IWGRP | stat.S_IWOTH
 PERMISSIONS_ALL_FULL = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH | PERMISSIONS_ALL_RW
+
+DEFAULT_CHUNK_SIZE = 100
 
 
 def convert_path(path: PathLike) -> Path:
@@ -439,8 +443,16 @@ def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_val
     return np.pad(x, pad_widths, mode='constant', constant_values=constant_values)
 
 #
-# Scipy signal processing utils
+# Chunked array handling utils
 #
+def compute_chunk_shape(data_shape: tuple[int, ...], dtype_size: int, target_mb: float=4):
+    """Compute the chunk shape to have the target chunk size in MB."""
+
+    target_bytes = target_mb * 1024 * 1024
+    time_chunk = target_bytes // (np.prod(data_shape) * dtype_size)
+
+    return (*data_shape, int(time_chunk))
+
 def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.NDArray, npt.NDArray] | None=None):
     """
     Apply a second-order section filter to data in chunks.
@@ -752,6 +764,52 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
         return axis_slice(y, step=q, axis=axis)
     else:
         out[...] = axis_slice(y, step=q, axis=axis)
+
+
+def iterate_chunks(x: npt.NDArray | h5py.Dataset, chunk_size: int=None, axis: int=-1) -> Iterator[tuple[int, int, npt.NDArray]]:
+    """Return an iterator over the array in chunks."""
+
+    n = x.shape[axis]
+    if chunk_size is None:
+        if isinstance(x, h5py.Dataset):
+            chunk_size = x.chunks[-1]
+        else:
+            chunk_size = DEFAULT_CHUNK_SIZE
+
+    for chunk_start in range(0, n, chunk_size):
+        chunk_end = min(chunk_start + chunk_size, n)
+        yield chunk_start, chunk_end, axis_slice(x, chunk_start, chunk_end, axis=axis)
+
+
+def linregress_in_chunks(
+    x: npt.ArrayLike | h5py.Dataset,
+    y: npt.ArrayLike | h5py.Dataset,
+    chunk_size: int=None,
+) -> tuple[float, float]:
+    """Compute linear regression using x and y in chunks.
+    
+    Assumes x and y are 1D arrays.
+    """
+
+    sum_x = 0.0
+    sum_y = 0.0
+    sum_x2 = 0.0
+    sum_xy = 0.0
+    N = 0
+
+    for c0, c1, x_chunk in iterate_chunks(x, chunk_size=chunk_size):
+        y_chunk = y[c0:c1]
+
+        sum_x += np.sum(x_chunk)
+        sum_y += np.sum(y_chunk)
+        sum_x2 += np.sum(x_chunk * x_chunk)
+        sum_xy += np.sum(x_chunk * y_chunk)
+
+        N += x_chunk.size
+
+    a = (N * sum_xy - sum_x * sum_y) / (N * sum_x2 - sum_x**2)
+    b = (sum_y - a * sum_x) / N
+    return a, b
 
 
 
