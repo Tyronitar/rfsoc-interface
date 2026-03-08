@@ -25,7 +25,7 @@
         <x>0</x>
         <y>0</y>
         <width>827</width>
-        <height>708</height>
+        <height>705</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -46,6 +46,16 @@
         <widget class="QRadioButton" name="power_sweep_radioButton">
          <property name="text">
           <string>Power Sweep</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">sweep_type_buttonGroup</string>
+         </attribute>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="blind_sweep_radioButton">
+         <property name="text">
+          <string>Blind Sweep</string>
          </property>
          <attribute name="buttonGroup">
           <string notr="true">sweep_type_buttonGroup</string>
