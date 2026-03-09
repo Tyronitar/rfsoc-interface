@@ -31,6 +31,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy import ndimage
 from scipy.signal import sosfilt, sosfilt_zi, cheby1
+from scipy.signal import resample_poly
 import redis
 
 import time
@@ -446,12 +447,53 @@ def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_val
 # Chunked array handling utils
 #
 def compute_chunk_shape(data_shape: tuple[int, ...], dtype_size: int, target_mb: float=4):
-    """Compute the chunk shape to have the target chunk size in MB."""
+    """Compute the chunk shape to have the target chunk size in MB.
+    
+    Arguments:
+        data_shape (tuple[int, ...]): The shape of the data excluding the chunked dimension
+    
+    """
 
     target_bytes = target_mb * 1024 * 1024
     time_chunk = target_bytes // (np.prod(data_shape) * dtype_size)
 
     return (*data_shape, int(time_chunk))
+
+
+def chunked_downsample(
+    dset: h5py.Dataset,
+    out_dset: h5py.Dataset,
+    q: int,
+    chunk_size: int,
+    axis: int=-1,
+):
+
+    overlap = 32 * q
+
+    N = dset.shape[0]
+
+    out_index = 0
+
+    for start in range(0, N, chunk_size):
+
+        read_start = max(0, start - overlap)
+        read_stop = min(N, start + chunk_size + overlap)
+
+        chunk = dset[read_start:read_stop]
+
+        dec = resample_poly(chunk, up=1, down=q, axis=axis)
+
+        valid_start = (start - read_start) // q
+        valid_stop = valid_start + (min(chunk_size, N-start) // q)
+
+        valid = dec[valid_start:valid_stop]
+
+        out_dset[out_index:out_index+len(valid)] = valid
+
+        out_index += len(valid)
+
+
+
 
 def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.NDArray, npt.NDArray] | None=None):
     """

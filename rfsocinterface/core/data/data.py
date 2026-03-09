@@ -47,6 +47,7 @@ from rfsocinterface.core.utils import (
     linregress_in_chunks,
     iterate_chunks,
     compute_chunk_shape,
+    chunked_downsample,
 )
 
 _logger = logging.getLogger(__name__)
@@ -142,7 +143,7 @@ TONES_TABLE_DTYPE = [
     ('power', 'f8'),
     ('delta_x', 'f8'),
     ('delta_y', 'f8'),
-    ('beam_aplitude', 'f8'),
+    ('beam_amplitude', 'f8'),
     ('polarization', 'i1'),
     ('dfoverf_per_mK', 'f8'),
     ('chanmask', 'i1'),
@@ -594,6 +595,7 @@ def find_missed_packets(
     return missed_packets
 
 
+
 # Note, I may have to move the downsampling unitl after all of the interpolation
 # I should look more into that though (i.e. ask ChatGPT)
 def interpolate_timestamp(
@@ -621,22 +623,24 @@ def interpolate_timestamp(
 
     
 def interpolate_missing_data(
-    data_I: h5py.Dataset,
-    data_Q: h5py.Dataset,
+    input_data_I: h5py.Dataset,
+    input_data_Q: h5py.Dataset,
     timestamp: h5py.Dataset,
+    output_dset: h5py.Dataset,
+    output_indices_dset: h5py.Dataset,
+    packet_indices: h5py.Dataset,
     missed_packets: npt.NDArray,
-    packet_indices: npt.NDArray,
     valid_tone_index: npt.NDArray,
 ) -> tuple[npt.NDArray. npt.NDArray, npt.NDArray]:
     total_missed_packets = np.sum(missed_packets[:, 1])
     n_tones = np.size(valid_tone_index)
-    n_samples = data_I.shape[-1]
+    n_samples = input_data_I.shape[-1]
 
-    interpolated_indices = []
-    interpolated_data = np.zeros((2, n_tones, total_missed_packets), dtype=data_I.dtype)
+    # interpolated_indices = []
+    # interpolated_data = np.zeros((2, n_tones, total_missed_packets), dtype=input_data_I.dtype)
 
     # Iterate over the spots where data was missed
-    count = 0
+    # count = 0
     for i, this_missed_packets in missed_packets:
         window_size = 5 * this_missed_packets
         index = packet_indices[i] - packet_indices[0]
@@ -648,8 +652,8 @@ def interpolate_missing_data(
         window = range(min_t, max_t + 1)
         window_packet_indices = packet_indices[window] - packet_indices[0]
         times = timestamp[window_packet_indices]
-        i_data = data_I[:, window][valid_tone_index, :]
-        q_data = data_Q[:, window][valid_tone_index, :]
+        i_data = input_data_I[:, window][valid_tone_index, :]
+        q_data = input_data_Q[:, window][valid_tone_index, :]
         fit_I = poly.polyfit(times - times[0], i_data.T, 4)
         fit_Q = poly.polyfit(times - times[0], q_data.T, 4)
 
@@ -663,24 +667,29 @@ def interpolate_missing_data(
         new_data = np.stack((new_data_I, new_data_Q))
 
         this_interpolated_indices = list(range(prev_index + 1, index))
-        interpolated_indices.extend(this_interpolated_indices)
+        # interpolated_indices.extend(this_interpolated_indices)
+
+        old_size = output_indices_dset.size
+        output_indices_dset.resize(old_size + np.size(this_interpolated_indices))
+        output_indices_dset[old_size:] = this_interpolated_indices
         # data_IQ[:, :, this_interpolated_indices] = new_data
-        interpolated_data[:, :, count:count + this_missed_packets] = new_data
-        count += this_missed_packets
+        # interpolated_data[:, :, count:count + this_missed_packets] = new_data
+        output_dset[..., window_packet_indices] = new_data
+        # count += this_missed_packets
 
         # Plotting Code for Debugging
-        # ax = plt.axes(projection='3d')
-        # x = np.linspace(times[0], times[-1], 150)
-        # ax.plot3D(x, poly.polyval(x - times[0], fit_I)[0], poly.polyval(x - times[0], fit_Q)[0], label='Polynomial Fit')
-        # ax.scatter3D(times, i_data[0, :], q_data[0, :], label='Actual Values')
-        # ax.scatter3D(missed_packet_t, *new_data[:, 0], label='Interpolated Points')
-        # ax.set_xlabel('Timestamp (s)')
-        # ax.set_ylabel('ADC I')
-        # ax.set_zlabel('ADC Q')
-        # ax.legend()
-        # plt.show()
-        # pdb.set_trace()
-    return interpolated_indices, interpolated_data
+        ax = plt.axes(projection='3d')
+        x = np.linspace(times[0], times[-1], 150)
+        ax.plot3D(x, poly.polyval(x - times[0], fit_I)[0], poly.polyval(x - times[0], fit_Q)[0], label='Polynomial Fit')
+        ax.scatter3D(times, i_data[0, :], q_data[0, :], label='Actual Values')
+        ax.scatter3D(missed_packet_t, *new_data[:, 0], label='Interpolated Points')
+        ax.set_xlabel('Timestamp (s)')
+        ax.set_ylabel('ADC I')
+        ax.set_zlabel('ADC Q')
+        ax.legend()
+        plt.show()
+        pdb.set_trace()
+    # return interpolated_indices, interpolated_data
 
 #
 # Data Classes
@@ -865,13 +874,19 @@ class ConsolidatedData(NewDataStorage):
             tile_names.append(this_tile_name)
 
             # Find the total number of samples accounting for missed packets
-            raw_time_ordered_data = raw_data.root.time_ordered_data
             # NOTE: Temporary fix until n_sample is fixed in the raw files
             # n_samples = f.n_sample[0]
             n_samples = raw_data.adc_i.shape[-1]
 
-            _logger.debug('Using pkt_idx to find missed packets')
-            missed_packets = find_missed_packets_with_indices(raw_data.pkt_idx)
+            if hasattr(raw_data, 'pkt_idx'):
+                _logger.debug('Using pkt_idx to find missed packets')
+                missed_packets = find_missed_packets_with_indices(raw_data.pkt_idx)
+            else:
+                missed_packets = find_missed_packets(
+                    raw_data.timestamp,
+                    n_samples
+                )
+            
 
             n_missed = int(np.sum(missed_packets[:, 1]))
             missed_sample_counts.append(n_missed)
@@ -910,7 +925,7 @@ class ConsolidatedData(NewDataStorage):
         cfile_path = Path(get_consolidated_file_template(date, setnum, data_dir=data_dir))
         if not cfile_path.exists():
             cfile_path.touch(PERMISSIONS_ALL_FULL)
-        cdata = cls(cfile_path)
+        cdata = cls(cfile_path, mode='w')
         cdata.date = date
         cdata.setnum = setnum
         cdata.receipt = ''
@@ -956,11 +971,13 @@ class ConsolidatedData(NewDataStorage):
             this_channel_group.attrs['detector_dx_dy_elevation_angle'] = raw_data.detector_dx_dy_elevation_angle[:]
             this_channel_group.attrs['attenuator_settings'] = raw_data.attenuator_settings[:]
 
-            n_tones = raw_data.n_tones
+            n_tones = raw_data.n_tones[0]
 
             # Store the tone parameters
             tones_table = this_channel_group.create_dataset('tones', shape=(n_tones,), dtype=TONES_TABLE_DTYPE)
-            tones_table['baseband_freq'][:] = raw_data.baseband_freqs[:]
+            # tones_table = np.zeros(n_tones, dtype=TONES_TABLE_DTYPE)
+
+            tones_table['baseband_freq'] = raw_data.baseband_freqs[:]
             tones_table['power'] = raw_data.tone_powers[:]
             tones_table['delta_x'] = raw_data.detector_delta_x[:]
             tones_table['delta_y'] = raw_data.detector_delta_y[:]
@@ -972,28 +989,74 @@ class ConsolidatedData(NewDataStorage):
             # Copy LO sweep
             this_channel_group.create_dataset('lo_sweep', data=raw_data.lo_sweep[:])
 
+            # Compute the chunk sizes to use
+            azel_shape = (n_tones, total_samples) if azel_exists else (n_tones, 1)
+            azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
+
+            chunk_shape_1d = chunk_shape_1d_ds = compute_chunk_shape(tuple(), 8)
+            chunk_shape_3d = chunk_shape_3d_ds = compute_chunk_shape((2, n_tones), 8)
+            chunk_shape_azel = chunk_shape_azel_ds = compute_chunk_shape(azel_shape[:-1], 8)
+            if chunk_shape_1d[-1] > total_samples:
+                chunk_shape_1d = (*chunk_shape_1d[:-1], total_samples)
+                chunk_shape_3d = (*chunk_shape_3d[:-1], total_samples)
+            if chunk_shape_azel[-1] > azel_shape[-1]:
+                chunk_shape_azel = (*chunk_shape_azel[:-1], azel_shape[-1])
+            if chunk_shape_azel_ds[-1] > azel_shape_ds[-1]:
+                chunk_shape_azel_ds = (*chunk_shape_azel_ds[:-1], azel_shape[-1])
+            if chunk_shape_1d_ds[-1] > n_samples_ds:
+                chunk_shape_1d_ds = (*chunk_shape_1d_ds[:-1], n_samples_ds)
+                chunk_shape_3d_ds = (*chunk_shape_3d_ds[:-1], n_samples_ds)
+
+
             # Time ordered data
             time_ordered_data_group = this_channel_group.create_group('time_ordered_data')
             timestamp = time_ordered_data_group.create_dataset(
                 'timestamp',
                 shape=(n_samples_ds,),
-                chunks=compute_chunk_shape((n_samples_ds,), 8),
+                chunks=chunk_shape_1d,
                 dtype=np.float64,
             )
-            interpolated_samples = time_ordered_data_group.create_dataset('interpolated_samples', shape=(0,), maxshape=(None,), dtype=np.uint32)
+            interpolated_samples = time_ordered_data_group.create_dataset(
+                'interpolated_samples',
+                shape=(0,),
+                maxshape=(None,),
+                dtype=np.uint32,
+            )
             data_IQ = time_ordered_data_group.create_dataset(
                 'data_IQ',
                 shape=(2, n_tones, n_samples_ds),
                 dtype=np.float64,
-                chunks=compute_chunk_shape((2, n_tones), 8),
+                chunks=chunk_shape_3d,
                 compression='lzf',
                 shuffle=True,
             )
-            azel_shape = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
+            # Create temporary datasets for the non-downsampled data 
+            temp_timestamp = time_ordered_data_group.create_dataset(
+                'temp_timestamp',
+                shape=(total_samples,),
+                chunks=chunk_shape_1d_ds,
+                dtype=np.float64,
+            )
+            temp_interpolated_samples = time_ordered_data_group.create_dataset(
+                'temp_interpolated_samples',
+                shape=(0,),
+                maxshape=(None,),
+                dtype=np.uint32,
+            )
+            temp_data_IQ = time_ordered_data_group.create_dataset(
+                'temp_data_IQ',
+                shape=(2, n_tones, total_samples),
+                dtype=np.float64,
+                chunks=chunk_shape_3d_ds,
+                compression='lzf',
+                shuffle=True,
+            )
+            
+            # Detector Positions
             detector_az = time_ordered_data_group.create_dataset(
                 'detector_az',
                 shape=azel_shape,
-                chunks=compute_chunk_shape((n_tones,), 8),
+                chunks=chunk_shape_azel,
                 dtype=np.float64,
                 compression='lzf',
                 shuffle=True,
@@ -1001,7 +1064,7 @@ class ConsolidatedData(NewDataStorage):
             detector_za = time_ordered_data_group.create_dataset(
                 'detector_za',
                 shape=azel_shape,
-                chunks=compute_chunk_shape((n_tones,), 8),
+                chunks=chunk_shape_azel,
                 dtype=np.float64,
                 compression='lzf',
                 shuffle=True,
@@ -1011,27 +1074,51 @@ class ConsolidatedData(NewDataStorage):
             # Interpolate the timestamp
             interpolate_timestamp(
                 raw_data.timestamp,
-                timestamp,
+                temp_timestamp,
                 raw_data.pkt_idx,
-                ds_factor=downsampling_factor,
             )
 
+            valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
             # Interpolate missing IQ data
             if this_n_missed > 0:
                 print('interpolating data...')
-                this_interpolated_indices, interpolated_data = interpolate_missing_data(
-                    raw_time_ordered_data.adc_i,
-                    raw_time_ordered_data.adc_q,
-                    interpolated_timestamp,
+                interpolate_missing_data(
+                    raw_data.adc_i,
+                    raw_data.adc_q,
+                    temp_timestamp,
+                    temp_data_IQ,
+                    temp_interpolated_samples,
+                    raw_data.pkt_idx,
                     this_missed_packets,
-                    this_corrected_packet_index,
                     valid_tone_index
                 )
-                interpolated_indices.append(this_interpolated_indices)
-            else:
-                interpolated_indices.append([])
+            
+            pdb.set_trace()
+            
+            # Downsample timestamp and IQ data
+            chunked_downsample(
+                temp_timestamp,
+                timestamp,
+                downsampling_factor,
+                temp_timestamp.chunks[0]
+            )
+            chunked_downsample(
+                temp_data_IQ,
+                data_IQ,
+                downsampling_factor,
+                data_IQ.chunks[0],
+            )
+            downsampled_interpolated_samples = temp_interpolated_samples[temp_interpolated_samples % downsampling_factor == 0] // downsampling_factor
+            interpolated_samples.resize(downsampled_interpolated_samples.size)
+            interpolated_samples = downsampled_interpolated_samples[:]
 
-         return cdata
+            # Delete temporary datasets
+            del temp_timestamp, temp_data_IQ, temp_interpolated_samples
+
+            # Detector Positions
+            ...
+
+        return cdata
 
 
 
@@ -2498,8 +2585,10 @@ if __name__ == '__main__':
     # date = '20251006'
     # setnum = 1009
     # Lab Testing
-    date = '20260105'
-    setnum = 1005
+    date = '20260212'
+    setnum = 1003
+
+    cd = ConsolidatedData.from_tod(date, setnum)
 
     pd = ProcessedDataL0.from_tod(date, setnum, beam_map_mode=False)
     # pd = ProcessedDataL0.from_file(date, setnum)
