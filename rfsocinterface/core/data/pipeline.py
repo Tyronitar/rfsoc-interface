@@ -229,10 +229,13 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
+    date = '20260309'
+    setnums = [1001]
+
     date = '20260227'
     # setnums = [1013]
     # setnums = range(1009, 1016)
-    setnums = [1010]
+    setnums = [1011]
     # setnums = range(1008, 1011)
 
 
@@ -247,7 +250,7 @@ if __name__ == '__main__':
     dataset = 'data_mK'
     beam_map_mode = False
     do_electronics_noise_removal = True
-    primary_direction = 'za'
+    primary_direction = 'az'
 
     ds_factor = 8
     hp_filt_freq = 0.25

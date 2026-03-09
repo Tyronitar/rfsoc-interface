@@ -57,6 +57,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
         self.cam_ctrl = SKPR_Camera_Control()
+        # self.cam_ctrl = None
         self.pipeline_dialog = PipelineDialog(self)
         self.pipeline = DataPipeline()
         self._add_default_routines()

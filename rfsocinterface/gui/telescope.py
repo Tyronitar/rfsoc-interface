@@ -67,6 +67,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
         # Set up Optical Camera
         self.cam_ctrl = SKPR_Camera_Control()
+        # self.cam_ctrl = None
         self.optical_pushButton.clicked.connect(self.take_pic)
 
 

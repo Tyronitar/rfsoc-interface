@@ -1226,24 +1226,24 @@ class ProcessedDataL0(BaseProcessedData):
 
                 if azel_exists:
                     detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
-                    # this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
-                    this_az_tel = interpolate_telescope_position(
-                        timestamp[:],
-                        timestamp_tel[:],
-                        az_tel[:],
-                        az_pps_tel[:],
-                        raw_time_ordered_data.pps[:],
-                        direction='az',
-                    )
-                    # this_za_tel = np.interp(timestamp, timestamp_tel, za_tel)
-                    this_za_tel = interpolate_telescope_position(
-                        timestamp[:],
-                        timestamp_tel[:],
-                        za_tel[:],
-                        za_pps_tel[:],
-                        raw_time_ordered_data.pps[:],
-                        direction='za',
-                    )
+                    this_az_tel = np.interp(timestamp, timestamp_tel, az_tel)
+                    # this_az_tel = interpolate_telescope_position(
+                    #     timestamp[:],
+                    #     timestamp_tel[:],
+                    #     az_tel[:],
+                    #     az_pps_tel[:],
+                    #     raw_time_ordered_data.pps[:],
+                    #     direction='az',
+                    # )
+                    this_za_tel = np.interp(timestamp, timestamp_tel, za_tel)
+                    # this_za_tel = interpolate_telescope_position(
+                    #     timestamp[:],
+                    #     timestamp_tel[:],
+                    #     za_tel[:],
+                    #     za_pps_tel[:],
+                    #     raw_time_ordered_data.pps[:],
+                    #     direction='za',
+                    # )
                     this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
                     this_detector_delta_x = raw_global_data.detector_delta_x[:]
                     this_detector_delta_y = raw_global_data.detector_delta_y[:]
