@@ -326,7 +326,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 chan,
                 savefile,
                 tone_shift,
-                freq_step/10 if second_sweep else freq_step,
+                freq_step / 10 if second_sweep else freq_step,
                 full_span / 5 if second_sweep else full_span,
                 diff_to_flag=diff_to_flag,
             ))

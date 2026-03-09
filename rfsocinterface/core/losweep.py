@@ -94,13 +94,13 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
     
     return f0
 
-def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
 
-       
+def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
     fit_f0 = simple_derivative_fits(df, freq, tone_list, s21)
     fit_qi = 0.0
     fit_qc = 0.0
     return fit_f0, fit_qc, fit_qi
+
 
 def get_scraps_fit(I: npt.NDArray,Q:np.NDarray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, power: npt.NDArray = None, temp:npt.NDArray = None):
     data_dict = {'I': I, 'Q': Q, 'freq': freq, 'name': "resonance", 'pwr': power, 'temp': temp}
@@ -108,6 +108,8 @@ def get_scraps_fit(I: npt.NDArray,Q:np.NDarray, freq: npt.NDArray, tone_list: np
     res_obj.load_params(scr.hanger_params)
     res_obj.do_lmfit(scr.hanger_fit)
     return res_obj
+
+
 def create_resonator_mini_plot(
         fig: Figure,
         ax: plt.Axes,
@@ -153,6 +155,8 @@ def create_resonator_mini_plot(
             edgecolor='black',
             )
         ax.set_facecolor('orange')
+
+
 def create_IQCircle_mini_plot(
         fig: Figure,
         ax: plt.Axes,
@@ -227,7 +231,7 @@ class ResonatorData:
 
         Arguments:
             ax (plt.Axes | None): The axes to place the plot in. If None, this method
-                will create a new figure. Defaults to None.fit_f0
+                will create a new figure. Defaults to None.
             animated (bool): Whether to make the vertical line animated. Defaults to
                 False.
 
@@ -369,7 +373,10 @@ class ResonatorData:
         if start is None:
             start = self.tone
 
-        return fit_resonance(df, self.freq, self.tone, self.s21)
+        res = fit_resonance(df, self.freq, self.tone, self.s21)
+        if callback is not None:
+            callback()
+        return res
 
 
 class LoSweepData:
@@ -627,7 +634,7 @@ class LoSweepData:
                     f'difference (kHz) = {diff * 1e-3:+5.3f}',
                 ])
                 _logger.info(string)
-            self.tone_list = f0
+            # self.tone_list = f0
 
 
     def plot(self, ncols: int=DEFAULT_NCOLS, callback: Callable | None=None, fig: Figure=None, plot_IQ_Circle: bool = False) -> Figure:
@@ -693,16 +700,10 @@ class LoSweepData:
         
         self._plotted = True
         return fig
-
-    def _fit_i(self, i_chan):
-        if pd is None:
-            pd = QThreadJobPool(parent=self)
-        return fig, pd.map(ResonatorData.plot, self.resonator_data, subplots)
-
     
     def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.nchan))
-        mid_ind = np.argmin(abs(self.tone_list[:,np.newaxis] - self.freq[0, :]))
+        mid_ind = np.argmin(abs(self.tone_list[:, np.newaxis] - self.freq[0, :]))
         edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
         ind_val = np.arange(edge_indices[0], edge_indices[1])
         freq_val = self.freq[:, ind_val] - self.tone_list[:, np.newaxis]
@@ -715,7 +716,7 @@ class LoSweepData:
             fit_Q_deriv = fit_Q.deriv()
             dIQ_df[1, i_chan] = fit_Q_deriv(freq_val[i_chan, deriv_length])
             if self.chanmask[i_chan] == 0:
-                dIQ_df[:, i_chan] = [1,0]#Make sure off resonances tones are not scaled or rotated. 
+                dIQ_df[:, i_chan] = [1, 0]  #Make sure off resonances tones are not scaled or rotated. 
         # Q in y direction, I in x direction
         # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
         # Negative because we're rotating the coordinate axes, not the point

@@ -184,7 +184,7 @@ def flag(data: npt.NDArray, fs: float, sigma: float=2):
 
 
 def flag_outliers(data: npt.NDArray, fs: float, chanmask: npt.NDArray, sigma: float=2) -> npt.NDArray:
-    good_channels = np.where(chanmask == 1 )[0]
+    good_channels = np.where(chanmask == 1)[0]
     n_flag, timestream_rms = flag(data[:, good_channels], fs, sigma=sigma)
     med_flag = np.median(n_flag)
     chanmask[np.where(np.any(n_flag > 2. * med_flag, axis=0))] = -1
@@ -454,7 +454,7 @@ def plot_corellation_matrices(
 
     plt.show()
 
-def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
+def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
     Args:
@@ -466,29 +466,30 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
     Returns:
         npt.NDarray: Cleaned data (N_chan x 2 x N_tones x N_samples).
     """
-    if lp_filt_freq<fs/2:
-        filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
-        data_lp = signal.sosfiltfilt(filt_sos, data)
-    else:
-        data_lp = data
-    if template_data_selection is not None:
-        template_data_lp = data_lp[:,template_data_selection, :]
-        templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # N_chan x 2 x N_samples
+    out_data = np.zeros_like(data)
+
+    for i_chan in range(data.shape[0]):
+        if lp_filt_freq<fs/2:
+            filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs[i_chan], output='sos', analog=False)
+            data_lp = signal.sosfiltfilt(filt_sos, data[i_chan])
+        else:
+            data_lp = data[i_chan]
+        if template_data_selection is not None:
+            template_data_lp = data_lp[:, template_data_selection, :]
+            templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # 2 x N_modes x N_samples
+        else:
+            templates = compute_templates(data_lp, max_modes=max_modes)  # 2 x N_modes x N_samples
+
+        n_modes = templates.shape[1]
+        denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
+
+        for i in range(n_modes):
+            numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # 2 x N_tones
+            corr = numerator / denominator[:, i:i+1]  # N_chan x N_tones
+            data_lp = data_lp - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # 2 x N_tones x N_samples
+            # data_lp = signal.sosfiltfilt(filt_sos, data)
         
-    else:
-        templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
-
-
-    # data_lp = data
-
-    n_modes = templates.shape[1]
-    denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
-
-    for i in range(n_modes):
-        numerator = np.einsum('ijk,ik->ij', data, templates[:, i])  # N_chan x N_detector
-        corr = numerator / denominator[:, i:i+1]  # N_chan x N_detector
-        data = data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # N_chan x N_detector x N_samples
-        # data_lp = signal.sosfiltfilt(filt_sos, data)
+        out_data[i_chan] = data_lp
 
     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
     # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
@@ -522,7 +523,7 @@ def remove_electronics_noise_tables(
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq = lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
+    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
 
     data_gain_phase[:] = clean_data
     # for i_chan in range(data_gain_phase.shape[0]):
@@ -540,6 +541,8 @@ def remove_electronics_noise_tables(
     #     # pdb.set_trace()
     #     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
     #     data_gain_phase[i_chan, :] = clean_data.squeeze()
+
+
 def remove_electronics_noise_blocks(
     input_blocked_data_gain_phase: tables.Array,
     fs: float,
@@ -1060,7 +1063,6 @@ class BaseProcessedData(DataStorage):
             path.touch(PERMISSIONS_ALL_FULL)
         new_file = tables.open_file(path, mode=mode)
 
-
         new_file.root._v_attrs.date = self.date
         new_file.root._v_attrs.setnum = self.setnum
         new_file.root._v_attrs.receipt = self.receipt
@@ -1407,7 +1409,6 @@ class ProcessedDataL0(BaseProcessedData):
         if not pfile_path.exists():
             pfile_path.touch(PERMISSIONS_ALL_FULL)
         pfile = tables.open_file(pfile_path, 'w')
-        
         pfile.root._v_attrs.date = date
         pfile.root._v_attrs.setnum = setnum
         pfile.root._v_attrs.receipt = ''
@@ -1512,11 +1513,9 @@ class ProcessedDataL0(BaseProcessedData):
                     glitch_mask_I = np.array(z_I)>5
                     glitch_mask_Q = np.array(z_Q)>5
                     interpolate_CR_packets(this_data_IQ, glitch_mask_I, glitch_mask_Q)
-
                     #pdb.set_trace()
 
-
-                data_IQ.append(this_data_IQ)
+                data_IQ[i, :] = this_data_IQ[:, :max_n_tones]
 
                 #Remove artifacts at beginning and end of timestream
                 print('done copying data')
@@ -1576,6 +1575,7 @@ class ProcessedDataL0(BaseProcessedData):
         # Close telescope file as it's no longer needed
         if azel_exists:
             azel_file.close()
+
         return cls(pfile)
 
 
@@ -1701,13 +1701,8 @@ class ProcessedDataL1(ProcessedData):
 
         # Copy LO sweep external links
         for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
-            self._file.create_external_link(lo_group, node._v_name, node.target)
-        lo_group._v_attrs.lo_freq = target.lo_freq
-        if isinstance(target.get_node('baseband_freqs'), ExternalLink):
-            self._file.create_external_link(global_data_group, 'baseband_freqs', target.get_node('baseband_freqs').target)
-        else:
-            self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
-        
+            self.create_external_link(lo_group, node._v_name, node.target)
+
         # Copy global data
         for node_name in STATIC_BASE_PROCESSED_DATA_FIELDS + ['chanmask']:
             node = target.get_node(node_name)
@@ -1786,7 +1781,6 @@ class ProcessedDataL1(ProcessedData):
             shape=(nchan, max_n_tones),
             atom=tables.Float64Atom(),
         )
-        
         IQ_to_freq_diss_angle = new_data.create_array(
             new_data.data_group,
             'IQ_to_freq_diss_angle',
@@ -1882,7 +1876,7 @@ class ProcessedDataL1(ProcessedData):
                 i_chan=i_chan,
                 valid_tone_indices=np.arange(l0.tones_per_channel[i_chan]),
             )
-        # fs = 1 / np.median(np.diff(new_data.timestamp[:], axis=-1), axis=-1)
+        fs = 1 / np.median(np.diff(new_data.timestamp[:], axis=-1), axis=-1)
         # plot_data_fd = np.ones_like(data_gain_phase)
         # rotate_basis(new_data.data_IQ[:], plot_data_fd, IQ_to_freq_diss_angle)
         # z_freq, z_diss = get_z_arrays(plot_data_fd, 10)
@@ -2020,11 +2014,6 @@ class ExternalLinkProcessedData(ProcessedData):
         # Copy LO sweep external links
         for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
             self._file.create_external_link(lo_group, node._v_name, node.target)
-        lo_group._v_attrs.lo_freq = target.lo_freq
-        if isinstance(target.get_node('baseband_freqs'), ExternalLink):
-            self._file.create_external_link(global_data_group, 'baseband_freqs', target.get_node('baseband_freqs').target)
-        else:
-            self._file.create_external_link(global_data_group, 'baseband_freqs', f'{target.filename}:/{target.baseband_freqs._v_pathname}')
 
         # Create external links for all datasets
         for node_name in ALL_PROCESSED_DATA_FIELDS:

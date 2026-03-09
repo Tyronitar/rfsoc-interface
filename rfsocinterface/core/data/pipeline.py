@@ -9,7 +9,6 @@ import time
 import numpy as np
 import angle_plots
 import rfsocinterface
-from rfsocinterface.analysis import time_streams
 from rfsocinterface.core.data.data import ProcessedData, ProcessedDataL1, ProcessedDataLN, MapData, ProcessedDataL0
 from rfsocinterface.core.data.map import BinTODIntoMap
 from rfsocinterface.core.data.routines import ProcessingStage, DataRoutine, Downsample, HighPassFilter, LowPassFilter, CleanTOD, ComputeNoisePSD, PsdBasis
@@ -257,11 +256,16 @@ def rotate_optimally(freq, psd, csd, chanmask, start_freq, end_freq):
         psd_out[1, det] = Sdd_p
         csd_out[det] = Sfd_p
     return psd_out,csd_out
+
+
 def get_power_at_device(freq:float, rf_out:float = -15, mini_c_out:float = -2.5, output_tone_power:float = -20.4):
     dev_pwr = output_tone_power + rf_out + mini_c_out + get_atten_inside_cryo(freq)
     return dev_pwr
+
+
 def get_atten_inside_cryo(freq):
     return -8.75e-10*freq-41.5
+
 
 def run_multi_run_dataset(date:str, setnums:np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     psds = []
@@ -291,11 +295,6 @@ def run_multi_run_dataset(date:str, setnums:np.ndarray) -> tuple[np.ndarray, np.
         psds.append(psd_fd)
         csds.append(csd_fd)
     return psds, csds
-
- 
-       
-
-
 
 
 if __name__ == '__main__':

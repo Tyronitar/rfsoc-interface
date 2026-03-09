@@ -71,20 +71,24 @@ def compute_noise_psd(
 
     # Determine the number of blocks for computing the PSD
     n_samples = np.size(timestamp)
-    n_samples_per_block = nominal_block_length * fs
+    n_samples_per_block = int(2**np.ceil(np.log2(nominal_block_length * fs)))
     n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
     if n_blocks == 0:
         n_blocks = 1
         n_samples_per_block = n_samples
     
-    freq, psd = _compute_psd(new_input_data[:,:,:], fs, n_samples_per_block)
+    freq, psd = _compute_psd(new_input_data[:, np.where(chanmask == 1)[0], :], fs, n_samples_per_block)
     return chanmask, freq, psd
+
+
 def get_SNqp(fres, T, Sdff_freq, delta_0,alpha, V):
     omega = fres*2*np.pi
     xi = lambda omega, T: (hbar_ev * omega)/(2*kb_ev * T)
     k2 = 1/(2*N0*delta_0)*(1+np.sqrt(2*delta_0/(np.pi*kb_ev*T))*np.exp(-xi(omega,T)*sp.iv(0, xi(omega, T))))
     SNqp = 4*V**2 * Sdff_freq/(alpha**2 * k2**2)
     return SNqp
+
+
 def _compute_psd(
         data: npt.NDArray,
         fs: float,
