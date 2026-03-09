@@ -229,10 +229,20 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
-    date = '20260223'
+    date = '20260227'
     # setnums = [1013]
-    setnums = range(1009, 1016)
-    # setnums = [1006]
+    # setnums = range(1009, 1016)
+    setnums = [1010]
+    # setnums = range(1008, 1011)
+
+
+    # data = MapData.from_file(date, setnums[0])
+    # for i in range(240, 250):
+    #     plt.figure()
+    #     plt.plot(data.detector_az[i], data.data_mK[i])
+    #     plt.title(label=f'Resonator {i}')
+    # plt.show()
+    # pdb.set_trace()
 
     dataset = 'data_mK'
     beam_map_mode = False
@@ -262,14 +272,14 @@ if __name__ == '__main__':
     pipeline.add_routine(lpfilt)
     # pipeline.add_routine(psd)
     pipeline.add_routine(cleaner)
-    # pipeline.add_routine(binner)
+    pipeline.add_routine(binner)
 
     for setnum in setnums:
         data = pipeline.run_pipeline(date, setnum)
-        # data.plot(show=True)
-        # data.close()
-        find_peaks(data, primary_direction=primary_direction, peak_radius=4)
-        plt.show()
+        data.plot(show=True)
+        data.close()
+        # find_peaks(data, primary_direction=primary_direction, peak_radius=4)
+        # plt.show()
 #     from rfsocinterface.analysis.psd import plot_psd
 #     freq = data.get_node_value('freq')[:]
 #     psd = data.get_node_value('psd_gain_phase')[:]
