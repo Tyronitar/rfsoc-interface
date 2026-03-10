@@ -194,6 +194,8 @@ class FrameConsumer:
 
         self.log.info('\'FrameConsumer\' started.')
 
+        cv2.namedWindow(IMAGE_CAPTION, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+
         while alive:
             # Update current state by dequeuing all currently available frames.
             frames_left = self.frame_queue.qsize()

@@ -146,6 +146,8 @@ class TelescopeMotorController:
                         self.set_ze_speed_relation(*args)
                     case 'az_scan_mode':
                         self.az_scan_mode(*args)
+                    case 'stared_image':
+                        self.stared_image(*args)
                     case 'dither_pattern':
                         self.dither_pattern(*args)
                     case 'stop_telescope':
@@ -781,6 +783,62 @@ class TelescopeMotorController:
         if scan_mode:
             return position_data
         
+    def stared_image(
+        self,
+        file: str,
+        duration: float,
+    ) :
+        """Collect an image without moving the telescope."""
+        self._run = True
+        worker_thread = Thread(
+            target=self._stared_image,
+            args=(
+                file,
+                duration
+            )
+        )
+        self._active_jobs.append(worker_thread)
+        worker_thread.start()
+        
+    def _stared_image(
+        self,
+        file: str,
+        duration: float,
+    ):
+        self.send('stared_image_label', 'Running Stared Image')
+        self.send('stared_image_maximum', 100)
+        start_time = time.time()
+        end_time = start_time + duration
+        az_pos, az_pos_pps = self.get_ser_az_pos()
+        za_pos, za_pos_pps = self.get_ser_ze_pos()
+        position_data = []
+        while self._run and time.time() < end_time:
+            position_data.extend([az_pos, za_pos, time.time(), az_pos_pps, za_pos_pps])
+            label_text = f'Running Stared Image\nTime Remaining: {end_time - time.time():.2f} s'
+            self.send('stared_image_label', label_text)
+            self.send('stared_image_progress', int((time.time() - start_time) / duration * 100))
+            time.sleep(AZ_SAMPLING_TIME)
+
+        if not self._run:
+            _tele_logger.info("Stared Image canceled before completion.")
+            self.send('stared_image_complete', 1)
+            return
+
+        path = Path(file)
+        with h5py.File(path, 'w') as f:
+            f.create_dataset("az_tel", data=position_data[0::5])
+            f.create_dataset("za_tel", data=position_data[1::5])
+            f.create_dataset("timestamp_tel", data=position_data[2::5])
+            f.create_dataset('az_pps', data=position_data[3::5])
+            f.create_dataset('za_pps', data=position_data[4::5])
+            f.create_dataset("optical_visibility", data=['****'])
+        path.chmod(PERMISSIONS_USR_RW)
+
+        self._run = False
+        _tele_logger.info("Scan Complete")
+        self.send('stared_image_complete', 0)
+
+
     def dither_pattern(
         self,
         file: str,

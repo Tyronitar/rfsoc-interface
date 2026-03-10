@@ -8,6 +8,7 @@ import numpy.typing as npt
 from scipy import signal
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 from rfsocinterface.core.data.data import DEFAULT_MAP_DPIX, MapData, ProcessedData
 from rfsocinterface.core.data.routines import DataRoutine, ProcessingStage, DataRoutine
@@ -181,12 +182,12 @@ def outlier_removal(data):
 
 
 
-def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, beam_map_mode: bool=False) -> npt.NDArray:
+def get_map_size(detector_az: npt.NDArray, detector_za: npt.NDArray, az_trim: float, za_trim: float, map_dpix: float, beam_map_mode: bool=False) -> npt.NDArray:
 
-    max_az = np.nanmax(map.detector_az) - az_trim
-    min_az = np.nanmin(map.detector_az) + az_trim
-    max_za = np.nanmax(map.detector_za) - za_trim
-    min_za = np.nanmin(map.detector_za) + za_trim
+    max_az = np.nanmax(detector_az) - az_trim
+    min_az = np.nanmin(detector_az) + az_trim
+    max_za = np.nanmax(detector_za) - za_trim
+    min_za = np.nanmin(detector_za) + za_trim
     n_pix_x = int(np.ceil((max_az - min_az) / map_dpix))
     n_pix_y = int(np.ceil((max_za - min_za) / map_dpix))
     map_x = np.arange(n_pix_x) * map_dpix + min_az + map_dpix / 2.
@@ -234,7 +235,7 @@ class BinTODIntoMap(DataRoutine):
             md: MapData,
     ):
 
-        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md, self.az_trim, self.za_trim, DEFAULT_MAP_DPIX, self.beam_map_mode)
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(md.detector_az, md.detector_za, self.az_trim, self.za_trim, DEFAULT_MAP_DPIX, self.beam_map_mode)
         md.setup_map_arrays(n_pix_x, n_pix_y, beammap_mode=self.beam_map_mode)
         md.map_az[:] = map_az
         md.map_za[:] = map_za
@@ -298,7 +299,6 @@ class BinTODIntoMap(DataRoutine):
             channels_to_map = np.where(new_chanmask == 1)[0]
 
         # Create map
-        # for i_chan in channels_to_map[:10]:
         print('creating map...')
         for n_loop, i_chan in enumerate(channels_to_map):
             if n_loop == np.size(channels_to_map) // 2:
@@ -350,6 +350,134 @@ class BinTODIntoMap(DataRoutine):
                f'  dataset: {self.dataset},\n' \
                f'}}'
 
+class MakeVideo(DataRoutine):
+    stage = ProcessingStage.POST_PROCESSING
+
+    def __init__(
+        self,
+        hp_filter_freq: float=0.5,
+        lp_filter_freq: float=10.,
+        az_trim: float=0.1,
+        za_trim: float=0.2,
+        med_netd_cut_threshold: float=3.,
+        block_size_s: float=1/24,
+        dpix: float=0.08,
+    ):
+        super().__init__()
+        self.hp_filter_freq = hp_filter_freq
+        self.lp_filter_freq = lp_filter_freq
+        self.med_netd_cut_threshold = med_netd_cut_threshold
+        self.az_trim = az_trim
+        self.za_trim = za_trim
+        self.block_size_s = block_size_s
+        self.dpix = dpix
+    
+    def forward(self, md: MapData):
+        # Bin along time dimension into time chunks
+        # Create corresponding map for each time chunk
+        # Connect all into a time stream of maps
+        blocks = np.arange(0, md.n_samples, int(md.fs * self.block_size_s))
+        n_blocks = blocks.size - 1
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(
+            md.detector_az,
+            md.detector_za,
+            self.az_trim,
+            self.za_trim,
+            self.dpix,
+            False,
+        )
+        # md.setup_map_arrays(n_pix_x, n_pix_y)
+        md.setup_map_video_arrays(n_pix_x, n_pix_y, n_blocks=n_blocks)
+        sum_map = np.zeros(md.get_node_value('video_sum_map').shape)
+        hits_map = np.zeros(md.get_node_value('video_hits_map').shape)
+        md.map_az[:] = map_az
+        md.map_za[:] = map_za
+
+        wind = signal.get_window('hamming', md.n_samples)
+
+        data = md.data_mK[:]
+
+        print('computing netd...')
+        # Compute NETD values
+        for i_chan in np.where(md.chanmask[:] == 1)[0]:
+            this_freq, this_psd = signal.periodogram(data[i_chan, :], md.fs, window=wind)
+            valid_freq = np.where((this_freq > self.hp_filter_freq) & (this_freq < self.lp_filter_freq))
+            this_netd = np.sqrt(np.median(this_psd[valid_freq]))
+            md.netd[i_chan] = this_netd
+
+        print('netd done!')
+
+
+        # Get rid of channels with bad weights
+        new_chanmask = np.copy(md.chanmask[:])
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = md.netd[good_idx]
+        new_chanmask[good_idx] = np.where(good_netd > self.med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
+
+        good_idx = np.where(new_chanmask == 1)[0]
+        good_netd = md.netd[good_idx]
+        netd_med = np.median(np.log10(good_netd))
+        netd_std = np.std(np.log10(good_netd))
+        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
+        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
+
+        md.netd[new_chanmask != 1] = 0
+
+        channels_to_map = np.where(new_chanmask == 1)[0]
+
+        # Create map
+        print('creating map...')
+        for n_loop, i_chan in enumerate(channels_to_map):
+            if n_loop == np.size(channels_to_map) // 2:
+                print('halfway done...')
+
+            map_idx = md.detector_pol[i_chan] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
+            weight = 1./ md.netd[i_chan] ** 2.
+
+            this_detector_az = md.detector_az[i_chan]
+            this_detector_za = md.detector_za[i_chan]
+
+
+            # Get the good samples if they haven't been specified
+            this_clean_data = np.squeeze(data[i_chan,:])
+
+            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/self.dpix))
+            x_ind = x_ind.astype('int64')
+            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/self.dpix))
+            y_ind = y_ind.astype('int64')
+
+            #eliminate samples outside the map
+            good_samples = md.good_samples[:]
+            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
+                np.logical_and(x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x), \
+                np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
+            good_samples = good_samples[valid_index]
+
+            #loop over samples to create sum and hits maps
+            for i_block, block_end in enumerate(blocks[1:]):
+                block_slice = slice(blocks[i_block], block_end)
+                for time_sample in good_samples[block_slice]:
+                    sum_map[i_block, map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                    hits_map[i_block, map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+
+
+        this_map = sum_map / hits_map
+        total_map = np.nansum(this_map, axis=1)
+        max_abs = 0.75 * np.max(np.abs(total_map))
+        vmax = max_abs
+        vmin = -max_abs
+        im = plt.imshow(total_map[0], vmin=vmin, vmax=vmax, animated=True, cmap='Greys_r')
+        plt.colorbar()
+        an = animation.FuncAnimation(
+            plt.gcf(),
+            lambda i: im.set_array(total_map[i]),
+            frames=total_map.shape[0],
+            interval=1000 * self.block_size_s,
+        )
+        plt.show()
+        pdb.set_trace()
+            
 
 def find_bad_resonators_in_image(data: MapData, za_step: float=0.025):
     bad_resonators = []

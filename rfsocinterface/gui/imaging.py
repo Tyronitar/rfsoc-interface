@@ -98,6 +98,13 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
                 (('Primary Direction', ArgumentType.ENUM), {'options': ['AZ', 'ZA'], 'default': 'AZ'}),
             ],
         )
+        self.add_dither_pattern(
+            'Stared Image',
+            'stared_image',
+            [
+                (('Duration (s): ', ArgumentType.FLOAT), {'default': 60}),
+            ],
+        )
         # self.add_dither_pattern(
         #     'Test Pattern',
         #     dummy_func,
@@ -199,6 +206,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.stacked_layout.addWidget(pattern)
     
     def choose_pattern(self, index: int):
+        self.dither_comboBox.setCurrentIndex(index)
         self.stacked_layout.setCurrentIndex(index)
         self.active_pattern = self.patterns[index]
     

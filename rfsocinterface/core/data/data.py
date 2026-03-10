@@ -1726,9 +1726,10 @@ class MapData(ProcessedDataLN):
 
         return new_data
 
-    def setup_map_arrays(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False):
+    def setup_map_arrays(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False, n_maps=None):
         # Create empty arrays
-        n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
+        if n_maps is None:
+            n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
         self.create_group('/', 'map')
         self.create_array('/map', 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
         self.create_array('/map', 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
@@ -1738,6 +1739,23 @@ class MapData(ProcessedDataLN):
         initial_good_samples = np.arange(self.n_samples)
         good_samples = np.setdiff1d(initial_good_samples, self.interpolated_indices)
         self.create_earray('/map', 'good_samples', expectedrows=self.n_samples, obj=good_samples)
+
+    def setup_map_video_arrays(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False, n_blocks=None):
+        # Create empty arrays
+        n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
+        if not self.test_node('map'):
+            self.create_group('/', 'map')
+            self.create_array('/map', 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
+            self.create_array('/map', 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
+            self.create_array('/map', 'netd', shape=(self.n_tones,), atom=tables.Float64Atom())
+            initial_good_samples = np.arange(self.n_samples)
+            good_samples = np.setdiff1d(initial_good_samples, self.interpolated_indices)
+            self.create_earray('/map', 'good_samples', expectedrows=self.n_samples, obj=good_samples)
+        self.create_array('/map', 'video_sum_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        self.create_array('/map', 'video_hits_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+        # initial_good_samples = np.arange(self.n_samples)
+        # good_samples = np.setdiff1d(initial_good_samples, self.interpolated_indices)
+        # self.create_earray('/map', 'good_samples', expectedrows=self.n_samples, obj=good_samples)
     
     @ensure_path(1)
     def compile_to_file(self, path: Path, datasets: list[str]=None, mode: str='w') -> tables.File:

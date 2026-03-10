@@ -9,7 +9,7 @@ import time
 
 import rfsocinterface
 from rfsocinterface.core.data.data import ProcessedData, ProcessedDataL1, ProcessedDataLN, MapData, ProcessedDataL0
-from rfsocinterface.core.data.map import BinTODIntoMap
+from rfsocinterface.core.data.map import BinTODIntoMap, MakeVideo
 from rfsocinterface.core.data.routines import ProcessingStage, DataRoutine, Downsample, HighPassFilter, LowPassFilter, CleanTOD, ComputeNoisePSD, PsdBasis
 
 _logger = logging.getLogger(__name__)
@@ -230,12 +230,10 @@ if __name__ == '__main__':
 
     #Telescope Testing
     date = '20260309'
-    setnums = [1001]
+    setnums = [1008]
 
-    date = '20260227'
     # setnums = [1013]
     # setnums = range(1009, 1016)
-    setnums = [1011]
     # setnums = range(1008, 1011)
 
 
@@ -259,7 +257,8 @@ if __name__ == '__main__':
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
-    binner = BinTODIntoMap()
+    # binner = BinTODIntoMap()
+    video = MakeVideo()
     # psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
 
     pipeline = DataPipeline(
@@ -275,7 +274,8 @@ if __name__ == '__main__':
     pipeline.add_routine(lpfilt)
     # pipeline.add_routine(psd)
     pipeline.add_routine(cleaner)
-    pipeline.add_routine(binner)
+    # pipeline.add_routine(binner)
+    pipeline.add_routine(video)
 
     for setnum in setnums:
         data = pipeline.run_pipeline(date, setnum)
