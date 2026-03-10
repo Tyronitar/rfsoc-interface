@@ -1,6 +1,7 @@
 import logging
 
 import functools
+import pdb
 import os
 from pathlib import Path
 import json
@@ -491,6 +492,23 @@ def chunked_downsample(
         out_dset[out_index:out_index+len(valid)] = valid
 
         out_index += len(valid)
+
+def build_interp_map(x: npt.ArrayLike, x_new: npt.ArrayLike):
+    """Compute the indices and wieghts to interpolate x_new to x."""
+
+    idx = np.searchsorted(x_new, x) - 1
+    idx = np.clip(idx, 0, len(x_new) - 2)
+
+    t0 = x_new[idx]
+    t1 = x_new[idx + 1]
+
+    w = (x - t0) / (t1 - t0)
+
+    return idx, w
+
+def apply_interp(y: npt.ArrayLike, idx: int, w: float):
+    return (1 - w) * y[idx] + w * y[idx + 1]
+
 
 
 

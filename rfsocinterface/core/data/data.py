@@ -48,6 +48,8 @@ from rfsocinterface.core.utils import (
     iterate_chunks,
     compute_chunk_shape,
     chunked_downsample,
+    apply_interp,
+    build_interp_map,
 )
 
 _logger = logging.getLogger(__name__)
@@ -563,7 +565,7 @@ def find_missed_packets(
                     # was already accounted for.
                     # for j in range(i + 1, i + large_window_packets_missed + 1):
                     #     corrected_packet_idx[j] = corrected_packet_idx[j - 1] + 1
-                    i = j
+                    # i = j
                     continue
                 else:
                     # corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
@@ -691,6 +693,54 @@ def interpolate_missing_data(
         pdb.set_trace()
     # return interpolated_indices, interpolated_data
 
+def get_detector_positions(
+    timestamp: h5py.Dataset,
+    tel_timestamp: h5py.Dataset,
+    az_tel: h5py.Dataset,
+    za_tel: h5py.Dataset,
+    output_detector_az: h5py.Dataset,
+    output_detector_za: h5py.Dataset,
+    dx: npt.NDArray,
+    dy: npt.NDArray,
+    elevation_angle: float
+) -> npt.NDArray:
+
+    idx, w = build_interp_map(timestamp, tel_timestamp)
+
+    chunk_size = 200_000
+    chunk_size = timestamp.chunks[-1]
+    n_samples = timestamp.size
+    n_tones = output_detector_az.shape[0]
+
+    for start in range(0, n_samples, chunk_size):
+
+        stop = min(start + chunk_size, n_samples)
+
+        idx_chunk = idx[start:stop]
+        w_chunk = w[start:stop]
+
+        # telescope interpolation
+        az = (1 - w_chunk) * az_tel[idx_chunk] + w_chunk * az_tel[idx_chunk + 1]
+        za = (1 - w_chunk) * za_tel[idx_chunk] + w_chunk * za_tel[idx_chunk + 1]
+
+        # rotation angle
+        ang = np.deg2rad(elevation_angle - za)
+
+        cos_ang = np.cos(ang)
+        sin_ang = np.sin(ang)
+
+        for tone in range(n_tones):
+            output_detector_az[tone, start:stop] = (
+                dx[tone] * cos_ang
+                - dy[tone] * sin_ang
+                + az
+            )
+            output_detector_za[tone, start:stop] = (
+                dy[tone] * cos_ang
+                + dx[tone] * sin_ang
+                + za
+            )
+
 #
 # Data Classes
 #
@@ -750,11 +800,11 @@ class NewDataStorage:
     def attrs(self) -> h5py.AttributeManager:
         return self.file.attrs
     
-    def list_datasets(self) -> list[h5py.Dataset]:
+    def list_datasets(self) -> list[str]:
         datasets = []
-        def search_fn(obj: h5py.Group | h5py.Dataset):
+        def search_fn(name: str, obj: h5py.Group | h5py.Dataset):
             if isinstance(obj, h5py.Dataset):
-                datasets.append(obj)
+                datasets.append(name)
         self.file.visititems(search_fn)
         return datasets
 
@@ -1013,7 +1063,7 @@ class ConsolidatedData(NewDataStorage):
             timestamp = time_ordered_data_group.create_dataset(
                 'timestamp',
                 shape=(n_samples_ds,),
-                chunks=chunk_shape_1d,
+                chunks=chunk_shape_1d_ds,
                 dtype=np.float64,
             )
             interpolated_samples = time_ordered_data_group.create_dataset(
@@ -1026,15 +1076,15 @@ class ConsolidatedData(NewDataStorage):
                 'data_IQ',
                 shape=(2, n_tones, n_samples_ds),
                 dtype=np.float64,
-                chunks=chunk_shape_3d,
+                chunks=chunk_shape_3d_ds,
                 compression='lzf',
                 shuffle=True,
             )
-            # Create temporary datasets for the non-downsampled data 
+            # Create temporary datasets for the pre-downsampled data 
             temp_timestamp = time_ordered_data_group.create_dataset(
                 'temp_timestamp',
                 shape=(total_samples,),
-                chunks=chunk_shape_1d_ds,
+                chunks=chunk_shape_1d,
                 dtype=np.float64,
             )
             temp_interpolated_samples = time_ordered_data_group.create_dataset(
@@ -1047,16 +1097,32 @@ class ConsolidatedData(NewDataStorage):
                 'temp_data_IQ',
                 shape=(2, n_tones, total_samples),
                 dtype=np.float64,
-                chunks=chunk_shape_3d_ds,
+                chunks=chunk_shape_3d,
                 compression='lzf',
                 shuffle=True,
             )
             
             # Detector Positions
+            temp_detector_az = time_ordered_data_group.create_dataset(
+                'temp_detector_az',
+                shape=azel_shape,
+                chunks=chunk_shape_azel,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+            temp_detector_za = time_ordered_data_group.create_dataset(
+                'temp_detector_za',
+                shape=azel_shape,
+                chunks=chunk_shape_azel,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
             detector_az = time_ordered_data_group.create_dataset(
                 'detector_az',
                 shape=azel_shape,
-                chunks=chunk_shape_azel,
+                chunks=chunk_shape_azel_ds,
                 dtype=np.float64,
                 compression='lzf',
                 shuffle=True,
@@ -1064,21 +1130,27 @@ class ConsolidatedData(NewDataStorage):
             detector_za = time_ordered_data_group.create_dataset(
                 'detector_za',
                 shape=azel_shape,
-                chunks=chunk_shape_azel,
+                chunks=chunk_shape_azel_ds,
                 dtype=np.float64,
                 compression='lzf',
                 shuffle=True,
             )
             
+            if hasattr(raw_data, 'pkt_idx'):
+                pkt_idx = raw_data.pkt_idx
+            else:
+                pkt_idx = np.arange(n_samples)
+                pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
 
             # Interpolate the timestamp
             interpolate_timestamp(
                 raw_data.timestamp,
                 temp_timestamp,
-                raw_data.pkt_idx,
+                pkt_idx,
             )
 
-            valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
+            # valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
+            valid_tone_index = np.arange(n_tones, dtype=int) + 8  # TODO: How to make this backwards compatible?
             # Interpolate missing IQ data
             if this_n_missed > 0:
                 print('interpolating data...')
@@ -1088,36 +1160,94 @@ class ConsolidatedData(NewDataStorage):
                     temp_timestamp,
                     temp_data_IQ,
                     temp_interpolated_samples,
-                    raw_data.pkt_idx,
+                    pkt_idx,
                     this_missed_packets,
                     valid_tone_index
                 )
             
-            pdb.set_trace()
+            print('Copying Raw IQ data')
+            for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_i, chunk_size=temp_data_IQ.chunks[-1]):
+                sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
+                temp_data_IQ[0, :, sample_indices] = chunk[valid_tone_index]
+
+            for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_q, chunk_size=temp_data_IQ.chunks[-1]):
+                sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
+                temp_data_IQ[1, :, sample_indices] = chunk[valid_tone_index]
             
+
+
+            # Detector Positions
+            if azel_exists:
+                get_detector_positions(
+                    temp_timestamp,
+                    timestamp_tel,
+                    az_tel,
+                    za_tel,
+                    temp_detector_az,
+                    temp_detector_za,
+                    tones_table['delta_x'],
+                    tones_table['delta_y'],
+                    this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                )
+
             # Downsample timestamp and IQ data
+            print('Downsampling data...')
             chunked_downsample(
                 temp_timestamp,
                 timestamp,
                 downsampling_factor,
-                temp_timestamp.chunks[0]
+                temp_timestamp.chunks[-1]
             )
             chunked_downsample(
                 temp_data_IQ,
                 data_IQ,
                 downsampling_factor,
-                data_IQ.chunks[0],
+                data_IQ.chunks[-1],
             )
-            downsampled_interpolated_samples = temp_interpolated_samples[temp_interpolated_samples % downsampling_factor == 0] // downsampling_factor
-            interpolated_samples.resize(downsampled_interpolated_samples.size)
+            downsampled_interpolated_samples = []
+            for sample in temp_interpolated_samples:
+                if sample % downsampling_factor == 0:
+                    downsampled_interpolated_samples.append(sample // downsampling_factor)
+            downsampled_interpolated_samples = np.array(downsampled_interpolated_samples)
+            # downsampled_interpolated_samples = temp_interpolated_samples[temp_interpolated_samples % downsampling_factor == 0] // downsampling_factor
+            interpolated_samples.resize(downsampled_interpolated_samples.shape)
             interpolated_samples = downsampled_interpolated_samples[:]
 
-            # Delete temporary datasets
-            del temp_timestamp, temp_data_IQ, temp_interpolated_samples
+            if azel_exists:
+                chunked_downsample(
+                    temp_detector_az,
+                    detector_az,
+                    downsampling_factor,
+                    detector_az.chunks[-1],
+                )
+                chunked_downsample(
+                    temp_detector_za,
+                    detector_za,
+                    downsampling_factor,
+                    detector_za.chunks[-1],
+                )
 
-            # Detector Positions
+            # Delete temporary datasets
+            # del temp_timestamp, temp_data_IQ, temp_interpolated_samples
+            # del temp_detector_az, temp_detector_za
+            
+            # Store chanmask from TOD
+            # this_chanmask = raw_global_data.chanmask[:]
+            # off_res = np.argwhere(this_chanmask == 0).flatten()
+            # no_pol = np.argwhere(this_detector_pol[:] < 1).flatten()
+            # this_chanmask[no_pol] = -1
+            # # Preserve off-resonance indices
+            # this_chanmask[off_res] = 0
+            # chanmask[i, :] = pad_to_length(this_chanmask, max_n_tones, constant_values=-1)
+
             ...
 
+        # iq = cd.get('/channels/channel_000/time_ordered_data/temp_data_IQ')
+        plt.plot(np.arange(n_samples), temp_data_IQ[0, 0], label='Full data')
+        plt.plot(np.arange(0, n_samples, downsampling_factor), data_IQ[0, 0], label='Downsampled data')
+        plt.legend()
+        plt.show()
+        pdb.set_trace()
         return cdata
 
 
@@ -2588,7 +2718,10 @@ if __name__ == '__main__':
     date = '20260212'
     setnum = 1003
 
-    cd = ConsolidatedData.from_tod(date, setnum)
+    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=2)
+    print(cd.list_datasets())
+
+    pdb.set_trace()
 
     pd = ProcessedDataL0.from_tod(date, setnum, beam_map_mode=False)
     # pd = ProcessedDataL0.from_file(date, setnum)
