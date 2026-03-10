@@ -15,9 +15,10 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFrame,
-    QGridLayout, QGroupBox, QLabel, QPushButton,
-    QSizePolicy, QSpacerItem, QWidget)
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
+    QFrame, QGridLayout, QGroupBox, QLabel,
+    QPushButton, QRadioButton, QSizePolicy, QSpacerItem,
+    QWidget)
 
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from rfsocinterface.gui.widgets.save_location import SaveLocationWidget
@@ -96,6 +97,20 @@ class Ui_ImagingWidget(object):
 
         self.gridLayout.addWidget(self.channel_comboBox, 0, 2, 1, 2)
 
+        self.still_image_radioButton = QRadioButton(ImagingWidget)
+        self.buttonGroup = QButtonGroup(ImagingWidget)
+        self.buttonGroup.setObjectName(u"buttonGroup")
+        self.buttonGroup.addButton(self.still_image_radioButton)
+        self.still_image_radioButton.setObjectName(u"still_image_radioButton")
+
+        self.gridLayout.addWidget(self.still_image_radioButton, 3, 0, 1, 1)
+
+        self.video_radioButton = QRadioButton(ImagingWidget)
+        self.buttonGroup.addButton(self.video_radioButton)
+        self.video_radioButton.setObjectName(u"video_radioButton")
+
+        self.gridLayout.addWidget(self.video_radioButton, 4, 0, 1, 1)
+
 
         self.retranslateUi(ImagingWidget)
 
@@ -110,5 +125,7 @@ class Ui_ImagingWidget(object):
         self.dither_groupBox.setTitle(QCoreApplication.translate("ImagingWidget", u"Dithering", None))
         self.dither_label.setText(QCoreApplication.translate("ImagingWidget", u"Dither pattern:", None))
         self.channels_label.setText(QCoreApplication.translate("ImagingWidget", u"Channels:", None))
+        self.still_image_radioButton.setText(QCoreApplication.translate("ImagingWidget", u"Still Image", None))
+        self.video_radioButton.setText(QCoreApplication.translate("ImagingWidget", u"Record Video", None))
     # retranslateUi
 
