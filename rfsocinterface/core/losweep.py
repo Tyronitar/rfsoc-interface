@@ -1297,6 +1297,9 @@ class PowerSweep:
 if __name__ == '__main__':
     import pdb
 
+    data = LoSweepData.from_h5('/data/20260310/20260310_Be231102p2_100_tones_LO_Sweep_hour16p2475.h5')
+    pdb.set_trace()
+
     # Lab Testing
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')

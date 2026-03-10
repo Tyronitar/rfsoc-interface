@@ -289,12 +289,10 @@ def run_multi_run_dataset(date:str, setnums:np.ndarray) -> tuple[np.ndarray, np.
         pipeline.add_routine(cleaner)
         data = pipeline.run_pipeline(date, setnum)
         psd_fd = data.get_node_value('psd_freq_diss')[:]
-        csd_fd = data.get_node_value('csd_freq_diss')[:]
         #psd_opt, csd_opt = rotate_optimally(freq, psd_fd, csd_fd,chanmask[:]==1, 20, 200)
         data.close()
         psds.append(psd_fd)
-        csds.append(csd_fd)
-    return psds, csds
+    return psds
 
 
 if __name__ == '__main__':
@@ -304,8 +302,8 @@ if __name__ == '__main__':
     date = '20260224'
     setnums = np.array([1008])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
-    date = '20260212'
-    setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
+    #date = '20260212'
+    #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
     #Good Dataset, miniC = [0.5, 0] No 30dB Warm Amp #Not compensated for increase in output power, so may be wrong
     #date = '20260212'
     #setnums = np.array([1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021])
@@ -336,12 +334,11 @@ if __name__ == '__main__':
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
 
-    psds, csds = run_multi_run_dataset(date, setnums)
+    psds= run_multi_run_dataset(date, setnums)
     #pdb.set_trace()
     min_len = np.min([len(psd[0,0,:]) for psd in psds])
     print(min_len)
     psd_avg = np.mean([psd[:, :, :min_len] for psd in psds], axis = 0)
-    csd_avg = np.mean([csd[:, :min_len] for csd in csds], axis = 0)
     #TODO This is really innefficient and stupid, but I wasn't sure how to do it better
     pipeline = DataPipeline(
         ds_factor=ds_factor,
@@ -366,7 +363,7 @@ if __name__ == '__main__':
 
     # Sort it into resonator and nonresonator data. 
     sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
-    chanmask = chanmask[sorted_indices]
+    chanmask = chanmask[0,sorted_indices]
     probe_freq = probe_freq[sorted_indices]
     adc_units_to_hz = adc_units_to_hz[sorted_indices]
     psd_gp = data.get_node_value('psd_gain_phase')
@@ -378,52 +375,4 @@ if __name__ == '__main__':
     dev_pwr = get_power_at_device(freq = probe_freq)
     
     plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnums[-1]}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = None, dev_pwr = dev_pwr)
-    """
-    #plot_psd(freq, psd_avg, f'noise_SNqp_{date}_set{setnums[-1]}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, dev_pwr = dev_pwr)
-    #plot_psd(freq, psd_opt, f'noise_freq_dis_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, csd = csd_opt)
-    #plot_psd(freq, psd_opt, f'noise_SNqp_optimal_rotation_{date}_set{setnum}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.SNqp, resonators = chanmask[:]==1, csd = csd_opt)
     
-    
-    
-    
-    pipeline = DataPipeline(
-        ds_factor=ds_factor,
-        hp_filter_freq=hp_filt_freq,
-        lp_filter_freq=lp_filt_freq,
-        dataset=dataset,
-        beam_map_mode=beam_map_mode,
-        do_electronics_noise_removal= not do_electronics_noise_removal,
-        block_length = block_length,
-        do_cr_removal = do_cr_removal,
-        max_modes=10
-    )
-    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
-    pipeline.add_routine(psd)
-    pipeline.add_routine(cleaner)
-    psds1, csds1 = run_multi_run_dataset(dapipelinete, setnums[:-1])
-
-    psd_nc_avg = np.mean(psds1, axis = 0)
-    csd_nc_avg = np.mean(csds1, axis = 0)
-
-                     
-    compare_psds(f'psd_ER_comparison_{date}_set{setnums[-1]}.pdf',freq,[psd_avg,psd_nc_avg],[1.0, 0.5],['Cleaned', 'Not Cleaned'],f0 = probe_freq,basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, )
-    pipeline = DataPipeline(
-        ds_factor=ds_factor,
-        hp_filter_freq=hp_filt_freq,
-        lp_filter_freq=lp_filt_freq,
-        dataset=dataset,
-        beam_map_mode=beam_map_mode,
-        do_electronics_noise_removal= not do_electronics_noise_removal,
-        block_length = block_length,
-        do_cr_removal = do_cr_removal,
-        max_modes=10
-    )
-    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
-    pipeline.add_routine(psd)
-    pipeline.add_routine(cleaner)
-    psds2, csds2 = run_multi_run_dataset(date, setnums[:-1])
-
-    psd_ncr_avg = np.mean(psds2, axis = 0)
-    csd_ncr_avg = np.mean(csds2, axis = 0)
-    compare_psds(f'psd_CR_comparison_{date}_set{setnums[-1]}.pdf',freq,[psd_nc_avg,psd_ncr_avg],[1.0, 0.5],['CR_Removal', 'No CR Removal'],f0 = probe_freq,basis=PsdBasis.FREQ_DISS, resonators = chanmask[:]==1, )
-"""

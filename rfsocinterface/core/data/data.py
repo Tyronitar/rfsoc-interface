@@ -1111,6 +1111,7 @@ class BaseProcessedData(DataStorage):
             self.lo_freq[i_chan],
             self.get_lo_sweep_data_array(i_chan),
             self.get_chanmask(i_chan),
+            ''
         )
     
     @property
@@ -1288,10 +1289,9 @@ class BaseProcessedData(DataStorage):
         shorter than the block size.
         """
 
-        block_length_samples = int(block_length_sec * self.fs)
-        print(block_length_samples/self.fs)
+        block_length_samples = (block_length_sec * self.fs[0]).astype(int)
         data = self.get_node_value(dataset)
-        n_blocks = self.n_samples // block_length_samples
+        n_blocks = (self.n_samples // block_length_samples).astype(int)
         blocked_data = np.zeros((*data.shape[:-1], n_blocks, block_length_samples), dtype=data.dtype)
         for i in range(n_blocks):
             blocked_data[..., i, :] = data[..., i * block_length_samples:(i+1) * block_length_samples]
@@ -1884,25 +1884,11 @@ class ProcessedDataL1(ProcessedData):
 
         if do_electronics_noise_removal:
             
-            offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
-            onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=None)
-
-            #Finally remove blocking of data clumps
-            data_set_mean = np.mean(data_gain_phase, axis = 2)
-            for i in range(onres_clean_data.shape[2]):
-                block_mean = np.mean(onres_clean_data[:, :, i, :], axis = 2)
-                onres_clean_data[:, :, i, :]-= block_mean[:, :, None]
-                onres_clean_data[:, :, i, :]+= data_set_mean[:, :, None]
-            unblocked_clean_data = onres_clean_data.reshape(*onres_clean_data.shape[:2], -1)
-            n = unblocked_clean_data.shape[-1]
-            data_gain_phase[..., :n] = unblocked_clean_data
-            data_gain_phase[..., n:] = unblocked_clean_data[..., -1:]
+            remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
           
         
         new_generate_calibrated_data(new_data)
-        plot_data = np.concatenate((new_data.data_freq_diss[:,new_data.onres_ind, :], new_data.data_freq_diss[:,new_data.offres_ind, :]), axis=1)
-        #plot_corellation_matrices(plot_data, fs = fs, lp_filt_freqs=[0.05, 0.1, 1.0, 10.0, 100])
-
+      
         return new_data
 
 
