@@ -356,11 +356,11 @@ class MakeVideo(DataRoutine):
     def __init__(
         self,
         hp_filter_freq: float=0.5,
-        lp_filter_freq: float=10.,
+        lp_filter_freq: float=15.,
         az_trim: float=0.1,
         za_trim: float=0.2,
         med_netd_cut_threshold: float=3.,
-        block_size_s: float=1/24,
+        block_size_s: float=0.25,
         dpix: float=0.08,
     ):
         super().__init__()
@@ -394,6 +394,23 @@ class MakeVideo(DataRoutine):
         md.map_za[:] = map_za
 
         wind = signal.get_window('hamming', md.n_samples)
+
+        bad_tones = [
+            1, 3, 223, 278, 299,
+            303, 10, 69, 192, 820,
+            263, 483, 172, 574, 426,
+            569, 297, 167, 15, 717,
+            487, 842, 453, 13, 719,
+            92, 571, 630, 84, 220,
+            364, 516, 74, 726, 292,
+            519, 812, 302, 683, 537,
+            294, 534, 256, 661, 529,
+            737, 54, 782, 567, 103,
+            330, 133, 809, 460, 589,
+            387, 538, 213, 120, 79,
+            783, 612, 121, 117, 749
+        ]
+        md.chanmask[bad_tones] = -1
 
         data = md.data_mK[:]
 
@@ -464,16 +481,31 @@ class MakeVideo(DataRoutine):
 
         this_map = sum_map / hits_map
         total_map = np.nansum(this_map, axis=1)
-        max_abs = 0.75 * np.max(np.abs(total_map))
+
+        smoothed_map = np.transpose(total_map[..., ::-1], (0, 2, 1))
+        gaussian = np.ones((1,3,3)) / 16
+        gaussian[0, 1, 1] = 0.25
+        smoothed_map = signal.convolve(smoothed_map, gaussian)
+        max_abs = 0.75 * np.max(np.abs(smoothed_map))
         vmax = max_abs
         vmin = -max_abs
-        im = plt.imshow(total_map[0], vmin=vmin, vmax=vmax, animated=True, cmap='Greys_r')
+
+        def get_image_i(i: int) -> npt.NDArray:
+            return smoothed_map[i]
+            # im = np.flip(
+            # gaussian = np.ones((3,3)) / 16
+            # gaussian[1, 1] = 0.25
+            # return signal.convolve2d(im, gaussian)
+
+        
+        im = plt.imshow(get_image_i(0), vmin=vmin, vmax=vmax, animated=True, cmap='Greys_r')
         plt.colorbar()
         an = animation.FuncAnimation(
             plt.gcf(),
-            lambda i: im.set_array(total_map[i]),
+            lambda i: im.set_array(get_image_i(i)),
             frames=total_map.shape[0],
             interval=1000 * self.block_size_s,
+            repeat_delay=2000,
         )
         plt.show()
         pdb.set_trace()

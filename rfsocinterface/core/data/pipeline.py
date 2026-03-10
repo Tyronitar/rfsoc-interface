@@ -230,7 +230,7 @@ if __name__ == '__main__':
 
     #Telescope Testing
     date = '20260309'
-    setnums = [1008]
+    setnums = [1013]
 
     # setnums = [1013]
     # setnums = range(1009, 1016)
@@ -252,12 +252,12 @@ if __name__ == '__main__':
 
     ds_factor = 8
     hp_filt_freq = 0.25
-    lp_filt_freq = 30
+    lp_filt_freq = 15
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
-    # binner = BinTODIntoMap()
+    binner = BinTODIntoMap()
     video = MakeVideo()
     # psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
 
