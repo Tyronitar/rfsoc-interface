@@ -467,31 +467,41 @@ def chunked_downsample(
     q: int,
     chunk_size: int,
     axis: int=-1,
+    use_filter: bool=True,
 ):
 
     overlap = 32 * q
 
-    N = dset.shape[0]
+    N = dset.shape[axis]
 
     out_index = 0
+    downsampled_equiv = lambda x: int((x + q - 1) / q)
 
     for start in range(0, N, chunk_size):
 
-        read_start = max(0, start - overlap)
-        read_stop = min(N, start + chunk_size + overlap)
+        if use_filter:
+            read_start = max(0, start - overlap)
+            read_stop = min(N, start + chunk_size + overlap)
 
-        chunk = dset[read_start:read_stop]
+            # chunk = dset[read_start:read_stop]
+            chunk = axis_slice(dset, start=read_start, stop=read_stop, axis=axis)
 
-        dec = resample_poly(chunk, up=1, down=q, axis=axis)
+            dec = resample_poly(chunk, up=1, down=q, axis=axis)
+        else:
+            read_start = max(0, start)
+            read_stop = min(N, start + chunk_size)
+            chunk = axis_slice(dset, start=read_start, stop=read_stop, axis=axis)
+            dec = axis_slice(chunk, step=q, axis=axis)
 
-        valid_start = (start - read_start) // q
-        valid_stop = valid_start + (min(chunk_size, N-start) // q)
+        valid_start = downsampled_equiv(start - read_start)
+        valid_stop = min(valid_start + downsampled_equiv(min(chunk_size, N - start)), out_dset.shape[axis] - out_index)
 
-        valid = dec[valid_start:valid_stop]
+        valid = axis_slice(dec, start=valid_start, stop=valid_stop, axis=axis)
 
-        out_dset[out_index:out_index+len(valid)] = valid
+        write_slice = get_axis_slice(out_dset, start=out_index, stop=out_index+valid.shape[axis], axis=axis)
+        out_dset[write_slice] = valid
 
-        out_index += len(valid)
+        out_index += valid.shape[axis]
 
 def build_interp_map(x: npt.ArrayLike, x_new: npt.ArrayLike):
     """Compute the indices and wieghts to interpolate x_new to x."""
@@ -584,8 +594,8 @@ def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.
     # else:
     #     return out
 
-def axis_slice(a, start=None, stop=None, step=None, axis=-1):
-    """Take a slice along axis 'axis' from 'a'.
+def get_axis_slice(a, start=None, stop=None, step=None, axis=-1) -> tuple[slice, ...]:
+    """Return the slice to use in order to slice along axis 'axis' from 'a'.
 
     Parameters
     ----------
@@ -622,8 +632,48 @@ def axis_slice(a, start=None, stop=None, step=None, axis=-1):
     """
     a_slice = [slice(None)] * a.ndim
     a_slice[axis] = slice(start, stop, step)
-    b = a[tuple(a_slice)]
-    return b
+    return tuple(a_slice)
+
+
+def axis_slice(a, start=None, stop=None, step=None, axis=-1) -> npt.NDArray:
+    """Take a slice along axis 'axis' from 'a'.
+
+    Parameters
+    ----------
+    a : numpy.ndarray
+        The array to be sliced.
+    start, stop, step : int or None
+        The slice parameters.
+    axis : int, optional
+        The axis of `a` to be sliced.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from scipy.signal._arraytools import axis_slice
+    >>> a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> axis_slice(a, start=0, stop=1, axis=1)
+    array([[1],
+           [4],
+           [7]])
+    >>> axis_slice(a, start=1, axis=0)
+    array([[4, 5, 6],
+           [7, 8, 9]])
+
+    Notes
+    -----
+    The keyword arguments start, stop and step are used by calling
+    slice(start, stop, step). This implies axis_slice() does not
+    handle its arguments the exactly the same as indexing. To select
+    a single index k, for example, use
+        axis_slice(a, start=k, stop=k+1)
+    In this case, the length of the axis 'axis' in the result will
+    be 1; the trivial dimension is not removed. (Use numpy.squeeze()
+    to remove trivial axes.)
+    """
+    a_slice = get_axis_slice(a, start, stop, step, axis)
+    return a[a_slice]
+
 
 def axis_index(a: npt.NDArray, indices: npt.ArrayLike | tuple[npt.ArrayLike, ...], axis: int | tuple[int, ...]=-1):
     """Index `a` along axis `axis` with `indices`.
@@ -884,7 +934,8 @@ def get_tod_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTOR
 
 
 def get_azel_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
-    return f'{data_dir}/{date}/{date}_set{setnum}_AZEL.h5'
+    return f'{data_dir}/{date}/{date}_AZEL_set{setnum}.h5'
+    # return f'{data_dir}/{date}/{date}_set{setnum}_AZEL.h5'
 
 
 def get_optcam_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:

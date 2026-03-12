@@ -707,10 +707,8 @@ def get_detector_positions(
 
     idx, w = build_interp_map(timestamp, tel_timestamp)
 
-    chunk_size = 200_000
-    chunk_size = timestamp.chunks[-1]
+    chunk_size = output_detector_az.chunks[-1]
     n_samples = timestamp.size
-    n_tones = output_detector_az.shape[0]
 
     for start in range(0, n_samples, chunk_size):
 
@@ -729,17 +727,18 @@ def get_detector_positions(
         cos_ang = np.cos(ang)
         sin_ang = np.sin(ang)
 
-        for tone in range(n_tones):
-            output_detector_az[tone, start:stop] = (
-                dx[tone] * cos_ang
-                - dy[tone] * sin_ang
-                + az
-            )
-            output_detector_za[tone, start:stop] = (
-                dy[tone] * cos_ang
-                + dx[tone] * sin_ang
-                + za
-            )
+        output_detector_az[:, start:stop] = (
+            np.outer(dx[:], cos_ang)
+            - np.outer(dy[:], sin_ang)
+            + az
+        )
+        output_detector_za[:, start:stop] = (
+            np.outer(dy[:], cos_ang)
+            + np.outer(dx[:], sin_ang)
+            + za
+        )
+
+
 
 #
 # Data Classes
@@ -958,12 +957,12 @@ class ConsolidatedData(NewDataStorage):
 
         if azel_exists:
             # pdb.set_trace()
-            az_tel = azel_file.root.az_tel
+            az_tel = azel_file['az_tel']
             try:
-                za_tel = azel_file.root.za_tel
+                za_tel = azel_file['za_tel']
             except:
-                za_tel = azel_file.rooe.el_tel
-            timestamp_tel = azel_file.root.timestamp_tel
+                za_tel = azel_file['el_tel']
+            timestamp_tel = azel_file['timestamp_tel']
             # vis = azel_tfile.root.optical_visibility[0]
             vis = np.nan
             if isinstance(vis, bytes):
@@ -1121,7 +1120,7 @@ class ConsolidatedData(NewDataStorage):
             )
             detector_az = time_ordered_data_group.create_dataset(
                 'detector_az',
-                shape=azel_shape,
+                shape=azel_shape_ds,
                 chunks=chunk_shape_azel_ds,
                 dtype=np.float64,
                 compression='lzf',
@@ -1129,7 +1128,7 @@ class ConsolidatedData(NewDataStorage):
             )
             detector_za = time_ordered_data_group.create_dataset(
                 'detector_za',
-                shape=azel_shape,
+                shape=azel_shape_ds,
                 chunks=chunk_shape_azel_ds,
                 dtype=np.float64,
                 compression='lzf',
@@ -1178,15 +1177,16 @@ class ConsolidatedData(NewDataStorage):
 
             # Detector Positions
             if azel_exists:
+                print('Computing detector positions...')
                 get_detector_positions(
                     temp_timestamp,
-                    timestamp_tel,
-                    az_tel,
-                    za_tel,
+                    timestamp_tel[:],
+                    az_tel[:],
+                    za_tel[:],
                     temp_detector_az,
                     temp_detector_za,
-                    tones_table['delta_x'],
-                    tones_table['delta_y'],
+                    tones_table['delta_x'][:],
+                    tones_table['delta_y'][:],
                     this_channel_group.attrs['detector_dx_dy_elevation_angle'],
                 )
 
@@ -1196,7 +1196,8 @@ class ConsolidatedData(NewDataStorage):
                 temp_timestamp,
                 timestamp,
                 downsampling_factor,
-                temp_timestamp.chunks[-1]
+                temp_timestamp.chunks[-1],
+                use_filter=False,
             )
             chunked_downsample(
                 temp_data_IQ,
@@ -1214,17 +1215,20 @@ class ConsolidatedData(NewDataStorage):
             interpolated_samples = downsampled_interpolated_samples[:]
 
             if azel_exists:
+                print('Downsampling detector position arrays...')
                 chunked_downsample(
                     temp_detector_az,
                     detector_az,
                     downsampling_factor,
                     detector_az.chunks[-1],
+                    use_filter=False,
                 )
                 chunked_downsample(
                     temp_detector_za,
                     detector_za,
                     downsampling_factor,
                     detector_za.chunks[-1],
+                    use_filter=False,
                 )
 
             # Delete temporary datasets
@@ -1243,8 +1247,12 @@ class ConsolidatedData(NewDataStorage):
             ...
 
         # iq = cd.get('/channels/channel_000/time_ordered_data/temp_data_IQ')
-        plt.plot(np.arange(n_samples), temp_data_IQ[0, 0], label='Full data')
-        plt.plot(np.arange(0, n_samples, downsampling_factor), data_IQ[0, 0], label='Downsampled data')
+        plt.plot(temp_timestamp[:], temp_data_IQ[0, 0], label='Full data')
+        plt.plot(timestamp[:], data_IQ[0, 0], label='Downsampled data')
+        plt.legend()
+        plt.show()
+        plt.scatter(temp_detector_az[0], temp_detector_za[0], label='Full data')
+        plt.scatter(detector_az[0], detector_za[0], label='Downsampled data')
         plt.legend()
         plt.show()
         pdb.set_trace()
@@ -2712,13 +2720,13 @@ def plot_map(
 
 if __name__ == '__main__':
     # Telescope Testing
-    # date = '20251006'
-    # setnum = 1009
+    date = '20260304'
+    setnum = 1013
     # Lab Testing
-    date = '20260212'
-    setnum = 1003
+    # date = '20260212'
+    # setnum = 1003
 
-    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=2)
+    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
     print(cd.list_datasets())
 
     pdb.set_trace()
