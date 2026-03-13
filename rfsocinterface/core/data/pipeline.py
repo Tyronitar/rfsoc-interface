@@ -299,10 +299,10 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260212'
+    date = '20260308'
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
     #date = '20260212'
-    setnums = np.array([1001, 1002])#, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
+    setnums = np.array([1003])#, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
     #Good Dataset, miniC = [0.5, 0] No 30dB Warm Amp #Not compensated for increase in output power, so may be wrong
     #date = '20260212'
     #setnums = np.array([1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021])
@@ -325,7 +325,7 @@ if __name__ == '__main__':
 
     ds_factor = 1
     lp_filt_freq = 500
-    block_length = 100
+    block_length = 10
     hp_filt_freq = 1/block_length
 
 
@@ -358,7 +358,7 @@ if __name__ == '__main__':
     freq = data.get_node_value('freq')[:min_len]
     adc_units_to_hz = data.get_node_value('adc_units_to_hz')[:min_len]
     chanmask = data.chanmask[0:min_len]
-    probe_freq = data.baseband_freqs[0,:min_len] + data.lo_freq
+    probe_freq = data.baseband_freqs[:min_len] + data.lo_freq
 
     # Sort it into resonator and nonresonator data. 
     sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
@@ -367,11 +367,10 @@ if __name__ == '__main__':
     adc_units_to_hz = adc_units_to_hz[0, sorted_indices]
     psd_gp = data.get_node_value('psd_gain_phase')[:min_len]
     from rfsocinterface.analysis.psd import plot_psd, compare_psds
-    pdb.set_trace()
 
     # Plot it
    # plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnums[-1]}.pdf', basis=PsdBasis.GAIN_PHASE)
     dev_pwr = get_power_at_device(freq = probe_freq)
     
-    plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnums[-1]}.pdf',f0 = probe_freq,adc_units_to_hz =  adc_units_to_hz, basis=PsdBasis.FREQ_DISS, resonators = chanmask[0,:]==1, csd = None, dev_pwr = dev_pwr)
+    plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnums[-1]}.pdf',f0 = probe_freq[0],adc_units_to_hz =  adc_units_to_hz[0], basis=PsdBasis.FREQ_DISS, resonators = chanmask[0,:]==1, csd = None)
     

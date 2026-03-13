@@ -407,15 +407,9 @@ def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  m
     n_samples = data.shape[-1]
     sigma = np.std(deproj, axis = -1, keepdims=True)
     whitened_noise = deproj/sigma
-    window = signal.get_window('hann', n_samples)
-    scale = np.sum(window**2)
-    windowed_data = whitened_noise * window[None, None,]
 
+    fft, psd, csd, freqs = get_fft_csd_psd(data, fs)
 
-    fft = np.fft.rfft(windowed_data, axis=-1)
-    psd = np.abs(fft)**2 / (scale * fs)
-    csd = np.einsum('ijk, ilk-> iljk', fft, np.conj(fft))/(scale)
-    freqs = np.fft.rfftfreq(n_samples, 1/fs)
     lp_bound_idx = np.searchsorted(freqs, lp_filt_freq)
     correlation_matrices = np.mean(csd[:, :, :, 0:lp_bound_idx], axis = -1)
     
@@ -463,61 +457,77 @@ def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  m
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
 
+
+def get_fft_csd_psd(data, fs):
+    n_samples = data.shape[-1]
+    window = signal.get_window('hann', n_samples)
+    scale = np.sum(window**2)
+    windowed_data = data * window[None, None,]
+    fft = np.fft.rfft(windowed_data, axis=-1)
+    psd = np.abs(fft)**2 / (scale * fs)
+    csd = np.einsum('ijk, ilk-> iljk', fft, np.conj(fft))/(scale)
+    freqs = np.fft.rfftfreq(n_samples, 1/fs)
+    return fft, psd, csd, freqs
+
 def plot_corellation_matrices(
     data: tables.Array,
     fs,
     savepath: Path | None = None,
-    lp_filt_freqs: np.ndarray = np.array([0])
+    lp_filt_freqs: np.ndarray = np.array([0, 1,5, 10, 100])
 ):
     """Plot correlation matrices (channel 0) for all LP frequencies in one figure."""
 
     # subtract the mean from each detector
-    data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    data_meansub = data - np.mean(data, axis=-1, keepdims=True)
 
     n_freqs = len(lp_filt_freqs)
     n_chans = data.shape[0]
+    n_dir = data.shape[1]
 
-    fig, axes = plt.subplots(n_chans, n_freqs, figsize=(6*n_freqs, 5))
-
+    fig, axes = plt.subplots(n_chans*n_dir, n_freqs-1, figsize=(6*n_freqs, 5))
+    fs = fs[0]
 
     if n_freqs == 1:
         axes = [axes]
+    for c in range(n_chans):
 
-    for i, lp_filt_freq in enumerate(lp_filt_freqs):
+        for i in range(n_freqs-1):
 
-        deproj = data_meansub.copy()
+            deproj = data_meansub.copy()
 
-        if lp_filt_freq > 0:
-            filt_sos = signal.butter(
-                BUTTER_ORDER,
-                lp_filt_freq,
-                btype='low',
-                fs=fs,
-                output='sos',
-                analog=False
+            if lp_filt_freqs[i] > 0:
+                filt_sos = signal.butter(
+                    1,
+                    [lp_filt_freqs[i], lp_filt_freqs[i+1]],
+                    btype='bandpass',
+                    fs=fs,
+                    output='sos',
+                    analog=False
+                )
+                deproj = signal.sosfiltfilt(filt_sos, deproj, axis=2)
+            # same computation as your original code
+            correlation_matrices = np.matmul(
+                deproj[c],
+                np.conj(np.transpose(deproj[c], axes=( 0, 2, 1)))
             )
-            deproj = signal.sosfiltfilt(filt_sos, deproj, axis=2)
+            for j in range(n_dir):
+                diag = np.sqrt((np.diag(correlation_matrices[j])))
+                correlation_coefficient = abs(
+                    correlation_matrices[j] /
+                    np.outer(diag, diag)
+                )
+                im = axes[c+j, i].imshow(
+                    abs(np.real(correlation_coefficient)),
+                    aspect='auto',
+                    origin='lower',
+                    cmap='magma',
+                    vmin=0, vmax=1
+                )
 
-        # same computation as your original code
-        correlation_matrices = np.matmul(
-            deproj,
-            np.conj(np.transpose(deproj, axes=(0, 2, 1)))
-        )
-        for j in range(n_chans):
-            diag = np.sqrt(np.real(np.diag(correlation_matrices[j])))
-            correlation_coefficient = (
-                correlation_matrices[j] /
-                np.outer(diag, diag)
-            )
-            im = axes[j, i].imshow(
-                abs(np.real(correlation_coefficient)),
-                aspect='auto',
-                origin='lower'
-            )
-            axes[j, i].set_title(f'LP = {lp_filt_freq} Hz, Chan {j}')
-            axes[j, i].set_xlabel('Detector Index')
-            axes[j, i].set_ylabel('Detector Index')
-            fig.colorbar(im, ax=axes[j, i], label='Correlation')
+                axes[c+j, i].set_title(f'BP = {lp_filt_freqs[i]} to {lp_filt_freqs[i+1]} Hz, Chan {j}')
+                axes[c+j, i].set_xlabel('Detector Index')
+                axes[c+j, i].set_ylabel('Detector Index')
+                fig.colorbar(im, ax=axes[j, i], label='Correlation')
 
     fig.suptitle('Correlation Coefficient Matrices')
     plt.tight_layout()
@@ -527,6 +537,55 @@ def plot_corellation_matrices(
         plt.savefig(fname, dpi=300)
 
     plt.show()
+
+def plot_correlation_matrices_fspace(data,fs, bound_freqs: npt.NDArray = np.array([0, 1, 5, 10, 100]), onres_ind:npt.NDArray = None ):
+    for chan in range(data.shape[0]):
+        fft, psd, csd, freqs = get_fft_csd_psd(data[chan], fs[chan])
+        n_chans = csd.shape[1]
+        n_dir = csd.shape[0]
+        n_freqs_total = csd.shape[-1]
+
+        # Convert frequency bounds to indices
+        freq_indices = np.searchsorted(freqs, bound_freqs)
+        freq_indices = np.clip(freq_indices, 0, n_freqs_total)
+
+        n_bound = len(bound_freqs)
+        fig, axes = plt.subplots(n_dir, n_bound-1, figsize=(6*(n_bound-1), 5))
+        axes = np.atleast_2d(axes)  # safe indexing
+
+        for i in range(n_bound-1):
+            # Slice the frequency band
+            
+            band_csds = csd[:, :, :, freq_indices[i]:freq_indices[i+1]]  # shape: (n_chans, n_dir, n_chans, n_freq_slice)
+            
+            # Average over directions and frequencies in the bin
+            C = np.mean(band_csds, axis=(3))  # shape: (n_chans, n_chans)
+            # C[i,j] = average cross-spectrum magnitude
+
+
+            # Plot each channel
+            for j in range(n_dir):
+                # Normalize to correlation coefficient
+                diag = np.sqrt(np.diag(C[j]))          # sqrt(C_ii)
+                corr = C[j] / (diag[:, None] * diag[None, :])
+                # Ensure values are real (CSD can be complex)
+                corr =abs(np.real(corr))
+                im = axes[j, i].imshow(
+                    corr,
+                    aspect='auto',
+                    origin='lower',
+                    cmap='magma',
+                    vmin=0, vmax=1
+                )
+                axes[j, i].set_title(f'Freq {bound_freqs[i]:.3f}-{bound_freqs[i+1]:.3f} Hz, Chan {j}')
+                axes[j, i].set_xlabel('Detector Index')
+                axes[j, i].set_ylabel('Detector Index')
+                fig.colorbar(im, ax=axes[j, i], label='Correlation')
+
+        fig.suptitle('Correlation Coefficient Matrices')
+        plt.tight_layout()
+        fig.savefig("Current_CMatrixPlot.png")
+        plt.show()
 
 def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray = None, fspace: bool = True) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
@@ -1962,14 +2021,20 @@ class ProcessedDataL1(ProcessedData):
         # rotate_basis(new_data.data_IQ[:], plot_data_fd, IQ_to_freq_diss_angle)
         # z_freq, z_diss = get_z_arrays(plot_data_fd, 10)
         #time_streams.plot_timestream_errors(z_freq, z_diss,fs, onres_ind = new_data.onres_ind)
+        plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
 
         if do_electronics_noise_removal:
             
             remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=5, max_modes=max_modes, template_data_selection=new_data.offres_ind)
             new_data.data_gain_phase[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_gain_phase[:, :, new_data.onres_ind, :], fs, lp_filt_freq=5, max_modes=max_modes,)
-        
         new_generate_calibrated_data(new_data)
-      
+        plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
+        plot_correlation_matrices_fspace(new_data.data_freq_diss[:, :, new_data.onres_ind],fs)
+
+        if do_electronics_noise_removal:
+            new_data.data_freq_diss[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_freq_diss[:, :, new_data.onres_ind, :], fs, lp_filt_freq=1, max_modes=max_modes,)
+
+        plot_correlation_matrices_fspace(new_data.data_freq_diss[:, :, new_data.onres_ind],fs)
         return new_data
 
 
