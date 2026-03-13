@@ -22,55 +22,6 @@ def get_csd_and_psd(fft, scale, fs, n_samples):
     freqs = np.fft.rfftfreq(n_samples, 1/fs)
     return freqs, psd, csd
 
-    
-def spectral_pca(
-    csds: npt.NDArray,
-    freqs: npt.NDArray,
-    n_tones: int = 100,
-    max_modes: int = 3,
-    freq_limit:float = 30,
-    template_ind: npt.NDArray = None,
-) -> tuple:
-    # csds shape: (n_dir, n_chans, n_chans, n_freqs)
-    n_dir, n_chans, _, n_freqs = csds.shape
-    f_mask = freqs <= freq_limit
-    n_freqs_low = np.sum(f_mask)
-       
-    # We now pre-allocate for every individual frequency
-    eigvals_all = np.zeros((n_dir, n_freqs_low, max_modes))
-    eigvecs_all = np.zeros((n_dir, n_freqs_low, len(template_ind) if template_ind is not None else n_chans, max_modes), dtype=complex)
-    
-    transfer_all = [] # List used because non_template_ind size varies if template_ind changes
-    
-    all_ind = np.arange(n_chans)
-    non_template_ind = np.setdiff1d(all_ind, template_ind) if template_ind is not None else []
-    dir_transfer = None
-    for d in range(n_dir):
-        for f in range(n_freqs_low):
-
-            C = np.mean(csds[d, :, :, f:f+10], axis = 2) # CSD matrix for one specific frequency
-            
-            if template_ind is not None:
-                dir_transfer = np.zeros((n_freqs_low, len(non_template_ind), len(template_ind)), dtype=complex)
-
-                C_template = C[template_ind, :][:, template_ind]
-                eigvals, eigvecs = np.linalg.eigh(C_template)
-                
-                cross_C = C[non_template_ind, :][:, template_ind]
-                dir_transfer[f] = cross_C @ np.linalg.pinv(C_template)
-            else:
-                eigvals, eigvecs = np.linalg.eigh(C)
-
-            # Sort and truncate modes
-            idx = np.argsort(np.abs(eigvals))[::-1]
-            n_modes = max_modes
-            eigvals_all[d, f, :n_modes] = eigvals[idx][:n_modes]
-            eigvecs_all[d, f, :, :n_modes] = eigvecs[:, idx][:, :n_modes]
-        
-        transfer_all.append(dir_transfer)
-
-    return eigvals_all, eigvecs_all, np.array(transfer_all), n_freqs_low
-
 def clean_noise_modes(
     fft: npt.NDArray, 
     eigvecs: npt.NDArray, 
@@ -194,114 +145,27 @@ def filter_hot_pixels(eigvecs:npt.NDArray,template_ind:npt.NDArray, freqs:npt.ND
         plt.tight_layout()
         plt.show()
     return hot_pixels
+
+def spectral_pca(csd:np.ndarray):
+    eigen_values, v = np.linalg.eig(csd)
+    sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
+    sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
+    sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
+    return sorted_eigen_values, sorted_v[:, :, 0]
         
-
-
-def run_multi_run_dataset(date:str, setnums:np.ndarray) -> tuple:
-    psd_sum = None
-    count = 0
-    max_freq = 200
-    import rfsocinterface.core.data.pipeline as pipeline
-    from rfsocinterface.core.data.pipeline import DataPipeline
-
-
-    for setnum in setnums:
-        print(f'Running pipeline for {date} set {setnum}')
-        
-        pipeline = DataPipeline(
-            ds_factor=ds_factor,
-            hp_filter_freq=hp_filt_freq,
-            lp_filter_freq=lp_filt_freq,
-            dataset=dataset,
-            beam_map_mode=beam_map_mode,
-            do_electronics_noise_removal= do_electronics_noise_removal,
-            block_length = block_length,
-            do_cr_removal = do_cr_removal,
-            max_modes=10
-        )
-    
-        psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
-        pipeline.add_routine(psd)
-        pipeline.add_routine(cleaner)
-        pd2, pd1 = pipeline.run_pipeline(date, setnum, output_pd1=True)        
-        adc_units_to_hz = pd2.get_node_value('adc_units_to_hz')[:]
-        gain_phase_to_freq_diss_angle = -1*pd1.get_node_value('IQ_to_gain_phase_angle')[:]+pd1.get_node_value('IQ_to_freq_diss_angle')[:]
-        
-        # Sort it into resonator and nonresonator data. 
-        chanmask = pd2.chanmask[:]
-
-        onres_ind = np.where(chanmask == 1)[0]
-        offres_ind = np.where(chanmask == 0)[0]
-        chanmask = pd2.chanmask[:]
-        fs = 1 / np.median(np.diff(pd1.timestamp[:]))
-         # Sort it into resonator and nonresonator data. 
-        sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
-        chanmask = chanmask[sorted_indices]
-
-
-
-     
-        #FFT in Gain/Phase space
-        gp_noise = pd1.get_node_value('data_gain_phase')[:] / (pd1.carrier_amplitude_norm() * adc_units_to_hz[None, :, None])
-        gp_noise = gp_noise[:, sorted_indices]
-        adc_units_to_hz = adc_units_to_hz[sorted_indices]
-
-        fft, scale, n_samples = get_fft(gp_noise)
-        freqs = np.fft.rfftfreq(n_samples, 1/fs)
-        low_f_mask = freqs <= 30
-
-
-        #Limit our fft to the low frequencies, and calculate csd
-        fft_low = fft[:, :, low_f_mask]
-        csd_off = np.einsum('ijk, ilk-> iljk', fft_low, np.conj(fft_low)) / scale
-
-        plot_correlation_matrices(freqs, csd_off, bound_freqs=np.array([0.01, 0.1, 1, 10, 100]))
-        
-        _, eigvecs, transfer_mat, n_low = spectral_pca(csd_off, freqs[low_f_mask], template_ind=offres_ind, max_modes=3)
-        clean_fft = clean_noise_modes(fft, eigvecs, freqs, template_ind=offres_ind, transfer_mats=transfer_mat, pca_limit_idx=n_low)
-        
-        clean_fft = rotate_fft(clean_fft[:, :, :], gain_phase_to_freq_diss_angle)[:, onres_ind, :]
-
-        fft_on_low = clean_fft[:, :, :][:, :, low_f_mask]
-        csd_on = np.einsum('ijk, ilk-> iljk', fft_on_low, np.conj(fft_on_low)) / scale
-
-        #plot_correlation_matrices(freqs, csd_on, bound_freqs=np.array([0.01, 0.1, 1, 10, 100]))
-        freqs, psd, csd_fd = get_csd_and_psd(fft_on_low, scale, fs, n_samples)
-        
-        _, eigvecs, transfer_mat, n_low = spectral_pca(csd_fd, freqs[low_f_mask], template_ind=None, max_modes=5)
-        
-
-        hot_pixels = filter_hot_pixels(eigvecs,onres_ind, freqs[low_f_mask], mask_freq=5, make_plot=False)
-
-        onres_ind_filtered = np.setdiff1d(np.arange(len(onres_ind)), hot_pixels)
-
-        _, eigvecs, transfer_mat, n_low = spectral_pca(csd_fd[:, onres_ind_filtered][:, :, onres_ind_filtered], freqs[low_f_mask], template_ind=None, max_modes=2)
-        
-        clean_fft[:, onres_ind_filtered, :] = clean_noise_modes(clean_fft[:, onres_ind_filtered, :], eigvecs, freqs, template_ind = None, transfer_mats=None, pca_limit_idx=n_low)
-        freqs, psd, csd_fd = get_csd_and_psd(clean_fft, scale, fs, n_samples)
-
-        #plot_correlation_matrices(freqs, csd_fd, bound_freqs=np.array([0.01, 0.1, 1, 10, 100]))
-        print(clean_fft.shape)
-        #pdb.set_trace()
-        if psd_sum is None:
-            data_indices = np.where(freqs < max_freq)[0]
-            psd_sum = np.zeros_like(psd[:, :, data_indices])
-            
-        psd_sum += psd[:, :, data_indices]
-        count += 1
-        
-        pd1.close(); pd2.close()
-        del csd_off, csd_on, fft, csd_fd
-    
-    return psd_sum / count, freqs[data_indices]
+def whiten_data(Noise:np.ndarray):
+    sigma = np.std(Noise, axis = 2, keepdims=True)
+    whitened_noise = Noise/sigma
+    return whitened_noise
 
 
 if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260305'
-    setnums = np.array(['1004', '1006', '1007', '1008', '1009', '1010', '1011', '1012', '1013', '1014', '1015', '1016'])
+    date = '20260212'
+    setnums = np.array([1002])
+    #setnums = np.array(['1004', '1006', '1007', '1008', '1009', '1010', '1011', '1012', '1013', '1014', '1015', '1016'])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
     #date = '20260212'
     #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
@@ -357,9 +221,77 @@ if __name__ == '__main__':
     onres_ind = np.where(chanmask == 1)[0]
 
     probe_freq = pd2.baseband_freqs[:] + pd2.lo_freq
+
+    adc_units_to_hz = pd2.get_node_value('adc_units_to_hz')[:]    
+    # Sort it into resonator and nonresonator data. 
+    chanmask = pd2.chanmask[0, :]
+
+    onres_ind = np.where(chanmask == 1)[0]
+    offres_ind = np.where(chanmask == 0)[0]
+    fs = 1 / np.median(np.diff(pd1.timestamp[:]))
+    # Sort it into resonator and nonresonator data. 
+    sorted_indices = np.argsort(-1*chanmask[:], kind='stable')
+    chanmask = chanmask[sorted_indices]
+
+    gp_noise = pd1.get_node_value('data_gain_phase')[0, :] 
+    gp_noise = gp_noise[:, offres_ind]
+
+    adc_units_to_hz = adc_units_to_hz[0, sorted_indices]
     pd1.close()
     pd2.close()
-    psds,freqs= run_multi_run_dataset(date, setnums)
-    from psd import plot_psd
-    plot_psd(freqs, psds, f'noise_freq_dis_{date}_set{setnums[-1]}.pdf',f0 = probe_freq[onres_ind], adc_units_to_hz =adc_units_to_hz, basis=PsdBasis.FREQ_DISS, csd = None)
-    #plot_correlation_matrices(freqs, csds=csd, bound_freqs=bound_freqs)
+
+
+    gp_noise = gp_noise-np.mean(gp_noise, axis = 2, keepdims=True)
+
+    whitened_noise = whiten_data(gp_noise)
+
+    fft, scale, n_samples = get_fft(whitened_noise)
+    freqs, psd, csd = get_csd_and_psd(fft, scale, fs, n_samples)
+    
+    # Plot all FFTs
+    n_time, n_chans, n_freqs = fft.shape
+    bound_freqs = np.array([1])
+    bound_freqs_idx = np.searchsorted(freqs, bound_freqs)
+
+
+    csd_meaned = np.mean(csd[:, :, :, 0:bound_freqs_idx[0]], axis = -1)
+
+    _, top_eigen_vec = spectral_pca(csd_meaned)
+
+
+    # build single correlated noise template
+    correlated_template = np.zeros_like(gp_noise[:, 0, :])
+    for d in range(correlated_template.shape[0]):
+        for n in range(n_chans):
+            correlated_template[d] +=  gp_noise[d, n] * np.real(top_eigen_vec[d, n])
+    
+    # Plot the FFT of the correlated template and one gp_noise channel
+    fft_template = np.fft.rfft(correlated_template, axis = -1)
+    fft_gp_noise, _, _ = get_fft(gp_noise)
+
+    numerator = np.einsum('il, ikl-> ik', correlated_template, gp_noise)
+    denominator = np.einsum('ij,ij->i', correlated_template, correlated_template)
+
+    corr = numerator/denominator[:, None]
+
+    cleaned_noise =gp_noise- np.einsum('ij,ik->ijk', corr, correlated_template)
+    fft_cleaned_noise, _, _ = get_fft(cleaned_noise)
+
+    pdb.set_trace()
+    plt.figure(figsize=(12, 6))
+    plt.loglog(freqs, np.abs(fft_template[0, :]), label='Correlated Template', linewidth=2)
+    for i in range(5):
+        plt.loglog(freqs, np.abs(fft_gp_noise[0, i, :]), label='GP Noise Channel 0', linewidth=2, alpha=0.7)
+        plt.loglog(freqs, np.abs(fft_cleaned_noise[0, i, :]), label='Clean Noise Channel 0', linewidth=2, alpha=0.7)
+
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('FFT Magnitude')
+    plt.title('FFT: Correlated Noise Template vs GP Noise Channel')
+    plt.legend()
+    plt.grid(True, which='both', alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+    pdb.set_trace()
+
+    

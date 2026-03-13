@@ -212,8 +212,8 @@ def plot_psd(
             for i_plot in range(n_plots):
                 fig = create_plot(
                     freq,
-                    plot_data_min[i_chan, i_plot],
                     plot_data_med[i_chan, i_plot],
+                    plot_data_min[i_chan, i_plot],
                     plot_data_max[i_chan, i_plot],
                     percentiles=(min_percentile, max_percentile),
                     title=titles[i_chan][i_plot],
@@ -224,8 +224,8 @@ def plot_psd(
                 figs.append(fig)
         average_fig = create_plot(
             freq,
-            np.sum(plot_data_min[i_chan], axis=0) / n_plots,
             np.sum(plot_data_med[i_chan], axis=0) / n_plots,
+            np.sum(plot_data_min[i_chan], axis=0) / n_plots,
             np.sum(plot_data_max[i_chan], axis=0) / n_plots,
             percentiles=(min_percentile, max_percentile),
             title= f'Tile {i_chan} {title} - Averaged',

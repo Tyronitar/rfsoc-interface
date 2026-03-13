@@ -227,7 +227,7 @@ class ComputeNoisePSD(DataRoutine):
                     data = pd.data_gain_phase[:] / pd.carrier_amplitude_norm()
                 case PsdBasis.FREQ_DISS:
                     f = pd.baseband_freqs[:] + pd.lo_freq[:]
-                    f[pd.offres_ind] = 1
+                    f[0,pd.offres_ind] = 1
                     data = pd.data_freq_diss[:] / f[:, np.newaxis, :, np.newaxis]
                 case _:
                     raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')
@@ -248,7 +248,7 @@ class ComputeNoisePSD(DataRoutine):
             for i_chan in range(pd.n_channels):
                 good_tones = np.argwhere(pd.chanmask[i_chan, :] == 1).flatten()
                 freq, psd = signal.welch(
-                    axis_index(data[i_chan], good_tones, axis=-2),
+                    axis_index(data[i_chan], self.tone_indices, axis=-2),
                     pd.fs[i_chan],
                     nperseg=n_samples_per_block,
                 )

@@ -389,6 +389,80 @@ def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bo
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
 
+
+def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  max_modes: int=30, plot_eigenvalues: bool=False) -> npt.NDArray:
+    """Compute templates for correlated noise removal.
+
+    Args:
+        data (npt.NDArray): Input data (N_chan x N_detector x N_samples).
+
+    Returns:
+        (npt.NDarray): Templates for noise removal (N_chan x 2 x N_samples).
+            Computed using the first two eigenmodes of the correlation matrix.
+    """
+    # subtract the mean from each detector
+    # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    deproj = data - np.mean(data, axis=-1)[:, :, np.newaxis]
+    n_tones = data.shape[1]
+    n_samples = data.shape[-1]
+    sigma = np.std(deproj, axis = -1, keepdims=True)
+    whitened_noise = deproj/sigma
+    window = signal.get_window('hann', n_samples)
+    scale = np.sum(window**2)
+    windowed_data = whitened_noise * window[None, None,]
+
+
+    fft = np.fft.rfft(windowed_data, axis=-1)
+    psd = np.abs(fft)**2 / (scale * fs)
+    csd = np.einsum('ijk, ilk-> iljk', fft, np.conj(fft))/(scale)
+    freqs = np.fft.rfftfreq(n_samples, 1/fs)
+    lp_bound_idx = np.searchsorted(freqs, lp_filt_freq)
+    correlation_matrices = np.mean(csd[:, :, :, 0:lp_bound_idx], axis = -1)
+    
+    eigen_values, v = np.linalg.eigh(correlation_matrices)
+    sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
+    sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
+    sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
+    if plot_eigenvalues:
+        plt.figure()
+        plt.loglog(sorted_eigen_values[0],'-o')
+        plt.xlabel('Eigenvalue Index')
+        plt.ylabel('Eigenvalue')
+        plt.title('Eigenvalues of Correlation Matrix')
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.show()
+        
+    if n_tones < 25:
+        sigma_mult = 1.5
+    elif n_tones < 50:
+        sigma_mult = 2.5
+    else:
+        sigma_mult = 3
+
+    n_modes = 2
+    new_modes = -1
+    while new_modes != 0 and n_modes <= max_modes:
+        log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
+        mu = np.mean(log_eigen_values, axis=1)
+        sigma = np.std(log_eigen_values, axis=1)
+        large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis])
+        i_count = large_eigen_values[0].size - np.sum(large_eigen_values[0])
+        q_count = large_eigen_values[0].size - i_count
+        new_modes = max(i_count, q_count)
+        n_modes += new_modes
+    n_modes = min(n_modes, max_modes)
+    print(f'Using {n_modes} eigen modes')
+        # create templates based on the N_mode largest eigenmodes of each
+
+    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs[0], output='sos', analog=False)
+    deproj_lp = signal.sosfiltfilt(filt_sos, deproj)
+    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj)
+
+
+    # subtract the mean again to be sure
+    templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
+    return templates
+
 def plot_corellation_matrices(
     data: tables.Array,
     fs,
@@ -454,7 +528,7 @@ def plot_corellation_matrices(
 
     plt.show()
 
-def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
+def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray = None, fspace: bool = True) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
     Args:
@@ -467,29 +541,36 @@ def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: f
         npt.NDarray: Cleaned data (N_chan x 2 x N_tones x N_samples).
     """
     out_data = np.zeros_like(data)
-
     for i_chan in range(data.shape[0]):
+        data[i_chan] = data[i_chan]-np.mean(data[i_chan], axis = -1, keepdims=True)
         if lp_filt_freq<fs/2:
             filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs[i_chan], output='sos', analog=False)
             data_lp = signal.sosfiltfilt(filt_sos, data[i_chan])
         else:
             data_lp = data[i_chan]
         if template_data_selection is not None:
-            template_data_lp = data_lp[:, template_data_selection, :]
-            templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # 2 x N_modes x N_samples
+            if fspace:
+                templates = compute_templates_fspace(data[i_chan][ :, template_data_selection, :], fs, lp_filt_freq=lp_filt_freq)
+            else:
+                template_data_lp = data_lp[:, template_data_selection, :]
+           
+                templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # 2 x N_modes x N_samples
         else:
-            templates = compute_templates(data_lp, max_modes=max_modes)  # 2 x N_modes x N_samples
+            if fspace:
+                templates = compute_templates_fspace(data[i_chan], fs, lp_filt_freq=lp_filt_freq)
+            else:
+                templates = compute_templates(data_lp, max_modes=max_modes)  # 2 x N_modes x N_samples
 
         n_modes = templates.shape[1]
         denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
-
+        clean_data = (data[i_chan]-np.mean(data[i_chan], axis = -1, keepdims=True))
         for i in range(n_modes):
-            numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # 2 x N_tones
+            numerator = np.einsum('ijk,ik->ij', clean_data, templates[:, i])  # 2 x N_tones
             corr = numerator / denominator[:, i:i+1]  # N_chan x N_tones
-            data_lp = data_lp - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # 2 x N_tones x N_samples
+            clean_data = clean_data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # 2 x N_tones x N_samples
             # data_lp = signal.sosfiltfilt(filt_sos, data)
         
-        out_data[i_chan] = data_lp
+        out_data[i_chan] = clean_data
 
     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
     # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
@@ -1275,11 +1356,11 @@ class BaseProcessedData(DataStorage):
     
     @property
     def onres_ind(self) -> npt.NDArray:
-        return np.where(self.chanmask[:] == 1)[0]
+        return np.where(self.chanmask[0,:] == 1)[0]
     
     @property
     def offres_ind(self) -> npt.NDArray:
-        return np.where(self.chanmask[:] == 0)[0]
+        return np.where(self.chanmask[0,:] == 0)[0]
     
     def get_array_in_blocks(self, dataset: str, block_length_sec: float) -> npt.NDArray:
         """Return an array split into blocks of the specified length.
@@ -1884,8 +1965,8 @@ class ProcessedDataL1(ProcessedData):
 
         if do_electronics_noise_removal:
             
-            remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
-          
+            remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=5, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+            new_data.data_gain_phase[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_gain_phase[:, :, new_data.onres_ind, :], fs, lp_filt_freq=5, max_modes=max_modes,)
         
         new_generate_calibrated_data(new_data)
       
