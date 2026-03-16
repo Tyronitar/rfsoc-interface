@@ -612,10 +612,36 @@ def interpolate_timestamp(
 
     # TODO: find a way to not have all of normalized_packet_indices in memory at once
     # May require some code duplication, or storing an intermediate array on disk
-    normalized_packet_indices = packet_indices - packet_indices[0]
+    # normalized_packet_indices = packet_indices - packet_indices[0]
     n_samples = raw_timestamp.size
     n_samples_ds = new_timestamp.size
-    a, b = linregress_in_chunks(normalized_packet_indices, raw_timestamp)
+
+    sum_x = 0.0
+    sum_y = 0.0
+    sum_x2 = 0.0
+    sum_xy = 0.0
+    N = 0
+
+    for c0, c1, x_chunk in iterate_chunks(packet_indices, chunk_size=chunk_size):
+        x_chunk -= packet_indices[0]
+        y_chunk = raw_timestamp[c0:c1]
+        x_chunk = np.array(x_chunk, copy=False)
+        y_chunk = np.array(y_chunk, copy=False)
+
+        sum_x += x_chunk.sum()
+        sum_y += y_chunk.sum()
+        sum_x2 += np.dot(x_chunk, x_chunk)
+        sum_xy += np.dot(x_chunk, y_chunk)
+
+        N += x_chunk.size
+
+    a = (N * sum_xy - sum_x * sum_y) / (N * sum_x2 - sum_x**2)
+    b = (sum_y - a * sum_x) / N
+    # res = linregress(packet_indices - packet_indices[0], raw_timestamp)
+    # a = res.slope
+    # b = res.intercept
+    exit()
+    # a, b = linregress_in_chunks(normalized_packet_indices, raw_timestamp)
     
     # Compute the new timestamp in chunks while simultaneously downsampling
     for i_chunk, chunk_start in enumerate(range(0, n_samples, chunk_size)):
@@ -623,6 +649,84 @@ def interpolate_timestamp(
         chunk_start_ds = i_chunk * chunk_size_ds
         chunk_stop_ds = min(chunk_start_ds + chunk_size_ds, n_samples_ds)
         new_timestamp[chunk_start_ds:chunk_stop_ds] = this_new_timestamp[::ds_factor]
+
+def interpolate_timestamp_streaming(
+    raw_timestamp: h5py.Dataset,
+    new_timestamp: h5py.Dataset,
+    packet_indices: h5py.Dataset,
+    ds_factor: int = 1,
+    chunk_size: int = 4096,
+    time_offset: float = 0.0
+) -> None:
+    """
+    Compute a linear fit of raw_timestamp vs packet_indices and generate
+    an equally spaced new timestamp dataset in chunks.
+
+    Parameters
+    ----------
+    raw_timestamp : h5py.Dataset
+        Original timestamps (float64), shape (N,)
+    new_timestamp : h5py.Dataset
+        Output equally spaced timestamps (float64), shape (M,)
+    packet_indices : h5py.Dataset
+        Packet indices (uint32), shape (N,)
+    ds_factor : int
+        Downsampling factor for output
+    chunk_size : int
+        Number of elements to read at a time from HDF5
+    time_offset : float
+        Optional offset to add to output timestamps
+    """
+
+    N = raw_timestamp.shape[0]
+
+    # Accumulators for linear regression
+    sum_x = 0.0
+    sum_y = 0.0
+    sum_x2 = 0.0
+    sum_xy = 0.0
+    n_total = 0
+
+    # --- Step 1: Streaming linear regression ---
+    for start in range(0, N, chunk_size):
+        stop = min(start + chunk_size, N)
+
+        # Read chunks as plain numpy arrays
+        x_chunk = packet_indices[start:stop].astype(np.float64)
+        y_chunk = raw_timestamp[start:stop]
+
+        # Shift indices so regression is well-conditioned
+        if start == 0:
+            x0 = x_chunk[0]
+        x_chunk_shifted = x_chunk - x0
+
+        # Accumulate sums using dot products (memory-efficient)
+        sum_x  += x_chunk_shifted.sum()
+        sum_y  += y_chunk.sum()
+        sum_x2 += np.dot(x_chunk_shifted, x_chunk_shifted)
+        sum_xy += np.dot(x_chunk_shifted, y_chunk)
+        n_total += x_chunk_shifted.size
+
+    # Compute slope (a) and intercept (b)
+    denom = n_total * sum_x2 - sum_x ** 2
+    if denom == 0:
+        raise ValueError("Degenerate packet_indices, cannot compute regression.")
+    a = (n_total * sum_xy - sum_x * sum_y) / denom
+    b = (sum_y - a * sum_x) / n_total
+
+    # --- Step 2: Generate new timestamps in chunks ---
+    M = new_timestamp.shape[0]
+    for start in range(0, M, chunk_size):
+        stop = min(start + chunk_size, M)
+
+        # Generate the equally spaced packet index positions
+        indices = np.arange(start * ds_factor, stop * ds_factor, dtype=np.float64)
+
+        # Linear fit + offset
+        new_chunk = a * indices + b + time_offset
+
+        # Write directly to HDF5
+        new_timestamp[start:stop] = new_chunk
 
     
 def interpolate_missing_data(
@@ -1135,11 +1239,13 @@ class ConsolidatedData(NewDataStorage):
                 pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
 
             # Interpolate the timestamp
-            interpolate_timestamp(
+            print('Interpolating timestamp...')
+            interpolate_timestamp_streaming(
                 raw_data.timestamp,
                 temp_timestamp,
                 pkt_idx,
             )
+            exit()
 
             # valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
             valid_tone_index = np.arange(n_tones, dtype=int) + 8  # TODO: How to make this backwards compatible?
@@ -2714,11 +2820,11 @@ def plot_map(
 
 if __name__ == '__main__':
     # Telescope Testing
-    # date = '20260304'
-    # setnum = 1013
+    date = '20260304'
+    setnum = 1013
     # Lab Testing
-    date = '20260212'
-    setnum = 1003
+    # date = '20260212'
+    # setnum = 1003
 
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
     print(cd.list_datasets())
