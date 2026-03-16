@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
+import pdb
 import tables
 
 from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, PERMISSIONS_ALL_FULL, get_params_file_template, pad_to_length
@@ -113,9 +114,8 @@ def initialize_params_file(
         dfoveref_per_mK[:] = 1
     _logger.info(f'Initialized params file {params_tile_file}')
 
-
 def update_params_file(
-    target: str,
+    tile_name: str,
     params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
     baseband_freqs: npt.NDArray=None,
     lo_freq: float=None,
@@ -129,14 +129,9 @@ def update_params_file(
     chanmask_isolated: npt.NDArray=None,
     tone_powers: npt.NDArray=None,
 ):
-    if Path(target).exists:
-        # the first argument was the path to the file
-        params_tile_file = Path(target)
-    else:
-        # the first argument was the name of the tile
-        params_tile_file = Path(get_params_file_template(target, params_dir=params_dir))
-        if not params_tile_file.exists():
-            raise FileExistsError(f'Params file {params_tile_file} does not exist')
+    params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
+    if not params_tile_file.exists():
+        raise FileExistsError(f'Params file {params_tile_file} does not exist')
 
     signature = inspect.signature(update_params_file)
     keyword_args = {
@@ -146,10 +141,6 @@ def update_params_file(
     }
 
     with tables.open_file(params_tile_file, 'a') as fh:
-        if baseband_freqs is not None:
-            fh.root._v_attrs.n_tones = len(baseband_freqs)
-            # TODO: need to extend existing arrays to match the new number of tones
-
         for k in keyword_args:  # Check all of the keyword arguments
             if k == 'params_dir':
                 continue  # We only care about the parameters
@@ -163,7 +154,6 @@ def update_params_file(
                         f'{k} size {np.size(v)} does not match n_tones {fh.root._v_attrs.n_tones}'
                     )
             fh.get_node('/', k)[:] = v
-
 
 def create_params_file_from_VNA_sweep(
     tile_name: str,
@@ -303,12 +293,16 @@ if __name__ == "__main__":
     # chanmask = np.load('/home/onrkids/onrkidpy/params/chanmask.npy')  #needs to be the same length as baseband_freqs, with 1 for the tones we keep and 0 the tones we remove
     # det_beam_ampl = np.load('/home/onrkids/readout/host/params/detector_beam_ampl_tile2.npy')
     # det_pol = np.load('/home/onrkids/readout/host/params/detector_pol_tile2.npy')
-    # tone_powers = np.load('/home/onrkids/onrkidpy/params/Device_aSi1_Channel2_max_readout_power_dB.npy')
+    #pdb.set_trace()
     # df_overf_per_mK = np.load('/home/onrkids/readout/host/params/dfoverf_per_mK_tile2.npy')
     detdx = detdy = chanmask = det_beam_ampl = det_pol = tone_powers = df_overf_per_mK = None
+    tone_powers = np.load('max_readout_power.npy')
+
     chanmask = np.zeros_like(baseband_freqs)
     chanmask[original_tone_indices] = 1
-
+    print(chanmask)
+    print(tone_powers)
+    pdb.set_trace()
 
     initialize_params_file(tile_name, baseband_freqs, Be231102p2_LO_freq, DEFAULT_PARAMS_DIRECTORY)
     update_params_file(

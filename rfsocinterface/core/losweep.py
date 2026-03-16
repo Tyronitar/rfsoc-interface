@@ -567,7 +567,7 @@ class LoSweepData:
     def cancel_plot(self):
         self._plot_cancelled = True
 
-    def fit(self, callback: Callable | None=None, max_workers: int=4, scraps_fit: bool =True) -> None:
+    def fit(self, callback: Callable | None=None, max_workers: int=4, scraps_fit: bool =False) -> None:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
         self._fitted = False
         self._fit_cancelled = False
