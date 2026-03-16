@@ -447,7 +447,7 @@ def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_val
 #
 # Chunked array handling utils
 #
-def compute_chunk_shape(data_shape: tuple[int, ...], dtype_size: int, target_mb: float=4):
+def compute_chunk_shape(data_shape: tuple[int, ...], dtype_size: int, target_mb: float=4, max_chunk_size: int=None):
     """Compute the chunk shape to have the target chunk size in MB.
     
     Arguments:
@@ -457,6 +457,8 @@ def compute_chunk_shape(data_shape: tuple[int, ...], dtype_size: int, target_mb:
 
     target_bytes = target_mb * 1024 * 1024
     time_chunk = target_bytes // (np.prod(data_shape) * dtype_size)
+    if max_chunk_size is not None:
+        time_chunk = min(time_chunk, max_chunk_size)
 
     return (*data_shape, int(time_chunk))
 
@@ -471,19 +473,16 @@ def chunked_downsample(
 ):
 
     overlap = 32 * q
-
     N = dset.shape[axis]
 
     out_index = 0
     downsampled_equiv = lambda x: int((x + q - 1) / q)
 
     for start in range(0, N, chunk_size):
-
         if use_filter:
             read_start = max(0, start - overlap)
             read_stop = min(N, start + chunk_size + overlap)
 
-            # chunk = dset[read_start:read_stop]
             chunk = axis_slice(dset, start=read_start, stop=read_stop, axis=axis)
 
             dec = resample_poly(chunk, up=1, down=q, axis=axis)
@@ -494,7 +493,7 @@ def chunked_downsample(
             dec = axis_slice(chunk, step=q, axis=axis)
 
         valid_start = downsampled_equiv(start - read_start)
-        valid_stop = min(valid_start + downsampled_equiv(min(chunk_size, N - start)), out_dset.shape[axis] - out_index)
+        valid_stop = valid_start + min(downsampled_equiv(min(chunk_size, N - start)), out_dset.shape[axis] - out_index)
 
         valid = axis_slice(dec, start=valid_start, stop=valid_stop, axis=axis)
 
@@ -635,7 +634,7 @@ def get_axis_slice(a, start=None, stop=None, step=None, axis=-1) -> tuple[slice,
     return tuple(a_slice)
 
 
-def axis_slice(a, start=None, stop=None, step=None, axis=-1) -> npt.NDArray:
+def axis_slice(a, start=None, stop=None, step=None, axis=-1, direct_read: bool=False) -> npt.NDArray:
     """Take a slice along axis 'axis' from 'a'.
 
     Parameters
@@ -672,6 +671,15 @@ def axis_slice(a, start=None, stop=None, step=None, axis=-1) -> npt.NDArray:
     to remove trivial axes.)
     """
     a_slice = get_axis_slice(a, start, stop, step, axis)
+    if direct_read:
+        buf_shape = list(a.shape)
+        start = 0 if start is None else start
+        stop = buf_shape[axis] if stop is None else stop
+        step = 1 if step is None else step
+        buf_shape[axis] = np.ceil((stop - start) / step).astype(int)
+        buf = np.empty(buf_shape)
+        h5py.Dataset.read_direct(a, buf, source_sel=a_slice)
+        return buf
     return a[a_slice]
 
 
@@ -850,9 +858,9 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
     #     y[chunk_slice], zf = sosfilt(sos, ext[chunk_slice], axis=axis, zi=zf)
 
     # Reverse pass...
-    y0 = axis_slice(y, start=-1, axis=axis)
-    zf = y0 * zi
-    sosfilt_in_chunks(sos, axis_reverse(y, axis=axis), n_chunks=q, zi=zf, axis=axis, out=(axis_reverse(y, axis=axis), zf))
+    # y0 = axis_slice(y, start=-1, axis=axis)
+    # zf = y0 * zi
+    # sosfilt_in_chunks(sos, axis_reverse(y, axis=axis), n_chunks=q, zi=zf, axis=axis, out=(axis_reverse(y, axis=axis), zf))
     # y = axis_reverse(z, axis=axis)
     # for i_chunk in range(q, 0, -1):
     #     start = i_chunk * chunk_size
@@ -874,6 +882,65 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
         return axis_slice(y, step=q, axis=axis)
     else:
         out[...] = axis_slice(y, step=q, axis=axis)
+
+def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_size=200_000):
+
+    sos = cheby1(8, 0.05, 0.8 / q, output="sos")
+
+    n_sections = sos.shape[0]
+
+    # initialize filter state
+    zi = sosfilt_zi(sos)
+
+    zi_shape = [1] * dset.ndim
+    zi_shape[axis] = 2
+    zi = zi.reshape((n_sections, *zi_shape))
+    x0 = axis_slice(dset, stop=1, axis=axis)
+    zi = x0 * zi
+
+
+    N = dset.shape[axis]
+
+    out_pos = 0
+    chunk = np.empty(dset.chunks, dtype=dset.dtype)
+    y = np.empty_like(chunk)
+
+    for start in range(0, N, chunk_size):
+
+        stop = min(start + chunk_size, N)
+        if stop - start < chunk.shape[axis]:
+            shape = list(dset.chunks)
+            shape[axis] = stop - start
+            chunk = np.empty(shape, dtype=dset.dtype)
+            y = np.empty_like(chunk)
+
+        sl = get_axis_slice(dset, start, stop, axis=axis)
+        dset.read_direct(chunk, source_sel=sl)
+        # chunk = axis_slice(dset, start, stop, axis=axis, direct_read=True)
+        # chunk = dset[sl]
+
+        # filter chunk
+        # pdb.set_trace()
+        # x0 = axis_slice(chunk, stop=1, axis=axis)
+        # zf = x0 * zi
+        y[:], zi = sosfilt(sos, chunk, axis=axis, zi=zi)
+
+        # decimate
+        dec = axis_slice(y, step=q, axis=axis)
+
+        n_out = dec.shape[axis]
+
+        write_start = out_pos
+        write_stop = min(out_pos + n_out, out_dset.shape[axis])
+
+        out_sl = get_axis_slice(out_dset, start=write_start, stop=write_stop, axis=axis)
+
+        # out_sl = [slice(None)] * out_dset.ndim
+        # out_sl[axis] = slice(out_pos, min(out_pos + n_out, out_dset.shape[axis]))
+
+        out_dset[tuple(out_sl)] = axis_slice(dec, stop=write_stop-write_start, axis=axis)
+
+        out_pos += n_out
 
 
 def iterate_chunks(x: npt.NDArray | h5py.Dataset, chunk_size: int=None, axis: int=-1) -> Iterator[tuple[int, int, npt.NDArray]]:

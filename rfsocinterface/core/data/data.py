@@ -11,9 +11,9 @@ from itertools import chain, batched
 import typing
 from importlib.metadata import version
 
-import tables
+# import tables
 import h5py
-from tables.link import ExternalLink
+# from tables.link import ExternalLink
 import numpy as np
 import numpy.typing as npt
 from numpy.polynomial import polynomial as poly
@@ -21,7 +21,6 @@ from scipy.interpolate import make_interp_spline
 from numpy.polynomial import Polynomial
 from scipy.stats import linregress
 from scipy import signal
-from scipy.stats import linregress
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import kidpy3
@@ -48,6 +47,8 @@ from rfsocinterface.core.utils import (
     iterate_chunks,
     compute_chunk_shape,
     chunked_downsample,
+    decimate_in_chunks,
+    new_decimate_in_chunks,
     apply_interp,
     build_interp_map,
 )
@@ -1042,20 +1043,12 @@ class ConsolidatedData(NewDataStorage):
             azel_shape = (n_tones, total_samples) if azel_exists else (n_tones, 1)
             azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
 
-            chunk_shape_1d = chunk_shape_1d_ds = compute_chunk_shape(tuple(), 8)
-            chunk_shape_3d = chunk_shape_3d_ds = compute_chunk_shape((2, n_tones), 8)
-            chunk_shape_azel = chunk_shape_azel_ds = compute_chunk_shape(azel_shape[:-1], 8)
-            if chunk_shape_1d[-1] > total_samples:
-                chunk_shape_1d = (*chunk_shape_1d[:-1], total_samples)
-                chunk_shape_3d = (*chunk_shape_3d[:-1], total_samples)
-            if chunk_shape_azel[-1] > azel_shape[-1]:
-                chunk_shape_azel = (*chunk_shape_azel[:-1], azel_shape[-1])
-            if chunk_shape_azel_ds[-1] > azel_shape_ds[-1]:
-                chunk_shape_azel_ds = (*chunk_shape_azel_ds[:-1], azel_shape[-1])
-            if chunk_shape_1d_ds[-1] > n_samples_ds:
-                chunk_shape_1d_ds = (*chunk_shape_1d_ds[:-1], n_samples_ds)
-                chunk_shape_3d_ds = (*chunk_shape_3d_ds[:-1], n_samples_ds)
-
+            chunk_shape_1d = compute_chunk_shape(tuple(), 8, max_chunk_size=total_samples)
+            chunk_shape_1d_ds = compute_chunk_shape(tuple(), 8, max_chunk_size=n_samples_ds)
+            chunk_shape_3d = compute_chunk_shape((2, n_tones), 8, max_chunk_size=total_samples)
+            chunk_shape_3d_ds = compute_chunk_shape((2, n_tones), 8, max_chunk_size=n_samples_ds)
+            chunk_shape_azel = compute_chunk_shape(azel_shape[:-1], 8, max_chunk_size=azel_shape[-1])
+            chunk_shape_azel_ds = compute_chunk_shape(azel_shape_ds[:-1], 8, max_chunk_size=azel_shape_ds[-1])
 
             # Time ordered data
             time_ordered_data_group = this_channel_group.create_group('time_ordered_data')
@@ -1165,11 +1158,12 @@ class ConsolidatedData(NewDataStorage):
                 )
             
             print('Copying Raw IQ data')
-            for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_i, chunk_size=temp_data_IQ.chunks[-1]):
+            chunk_shape_read_adc = compute_chunk_shape((1024, ), 8, max_chunk_size=total_samples)
+            for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_i, chunk_size=chunk_shape_read_adc[-1]):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
                 temp_data_IQ[0, :, sample_indices] = chunk[valid_tone_index]
 
-            for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_q, chunk_size=temp_data_IQ.chunks[-1]):
+            for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_q, chunk_size=chunk_shape_read_adc[-1]):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
                 temp_data_IQ[1, :, sample_indices] = chunk[valid_tone_index]
             
@@ -1199,11 +1193,11 @@ class ConsolidatedData(NewDataStorage):
                 temp_timestamp.chunks[-1],
                 use_filter=False,
             )
-            chunked_downsample(
+            new_decimate_in_chunks(
                 temp_data_IQ,
                 data_IQ,
                 downsampling_factor,
-                data_IQ.chunks[-1],
+                chunk_size=temp_data_IQ.chunks[-1],
             )
             downsampled_interpolated_samples = []
             for sample in temp_interpolated_samples:
@@ -2720,11 +2714,11 @@ def plot_map(
 
 if __name__ == '__main__':
     # Telescope Testing
-    date = '20260304'
-    setnum = 1013
+    # date = '20260304'
+    # setnum = 1013
     # Lab Testing
-    # date = '20260212'
-    # setnum = 1003
+    date = '20260212'
+    setnum = 1003
 
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
     print(cd.list_datasets())
