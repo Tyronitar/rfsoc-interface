@@ -1239,13 +1239,19 @@ class ConsolidatedData(NewDataStorage):
                 pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
 
             # Interpolate the timestamp
+            raw_timestamp = time_ordered_data_group.create_dataset(
+                'raw_timestamp',
+                data=raw_data.timestamp,
+                chunks=chunk_shape_1d,
+            )
             print('Interpolating timestamp...')
             interpolate_timestamp_streaming(
-                raw_data.timestamp,
+                raw_timestamp,
                 temp_timestamp,
                 pkt_idx,
+                chunk_size=temp_timestamp.chunks[-1],
             )
-            exit()
+            # exit()
 
             # valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
             valid_tone_index = np.arange(n_tones, dtype=int) + 8  # TODO: How to make this backwards compatible?
@@ -2820,11 +2826,11 @@ def plot_map(
 
 if __name__ == '__main__':
     # Telescope Testing
-    date = '20260304'
-    setnum = 1013
+    # date = '20260304'
+    # setnum = 1013
     # Lab Testing
-    # date = '20260212'
-    # setnum = 1003
+    date = '20260212'
+    setnum = 1003
 
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
     print(cd.list_datasets())
