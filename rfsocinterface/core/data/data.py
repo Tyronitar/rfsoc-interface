@@ -390,7 +390,7 @@ def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bo
     return templates
 
 
-def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  max_modes: int=30, plot_eigenvalues: bool=False) -> npt.NDArray:
+def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  max_modes: int=30, plot_eigenvalues: bool=False, remove_hot_pixels: bool = False, n_cleanings = 2) -> npt.NDArray:
     """Compute templates for correlated noise removal.
 
     Args:
@@ -404,11 +404,11 @@ def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  m
     # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
     deproj = data - np.mean(data, axis=-1)[:, :, np.newaxis]
     n_tones = data.shape[1]
-    n_samples = data.shape[-1]
     sigma = np.std(deproj, axis = -1, keepdims=True)
     whitened_noise = deproj/sigma
-
-    fft, psd, csd, freqs = get_fft_csd_psd(data, fs)
+    _, _, csd, freqs = get_fft_csd_psd(whitened_noise, fs)
+    n_modes = 2
+    good_pixels = np.arange(n_tones)
 
     lp_bound_idx = np.searchsorted(freqs, lp_filt_freq)
     correlation_matrices = np.mean(csd[:, :, :, 0:lp_bound_idx], axis = -1)
@@ -417,6 +417,22 @@ def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  m
     sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
     sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
     sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
+    #Iteratively fiter out any pixels that might be dominating the templates
+    if remove_hot_pixels:
+        hot_pixels = filter_hot_pixels(sorted_v[:, :, :n_modes], make_plot=False)
+
+        for j in range(n_cleanings):
+            good_pixels = np.setdiff1d( good_pixels,hot_pixels)
+            print("Remaining good_pixels", good_pixels)
+            eigen_values, v = np.linalg.eigh(correlation_matrices[:, good_pixels][:, :, good_pixels])
+            sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
+            sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
+            sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
+            hot_pixels = filter_hot_pixels(sorted_v[:, :, :n_modes], make_plot=True)
+            if len(hot_pixels) ==0:
+                print("Breaking out of loop because there are no hot pixels")
+                break
+
     if plot_eigenvalues:
         plt.figure()
         plt.loglog(sorted_eigen_values[0],'-o')
@@ -433,7 +449,6 @@ def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  m
     else:
         sigma_mult = 3
 
-    n_modes = 2
     new_modes = -1
     while new_modes != 0 and n_modes <= max_modes:
         log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
@@ -445,19 +460,46 @@ def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  m
         new_modes = max(i_count, q_count)
         n_modes += new_modes
     n_modes = min(n_modes, max_modes)
+
     print(f'Using {n_modes} eigen modes')
         # create templates based on the N_mode largest eigenmodes of each
 
     filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs[0], output='sos', analog=False)
     deproj_lp = signal.sosfiltfilt(filt_sos, deproj)
-    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj)
+    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj[:, good_pixels])
 
-
+    
     # subtract the mean again to be sure
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
 
 
+def filter_hot_pixels(eigvecs:npt.NDArray,  z_max:float = 3, make_plot:bool = False):
+    hot_pixels = np.array([])
+    n_modes = eigvecs.shape[-1]
+    n_dirs = eigvecs.shape[0]
+    if make_plot:
+        fig, axes = plt.subplots(n_modes, n_dirs, figsize=(4*n_dirs, 3*n_modes))
+        axes = np.atleast_2d(axes)
+    for m in range(eigvecs.shape[-1]):
+        for d in range(eigvecs.shape[0]):
+            vec_weight = abs(eigvecs[d, :, m])
+            vec_z = abs(vec_weight-np.mean(vec_weight))/np.std(vec_weight)
+            if make_plot:
+                axes[m, d].plot(vec_z)
+                axes[m, d].axhline(y=z_max, color='r', linestyle='--', label=f'z_max={z_max}')
+                axes[m, d].set_xlabel('Channel Index')
+                axes[m, d].set_ylabel('Z-score')
+                axes[m, d].set_title(f'Mode {m}, Direction {d}')
+                axes[m, d].legend()
+        
+
+
+            hot_pixels = np.append(hot_pixels, np.where(vec_z>z_max)[0])
+    if make_plot:
+        plt.tight_layout()
+        plt.show()
+    return hot_pixels
 def get_fft_csd_psd(data, fs):
     n_samples = data.shape[-1]
     window = signal.get_window('hann', n_samples)
@@ -609,14 +651,14 @@ def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: f
             data_lp = data[i_chan]
         if template_data_selection is not None:
             if fspace:
-                templates = compute_templates_fspace(data[i_chan][ :, template_data_selection, :], fs, lp_filt_freq=lp_filt_freq)
+                templates = compute_templates_fspace(data[i_chan][ :, template_data_selection, :], fs, lp_filt_freq=lp_filt_freq, remove_hot_pixels=False)
             else:
                 template_data_lp = data_lp[:, template_data_selection, :]
            
                 templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # 2 x N_modes x N_samples
         else:
             if fspace:
-                templates = compute_templates_fspace(data[i_chan], fs, lp_filt_freq=lp_filt_freq)
+                templates = compute_templates_fspace(data[i_chan], fs, lp_filt_freq=lp_filt_freq, remove_hot_pixels=False)
             else:
                 templates = compute_templates(data_lp, max_modes=max_modes)  # 2 x N_modes x N_samples
 
@@ -2025,16 +2067,17 @@ class ProcessedDataL1(ProcessedData):
 
         if do_electronics_noise_removal:
             
-            remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=5, max_modes=max_modes, template_data_selection=new_data.offres_ind)
-            new_data.data_gain_phase[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_gain_phase[:, :, new_data.onres_ind, :], fs, lp_filt_freq=5, max_modes=max_modes,)
+            remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=10, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+
+            new_data.data_gain_phase[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_gain_phase[:, :, new_data.onres_ind, :], fs, lp_filt_freq=1, max_modes=max_modes,)
+            plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
+
         new_generate_calibrated_data(new_data)
-        plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
-        plot_correlation_matrices_fspace(new_data.data_freq_diss[:, :, new_data.onres_ind],fs)
-
         if do_electronics_noise_removal:
-            new_data.data_freq_diss[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_freq_diss[:, :, new_data.onres_ind, :], fs, lp_filt_freq=1, max_modes=max_modes,)
+            plot_correlation_matrices_fspace(new_data.data_freq_diss[:, :, new_data.onres_ind],fs)
+            new_data.data_freq_diss[:, :, new_data.onres_ind] = remove_electronics_noise(new_data.data_freq_diss[:, :, new_data.onres_ind, :], fs, lp_filt_freq=1, max_modes=max_modes,)
+            plot_correlation_matrices_fspace(new_data.data_freq_diss[:, :, new_data.onres_ind],fs)
 
-        plot_correlation_matrices_fspace(new_data.data_freq_diss[:, :, new_data.onres_ind],fs)
         return new_data
 
 

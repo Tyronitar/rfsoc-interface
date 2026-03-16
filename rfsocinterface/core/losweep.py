@@ -30,7 +30,7 @@ from PySide6.QtWidgets import QApplication
 from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW, parallel_plot
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.params import initialize_params_file, update_params_file
+#from rfsocinterface.core.params import initialize_params_file, update_params_file
 from kidpy3 import capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
@@ -420,7 +420,6 @@ class LoSweepData:
         self.chanmask = chanmask
         self.resonator_data = [ResonatorData(self, i) for i in range(self.nchan)]
         self.tile_name = tile_name
-
         self.fit_f0 = self.tone_list.copy()
         self.fit_qi = np.zeros(self.nchan)
         self.fit_qc = np.zeros(self.nchan)
@@ -828,16 +827,16 @@ class LoSweepData:
 
     
     def generate_new_params_file(self, tile_name: str, old_params: tables.File | None=None, plot: bool=False):
-        f0, depths = self.find_resonances()
-        if plot:
-            old_f0 = None
-            if old_params is not None:
-                old_f0 = old_params.root.baseband_freqs[:] + old_params.root.lo_freq[()]
-            self.plot_new_resonances(tile_name, f0, old_f0)
+        #f0, depths = self.find_resonances()
+        #if plot:
+        #    old_f0 = None
+        #    if old_params is not None:
+        #        old_f0 = old_params.root.baseband_freqs[:] + old_params.root.lo_freq[()]
+        #    self.plot_new_resonances(tile_name, f0, old_f0)
             
         initialize_params_file(
             tile_name,
-            f0 - self.f_center,
+            self.fit_f0 - self.f_center,
             self.f_center,
         )
 
@@ -1053,11 +1052,13 @@ class PowerSweepData:
 
         Resulting array will have shape (N_sweeps, 2, N_tones, N_samples) 
         """
+        #pdb.set_trace()
         return np.stack([sweep.data for sweep in self.sweeps], axis=0)
     
     @property
     def n_tones(self) -> int:
-        return self.sweeps[0].nchan
+        #TODO this is broken
+        return 100
     
     @property
     def n_sweeps(self) -> int:
@@ -1083,15 +1084,15 @@ class PowerSweepData:
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
         with tables.File(path, 'w') as fh:
-            fh.create_array('sweeps', obj=self.combined_sweep_array)
-            fh.create_array('lo_freq', obj=self.f_center)
-            fh.create_array('baseband_freqs', obj=self.tone_list - self.f_center)
-            fh.create_array('chanmask', obj=self.chanmask)
-            fh.create_array('power_levels', obj=self.power_levels)
-            fh.create_array('rfin', obj=self.rfin)
-            fh.create_array('rfout', obj=self.rfout)
-            fh.create_array('fit_f0', obj=self.fit_f0)
-            fh.create_array('max_readout_power', obj=self.max_readout_power)
+            fh.create_array('/', 'sweeps', obj=self.combined_sweep_array)
+            fh.create_array('/','lo_freq', obj=self.f_center)
+            fh.create_array('/','baseband_freqs', obj=self.tone_list - self.f_center)
+            fh.create_array('/','chanmask', obj=self.chanmask)
+            fh.create_array('/','power_levels', obj=self.power_levels)
+            fh.create_array('/','rfin', obj=self.rfin)
+            fh.create_array('/','rfout', obj=self.rfout)
+            fh.create_array('/','fit_f0', obj=self.fit_f0)
+            fh.create_array('/','max_readout_power', obj=self.max_readout_power)
             fh.root._v_attrs.tile_names = self.tile_names
         _logger.info(f'PowerSweepData saved to {str(fname)}')
     
@@ -1139,7 +1140,7 @@ class PowerSweepData:
 
 
     def find_optimal_readout_power(self):
-
+        self.fit()
         f0_data = self.fit_f0[:]
         power_levels = self.power_levels[:]
 
@@ -1147,8 +1148,10 @@ class PowerSweepData:
         power_levels = power_levels[sorted_data_ind]
         f0_data = f0_data[sorted_data_ind, :]
         power_level_non_linear = np.zeros(self.n_tones)
+        onres_ind = np.where(self.chanmask ==1)[0]
+        offres_ind = np.where(self.chanmask == 0)[0]
 
-        for i_res in range(self.n_tones):
+        for i_res in onres_ind:
 
             # First let's remove f0 values that are invalid at high power
             this_power_level = power_levels[:]
@@ -1179,19 +1182,21 @@ class PowerSweepData:
             except RuntimeError:
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
 
-            # plt.plot(this_power_level, this_df, 'o')
-            # plt.plot(this_power_level, power_sweep_fit_function(this_power_level, popt[0][0], popt[0][1]))
-            # plt.xlabel('Power Level (dB)')
-            # plt.ylabel('df0 / f0')
-            # plt.show()
-            # pdb.set_trace()
+            #plt.plot(this_power_level, this_df, 'o')
+            #plt.plot(this_power_level, power_sweep_fit_function(this_power_level, popt[0][0], popt[0][1]))
+            #plt.xlabel('Power Level (dB)')
+            #plt.ylabel('df0 / f0')
+            #plt.show()
+            #pdb.set_trace()
 
         med = np.median(power_level_non_linear)
         std = np.std(power_level_non_linear)
         bad_ind = np.argwhere(np.abs(power_level_non_linear - med) / std > 2.5).flatten()
         power_level_non_linear[bad_ind] = med
         max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
+        #max_readout_power[offres_ind] = 0
         self.max_readout_power = max_readout_power
+        
 
         return max_readout_power
         
@@ -1262,6 +1267,7 @@ class PowerSweep:
             if self._cancel:
                 data = None
                 break
+            print(power_level)
             this_rfout = starting_rfout - power_level
             this_rfin = starting_rfin + power_level
             if this_rfin < 0 or this_rfin > 31.75 or this_rfout < 0 or this_rfout > 31.75:
@@ -1275,11 +1281,11 @@ class PowerSweep:
                 self.rfsoc, self.chan, this_savefile, self.tone_shift,
                 self.freq_step, self.full_span,
             )
-
-        for sweep in self._sweeps:
             self._sweeps.append(sweep)
+
             this_sweep_data = sweep.run_sweep(callback=callback, save=False)
             data.append(this_sweep_data)
+
 
         if data is None:
             _logger.info('Sweep cancelled. Exiting...')
@@ -1297,15 +1303,15 @@ class PowerSweep:
 if __name__ == '__main__':
     import pdb
 
-    data = LoSweepData.from_h5('/data/20260310/20260310_Be231102p2_100_tones_LO_Sweep_hour16p2475.h5')
+    data = LoSweepData.from_h5('/data/20260313/20260313_Simon_Be231102p2_100_tones_LO_Sweep_hour14p4969.h5')
     pdb.set_trace()
 
     # Lab Testing
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
 
-    tile_name = 'Device_aSi1_Channel2'
-    old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
+    tile_name = 'Simon_Be231102p2_100_tones'
+    #old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
     
     # lo_sweep_files = [
     #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_-3.h5',
@@ -1317,17 +1323,18 @@ if __name__ == '__main__':
     # sweeps = [LoSweepData.from_h5(filename) for filename in lo_sweep_files]
     # sweep_data = PowerSweepData(sweeps[0].tone_list, sweeps[0].f_center, sweeps, np.array([-3, 0, 3, 6, 9]), 17, 13)
 
-    sweep_data = PowerSweepData.from_h5('/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464.h5')
+    sweep_data = PowerSweepData.from_h5('/data/20260313/20260313_Simon_Be231102p2_100_tones_Power_Sweep_hour14p9711.h5')
     sweep_data.fit()
-    sweep_data.find_optimal_readout_power()
-    sweep_data.saveh5('/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464.h5')
+    max_readout = sweep_data.find_optimal_readout_power()
+    sweep_data.saveh5('/data/20260313/20260313_Simon_Be231102p2_100_tones_Power_Sweep_hour14p9711.h5')
 
     pdb.set_trace()
 
     # tile_name = 'Device_aSi2_Channel3'
-    # old_params = None
+    old_params = None
 
-    data = LoSweepData.from_h5(f'/data/20260203/20260203_{tile_name}_blind_LO_Sweep_hour14p2056.h5')
+    #data = LoSweepData.from_h5(f'/data/20260203/20260203_{tile_name}_blind_LO_Sweep_hour14p2056.h5')
+
     data.generate_new_params_file(tile_name, old_params, plot=False)
     exit()
     pdb.set_trace()
