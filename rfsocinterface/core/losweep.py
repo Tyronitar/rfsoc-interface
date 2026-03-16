@@ -567,7 +567,7 @@ class LoSweepData:
     def cancel_plot(self):
         self._plot_cancelled = True
 
-    def fit(self, callback: Callable | None=None, max_workers: int=4, scraps_fit: bool =False) -> None:
+    def fit(self, callback: Callable | None=None, max_workers: int=4, scraps_fit: bool =True) -> None:
         """Perform a fit to determine the resoncance frequencies of each resonator."""
         self._fitted = False
         self._fit_cancelled = False
@@ -1194,11 +1194,10 @@ class PowerSweepData:
         bad_ind = np.argwhere(np.abs(power_level_non_linear - med) / std > 2.5).flatten()
         power_level_non_linear[bad_ind] = med
         max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
-        #max_readout_power[offres_ind] = 0
         self.max_readout_power = max_readout_power
-        
 
-        return max_readout_power
+
+        return max_readout_power, np.max(power_level_non_linear)
         
 
 class PowerSweep:
@@ -1304,7 +1303,7 @@ if __name__ == '__main__':
     import pdb
 
     data = LoSweepData.from_h5('/data/20260313/20260313_Simon_Be231102p2_100_tones_LO_Sweep_hour14p4969.h5')
-    pdb.set_trace()
+    #pdb.set_trace()
 
     # Lab Testing
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
@@ -1325,9 +1324,11 @@ if __name__ == '__main__':
 
     sweep_data = PowerSweepData.from_h5('/data/20260313/20260313_Simon_Be231102p2_100_tones_Power_Sweep_hour14p9711.h5')
     sweep_data.fit()
-    max_readout = sweep_data.find_optimal_readout_power()
+    max_readout, readout_power_inc = sweep_data.find_optimal_readout_power()
+    max_readout_lin = 10**(max_readout/20)
+    print(max_readout_lin, "With a power at device increase of", readout_power_inc)
     sweep_data.saveh5('/data/20260313/20260313_Simon_Be231102p2_100_tones_Power_Sweep_hour14p9711.h5')
-
+    np.save('max_readout_power', max_readout_lin)
     pdb.set_trace()
 
     # tile_name = 'Device_aSi2_Channel3'
