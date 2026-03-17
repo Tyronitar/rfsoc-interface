@@ -37,8 +37,8 @@ if __name__ == "__main__":
     rfsoc = RFSOCWrapper(settings['rfsocs'][0])
     chan = 1
     last_fit_f0 = np.zeros(n_tones)
-    set_tone_list = False
-    for i in range(15):
+    set_tone_list = True
+    for i in range(20):
         sweep_file = f'sweep_{i}.h5'
         sweep = LoSweep(
             rfsoc,
@@ -46,20 +46,21 @@ if __name__ == "__main__":
             sweep_file,
             0,
             1e3,
-            100e3,
+            400e3,
         )
-        save_location = get_filename(file_type='lo', chan_name='Be231102p2_100_tones', mkdir=True).with_suffix('.h5')
+        save_location = get_filename(file_type='lo', chan_name='Be231102p2_100_tones_power_shifted', mkdir=True).with_suffix('.h5')
         savefile = save_location.with_stem(f'{save_location.stem}_high_res')
         sweep_data = sweep.run_sweep()
         sweep_data.fit()
         print(sweep_data.fit_f0-last_fit_f0)
         last_fit_f0 = sweep_data.fit_f0.copy()
         sweep_data.saveh5(savefile)
-        save_location = get_filename(file_type='tod', chan_name='Be231102p2_100_tones', mkdir=True).with_suffix('.h5')
+        save_location = get_filename(file_type='tod', chan_name='Be231102p2_100_tones_power_shifted', mkdir=True).with_suffix('.h5')
         if set_tone_list:
             tone_file = get_filename(file_type='tonelist', chan_name=rfsoc.get_channel_name(chan))
             sweep_data.save_new_tone_list(tone_file)
             _, curr_amp_list = rfsoc.get_tone_list(chan)
+            print(curr_amp_list)
             rfsoc.set_tone_list(chan, sweep_data.new_tone_list, amplitudes=curr_amp_list)
         start_streaming(rfsoc,duration=102, save_location=save_location, chan=1)
 

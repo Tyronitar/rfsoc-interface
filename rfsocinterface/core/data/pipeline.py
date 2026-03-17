@@ -299,10 +299,11 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260308'
+    date = '20260316'
+    setnums = np.array([1040 ])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
     #date = '20260212'
-    setnums = np.array([1003])#, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
+    #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
     #Good Dataset, miniC = [0.5, 0] No 30dB Warm Amp #Not compensated for increase in output power, so may be wrong
     #date = '20260212'
     #setnums = np.array([1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021])
@@ -350,7 +351,7 @@ if __name__ == '__main__':
         do_cr_removal = do_cr_removal,
         max_modes=10
     )
-    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices='offres', nominal_block_length=block_length)
     pipeline.add_routine(psd)
     pipeline.add_routine(cleaner)
     
@@ -369,7 +370,7 @@ if __name__ == '__main__':
     from rfsocinterface.analysis.psd import plot_psd, compare_psds
 
     # Plot it
-   # plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnums[-1]}.pdf', basis=PsdBasis.GAIN_PHASE)
+    plot_psd(freq, psd_gp, f'noise_gain_phase_{date}_set{setnums[-1]}.pdf', basis=PsdBasis.GAIN_PHASE)
     dev_pwr = get_power_at_device(freq = probe_freq)
     
     plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnums[-1]}.pdf',f0 = probe_freq[0],adc_units_to_hz =  adc_units_to_hz[0], basis=PsdBasis.FREQ_DISS, resonators = chanmask[0,:]==1, csd = None)

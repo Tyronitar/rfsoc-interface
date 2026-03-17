@@ -460,7 +460,7 @@ class LoSweepData:
         with tables.File(path, 'w') as fh:
             fh.root._v_attrs.lo_freq = self.f_center
             fh.root._v_attrs.tile_name = self.tile_name
-            fh.create_array('/', 'lo_sweep', obj=self.data)
+            fh.create_array('/global_data', 'lo_sweep', obj=self.data)
             fh.create_array('/', 'baseband_freqs', obj=self.tone_list - self.f_center)
             fh.create_array('/', 'chanmask', obj=self.chanmask)
             fh.create_array('/', 'fit_f0', obj=self.fit_f0)

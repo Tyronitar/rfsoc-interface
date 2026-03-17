@@ -242,35 +242,13 @@ if __name__ == "__main__":
     #n_tones = np.size(baseband_freqs)
     # baseband_freqs = [450e6 - lo_freq]
     # tile_name = f'{n_tones}_tone_uniform_202050829'
-    
-    new_tones = []
-
-    for i in range(len(Be231102p2_tones) - 1):
-        t0 = Be231102p2_tones[i]
-        t1 = Be231102p2_tones[i + 1]
-        dif = t1 - t0
-        print(dif)
-       
-        new_tones.append(t0)
-        if dif > 2e6:
-            new_tones.append(np.round(t0 + (dif) / 2))  # midpoint
-
-    # add the last original tone
-    new_tones.append(Be231102p2_tones[-1])
-    difs = np.diff(Be231102p2_tones)
-   
-
-
-    while len(new_tones) < 100:
-        difs = np.diff(new_tones)
-        idx = np.argmax(difs)
-        print(f"Max gap: {difs[idx]} between {new_tones[idx]} and {new_tones[idx + 1]}")
-        new_tone = np.round((new_tones[idx] + new_tones[idx + 1]) / 2)
-        new_tones = np.insert(new_tones, idx + 1, new_tone)
-
-    # Final gap check
-    difs = np.diff(new_tones)
-    set_new_tones = set(new_tones)
+        # Add 58 more tones
+    new_tones = np.concatenate([
+         Be231102p2_tones,
+         np.linspace(218, 244, 27) * 1e6,
+         np.linspace(344, 365, 22) * 1e6,
+         np.linspace(284, 302, 9) * 1e6,
+     ])
     original_tone_indices = [i for i,t in enumerate(new_tones) if t  in Be231102p2_tones]
     print(f"Original tones not in new list: {original_tone_indices}")
     baseband_freqs = np.array(new_tones) - Be231102p2_LO_freq
@@ -281,7 +259,7 @@ if __name__ == "__main__":
     # baseband_freqs = baseband_freqs[sorted_indices] - lo_freq
     
     
-    tile_name = 'Simon_Be231102p2_100_tones'
+    tile_name = 'Be231102p2_100_tones_power_shifted'
     #tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
     # tile_name = 'Device_aSi1_Channel2_blind'
     # baseband_freqs = baseband_freqs - lo_freq

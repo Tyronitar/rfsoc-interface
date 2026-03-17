@@ -14,8 +14,9 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
     # subtract the mean from each detector
 
 
-    detection_mask_array_f = (z_freq > 7)
-    detection_mask_array_d = (z_diss > 7)
+    detection_mask_array_f = (z_freq[onres_ind] > 5)
+    detection_mask_array_d = (z_diss[onres_ind] > 5)
+    n_chan = z_freq[onres_ind, :].shape[0]
 
     gap = 4
 
@@ -38,14 +39,16 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
     axes = np.empty((nrows, ncols), dtype=object)
 
     axes = fig.add_subplot(1, 1, 1, projection='3d')
-   
+    
     # Time axis (based on one detector trace)
-    nsamples = len(z_freq[onres_ind[0]])
+    nsamples = len(z_freq[0])
     t = np.arange(nsamples) / fs
 
-    for det_idx, det in enumerate(onres_ind):
+    pdb.set_trace()
 
-        mask = detection_mask_array_f[det].astype(bool)
+    for det_idx in range(n_chan):
+
+        mask = detection_mask_array_f[det_idx].astype(bool)
         x = np.full(np.sum(mask), det_idx)
         colors = np.where(
             np.sum(detection_mask_array_f[:,mask], axis = 0) > 5,
@@ -55,11 +58,11 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
         axes.scatter(
             x,
             t[mask],
-            np.array(z_freq[det])[mask],
+            np.array(z_freq[det_idx])[mask],
             s=5, c = colors 
 
         )
-        mask = detection_mask_array_d[det].astype(bool)
+        mask = detection_mask_array_d[det_idx].astype(bool)
         x = np.full(np.sum(mask), det_idx)
         colors = np.where(
             np.sum(detection_mask_array_d[:,mask], axis = 0) > 5,
@@ -69,7 +72,7 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
         axes.scatter(
             x,
             t[mask],
-            np.array(z_diss[det])[mask],
+            np.array(z_diss[det_idx])[mask],
             s=5, c = colors 
 
         )
