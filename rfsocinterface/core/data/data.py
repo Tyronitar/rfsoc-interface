@@ -10,6 +10,7 @@ import logging
 from itertools import chain, batched
 import typing
 from importlib.metadata import version
+import shutil
 
 # import tables
 import h5py
@@ -857,8 +858,20 @@ class NewDataStorage:
     """
     @ensure_path(1)
     def __init__(self, filename: Path, mode: str='a'):
-        self.file = h5py.File(filename, mode=mode)
+        self.filename = filename
+        self.file = None
+        self.mode = None
+        self.open(mode=mode)
     
+    def open(self, mode: str='r'):
+        self.file = h5py.File(self.filename, mode=mode)
+        self.mode = mode
+    
+    def close(self):
+        if self.file is None:
+            raise IOError(f'Attempting to close {self.filename} before opening file.')
+        self.file.close()
+
     def has(self, name: str) -> bool:
         def search_fn(string: str):
             if name in string:
@@ -869,6 +882,9 @@ class NewDataStorage:
     
     def get(self, name: str) -> npt.NDArray:
         return self.file[name]
+    
+    def __getitem__(self, key):
+        return self.get(key)
     
     def create_group(
         self,
@@ -911,7 +927,7 @@ class NewDataStorage:
                 datasets.append(name)
         self.file.visititems(search_fn)
         return datasets
-
+    
     @property
     def date(self) -> str:
         return self.attrs['date']
@@ -962,18 +978,14 @@ class NewDataStorage:
         return get_file_stub(self.date, self.setnum)
 
     @property
-    def filename(self) -> str:
-        return self.file.filename
-
-    @property
     def folder(self) -> Path:
         return Path(self.filename).parent
-
+    
     def __enter__(self):
         return self
     
     def __exit__(self, exc_type, exc_value, traceback):
-        self.file.close()
+        self.close()
 
 
 class ConsolidatedData(NewDataStorage):
@@ -1018,8 +1030,10 @@ class ConsolidatedData(NewDataStorage):
         missed_sample_counts = []
         missed_packets_list = []
         tile_names = []
+        tone_counts = []
         for file in todlist:
             raw_data = RawDataFile(file, 'r')
+            tone_counts.append(raw_data.n_tones[0])
 
             # TODO: Make kidpy store the tile name in the file
             # Temporary way to determine tile name from file names
@@ -1124,8 +1138,8 @@ class ConsolidatedData(NewDataStorage):
             this_channel_group.attrs['lo_freq'] = raw_data.lo_freq[0]
             this_channel_group.attrs['detector_dx_dy_elevation_angle'] = raw_data.detector_dx_dy_elevation_angle[:]
             this_channel_group.attrs['attenuator_settings'] = raw_data.attenuator_settings[:]
-
             n_tones = raw_data.n_tones[0]
+            this_channel_group.attrs['n_tones'] = n_tones
 
             # Store the tone parameters
             tones_table = this_channel_group.create_dataset('tones', shape=(n_tones,), dtype=TONES_TABLE_DTYPE)
@@ -1138,7 +1152,12 @@ class ConsolidatedData(NewDataStorage):
             tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
             tones_table['polarization']  = raw_data.detector_pol[:]
             tones_table['dfoverf_per_mK'] = raw_data. dfoverf_per_mK[:]
-            tones_table['chanmask'] = raw_data.chanmask[:]
+            chanmask = raw_data.chanmask[:]
+            off_res = np.argwhere(chanmask == 0).flatten()
+            no_pol = np.argwhere(tones_table['polarization'] < 1).flatten()
+            chanmask[no_pol] = -1
+            chanmask[off_res] = 0  # Preserve off-resonance indices
+            tones_table['chanmask'] = chanmask
 
             # Copy LO sweep
             this_channel_group.create_dataset('lo_sweep', data=raw_data.lo_sweep[:])
@@ -1271,8 +1290,6 @@ class ConsolidatedData(NewDataStorage):
             for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_q, chunk_size=chunk_shape_read_adc[-1]):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
                 temp_data_IQ[1, :, sample_indices] = chunk[valid_tone_index]
-            
-
 
             # Detector Positions
             if azel_exists:
@@ -1331,31 +1348,76 @@ class ConsolidatedData(NewDataStorage):
                 )
 
             # Delete temporary datasets
-            # del temp_timestamp, temp_data_IQ, temp_interpolated_samples
-            # del temp_detector_az, temp_detector_za
+            del time_ordered_data_group['temp_timestamp']
+            del time_ordered_data_group['temp_data_IQ']
+            del time_ordered_data_group['temp_interpolated_samples']
+            del time_ordered_data_group['temp_detector_az']
+            del time_ordered_data_group['temp_detector_za']
             
-            # Store chanmask from TOD
-            # this_chanmask = raw_global_data.chanmask[:]
-            # off_res = np.argwhere(this_chanmask == 0).flatten()
-            # no_pol = np.argwhere(this_detector_pol[:] < 1).flatten()
-            # this_chanmask[no_pol] = -1
-            # # Preserve off-resonance indices
-            # this_chanmask[off_res] = 0
-            # chanmask[i, :] = pad_to_length(this_chanmask, max_n_tones, constant_values=-1)
-
-            ...
-
         # iq = cd.get('/channels/channel_000/time_ordered_data/temp_data_IQ')
-        plt.plot(temp_timestamp[:], temp_data_IQ[0, 0], label='Full data')
-        plt.plot(timestamp[:], data_IQ[0, 0], label='Downsampled data')
-        plt.legend()
-        plt.show()
-        plt.scatter(temp_detector_az[0], temp_detector_za[0], label='Full data')
-        plt.scatter(detector_az[0], detector_za[0], label='Downsampled data')
-        plt.legend()
-        plt.show()
-        pdb.set_trace()
+        # plt.plot(temp_timestamp[:], temp_data_IQ[0, 0], label='Full data')
+        # plt.plot(timestamp[:], data_IQ[0, 0], label='Downsampled data')
+        # plt.legend()
+        # plt.show()
+        # plt.scatter(temp_detector_az[0], temp_detector_za[0], label='Full data')
+        # plt.scatter(detector_az[0], detector_za[0], label='Downsampled data')
+        # plt.legend()
+        # plt.show()
+        # pdb.set_trace()
+
+        # Create virtual datasets
+        vdsets = cdata.create_group('vdsets')
+        total_tones = sum(tone_counts)
+        vdsets.attrs['n_tones'] = total_tones
+        channel_groups = all_channels_group.items()
+        data_IQ_layout = h5py.VirtualLayout((2, total_tones, n_samples_ds), 'f8')
+        azel_shape = (total_tones, n_samples_ds) if azel_exists else (total_tones, 1)
+        detector_az_layout = h5py.VirtualLayout(azel_shape, 'f8')
+        detector_za_layout = h5py.VirtualLayout(azel_shape, 'f8')
+        tones_table_layout = h5py.VirtualLayout((total_tones,), TONES_TABLE_DTYPE)
+
+        i_tone = 0
+        for group_name, channel_group in channel_groups:
+            n_tones = channel_group.attrs['n_tones']
+            this_data_group = channel_group['time_ordered_data']
+            data_IQ_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_IQ'])
+            detector_az_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['detector_az'])
+            detector_za_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['detector_za'])
+            tones_table_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(channel_group['tones'])
+            i_tone += n_tones
+        
+        vdsets.create_virtual_dataset('data_IQ', data_IQ_layout)
+        vdsets.create_virtual_dataset('detector_az', detector_az_layout)
+        vdsets.create_virtual_dataset('detector_za', detector_za_layout)
+        vdsets.create_virtual_dataset('tones', tones_table_layout)
+
         return cdata
+    
+    @classmethod
+    def from_file(cls, date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY, mode: str='r') -> ConsolidatedData:
+        fname = get_consolidated_file_template(date, setnum, data_dir=data_dir)
+        return cls(fname, mode=mode)
+    
+    def create_processed_data(self, mode:str='a') -> NewProcessedData:
+        pfile_path = Path(self.processed_file_template)
+        self.close()
+        shutil.copy2(self.filename, pfile_path)
+        if self.mode == 'w':
+            self.mode = 'a'
+        self.open(self.mode)
+
+        return NewProcessedData(pfile_path, mode=mode)
+
+class NewProcessedData(NewDataStorage):
+
+    @classmethod
+    def from_file(cls, date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY, mode: str='r') -> ConsolidatedData:
+        fname = get_processed_file_template(date, setnum, data_dir=data_dir)
+        return cls(fname, mode=mode)
+    
+    def initialize_processed_data_fields(self):
+        pass
+
 
 
 
@@ -2819,14 +2881,16 @@ def plot_map(
 
 if __name__ == '__main__':
     # Telescope Testing
-    date = '20260304'
-    setnum = 1013
+    # date = '20260304'
+    # setnum = 1013
     # Lab Testing
-    # date = '20260212'
-    # setnum = 1003
+    date = '20260212'
+    setnum = 1003
 
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
-    print(cd.list_datasets())
+    pd = cd.create_processed_data()
+    pdb.set_trace()
+    print(pd.list_datasets())
 
     pdb.set_trace()
 
