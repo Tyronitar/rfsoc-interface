@@ -44,6 +44,9 @@ from rfsocinterface.core.utils import (
     PathLike,
     ensure_path,
     pad_to_length,
+    list_datasets,
+    search,
+    H5pyObject,
     linregress_in_chunks,
     iterate_chunks,
     compute_chunk_shape,
@@ -153,6 +156,14 @@ TONES_TABLE_DTYPE = [
     ('chanmask', 'i1'),
 ]
 
+CALIBRATION_TABLE_DTYPE = [
+    ('adc_units_to_hz', 'f8'),
+    ('IQ_to_gain_phase_angle', 'f8'),
+    ('IQ_to_freq_diss_angle', 'f8'),
+    ('df_per_mK', 'f8'),
+]
+
+
 
 def test_node(f: tables.File, name: str) -> bool:
     try:
@@ -247,63 +258,45 @@ def compute_df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, det
     return dfoverf_per_mK * detector_f * amps
 
 
+# TODO: Optimize this for chunked data
 def rotate_basis(
-        in_data: tables.Array,
-        out_data: tables.Array,
-        rotation_angle: tables.Array,
-        i_chan: int=0,
-        valid_tone_indices: npt.NDArray | None=None,
-        ):
+        in_data: h5py.Dataset,
+        out_data: h5py.Dataset,
+        rotation_angle: npt.NDArray,
+):
     """Compute change of basis, rotating with the specified angle."""
 
-    # new_data = np.zeros(shape=(2, np.size(tone_index), data_1.shape[-1]))
-    out_data[i_chan, 0, valid_tone_indices] = \
-        np.cos(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
-        in_data[i_chan, 0, valid_tone_indices] - \
-        np.sin(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
-        in_data[i_chan, 1, valid_tone_indices]
+    out_data[0] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0] - \
+        np.sin(rotation_angle)[:, np.newaxis] * in_data[1]
 
-    out_data[i_chan, 1, valid_tone_indices] = \
-        np.sin(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
-        in_data[i_chan, 0, valid_tone_indices] - \
-        np.sin(rotation_angle)[i_chan, valid_tone_indices, np.newaxis] * \
-        in_data[i_chan, 1, valid_tone_indices]
+    out_data[1] = np.sin(rotation_angle)[:, np.newaxis] * in_data[0] - \
+        np.sin(rotation_angle)[:, np.newaxis] * in_data[1]
 
 
-def generate_calibrated_data(data_group: tables.Group, global_data_group: tables.Group):
-    nchan = global_data_group._v_attrs.n_channels
-    for i_chan in range(nchan):
-        rotate_basis(
-            data_group.data_gain_phase[:],
-            data_group.data_IQ,
-            -data_group.IQ_to_gain_phase_angle[:],
-            i_chan=i_chan,
-            valid_tone_indices=np.arange(global_data_group.tones_per_channel[i_chan]),
-        )
-    data_group.data_IQ[:] = data_group.data_IQ[:] - np.mean(data_group.data_IQ[:], axis=2, keepdims=True)
-    # data.data_IQ[0, :] = data.data_IQ[0, :] - np.mean(data.data_IQ[0, :], axis=1, keepdims=True)
-    # data.data_IQ[1, :] = data.data_IQ[1, :] - np.mean(data.data_IQ[1, :], axis=1, keepdims=True)
-
-
-    #now use the derivatives to convert to a frequency shift
-    #need to optimally weight the data based on the response
-    #in each direction (assuming the noise is identical in I and Q)
-    #this will then yield data_f
-
-    for i_chan in range(nchan):
-        rotate_basis(
-            data_group.data_IQ[:] / data_group.adc_units_to_hz[:][:, np.newaxis],
-            data_group.data_freq_diss,
-            data_group.IQ_to_freq_diss_angle[:],
-            i_chan=i_chan,
-            valid_tone_indices=np.arange(global_data_group.tones_per_channel[i_chan]),
-        )
-    rotate_basis(data_group.data_IQ[:] / data_group.adc_units_to_hz[:][:, np.newaxis], data_group.data_freq_diss, data_group.IQ_to_freq_diss_angle[:])
-    # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
-
+# TODO: Optimize this for chunked data
+def generate_calibrated_data(
+    data_IQ: h5py.Dataset,
+    data_freq_diss: h5py.Dataset,
+    data_mK: h5py.Dataset,
+    IQ_to_freq_diss_angle: npt.NDArray,
+    adc_units_to_hz: npt.NDArray,
+    df_per_mK: npt.NDArray,
+):
+        
+    # now use the derivatives to convert to a frequency shift
+    # need to optimally weight the data based on the response
+    # in each direction (assuming the noise is identical in I and Q)
+    # this will then yield data_f
+    rotate_basis(
+        data_IQ[:] / adc_units_to_hz[np.newaxis, :, np.newaxis],
+        data_freq_diss,
+        IQ_to_freq_diss_angle,
+    )
     # Finally, we need to get data_mK
-    data_group.data_mK[:] = np.divide(data_group.data_freq_diss[0, :], global_data_group.df_per_mK[:][:, np.newaxis])
-    # data.data_mK[:] = np.where(np.isinf(data.data_mK), np.nan, data.data_mK)
+    data_mK[:] = np.divide(
+        data_freq_diss[0],
+        df_per_mK[:, np.newaxis],
+    )
 
 def new_generate_calibrated_data(pd: ProcessedDataL1):
     if isinstance(pd.get_node('data_IQ'), ExternalLink):
@@ -871,20 +864,22 @@ class NewDataStorage:
         if self.file is None:
             raise IOError(f'Attempting to close {self.filename} before opening file.')
         self.file.close()
-
-    def has(self, name: str) -> bool:
-        def search_fn(string: str):
-            if name in string:
-                return True
-        if self.file.visit(search_fn):
-            return True
-        return False
     
-    def get(self, name: str) -> npt.NDArray:
+    def get(self, name: str) -> H5pyObject:
         return self.file[name]
-    
+
     def __getitem__(self, key):
         return self.get(key)
+
+    def has(self, name: str) -> bool:
+        res = self.search(name)
+        return res is not None
+    
+    def search(self, name: str) -> tuple[str, H5pyObject] | None:
+        return search(self.file, name)
+
+    def list_datasets(self) -> list[tuple[str, h5py.Dataset]]:
+        return list_datasets(self.file)
     
     def create_group(
         self,
@@ -919,14 +914,6 @@ class NewDataStorage:
     @property
     def attrs(self) -> h5py.AttributeManager:
         return self.file.attrs
-    
-    def list_datasets(self) -> list[str]:
-        datasets = []
-        def search_fn(name: str, obj: h5py.Group | h5py.Dataset):
-            if isinstance(obj, h5py.Dataset):
-                datasets.append(name)
-        self.file.visititems(search_fn)
-        return datasets
     
     @property
     def date(self) -> str:
@@ -1104,7 +1091,7 @@ class ConsolidatedData(NewDataStorage):
         global_data_group.attrs['downsampling_factor'] = downsampling_factor
         global_data_group.attrs['rfsocinterface_version'] = VERSION
         try:
-            kidpy_version = version(kidpy3)
+            kidpy_version = version('kidpy3')
         except Exception as e:
             _logger.warning(f'kidpy3 version could not be accessed: {e}')
             kidpy_version = 'N/A'
@@ -1123,7 +1110,6 @@ class ConsolidatedData(NewDataStorage):
         # Intiialize group for storing data per-channel
         all_channels_group = cdata.create_group('channels')
         all_channels_group.attrs['n_channels'] = nchan
-
 
         # Get the data from each channel
         for i_chan, file in enumerate(todlist):
@@ -1377,7 +1363,7 @@ class ConsolidatedData(NewDataStorage):
         tones_table_layout = h5py.VirtualLayout((total_tones,), TONES_TABLE_DTYPE)
 
         i_tone = 0
-        for group_name, channel_group in channel_groups:
+        for _, channel_group in channel_groups:
             n_tones = channel_group.attrs['n_tones']
             this_data_group = channel_group['time_ordered_data']
             data_IQ_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_IQ'])
@@ -1406,7 +1392,9 @@ class ConsolidatedData(NewDataStorage):
             self.mode = 'a'
         self.open(self.mode)
 
-        return NewProcessedData(pfile_path, mode=mode)
+        pd = NewProcessedData(pfile_path, mode=mode)
+        pd.initialize_processed_data_fields()
+        return pd
 
 class NewProcessedData(NewDataStorage):
 
@@ -1416,9 +1404,230 @@ class NewProcessedData(NewDataStorage):
         return cls(fname, mode=mode)
     
     def initialize_processed_data_fields(self):
-        pass
+        """Initialize the datasets unique to the ProcessedData File.
+        
+        Will create the following datasets for each channel:
+            * data_gain_phase (2, n_tones, n_samples): Detector data rotated to 
+                gain/phase basis.
+            * data_freq_diss (2, n_tones, n_samples): Detector data rotated to 
+                frequency/dissipation basis.
+            * data_mK (n_tones, n_samples): Calibrated detector data in mK units.
+            * carrier_amplitudes (2, n_tones): The median I/Q values for each tone.
+            * calibration_info (n_tones,): Structered datset containing various 
+                information for creating the calibrated data. Contains:
+                * adc_units_to_hz: Conversion factor from ADC units (IQ data) to
+                    Hz (frequency/dissipation).
+                * IQ_to_gain_phase_angle: Angle in radians to rotate IQ basis to
+                    gain/phase.
+                * IQ_to_freq_diss_angle: Angle in radians to rotate IQ basis to
+                    frequency/dissipation.
+                * df_per_mK: Conversion factor to convert Hz to mK.
+        Also creates virtual datasets for each dataset, combined across channels.
+        """
+        n_samples = self['global_data'].attrs['n_samples']
+        for _, channel_group in self['channels'].items():
+            time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
+            n_tones = channel_group.attrs['n_tones']
+            data_IQ = time_ordered_data_group['data_IQ']
+            tones_table = channel_group['tones']
+
+            # Initialize caliibration-related datasets
+            data_gain_phase = time_ordered_data_group.create_dataset_like('data_gain_phase', time_ordered_data_group['data_IQ'])
+            data_freq_diss = time_ordered_data_group.create_dataset_like('data_freq_diss', time_ordered_data_group['data_IQ'])
+            mK_chunks = compute_chunk_shape((n_tones,), 8, max_chunk_size=n_samples)
+            data_mK = time_ordered_data_group.create_dataset(
+                'data_mK',
+                (n_tones, n_samples),
+                dtype=np.float64,
+                chunks=mK_chunks,
+            )
+            carrier_amplitudes = time_ordered_data_group.create_dataset(
+                'carrier_amplitudes',
+                data=np.nanmedian(data_IQ[:], axis=-1)
+            )
+            calibration_info = time_ordered_data_group.create_dataset(
+                'calibration_info',
+                shape=(n_tones,),
+                dtype=CALIBRATION_TABLE_DTYPE,
+            )
+
+            # Collect calibration information
+            sweep = LoSweepData(
+                tones_table['baseband_freq'],
+                channel_group.attrs['lo_freq'],
+                channel_group['lo_sweep'][:],
+                tones_table['chanmask'],
+            )
+            IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
+            calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
+            calibration_info['adc_units_to_hz'] = adc_units_to_hz 
+
+            df_per_mK = compute_df_per_mK(
+                tones_table['polarization'],
+                tones_table['beam_amplitude'],
+                tones_table['baseband_freq'],
+                tones_table['dfoverf_per_mK'],
+            )
+            calibration_info['df_per_mK'] = df_per_mK
+
+            # First mean center IQ data
+            data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
+
+            # Rotate to Gain / Phase
+            IQ_to_gain_phase_angle = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])
+            calibration_info['IQ_to_gain_phase_angle'] = IQ_to_gain_phase_angle
+            rotate_basis(
+                data_IQ,
+                data_gain_phase,
+                IQ_to_gain_phase_angle,
+            )
+            # Generate calibrated data
+            generate_calibrated_data(
+                data_IQ,
+                data_freq_diss,
+                data_mK,
+                IQ_to_freq_diss_angle,
+                adc_units_to_hz,
+                df_per_mK,
+            )
+
+        # Make virtual datasets for the new stuff
+        total_tones = self['vdsets'].attrs['n_tones']
+        data_gain_phase_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
+        data_freq_diss_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
+        data_mK_layout = h5py.VirtualLayout((total_tones, n_samples), 'f8')
+        carrier_amplitudes_layout = h5py.VirtualLayout((2, total_tones), 'f8')
+        calibration_info_layout = h5py.VirtualLayout((total_tones,), CALIBRATION_TABLE_DTYPE)
+
+        i_tone = 0
+        for _, channel_group in self['channels'].items():
+            n_tones = channel_group.attrs['n_tones']
+            this_data_group = channel_group['time_ordered_data']
+            data_gain_phase_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_gain_phase'])
+            data_freq_diss_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_freq_diss'])
+            data_mK_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_mK'])
+            carrier_amplitudes_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['carrier_amplitudes'])
+            calibration_info_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['calibration_info'])
+            i_tone += n_tones
+
+        self['vdsets'].create_virtual_dataset('data_gain_phase', data_gain_phase_layout)
+        self['vdsets'].create_virtual_dataset('data_freq_diss', data_freq_diss_layout)
+        self['vdsets'].create_virtual_dataset('data_mK', data_mK_layout)
+        self['vdsets'].create_virtual_dataset('carrier_amplitudes', carrier_amplitudes_layout)
+        self['vdsets'].create_virtual_dataset('calibration_info', calibration_info_layout)
+    
+    #
+    # Useful getter methods
+    #
+    def get_channel_group(self, i_chan: int) -> h5py.Group:
+        return self[f'channels/channel_{i_chan:03d}']
+
+    def get_channel_group_from_tile_name(self, tile_name: str) -> h5py.Group:
+        tile_names = []
+        for _, channel_group in self['channels'].items():
+            this_tile_name = channel_group.attrs['tile_name']
+            tile_names.append(this_tile_name)
+            if this_tile_name == tile_name:
+                return channel_group
+        raise KeyError(f'Unable to find channel with name "{tile_name}". Tile names found: {tile_names}')
+    
+    def get_from_channel(self, i_chan: int, obj_name: str) -> H5pyObject:
+        return self.get_channel_group(i_chan)['obj_name']
+    
+    #
+    # Useful properties 
+    #
+    @property
+    def virtual_datasets(self) -> h5py.Group:
+        return self['vdsets']
+
+    # Time-ordered data
+    @property
+    def data_IQ(self) -> h5py.Dataset:
+        return self['vdsets/data_IQ']
+
+    @property
+    def data_gain_phase(self) -> h5py.Dataset:
+        return self['vdsets/data_gain_phase']
+
+    @property
+    def data_freq_diss(self) -> h5py.Dataset:
+        return self['vdsets/data_freq_diss']
+
+    @property
+    def data_mK(self) -> h5py.Dataset:
+        return self['vdsets/data_mK']
+
+    @property
+    def detector_az(self) -> h5py.Dataset:
+        return self['vdsets/detector_az']
+
+    @property
+    def detector_za(self) -> h5py.Dataset:
+        return self['vdsets/detector_za']
 
 
+    # Tone/detector properties
+    @property
+    def tones_table(self) -> h5py.Dataset:
+        return self['vdsets/tones']
+
+    @property
+    def baseband_freqs(self) -> npt.NDArray:
+        return self.tones_table['baseband_freq']
+
+    @property
+    def tone_powers(self) -> npt.NDArray:
+        return self.tones_table['power']
+
+    @property
+    def chanmask(self) -> npt.NDArray:
+        return self.tones_table['chanmask']
+
+    @property
+    def detector_pol(self) -> npt.NDArray:
+        return self.tones_table['polarization']
+
+    @property
+    def detector_beam_ampl(self) -> npt.NDArray:
+        return self.tones_table['beam_amplitude']
+
+    @property
+    def detector_delta_x(self) -> npt.NDArray:
+        return self.tones_table['delta_x']
+
+    @property
+    def detector_delta_y(self) -> npt.NDArray:
+        return self.tones_table['delta_y']
+
+    @property
+    def dfoverf_per_mK(self) -> npt.NDArray:
+        return self.tones_table['dfoverf_per_mK']
+
+    @property
+    def carrier_amplitudes(self) -> h5py.Dataset:
+        return self['vdsets/carrier_amplitudes']
+
+    # Calibration information 
+    @property
+    def calibration_info(self) -> h5py.Dataset:
+        return self['vdsets/calibration_info']
+
+    @property
+    def adc_units_to_hz(self) -> npt.NDArray:
+        return self.calibration_info['adc_units_to_hz']
+
+    @property
+    def IQ_to_gain_phase_angle(self) -> npt.NDArray:
+        return self.calibration_info['IQ_to_gain_phase_angle']
+
+    @property
+    def IQ_to_freq_diss_angle(self) -> npt.NDArray:
+        return self.calibration_info['IQ_to_freq_diss_angle']
+
+    @property
+    def df_per_mK(self) -> npt.NDArray:
+        return self.calibration_info['df_per_mK']
 
 
 class PyTablesDataset:
@@ -2889,8 +3098,7 @@ if __name__ == '__main__':
 
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
     pd = cd.create_processed_data()
-    pdb.set_trace()
-    print(pd.list_datasets())
+    pd.initialize_processed_data_fields()
 
     pdb.set_trace()
 

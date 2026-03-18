@@ -55,6 +55,7 @@ USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
 PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 # Number = TypeVar('Number', int, float, complex, bytes)
 FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
+H5pyObject = TypeVar('H5pyObject', h5py.Dataset, h5py.Group)
 
 GAUSSIAN_SIGMA = (0.5, 0.33)
 BUTTER_ORDER = 6
@@ -443,6 +444,33 @@ def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_val
         raise ValueError(f'Target length {target_length} is less than current length {x.shape[axis]} along axis {axis}.')
     pad_widths[axis] = (0, pad_amount)
     return np.pad(x, pad_widths, mode='constant', constant_values=constant_values)
+
+
+def list_datasets(group: h5py.Group) -> list[tuple[str, h5py.Dataset]]:
+    """Recursively list all datasets in the specified group."""
+    datasets = []
+    def search_fn(name: str, obj: H5pyObject):
+        if isinstance(obj, h5py.Dataset):
+            datasets.append((name, obj))
+    group.visititems(search_fn)
+    return datasets
+
+
+def search(src: h5py.Group, name: str) -> tuple[str, H5pyObject] | None:
+    """Search recursively through an HDF5 group for the specified name.
+
+    Will return the first object found whose name is contained within `name`.
+    Returns `None` if no match found.
+    
+    Returns:
+        obj_name (str): The name of the found object.
+        obj (h5py.Group | h5py.Dataset): The object matching the search query.
+    
+    """
+    def search_fn(obj_name: str, obj: H5pyObject):
+        if name in obj_name:
+            return obj_name, obj
+    return src.visititems(search_fn)
 
 #
 # Chunked array handling utils
