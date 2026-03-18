@@ -289,6 +289,7 @@ def run_multi_run_dataset(date:str, setnums:np.ndarray) -> tuple[np.ndarray, np.
         pipeline.add_routine(cleaner)
         data = pipeline.run_pipeline(date, setnum)
         psd_fd = data.get_node_value('psd_freq_diss')[0, :]
+        print(data.IQ_to_freq_diss_angle[:])
         #psd_opt, csd_opt = rotate_optimally(freq, psd_fd, csd_fd,chanmask[:]==1, 20, 200)
         data.close()
         psds.append(psd_fd)

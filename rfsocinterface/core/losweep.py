@@ -1139,7 +1139,7 @@ class PowerSweepData:
         return power_sweep
 
 
-    def find_optimal_readout_power(self):
+    def find_optimal_readout_power(self, plot: bool = True):
         self.fit()
         f0_data = self.fit_f0[:]
         power_levels = self.power_levels[:]
@@ -1147,47 +1147,72 @@ class PowerSweepData:
         sorted_data_ind = np.argsort(power_levels)
         power_levels = power_levels[sorted_data_ind]
         f0_data = f0_data[sorted_data_ind, :]
+        q_data = np.zeros_like(f0_data)
         power_level_non_linear = np.zeros(self.n_tones)
         onres_ind = np.where(self.chanmask ==1)[0]
         offres_ind = np.where(self.chanmask == 0)[0]
 
         for i_res in onres_ind:
-
+            if plot:
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+                colors = plt.cm.viridis(np.linspace(0, 1, len(power_levels)))
+            
+            resonant_freqs = []
+            q_tot = []
+            
+            for i_p in range(len(power_levels)):
+                resonator = self.sweeps[i_p].resonator_data[i_res]
+                if plot:
+                    ax1.plot(resonator.freq, resonator.s21, label=f'Power Level: {power_levels[i_p]:.1f} dB', color=colors[i_p])
+                    ax1.axvline(x=resonator.fit_f0, color=colors[i_p], alpha=0.5)
+                
+                # Plot IQ circle
+                I = self.sweeps[i_p].data_I[i_res]
+                Q = self.sweeps[i_p].data_Q[i_res]
+                if plot:
+                    ax2.plot(I, Q, label=f'Power Level: {power_levels[i_p]:.1f} dB', color=colors[i_p])
+                
+                # Perform scraps fit to get resonant properties
+                res_obj = get_scraps_fit(
+                    I,
+                    Q,
+                    resonator.freq,
+                    resonator.tone,
+                    resonator.s21,
+                )
+                
+                # Extract fitted parameters
+                f0 = res_obj.lmfit_result['default']['result'].params['f0'].value
+                qi = res_obj.lmfit_result['default']['result'].params['qi'].value
+                qc = res_obj.lmfit_result['default']['result'].params['qc'].value
+                resonant_freqs.append(f0)
+            
+                q_tot.append(1/(1/qi + 1/qc))
+            
+            if plot:
+                ax1.set_xlabel('Frequency (Hz)')
+                ax1.set_ylabel('|S21| (dB)')
+                ax1.set_title('Resonator S21')
+                
+                ax2.set_xlabel('I')
+                ax2.set_ylabel('Q')
+                ax2.set_title('IQ Circle')
+                ax2.set_aspect('equal')
+                
+                plt.tight_layout()
+                plt.show()
+            
+            f0_data[:, i_res] = resonant_freqs
+            q_data[:, i_res] = q_tot
             # First let's remove f0 values that are invalid at high power
             this_power_level = power_levels[:]
-            this_df = (f0_data[:, i_res] - f0_data[0,i_res]) / f0_data[0, i_res]
-            this_deriv = np.diff(this_df)
+            this_alpha = (f0_data[:, i_res] - f0_data[0,i_res]) / q_data[:, i_res]
             
-            # Only look at the f0 values at the highest 25% of powers
-            bad_power_indices = np.argwhere(this_deriv > 0).flatten()
-            valid_bad = np.argwhere(bad_power_indices >= 0.75 * self.n_sweeps).flatten()
-            bad_power_indices = bad_power_indices[valid_bad]
 
-            if np.size(bad_power_indices) > 0:
-                stop_index = np.min(bad_power_indices)
-                this_power_level = this_power_level[:stop_index]
-                this_df = this_df[:stop_index]
-
-            try:
-                popt = curve_fit(
-                    power_sweep_fit_function,
-                    this_power_level,
-                    this_df,
-                    p0=(
-                        POWER_SWEEP_FRACTIONAL_FREQ_SHIFT,
-                        POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB,
-                    ),
-                )
-                power_level_non_linear[i_res] = popt[0][1]
-            except RuntimeError:
-                power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
-
-            #plt.plot(this_power_level, this_df, 'o')
-            #plt.plot(this_power_level, power_sweep_fit_function(this_power_level, popt[0][0], popt[0][1]))
-            #plt.xlabel('Power Level (dB)')
-            #plt.ylabel('df0 / f0')
-            #plt.show()
-            #pdb.set_trace()
+            plt.plot(this_power_level, this_alpha, 'o')
+            plt.xlabel('Power Level (dB)')
+            plt.ylabel('df0 / f0')
+            plt.show()
 
         med = np.median(power_level_non_linear)
         std = np.std(power_level_non_linear)
@@ -1302,7 +1327,7 @@ class PowerSweep:
 if __name__ == '__main__':
     import pdb
 
-    data = LoSweepData.from_h5('/data/20260313/20260313_Simon_Be231102p2_100_tones_LO_Sweep_hour14p4969.h5')
+    data = LoSweepData.from_h5('/data/20260316/20260316_Be231102p2_100_tones_LO_Sweep_hour16p8258.h5')
     #pdb.set_trace()
 
     # Lab Testing
@@ -1322,12 +1347,12 @@ if __name__ == '__main__':
     # sweeps = [LoSweepData.from_h5(filename) for filename in lo_sweep_files]
     # sweep_data = PowerSweepData(sweeps[0].tone_list, sweeps[0].f_center, sweeps, np.array([-3, 0, 3, 6, 9]), 17, 13)
 
-    sweep_data = PowerSweepData.from_h5('/data/20260313/20260313_Simon_Be231102p2_100_tones_Power_Sweep_hour14p9711.h5')
+    sweep_data = PowerSweepData.from_h5('/data/20260316/20260316_Be231102p2_100_tones_Power_Sweep_hour16p8736.h5')
     sweep_data.fit()
     max_readout, readout_power_inc = sweep_data.find_optimal_readout_power()
     max_readout_lin = 10**(max_readout/20)
     print(max_readout_lin, "With a power at device increase of", readout_power_inc)
-    sweep_data.saveh5('/data/20260313/20260313_Simon_Be231102p2_100_tones_Power_Sweep_hour14p9711.h5')
+    sweep_data.saveh5('/data/20260316/20260316_Be231102p2_100_tones_Power_Sweep_hour16p8736.h5')
     np.save('max_readout_power', max_readout_lin)
     pdb.set_trace()
 
