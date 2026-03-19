@@ -274,12 +274,17 @@ if __name__ == "__main__":
     #pdb.set_trace()
     # df_overf_per_mK = np.load('/home/onrkids/readout/host/params/dfoverf_per_mK_tile2.npy')
     detdx = detdy = chanmask = det_beam_ampl = det_pol = tone_powers = df_overf_per_mK = None
-    tone_powers = np.load('max_readout_power.npy')
+    tone_powers = np.load('max_readout_power_simon_manual_adjusted.npy')
 
     chanmask = np.zeros_like(baseband_freqs)
     chanmask[original_tone_indices] = 1
+    baseband_freqs_sorted_idx = np.argsort(baseband_freqs)
+    baseband_freqs = baseband_freqs[baseband_freqs_sorted_idx]
+    chanmask = chanmask[baseband_freqs_sorted_idx]
     print(chanmask)
     print(tone_powers)
+    offres_ind = np.where(chanmask ==0)
+    tone_powers[offres_ind] = tone_powers[offres_ind]*(len(tone_powers)/sum(tone_powers))
     pdb.set_trace()
 
     initialize_params_file(tile_name, baseband_freqs, Be231102p2_LO_freq, DEFAULT_PARAMS_DIRECTORY)
