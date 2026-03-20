@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QFormLayout, QFrame,
     QLineEdit, QPushButton, QSizePolicy, QSpacerItem,
     QVBoxLayout, QWidget)
 
+from rfsocinterface.gui.widgets.canvas import ScrollableCanvas
 from rfsocinterface.gui.widgets.controller import Controller
 from . import icons_rc
 
@@ -27,9 +28,14 @@ class Ui_TelescopeControlWidget(object):
     def setupUi(self, TelescopeControlWidget):
         if not TelescopeControlWidget.objectName():
             TelescopeControlWidget.setObjectName(u"TelescopeControlWidget")
-        TelescopeControlWidget.resize(1021, 374)
+        TelescopeControlWidget.resize(1021, 397)
         self.gridLayout_2 = QGridLayout(TelescopeControlWidget)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
+        self.optical_pushButton = QPushButton(TelescopeControlWidget)
+        self.optical_pushButton.setObjectName(u"optical_pushButton")
+
+        self.gridLayout_2.addWidget(self.optical_pushButton, 1, 0, 1, 1)
+
         self.gridLayout = QGridLayout()
         self.gridLayout.setObjectName(u"gridLayout")
         self.horizontalSpacer_2 = QSpacerItem(40, 20, QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Minimum)
@@ -271,10 +277,10 @@ class Ui_TelescopeControlWidget(object):
 
         self.gridLayout_2.addLayout(self.gridLayout, 0, 0, 1, 1)
 
-        self.optical_pushButton = QPushButton(TelescopeControlWidget)
-        self.optical_pushButton.setObjectName(u"optical_pushButton")
+        self.live_footage_canvas = ScrollableCanvas(TelescopeControlWidget)
+        self.live_footage_canvas.setObjectName(u"live_footage_canvas")
 
-        self.gridLayout_2.addWidget(self.optical_pushButton, 1, 0, 1, 1)
+        self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0, 1, 1)
 
 
         self.retranslateUi(TelescopeControlWidget)
@@ -284,6 +290,7 @@ class Ui_TelescopeControlWidget(object):
 
     def retranslateUi(self, TelescopeControlWidget):
         TelescopeControlWidget.setWindowTitle(QCoreApplication.translate("TelescopeControlWidget", u"MainWindow", None))
+        self.optical_pushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Show Optical Image", None))
         self.stop_pushButton.setText("")
         self.control_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Manual Control", None))
         self.manual_controlcheckBox.setText(QCoreApplication.translate("TelescopeControlWidget", u"Enable Manual Control", None))
@@ -312,6 +319,5 @@ class Ui_TelescopeControlWidget(object):
         self.zenith_velocityLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"Velocity", None))
         self.zenith_velocity_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
         self.zenith_setpushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Set", None))
-        self.optical_pushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Show Optical Image", None))
     # retranslateUi
 

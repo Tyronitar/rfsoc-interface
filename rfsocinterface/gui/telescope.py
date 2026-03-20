@@ -11,8 +11,8 @@ from rfsocinterface.core.telescope import make_controller
 from rfsocinterface.gui.uic.telescope_control_ui import Ui_TelescopeControlWidget as Ui_TelescopeControlWidget
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from rfsocinterface.core.camera import SKPR_Camera_Control
-from rfsocinterface.core.utils import P, R
+from rfsocinterface.core.camera import SKPR_Camera_Control, MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
+from rfsocinterface.core.utils import P, R, TabName
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.gui.widgets import get_num_value
@@ -22,6 +22,8 @@ import functools
 from multiprocessing import Process, Pipe, Queue
 from threading import Thread
 import time
+import numpy as np
+import numpy.typing as npt
 
 import matplotlib.pyplot as plt
 import sys
@@ -40,6 +42,9 @@ _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
+
+    tab_name = TabName.TELESCOPE
+
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None):
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
@@ -59,15 +64,19 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.controller.buttonGroup.buttonReleased.connect(self.stop_motion)
         self.manual_controlcheckBox.toggled.connect(self.toggle_jogging)
 
-        self.connect_to_command('az_pos', self.update_az_pos)
-        self.connect_to_command('ze_pos', self.update_ze_pos)
-        self.connect_to_command('az_pos_comm', self.update_az_cmd)
-        self.connect_to_command('ze_pos_comm', self.update_ze_cmd)
+        self.connect_to_telescope_command('az_pos', self.update_az_pos)
+        self.connect_to_telescope_command('ze_pos', self.update_ze_pos)
+        self.connect_to_telescope_command('az_pos_comm', self.update_az_cmd)
+        self.connect_to_telescope_command('ze_pos_comm', self.update_ze_cmd)
+
+        self.live_footage_fig, self.live_footage_ax = plt.subplots()
+        self.live_footage_im = self.live_footage_ax.imshow(np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)))
+        self.live_footage_canvas.set_figure(self.live_footage_fig)
+        self.live_footage_ax.set_axis_off()
+        self.connect_to_camera_command('image', self.update_live_footage)
 
 
         # Set up Optical Camera
-        self.cam_ctrl = SKPR_Camera_Control()
-        # self.cam_ctrl = None
         self.optical_pushButton.clicked.connect(self.take_pic)
 
 
@@ -77,8 +86,8 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.ze_pos = self.last_ze = 0
         self.ze_pps_pos = None
 
-        self.send_command('get_ser_az_pos')
-        self.send_command('get_ser_ze_pos')
+        self.send_telescope_command('get_ser_az_pos')
+        self.send_telescope_command('get_ser_ze_pos')
 
         self.last_az_commanded = None
         self.last_ze_commanded = None
@@ -87,12 +96,12 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
         # Update Timer
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_ui)
+        self.timer.timeout.connect(self.update_ui_telescope)
         self.timer.start(500)
 
 
     def stop_motion(self):
-        self.send_command('stop_telescope')
+        self.send_telescope_command('stop_telescope')
     
     def take_pic(self):
         pic_data = self.cam_ctrl.take_pic(show=False)
@@ -118,21 +127,21 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def jog(self, btn: QAbstractButton): 
         match btn:
             case self.controller.up_toolButton:
-                self.send_command('set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL)
+                self.send_telescope_command('set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL)
             case self.controller.down_toolButton:
-                self.send_command('set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL)
+                self.send_telescope_command('set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL)
             case self.controller.left_toolButton:
-                self.send_command('set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL)
+                self.send_telescope_command('set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL)
             case self.controller.right_toolButton:
-                self.send_command('set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL)
+                self.send_telescope_command('set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL)
     
     def set_az_pos(self):
         new_pos = get_num_value(self.azimuth_setlineEdit)
-        self.send_command('set_az_pos', new_pos)
+        self.send_telescope_command('set_az_pos', new_pos)
     
     def set_ze_pos(self):
         new_pos = get_num_value(self.zenith_setlineEdit)
-        self.send_command('set_ze_pos', new_pos)
+        self.send_telescope_command('set_ze_pos', new_pos)
     
     @Slot(float, float)
     def update_az_pos(self, new_pos: float, pps_pos: float | None):
@@ -180,7 +189,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def update_ze_err(self, new_err: float):
         self.zenith_error_valLabel.setText(f'{new_err:.3f}°')
     
-    def update_ui(self):
+    def update_ui_telescope(self):
         az_velocity = (self.az_pos - self.last_az) / self.interval * 1000
         ze_velocity = (self.ze_pos - self.last_ze) / self.interval * 1000
         self.update_az_pos(self.az_pos, self.az_pps_pos)
@@ -195,6 +204,15 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         if self.last_ze_commanded is not None:
             ze_err = self.ze_pos - self.last_ze_commanded
             self.update_ze_err(ze_err)
+    
+    #
+    # Camera Handlers
+    #
+    def update_live_footage(self, timestamp: float):
+        if self.is_active_tab:
+            self.live_footage_im.set_array(self.get_current_image())
+            self.live_footage_canvas.canvas.draw()
+            self.live_footage_canvas.canvas.flush_events()
 
     def closeEvent(self, event):
         self.timer.stop()

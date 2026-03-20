@@ -6,7 +6,8 @@ from multiprocessing import Pipe
 import h5py
 import copy
 
-from PySide6.QtCore import Signal
+import numpy as np
+from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout, QProgressDialog
 from kidpy3 import capture
 
@@ -14,10 +15,10 @@ from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget, DataCollectionMainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW
+from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW, TabName, get_filename
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
 from rfsocinterface.gui.widgets import FunctionWidget, ArgumentType
-from rfsocinterface.core.camera import SKPR_Camera_Control
+from rfsocinterface.core.camera import SKPR_Camera_Control, MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
 from rfsocinterface.core.data import (
     ProcessedData,
     MapData,
@@ -51,16 +52,18 @@ class DitherPatternWidget(FunctionWidget):
         self.fn(self.command, file, *values)
 
 class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWidget):
+    tab_name = TabName.IMAGING
     startMapping = Signal()
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None) -> None:
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
-        self.cam_ctrl = SKPR_Camera_Control()
-        # self.cam_ctrl = None
+        # self.cam_ctrl = SKPR_Camera_Control()
+        self.cam_ctrl = None
         self.pipeline_dialog = PipelineDialog(self)
         self.pipeline = DataPipeline()
         self._add_default_routines()
+        self.video_file: h5py.File = None
 
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
@@ -141,7 +144,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         
     def run_telescope_scan(self, command: str, *args) -> int:
         pd = QProgressDialog('Running...', 'Cancel and Stop Telescope', 0, 100, parent=self)
-        pd.canceled.connect(lambda: self.send_command('stop_telescope'))
+        pd.canceled.connect(lambda: self.send_telescope_command('stop_telescope'))
         pd.setAutoClose(False)
         pd.setAutoReset(False)
         pd.setValue(0)
@@ -149,12 +152,12 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         pd.setModal(True)
 
         self.active_command = command
-        self.connect_to_command(f'{command}_maximum', pd.setMaximum)
-        self.connect_to_command(f'{command}_progress', pd.setValue)
-        self.connect_to_command(f'{command}_label', pd.setLabelText)
+        self.connect_to_telescope_command(f'{command}_maximum', pd.setMaximum)
+        self.connect_to_telescope_command(f'{command}_progress', pd.setValue)
+        self.connect_to_telescope_command(f'{command}_label', pd.setLabelText)
 
         # Tell the controller to start moving the telescope according to the scan type
-        self.send_command(command, *args)
+        self.send_telescope_command(command, *args)
         pd.show()
 
         # Wait until the motor controller indicates the scan is complete
@@ -162,10 +165,10 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             f'{command}_complete',
             err_msg=f'Error occured while running command "{command}"',
         )
-        _logger.info(f'{command} completed with data {self._command_data}.')
-        self.disconnect_command(f'{command}_maximum', pd.setMaximum)
-        self.disconnect_command(f'{command}_progress', pd.setValue)
-        self.disconnect_command(f'{command}_label', pd.setLabelText)
+        _logger.info(f'{command} completed with data {self._telescope_command_data}.')
+        self.disconnect_telescope_command(f'{command}_maximum', pd.setMaximum)
+        self.disconnect_telescope_command(f'{command}_progress', pd.setValue)
+        self.disconnect_telescope_command(f'{command}_label', pd.setLabelText)
         pd.close()
     
     def make_map(self):
@@ -217,16 +220,49 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             # TODO: validate the inputs somehow...
         print(self.pipeline.all_routines())
     
+    def start_recording_video(self):
+        savefile = get_filename(file_type='optcam').with_suffix('.h5')
+        savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
+        self.video_file = h5py.File(savefile, 'a')
+        self.video_file.create_dataset(
+            'optical_video',
+            shape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 0),
+            maxshape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, None),
+            dtype=np.uint8,
+        )
+        self.video_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
+        self.connect_to_camera_command('image', self.append_video_frame)
+    
+    def stop_recording_video(self):
+        self.disconnect_camera_command('image', self.append_video_frame)
+        self.video_file.close()
+        self.video_file = None
+    
+    @Slot(float)
+    def append_video_frame(self, timestamp: float):
+        if self.video_file:
+            n_frames = self.video_file['optical_video'].shape[-1]
+            self.video_file['optical_video'].resize(n_frames + 1, axis=3)
+            self.video_file['optical_video'][:, :, :, -1] = self.get_current_image()
+            self.video_file['timestamp'].resize(n_frames + 1, axis=0)
+            self.video_file['timestamp'][-1] = timestamp
+    
     def run(self):
         # Update the current save file
         self.update_current_file()
         rfchans, _, _ = self.setup_data_collection()
 
         # Take optical image
-        self.cam_ctrl.take_pic(save=True)
+        if self.buttonGroup.checkedButton() == self.video_radioButton:
+            self.start_recording_video()
+        else:
+            self.cam_ctrl.take_pic(save=True)
 
         # Dither telescope and collect data in separate thread
         capture(rfchans, self.active_pattern.call_function)
-        if self._command_data == 0:  # Value other than 1 idicates the scan stopped early
+        if self.buttonGroup.checkedButton() == self.video_radioButton:
+            self.stop_recording_video()
+
+        if self._telescope_command_data == 0:  # Value other than 1 idicates the scan stopped early
             self.make_map()
 

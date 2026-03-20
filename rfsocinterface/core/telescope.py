@@ -98,7 +98,6 @@ class TelescopeMotorController:
         self.connection = connection
         self._active_jobs: list[Thread] = []
         self.test_init()
-        _tele_logger.debug(f'Result of TelescopeMotorController initialization: {self._initialized}')
         self._listener_loop()
     
     
@@ -112,14 +111,14 @@ class TelescopeMotorController:
             timer.start()
             try:
                 self.connection.send([command, *args])
-                _tele_logger.debug(f'CONTROLLER sent command "{command}" with data {args}')
+                _tele_logger.debug(f'TELESCOPE sent command "{command}" with data {args}')
             except KeyboardInterrupt:
-                _tele_logger.error(f'Timed out sending command "{command}"')
+                _tele_logger.error(f'CAMERA timed out sending command "{command}"')
             finally:
                 timer.cancel()
         else:
             self.connection.send([command, *args])
-            _tele_logger.debug(f'CONTROLLER sent command "{command}" with data {args}')
+            _tele_logger.debug(f'TELESCOPE sent command "{command}" with data {args}')
 
     def _listener_loop(self):
         if not self._initialized:
@@ -127,7 +126,7 @@ class TelescopeMotorController:
         while True:
             try:
                 command, *args = self.connection.recv()
-                _tele_logger.debug(f'CONTROLLER received command: "{command}", args: {args}')
+                _tele_logger.debug(f'TELESCOPE received command: "{command}", args: {args}')
                 match command.lower():
                     case 'get_ser_az_pos':
                         self.get_ser_az_pos()
@@ -166,6 +165,7 @@ class TelescopeMotorController:
             self._initialize_system()
 
     def _initialize_system(self):
+        _tele_logger.debug('Initializing TelescopeMotorController')
         try:
             # Connect to device
             descriptor = ul.get_daq_device_inventory(ul.InterfaceType.ANY)[0]
@@ -258,6 +258,7 @@ class TelescopeMotorController:
         self.get_ser_ze_pos(timeout=0.1)
         _tele_logger.info(f'Telescope ZA position is: {self.ze_pos}')
         self._initialized = True
+        _tele_logger.debug(f'Succesfully initialized TelescopeMotorController')
 
     def write_ser_az(self, command: str | bytes, stop: str=b'\r\n', timeout: float=None) -> str:
         """Write a command to the azimuth motor.

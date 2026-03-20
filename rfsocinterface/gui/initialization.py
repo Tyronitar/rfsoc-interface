@@ -12,11 +12,13 @@ from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.gui.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.main_widget import MainWidget
+from rfsocinterface.core.utils import TabName
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
 class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
+    tab_name = TabName.INITIALIZATION
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None = None):
         super().__init__(main_window, rfsocs, settings, parent=parent)

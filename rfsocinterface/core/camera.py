@@ -1,12 +1,15 @@
+from __future__ import annotations
 import logging
 from pathlib import Path
 import threading
 from multiprocessing.connection import Connection
+from multiprocessing import Array, Lock
 import queue
 from queue import Queue
 import copy
 import time
 from typing import Any, Optional
+import pdb
 
 from vmbpy import (
     VmbSystem,
@@ -26,11 +29,18 @@ import numpy.typing as npt
 import h5py
 import cv2
 import matplotlib.pyplot as plt
+from matplotlib import animation
+
+try:
+    import thread
+except ImportError:
+    import _thread as thread
 
 from rfsocinterface.core.utils import get_filename, PathLike, PERMISSIONS_USR_RW
 from rfsocinterface.core.utils import ensure_path
 
 _logger = logging.getLogger(__name__)
+_tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 
 FRAME_QUEUE_SIZE = 10
@@ -46,6 +56,9 @@ DEFAULT_CAMERA_FEATURE_VALUES = {
     'ExposureAuto': 'Continuous',
     'AcquisitionMode': 'Continuous',
 }
+
+def quit_function():
+    thread.interrupt_main() # raises KeyboardInterrupt
 
 class SKPR_Camera_Control:
     def __init__(self):
@@ -110,7 +123,6 @@ class FrameProducer(threading.Thread):
         # frame must be copied and the copy must be sent, otherwise the acquired
         # frame will be overridden as soon as the frame is reused.
         if frame.get_status() == FrameStatus.Complete:
-
             if not self.frame_queue.full():
                 frame_cpy = copy.deepcopy(frame)
                 try_put_frame(self.frame_queue, cam, frame_cpy)
@@ -136,7 +148,7 @@ class FrameProducer(threading.Thread):
     #     self.cam.AcquisitionMode.set('Continuous')
 
     def run(self):
-        _logger.info('Thread \'FrameProducer({})\' started.'.format(self.cam.get_id()))
+        _tele_logger.info('Thread \'FrameProducer({})\' started.'.format(self.cam.get_id()))
 
         try:
             with self.cam:
@@ -155,39 +167,78 @@ class FrameProducer(threading.Thread):
         finally:
             try_put_frame(self.frame_queue, self.cam, None)
 
-        _logger.info('Thread \'FrameProducer({})\' terminated.'.format(self.cam.get_id()))
+        _tele_logger.info('Thread \'FrameProducer({})\' terminated.'.format(self.cam.get_id()))
+
+
+def make_controller(
+    connection: Connection,
+    array: Array,
+    lock: Lock,
+    max_queue_size: int=FRAME_QUEUE_SIZE,
+    **features,
+) -> CameraController:
+    return CameraController(connection, array, lock, max_queue_size=max_queue_size, **features)
 
 
 class CameraController:
-    def __init__(self, conn: Connection, max_queue_size: int=FRAME_QUEUE_SIZE, **features):
+    def __init__(self, conn: Connection, array: Array, lock: Lock, max_queue_size: int=FRAME_QUEUE_SIZE, **features):
+        _tele_logger.debug(f'Initializing CameraController with max_queue_size={max_queue_size}, features={features}')
         self._initialized = False
         self.connection = conn
         self.frame_queue = Queue(maxsize=max_queue_size)
         self.producers = {}
         self.producers_lock = threading.Lock()
-        self._listener_thread = threading.Thread(tagret=self._consumer_loop)
-        self._initialize_system(**features)
-        self.run()
+        self.array = np.frombuffer(array.get_obj(), dtype=np.uint8).reshape(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)
+        self.lock = lock
+        self._listener_thread = threading.Thread(target=self._consumer_loop)
+        if self.connection is None:
+            # Plot the images instead
+            self.figure, self.axes = plt.subplots()
+            self.im = plt.imshow(np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH)), animated=True)
+            plt.show(block=False)
+        self.vmb = VmbSystem.get_instance()
+        with self.vmb:
+            self._initialize_system(**features)
+            self.run()
     
     def _initialize_system(self, **features):
-        self.vmb = VmbSystem.get_instance()
-        self.vmb.enable_log(LOG_CONFIG_INFO_CONSOLE_ONLY)
+        _tele_logger.debug('Initializing VMB Camera System...')
+        try:
 
-        if len(features) == 0:
-            features = DEFAULT_CAMERA_FEATURE_VALUES
+            if len(features) == 0:
+                features = DEFAULT_CAMERA_FEATURE_VALUES
+                _tele_logger.debug('Using default features for cameras')
 
-        _logger.debug('Initializing VMB Camera System...')
-        with self.vmb:
             # Construct FrameProducer threads for all detected cameras
-            for cam in self.vmb.get_all_cameras():
-                for feature_name, val in features.items():
-                    try:
-                        self.set_feature(cam, feature_name, val)
-                    except VmbFeatureError:
-                        return
+            all_cams = self.vmb.get_all_cameras()
+            _tele_logger.debug(f'Identified {len(all_cams)} cameras')
+            if len(all_cams) == 0:
+                msg = 'Unable to identify any VMB cameras. Ensure camera is connected.'
+                _tele_logger.error(msg, exc_info=True)
+                self.send('err', 'NON-CRITICAL', msg)
+                self.send('done')
+                return
+            for cam in all_cams:
                 self.producers[cam.get_id()] = FrameProducer(cam, self.frame_queue)
-        self._initialized = True
-        _logger.debug('Initialized VMB Camera System')
+                with cam:
+                    for feature_name, val in features.items():
+                        try:
+                            self.set_feature(cam, feature_name, val)
+                        except VmbFeatureError as e:
+                            msg = f'Error setting feature "{feature_name}" to "{val}" for camera {cam.get_id()}: {e}'
+                            _tele_logger.critical(msg, exc_info=True)
+                            self.send('err', 'CRITICAL', msg)
+                            self.send('done')
+
+                            return
+            self._initialized = True
+            _tele_logger.debug('Succesfully initialized VMB Camera System')
+        except Exception as e:
+            msg = f'Error encoutered initializing camera controller: {e}'
+            _tele_logger.critical(msg, exc_info=True)
+            self.send('err', 'CRITICAL', msg)
+            self.send('done')
+            return
 
     def __call__(self, cam: Camera, event: CameraEvent):
         # New camera was detected. Create FrameProducer, add it to active FrameProducers
@@ -195,7 +246,7 @@ class CameraController:
             with self.producers_lock:
                 self.producers[cam.get_id()] = FrameProducer(cam, self.frame_queue)
                 self.producers[cam.get_id()].start()
-            _logger.debug(f'Added FrameProducer for camera {cam.get_id()}')
+            _tele_logger.debug(f'Added FrameProducer for camera {cam.get_id()}')
 
         # An existing camera was disconnected, stop associated FrameProducer.
         elif event == CameraEvent.Missing:
@@ -203,7 +254,7 @@ class CameraController:
                 producer = self.producers.pop(cam.get_id())
                 producer.stop()
                 producer.join()
-            _logger.debug(f'Removed FrameProducer for camera {cam.get_id()}')
+            _tele_logger.debug(f'Removed FrameProducer for camera {cam.get_id()}')
 
     def run(self):
         if not self._initialized:
@@ -211,35 +262,57 @@ class CameraController:
             return
 
         _logger.debug('Starting VMB Camera System...')
-        with self.vmb:
-            # Start FrameProducer threads
-            with self.producers_lock:
-                for producer in self.producers.values():
-                    producer.start()
+        # Start FrameProducer threads
+        with self.producers_lock:
+            for producer in self.producers.values():
+                producer.start()
 
-            # Run the frame consumer to display the recorded images
-            self.vmb.register_camera_change_handler(self)
+        # Run the frame consumer to display the recorded images
+        self.vmb.register_camera_change_handler(self)
 
-            self._consumer_loop()
+        self._consumer_loop()
 
-            self.vmb.unregister_camera_change_handler(self)
+        self.vmb.unregister_camera_change_handler(self)
 
-            # Stop all FrameProducer threads
-            with self.producers_lock:
-                # Initiate concurrent shutdown
-                for producer in self.producers.values():
-                    producer.stop()
+        # Stop all FrameProducer threads
+        with self.producers_lock:
+            # Initiate concurrent shutdown
+            for producer in self.producers.values():
+                producer.stop()
 
-                # Wait for shutdown to complete
-                for producer in self.producers.values():
-                    producer.join()
+            # Wait for shutdown to complete
+            for producer in self.producers.values():
+                producer.join()
 
-            _logger.debug('All camera FrameProducer threads joined.')
+        _logger.debug('All camera FrameProducer threads joined.')
+        self.send('done')
 
     def send(self, command: str, *args):
         """Send a command to the telescope client"""
+        _tele_logger.debug(f'CAMERA sending command "{command}" with data {args}')
         self.connection.send([command, *args])
-        _logger.debug(f'CAMERA sent command "{command}" with data {args}')
+        _tele_logger.debug(f'CAMERA sent command "{command}" with data {args}')
+
+    def send(self, command: str, *args, timeout: float=None):
+        """Send a command to the main process."""
+        if timeout:
+            timer = threading.Timer(
+                timeout,
+                quit_function,
+            )
+            timer.start()
+            try:
+                self.connection.send([command, *args])
+                _tele_logger.debug(f'CAMERA sent command "{command}" with data {args}')
+            except KeyboardInterrupt:
+                _tele_logger.error(f'CAMERA timed out sending command "{command}"')
+            finally:
+                timer.cancel()
+        else:
+            self.connection.send([command, *args])
+            _tele_logger.debug(f'CAMERA sent command "{command}" with data {args}')
+
+
     
     def set_feature(self, cam: Camera | str, feature_name: str, val: Any):
         if isinstance(cam, str):
@@ -263,82 +336,104 @@ class CameraController:
     
     def _consumer_loop(self):
         frames: dict[str, Frame] = {}
-        alive = True
+        self.alive = True
 
-        _logger.info('Camera consumer loop started.')
+        _tele_logger.debug('Camera consumer loop started.')
 
-        while alive:
-            # Check for commands from the main process
-            if self.connection.poll():
-                command, *args = self.connection.recv()
-                match command:
-                    case 'set_feature':
-                        if len(args) == 2:
-                            feature_name, val = args
-                            cams = self.vmb.get_all_cameras()
-                        else:
-                            id, feature_name, val = args
-                            cams = [self.vmb.get_camera_by_id(id)]
+        interval = 0.25
 
-                        for cam in cams:
-                            try:
-                                self.set_feature(cam, feature_name, val)
-                            except VmbFeatureError:
-                                self.alive = False
-                                break
-                    case 'get_feature':
-                        if len(args) == 2:
-                            feature_name, val = args
-                            cams = self.vmb.get_all_cameras()
-                        else:
-                            id, feature_name, val = args
-                            cams = [self.vmb.get_camera_by_id(id)]
-                        for cam in cams:
-                            try:
-                                val = self.get_feature(cam, feature_name)
-                                self.send('get_feature', cam.get_id(), feature_name, val)
-                            except VmbFeatureError:
-                                self.alive = False
-                                break
-                    case 'terminate':
-                        self.alive = False
+        try:
+            while self.alive:
+                # Check for commands from the main process
+                if self.connection is not None and self.connection.poll():
+                    command, *args = self.connection.recv()
+                    _tele_logger.debug(f'CAMERA received command: "{command}", args: {args}')
+                    match command:
+                        case 'set_feature':
+                            if len(args) == 2:
+                                feature_name, val = args
+                                cams = self.vmb.get_all_cameras()
+                            else:
+                                id, feature_name, val = args
+                                cams = [self.vmb.get_camera_by_id(id)]
+
+                            for cam in cams:
+                                with cam:
+                                    try:
+                                        self.set_feature(cam, feature_name, val)
+                                    except VmbFeatureError:
+                                        self.alive = False
+                                        break
+                        case 'get_feature':
+                            if len(args) == 2:
+                                feature_name, val = args
+                                cams = self.vmb.get_all_cameras()
+                            else:
+                                id, feature_name, val = args
+                                cams = [self.vmb.get_camera_by_id(id)]
+                            for cam in cams:
+                                with cam:
+                                    try:
+                                        val = self.get_feature(cam, feature_name)
+                                        self.send('get_feature', cam.get_id(), feature_name, val)
+                                    except VmbFeatureError:
+                                        self.alive = False
+                                        break
+                        case 'terminate':
+                            self.alive = False
+                            break
+                        case _:
+                            self.send('err', 'NON-CRITICAL', f'Unknown command "{command}" received.')
+                            continue
+
+                # Update current state by dequeuing all currently available frames.
+                while True:
+                    if not self.alive:
+                        _tele_logger.debug(f'alive=False; Ending consumer loop...')
                         break
-                    case _:
-                        self.send('err', 'NON-CRITICAL', f'Unknown command "{command}" received.')
-                        continue
+                    try:
+                        cam_id, frame = self.frame_queue.get_nowait()
+                    except queue.Empty:
+                        break
 
-            # Update current state by dequeuing all currently available frames.
-            frames_left = self.frame_queue.qsize()
-            while frames_left:
-                try:
-                    cam_id, frame = self.frame_queue.get_nowait()
+                    # Add/Remove frame from current state.
+                    if frame:
+                        frames[cam_id] = frame
 
-                except queue.Empty:
-                    break
+                    else:
+                        frames.pop(cam_id, None)
 
-                # Add/Remove frame from current state.
-                if frame:
-                    frames[cam_id] = frame
+                # Construct image by stitching frames together.
+                if frames:
+                    _tele_logger.debug('Converting frames to numpy arrays')
+                    cv_images = [frames[cam_id].as_numpy_ndarray() for cam_id in sorted(frames.keys())]
 
-                else:
-                    frames.pop(cam_id, None)
+                    # Rotate image so it's aligned properly
+                    cv_images = np.flip(np.flip(cv_images, 1), 2)
 
-                frames_left -= 1
+                    # Send timestamp and image to the main process
+                    _tele_logger.debug('Writing to shared array...')
+                    with self.lock:
+                        self.array[:] = cv_images[0]
+                    _tele_logger.debug('Done writing to shared array.')
+                    if self.connection is not None:
+                        self.send('image', time.time(), timeout=0.1)
+                    else:
+                        self.im.set_array(cv_images[0])
+                        self.figure.canvas.draw()
+                        self.figure.canvas.flush_events()
+                        # plt.pause(0.25)
 
-            # Construct image by stitching frames together.
-            if frames:
-                cv_images = [frames[cam_id].as_numpy_ndarray() for cam_id in sorted(frames.keys())]
+                time.sleep(interval)
+                        
+                
+        except KeyboardInterrupt:
+            self.alive = False
 
-                # Rotate image so it's aligned properly
-                cv_images = np.flip(np.flip(cv_images, 0), 1)
-
-                # Send timestamp and image to the main process
-                self.send('image', time.time(), cv_images)
-
-        self.send(None)
         _logger.debug('Frame consumer loop terminated')
 
 
 if __name__ == '__main__':
-    cam = SKPR_Camera_Control()
-    cam.take_pic(show=True)
+    arr = Array('B', MAX_FRAME_WIDTH * MAX_FRAME_HEIGHT * 3)
+    lock = Lock()
+    cam = CameraController(None, arr, lock)
