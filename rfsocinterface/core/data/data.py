@@ -339,12 +339,13 @@ def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bo
     # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
     deproj = data - np.mean(data, axis=2)[:, :, np.newaxis]
     n_tones = data.shape[1]
+    deproj_flat = deproj/(np.std(deproj, axis = 2, keepdims = True))
 
     # select only the middle few detectors
     # deproj = data_meansub[:, 8:1008, :]
 
     # create a separate correlation matrix for all data channels
-    correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
+    correlation_matrices = np.matmul(deproj_flat, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
     # calculate the eigenmodes of the correlation matrices
     eigen_values, v = np.linalg.eig(correlation_matrices)
     sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
@@ -390,9 +391,9 @@ def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bo
     return templates
 
 
-def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  max_modes: int=30, plot_eigenvalues: bool=False, remove_hot_pixels: bool = False, n_cleanings = 2) -> npt.NDArray:
+def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  max_modes: int=30, plot_eigenvalues: bool=False) -> npt.NDArray:
 
-    deproj = data - np.mean(data, axis=-1)[:, :, np.newaxis]
+    deproj = data - np.mean(data, axis=-1, keepdims=True)
     n_tones = data.shape[1]
     n_dir = data.shape[0]
     n_modes = 2
@@ -408,22 +409,8 @@ def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  m
     eigen_values, v = np.linalg.eigh(correlation_matrices)
     sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
     sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
-    sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
 
-    if remove_hot_pixels:
-        hot_pixels = filter_hot_pixels(sorted_v[:, :, :n_modes], make_plot=False)
-
-        for j in range(n_cleanings):
-            good_pixels = np.setdiff1d(good_pixels,hot_pixels)
-            print("Remaining good_pixels", good_pixels)
-            eigen_values, v = np.linalg.eigh(correlation_matrices[:, good_pixels][:, :, good_pixels])
-            sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
-            sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
-            sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
-            hot_pixels = filter_hot_pixels(sorted_v[:, :, :n_modes], make_plot=False)
-            if len(hot_pixels) ==0:
-                print("Breaking out of loop because there are no hot pixels")
-                break
+    sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=-1)
 
     if plot_eigenvalues:
         plt.figure()
@@ -437,36 +424,34 @@ def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  m
     if n_tones < 25:
         sigma_mult = 1.5
     elif n_tones < 50:
-        sigma_mult = 2.5
+        sigma_mult = 2.0
     else:
-        sigma_mult = 3
+        sigma_mult = 2.5
 
-    n_modes_list = []
+    n_modes = 2
+    new_modes = -1
 
-    for d in range(n_dir):
-        n_modes_d = 2
-        new_modes = -1
-        while new_modes != 0 and n_modes_d <= max_modes:
-            log_eigen_values = np.log10(sorted_eigen_values[d, n_modes_d:])
-            if log_eigen_values.size == 0:
-                break
-            mu = np.mean(log_eigen_values)
-            sigma = np.std(log_eigen_values)
-            large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma))[0]
-            new_modes = len(large_eigen_values)
-            n_modes_d += new_modes
-        n_modes_list.append(min(n_modes_d, max_modes))
-
-    n_modes = min(max(n_modes_list), max_modes)
-
+    while new_modes != 0 and n_modes <= max_modes:
+        log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
+        mu = np.mean(log_eigen_values, axis=1)
+        sigma = np.std(log_eigen_values, axis=1)
+        large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis])
+        i_count = large_eigen_values[0].size - np.sum(large_eigen_values[0])
+        q_count = large_eigen_values[0].size - i_count
+        new_modes = max(i_count, q_count)
+        n_modes += new_modes
+    # pdb.set_trace()
+    n_modes = min(n_modes, max_modes)
     print(f'Using {n_modes} eigen modes')
-    filt_sos = signal.butter(1, lp_filt_freq, btype='low', fs=fs[0], output='sos', analog=False)
-    deproj_lp = signal.sosfiltfilt(filt_sos, deproj)
-    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj_lp[:, good_pixels])
-    
+
+    # create templates based on the N_mode largest eigenmodes of each
+    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs[0], output='sos', analog=False)
+    data_lp = signal.sosfiltfilt(filt_sos, whitened_noise)
+    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], data_lp)
+
+    # subtract the mean again to be sure
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
-
 
 def filter_hot_pixels(eigvecs:npt.NDArray,  z_max:float = 3, make_plot:bool = False):
     hot_pixels = np.array([])
@@ -505,7 +490,7 @@ def get_fft_csd_psd(data, fs):
     freqs = np.fft.rfftfreq(n_samples, 1/fs)
     return fft, psd, csd, freqs
 
-def plot_corellation_matrices(
+def plot_correlation_matrices(
     data: tables.Array,
     fs,
     savepath: Path | None = None,
@@ -645,21 +630,24 @@ def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: f
             data_lp = data[i_chan]
         if template_data_selection is not None:
             if fspace:
-                templates = compute_templates_fspace(data[i_chan][ :, template_data_selection, :], fs, lp_filt_freq=lp_filt_freq, remove_hot_pixels=False)
+                templates = compute_templates_fspace(data[i_chan][ :, template_data_selection, :], fs, lp_filt_freq=lp_filt_freq)
             else:
                 template_data_lp = data_lp[:, template_data_selection, :]
            
                 templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # 2 x N_modes x N_samples
         else:
             if fspace:
-                templates = compute_templates_fspace(data[i_chan], fs, lp_filt_freq=lp_filt_freq, remove_hot_pixels=False)
+                templates = compute_templates_fspace(data[i_chan], fs, lp_filt_freq=lp_filt_freq)
             else:
                 templates = compute_templates(data_lp, max_modes=max_modes)  # 2 x N_modes x N_samples
 
         n_modes = templates.shape[1]
         denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
         clean_data = (data[i_chan]-np.mean(data[i_chan], axis = -1, keepdims=True))
+
         for i in range(n_modes):
+            clean_data = (clean_data-np.mean(clean_data, axis = -1, keepdims=True))
+
             numerator = np.einsum('ijk,ik->ij', clean_data, templates[:, i])  # 2 x N_tones
             corr = numerator / denominator[:, i:i+1]  # N_chan x N_tones
             clean_data = clean_data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # 2 x N_tones x N_samples
@@ -2050,11 +2038,11 @@ class ProcessedDataL1(ProcessedData):
         if do_electronics_noise_removal:
             #plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
 
-            remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=2, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+            remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=10, max_modes=max_modes, template_data_selection=new_data.offres_ind)
             #plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
 
-            new_data.data_gain_phase[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_gain_phase[:, :, new_data.onres_ind, :], fs, lp_filt_freq=2, max_modes=max_modes,)
-            #plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
+            new_data.data_gain_phase[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_gain_phase[:, :, new_data.onres_ind, :], fs, lp_filt_freq=10, max_modes=max_modes,)
+            plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
 
         new_generate_calibrated_data(new_data)
 

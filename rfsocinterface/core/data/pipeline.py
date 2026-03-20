@@ -300,8 +300,8 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260316'
-    setnums = np.array([1040 ])
+    date = '20260319'
+    setnums = np.array([ 1023, 1025, 1029, 1032])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
     #date = '20260212'
     #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
@@ -322,12 +322,12 @@ if __name__ == '__main__':
     dataset = 'data_freq'
     beam_map_mode = False 
     do_electronics_noise_removal = True
-    do_cr_removal = True
+    do_cr_removal = False
     primary_direction = 'az'
 
     ds_factor = 1
     lp_filt_freq = 500
-    block_length = 10
+    block_length = 30
     hp_filt_freq = 1/block_length
 
 

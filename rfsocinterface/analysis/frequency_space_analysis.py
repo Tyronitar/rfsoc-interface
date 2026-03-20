@@ -163,8 +163,8 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260212'
-    setnums = np.array([1002])
+    date = '20260319'
+    setnums = np.array([1023])
     #setnums = np.array(['1004', '1006', '1007', '1008', '1009', '1010', '1011', '1012', '1013', '1014', '1015', '1016'])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
     #date = '20260212'
