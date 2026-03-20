@@ -17,6 +17,8 @@ import copy
 import sys
 from multiprocessing.connection import Connection
 import stat
+import subprocess
+import git
 from typing import Iterator
 
 import io
@@ -179,6 +181,13 @@ def recursive_update(d: Mapping, u: Mapping):
         else:
             d[k] = v
     return d
+
+def get_git_hash() -> str:
+    try:
+        repo = git.Repo(search_parent_directories=True)
+        return repo.head.object.hexsha
+    except Exception:
+        return "unknown"
 
 
 # From onrkidpy.py
@@ -446,21 +455,33 @@ def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_val
     return np.pad(x, pad_widths, mode='constant', constant_values=constant_values)
 
 
-def list_datasets(group: h5py.Group) -> list[tuple[str, h5py.Dataset]]:
+def list_datasets(group: h5py.Group, full_names: bool=False) -> list[tuple[str, h5py.Dataset]]:
     """Recursively list all datasets in the specified group."""
     datasets = []
     def search_fn(name: str, obj: H5pyObject):
         if isinstance(obj, h5py.Dataset):
-            datasets.append((name, obj))
+            if full_names:
+                datasets.append((obj.name, obj))
+            else:
+                datasets.append((name, obj))
     group.visititems(search_fn)
     return datasets
 
 
-def search(src: h5py.Group, name: str) -> tuple[str, H5pyObject] | None:
+def search(src: h5py.Group, name: str, full_name: bool=True, exact_match: bool=False) -> tuple[str, H5pyObject] | None:
     """Search recursively through an HDF5 group for the specified name.
+    
+    This function will return the first object found whose name matches `name`.
+    Returns `None` if no match is found.
 
-    Will return the first object found whose name is contained within `name`.
-    Returns `None` if no match found.
+    Arguments:
+        src (h5py.Group): The group to search within.
+        name (str): The target name to search for.
+        full_name (bool): Whether to return the full name of the object. Defaults to True.
+        exact_match (bool): Whether to only accept exact name matches. If False, this
+            function will succeed if an object is found whose name contains `name`. 
+            Defaults to False.
+
     
     Returns:
         obj_name (str): The name of the found object.
@@ -468,7 +489,10 @@ def search(src: h5py.Group, name: str) -> tuple[str, H5pyObject] | None:
     
     """
     def search_fn(obj_name: str, obj: H5pyObject):
-        if name in obj_name:
+        success = name == obj_name if exact_match else name in obj_name
+        if success:
+            if full_name:
+                return obj.name, obj
             return obj_name, obj
     return src.visititems(search_fn)
 

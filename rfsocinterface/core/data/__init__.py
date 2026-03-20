@@ -2,8 +2,6 @@
 
 from rfsocinterface.core.data.data import (
     ProcessedData,
-    ProcessedDataLN,
-    MapData,
     DEFAULT_MAP_DPIX,
     N_POLARIZATION,
     DECIMATE_ORDER,
@@ -14,7 +12,6 @@ from rfsocinterface.core.data.data import (
 from rfsocinterface.core.data.routines import (
     DataRoutine,
     ProcessingStage,
-    Downsample,
     CleanTOD,
     HighPassFilter,
     LowPassFilter,
@@ -22,33 +19,29 @@ from rfsocinterface.core.data.routines import (
     RemoveElectronicsNoise,
     PsdBasis,
 )
-from rfsocinterface.core.data.map import (
-    BinTODIntoMap,
-)
+# from rfsocinterface.core.data.map import (
+#     BinTODIntoMap,
+# )
 from rfsocinterface.core.data.pipeline import DataPipeline, RoutineApplier
 from rfsocinterface.core.params import PARAM_FILE_N_TONE_ATTRIBUTES, initialize_params_file, update_params_file
 
 ROUTINE_NAME_MAP = {
-    'Downsample': Downsample,
     'CleanTOD': CleanTOD,
     'HighPassFilter': HighPassFilter,
     'LowPassFilter': LowPassFilter,
     'GaussianFilter': GaussianFilter,
     'RemoveElectronicsNoise': RemoveElectronicsNoise,
-    'BinTODIntoMap': BinTODIntoMap,
+    # 'BinTODIntoMap': BinTODIntoMap,
 }
 
 __all__ = [
     ProcessedData,
-    ProcessedDataLN,
-    MapData,
-    Downsample,
     CleanTOD,
     HighPassFilter,
     LowPassFilter,
     GaussianFilter,
     RemoveElectronicsNoise,
-    BinTODIntoMap,
+    # BinTODIntoMap,
     DataPipeline,
     RoutineApplier,
     ProcessingStage,

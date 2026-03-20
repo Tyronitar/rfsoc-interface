@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import kidpy3
 from kidpy3.data_handler import RawDataFile
+import json
 
 from rfsocinterface import __version__ as VERSION
 from rfsocinterface.core.losweep import LoSweepData
@@ -55,6 +56,7 @@ from rfsocinterface.core.utils import (
     new_decimate_in_chunks,
     apply_interp,
     build_interp_map,
+    get_git_hash,
 )
 
 _logger = logging.getLogger(__name__)
@@ -165,12 +167,15 @@ CALIBRATION_TABLE_DTYPE = [
 
 
 
-def test_node(f: tables.File, name: str) -> bool:
-    try:
-        f.get_node('/', name)
-        return True
-    except tables.exceptions.NoSuchNodeError:
-        return False
+def get_channel_group_name(idx: int) -> str:
+    """Return the properly formatted group name for the channel with index `idx`"""
+    return f'channel_{idx:03d}'
+
+
+def get_step_group_name(idx: int, name: str) -> str:
+    """Return the properly formatted group name for a step in the processing history or checkpoints."""
+    return f'{idx:04d}_{name}'
+
 
 #
 # Outlier Removal and Flagging
@@ -871,15 +876,19 @@ class NewDataStorage:
     def __getitem__(self, key):
         return self.get(key)
 
-    def has(self, name: str) -> bool:
-        res = self.search(name)
+    def has(self, name: str, exact_match: bool=False) -> bool:
+        res = self.search(name, exact_match=exact_match)
         return res is not None
     
-    def search(self, name: str) -> tuple[str, H5pyObject] | None:
-        return search(self.file, name)
+    def search(self, name: str, full_name: bool=True, exact_match: bool=False) -> tuple[str, H5pyObject] | None:
+        return search(self.file, name, full_name=full_name, exact_match=exact_match)
 
-    def list_datasets(self) -> list[tuple[str, h5py.Dataset]]:
-        return list_datasets(self.file)
+    def list_datasets(self, full_names: bool=False) -> list[tuple[str, h5py.Dataset]]:
+        return list_datasets(self.file, full_names=full_names)
+    
+    def list_dataset_names(self, full_names: bool=False) -> list[str]:
+        l = self.list_datasets(full_names=full_names)
+        return [name for (name, _) in l]
     
     def create_group(
         self,
@@ -1083,19 +1092,25 @@ class ConsolidatedData(NewDataStorage):
         cdata = cls(cfile_path, mode='w')
         cdata.date = date
         cdata.setnum = setnum
-        cdata.receipt = ''
 
-        # Initialize global data group
-        global_data_group = cdata.create_group('global_data')
-        global_data_group.attrs['n_samples'] = n_samples_ds
-        global_data_group.attrs['downsampling_factor'] = downsampling_factor
-        global_data_group.attrs['rfsocinterface_version'] = VERSION
+        # Create processing history
+        processing_history = cdata.create_group('processing_history')
+        step_0 = processing_history.create_group(get_step_group_name(0, 'consolidated'))
+        step_0.attrs['name'] = 'ConsolidatedData'
+        step_0.attrs['params'] = json.dumps({'downsampling_factor': downsampling_factor})
+        step_0.attrs['rfsocinterface_version'] = VERSION
+        step_0.attrs['code_version'] = get_git_hash()
+
         try:
             kidpy_version = version('kidpy3')
         except Exception as e:
             _logger.warning(f'kidpy3 version could not be accessed: {e}')
             kidpy_version = 'N/A'
-        global_data_group.attrs['kidpy_version'] = kidpy_version
+        step_0.attrs['kidpy_version'] = kidpy_version
+
+        # Initialize global data group
+        global_data_group = cdata.create_group('global_data')
+        global_data_group.attrs['n_samples'] = n_samples_ds
 
         # Optical image
         if optcam_exists:
@@ -1119,7 +1134,7 @@ class ConsolidatedData(NewDataStorage):
             this_n_missed = missed_sample_counts[i_chan]
 
             # Create the HDF5 group for this channel
-            this_channel_group = all_channels_group.create_group(f'channel_{i_chan:03d}')
+            this_channel_group = all_channels_group.create_group(get_channel_group_name(i_chan))
             this_channel_group.attrs['tile_name'] = tile_names[i_chan]
             this_channel_group.attrs['lo_freq'] = raw_data.lo_freq[0]
             this_channel_group.attrs['detector_dx_dy_elevation_angle'] = raw_data.detector_dx_dy_elevation_angle[:]
@@ -1316,6 +1331,8 @@ class ConsolidatedData(NewDataStorage):
             interpolated_samples.resize(downsampled_interpolated_samples.shape)
             interpolated_samples = downsampled_interpolated_samples[:]
 
+            time_ordered_data_group.attrs['fs'] = 1 / (timestamp[1] - timestamp[0])
+
             if azel_exists:
                 print('Downsampling detector position arrays...')
                 chunked_downsample(
@@ -1384,7 +1401,7 @@ class ConsolidatedData(NewDataStorage):
         fname = get_consolidated_file_template(date, setnum, data_dir=data_dir)
         return cls(fname, mode=mode)
     
-    def create_processed_data(self, mode:str='a') -> NewProcessedData:
+    def create_processed_data(self, mode:str='a') -> ProcessedData:
         pfile_path = Path(self.processed_file_template)
         self.close()
         shutil.copy2(self.filename, pfile_path)
@@ -1392,11 +1409,11 @@ class ConsolidatedData(NewDataStorage):
             self.mode = 'a'
         self.open(self.mode)
 
-        pd = NewProcessedData(pfile_path, mode=mode)
+        pd = ProcessedData(pfile_path, mode=mode)
         pd.initialize_processed_data_fields()
         return pd
 
-class NewProcessedData(NewDataStorage):
+class ProcessedData(NewDataStorage):
 
     @classmethod
     def from_file(cls, date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY, mode: str='r') -> ConsolidatedData:
@@ -1432,8 +1449,8 @@ class NewProcessedData(NewDataStorage):
             tones_table = channel_group['tones']
 
             # Initialize caliibration-related datasets
-            data_gain_phase = time_ordered_data_group.create_dataset_like('data_gain_phase', time_ordered_data_group['data_IQ'])
-            data_freq_diss = time_ordered_data_group.create_dataset_like('data_freq_diss', time_ordered_data_group['data_IQ'])
+            data_gain_phase = time_ordered_data_group.create_dataset_like('data_gain_phase', data_IQ)
+            data_freq_diss = time_ordered_data_group.create_dataset_like('data_freq_diss', data_IQ)
             mK_chunks = compute_chunk_shape((n_tones,), 8, max_chunk_size=n_samples)
             data_mK = time_ordered_data_group.create_dataset(
                 'data_mK',
@@ -1519,6 +1536,30 @@ class NewProcessedData(NewDataStorage):
     #
     # Useful getter methods
     #
+    def list_history(self) -> list[dict]:
+        if not self.has('processing_history'):
+            return []
+        hist = self['processing_history']
+        return list(hist.keys())
+    
+    def print_history(self, verbose: bool=False):
+        if not self.has('processing_history'):
+            print('No history')
+            return
+
+        hist = self.file['processing_history']
+
+        for k in sorted(hist.keys()):
+            step = hist[k]
+            name = step.attrs.get('name', '?')
+            if verbose:
+                print(f'[{k}]:\n{json.dumps(dict(step.attrs), indent=4)}')
+            else:
+                params = json.loads(step.attrs.get('params', '{}'))
+
+                param_str = ', '.join(f'{k}={v}' for k, v in params.items())
+                print(f'[{k}] {name}({param_str})')
+
     def get_channel_group(self, i_chan: int) -> h5py.Group:
         return self[f'channels/channel_{i_chan:03d}']
 
@@ -1532,11 +1573,34 @@ class NewProcessedData(NewDataStorage):
         raise KeyError(f'Unable to find channel with name "{tile_name}". Tile names found: {tile_names}')
     
     def get_from_channel(self, i_chan: int, obj_name: str) -> H5pyObject:
-        return self.get_channel_group(i_chan)['obj_name']
+        return self.get_channel_group(i_chan)[obj_name]
+    
+    def get_from_all_channels(self, obj_name: str) -> list[H5pyObject]:
+        l = []
+        for channel_group in self['channels'].values():
+            l.append(channel_group[obj_name])
+        return l
+    
+    def search_in_channel(self, i_chan: int, name: str, full_name: bool=True, exact_match: bool=False) -> tuple[str, H5pyObject] | None:
+        return search(self.get_channel_group(i_chan), name, full_name=full_name, exact_match=exact_match)
+
+    def search_in_all_channels(self, name: str, full_name: bool=True, exact_match: bool=False) -> list[tuple[str, H5pyObject]] | None:
+        l = []
+        for channel_group in self['channels'].values():
+            l.append(search(channel_group, name, full_name=full_name, exact_match=exact_match))
+        return l
+    
+    def get_fs(self, i_chan: int) -> float:
+        """Return the sampling rate of the specified channel."""
+        return self.get_from_channel(i_chan, 'time_ordered_data').attrs['fs']
     
     #
     # Useful properties 
     #
+    @property
+    def n_chan(self) -> int:
+        return self['channels'].attrs['n_channels']
+
     @property
     def virtual_datasets(self) -> h5py.Group:
         return self['vdsets']
@@ -1629,1416 +1693,269 @@ class NewProcessedData(NewDataStorage):
     def df_per_mK(self) -> npt.NDArray:
         return self.calibration_info['df_per_mK']
 
+# class MapData(ProcessedDataLN):
+#     def __init__(self, file, level=3):
+#         super().__init__(file, level)
 
-class PyTablesDataset:
-    """Class for handling PyTables datasets and links.
-    
-    Will store an external link to a previous dataset until a write operation is
-    attempted, at which point it will copy the data to the new file.
-    """
-    def __init__(self, data: tables.Array | ExternalLink, file: tables.File):
-        self._data = data
-        self._file = file
-    
-    def __str__(self):
-        return str(self._data)
-    
-    def __repr__(self):
-        return f'PyTablesDataset({self._data}, {self._file.filename})'
-    
-    def __setitem__(self, key, value):
-        # Dereference link if necessary
-        if isinstance(self._data, ExternalLink):
-            parent_node = self._data._v_parent
-            old_array: tables.Array = self._data(mode='r')
-            # Copy over data from old array to the new file before setting anything
-            temp_name = self._data._v_name + '_temp'
-            self._file.rename_node(self._data, temp_name)
-            new_array = self._file.copy_node(old_array, parent_node, overwrite=True)
-            self._file.remove_node(parent_node, temp_name)
-            self._data = new_array
-        self._data[key] = value
-    
-    def __getitem__(self, key: slice):
-        # Dereference link if necessary
-        if isinstance(self._data, ExternalLink):
-            return self._data(mode='r')[key]
-        return self._data[key]
-    
-    @property
-    def shape(self) -> tuple[int, ...]:
-        if isinstance(self._data, ExternalLink):
-            return self._data(mode='r').shape
-        return self._data.shape
-    
-    @property
-    def ndim(self) -> int:
-        return len(self.shape)
-    
-class DataStorage:
-    """Class contianing data from processed TOD files."""
-    def __init__(self, file: tables.File):
-        self._file = file
- 
-    def test_node(self, name: str) -> bool:
-        try:
-            self.find_node(name)
-            return True
-        except tables.exceptions.NoSuchNodeError:
-            return False
-    
-    def find_node(self, name: str, where: tables.Group | str='/') -> tables.Node:
-        for node in self._file.walk_nodes(where):
-            if node._v_name == name:
-                return node
-        raise tables.exceptions.NoSuchNodeError(f'group `{where}` does not have a child named `{name}`')
-    
-    def close(self):
-        self._file.close()
-    
-    def open(self, mode: str='r'):
-        self._file = tables.open_file(self.filename, mode=mode)
-    
-    @property
-    def root(self) -> tables.Group:
-        return self._file.root
+#     @classmethod
+#     def from_file(cls, date: str, setnum: int, mode: str='r'):
+#         file_path = Path(get_map_file_template(date, setnum))
+#         md = cls(tables.File(file_path, mode=mode), level=3)
+#         md._load_dynamic_fields()
+#         return md
 
-    def get_node(self, name: str, where: str='/') -> tables.Node:
-        return self.find_node(name, where=where)
-        # return self._file.get_node(where, name)
-
-    def get_node_value(self, name: str, where: str='/') -> tables.Array:
-        node = self.get_node(name, where=where)
-        # Dereference link if necessary
-        if isinstance(node, ExternalLink):
-            return node(mode='r')
-        return node
-
-    def create_array(
-            self,
-            where: tables.Group | str,
-            name: str,
-            obj: npt.NDArray | None=None,
-            atom: tables.Atom | None=None,
-            shape: tuple[int, ...] | None=None,
-    ) -> tables.Array:
-        return self._file.create_array(where, name, shape=shape, obj=obj, atom=atom)
-
-    def create_earray(
-            self,
-            where: tables.Group | str,
-            name: str,
-            obj: npt.NDArray | None=None,
-            atom: tables.Atom | None=None,
-            shape: tuple[int, ...] | None=None,
-            expectedrows: int=1000,
-    ) -> tables.Array:
-        return self._file.create_earray(where, name, shape=shape, obj=obj, atom=atom, expectedrows=expectedrows)
+#     @classmethod
+#     def from_processed_data(cls, pdata: ProcessedData) -> MapData:
+#         return cls.from_previous_level(pdata)
     
-    def create_vlarray(
-            self,
-            where: tables.Group | str,
-            name: str,
-            obj: npt.NDArray | None=None,
-            atom: tables.Atom | None=None,
-            expectedrows: int=1000,
-    ) -> tables.Array:
-        return self._file.create_vlarray(where, name, obj=obj, atom=atom, expectedrows=expectedrows)
+#     @classmethod
+#     def from_previous_level(cls, previous: ProcessedData) -> MapData:
+#         """Create a map file with external links to level N-1."""
+#         file_path = Path(get_map_file_template(previous.date, previous.setnum))
+#         if not file_path.exists():
+#             file_path.touch(PERMISSIONS_ALL_FULL)
+#         file = tables.File(file_path, mode='w')
+#         new_data = cls(file)
+#         new_data.link_to_file(previous)
+#         new_data._load_dynamic_fields()
+
+#         # Swap the previous file to read-only
+#         previous.close()
+#         previous.open('r')
+
+#         return new_data
+
+#     def setup_map_arrays(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False):
+#         # Create empty arrays
+#         n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
+#         self.create_group('/', 'map')
+#         self.create_array('/map', 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
+#         self.create_array('/map', 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
+#         self.create_array('/map', 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+#         self.create_array('/map', 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
+#         self.create_array('/map', 'netd', shape=(self.n_channels, self.max_n_tones,), atom=tables.Float64Atom())
+#         good_samples = self.create_vlarray('/map', 'good_samples', expectedrows=self.n_channels, atom=tables.UInt32Atom())
+#         for i_chan in range(self.n_channels):
+#             good_samples.append(np.setdiff1d(np.arange(self.n_samples), self.interpolated_indices[i_chan]))
     
-    def create_group(self, where: tables.Group | str, name: str) -> tables.Group:
-        return self._file.create_group(where, name)
+#     @ensure_path(1)
+#     def compile_to_file(self, path: Path, datasets: list[str]=None, mode: str='w') -> tables.File:
+#         if datasets is None:
+#             datasets = ALL_MAP_DATA_FIELDS
+#         return super().compile_to_file(path, datasets=datasets, mode=mode)
+
+#     @property
+#     def map_az(self) -> tables.Array:
+#         return self.get_node_value('map_az', where='/map')
+
+#     @property
+#     def map_za(self) -> tables.Array:
+#         return self.get_node_value('map_za', where='/map')
+
+#     @property
+#     def sum_map(self) -> tables.Array:
+#         return self.get_node_value('sum_map', where='/map')
+
+#     @property
+#     def hits_map(self) -> tables.Array:
+#         return self.get_node_value('hits_map', where='/map')
     
-    def create_external_link(self, where: tables.Group | str, name: str, target: str) -> ExternalLink:
-        return self._file.create_external_link(where, name, target)
-    
-    def remove_node(self, where: tables.Group | str, name: str):
-        self._file.remove_node(where, name)
+#     @property
+#     def netd(self) -> tables.Array:
+#         return self.get_node_value('netd', where='/map')
 
-    @property
-    def tod_template(self) -> str:
-        return get_tod_template(self.date, self.setnum)
+#     @property
+#     def good_samples(self) -> tables.Array:
+#         return self.get_node_value('good_samples', where='/map')
 
-    @property
-    def azel_template(self) -> str:
-        return get_azel_template(self.date, self.setnum)
+#     @property
+#     def map(self) -> npt.NDArray:
+#         div = tables.Expr('sum_map / hits_map', {'sum_map': self.sum_map, 'hits_map': self.hits_map})
+#         d = div.eval()
+#         return d
 
-    @property
-    def optcam_template(self) -> str:
-        return get_optcam_template(self.date ,self.setnum)
-    
-    @property
-    def processed_file_template(self) -> str:
-        return get_processed_file_template(self.date, self.setnum, level=self.level)
+#     @property
+#     def total_map(self) -> npt.NDArray:
+#         return np.sum(self.sum_map, axis=0) / np.sum(self.hits_map, axis=0)
 
-    @property
-    def cleaned_file_template(self) -> str:
-        return get_cleaned_file_template(self.date ,self.setnum)
+#     def get_netd_pol(self, polarization: int) -> npt.NDArray:
+#         return self.netd[self.detector_pol[:] == polarization]
 
-    @property
-    def map_file_template(self) -> str:
-        return get_map_file_template(self.date, self.setnum)
+#     @property
+#     def integration_time(self) -> npt.NDArray:
+#         integration_times = [
+#             np.flip(
+#                 np.transpose(self.hits_map[i,::-1]) * \
+#                     np.median(self.get_netd_pol(pol)) ** 2. / self.fs,
+#                 1,
+#             )
+#             for i, pol in enumerate(range(1, N_POLARIZATION + 1))
+#         ]
+#         return integration_times
 
-    @property
-    def beammap_file_template(self) -> str:
-        return get_beammap_file_template(self.date, self.setnum)
-    
-    @property
-    def file_stub(self) -> str:
-        return get_file_stub(self.date, self.setnum)
+#     def get_scaled_optical_image(self) -> npt.NDArray:
+#         opt_npix_per_tel_npix = DEFAULT_MAP_DPIX/OPTCAM_PIX_SIZE_DEGREES
+#         opt_npix_az = int(np.size(self.map_az)*opt_npix_per_tel_npix/2)*2
+#         opt_npix_za = int(np.size(self.map_za)*opt_npix_per_tel_npix/2)*2
+#         opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
+#         opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
+#         return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
+#                                     opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
 
-    @property
-    def folder(self) -> Path:
-        return Path(f'{DEFAULT_DATA_DIRECTORY}/{self.date}')
-    
-    @property
-    def filename(self) -> str:
-        return self._file.filename
-    
-    @property
-    def date(self) -> str:
-        return self._file.root._v_attrs.date
-    
-    @date.setter
-    def date(self, date: str):
-        self._file.root._v_attrs.date = date
+#     def get_combined_map(self, sigma: tuple[float,...]=GAUSSIAN_SIGMA) -> npt.NDArray:
+#         flagged_map_1 = gaussian_filter(self.map[0], sigma)
+#         flagged_map_2 = gaussian_filter(self.map[1], sigma)
+#         flagged_map_3 = gaussian_filter(self.total_map, sigma)
+#        # pdb.set_trace()
+#         # flagged_map_1 = np.copy(self.map[0])
+#         # flagged_map_2 = np.copy(self.map[1])
+#         # flagged_map_3 = np.copy(self.total_map)
 
-    @property
-    def setnum(self) -> int:
-        return self._file.root._v_attrs.setnum
-    
-    @setnum.setter
-    def setnum(self, setnum: int):
-        self._file.root._v_attrs.setnum = setnum
+#         final_final_map1= np.copy(flagged_map_1)
+#         final_final_map2= np.copy(flagged_map_2)
+#         final_final_map3= np.copy(flagged_map_3)
 
-    @property
-    def receipt(self) -> str:
-        return self._file.root._v_attrs.receipt 
+#         # Convert all nans to boolean True
+#         nan_map_1 = np.isnan(flagged_map_1)
+#         nan_map_2 = np.isnan(flagged_map_2)
+#         nan_map_3 = np.isnan(flagged_map_3)
 
-    def add_receipt(self, receipt: str):
-        """Add a receipt entry to the processed data file."""
-        self._file.root._v_attrs.receipt = receipt
-        self._file.flush()
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.close()
-
-
-class BaseProcessedData(DataStorage):
-
-    def __init__(self, file: tables.File, level: int=1):
-        super().__init__(file)
-        self.level = level
-
-    @classmethod
-    def from_file(cls, date: str, setnum: int, mode: str='r', level: int=1):
-        fname = get_processed_file_template(date, setnum, level=level)
-        return cls(tables.File(fname, mode=mode), level=level)
-    
-    @ensure_path(1)
-    def compile_to_file(self, path: Path, datasets: list[str]=None, mode: str='w') -> tables.File:
-        if not path.exists():
-            path.touch(PERMISSIONS_ALL_FULL)
-        new_file = tables.open_file(path, mode=mode)
-
-        new_file.root._v_attrs.date = self.date
-        new_file.root._v_attrs.setnum = self.setnum
-        new_file.root._v_attrs.receipt = self.receipt
-
-        if datasets is None:
-            datasets = ALL_PROCESSED_DATA_FIELDS
-        for dataset in datasets:
-            new_file.create_array('/', dataset, obj=getattr(self, dataset)[:])
+#         # Combine the boolean maps such that if any pixel is flagged in any map, it is flagged in the combined map
+#         combined_nan_map = np.logical_or(np.logical_or(nan_map_1, nan_map_2), nan_map_3)
         
-        return new_file
+#         # Get the coordinates of True values in the combined_nan_map
+#         flagged_positions = np.where(combined_nan_map)
+#         final_flagged_coords = list(zip(flagged_positions[0], flagged_positions[1]))
 
-    def get_node(self, name: str, where: str='/') -> tables.Node:
-        if where is None:
-            where = PROCESSED_DATA_FIELD_LOCATIONS[name]
-        return super().get_node(name, where=where)
-    
-    @property
-    def global_data_group(self) -> tables.Group:
-        return self._file.root.global_data
+#         # Apply this combined map to each of the final maps
+#         flagged_map_1[combined_nan_map] = 1
+#         flagged_map_2[combined_nan_map] = 1
+#         flagged_map_3[combined_nan_map] = 1
 
-    @property
-    def data_group(self) -> tables.Group:
-        return self._file.root.data
+#         flagged_map_1[flagged_map_1 != 1] = 0
+#         flagged_map_2[flagged_map_2 != 1] = 0
+#         flagged_map_3[flagged_map_3 != 1] = 0
 
-    @property
-    def lo_sweep_group(self) -> tables.Group:
-        return self._file.root.lo_sweep
-    
-    def get_combined_lo_sweep_data_array(self) -> npt.NDArray:
-        lo_sweep = None
-        for node in self.lo_sweep_group._f_walknodes('ExternalLink'):
-            this_lo_sweep = node(mode='r')[:]
-            if lo_sweep is None:
-                lo_sweep = this_lo_sweep
-            else:
-                lo_sweep = np.append(lo_sweep, this_lo_sweep, axis=1)
-        return lo_sweep
+#         final_final_map1[combined_nan_map] = np.nan
+#         final_final_map2[combined_nan_map] = np.nan
+#         final_final_map3[combined_nan_map] = np.nan
 
-    def get_lo_sweep_data_array(self, i_chan: int) -> npt.NDArray:
-        total_array = self.get_combined_lo_sweep_data_array()
-        return total_array[:, np.sum(self.tones_per_channel[:i_chan]):np.sum(self.tones_per_channel[:i_chan + 1])]
-    
-    def get_lo_sweep_data(self, i_chan: int) -> LoSweepData:
-        return LoSweepData(
-            self.get_baseband_freqs(i_chan),
-            self.lo_freq[i_chan],
-            self.get_lo_sweep_data_array(i_chan),
-            self.get_chanmask(i_chan),
-        )
-    
-    @property
-    def lo_freq(self) -> tables.Array:
-        return self.get_node_value('lo_freq')
+#         contour_levels = [1]
 
-    def get_lo_freq(self, i_chan: int) -> float:
-        return self.lo_freq[i_chan]
-    
-    @property
-    def tones_per_channel(self) -> tables.Array:
-        return self.get_node_value('tones_per_channel')
+#         final_final_map1= final_final_map1.flatten()
+#         final_final_map2= final_final_map2.flatten()
+#         final_final_map3= final_final_map3.flatten()
 
-    @property
-    def baseband_freqs(self) -> tables.Array:
-        return self.get_node_value('baseband_freqs')
+#         final_final_map1 = [x for x in final_final_map1 if not np.isnan(x)]
+#         final_final_map2 = [x for x in final_final_map2 if not np.isnan(x)]
+#         final_final_map3 = [x for x in final_final_map3 if not np.isnan(x)]
+#         return flagged_map_1, flagged_map_2, flagged_map_3, contour_levels
     
-    def get_baseband_freqs(self, i_chan: int) -> npt.NDArray:
-        return self.baseband_freqs[i_chan, :self.tones_per_channel[i_chan]]
+#     def extent(self) -> tuple[float, float, float, float]:
+#         return (
+#             min(self.map_az)-DEFAULT_MAP_DPIX /2.,
+#             max(self.map_az)+DEFAULT_MAP_DPIX /2,
+#             max(self.map_za)+DEFAULT_MAP_DPIX /2.,
+#             min(self.map_za)-DEFAULT_MAP_DPIX /2.
+#         )
 
-    @property
-    def tones(self) -> npt.NDArray:
-        return self.baseband_freqs[:] + self.lo_freq
-    
-    def get_tones(self, i_chan: int) -> npt.NDArray:
-        return self.get_baseband_freqs(i_chan) + self.lo_freq
+#     def plot_individual(self, index: int):
+#         plot_map(self.map[index], self.map_az, self.map_za, self.extent(), title=f'Resonator {index}')
 
-    @property
-    def tones_per_channel(self) -> tables.Array:
-        return self.get_node_value('tones_per_channel')
+#     def plot(self, show: bool=True, save: bool=True):
 
-    def get_n_tones(self, i_chan: int) -> int:
-        return self.tones_per_channel[i_chan]
-    
-    @property
-    def max_n_tones(self) -> int:
-        return max(self.tones_per_channel[:])
-    
-    @property
-    def n_tones_total(self) -> int:
-        return np.sum(self.tones_per_channel[:])
-    
-    @property
-    def n_channels(self) -> int:
-        return self._file.root.global_data._v_attrs.n_channels
-    
-    @n_channels.setter
-    def n_channels(self, n_channels: int):
-        self._file.root.global_data._v_attrs.n_channels = n_channels
+#         hits_map = self.hits_map[:]
+#         mapp = self.map[:]
+#         total_map = self.total_map[:]
 
-    @property
-    def n_samples(self) -> int:
-        return self._file.root.data._v_attrs.n_samples
+#         valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
+#         map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
+#         for i_cov in np.arange(np.size(valid_cov_1[:,0])):
+#             map_goodcov_1[i_cov] = mapp[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
+#         valid_cov_2 = np.argwhere(hits_map[1] > 0.5 * np.median(hits_map[1]))
+#         map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
+#         for i_cov in np.arange(np.size(valid_cov_2[:,0])):
+#             map_goodcov_2[i_cov] = mapp[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
 
-    @n_samples.setter
-    def n_samples(self, n_samples: int):
-        self._file.root.data._v_attrs.n_samples = n_samples
-    
-    @property
-    def optical_image(self) -> tables.Array:
-        return self.get_node_value('optical_image')
+#         netd_1 = self.get_netd_pol(1)
+#         netd_2 = self.get_netd_pol(2)
+#         cb_shrink = 0.95
+#         this_xlim = min(self.map_az),max(self.map_az)
+#         this_ylim = max(self.map_za),min(self.map_za)
+#         max_abs = np.max(np.abs(np.append(map_goodcov_1,map_goodcov_2)))*0.75
+#         valid_netd_1 = np.argwhere(netd_1 > 0)
+#         med_netd_1 = 1./np.sqrt(np.sum(1./netd_1[valid_netd_1]**2)/np.size(valid_netd_1))
+#         valid_netd_2 = np.argwhere(netd_2 > 0)
+#         med_netd_2 = 1./np.sqrt(np.sum(1./netd_2[valid_netd_2]**2)/np.size(valid_netd_2))
 
-    @property
-    def data_IQ(self) -> tables.Array:
-        return self.get_node_value('data_IQ')
-    
-    def get_data_IQ(self, i_chan: int) -> npt.NDArray:
-        return self.data_IQ[i_chan, :, :self.tones_per_channel[i_chan]]
-    
-    def get_all_data_I(self) -> npt.NDArray:
-        return self.data_IQ[:, 0, :]
-    
-    def get_data_I(self, i_chan: int) -> npt.NDArray:
-        return self.data_IQ[i_chan, 0, :self.tones_per_channel[i_chan]]
-    
-    def get_all_data_Q(self) -> npt.NDArray:
-        return self.data_IQ[:, 1, :]
+#         #Sage's plotting code---------------------------------------------------------------------------------------------
 
-    def get_data_Q(self, i_chan: int) -> npt.NDArray:
-        return self.data_IQ[i_chan, 1, :self.tones_per_channel[i_chan]]
+#         # contour_levels, final_map_1_filt, final_map_2_filt, final_map_tot_filt, flagged_map_1_filt, flagged_map_2_filt, \
+#         # flagged_map_tot_filt, final_flagged_coordinates = combined_map(map_1_filt_final_map, map_2_filt_final_map, map_tot_filt_final_map)
+#         flagged_map_1_filt, flagged_map_2_filt, flagged_map_tot_filt, contour_levels = self.get_combined_map()
 
-    @property
-    def interpolated_indices(self) -> tables.VLArray:
-        return self.get_node_value('interpolated_indices')
-    
-    def get_interpolated_indices(self, i_chan: int) -> npt.NDArray:
-        return self.interpolated_indices[i_chan, :]
-  
-    @property
-    def timestamp(self) -> tables.Array:
-        return self.get_node_value('timestamp')
-    
-    def get_timestamp(self, i_chan: int) -> npt.NDArray:
-        return self.timestamp[i_chan, :]
+#     #    pw = plotWindow()
+#         # TODO: Make figure size change based on the size of the map
+#         this_fig = plt.figure(figsize=(15,7.5))
+#         plt.subplot(4,1,1)
+#         plt.imshow(np.flip(np.transpose(mapp[0][::-1]),1), \
+#         extent = self.extent(), \
+#         aspect='equal', vmin=-max_abs, vmax=max_abs, cmap='Blues_r')
+#         cb = plt.colorbar(shrink=cb_shrink)
+#         cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
+#         plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+#         extent=self.extent(), colors='red')
+#         plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
+#         ', Optical Visibility = ' + str(self.optical_visibility[()]) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
+#         ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
+#         plt.ylabel('ZA (degrees)')
+#         plt.xlim(this_xlim), plt.ylim(this_ylim)
 
-    @property
-    def time(self) -> npt.NDArray:
-        return self.timestamp[:] - self.timestamp[:, 0]
-    
-    def get_time(self, i_chan: int) -> npt.NDArray:
-        timestamp = self.get_timestamp(i_chan)
-        return timestamp - timestamp[0]
-    
-    @property
-    def delta_t(self) -> npt.NDarray:
-        return np.median(self.time - np.roll(self.time, 1), axis=1)
-    
-    def get_delta_t(self, i_chan: int) -> float:
-        time = self.get_time(i_chan)
-        return np.median(time - np.roll(time, 1))
+#         plt.subplot(4,1,2)
+#         plt.imshow(np.flip(np.transpose(mapp[1][::-1]),1), \
+#         extent = self.extent(), \
+#         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Reds_r')
+#         cb = plt.colorbar(shrink=cb_shrink)
+#         cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
+#         plt.contour(np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+#         extent=self.extent(), colors='black')
+#         plt.ylabel('ZA (degrees)')
+#         plt.xlim(this_xlim), plt.ylim(this_ylim)
 
-    @property
-    def fs(self) -> npt.NDArray:
-        return 1 / self.delta_t
-    
-    def get_fs(self, i_chan: int) -> float:
-        return 1 / self.get_delta_t(i_chan)
-    
-    @property
-    def detector_az(self) -> tables.Array:
-        return self.get_node_value('detector_az')
-    
-    def get_detector_az(self, i_chan: int) -> npt.NDArray:
-        return self.detector_az[i_chan, :self.tones_per_channel[i_chan]]
-
-    @property
-    def detector_za(self) -> tables.Array:
-        return self.get_node_value('detector_za')
-    
-    def get_detector_za(self, i_chan: int) -> npt.NDArray:
-        return self.detector_za[i_chan, :self.tones_per_channel[i_chan]]
-
-    @property
-    def optical_visibility(self) -> tables.Array:
-        return self.get_node_value('optical_visibility')
-
-    @property
-    def dfoverf_per_mK(self) -> tables.Array:
-        return self.get_node_value('dfoverf_per_mK')
-    
-    def get_dfoverf_per_mK(self, i_chan: int) -> npt.NDArray:
-        return self.dfoverf_per_mK[i_chan, :self.tones_per_channel[i_chan]]
+#         plt.subplot(4,1,3)
+#         plt.imshow(np.flip(np.transpose(total_map[::-1]),1), \
+#         extent = self.extent(), \
+#         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Greys_r')
+#         cb = plt.colorbar(shrink=cb_shrink)
+#         cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
+#         plt.contour(np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
+#         extent=self.extent(), colors='red')
+#         plt.ylabel('ZA (degrees)')
+#         plt.xlim(this_xlim), plt.ylim(this_ylim)
         
-    @property
-    def detector_beam_ampl(self) -> tables.Array:
-        return self.get_node_value('detector_beam_ampl')
-    
-    def get_detector_beam_ampl(self, i_chan: int) -> npt.NDArray:
-        return self.detector_beam_ampl[i_chan, :self.tones_per_channel[i_chan]]
-
-    @property
-    def detector_pol(self) -> tables.Array:
-        return self.get_node_value('detector_pol')
-    
-    def get_detector_pol(self, i_chan: int) -> npt.NDArray:
-        return self.detector_pol[i_chan, :self.tones_per_channel[i_chan]]
-    
-    @property
-    def chanmask(self) -> tables.Array:
-        return self.get_node_value('chanmask')
-    
-    def get_chanmask(self, i_chan: int) -> npt.NDArray:
-        return self.chanmask[i_chan, :self.tones_per_channel[i_chan]]
-
-
-class ProcessedDataL0(BaseProcessedData):
-    """Class for interpolating data where needed from the raw TOD files."""
-
-    @classmethod
-    def from_file(cls, date: str, setnum: int, mode: str='r') -> ProcessedDataL0:
-        return super(ProcessedDataL0, cls).from_file(date, setnum, mode=mode, level=0)
-
-    @classmethod
-    def from_tod(
-        cls,
-        date: str,
-        setnum: int,
-        beam_map_mode: bool=False,
-    ) -> ProcessedDataL0:
-
-        folder = Path(f'{DEFAULT_DATA_DIRECTORY}/{date}')
-        todtemplate = get_tod_template(date, setnum)
-        tele_template = Path(get_azel_template(date, setnum))
-        optcam_template = Path(get_optcam_template(date ,setnum))
-
-        azel_exists = tele_template.exists()
-        optcam_exists = optcam_template.exists()
-
-        if azel_exists:
-            azel_file = tables.open_file(tele_template, 'r')
-        
-        if optcam_exists:
-            optcam_file = tables.open_file(optcam_template, 'r')
-        
-
-        # Find TOD files
-        todlist = glob.glob(todtemplate)
-        nchan = len(todlist)
-        if nchan == 0:
-            raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
-
-        # Get the n_tones and n_samples from all TOD files to determine array sizes
-        sample_counts = []
-        tone_counts = []
-        missed_sample_counts = []
-        missed_packets_list = []
-        corrected_packet_index_list = []
-        for file in todlist:
-            with tables.open_file(file, 'r') as f:
-                # Find number of tones
-                raw_dimension = f.root.dimension
-                n_tones = raw_dimension.n_tones[0]
-                tone_counts.append(n_tones)
-
-                # Find the total number of samples accounting for missed packets
-                raw_time_ordered_data = f.root.time_ordered_data
-                # NOTE: Temporary fix until n_sample is fixed in the raw files
-                # n_samples = raw_dimension.n_sample[0]
-                n_samples = raw_time_ordered_data.adc_i.shape[-1]
-                raw_timestamp = raw_time_ordered_data.timestamp[:n_samples]
-                print('finding missed packets...')
-                if hasattr(raw_time_ordered_data, 'pkt_idx'):
-                    print('using pkt_idx to find missed packets')
-                    missed_packets = find_missed_packets_with_indices(raw_time_ordered_data.pkt_idx)
-                    this_corrected_packet_index = raw_time_ordered_data.pkt_idx[:]
-                else:
-                    missed_packets, this_corrected_packet_index = find_missed_packets(
-                        raw_timestamp,
-                        n_samples
-                    )
-                corrected_packet_index_list.append(this_corrected_packet_index)
-                n_missed = int(np.sum(missed_packets[:, 1]))
-                missed_sample_counts.append(n_missed)
-                # total_samples = n_samples + n_missed
-                sample_counts.append(n_samples)
-                missed_packets_list.append(missed_packets)
-
-        max_n_tones = int(sum(tone_counts))
-        max_missed_samples = int(max(missed_sample_counts))
-        tones_per_channel = np.array(tone_counts, dtype=np.uint32)
-
-        # Normalize samle counts to the minimum across all channels
-        total_samples = min(np.add(sample_counts, missed_sample_counts))
-
-        # NOTE: I forsee a potnetial bug where we try to interpolate the data for channel
-        # say 2, which missed packet X, but channel 0 only had X - 1 total packets, so
-        # trying to operate on packet X would be out of bounds. For now, we will just
-        # limit the total samples to the minimum across all channels, and hope that this
-        # doesn't happen.
-
-        if azel_exists:
-            # pdb.set_trace()
-            az_tel = azel_file.root.az_tel
-            try:
-                za_tel = azel_file.root.za_tel
-            except:
-                za_tel = azel_file.rooe.el_tel
-            timestamp_tel = azel_file.root.timestamp_tel
-            # vis = azel_tfile.root.optical_visibility[0]
-            vis = np.nan
-            if isinstance(vis, bytes):
-                vis = np.nan
-        else:
-            vis=0.
-
-        # Create processed data file
-        pfile_path = Path(get_processed_file_template(date, setnum, level=0))
-        if not pfile_path.exists():
-            pfile_path.touch(PERMISSIONS_ALL_FULL)
-        pfile = tables.open_file(pfile_path, 'w')
-        pfile.root._v_attrs.date = date
-        pfile.root._v_attrs.setnum = setnum
-        pfile.root._v_attrs.receipt = ''
-
-        time_ordered_data_group = pfile.create_group('/', 'data')
-        global_data_group = pfile.create_group('/', 'global_data')
-        global_data_group._v_attrs.n_channels = nchan
-        if optcam_exists:
-            # optical_image = optcam_file.root.optical_image
-            pfile.create_array(global_data_group, 'optical_image', obj=optcam_file.root.optical_image[:])
-            optcam_file.close()
-        else:
-            pfile.create_array(global_data_group, 'optical_image', obj=np.array([]))
-            optical_image = None
-        dfoverf_per_mK = pfile.create_array(global_data_group, 'dfoverf_per_mK', shape=(nchan, max_n_tones), atom=tables.Float64Atom())
-        detector_beam_amplitude = pfile.create_array(global_data_group, 'detector_beam_ampl', shape=(nchan, max_n_tones), atom=tables.Float64Atom())
-        chanmask = pfile.create_array(global_data_group, 'chanmask', shape=(nchan, max_n_tones), atom=tables.Int8Atom(dflt=1))
-        baseband_freqs = pfile.create_array(global_data_group, 'baseband_freqs', shape=(nchan, max_n_tones), atom=tables.Float64Atom())
-        # chanmask[:] = 1
-        detector_pol = pfile.create_array(global_data_group, 'detector_pol', shape=(nchan, max_n_tones), atom=tables.Int8Atom())
-        optical_visibility = pfile.create_array(global_data_group, 'optical_visibility', obj=vis)
-        tones_per_channel_array = pfile.create_array(global_data_group, 'tones_per_channel', obj=tones_per_channel)
-        lo_freq_array = pfile.create_array(global_data_group, 'lo_freq', shape=(nchan,), atom=tables.Float64Atom())
-
-        lo_group = pfile.create_group('/', 'lo_sweep')
-
-        # Can now initialize time-ordered data arrays
-        time_ordered_data_group._v_attrs.n_samples = total_samples
-        timestamp = pfile.create_array(time_ordered_data_group, 'timestamp', shape=(nchan, total_samples,), atom=tables.Float64Atom())
-        interpolated_indices = pfile.create_vlarray(time_ordered_data_group, 'interpolated_indices', expectedrows=max_missed_samples, atom=tables.UInt32Atom())
-        chunkshape = (1, 1, int(5e5))
-        clevel = 4
-        cname = 'lz4'
-        tables_filters = tables.Filters(
-            complevel=clevel,
-            complib="blosc2:%s" % cname,
-            shuffle=True,
-        )
-        # data_IQ = pfile.create_array(time_ordered_data_group, 'data_IQ', shape=(2, n_tones, total_samples), atom=tables.Float64Atom())
-        data_IQ = pfile.create_array(time_ordered_data_group, 'data_IQ', shape=(nchan, 2, max_n_tones, total_samples), atom=tables.Float64Atom())
-        azel_shape = (nchan, max_n_tones, n_samples) if azel_exists else (nchan, max_n_tones, 1)
-        detector_az = pfile.create_array(time_ordered_data_group, 'detector_az', shape=azel_shape, atom=tables.Float64Atom())
-        detector_za = pfile.create_array(time_ordered_data_group, 'detector_za', shape=azel_shape, atom=tables.Float64Atom())
-
-        # Iterate over the TOD Files, extracting IQ data and calibration info
-        for i, file in enumerate(todlist):
-            with tables.open_file(file, 'r') as f:
-                raw_global_data = f.root.global_data
-                raw_time_ordered_data = f.root.time_ordered_data
-                this_n_tones = tones_per_channel[i]
-                this_missed_packets = missed_packets_list[i]
-                this_n_missed = missed_sample_counts[i]
-
-                raw_timestamp = raw_time_ordered_data.timestamp[:total_samples]
-
-                # Get the correct tone indices in the TOD file
-                if int(date[:4]) < 2025:
-                    expr = tables.Expr('time_ordered_data.adc_i[:, 0] != 0')
-                    expr.eval()
-                    valid_tone_index = np.ndarray.flatten(np.argwhere(expr))
-                    valid_tone_index = valid_tone_index[:this_n_tones]
-                else:
-                    valid_tone_index = np.arange(this_n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
-
-                this_corrected_packet_index = corrected_packet_index_list[i][:total_samples]
-                normalized_packet_indices = this_corrected_packet_index - this_corrected_packet_index[0]
-
-                print('interpolating timestamp...')
-                interpolated_timestamp = interpolate_timestamp(
-                    raw_timestamp,
-                    timestamp,
-                    i,
-                    this_corrected_packet_index,
-                )
-
-                this_data_IQ = np.zeros((2, 1024, total_samples))
-                # Interpolate Data
-                if this_n_missed > 0:
-                    print('interpolating data...')
-                    this_interpolated_indices, interpolated_data = interpolate_missing_data(
-                        raw_time_ordered_data.adc_i,
-                        raw_time_ordered_data.adc_q,
-                        interpolated_timestamp,
-                        this_missed_packets,
-                        this_corrected_packet_index,
-                        valid_tone_index
-                    )
-                    interpolated_indices.append(this_interpolated_indices)
-                else:
-                    interpolated_indices.append([])
-
-                # Read IQ data
-                print('copying IQ data from raw file...')
-                this_data_IQ[0, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_i[:]
-                this_data_IQ[1, :][:, normalized_packet_indices] = raw_time_ordered_data.adc_q[:]
-                this_data_IQ = this_data_IQ[:, valid_tone_index]
-                if this_n_missed > 0:
-                    this_data_IQ[:, :, this_interpolated_indices] = interpolated_data
-                data_IQ[i, :] = this_data_IQ[:, :max_n_tones]
-                print('done copying data')
-
-                # Link to LO sweep
-                pfile.create_external_link(lo_group, f'lo_sweep_{i}', f'{file}:/global_data/lo_sweep')
-                lo_freq = raw_global_data.lo_freq[:]
-                lo_freq_array[i] = lo_freq
-                baseband_freqs[i, :] = pad_to_length(raw_global_data.baseband_freqs[:], max_n_tones)
+#         plt.subplot(4,1,4)
+#         optical_image = self.get_scaled_optical_image()
+#         valid_opt_pix = np.where(optical_image < 240)
+#         opt_vmax = 255. #np.percentile(optical_image[valid_opt_pix], 90)
+#         opt_vmin = -255. #np.percentile(optical_image[valid_opt_pix], 10)
+#         plt.imshow(optical_image, \
+#                 extent = self.extent(), \
+#                 aspect='equal', vmax=255, vmin=-255)
+#         cb = plt.colorbar(shrink=cb_shrink)
+#         cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
+#         ##Need to match aspect ratio of plots (and get rid of colorbar).
+#         plt.xlabel('Azimuth (degrees)'), plt.ylabel('ZA (degrees)')
+#         plt.xlim(this_xlim), plt.ylim(this_ylim)
             
-                # Copy calibration factors
-                this_detector_pol = raw_global_data.detector_pol[:]
-                if np.count_nonzero(this_detector_pol) == 0:
-                    this_detector_pol = np.ones_like(this_detector_pol)
-                detector_pol[i, :] = pad_to_length(this_detector_pol, max_n_tones)
-
-                this_detector_beam_ampl = raw_global_data.detector_beam_ampl[:]
-                if np.count_nonzero(this_detector_beam_ampl) == 0:
-                    this_detector_beam_ampl = np.ones_like(this_detector_beam_ampl)
-                detector_beam_amplitude[i, :] = pad_to_length(this_detector_beam_ampl, max_n_tones)
-
-                this_dfoverf_per_mK = raw_global_data.dfoverf_per_mK[:] * -1
-                if np.count_nonzero(this_dfoverf_per_mK) == 0:
-                    this_dfoverf_per_mK = np.ones_like(this_dfoverf_per_mK)
-                dfoverf_per_mK[i, :] = pad_to_length(this_dfoverf_per_mK, max_n_tones)
-
-                if azel_exists:
-                    detector_dx_dy_elevation_angle = raw_global_data.detector_dx_dy_elevation_angle[0]
-                    this_az_tel = np.interp(interpolated_timestamp, timestamp_tel, az_tel)
-                    this_za_tel = np.interp(interpolated_timestamp, timestamp_tel, za_tel)
-                    this_ang = np.pi/180.*(detector_dx_dy_elevation_angle-this_za_tel)
-                    this_detector_delta_x = raw_global_data.detector_delta_x[:]
-                    this_detector_delta_y = raw_global_data.detector_delta_y[:]
-                    if beam_map_mode:
-                        this_detector_delta_x *= 0
-                        this_detector_delta_y *= 0
-                    #save the az/el information to the file
-                    detector_az[i, :] = \
-                            np.outer(this_detector_delta_x, np.cos(this_ang)) - \
-                            np.outer(this_detector_delta_y, np.sin(this_ang)) + \
-                            np.outer(np.ones(max_n_tones), this_az_tel)
-                    
-                    detector_za[i, :] = \
-                        np.outer(this_detector_delta_y, np.cos(this_ang)) + \
-                        np.outer(this_detector_delta_x, np.sin(this_ang)) + \
-                        np.outer(np.ones(max_n_tones), this_za_tel)
-                
-                # Store chanmask from TOD
-                this_chanmask = raw_global_data.chanmask[:]
-                off_res = np.argwhere(this_chanmask == 0).flatten()
-                no_pol = np.argwhere(this_detector_pol[:] < 1).flatten()
-                this_chanmask[no_pol] = -1
-                # Preserve off-resonance indices
-                this_chanmask[off_res] = 0
-                chanmask[i, :] = pad_to_length(this_chanmask, max_n_tones, constant_values=-1)
-
-        # Close telescope file as it's no longer needed
-        if azel_exists:
-            azel_file.close()
-
-        return cls(pfile)
-
-
-class ProcessedData(BaseProcessedData):
-    """Class contianing data from processed TOD files."""
-   
-    def carrier_amplitude_norm(self) -> npt.NDArray:
-        Z = self.carrier_amp_I + 1j*self.carrier_amp_Q
-        return np.mean(np.abs(Z), axis=1)
-
-    @property
-    def carrier_amplitudes(self) -> tables.Array:
-        return self.get_node_value('carrier_amplitudes')
-    
-    def get_carrier_amplitudes(self, i_chan: int) -> npt.NDArray:
-        return self.carrier_amplitudes[i_chan, :, :self.tones_per_channel[i_chan]]
-
-    @property
-    def carrier_amp_I(self) -> npt.NDArray:
-        return self.carrier_amplitudes[:, 0]
-    
-    def get_carrier_amp_I(self, i_chan) -> npt.NDArray:
-        return self.get_carrier_amplitudes(i_chan)[0]
-    
-    @property
-    def carrier_amp_Q(self) -> npt.NDArray:
-        return self.carrier_amplitudes[:, 1]
-
-    def get_carrier_amp_Q(self, i_chan) -> npt.NDArray:
-        return self.get_carrier_amplitudes(i_chan)[1]
-
-    @property
-    def df_per_mK(self) -> tables.Array:
-        return self.get_node_value('df_per_mK')
-    
-    def get_df_per_mK(self, i_chan: int) -> npt.NDArray:
-        return self.df_per_mK[i_chan, :self.tones_per_channel[i_chan]]
-
-    @property
-    def IQ_to_gain_phase_angle(self) -> tables.Array:
-        return self.get_node_value('IQ_to_gain_phase_angle')
-    
-    def get_IQ_to_gain_phase_angle(self, i_chan: int) -> npt.NDArray:
-        return self.IQ_to_gain_phase_angle[i_chan, :self.tones_per_channel[i_chan]]
-
-    @property
-    def IQ_to_freq_diss_angle(self) -> tables.Array:
-        return self.get_node_value('IQ_to_freq_diss_angle')
-    
-    def get_IQ_to_freq_diss_angle(self, i_chan: int) -> npt.NDArray:
-        return self.IQ_to_freq_diss_angle[i_chan, :self.tones_per_channel[i_chan]]
-    
-    @property
-    def adc_units_to_hz(self) -> tables.Array:
-        return self.get_node_value('adc_units_to_hz')
-    
-    def get_adc_units_to_hz(self, i_chan: int) -> npt.NDArray:
-        return self.adc_units_to_hz[i_chan, :self.tones_per_channel[i_chan]]
-
-    @property
-    def data_freq_diss(self) -> tables.Array:
-        return self.get_node_value('data_freq_diss')
-    
-    def get_data_freq_diss(self, i_chan: int) -> npt.NDArray:
-        return self.data_freq_diss[i_chan, :, :self.tones_per_channel[i_chan]]
-
-    def get_all_data_freq(self) -> npt.NDArray:
-        return self.data_freq_diss[:, 0]
-    
-    def get_data_freq(self, i_chan: int) -> npt.NDArray:
-        return self.get_data_freq_diss(i_chan)[0]
-    
-    def get_all_data_diss(self) -> npt.NDArray:
-        return self.data_freq_diss[:, 0]
-    
-    def get_data_diss(self, i_chan: int) -> npt.NDArray:
-        return self.get_data_freq_diss(i_chan)[1]
-    
-    @property
-    def data_mK(self) -> tables.Array:
-        return self.get_node_value('data_mK')
-    
-    def get_data_mK(self, i_chan: int) -> npt.NDArray:
-        return self.data_mK[i_chan, :self.tones_per_channel[i_chan]]
-    
-    @property
-    def data_gain_phase(self) -> tables.Array:
-        return self.get_node_value('data_gain_phase')
-    
-    def get_data_gain_phase(self, i_chan: int) -> npt.NDArray:
-        return self.data_gain_phase[i_chan, :, :self.tones_per_channel[i_chan]]
-    
-    def get_all_data_gain(self) -> npt.NDArray:
-        return self.data_gain_phase[:, 0]
-    
-    def get_data_gain(self, i_chan: int) -> npt.NDArray:
-        return self.get_data_gain_phase(i_chan)[0]
-    
-    def get_all_data_phase(self) -> npt.NDArray:
-        return self.data_gain_phase[:, 1]
-    
-    def get_data_phase(self, i_chan: int) -> npt.NDArray:
-        return self.get_data_gain_phase(i_chan)[1]
-    
-    
-class ProcessedDataL1(ProcessedData):
-    
-    @classmethod
-    def from_file(cls, date: str, setnum: int, mode: str='r') -> ProcessedDataL0:
-        return super(ProcessedDataL1, cls).from_file(date, setnum, mode=mode, level=1)
-
-    def link_to_l0(self, target: ProcessedDataL0):
-        global_data_group = self.create_group('/', 'global_data')
-        data_group = self.create_group('/', 'data')
-        lo_group = self.create_group('/', 'lo_sweep')
-
-        # Copy attributes
-        self.date = target.date
-        self.setnum = target.setnum
-        self.add_receipt(target.receipt)
-        self.n_samples = target.n_samples
-        self.n_channels = target.n_channels
-
-        # Copy LO sweep external links
-        for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
-            self.create_external_link(lo_group, node._v_name, node.target)
-
-        # Copy global data
-        for node_name in STATIC_BASE_PROCESSED_DATA_FIELDS + ['chanmask']:
-            node = target.get_node(node_name)
-            parent_path = node._v_parent._v_pathname
-            if isinstance(node, ExternalLink):
-                target_path = node.target
-            else:
-                target_path = f'{target.filename}:{node._v_pathname}'
-            self.create_external_link(parent_path, node_name, target_path)
-        
-    
-    @classmethod
-    def from_level0(
-        cls,
-        l0: ProcessedDataL0,
-        do_electronics_noise_removal: bool=True,
-        electronics_noise_lp_filt_freq: float=10,
-        ds_factor: int=1,
-        max_modes: int=30,
-    ) -> ProcessedDataL1:
-        pfile_path = Path(get_processed_file_template(l0.date, l0.setnum, level=1))
-        if not pfile_path.exists():
-            pfile_path.touch(PERMISSIONS_ALL_FULL)
-        pfile = tables.File(pfile_path, mode='w')
-
-        total_samples = l0.n_samples
-        n_samples_ds = int(np.ceil(total_samples / ds_factor))
-        max_n_tones = l0.max_n_tones
-        nchan = l0.n_channels
-
-        new_data = cls(pfile, level=1)
-        l0.close()
-        l0.open('r')
-        new_data.link_to_l0(l0)
-
-        new_data.n_samples = n_samples_ds
-
-
-        data_gain_phase = new_data.create_array(
-            new_data.data_group,
-            'data_gain_phase',
-            shape=(nchan, 2, max_n_tones, n_samples_ds),
-            atom=tables.Float64Atom(),
-        )
-        data_freq_diss = new_data.create_array(
-            new_data.data_group,
-            'data_freq_diss',
-            shape=(nchan, 2, max_n_tones, n_samples_ds),
-            atom=tables.Float64Atom(),
-        )
-        data_mK = new_data.create_array(
-            new_data.data_group,
-            'data_mK',
-            shape=(nchan, max_n_tones, n_samples_ds),
-            atom=tables.Float64Atom(),
-        )
-        azel_shape = (nchan, max_n_tones, 1) if l0.detector_az.shape[-1] == 1 else (nchan, max_n_tones, n_samples_ds) 
-
-
-        carrier_amplitudes = new_data.create_array(
-            new_data.data_group,
-            'carrier_amplitudes',
-            shape=(nchan, 2, max_n_tones),
-            atom=tables.Float64Atom(),
-        )
-        adc_units_to_hz = new_data.create_array(
-            new_data.data_group,
-            'adc_units_to_hz',
-            shape=(nchan, max_n_tones),
-            atom=tables.Float64Atom(),
-        )
-        IQ_to_gain_phase_angle = new_data.create_array(
-            new_data.data_group,
-            'IQ_to_gain_phase_angle',
-            shape=(nchan, max_n_tones),
-            atom=tables.Float64Atom(),
-        )
-        IQ_to_freq_diss_angle = new_data.create_array(
-            new_data.data_group,
-            'IQ_to_freq_diss_angle',
-            shape=(nchan, max_n_tones),
-            atom=tables.Float64Atom(),
-        )
-        df_per_mK = new_data.create_array(
-            new_data.global_data_group,
-            'df_per_mK',
-            shape=(nchan, max_n_tones),
-            atom=tables.Float64Atom(),
-        )
-
-        # Load LO sweeps
-        for i_chan in range(nchan):
-            sweep = new_data.get_lo_sweep_data(i_chan)
-
-            # Get frequency direction
-            this_IQ_to_freq_diss_angle, this_adc_units_to_hz = sweep.freq_direction()
-            IQ_to_freq_diss_angle[i_chan, :] = pad_to_length(this_IQ_to_freq_diss_angle, max_n_tones)
-            adc_units_to_hz[i_chan, :] = pad_to_length(this_adc_units_to_hz, max_n_tones)
-
-            detector_f = sweep.tone_list
-            df_per_mK[i_chan, :] = pad_to_length(
-                compute_df_per_mK(
-                    new_data.get_detector_pol(i_chan),
-                    new_data.get_detector_beam_ampl(i_chan),
-                    detector_f,
-                    new_data.get_df_per_mK(i_chan),
-                ),
-                max_n_tones,
-            )
-
-        # Downsample IQ data
-        if ds_factor > 1:
-            data_IQ = new_data.create_array(
-                new_data.data_group,
-                'data_IQ',
-                shape=(nchan, 2, max_n_tones, n_samples_ds),
-                atom=tables.Float64Atom(),
-            )
-            timestamp = new_data.create_array(
-                new_data.data_group,
-                'timestamp',
-                shape=(nchan, n_samples_ds),
-                atom=tables.Float64Atom(),
-            )
-            detector_az = new_data.create_array(
-                new_data.data_group,
-                'detector_az',
-                shape=azel_shape,
-                atom=tables.Float64Atom(),
-            )
-            detector_za = new_data.create_array(
-                new_data.data_group,
-                'detector_za',
-                shape=azel_shape,
-                atom=tables.Float64Atom(),
-            )
-            interpolated_indices = new_data.create_vlarray(
-                new_data.data_group,
-                'interpolated_indices',
-                atom=tables.UInt32Atom(),
-            )
-            # TODO: Decimate the data in a memory-efficient manner
-            # decimate_in_chunks(time_ordered_data.adc_i[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[0, :])
-            # decimate_in_chunks(time_ordered_data.adc_q[valid_tone_index, :], ds_factor, out=detector_data.data_IQ[1, :])
-            data_IQ[:] = signal.decimate(l0.data_IQ[:], ds_factor)
-            timestamp[:] = l0.timestamp[:, ::ds_factor]
-            if azel_shape[1] == 0:
-                detector_az[:] = l0.detector_az[:]
-                detector_za[:] = l0.detector_za[:]
-            else:
-                detector_az[:] = l0.detector_az[:, :, ::ds_factor]
-                detector_za[:] = l0.detector_za[:, :, ::ds_factor]
-            for i_chan in range(nchan):
-                interpolated_indices.append(l0.interpolated_indices[i_chan][l0.interpolated_indices[i_chan] % ds_factor == 0] // ds_factor)
-        else:
-            data_IQ = new_data.create_external_link(new_data.data_group, 'data_IQ', f'{l0.filename}:{l0.data_IQ._v_pathname}')
-            timestamp = new_data.create_external_link(new_data.data_group, 'timestamp', f'{l0.filename}:{l0.timestamp._v_pathname}')
-            detector_az = new_data.create_external_link(new_data.data_group, 'detector_az', f'{l0.filename}:{l0.detector_az._v_pathname}')
-            detector_za = new_data.create_external_link(new_data.data_group, 'detector_za', f'{l0.filename}:{l0.detector_za._v_pathname}')
-            interpolated_indices = new_data.create_external_link(new_data.data_group, 'interpolated_indices', f'{l0.filename}:{l0.interpolated_indices._v_pathname}')
-        carrier_amplitudes[:] = np.nanmedian(new_data.data_IQ[:], axis=-1)
-
-        # Rotate to Gain / Phase
-        IQ_to_gain_phase_angle[:] = np.atan2(carrier_amplitudes[:, 0], carrier_amplitudes[:, 1])  # N_chan
-        for i_chan in range(nchan):
-            rotate_basis(
-                new_data.data_IQ[:],
-                data_gain_phase,
-                IQ_to_gain_phase_angle,
-                i_chan=i_chan,
-                valid_tone_indices=np.arange(l0.tones_per_channel[i_chan]),
-            )
-        fs = 1 / np.median(np.diff(new_data.timestamp[:], axis=-1), axis=-1)
-
-        # Remove electronics noise if specified
-        if do_electronics_noise_removal:
-            remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=electronics_noise_lp_filt_freq, max_modes=max_modes)
-
-        # Create calibrated data
-        new_generate_calibrated_data(new_data)
-        
-        return new_data
-
-
-class ExternalLinkProcessedData(ProcessedData):
-    """Class for storing processed data with external links to another file."""
-    def __init__(self, file: tables.File):
-        super().__init__(file)
-
-    def open(self, mode: str='r'):
-        super().open(mode=mode)
-        self._load_dynamic_fields()
-
-    def _load_dynamic_fields(self):
-        for field_name in DYNAMIC_PROCESSED_DATA_FIELDS:
-            setattr(self, field_name, self.get_node(field_name))
-
-    @property
-    def carrier_amplitudes(self) -> PyTablesDataset:
-        return self._carrier_amplitudes
-
-    @carrier_amplitudes.setter
-    def carrier_amplitudes(self, carrier_amplitudes: tables.Array | ExternalLink):
-        self._carrier_amplitudes = PyTablesDataset(carrier_amplitudes, self._file)
-    
-    @property
-    def data_IQ(self) -> PyTablesDataset:
-        return self._data_IQ
-    
-    @data_IQ.setter
-    def data_IQ(self, data_IQ: tables.Array | ExternalLink):
-        self._data_IQ = PyTablesDataset(data_IQ, self._file)
-    
-    @property
-    def IQ_to_gain_phase_angle(self) -> PyTablesDataset:
-        return self._IQ_to_gain_phase_angle
-
-    @IQ_to_gain_phase_angle.setter
-    def IQ_to_gain_phase_angle(self, IQ_to_gain_phase_angle: tables.Array | ExternalLink):
-        self._IQ_to_gain_phase_angle = PyTablesDataset(IQ_to_gain_phase_angle, self._file)
-    
-    @property
-    def adc_units_to_hz(self) -> PyTablesDataset:
-        return self._adc_units_to_hz
-    
-    @adc_units_to_hz.setter
-    def adc_units_to_hz(self, adc_units_to_hz: tables.Array | ExternalLink):
-        self._adc_units_to_hz = PyTablesDataset(adc_units_to_hz, self._file)
-
-    @property
-    def data_gain_phase(self) -> PyTablesDataset:
-        return self._data_gain_phase
-    
-    @data_gain_phase.setter
-    def data_gain_phase(self, data_gain_phase: tables.Array | ExternalLink):
-        self._data_gain_phase = PyTablesDataset(data_gain_phase, self._file)
-    
-    @property
-    def data_freq_diss(self) -> PyTablesDataset:
-        return self._data_freq_diss
-    
-    @data_freq_diss.setter
-    def data_freq_diss(self, data_freq_diss: tables.Array | ExternalLink):
-        self._data_freq_diss = PyTablesDataset(data_freq_diss, self._file)
-    
-    @property
-    def data_mK(self) -> PyTablesDataset:
-        return self._data_mK
-    
-    @data_mK.setter
-    def data_mK(self, data_mK: tables.Array | ExternalLink):
-        self._data_mK = PyTablesDataset(data_mK, self._file)
-    
-    @property
-    def timestamp(self) -> PyTablesDataset:
-        return self._timestamp
-    
-    @timestamp.setter
-    def timestamp(self, timestamp: tables.Array | ExternalLink):
-        self._timestamp = PyTablesDataset(timestamp, self._file)
-
-    @property
-    def chanmask(self) -> tables.Array:
-        return self._chanmask
-    
-    @chanmask.setter
-    def chanmask(self, chanmask: tables.Array | ExternalLink):
-        self._chanmask = PyTablesDataset(chanmask, self._file)
-
-    def link_to_file(self, target: ProcessedData):
-        global_data_group = self._file.create_group('/', 'global_data')
-        data_group = self._file.create_group('/', 'data')
-        lo_group = self._file.create_group('/', 'lo_sweep')
-
-        # Copy attributes
-        self.date = target.date
-        self.setnum = target.setnum
-        self.add_receipt(target.receipt)
-        self.n_samples = target.n_samples
-        self.n_channels = target.n_channels
-
-        # Copy LO sweep external links
-        for node in target.lo_sweep_group._f_walknodes('ExternalLink'):
-            self._file.create_external_link(lo_group, node._v_name, node.target)
-
-        # Create external links for all datasets
-        for node_name in ALL_PROCESSED_DATA_FIELDS:
-            node = target.get_node(node_name)
-            parent_path = node._v_parent._v_pathname
-            if isinstance(node, ExternalLink):
-                target_path = node.target
-            else:
-                target_path = f'{target.filename}:{node._v_pathname}'
-            self._file.create_external_link(parent_path, node_name, target_path)
-
-
-
-class ProcessedDataLN(ExternalLinkProcessedData):
-    """Class for storing level N processed data."""
-    def __init__(self, file: tables.File, level: int=2):
-        super().__init__(file)
-        if level < 2:
-            raise ValueError(f'Argument `level` must be >= 2 for class `ProcessedDataLN`, received {level}')
-        self.level = level
-    
-    @classmethod
-    def from_previous_level(cls, previous: ProcessedData) -> ProcessedDataLN:
-        """Create a level N processed file with external links to level N-1."""
-        level = previous.level + 1
-        pfile_path = Path(get_processed_file_template(previous.date, previous.setnum, level=level))
-        if not pfile_path.exists():
-            pfile_path.touch(PERMISSIONS_ALL_FULL)
-        file = tables.File(pfile_path, mode='w')
-        new_data = cls(file, level)
-        new_data.link_to_file(previous)
-        new_data._load_dynamic_fields()
-
-        # Swap the previous file to read-only
-        previous.close()
-        previous.open('r')
-
-        return new_data
-
-    @classmethod
-    def from_file(cls, date: str, setnum: int, level: int, mode: str='r'):
-        fname = get_processed_file_template(date, setnum, level=level)
-        pd = cls(tables.File(fname, mode=mode), level=level)
-        pd._load_dynamic_fields()
-        return pd
-
-
-class MapData(ProcessedDataLN):
-    def __init__(self, file, level=3):
-        super().__init__(file, level)
-
-    @classmethod
-    def from_file(cls, date: str, setnum: int, mode: str='r'):
-        file_path = Path(get_map_file_template(date, setnum))
-        md = cls(tables.File(file_path, mode=mode), level=3)
-        md._load_dynamic_fields()
-        return md
-
-    @classmethod
-    def from_processed_data(cls, pdata: ProcessedData) -> MapData:
-        return cls.from_previous_level(pdata)
-    
-    @classmethod
-    def from_previous_level(cls, previous: ProcessedData) -> MapData:
-        """Create a map file with external links to level N-1."""
-        file_path = Path(get_map_file_template(previous.date, previous.setnum))
-        if not file_path.exists():
-            file_path.touch(PERMISSIONS_ALL_FULL)
-        file = tables.File(file_path, mode='w')
-        new_data = cls(file)
-        new_data.link_to_file(previous)
-        new_data._load_dynamic_fields()
-
-        # Swap the previous file to read-only
-        previous.close()
-        previous.open('r')
-
-        return new_data
-
-    def setup_map_arrays(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False):
-        # Create empty arrays
-        n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
-        self.create_group('/', 'map')
-        self.create_array('/map', 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
-        self.create_array('/map', 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
-        self.create_array('/map', 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self.create_array('/map', 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-        self.create_array('/map', 'netd', shape=(self.n_channels, self.max_n_tones,), atom=tables.Float64Atom())
-        good_samples = self.create_vlarray('/map', 'good_samples', expectedrows=self.n_channels, atom=tables.UInt32Atom())
-        for i_chan in range(self.n_channels):
-            good_samples.append(np.setdiff1d(np.arange(self.n_samples), self.interpolated_indices[i_chan]))
-    
-    @ensure_path(1)
-    def compile_to_file(self, path: Path, datasets: list[str]=None, mode: str='w') -> tables.File:
-        if datasets is None:
-            datasets = ALL_MAP_DATA_FIELDS
-        return super().compile_to_file(path, datasets=datasets, mode=mode)
-
-    @property
-    def map_az(self) -> tables.Array:
-        return self.get_node_value('map_az', where='/map')
-
-    @property
-    def map_za(self) -> tables.Array:
-        return self.get_node_value('map_za', where='/map')
-
-    @property
-    def sum_map(self) -> tables.Array:
-        return self.get_node_value('sum_map', where='/map')
-
-    @property
-    def hits_map(self) -> tables.Array:
-        return self.get_node_value('hits_map', where='/map')
-    
-    @property
-    def netd(self) -> tables.Array:
-        return self.get_node_value('netd', where='/map')
-
-    @property
-    def good_samples(self) -> tables.Array:
-        return self.get_node_value('good_samples', where='/map')
-
-    @property
-    def map(self) -> npt.NDArray:
-        div = tables.Expr('sum_map / hits_map', {'sum_map': self.sum_map, 'hits_map': self.hits_map})
-        d = div.eval()
-        return d
-
-    @property
-    def total_map(self) -> npt.NDArray:
-        return np.sum(self.sum_map, axis=0) / np.sum(self.hits_map, axis=0)
-
-    def get_netd_pol(self, polarization: int) -> npt.NDArray:
-        return self.netd[self.detector_pol[:] == polarization]
-
-    @property
-    def integration_time(self) -> npt.NDArray:
-        integration_times = [
-            np.flip(
-                np.transpose(self.hits_map[i,::-1]) * \
-                    np.median(self.get_netd_pol(pol)) ** 2. / self.fs,
-                1,
-            )
-            for i, pol in enumerate(range(1, N_POLARIZATION + 1))
-        ]
-        return integration_times
-
-    def get_scaled_optical_image(self) -> npt.NDArray:
-        opt_npix_per_tel_npix = DEFAULT_MAP_DPIX/OPTCAM_PIX_SIZE_DEGREES
-        opt_npix_az = int(np.size(self.map_az)*opt_npix_per_tel_npix/2)*2
-        opt_npix_za = int(np.size(self.map_za)*opt_npix_per_tel_npix/2)*2
-        opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
-        opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
-        return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
-                                    opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
-
-    def get_combined_map(self, sigma: tuple[float,...]=GAUSSIAN_SIGMA) -> npt.NDArray:
-        flagged_map_1 = gaussian_filter(self.map[0], sigma)
-        flagged_map_2 = gaussian_filter(self.map[1], sigma)
-        flagged_map_3 = gaussian_filter(self.total_map, sigma)
-       # pdb.set_trace()
-        # flagged_map_1 = np.copy(self.map[0])
-        # flagged_map_2 = np.copy(self.map[1])
-        # flagged_map_3 = np.copy(self.total_map)
-
-        final_final_map1= np.copy(flagged_map_1)
-        final_final_map2= np.copy(flagged_map_2)
-        final_final_map3= np.copy(flagged_map_3)
-
-        # Convert all nans to boolean True
-        nan_map_1 = np.isnan(flagged_map_1)
-        nan_map_2 = np.isnan(flagged_map_2)
-        nan_map_3 = np.isnan(flagged_map_3)
-
-        # Combine the boolean maps such that if any pixel is flagged in any map, it is flagged in the combined map
-        combined_nan_map = np.logical_or(np.logical_or(nan_map_1, nan_map_2), nan_map_3)
-        
-        # Get the coordinates of True values in the combined_nan_map
-        flagged_positions = np.where(combined_nan_map)
-        final_flagged_coords = list(zip(flagged_positions[0], flagged_positions[1]))
-
-        # Apply this combined map to each of the final maps
-        flagged_map_1[combined_nan_map] = 1
-        flagged_map_2[combined_nan_map] = 1
-        flagged_map_3[combined_nan_map] = 1
-
-        flagged_map_1[flagged_map_1 != 1] = 0
-        flagged_map_2[flagged_map_2 != 1] = 0
-        flagged_map_3[flagged_map_3 != 1] = 0
-
-        final_final_map1[combined_nan_map] = np.nan
-        final_final_map2[combined_nan_map] = np.nan
-        final_final_map3[combined_nan_map] = np.nan
-
-        contour_levels = [1]
-
-        final_final_map1= final_final_map1.flatten()
-        final_final_map2= final_final_map2.flatten()
-        final_final_map3= final_final_map3.flatten()
-
-        final_final_map1 = [x for x in final_final_map1 if not np.isnan(x)]
-        final_final_map2 = [x for x in final_final_map2 if not np.isnan(x)]
-        final_final_map3 = [x for x in final_final_map3 if not np.isnan(x)]
-        return flagged_map_1, flagged_map_2, flagged_map_3, contour_levels
-    
-    def extent(self) -> tuple[float, float, float, float]:
-        return (
-            min(self.map_az)-DEFAULT_MAP_DPIX /2.,
-            max(self.map_az)+DEFAULT_MAP_DPIX /2,
-            max(self.map_za)+DEFAULT_MAP_DPIX /2.,
-            min(self.map_za)-DEFAULT_MAP_DPIX /2.
-        )
-
-    def plot_individual(self, index: int):
-        plot_map(self.map[index], self.map_az, self.map_za, self.extent(), title=f'Resonator {index}')
-
-    def plot(self, show: bool=True, save: bool=True):
-
-        hits_map = self.hits_map[:]
-        mapp = self.map[:]
-        total_map = self.total_map[:]
-
-        valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
-        map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
-        for i_cov in np.arange(np.size(valid_cov_1[:,0])):
-            map_goodcov_1[i_cov] = mapp[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
-        valid_cov_2 = np.argwhere(hits_map[1] > 0.5 * np.median(hits_map[1]))
-        map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
-        for i_cov in np.arange(np.size(valid_cov_2[:,0])):
-            map_goodcov_2[i_cov] = mapp[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
-
-        netd_1 = self.get_netd_pol(1)
-        netd_2 = self.get_netd_pol(2)
-        cb_shrink = 0.95
-        this_xlim = min(self.map_az),max(self.map_az)
-        this_ylim = max(self.map_za),min(self.map_za)
-        max_abs = np.max(np.abs(np.append(map_goodcov_1,map_goodcov_2)))*0.75
-        valid_netd_1 = np.argwhere(netd_1 > 0)
-        med_netd_1 = 1./np.sqrt(np.sum(1./netd_1[valid_netd_1]**2)/np.size(valid_netd_1))
-        valid_netd_2 = np.argwhere(netd_2 > 0)
-        med_netd_2 = 1./np.sqrt(np.sum(1./netd_2[valid_netd_2]**2)/np.size(valid_netd_2))
-
-        #Sage's plotting code---------------------------------------------------------------------------------------------
-
-        # contour_levels, final_map_1_filt, final_map_2_filt, final_map_tot_filt, flagged_map_1_filt, flagged_map_2_filt, \
-        # flagged_map_tot_filt, final_flagged_coordinates = combined_map(map_1_filt_final_map, map_2_filt_final_map, map_tot_filt_final_map)
-        flagged_map_1_filt, flagged_map_2_filt, flagged_map_tot_filt, contour_levels = self.get_combined_map()
-
-    #    pw = plotWindow()
-        # TODO: Make figure size change based on the size of the map
-        this_fig = plt.figure(figsize=(15,7.5))
-        plt.subplot(4,1,1)
-        plt.imshow(np.flip(np.transpose(mapp[0][::-1]),1), \
-        extent = self.extent(), \
-        aspect='equal', vmin=-max_abs, vmax=max_abs, cmap='Blues_r')
-        cb = plt.colorbar(shrink=cb_shrink)
-        cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
-        plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-        extent=self.extent(), colors='red')
-        plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
-        ', Optical Visibility = ' + str(self.optical_visibility[()]) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
-        ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
-        plt.ylabel('ZA (degrees)')
-        plt.xlim(this_xlim), plt.ylim(this_ylim)
-
-        plt.subplot(4,1,2)
-        plt.imshow(np.flip(np.transpose(mapp[1][::-1]),1), \
-        extent = self.extent(), \
-        aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Reds_r')
-        cb = plt.colorbar(shrink=cb_shrink)
-        cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
-        plt.contour(np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-        extent=self.extent(), colors='black')
-        plt.ylabel('ZA (degrees)')
-        plt.xlim(this_xlim), plt.ylim(this_ylim)
-
-        plt.subplot(4,1,3)
-        plt.imshow(np.flip(np.transpose(total_map[::-1]),1), \
-        extent = self.extent(), \
-        aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Greys_r')
-        cb = plt.colorbar(shrink=cb_shrink)
-        cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
-        plt.contour(np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-        extent=self.extent(), colors='red')
-        plt.ylabel('ZA (degrees)')
-        plt.xlim(this_xlim), plt.ylim(this_ylim)
-        
-        plt.subplot(4,1,4)
-        optical_image = self.get_scaled_optical_image()
-        valid_opt_pix = np.where(optical_image < 240)
-        opt_vmax = 255. #np.percentile(optical_image[valid_opt_pix], 90)
-        opt_vmin = -255. #np.percentile(optical_image[valid_opt_pix], 10)
-        plt.imshow(optical_image, \
-                extent = self.extent(), \
-                aspect='equal', vmax=255, vmin=-255)
-        cb = plt.colorbar(shrink=cb_shrink)
-        cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
-        ##Need to match aspect ratio of plots (and get rid of colorbar).
-        plt.xlabel('Azimuth (degrees)'), plt.ylabel('ZA (degrees)')
-        plt.xlim(this_xlim), plt.ylim(this_ylim)
-            
-        this_fig.subplots_adjust(wspace=0, hspace=0)
-    #    pw.addPlot("Raw Image", this_fig)
-        path = self.folder / (self.file_stub + '_Source_Finder_Image.png')
-        if not path.exists():
-            path.touch(PERMISSIONS_ALL_FULL)
-        if save:
-            this_fig.savefig(path, bbox_inches='tight')
-        if show:
-            plt.show()
+#         this_fig.subplots_adjust(wspace=0, hspace=0)
+#     #    pw.addPlot("Raw Image", this_fig)
+#         path = self.folder / (self.file_stub + '_Source_Finder_Image.png')
+#         if not path.exists():
+#             path.touch(PERMISSIONS_ALL_FULL)
+#         if save:
+#             this_fig.savefig(path, bbox_inches='tight')
+#         if show:
+#             plt.show()
     
 
 def plot_map(
@@ -3098,7 +2015,6 @@ if __name__ == '__main__':
 
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
     pd = cd.create_processed_data()
-    pd.initialize_processed_data_fields()
 
     pdb.set_trace()
 

@@ -8,9 +8,18 @@ import json
 import time
 
 import rfsocinterface
-from rfsocinterface.core.data.data import ProcessedData, ProcessedDataL1, ProcessedDataLN, MapData, ProcessedDataL0
-from rfsocinterface.core.data.map import BinTODIntoMap
-from rfsocinterface.core.data.routines import ProcessingStage, DataRoutine, Downsample, HighPassFilter, LowPassFilter, CleanTOD, ComputeNoisePSD, PsdBasis
+from rfsocinterface.core.data.data import ProcessedData, ConsolidatedData
+# from rfsocinterface.core.data.map import BinTODIntoMap
+from rfsocinterface.core.data.routines import (
+    ProcessingStage,
+    DataRoutine,
+    HighPassFilter,
+    LowPassFilter,
+    CleanTOD,
+    ComputeNoisePSD,
+    PsdBasis
+    ,
+)
 
 _logger = logging.getLogger(__name__)
 

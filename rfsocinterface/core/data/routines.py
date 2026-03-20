@@ -7,10 +7,13 @@ import pdb
 import numpy as np
 from scipy import signal
 import tables
+import time
+import datetime
+import json
 
-from rfsocinterface.core.data.data import ProcessedData, BaseProcessedData, generate_calibrated_data, remove_electronics_noise_tables
+from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, generate_calibrated_data, remove_electronics_noise_tables, get_channel_group_name, get_step_group_name
 from rfsocinterface.core.data.data import DECIMATE_ORDER
-from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index
+from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash
 
 class ProcessingStage:
     """Enum for the different stages of data processing."""
@@ -20,20 +23,101 @@ class ProcessingStage:
     POST_PROCESSING = 'post_processing'
 
 
-class DataRoutine(abc.ABC):
-    stage: ProcessingStage
+class DataRoutine:
+    name = "base"
+    version = "0.0.0"
+    record_checkpoint = False  # override per routine if desired
 
-    def __call__(self, input: BaseProcessedData):
-        self.forward(input)
+    requires = set()
+    produces = set()
 
-    def forward(self, input: BaseProcessedData):
-        raise NotImplementedError(
-            f'DataRoutine [{type(self).__name__}] is missing a forward method'
-        )
+    def __init__(self, **params):
+        self.params = params
     
-    def get_receipt_entry(self) -> str:
+    def validate_inputs(self, pdata: ProcessedData, inputs: list):
+        missing = set(inputs) - set(pdata.list_dataset_names(full_names=True))
+        if missing:
+            raise RuntimeError(f'Missing required datsets: {missing}')
+
+    # ---- main entry point ----
+    def apply(self, pdata: ProcessedData):
+        t0 = time.time()
+
+        inputs = self.inputs(pdata)
+        self.validate_inputs(pdata, inputs)
+        shapes_before = self._get_shapes(pdata, inputs)
+
+        # ---- run actual computation ----
+        outputs = self.run(pdata, inputs=inputs)
+
+        runtime = time.time() - t0
+        timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+
+        shapes_after = self._get_shapes(pdata, outputs)
+
+        meta = {
+            "name": self.name,
+            "version": self.version,
+            "timestamp": timestamp,
+            "params": self.params,
+            "inputs": inputs,
+            "outputs": outputs,
+            "shape_before": shapes_before,
+            "shape_after": shapes_after,
+            "code_version": get_git_hash(),
+            "runtime_sec": runtime,
+        }
+
+        self._log_step(pdata, meta)
+
+        if self.record_checkpoint:
+            self._checkpoint(pdata)
+
+        return outputs
+
+    # ---- to be implemented by subclasses ----
+    def run(self, pdata: ProcessedData, inputs: list=None):
+        raise NotImplementedError(
+            f'DataRoutine [{type(self).__name__}] is missing a run method'
+        )
+
+    def inputs(self, pdata: ProcessedData):
+        if self.requires:
+            return list(self.requires)
         raise NotImplementedError
 
+    # ---- helpers ----
+    def _get_shapes(self, pdata, dataset_names):
+        shapes = {}
+        for name in dataset_names:
+            if name in pdata.file:
+                shapes[name] = pdata[name].shape
+        return shapes
+
+    def _log_step(self, pdata: ProcessedData, meta: str):
+        hist = pdata.file.require_group("processing_history")
+
+        step_idx = len(hist)
+        step_name = get_step_group_name(step_idx, self.name)
+
+        step_group = hist.create_group(step_name)
+
+        for k, v in meta.items():
+            if isinstance(v, (dict, list)):
+                step_group.attrs[k] = json.dumps(v)
+            else:
+                step_group.attrs[k] = v
+
+    def _checkpoint(self, pdata: ProcessedData):
+        chk_group = pdata.file.require_group("checkpoints")
+        name = get_step_group_name(len(chk_group), self.name)
+
+        g = chk_group.create_group(name)
+
+        # naive: copy all datasets (you can refine later)
+        for key, item in pdata.file.items():
+            if isinstance(item, type(pdata.file["/"])):  # dataset
+                pdata.file.copy(item, g, name=key)
 
 #
 # Begin Data Routine Catlog
@@ -54,77 +138,69 @@ class GaussianFilter(DataRoutine):
         return f'GaussianFilter: {{\n\tsigma = {self.gaussian_sigma}\n}}'
 
 class CutoffFilter(DataRoutine):
-    stage = ProcessingStage.PROCESSING_L2
+    name = "CutoffFilter"
+    version = "1.0"
 
-    def __init__(self, filter_freq: float, btype: str, dataset: str='data_mK'):
-        super().__init__()
-        self.filter_freq = filter_freq
-        self.btype = btype
-        self.dataset = dataset
+    def __init__(self,
+        filter_freq: float,
+        btype: str,
+        datasets: list[str]=['time_ordered_data/data_mK'],
+    ):
+        super().__init__(
+            filter_freq=filter_freq,
+            btype=btype,
+            datasets=datasets,
+        )
+    
+    def inputs(self, pdata: ProcessedData):
+        l = []
+        datasets = self.params['datasets']
+        for i_chan in range(pdata.n_chan):
+            for dset in datasets:
+                l.append(f'/channels/{get_channel_group_name(i_chan)}/{dset}')
+        return l
 
-    def forward(self, pd: ProcessedData):
-        # TODO: Fix this hacky handling of data_freq
-        if self.dataset == 'data_freq':
-            data = pd.data_freq_diss
-        else:
-            data = getattr(pd, self.dataset)
-        for i_chan in range(pd.n_channels):
-            filt_sos = signal.butter(BUTTER_ORDER, self.filter_freq, btype=self.btype, fs=pd.fs[i_chan], output='sos', analog=False)
-            data[i_chan, :] = signal.sosfiltfilt(filt_sos, data[i_chan, :])
+    def run(self, pdata: ProcessedData, inputs: list[str]=None):
+        filter_freq = self.params['filter_freq']
+        btype = self.params['btype']
+        for input_name in inputs:
+            # NOTE: If the group naming convention changes this will need to be updated
+            i_chan = int(input_name.split('/')[2][-3:])  
+            filt_sos = signal.butter(
+                BUTTER_ORDER,
+                filter_freq,
+                btype=btype,
+                fs=pdata.get_fs(i_chan),
+                output='sos',
+                analog=False,
+            )
+            dset = pdata[input_name]
+            dset[:] = signal.sosfiltfilt(filt_sos, dset)
+        return inputs
 
 
 class LowPassFilter(CutoffFilter):
-    def __init__(self, filter_freq: float, dataset: str='data_mK'):
-        super().__init__(filter_freq, btype='lowpass', dataset=dataset)
 
-    def get_receipt_entry(self) -> str:
-        return f'LowPassFilter: {{\n\tfreq = {self.filter_freq},\n\tdataset = {self.dataset}\n}}'
+    name = 'LowPassFilter'
+
+    def __init__(
+        self,
+        filter_freq: float,
+        datasets: list[str]=['time_ordered_data/data_mK'],
+    ):
+        super().__init__(filter_freq, btype='lowpass', datasets=datasets)
 
 
 class HighPassFilter(CutoffFilter):
-    def __init__(self, filter_freq: float, dataset: str='data_mK'):
-        super().__init__(filter_freq, btype='highpass', dataset=dataset)
 
-    def get_receipt_entry(self) -> str:
-        return f'HighPassFilter: {{\n\tfreq = {self.filter_freq},\n\tdataset = {self.dataset}\n}}'
+    name = 'HighPassFilter'
 
-
-class Downsample(DataRoutine):
-    stage = ProcessingStage.PRE_PROCESSING
-
-    def __init__(self, ds_factor: float=6, order: int=DECIMATE_ORDER):
-        super().__init__()
-        self.ds_factor = ds_factor
-        self.order=order
-
-    def forward(self, pd: ProcessedData):
-        # TODO: Should this routine even still exist?
-        # Downsampling after the fact is annoying with PyTables
-
-        data_freq_diss_ds = signal.decimate(pd.data_freq_diss, self.ds_factor)
-        pd._l1file.remove_node('/', 'data_freq_diss')
-        pd._l1file.create_array('/detector_0/data/', 'data_freq_diss', data_freq_diss_ds)
-        data_gain_phase_ds = signal.decimate(pd.data_gain_phase, self.ds_factor)
-        data_mK_ds = signal.decimate(pd.data_mK, self.ds_factor)
-        timestamp_ds = signal.decimate(pd.timestamp, self.ds_factor)
-        if np.size(pd.detector_az) > 1:
-            detector_az_ds = signal.decimate(pd.detector_az, self.ds_factor, n=self.order, axis=1)
-            detector_za_ds = signal.decimate(pd.detector_za, self.ds_factor, n=self.order, axis=1)
-        else:
-            detector_az_ds = pd.detector_az
-            detector_za_ds = pd.detector_za
-        return pd.with_values(
-            data_freq_diss=data_freq_diss_ds,
-            data_gain_phase=data_gain_phase_ds,
-            data_mK=data_mK_ds,
-            timestamp=timestamp_ds,
-            detector_az=detector_az_ds,
-            detector_za=detector_za_ds,
-        )
-
-    def get_receipt_entry(self) -> str:
-        return f'Downsample: {{\n\tds_factor = {self.ds_factor}\n\torder = {self.order}\n}}'
-
+    def __init__(
+        self,
+        filter_freq: float,
+        datasets: list[str]=['time_ordered_data/data_mK'],
+    ):
+        super().__init__(filter_freq, btype='highpass', datasets=datasets)
 
 class RemoveElectronicsNoise(DataRoutine):
     stage = ProcessingStage.PROCESSING_L1
@@ -303,3 +379,14 @@ class ComputeNoisePSD(DataRoutine):
 #         return m
 
 
+if __name__ == '__main__':
+    # Lab Testing
+    date = '20260212'
+    setnum = 1003
+
+    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
+    pd = cd.create_processed_data()
+
+    cutoff = CutoffFilter(10, 'low')
+    cutoff.apply(pd)
+    pdb.set_trace()
