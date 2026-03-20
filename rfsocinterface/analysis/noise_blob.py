@@ -1,5 +1,4 @@
 import pdb
-from rfsocinterface.core.data import ProcessedData
 from pathlib import Path
 from typing import Literal
 import numpy as np
@@ -70,42 +69,5 @@ def plot_noise_blob( data_IQ,fs: float, lp_filt_freq: float = 0, IQ_to_freq_diss
     plt.tight_layout()
     plt.show()
 
-
-if __name__ == '__main__':
-    date = '20250916'
-    setnum = 1017
-    basis='fd'
-    output_file = f'{DATA_DIRECTORY}/{date}/{date}_set{setnum}_noise_blob_{basis}.pdf'
-    ds_factor = 4
-
-    pd = ProcessedData.from_tod(
-        date,
-        setnum,
-        do_electronics_noise_removal=True,
-        ds_factor=ds_factor,
-    )
-    raw_data = RawDataFile('/data/20250916/20250916_Be231102p2_100_tones_TOD_set1017.h5', 'r')
-
-    figs = plot_complex_datastreams_scatter_plot(
-        pd,
-        pd.chanmask[:],
-        output_file,
-        basis=basis,
-    )
-    for i_res in np.argwhere(pd.chanmask[:] == 1).flatten():
-        print(f'Resonator {i_res}: {np.degrees(pd.IQ_to_freq_diss_angle[i_res])}')
-
-    # for i_res in [53, 54, 56]:
-    #     sweep = raw_data.lo_sweep[1, i_res, :]
-    #     sweep_i = np.real(sweep)
-    #     sweep_q = np.imag(sweep)
-    #     plt.figure()
-    #     plt.title(f'LO Sweep for Resonator {i_res}')
-    #     plt.plot(sweep_i, label='data_I')
-    #     plt.plot(sweep_q, label='data_Q')
-    #     plt.annotate(f'$\\theta$ LO sweep = {np.degrees(pd.IQ_to_freq_diss_angle[i_res]):.03} degrees', (0, 0))
-    #     plt.legend()
-    # plt.show()
-    pd.close()
 
 

@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from rfsocinterface.analysis import time_streams
-
+from rfsocinterface.analysis import noise_blob
 from rfsocinterface.core.utils import gaussian_filter, GAUSSIAN_SIGMA, BAD_RFSOC_TONE_START_INDEX, decimate_in_chunks, PERMISSIONS_ALL_FULL
 from rfsocinterface.core.losweep import LoSweepData
 from rfsocinterface.core.utils import (
@@ -559,7 +559,7 @@ def plot_correlation_matrices(
 
     plt.show()
 
-def plot_correlation_matrices_fspace(data,fs, bound_freqs: npt.NDArray = np.array([0, 0.1,1, 10, 100]), onres_ind:npt.NDArray = None ):
+def plot_correlation_matrices_fspace(data,fs, bound_freqs: npt.NDArray = np.array([0,0.01, 0.1,1, 10, 100]), onres_ind:npt.NDArray = None ):
     for chan in range(data.shape[0]):
         fft, psd, csd, freqs = get_fft_csd_psd(data[chan], fs[chan])
         n_chans = csd.shape[1]
@@ -718,8 +718,8 @@ def remove_electronics_noise_blocks(
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
     clean_data = np.zeros_like(input_blocked_data_gain_phase)
-    for i in range(input_blocked_data_gain_phase.shape[2]):
-        clean_data[:, :, i, :] = remove_electronics_noise(input_blocked_data_gain_phase[:, :, i,:],  fs, lp_filt_freq = lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
+    for i in range(input_blocked_data_gain_phase.shape[3]):
+        clean_data[:, :, :, i, :] = remove_electronics_noise(input_blocked_data_gain_phase[:, :, :, i,:],  fs, lp_filt_freq = lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
     # for i_chan in range(data_gain_phase.shape[0]):
     #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
     #     # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
@@ -2042,9 +2042,13 @@ class ProcessedDataL1(ProcessedData):
             #plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
 
             new_data.data_gain_phase[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_gain_phase[:, :, new_data.onres_ind, :], fs, lp_filt_freq=10, max_modes=max_modes,)
-            plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
+            #plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
 
         new_generate_calibrated_data(new_data)
+        if do_electronics_noise_removal:
+            new_data.data_freq_diss[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_freq_diss[:, :, new_data.onres_ind, :], fs, lp_filt_freq=10, max_modes=max_modes,)
+
+        #noise_blob.plot_noise_blob(new_data.data_IQ[0][:,  new_data.offres_ind], fs[0],lp_filt_freq = 1)
 
         return new_data
 

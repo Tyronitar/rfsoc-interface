@@ -12,8 +12,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 488.24, onres_ind:npt.NDArray = None, num_processing_blocks: int = 100 ):
     """Plot noise blobs for each detector."""
     # subtract the mean from each detector
-
-
+    if onres_ind is None:
+        onres_ind = np.arange(z_freq.shape[0])
+    
     detection_mask_array_f = (z_freq[onres_ind] > 5)
     detection_mask_array_d = (z_diss[onres_ind] > 5)
     n_chan = z_freq[onres_ind, :].shape[0]
@@ -42,7 +43,7 @@ def plot_timestream_errors( z_freq:npt.NDArray, z_diss:npt.NDArray, fs:float = 4
     
     # Time axis (based on one detector trace)
     nsamples = len(z_freq[0])
-    t = np.arange(nsamples) / fs
+    t = np.arange(nsamples) / fs[0]
 
     pdb.set_trace()
 
