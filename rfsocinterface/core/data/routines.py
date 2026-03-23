@@ -206,12 +206,16 @@ class ComputeNoisePSD(DataRoutine):
     
     def forward(self, pd: ProcessedData):
         
-        if self.tone_indices == 'onres':
-            self.tone_indices = pd.onres_ind
-        elif self.tone_indices == 'offres':
-            self.tone_indices = pd.offres_ind
-        else:
+        if self.tone_indices is None:
             self.tone_indices = np.append(pd.onres_ind, pd.offres_ind)
+        elif isinstance(self.tone_indices, str):
+            if self.tone_indices == 'onres':
+                self.tone_indices = pd.onres_ind
+            elif self.tone_indices == 'offres':
+                self.tone_indices = pd.offres_ind
+            else:
+                self.tone_indices = np.append(pd.onres_ind, pd.offres_ind)
+
         # Initialize PSD group in the file if needed
         if not pd.test_node('psd'):
             psd_group = pd.create_group('/', 'psd')

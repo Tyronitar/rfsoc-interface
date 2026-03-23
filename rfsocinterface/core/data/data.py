@@ -1685,16 +1685,21 @@ class ProcessedDataL1(ProcessedData):
         #time_streams.plot_timestream_errors(z_freq, z_diss,fs, onres_ind = new_data.onres_ind)
 
         if do_electronics_noise_removal:
-            
-            if only_use_onres_indices:
+            if new_data.offres_ind.size == 0:
                 offres_clean_data = new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length)
             else:
                 offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+            
+            # if only_use_onres_indices:
+            #     offres_clean_data = new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length)
+            # else:
+            #     offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
 
             if only_use_offres_indices:
                 onres_clean_data = offres_clean_data
             else:
-                onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=None)
+                onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.onres_ind)
+            #     onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.onres_ind)
 
             #Finally remove blocking of data clumps
             data_set_mean = np.mean(data_gain_phase, axis = 2)
@@ -1709,7 +1714,7 @@ class ProcessedDataL1(ProcessedData):
           
         
         new_generate_calibrated_data(new_data)
-        plot_data = np.concatenate((new_data.data_freq_diss[:,new_data.onres_ind, :], new_data.data_freq_diss[:,new_data.offres_ind, :]), axis=1)
+        # plot_data = np.concatenate((new_data.data_freq_diss[:,new_data.onres_ind, :], new_data.data_freq_diss[:,new_data.offres_ind, :]), axis=1)
         #plot_corellation_matrices(plot_data, fs = fs, lp_filt_freqs=[0.05, 0.1, 1.0, 10.0, 100])
 
         return new_data
