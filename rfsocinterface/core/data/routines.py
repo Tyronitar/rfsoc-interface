@@ -3,17 +3,22 @@
 from __future__ import annotations
 import abc
 import pdb
+import logging
 
 import numpy as np
+import numpy.typing as npt
 from scipy import signal
 import tables
 import time
 import datetime
 import json
 
-from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, generate_calibrated_data, remove_electronics_noise_tables, get_channel_group_name, get_step_group_name
+
+from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis
 from rfsocinterface.core.data.data import DECIMATE_ORDER
 from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash
+
+_logger = logging.getLogger(__name__)
 
 class ProcessingStage:
     """Enum for the different stages of data processing."""
@@ -24,8 +29,8 @@ class ProcessingStage:
 
 
 class DataRoutine:
-    name = "base"
-    version = "0.0.0"
+    name = 'base'
+    version = '0.0.0'
     record_checkpoint = False  # override per routine if desired
 
     requires = set()
@@ -55,18 +60,14 @@ class DataRoutine:
 
         shapes_after = self._get_shapes(pdata, outputs)
 
-        meta = {
-            "name": self.name,
-            "version": self.version,
-            "timestamp": timestamp,
-            "params": self.params,
-            "inputs": inputs,
-            "outputs": outputs,
-            "shape_before": shapes_before,
-            "shape_after": shapes_after,
-            "code_version": get_git_hash(),
-            "runtime_sec": runtime,
-        }
+        meta = self._get_metadata(
+            timestamp,
+            inputs,
+            outputs,
+            shapes_before,
+            shapes_after,
+            runtime,
+        )
 
         self._log_step(pdata, meta)
 
@@ -118,24 +119,32 @@ class DataRoutine:
         for key, item in pdata.file.items():
             if isinstance(item, type(pdata.file["/"])):  # dataset
                 pdata.file.copy(item, g, name=key)
+    
+    def _get_metadata(
+        self,
+        timestamp: float,
+        inputs: list[str],
+        outputs: list[str],
+        shapes_before: list[tuple],
+        shapes_after: list[tuple],
+        runtime: float,
+    ) -> dict:
+        return {
+            "name": self.name,
+            "version": self.version,
+            "timestamp": timestamp,
+            "params": self.params,
+            "inputs": inputs,
+            "outputs": outputs,
+            "shape_before": shapes_before,
+            "shape_after": shapes_after,
+            "code_version": get_git_hash(),
+            "runtime_sec": runtime,
+        }
 
 #
 # Begin Data Routine Catlog
 #
-
-class GaussianFilter(DataRoutine):
-    stage = ProcessingStage.PROCESSING_L1
-    def __init__(self, gaussian_sigma: tuple[float, float]=GAUSSIAN_SIGMA):
-        super().__init__()
-        self.gaussian_sigma = gaussian_sigma
-
-    def forward(self, pd: ProcessedData, field: str='data_mK'):
-        array = getattr(pd, field)
-        smoothed_data = gaussian_filter(array, self.gaussian_sigma)
-        array[:] = smoothed_data
-    
-    def get_receipt_entry(self) -> str:
-        return f'GaussianFilter: {{\n\tsigma = {self.gaussian_sigma}\n}}'
 
 class CutoffFilter(DataRoutine):
     name = "CutoffFilter"
@@ -144,7 +153,7 @@ class CutoffFilter(DataRoutine):
     def __init__(self,
         filter_freq: float,
         btype: str,
-        datasets: list[str]=['time_ordered_data/data_mK'],
+        datasets: list[str]=['/vdsets/data_mK'],
     ):
         super().__init__(
             filter_freq=filter_freq,
@@ -153,24 +162,17 @@ class CutoffFilter(DataRoutine):
         )
     
     def inputs(self, pdata: ProcessedData):
-        l = []
-        datasets = self.params['datasets']
-        for i_chan in range(pdata.n_chan):
-            for dset in datasets:
-                l.append(f'/channels/{get_channel_group_name(i_chan)}/{dset}')
-        return l
+        return self.params['datasets']
 
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
         filter_freq = self.params['filter_freq']
         btype = self.params['btype']
         for input_name in inputs:
-            # NOTE: If the group naming convention changes this will need to be updated
-            i_chan = int(input_name.split('/')[2][-3:])  
             filt_sos = signal.butter(
                 BUTTER_ORDER,
                 filter_freq,
                 btype=btype,
-                fs=pdata.get_fs(i_chan),
+                fs=pdata.fs,
                 output='sos',
                 analog=False,
             )
@@ -186,7 +188,7 @@ class LowPassFilter(CutoffFilter):
     def __init__(
         self,
         filter_freq: float,
-        datasets: list[str]=['time_ordered_data/data_mK'],
+        datasets: list[str]=['/vdsets/data_mK'],
     ):
         super().__init__(filter_freq, btype='lowpass', datasets=datasets)
 
@@ -198,22 +200,174 @@ class HighPassFilter(CutoffFilter):
     def __init__(
         self,
         filter_freq: float,
-        datasets: list[str]=['time_ordered_data/data_mK'],
+        datasets: list[str]=['/vdsets/data_mK'],
     ):
         super().__init__(filter_freq, btype='highpass', datasets=datasets)
 
+#
+# Electronics Noise Removal
+#
+
+def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
+    """Compute templates for correlated noise removal.
+
+    Args:
+        data (npt.NDArray): Input data (2 x N_tone x N_samples).
+
+    Returns:
+        (npt.NDarray): Templates for noise removal (2 x M x N_samples).
+            Computed using the first M eigenmodes of the correlation matrix.
+    """
+    # subtract the mean from each detector
+    deproj = data - np.mean(data, axis=-1, keepdims=True)
+    n_tones = data.shape[1]
+
+
+    # create a separate correlation matrix for all data channels
+    correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
+    # calculate the eigenmodes of the correlation matrices
+    eigen_values, v = np.linalg.eig(correlation_matrices)
+    sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
+    sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
+    sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
+
+    if n_tones < 25:
+        sigma_mult = 1.5
+    elif n_tones < 50:
+        sigma_mult = 2.5
+    else:
+        sigma_mult = 3
+
+    n_modes = 2
+    new_modes = -1
+    while new_modes != 0 and n_modes <= max_modes:
+        log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
+        mu = np.mean(log_eigen_values, axis=1)
+        sigma = np.std(log_eigen_values, axis=1)
+        large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis])
+        i_count = large_eigen_values[0].size - np.sum(large_eigen_values[0])
+        q_count = large_eigen_values[0].size - i_count
+        new_modes = max(i_count, q_count)
+        n_modes += new_modes
+    # pdb.set_trace()
+    n_modes = min(n_modes, max_modes)
+    _logger.debug(f'Using {n_modes} eigen modes')
+
+        # create templates based on the N_mode largest eigenmodes of each
+    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj)
+
+    # subtract the mean again to be sure
+    templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
+    return templates
+
+def decode_tone_indices(pdata: ProcessedData, i_chan: int, input_indices: npt.NDArray | str):
+    """Helper method for decoding the selected indices for noise removal."""
+    if isinstance(input_indices, str):
+        match input_indices.lower():
+            case 'onres' | 'on_res' | 'on_resonance':
+                return pdata.get_onres_ind(i_chan)
+            case 'offres' | 'off_res' | 'off_resonance':
+                return pdata.get_offres_ind(i_chan)
+            case 'all':
+                return np.arange(pdata.get_n_tones(i_chan), dtype=int)
+            case _:
+                _logger.warning(f'Unkown index selection string: {input_indices}; defaulting to all tones')
+                return np.arange(pdata.get_n_tones(i_chan), dtype=int)
+    else:
+        return input_indices
+
 class RemoveElectronicsNoise(DataRoutine):
-    stage = ProcessingStage.PROCESSING_L1
+    name = 'RemoveElectronicsNoise'
 
-    def __init__(self):
-        super().__init__()
+    def __init__(
+        self,
+        max_modes: int=30,
+        lp_filt_freq: float=10,
+        template_selection_indices: npt.NDArray | str='all',
+        template_subtraction_indices: npt.NDArray | str='all',
+    ):
+        super().__init__(
+            max_modes=max_modes,
+            lp_filt_freq=lp_filt_freq,
+            template_selection_indices=template_selection_indices,
+            template_subtraction_indices=template_subtraction_indices,
+        )
+    
+    def inputs(self, pdata: ProcessedData):
+        # Requires data_IQ, data_gain_phase, data_freq_diss, and data_mK
+        # but there's no case where those wouldn't exist, so I'm not sure this matters
+        dsets = []
+        for i_chan in range(pdata.n_chan):
+            group_name = get_channel_group_name(i_chan)
+            group_name = f'/channels/{get_channel_group_name(i_chan)}/'
+            dsets.extend([
+            group_name + 'time_ordered_data/data_IQ',
+            group_name + 'time_ordered_data/data_gain_phase',
+            group_name + 'time_ordered_data/data_freq_diss',
+            group_name + 'time_ordered_data/data_mK',
+            group_name + 'calibration_info',
+        ])
+        return dsets
 
-    def forward(self, pd: ProcessedData):
-        remove_electronics_noise_tables(pd.data_gain_phase)
-        generate_calibrated_data(pd.data_group, pd.global_data_group)
 
-    def get_receipt_entry(self) -> str:
-        return f'RemoveElectronicsNoise: {{\n}}'
+    def run(self, pdata: ProcessedData, inputs: list[str]=None):
+        eigenmodes = []  # The actual number of modes we use for each channel
+        lp_filt_freq = self.params['lp_filt_freq']
+        template_selection_indices = self.params['template_selection_indices']
+        template_subtraction_indices = self.params['template_subtraction_indices']
+        max_modes = self.params['max_modes']
+        for i_chan in range(pdata.n_chan):
+            selection_indices = decode_tone_indices(pdata, i_chan, template_selection_indices)
+
+            fs = pdata.get_fs(i_chan)
+            data_gain_phase = pdata.get_from_channel(i_chan, 'time_ordered_data/data_gain_phase')
+            clean_gain_phase = np.copy(data_gain_phase)
+            clean_gain_phase -= np.mean(clean_gain_phase, axis=-1, keepdims=True)
+            if lp_filt_freq < fs / 2:
+                filt_sos = signal.butter(
+                    BUTTER_ORDER,
+                    lp_filt_freq,
+                    btype='low',
+                    fs=fs,output='sos',
+                    analog=False,
+                )
+                clean_gain_phase = signal.sosfiltfilt(filt_sos, clean_gain_phase)
+            templates = compute_templates(clean_gain_phase[:, selection_indices], max_modes=max_modes)  # 2 x N_modes x N_samples
+
+            n_modes = templates.shape[1]
+            eigenmodes.append(n_modes)
+            denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
+
+            subtraction_indices = decode_tone_indices(pdata, i_chan, template_subtraction_indices)
+
+            for i_mode in range(n_modes):
+                numerator = np.einsum('ijk,ik->ij', clean_gain_phase[:, subtraction_indices], templates[:, i_mode])  # 2 x N_tones
+                corr = numerator / denominator[:, i_mode:i_mode+1]  # 2 x N_tones
+                clean_gain_phase[:, subtraction_indices] = clean_gain_phase[:, subtraction_indices] - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
+            
+            # Apply clean data
+            data_gain_phase[:] = clean_gain_phase
+
+            # Regenerate other data arrays
+            data_IQ = pdata.get_from_channel(i_chan, 'time_ordered_data/data_IQ')
+            calibration_info = pdata.get_from_channel(i_chan, 'calibration_info')
+            rotate_basis(
+                data_gain_phase,
+                data_IQ,
+                -calibration_info['IQ_to_gain_phase_angle'],
+            )
+            data_IQ[:] = data_IQ[:] - np.mean(data_IQ[:], axis=-1, keepdims=True)  # Mean center
+            generate_calibrated_data(
+                data_IQ,
+                pdata.get_from_channel(i_chan, 'time_ordered_data/data_freq_diss'),
+                pdata.get_from_channel(i_chan, 'time_ordered_data/data_mK'),
+                calibration_info['IQ_to_freq_diss_angle'],
+                calibration_info['adc_units_to_hz'],
+                calibration_info['df_per_mK'],
+            )
+
+        self.params['eigenmodes'] = eigenmodes
+        return inputs
 
 
 class CleanTOD(DataRoutine):
@@ -387,6 +541,9 @@ if __name__ == '__main__':
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
     pd = cd.create_processed_data()
 
-    cutoff = CutoffFilter(10, 'low')
-    cutoff.apply(pd)
+    noise_removal = RemoveElectronicsNoise()
+    noise_removal.apply(pd)
+    # cutoff = CutoffFilter(10, 'low')
+    # cutoff.apply(pd)
     pdb.set_trace()
+

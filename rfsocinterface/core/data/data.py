@@ -343,128 +343,7 @@ def new_generate_calibrated_data(pd: ProcessedDataL1):
     pd.data_mK[:] = np.divide(pd.data_freq_diss[:, 0], pd.df_per_mK[:][:, :, np.newaxis])
     # data.data_mK[:] = np.where(np.isinf(data.data_mK), np.nan, data.data_mK)
 
-#
-# Electronics Noise Removal
-#
 
-def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
-    """Compute templates for correlated noise removal.
-
-    Args:
-        data (npt.NDArray): Input data (N_chan x N_detector x N_samples).
-
-    Returns:
-        (npt.NDarray): Templates for noise removal (N_chan x 2 x N_samples).
-            Computed using the first two eigenmodes of the correlation matrix.
-    """
-    # subtract the mean from each detector
-    # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
-    deproj = data - np.mean(data, axis=2)[:, :, np.newaxis]
-    n_tones = data.shape[1]
-
-    # select only the middle few detectors
-    # deproj = data_meansub[:, 8:1008, :]
-
-    # create a separate correlation matrix for all data channels
-    correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
-    # calculate the eigenmodes of the correlation matrices
-    eigen_values, v = np.linalg.eig(correlation_matrices)
-    sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
-    sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
-    sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=2)
-    
-    if n_tones < 25:
-        sigma_mult = 1.5
-    elif n_tones < 50:
-        sigma_mult = 2.5
-    else:
-        sigma_mult = 3
-
-    n_modes = 2
-    new_modes = -1
-    while new_modes != 0 and n_modes <= max_modes:
-        log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
-        mu = np.mean(log_eigen_values, axis=1)
-        sigma = np.std(log_eigen_values, axis=1)
-        large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis])
-        i_count = large_eigen_values[0].size - np.sum(large_eigen_values[0])
-        q_count = large_eigen_values[0].size - i_count
-        new_modes = max(i_count, q_count)
-        n_modes += new_modes
-    # pdb.set_trace()
-    n_modes = min(n_modes, max_modes)
-    print(f'Using {n_modes} eigen modes')
-
-        # create templates based on the N_mode largest eigenmodes of each
-    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj)
-
-    # subtract the mean again to be sure
-    templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
-    return templates
-
-
-def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: float=10, max_modes: int=30) -> npt.NDArray:
-    """Remove correlated electronics noise templates from the data.
-
-    Args:
-        data (npt.NDArray): Input data (N_chan x 2 x N_tones x N_samples). Data should
-            be in the gain/phase basis.
-        fs (npt.NDArray): Sampling frequency of the data, per channel.
-        lp_filt_freq (float, optional): Low-pass filter frequency for the templates. Defaults to 10 Hz.
-
-    Returns:
-        npt.NDarray: Cleaned data (N_chan x 2 x N_tones x N_samples).
-    """
-    # filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
-    # data_lp = signal.sosfiltfilt(filt_sos, data)
-    out_data = np.zeros_like(data)
-
-    for i_chan in range(data.shape[0]):
-        data_lp = data[i_chan]
-        templates = compute_templates(data_lp, max_modes=max_modes)  # 2 x N_modes x N_samples
-        n_modes = templates.shape[1]
-        denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
-
-        for i in range(n_modes):
-            numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # 2 x N_tones
-            corr = numerator / denominator[:, i:i+1]  # N_chan x N_tones
-            data_lp = data_lp - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # 2 x N_tones x N_samples
-            # data_lp = signal.sosfiltfilt(filt_sos, data)
-        
-        out_data[i_chan] = data_lp
-
-    # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
-    # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
-    # corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
-    # deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
-
-    # deproj_lp = signal.sosfiltfilt(filt_sos, deproj)
-
-    # numerator1 = np.einsum('ijk,ik->ij', deproj_lp, templates[:, 1])  # N_chan x N_detector
-    # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
-    # clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
-    return out_data
-
-
-def remove_electronics_noise_tables(
-    data_gain_phase: tables.Array,
-    fs: npt.NDArray,
-    lp_filt_freq: float=10,
-    max_modes: int=30,
-):
-    """Remove correlated electronics noise templates from data stored with PyTables.
-
-    Args:
-        data (npt.NDArray): Input data (N_chan x N_detector x N_samples). Data should
-            be in the gain/phase basis.
-        fs (float): Sampling frequency of the data.
-        lp_filt_freq (float, optional): Low-pass filter frequency for the templates. Defaults to 10 Hz.
-
-    Returns:
-        npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
-    """
-    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
-    data_gain_phase[:] = clean_data
     # for i_chan in range(data_gain_phase.shape[0]):
     #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
     #     # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
@@ -1462,7 +1341,7 @@ class ProcessedData(NewDataStorage):
                 'carrier_amplitudes',
                 data=np.nanmedian(data_IQ[:], axis=-1)
             )
-            calibration_info = time_ordered_data_group.create_dataset(
+            calibration_info = channel_group.create_dataset(
                 'calibration_info',
                 shape=(n_tones,),
                 dtype=CALIBRATION_TABLE_DTYPE,
@@ -1524,7 +1403,7 @@ class ProcessedData(NewDataStorage):
             data_freq_diss_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_freq_diss'])
             data_mK_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_mK'])
             carrier_amplitudes_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['carrier_amplitudes'])
-            calibration_info_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['calibration_info'])
+            calibration_info_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(channel_group['calibration_info'])
             i_tone += n_tones
 
         self['vdsets'].create_virtual_dataset('data_gain_phase', data_gain_phase_layout)
@@ -1594,12 +1473,32 @@ class ProcessedData(NewDataStorage):
         """Return the sampling rate of the specified channel."""
         return self.get_from_channel(i_chan, 'time_ordered_data').attrs['fs']
     
+    def get_n_tones(self, i_chan: int) -> int:
+        return self.get_channel_group(i_chan).attrs['n_tones']
+    
+    def get_chanmask(self, i_chan: int) -> npt.NDArray:
+        return  self.get_from_channel(i_chan, 'tones')['chanmask']
+    
+    def get_onres_ind(self, i_chan: int) -> npt.NDArray:
+        return np.argwhere(self.get_chanmask(i_chan) == 1)
+
+    def get_offres_ind(self, i_chan: int) -> npt.NDArray:
+        return np.argwhere(self.get_chanmask(i_chan) == 0)
+    
     #
     # Useful properties 
     #
     @property
     def n_chan(self) -> int:
         return self['channels'].attrs['n_channels']
+
+    @property
+    def fs(self) -> float:
+        """Return the averaged sampling rate across channels."""
+        data = []
+        for i_chan in range(self.n_chan):
+            data.append(self.get_from_channel(i_chan, 'time_ordered_data').attrs['fs'])
+        return np.mean(data)
 
     @property
     def virtual_datasets(self) -> h5py.Group:
@@ -1647,6 +1546,12 @@ class ProcessedData(NewDataStorage):
     @property
     def chanmask(self) -> npt.NDArray:
         return self.tones_table['chanmask']
+
+    def onres_ind(self) -> npt.NDArray:
+        return np.argwhere(self.chanmask == 1)
+
+    def offres_ind(self) -> npt.NDArray:
+        return np.argwhere(self.chanmask == 0)
 
     @property
     def detector_pol(self) -> npt.NDArray:

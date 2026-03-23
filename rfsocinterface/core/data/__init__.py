@@ -15,7 +15,6 @@ from rfsocinterface.core.data.routines import (
     CleanTOD,
     HighPassFilter,
     LowPassFilter,
-    GaussianFilter,
     RemoveElectronicsNoise,
     PsdBasis,
 )
@@ -29,7 +28,6 @@ ROUTINE_NAME_MAP = {
     'CleanTOD': CleanTOD,
     'HighPassFilter': HighPassFilter,
     'LowPassFilter': LowPassFilter,
-    'GaussianFilter': GaussianFilter,
     'RemoveElectronicsNoise': RemoveElectronicsNoise,
     # 'BinTODIntoMap': BinTODIntoMap,
 }
@@ -39,7 +37,6 @@ __all__ = [
     CleanTOD,
     HighPassFilter,
     LowPassFilter,
-    GaussianFilter,
     RemoveElectronicsNoise,
     # BinTODIntoMap,
     DataPipeline,
