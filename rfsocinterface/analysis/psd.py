@@ -615,7 +615,7 @@ def plot_df_over_f(
     dev_pwr:float = 0,
 ) -> Figure:
     """Create a plot of the noise PSD in df/f units."""
-    fig = plt.figure(figsize=(9, 6))
+    fig = plt.figure(figsize=(12, 6))
     ax = plt.subplot()
     if offres_median is not None and adc_units_to_hz is not None:
         offres_median = offres_median /( adc_units_to_hz * f0)**2
@@ -640,6 +640,7 @@ def plot_df_over_f(
     #ax.set_xlim(1, 250)
     ax.set_yscale('log')
     ax.set_ylim(1e-21,1e-15)
+    ax.set_xlim(0.005, 1e4)
    
     ax.set_xlabel('Frequency (Hz)', fontsize=16)
         

@@ -1144,7 +1144,7 @@ class PowerSweepData:
         self.fit()
         f0_data = self.fit_f0[:]
         power_levels = self.power_levels[:]
-
+        figs = []
         sorted_data_ind = np.argsort(power_levels)
         power_levels = power_levels[sorted_data_ind]
         f0_data = f0_data[sorted_data_ind, :]
@@ -1155,23 +1155,19 @@ class PowerSweepData:
 
         for i_res in onres_ind:
             #if plot:
-            #    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-            #    colors = plt.cm.viridis(np.linspace(0, 1, len(power_levels)))
+            #    
             
             resonant_freqs = []
             q_tot = []
-            
+            colors = plt.cm.viridis(np.linspace(0, 1, len(power_levels)))
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
             for i_p in range(len(power_levels)):
                 resonator = self.sweeps[i_p].resonator_data[i_res]
-                #if plot:
-                #    ax1.plot(resonator.freq, resonator.s21, label=f'Power Level: {power_levels[i_p]:.1f} dB', color=colors[i_p])
-                #    ax1.axvline(x=resonator.fit_f0, color=colors[i_p], alpha=0.5)
+               
                 
                 # Plot IQ circle
                 I = self.sweeps[i_p].data_I[i_res]
                 Q = self.sweeps[i_p].data_Q[i_res]
-                #if plot:
-                #    ax2.plot(I, Q, label=f'Power Level: {power_levels[i_p]:.1f} dB', color=colors[i_p])
                 
                 # Perform scraps fit to get resonant properties
                 res_obj = get_scraps_fit(
@@ -1190,18 +1186,24 @@ class PowerSweepData:
             
                 q_tot.append(1/(1/qi + 1/qc))
             
-            #if plot:
-            #    ax1.set_xlabel('Frequency (Hz)')
-            #    ax1.set_ylabel('|S21| (dB)')
-            #    ax1.set_title('Resonator S21')
-            #    
-            #    ax2.set_xlabel('I')
-            #    ax2.set_ylabel('Q')
-            #    ax2.set_title('IQ Circle')
-            #    ax2.set_aspect('equal')
-            #    
-            #    plt.tight_layout()
-            #    plt.show()
+                if plot:
+                   
+                    ax1.plot(resonator.freq, resonator.s21, label=f'Power Level: {power_levels[i_p]:.1f} dB', color=colors[i_p])
+                    ax1.axvline(x=resonator.fit_f0, color=colors[i_p], alpha=0.5)
+
+                    ax2.plot(I, Q, label=f'Power Level: {power_levels[i_p]:.1f} dB', color=colors[i_p])
+            if plot:
+                ax1.set_xlabel('Frequency (Hz)')
+                ax1.set_ylabel('|S21| (dB)')
+                ax1.set_title('Resonator S21')
+                ax2.set_aspect('equal')
+
+                ax2.set_xlabel('I')
+                ax2.set_ylabel('Q')
+                ax2.set_title('IQ Circle')
+                ax2.set_aspect('equal')
+                    
+                plt.tight_layout()
             
             f0_data[:, i_res] = resonant_freqs
             q_data[:, i_res] = q_tot
@@ -1209,7 +1211,7 @@ class PowerSweepData:
             this_power_level = power_levels[:] 
             this_alpha = ((f0_data[0, i_res] - f0_data[:,i_res])/(f0_data[0,i_res])) * q_data[:, i_res]
 
-            
+            figs.append(fig)
             # Interpolate to find power level where this_alpha = 0.1
             try:
                 interp_func = np.interp(0.1, this_alpha, this_power_level, left=np.nan, right=np.nan)
@@ -1247,11 +1249,13 @@ class PowerSweepData:
                 fig.canvas.mpl_connect('key_press_event', onkey)
 
                 ax.set_title("Click to set max power, press Enter to confirm")
-                plt.show()
 
                 power_level_non_linear[i_res] = selected_power[0]
+                figs.append(fig)
         self.max_readout_power = power_level_non_linear
-
+        with PdfPages('iq_circles.pdf') as pdf:
+            for fig in figs:
+                pdf.savefig(fig)
 
         return power_level_non_linear, np.max(power_level_non_linear)
         
