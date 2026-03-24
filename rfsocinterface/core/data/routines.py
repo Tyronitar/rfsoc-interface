@@ -318,10 +318,10 @@ class RemoveElectronicsNoise(DataRoutine):
         template_selection_indices = self.params['template_selection_indices']
         template_subtraction_indices = self.params['template_subtraction_indices']
         max_modes = self.params['max_modes']
+        fs = pdata.fs
         for i_chan in range(pdata.n_chan):
             selection_indices = decode_tone_indices(pdata, i_chan, template_selection_indices)
 
-            fs = pdata.get_fs(i_chan)
             data_gain_phase = pdata.get_from_channel(i_chan, 'time_ordered_data/data_gain_phase')
             clean_gain_phase = np.copy(data_gain_phase)
             clean_gain_phase -= np.mean(clean_gain_phase, axis=-1, keepdims=True)
@@ -595,6 +595,7 @@ class BinTODIntoMap(DataRoutine):
         n_maps: int,
         n_pix_x: int,
         n_pix_y: int,
+        dpix: float,
     ):
         map_group = pdata.create_group('map')
         map_group.create_dataset('map_az', shape=(n_pix_x,), dtype=np.float64)
@@ -602,6 +603,7 @@ class BinTODIntoMap(DataRoutine):
         map_group.create_dataset('sum_map', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
         map_group.create_dataset('hits_map', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
         map_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
+        map_group.attrs['dpix'] = dpix
         # TODO: fix this last part
         good_samples = map_group.create_dataset('good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32))
         # for i_chan in range(self.n_channels):
@@ -610,16 +612,17 @@ class BinTODIntoMap(DataRoutine):
 
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
 
+        dpix = self.params['dpix']
         n_pix_x, n_pix_y, map_az, map_za = self._get_map_size(
             pdata.detector_az,
             pdata.detector_za,
             self.params['az_trim'],
             self.params['za_trim'],
-            self.params['dpix'],
+            dpix,
         )
         beam_map_mode = self.params['beam_map_mode']
         n_maps = N_POLARIZATION if not beam_map_mode else self.n_tones
-        self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y)
+        self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za
         detector_az = pdata.detector_az
@@ -687,9 +690,9 @@ class BinTODIntoMap(DataRoutine):
             this_clean_data = np.squeeze(data[i_tone])
 
             # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
-            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/DEFAULT_MAP_DPIX))
+            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/dpix))
             x_ind = x_ind.astype('int64')
-            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/DEFAULT_MAP_DPIX))
+            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/dpix))
             y_ind = y_ind.astype('int64')
 
             #eliminate samples outside the map
@@ -760,8 +763,8 @@ if __name__ == '__main__':
     lp_filter_freq = 30
     hp_filter_freq= 0.25
 
-    # cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
-    cd = ConsolidatedData.from_file(date, setnum)
+    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
+    # cd = ConsolidatedData.from_file(date, setnum)
     pd = cd.create_processed_data()
 
     noise_removal = RemoveElectronicsNoise()

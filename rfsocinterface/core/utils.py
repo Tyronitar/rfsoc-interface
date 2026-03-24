@@ -645,7 +645,7 @@ def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.
     # else:
     #     return out
 
-def get_axis_slice(a, start=None, stop=None, step=None, axis=-1) -> tuple[slice, ...]:
+def get_axis_slice(a, start=None, stop=None, step=None, axis: int | Iterable[int]=-1) -> tuple[slice, ...]:
     """Return the slice to use in order to slice along axis 'axis' from 'a'.
 
     Parameters
@@ -682,7 +682,17 @@ def get_axis_slice(a, start=None, stop=None, step=None, axis=-1) -> tuple[slice,
     to remove trivial axes.)
     """
     a_slice = [slice(None)] * a.ndim
-    a_slice[axis] = slice(start, stop, step)
+    if isinstance(axis, Iterable):
+        if start is None:
+            start = [None for _ in range(len(axis))]
+        if stop is None:
+            stop = [None for _ in range(len(axis))]
+        if step is None:
+            step = [None for _ in range(len(axis))]
+        for ax in axis:
+            a_slice[ax] = slice(start[ax], stop[ax], step[ax])
+    else:
+        a_slice[axis] = slice(start, stop, step)
     return tuple(a_slice)
 
 
@@ -935,7 +945,7 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
     else:
         out[...] = axis_slice(y, step=q, axis=axis)
 
-def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_size=200_000):
+def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_shape=None):
 
     sos = cheby1(8, 0.05, 0.8 / q, output="sos")
 
@@ -954,7 +964,10 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_size=
     N = dset.shape[axis]
 
     out_pos = 0
-    chunk = np.empty(dset.chunks, dtype=dset.dtype)
+    if chunk_shape is None:
+        chunk_shape = dset.chunks
+    chunk = np.empty(chunk_shape, dtype=dset.dtype)
+    chunk_size = chunk_shape[axis]
     y = np.empty_like(chunk)
 
     for start in range(0, N, chunk_size):
@@ -966,8 +979,9 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_size=
             chunk = np.empty(shape, dtype=dset.dtype)
             y = np.empty_like(chunk)
 
-        sl = get_axis_slice(dset, start, stop, axis=axis)
-        dset.read_direct(chunk, source_sel=sl)
+        # sl = get_axis_slice(dset, start, stop, axis=axis)
+        # dset.read_direct(chunk, source_sel=sl)
+        chunk[:] = axis_slice(dset, start, stop, axis=axis)
         # chunk = axis_slice(dset, start, stop, axis=axis, direct_read=True)
         # chunk = dset[sl]
 

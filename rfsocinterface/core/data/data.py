@@ -1001,6 +1001,53 @@ class ConsolidatedData(NewDataStorage):
             optical_image = None
         optical_visibility = global_data_group.create_dataset('optical_visibility', data=vis)
 
+
+
+        chunk_shape_1d = compute_chunk_shape(tuple(), 8, max_chunk_size=total_samples)
+        chunk_shape_1d_ds = compute_chunk_shape(tuple(), 8, max_chunk_size=n_samples_ds)
+        timestamp = global_data_group.create_dataset(
+            'timestamp',
+            shape=(n_samples_ds,),
+            chunks=chunk_shape_1d_ds,
+            dtype=np.float64,
+        ) 
+        temp_timestamp = global_data_group.create_dataset(
+            'temp_timestamp',
+            shape=(total_samples,),
+            chunks=chunk_shape_1d,
+            dtype=np.float64,
+        )
+        least_samples_channel = np.argmin(np.add(sample_counts, missed_sample_counts))
+
+        # Interpolate timestamp using the channel with the limiting number of samples
+        raw_data = RawDataFile(todlist[least_samples_channel], 'r')
+        # NOTE: Temporary fix until n_sample is fixed in the raw files
+        # n_samples = f.n_sample[0]
+        n_samples = raw_data.adc_i.shape[-1]
+        this_missed_packets = missed_packets_list[least_samples_channel]
+        if hasattr(raw_data, 'pkt_idx'):
+            pkt_idx = raw_data.pkt_idx
+        else:
+            pkt_idx = np.arange(n_samples)
+            pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
+        print('Interpolating timestamp...')
+        interpolate_timestamp_streaming(
+            raw_data.timestamp,
+            temp_timestamp,
+            pkt_idx,
+        )
+        print('Downsampling timestamp...')
+        chunked_downsample(
+            temp_timestamp,
+            timestamp,
+            downsampling_factor,
+            temp_timestamp.chunks[-1],
+            use_filter=False,
+        )
+        raw_data.close()
+        global_data_group.attrs['fs'] = 1 / (timestamp[1] - timestamp[0])
+
+
         # Intiialize group for storing data per-channel
         all_channels_group = cdata.create_group('channels')
         all_channels_group.attrs['n_channels'] = nchan
@@ -1045,22 +1092,13 @@ class ConsolidatedData(NewDataStorage):
             # Compute the chunk sizes to use
             azel_shape = (n_tones, total_samples) if azel_exists else (n_tones, 1)
             azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
-
-            chunk_shape_1d = compute_chunk_shape(tuple(), 8, max_chunk_size=total_samples)
-            chunk_shape_1d_ds = compute_chunk_shape(tuple(), 8, max_chunk_size=n_samples_ds)
             chunk_shape_3d = compute_chunk_shape((2, n_tones), 8, max_chunk_size=total_samples)
             chunk_shape_3d_ds = compute_chunk_shape((2, n_tones), 8, max_chunk_size=n_samples_ds)
-            chunk_shape_azel = compute_chunk_shape(azel_shape[:-1], 8, max_chunk_size=azel_shape[-1])
-            chunk_shape_azel_ds = compute_chunk_shape(azel_shape_ds[:-1], 8, max_chunk_size=azel_shape_ds[-1])
+            chunk_shape_azel = compute_chunk_shape((1,), 8, max_chunk_size=azel_shape[-1])
+            chunk_shape_azel_ds = compute_chunk_shape((1,), 8, max_chunk_size=azel_shape_ds[-1])
 
             # Time ordered data
             time_ordered_data_group = this_channel_group.create_group('time_ordered_data')
-            timestamp = time_ordered_data_group.create_dataset(
-                'timestamp',
-                shape=(n_samples_ds,),
-                chunks=chunk_shape_1d_ds,
-                dtype=np.float64,
-            )
             interpolated_samples = time_ordered_data_group.create_dataset(
                 'interpolated_samples',
                 shape=(0,),
@@ -1076,12 +1114,6 @@ class ConsolidatedData(NewDataStorage):
                 shuffle=True,
             )
             # Create temporary datasets for the pre-downsampled data 
-            temp_timestamp = time_ordered_data_group.create_dataset(
-                'temp_timestamp',
-                shape=(total_samples,),
-                chunks=chunk_shape_1d,
-                dtype=np.float64,
-            )
             temp_interpolated_samples = time_ordered_data_group.create_dataset(
                 'temp_interpolated_samples',
                 shape=(0,),
@@ -1096,7 +1128,6 @@ class ConsolidatedData(NewDataStorage):
                 compression='lzf',
                 shuffle=True,
             )
-            
             # Detector Positions
             temp_detector_az = time_ordered_data_group.create_dataset(
                 'temp_detector_az',
@@ -1137,14 +1168,6 @@ class ConsolidatedData(NewDataStorage):
                 pkt_idx = np.arange(n_samples)
                 pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
 
-            # Interpolate the timestamp
-            print('Interpolating timestamp...')
-            interpolate_timestamp_streaming(
-                raw_data.timestamp,
-                temp_timestamp,
-                pkt_idx,
-            )
-
             # valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
             valid_tone_index = np.arange(n_tones, dtype=int) + 8  # TODO: How to make this backwards compatible?
             # Interpolate missing IQ data
@@ -1162,7 +1185,7 @@ class ConsolidatedData(NewDataStorage):
                 )
             
             print('Copying Raw IQ data')
-            chunk_shape_read_adc = compute_chunk_shape((1024, ), 8, max_chunk_size=total_samples)
+            chunk_shape_read_adc = compute_chunk_shape((1024, ), 8, max_chunk_size=n_samples)
             for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_i, chunk_size=chunk_shape_read_adc[-1]):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
                 temp_data_IQ[0, :, sample_indices] = chunk[valid_tone_index]
@@ -1188,18 +1211,11 @@ class ConsolidatedData(NewDataStorage):
 
             # Downsample timestamp and IQ data
             print('Downsampling data...')
-            chunked_downsample(
-                temp_timestamp,
-                timestamp,
-                downsampling_factor,
-                temp_timestamp.chunks[-1],
-                use_filter=False,
-            )
             new_decimate_in_chunks(
                 temp_data_IQ,
                 data_IQ,
                 downsampling_factor,
-                chunk_size=temp_data_IQ.chunks[-1],
+                chunk_shape=temp_data_IQ.chunks,
             )
             downsampled_interpolated_samples = []
             for sample in temp_interpolated_samples:
@@ -1209,8 +1225,6 @@ class ConsolidatedData(NewDataStorage):
             # downsampled_interpolated_samples = temp_interpolated_samples[temp_interpolated_samples % downsampling_factor == 0] // downsampling_factor
             interpolated_samples.resize(downsampled_interpolated_samples.shape)
             interpolated_samples = downsampled_interpolated_samples[:]
-
-            time_ordered_data_group.attrs['fs'] = 1 / (timestamp[1] - timestamp[0])
 
             if azel_exists:
                 print('Downsampling detector position arrays...')
@@ -1230,7 +1244,6 @@ class ConsolidatedData(NewDataStorage):
                 )
 
             # Delete temporary datasets
-            del time_ordered_data_group['temp_timestamp']
             del time_ordered_data_group['temp_data_IQ']
             del time_ordered_data_group['temp_interpolated_samples']
             del time_ordered_data_group['temp_detector_az']
@@ -1246,6 +1259,9 @@ class ConsolidatedData(NewDataStorage):
         # plt.legend()
         # plt.show()
         # pdb.set_trace()
+
+        # Get rid of full timestamp now
+        del global_data_group['temp_timestamp']
 
         # Create virtual datasets
         vdsets = cdata.create_group('vdsets')
@@ -1470,10 +1486,6 @@ class ProcessedData(NewDataStorage):
             l.append(search(channel_group, name, full_name=full_name, exact_match=exact_match))
         return l
     
-    def get_fs(self, i_chan: int) -> float:
-        """Return the sampling rate of the specified channel."""
-        return self.get_from_channel(i_chan, 'time_ordered_data').attrs['fs']
-    
     def get_n_tones(self, i_chan: int) -> int:
         return self.get_channel_group(i_chan).attrs['n_tones']
     
@@ -1504,16 +1516,21 @@ class ProcessedData(NewDataStorage):
     @property
     def fs(self) -> float:
         """Return the averaged sampling rate across channels."""
-        data = []
-        for i_chan in range(self.n_chan):
-            data.append(self.get_from_channel(i_chan, 'time_ordered_data').attrs['fs'])
-        return np.mean(data)
+        return self['global_data'].attrs['fs']
 
     @property
     def virtual_datasets(self) -> h5py.Group:
         return self['vdsets']
 
     # Time-ordered data
+    @property
+    def timestamp(self) -> h5py.Dataset:
+        return self['global_data/timestamp']
+
+    @property
+    def optical_image(self) -> h5py.Dataset:
+        return self['global_data/optical_image']
+
     @property
     def data_IQ(self) -> h5py.Dataset:
         return self['vdsets/data_IQ']
