@@ -4,6 +4,7 @@ from __future__ import annotations
 import abc
 import pdb
 import logging
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -12,9 +13,10 @@ import tables
 import time
 import datetime
 import json
+import h5py
 
 
-from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis
+from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, DEFAULT_MAP_DPIX, N_POLARIZATION
 from rfsocinterface.core.data.data import DECIMATE_ORDER
 from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash
 
@@ -371,44 +373,43 @@ class RemoveElectronicsNoise(DataRoutine):
 
 
 class CleanTOD(DataRoutine):
-    stage = ProcessingStage.PROCESSING_L2
+    name = 'CleanTOD'
+    version = 1.0
 
-    def __init__(self, dataset: str='data_mK'):
-        super().__init__()
-        self.dataset = dataset
+    def __init__(self, dataset: Literal['data_mK', 'data_freq']='data_mK'):
+        super().__init__(dataset=dataset)
+    
+    def inputs(self, pdata: ProcessedData):
+        dsets = []
+        dataset = self.params['dataset']
+        if dataset == 'data_freq':
+            dataset = 'data_freq_diss'
+        for i_chan in range(pdata.n_chan):
+            dsets.append(f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}')
+        return dsets
 
-    def forward(self, pd: ProcessedData):
+    def run(self, pdata: ProcessedData, inputs: list[str]=None):
 
-        # TODO: Does this need to still support the "good_sample" stuff?
-        #average template subtraction
-        for i_chan in range(pd.n_channels):
-            good_tones = np.argwhere(pd.chanmask[i_chan] == 1).flatten()
-            if self.dataset == 'data_freq':
-                data = pd.data_freq_diss
-                array_slice = (i_chan, 0, good_tones, slice(None))
+        for i_chan, dset in enumerate(inputs):
+            data = pdata[dset]
+            good_tones = pdata.get_onres_ind(i_chan)
+            if data.ndim == 2:
+                array_slice = (good_tones, slice(None))
+                template = np.nansum(data[array_slice], axis=0)
+            elif data.ndim == 3:
+                array_slice = (0, good_tones, slice(None))
+                template = np.nansum(data[array_slice], axis=1)
             else:
-                # BUG: This breaks if data has shape (2, n_tones, n_samples)
-                data = getattr(pd, self.dataset)
-                if data.ndim == 4:
-                    array_slice = (i_chan, slice(None), good_tones, slice(None))
-                else:
-                    array_slice = (i_chan, good_tones, slice(None))
-            template = np.nansum(data[array_slice], axis=0)
+                msg = f'Unexpected data shape: {data.shape}; Expected 2D or 3D dataset.'
+                _logger.exception(msg)
+                raise ValueError(msg)
             template = template - np.mean(template)
-            template_corr = np.sum(np.multiply(data[array_slice],template), axis=1) / \
+            template_corr = np.sum(np.multiply(data[array_slice],template), axis=-1) / \
                             np.sum(np.multiply(template,template))
             data[array_slice] = data[array_slice] - np.outer(template_corr, template)
 
-        # with tables.File(pd.cleaned_file_template, 'w') as cfile:
-        #     cfile.create_array('/', 'chanmask', pd.chanmask[:])
-        #     cfile.create_array('/', 'detector_pol', pd.detector_pol[:])
-        #     cfile.create_array('/', 'timestamp', pd.timestamp[:])
-        #     cfile.create_array('/', 'detector_az', pd.detector_az[:])
-        #     cfile.create_array('/', 'detector_za', pd.detector_za[:])
-        #     cfile.create_array('/', 'clean_data', data[:])
+            return inputs
 
-    def get_receipt_entry(self) -> str:
-        return f'CleanTOD: {{\n\tdataset = {self.dataset},\n}}'
 
 class PsdBasis:
     """Enum for the different bases to use for computing the PSD."""
@@ -488,6 +489,225 @@ class ComputeNoisePSD(DataRoutine):
                f'\tnominal_block_length: {self.nominal_block_length},\n' \
                f'}}'
 
+# 
+# Mapping
+#
+
+# def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, beam_map_mode: bool=False) -> npt.NDArray:
+
+#     max_az = np.max(map.detector_az) - az_trim
+#     min_az = np.min(map.detector_az) + az_trim
+#     max_za = np.max(map.detector_za) - za_trim
+#     min_za = np.min(map.detector_za) + za_trim
+#     n_pix_x = int(np.ceil((max_az - min_az) / map_dpix))
+#     n_pix_y = int(np.ceil((max_za - min_za) / map_dpix))
+#     map_x = np.arange(n_pix_x) * map_dpix + min_az + map_dpix / 2.
+#     map_y = np.arange(n_pix_y) * map_dpix + min_za + map_dpix / 2.
+#     if not beam_map_mode:
+#         map_y += 0.1  # 0.1 accounts for assymmetry in array
+
+#     # if map.setnum in [1007, 1009]:
+#     #     np.savez('map_size.npz', n_pix_x, n_pix_y, map_x, map_y)
+#     # elif map.setnum in [1008, 1010]:
+#     #     data = np.load('map_size.npz')
+#     #     n_pix_x = data['arr_0']
+#     #     n_pix_y = data['arr_1']
+#     #     map_x = data['arr_2']
+#     #     map_y = data['arr_3']
+#     return n_pix_x, n_pix_y, map_x, map_y
+
+class BinTODIntoMap(DataRoutine):
+    name = 'BinTODIntoMap'
+    version = "1.0"
+
+    produces = {
+        '/map/netd',
+        '/map/hits_map',
+        '/map/sum_map',
+        '/map/map_az',
+        '/map/map_za',
+        '/map/good_samples',
+    }
+
+    def __init__(
+            self,
+            dataset: Literal['data_mK', 'data_freq']='data_mK',
+            hp_filter_freq: float=0.5,
+            lp_filter_freq: float=10.,
+            az_trim: float=2.3,
+            za_trim: float=0.2,
+            med_netd_cut_threshold: float=3.,
+            beam_map_mode: bool=False,
+            dpix: int=DEFAULT_MAP_DPIX,
+    ):
+        if dataset not in ('data_mK', 'data_freq'):
+            raise ValueError(f'Unable to use dataset {dataset} for CleanTOD; choose "data_mK" or "data_freq".')
+        if beam_map_mode:
+            az_trim = 0.
+            za_trim = 0.
+
+        super().__init__(
+            dataset=dataset,
+            hp_filter_freq=hp_filter_freq,
+            lp_filter_freq=lp_filter_freq,
+            az_trim=az_trim,
+            za_trim=za_trim,
+            med_netd_cut_threshold=med_netd_cut_threshold,
+            beam_map_mode=beam_map_mode,
+            dpix=dpix,
+        )
+
+    def inputs(self, pdata: ProcessedData):
+        dsets = []
+        dataset = self.params['dataset']
+        if dataset == 'data_freq':
+            dataset = 'data_freq_diss'
+        for i_chan in range(pdata.n_chan):
+            dsets.append(f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}')
+        return dsets
+    
+    def _get_map_size(
+        self,
+        detector_az: h5py.Dataset,
+        detector_za: h5py.Dataset,
+        az_trim: float,
+        za_trim: float,
+        dpix: float=DEFAULT_MAP_DPIX,
+        beam_map_mode: bool=False,
+    ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
+
+        max_az = np.max(detector_az) - az_trim
+        min_az = np.min(detector_az) + az_trim
+        max_za = np.max(detector_za) - za_trim
+        min_za = np.min(detector_za) + za_trim
+        n_pix_x = int(np.ceil((max_az - min_az) / dpix))
+        n_pix_y = int(np.ceil((max_za - min_za) / dpix))
+        map_x = np.arange(n_pix_x) * dpix + min_az + dpix / 2.
+        map_y = np.arange(n_pix_y) * dpix + min_za + dpix / 2.
+        if not beam_map_mode:
+            map_y += 0.1  # 0.1 accounts for assymmetry in array
+
+        return n_pix_x, n_pix_y, map_x, map_y
+    
+    def _initialize_map_arrays(
+        self,
+        pdata: ProcessedData,
+        n_maps: int,
+        n_pix_x: int,
+        n_pix_y: int,
+    ):
+        map_group = pdata.create_group('map')
+        map_group.create_dataset('map_az', shape=(n_pix_x,), dtype=np.float64)
+        map_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
+        map_group.create_dataset('sum_map', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
+        map_group.create_dataset('hits_map', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
+        map_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
+        # TODO: fix this last part
+        good_samples = map_group.create_dataset('good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32))
+        # for i_chan in range(self.n_channels):
+        #     good_samples.append(np.setdiff1d(np.arange(self.n_samples), self.interpolated_indices[i_chan]))
+
+
+    def run(self, pdata: ProcessedData, inputs: list[str]=None):
+
+        n_pix_x, n_pix_y, map_az, map_za = self._get_map_size(
+            pdata.detector_az,
+            pdata.detector_za,
+            self.params['az_trim'],
+            self.params['za_trim'],
+            self.params['dpix'],
+        )
+        beam_map_mode = self.params['beam_map_mode']
+        n_maps = N_POLARIZATION if not beam_map_mode else self.n_tones
+        self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y)
+        pdata['map/map_az'][:] = map_az
+        pdata['map/map_za'][:] = map_za
+        detector_az = pdata.detector_az
+        detector_za = pdata.detector_za
+
+        wind = signal.get_window('hamming', pdata.n_samples)
+
+        match self.params['dataset']:
+            case 'data_mK':
+                data = pdata.data_mK[:]
+            case 'data_freq':
+                data = pdata.data_freq_diss[0]
+
+        sum_map = pdata['map/sum_map']
+        hits_map = pdata['map/hits_map']
+        netd = pdata['map/netd']
+
+        print('computing netd...')
+        # Compute NETD values
+        hp_filter_freq = self.params['hp_filter_freq']
+        lp_filter_freq = self.params['lp_filter_freq']
+        for i_tone in range(pdata.n_tones):
+            this_freq, this_psd = signal.periodogram(data[i_tone, :], pdata.fs, window=wind)
+            valid_freq = np.where((this_freq > hp_filter_freq) & (this_freq < lp_filter_freq))
+            netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
+        print('netd done!')
+
+        # Get rid of tones with bad weights
+        med_netd_cut_threshold = self.params['med_netd_cut_threshold']
+        new_chanmask = pdata.chanmask
+        good_idx = np.argwhere(new_chanmask == 1).flatten()
+        good_netd = netd[good_idx]
+        new_chanmask[good_idx] = np.where(good_netd > med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
+
+        good_idx = np.argwhere(new_chanmask == 1).flatten()
+        good_netd = netd[good_idx]
+        netd_med = np.median(np.log10(good_netd))
+        netd_std = np.std(np.log10(good_netd))
+        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
+        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
+
+        netd[new_chanmask != 1] = 0
+
+        if beam_map_mode:
+            tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
+        else:
+            tones_to_map = np.argwhere(new_chanmask == 1).flatten()
+
+        # Create map
+        print('creating map...')
+        for n_loop, i_tone in enumerate(tones_to_map):
+            if n_loop == np.size(tones_to_map) // 2:
+                print('halfway done...')
+            if beam_map_mode:
+                map_idx = i_tone
+                weight = 1.
+            else:
+                map_idx = pdata.detector_pol[i_tone] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
+                weight = 1./ netd[i_tone] ** 2.
+
+            this_detector_az = detector_az[i_tone]
+            this_detector_za = detector_za[i_tone]
+
+            # Get the good samples if they haven't been specified
+            this_clean_data = np.squeeze(data[i_tone])
+
+            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/DEFAULT_MAP_DPIX))
+            x_ind = x_ind.astype('int64')
+            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/DEFAULT_MAP_DPIX))
+            y_ind = y_ind.astype('int64')
+
+            #eliminate samples outside the map
+            # good_samples = md.good_samples[i_chan, :]
+            good_samples = np.arange(pdata.n_samples)  # TODO: Update this after fixing good_samples
+            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
+                np.logical_and(x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x), \
+                np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
+            good_samples = good_samples[valid_index]
+
+            #loop over samples to create sum and hits maps
+            for time_sample in good_samples:
+                sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+        pdata.tones_table['chanmask'] = new_chanmask
+
+        return list(self.produces) + ['/vdsets/chanmask']
+
             
 
 # class RemovePointLomaPickup(DataRoutine):
@@ -534,15 +754,32 @@ class ComputeNoisePSD(DataRoutine):
 
 
 if __name__ == '__main__':
-    # Lab Testing
-    date = '20260212'
-    setnum = 1003
+    date = '20260320'
+    setnum = 1010
 
-    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
+    lp_filter_freq = 30
+    hp_filter_freq= 0.25
+
+    # cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
+    cd = ConsolidatedData.from_file(date, setnum)
     pd = cd.create_processed_data()
 
     noise_removal = RemoveElectronicsNoise()
+    lp_filter = LowPassFilter(filter_freq=lp_filter_freq)
+    hp_filter = HighPassFilter(filter_freq=hp_filter_freq)
+    clean_tod = CleanTOD()
+    bin_tod_to_map = BinTODIntoMap(
+        hp_filter_freq=hp_filter_freq,
+        lp_filter_freq=lp_filter_freq,
+        az_trim=0,
+        za_trim=0,
+    )
+
     noise_removal.apply(pd)
+    hp_filter.apply(pd)
+    lp_filter.apply(pd)
+    clean_tod.apply(pd)
+    bin_tod_to_map.apply(pd)
     # cutoff = CutoffFilter(10, 'low')
     # cutoff.apply(pd)
     pdb.set_trace()

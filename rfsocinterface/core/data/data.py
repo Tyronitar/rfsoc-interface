@@ -1251,6 +1251,7 @@ class ConsolidatedData(NewDataStorage):
         vdsets = cdata.create_group('vdsets')
         total_tones = sum(tone_counts)
         vdsets.attrs['n_tones'] = total_tones
+        vdsets.attrs['n_samples'] = n_samples_ds
         channel_groups = all_channels_group.items()
         data_IQ_layout = h5py.VirtualLayout((2, total_tones, n_samples_ds), 'f8')
         azel_shape = (total_tones, n_samples_ds) if azel_exists else (total_tones, 1)
@@ -1480,10 +1481,10 @@ class ProcessedData(NewDataStorage):
         return  self.get_from_channel(i_chan, 'tones')['chanmask']
     
     def get_onres_ind(self, i_chan: int) -> npt.NDArray:
-        return np.argwhere(self.get_chanmask(i_chan) == 1)
+        return np.argwhere(self.get_chanmask(i_chan) == 1).flatten()
 
     def get_offres_ind(self, i_chan: int) -> npt.NDArray:
-        return np.argwhere(self.get_chanmask(i_chan) == 0)
+        return np.argwhere(self.get_chanmask(i_chan) == 0).flatten()
     
     #
     # Useful properties 
@@ -1491,6 +1492,14 @@ class ProcessedData(NewDataStorage):
     @property
     def n_chan(self) -> int:
         return self['channels'].attrs['n_channels']
+    
+    @property
+    def n_samples(self) -> int:
+        return self['vdsets'].attrs['n_samples']
+
+    @property
+    def n_tones(self) -> int:
+        return self['vdsets'].attrs['n_tones']
 
     @property
     def fs(self) -> float:
@@ -1528,8 +1537,7 @@ class ProcessedData(NewDataStorage):
     @property
     def detector_za(self) -> h5py.Dataset:
         return self['vdsets/detector_za']
-
-
+    
     # Tone/detector properties
     @property
     def tones_table(self) -> h5py.Dataset:
@@ -1912,11 +1920,11 @@ def plot_map(
 
 if __name__ == '__main__':
     # Telescope Testing
-    # date = '20260304'
-    # setnum = 1013
+    date = '20260320'
+    setnum = 1010
     # Lab Testing
-    date = '20260212'
-    setnum = 1003
+    # date = '20260212'
+    # setnum = 1003
 
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
     pd = cd.create_processed_data()
