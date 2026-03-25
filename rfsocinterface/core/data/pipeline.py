@@ -244,7 +244,7 @@ def rotate_optimally(freq, psd, csd, chanmask, start_freq, end_freq):
         angle = 0.5*np.arctan2(2*Sfd, Sff-Sdd)
 
         mean_angle = np.mean(angle[start_index:stop_index])
-        print(mean_angle)
+        # print(mean_angle)
 
         c = np.cos(mean_angle)
         s = np.sin(mean_angle)
@@ -340,7 +340,7 @@ if __name__ == '__main__':
     psds, csds = run_multi_run_dataset(date, setnums)
     #pdb.set_trace()
     min_len = np.min([len(psd[0,0,:]) for psd in psds])
-    print(min_len)
+    # print(min_len)
     psd_avg = np.mean([psd[:, :, :min_len] for psd in psds], axis = 0)
     csd_avg = np.mean([csd[:, :min_len] for csd in csds], axis = 0)
     #TODO This is really innefficient and stupid, but I wasn't sure how to do it better

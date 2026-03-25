@@ -1147,12 +1147,15 @@ class BaseProcessedData(DataStorage):
         """
 
         block_length_samples = int(block_length_sec * self.fs)
-        print(block_length_samples/self.fs)
+        block_length_samples = min(block_length_samples, self.n_samples)
         data = self.get_node_value(dataset)
-        n_blocks = self.n_samples // block_length_samples
+        n_blocks = np.ceil(self.n_samples / block_length_samples).astype(int)
         blocked_data = np.zeros((*data.shape[:-1], n_blocks, block_length_samples), dtype=data.dtype)
         for i in range(n_blocks):
-            blocked_data[..., i, :] = data[..., i * block_length_samples:(i+1) * block_length_samples]
+            block_start = i * block_length_samples
+            block_end = min((i + 1) * block_length_samples, self.n_samples)
+            this_block_length = block_end - block_start
+            blocked_data[..., i, :this_block_length] = data[..., block_start:block_end]
 
         return blocked_data
 
@@ -1685,9 +1688,10 @@ class ProcessedDataL1(ProcessedData):
         #time_streams.plot_timestream_errors(z_freq, z_diss,fs, onres_ind = new_data.onres_ind)
 
         if do_electronics_noise_removal:
-            if new_data.offres_ind.size == 0:
+            if new_data.offres_ind.size == 0 or only_use_onres_indices:
                 offres_clean_data = new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length)
             else:
+                print('Removing off-resonance electronincs noise')
                 offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
             
             # if only_use_onres_indices:
@@ -1698,6 +1702,7 @@ class ProcessedDataL1(ProcessedData):
             if only_use_offres_indices:
                 onres_clean_data = offres_clean_data
             else:
+                print('Removing on-resonance electronincs noise')
                 onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.onres_ind)
             #     onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.onres_ind)
 
@@ -1709,8 +1714,11 @@ class ProcessedDataL1(ProcessedData):
                 onres_clean_data[:, :, i, :]+= data_set_mean[:, :, None]
             unblocked_clean_data = onres_clean_data.reshape(*onres_clean_data.shape[:2], -1)
             n = unblocked_clean_data.shape[-1]
-            data_gain_phase[..., :n] = unblocked_clean_data
-            data_gain_phase[..., n:] = unblocked_clean_data[..., -1:]
+            this_block_length = onres_clean_data.shape[-1]
+            for i_block in range(onres_clean_data.shape[2]):
+                block_start = i_block * this_block_length
+                block_end = min((i_block + 1) * this_block_length, new_data.n_samples)
+                data_gain_phase[..., block_start:block_end] = unblocked_clean_data[..., block_start:block_end]
           
         
         new_generate_calibrated_data(new_data)

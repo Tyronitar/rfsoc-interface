@@ -18,7 +18,7 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from matplotlib.gridspec import GridSpec
 from scipy.signal import savgol_filter, find_peaks
-import scraps as scr
+# import scraps as scr
 import h5py
 
 from PySide6.QtWidgets import QApplication
