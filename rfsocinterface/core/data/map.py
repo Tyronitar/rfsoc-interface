@@ -217,9 +217,8 @@ def compute_kernel(
     kernel_pos = np.linspace(-r0, r0, kernel_radius * 2 + 1)
     pos = np.array(np.meshgrid(kernel_pos, kernel_pos)).T.reshape(-1, 2)
     distances = cdist(pos, np.atleast_2d([0, 0]), 'sqeuclidean').reshape(kernel_size, kernel_size)
-    kernel = np.exp(-distances / (2 * sigma ** 2))
+    kernel = np.exp(-np.pow(distances / (2 * sigma ** 2), 2))
     kernel[distances>r0] = 0
-    pdb.set_trace()
     return kernel
 
 
@@ -333,9 +332,6 @@ class BinTODIntoMap(DataRoutine):
             this_detector_az = md.detector_az[i_chan,:]
             this_detector_za = md.detector_za[i_chan,:]
 
-            this_sum_map = np.zeros((n_pix_x, n_pix_y))
-            this_hits_map = np.zeros((n_pix_x, n_pix_y))
-
             # Get the good samples if they haven't been specified
             this_clean_data = np.squeeze(data[i_chan,:])
 
@@ -353,24 +349,16 @@ class BinTODIntoMap(DataRoutine):
                 np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
             good_samples = good_samples[valid_index]
 
-            for time_sample in good_samples:
-                this_sum_map[x_ind[time_sample], y_ind[time_sample]] += this_clean_data[time_sample]
-                this_hits_map[x_ind[time_sample], y_ind[time_sample]] += 1
-            this_sum_map *= weight
-            this_hits_map *= weight
-            # this_sum_map[np.unique(x_ind), np.unique(y_ind)] *= weight
-            this_sum_map = signal.convolve2d(this_sum_map, kernel, mode='same')
-            this_hits_map = signal.convolve2d(this_hits_map, kernel, mode='same')
-            sum_map[map_idx] += this_sum_map
-            hits_map[map_idx] += this_hits_map
-
             # #loop over samples to create sum and hits maps
-            # for time_sample in good_samples:
-            #     sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
-            #     hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+            for time_sample in good_samples:
+                sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
         # weights = 1 / netd[md.chanmask==1]**2
         # np.save('weight.npy', 1/all_NETDs**2)
         # plt.show()
+        for map_idx in range(sum_map.shape[0]):
+            sum_map[map_idx] = signal.convolve2d(sum_map[map_idx], kernel, mode='same')
+            hits_map[map_idx] = signal.convolve2d(hits_map[map_idx], kernel, mode='same')
         md.chanmask[:] = new_chanmask
         md.sum_map[:] = sum_map
         md.hits_map[:] = hits_map
@@ -429,6 +417,8 @@ class MakeVideo(DataRoutine):
         md.map_za[:] = map_za
 
         wind = signal.get_window('hamming', md.n_samples)
+
+        kernel = compute_kernel()
 
         bad_tones = [
             1, 3, 223, 278, 299,
@@ -514,13 +504,17 @@ class MakeVideo(DataRoutine):
                     hits_map[i_block, map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
 
 
+        for i_block in range(n_blocks):
+            for map_idx in range(sum_map.shape[1]):
+                sum_map[i_block, map_idx] = signal.convolve2d(sum_map[i_block, map_idx], kernel, mode='same')
+                hits_map[i_block, map_idx] = signal.convolve2d(hits_map[i_block, map_idx], kernel, mode='same')
         this_map = sum_map / hits_map
         total_map = np.nansum(this_map, axis=1)
 
         smoothed_map = np.transpose(total_map[..., ::-1], (0, 2, 1))
-        gaussian = np.ones((1,3,3)) / 16
-        gaussian[0, 1, 1] = 0.25
-        smoothed_map = signal.convolve(smoothed_map, gaussian)
+        # gaussian = np.ones((1,3,3)) / 16
+        # gaussian[0, 1, 1] = 0.25
+        # smoothed_map = signal.convolve(smoothed_map, gaussian)
         max_abs = 0.75 * np.max(np.abs(smoothed_map))
         vmax = max_abs
         vmin = -max_abs
