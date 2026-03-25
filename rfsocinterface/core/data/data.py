@@ -1097,7 +1097,10 @@ class ProcessedDataL0(BaseProcessedData):
         global_data_group = pfile.create_group('/', 'global_data')
         if optcam_exists:
             # optical_image = optcam_file.root.optical_image
-            pfile.create_array(global_data_group, 'optical_image', obj=optcam_file.root.optical_image[:])
+            if 'optical_image' in optcam_file.root:
+                pfile.create_array(global_data_group, 'optical_image', obj=optcam_file.root.optical_image[:])
+            else:
+                pfile.create_array(global_data_group, 'optical_image', obj=optcam_file.root.optical_video[:, :, :, 0])
             optcam_file.close()
         else:
             pfile.create_array(global_data_group, 'optical_image', obj=np.array([]))

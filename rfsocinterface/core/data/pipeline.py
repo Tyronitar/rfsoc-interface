@@ -229,8 +229,8 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
-    date = '20260309'
-    setnums = [1013]
+    date = '20260320'
+    setnums = [1010]
 
     # setnums = [1013]
     # setnums = range(1009, 1016)
@@ -257,8 +257,8 @@ if __name__ == '__main__':
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
-    binner = BinTODIntoMap()
-    video = MakeVideo()
+    binner = BinTODIntoMap(az_trim=0, za_trim=0)
+    # video = MakeVideo()
     # psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
 
     pipeline = DataPipeline(
@@ -274,8 +274,8 @@ if __name__ == '__main__':
     pipeline.add_routine(lpfilt)
     # pipeline.add_routine(psd)
     pipeline.add_routine(cleaner)
-    # pipeline.add_routine(binner)
-    pipeline.add_routine(video)
+    pipeline.add_routine(binner)
+    # pipeline.add_routine(video)
 
     for setnum in setnums:
         data = pipeline.run_pipeline(date, setnum)

@@ -6,6 +6,7 @@ import pdb
 import numpy as np
 import numpy.typing as npt
 from scipy import signal
+from scipy.spatial.distance import cdist
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -205,6 +206,23 @@ def get_map_size(detector_az: npt.NDArray, detector_za: npt.NDArray, az_trim: fl
     #     map_y = data['arr_3']
     return n_pix_x, n_pix_y, map_x, map_y
 
+
+def compute_kernel(
+    r0: float=0.15,
+    dpix: float=DEFAULT_MAP_DPIX,
+    sigma: float=0.087/2.3,
+):
+    kernel_radius = int(r0 // dpix)  
+    kernel_size = kernel_radius * 2 + 1  # Number of pixels to include in the kernel
+    kernel_pos = np.linspace(-r0, r0, kernel_radius * 2 + 1)
+    pos = np.array(np.meshgrid(kernel_pos, kernel_pos)).T.reshape(-1, 2)
+    distances = cdist(pos, np.atleast_2d([0, 0]), 'sqeuclidean').reshape(kernel_size, kernel_size)
+    kernel = np.exp(-distances / (2 * sigma ** 2))
+    kernel[distances>r0] = 0
+    pdb.set_trace()
+    return kernel
+
+
 class BinTODIntoMap(DataRoutine):
     stage = ProcessingStage.POST_PROCESSING
     def __init__(
@@ -268,6 +286,8 @@ class BinTODIntoMap(DataRoutine):
         sum_map = np.zeros(md.sum_map.shape)
         hits_map = np.zeros(md.hits_map.shape)
 
+        kernel = compute_kernel()
+
         print('computing netd...')
         # Compute NETD values
         for i_chan in np.where(md.chanmask[:] == 1)[0]:
@@ -313,6 +333,9 @@ class BinTODIntoMap(DataRoutine):
             this_detector_az = md.detector_az[i_chan,:]
             this_detector_za = md.detector_za[i_chan,:]
 
+            this_sum_map = np.zeros((n_pix_x, n_pix_y))
+            this_hits_map = np.zeros((n_pix_x, n_pix_y))
+
             # Get the good samples if they haven't been specified
             this_clean_data = np.squeeze(data[i_chan,:])
 
@@ -322,6 +345,7 @@ class BinTODIntoMap(DataRoutine):
             y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/DEFAULT_MAP_DPIX))
             y_ind = y_ind.astype('int64')
 
+
             #eliminate samples outside the map
             good_samples = md.good_samples[:]
             valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
@@ -329,10 +353,21 @@ class BinTODIntoMap(DataRoutine):
                 np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
             good_samples = good_samples[valid_index]
 
-            #loop over samples to create sum and hits maps
             for time_sample in good_samples:
-                sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
-                hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+                this_sum_map[x_ind[time_sample], y_ind[time_sample]] += this_clean_data[time_sample]
+                this_hits_map[x_ind[time_sample], y_ind[time_sample]] += 1
+            this_sum_map *= weight
+            this_hits_map *= weight
+            # this_sum_map[np.unique(x_ind), np.unique(y_ind)] *= weight
+            this_sum_map = signal.convolve2d(this_sum_map, kernel, mode='same')
+            this_hits_map = signal.convolve2d(this_hits_map, kernel, mode='same')
+            sum_map[map_idx] += this_sum_map
+            hits_map[map_idx] += this_hits_map
+
+            # #loop over samples to create sum and hits maps
+            # for time_sample in good_samples:
+            #     sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+            #     hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
         # weights = 1 / netd[md.chanmask==1]**2
         # np.save('weight.npy', 1/all_NETDs**2)
         # plt.show()
