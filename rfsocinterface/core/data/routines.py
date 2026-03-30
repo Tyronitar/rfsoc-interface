@@ -5,6 +5,7 @@ import abc
 import pdb
 import logging
 from typing import Literal
+import warnings
 
 import numpy as np
 import numpy.typing as npt
@@ -14,11 +15,13 @@ import time
 import datetime
 import json
 import h5py
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 
-from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, DEFAULT_MAP_DPIX, N_POLARIZATION
+from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, DEFAULT_MAP_DPIX, N_POLARIZATION, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX
 from rfsocinterface.core.data.data import DECIMATE_ORDER
-from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash
+from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash, PERMISSIONS_ALL_FULL
 
 _logger = logging.getLogger(__name__)
 
@@ -170,16 +173,18 @@ class CutoffFilter(DataRoutine):
         filter_freq = self.params['filter_freq']
         btype = self.params['btype']
         for input_name in inputs:
-            filt_sos = signal.butter(
-                BUTTER_ORDER,
-                filter_freq,
-                btype=btype,
-                fs=pdata.fs,
-                output='sos',
-                analog=False,
-            )
-            dset = pdata[input_name]
-            dset[:] = signal.sosfiltfilt(filt_sos, dset)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', r'^Invalid value encountered in')
+                filt_sos = signal.butter(
+                    BUTTER_ORDER,
+                    filter_freq,
+                    btype=btype,
+                    fs=pdata.fs,
+                    output='sos',
+                    analog=False,
+                )
+                dset = pdata[input_name]
+                dset[:] = signal.sosfiltfilt(filt_sos, dset)
         return inputs
 
 
@@ -597,6 +602,9 @@ class BinTODIntoMap(DataRoutine):
         n_pix_y: int,
         dpix: float,
     ):
+        if pdata.has('map', exact_match=True):
+            _logger.warning('Map group already exists in the file; overwriting datasets.')
+            del pdata['map']
         map_group = pdata.create_group('map')
         map_group.create_dataset('map_az', shape=(n_pix_x,), dtype=np.float64)
         map_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
@@ -636,9 +644,9 @@ class BinTODIntoMap(DataRoutine):
             case 'data_freq':
                 data = pdata.data_freq_diss[0]
 
-        sum_map = pdata['map/sum_map']
-        hits_map = pdata['map/hits_map']
-        netd = pdata['map/netd']
+        sum_map = pdata['map/sum_map'][:]
+        hits_map = pdata['map/hits_map'][:]
+        netd = pdata['map/netd'][:]
 
         print('computing netd...')
         # Compute NETD values
@@ -707,9 +715,296 @@ class BinTODIntoMap(DataRoutine):
             for time_sample in good_samples:
                 sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
                 hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
-        pdata.tones_table['chanmask'] = new_chanmask
+        i_tone = 0
+        for i_chan in range(pdata.n_chan):
+            channel_group = pdata.get_channel_group(i_chan)
+            n_tones = channel_group.attrs['n_tones']
+            channel_group['tones']['chanmask'] = new_chanmask[i_tone:i_tone + n_tones]
+            i_tone += n_tones
+        pdata['map/hits_map'][:] = hits_map
+        pdata['map/sum_map'][:] = sum_map
+        pdata['map/netd'][:] = netd
 
         return list(self.produces) + ['/vdsets/chanmask']
+
+
+class PlotMap(DataRoutine):
+    name = 'PlotMap'
+    version = '1.0'
+
+    requires = {
+        '/map/map_az',
+        '/map/map_za',
+        '/map/netd',
+        '/map/sum_map',
+        '/map/hits_map',
+    }
+
+    produces = {
+        '/map/plotting/map',
+        '/map/plotting/total_map',
+        '/map/plotting/flagged_map_1',
+        '/map/plotting/flagged_map_2',
+        '/map/plotting/flagged_total_map',
+        '/map/plotting/contour_levels',
+    }
+
+    def __init__(
+            self,
+            gaussian_sigma: float=GAUSSIAN_SIGMA,
+            valid_covariance_threshold: float=0.5,
+            cb_shrink: float=0.95,
+            max_abs_threshold: float=0.75,
+            save: bool=True,
+            show: bool=False,
+    ):
+        super().__init__(
+            gaussian_sigma=gaussian_sigma,
+            valid_covariance_threshold=valid_covariance_threshold,
+            cb_shrink=cb_shrink,
+            max_abs_threshold=max_abs_threshold,
+            save=save,
+            show=show,
+        )
+    
+    def inputs(self, pdata: ProcessedData):
+        return list(self.requires)
+    
+    def run(self, pdata: ProcessedData, inputs: list[str]=None):
+        if pdata.has('map/plotting', exact_match=True):
+            _logger.warning('Plotting group already exists in the file; overwriting datasets.')
+            del pdata['map/plotting']
+        hits_map = pdata['map/hits_map']
+        sum_map = pdata['map/sum_map']
+        mapp = pdata.create_dataset(
+            '/map/plotting/map',
+            shape=sum_map.shape,
+            dtype=np.float64,
+        )
+        total_map = pdata.create_dataset(
+            '/map/plotting/total_map',
+            shape=hits_map.shape[1:],
+            dtype=np.float64,
+        )
+        with np.errstate(divide='ignore', invalid='ignore'):
+            mapp[:] = sum_map[:] / hits_map[:]
+            total_map[:] = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
+        self._get_combined_map(pdata)
+        self.plot(pdata)
+
+        return list(self.produces)
+
+    def _get_combined_map(self, pdata: ProcessedData) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        sigma = self.params['gaussian_sigma']
+        map = pdata['map/plotting/map']
+        total_map = pdata['map/plotting/total_map']
+        flagged_map_1 = gaussian_filter(map[0], sigma)
+        flagged_map_2 = gaussian_filter(map[1], sigma)
+        flagged_map_3 = gaussian_filter(total_map, sigma)
+
+        # Convert all nans to boolean True
+        nan_map_1 = np.isnan(flagged_map_1)
+        nan_map_2 = np.isnan(flagged_map_2)
+        nan_map_3 = np.isnan(flagged_map_3)
+
+        # Combine the boolean maps such that if any pixel is flagged in any map, it is flagged in the combined map
+        combined_nan_map = np.logical_or(np.logical_or(nan_map_1, nan_map_2), nan_map_3)
+        
+        # Get the coordinates of True values in the combined_nan_map
+        flagged_positions = np.where(combined_nan_map)
+        final_flagged_coords = list(zip(flagged_positions[0], flagged_positions[1]))
+
+        # Apply this combined map to each of the final maps
+        flagged_map_1[combined_nan_map] = 1
+        flagged_map_2[combined_nan_map] = 1
+        flagged_map_3[combined_nan_map] = 1
+
+        flagged_map_1[flagged_map_1 != 1] = 0
+        flagged_map_2[flagged_map_2 != 1] = 0
+        flagged_map_3[flagged_map_3 != 1] = 0
+
+        flagged_map_1[combined_nan_map] = np.nan
+        flagged_map_2[combined_nan_map] = np.nan
+        flagged_map_3[combined_nan_map] = np.nan
+
+        contour_levels = [1]
+
+        # flagged_map_1= flagged_map_1.flatten()
+        # flagged_map_2= flagged_map_2.flatten()
+        # flagged_map_3= flagged_map_3.flatten()
+
+        # flagged_map_1 = [x for x in flagged_map_1 if not np.isnan(x)]
+        # flagged_map_2 = [x for x in flagged_map_2 if not np.isnan(x)]
+        # flagged_map_3 = [x for x in flagged_map_3 if not np.isnan(x)]
+
+        pdata.create_dataset('/map/plotting/flagged_map_1', data=flagged_map_1)
+        pdata.create_dataset('/map/plotting/flagged_map_2', data=flagged_map_2)
+        pdata.create_dataset('/map/plotting/flagged_total_map', data=flagged_map_3)
+        pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
+    
+    def _get_extent(self, pdata: ProcessedData) -> tuple[float, float, float, float]:
+        map_az = pdata['map/map_az'][:]
+        map_za = pdata['map/map_za'][:]
+        dpix = pdata['map'].attrs['dpix']
+        return (
+            min(map_az)-dpix /2.,
+            max(map_az)+dpix /2,
+            max(map_za)+dpix /2.,
+            min(map_za)-dpix /2.
+        )
+
+    def _get_scaled_optical_image(self, pdata: ProcessedData) -> npt.NDArray:
+        dpix = pdata['map'].attrs['dpix']
+        map_az = pdata['map/map_az']
+        map_za = pdata['map/map_za']
+        opt_npix_per_tel_npix = dpix / OPTCAM_PIX_SIZE_DEGREES
+        opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
+        opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
+        # TODO: Replace these with references to optical camera dimensions
+        opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
+        opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
+        az_range = slice(
+            opt_center_az - int(opt_npix_az / 2),
+            opt_center_az + int(opt_npix_az / 2),
+        )
+        za_range = slice(
+            opt_center_za - int(opt_npix_za / 2),
+            opt_center_za + int(opt_npix_za / 2),
+        )
+        return pdata.optical_image[za_range, az_range]
+
+    def plot(self, pdata: ProcessedData):
+        hits_map = pdata['map/hits_map']
+        mapp = pdata['map/plotting/map'][:]
+        total_map = pdata['map/plotting/total_map'][:]
+        flagged_map_1_filt = pdata['map/plotting/flagged_map_1'][:]
+        flagged_map_2_filt = pdata['map/plotting/flagged_map_2'][:]
+        flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
+        contour_levels = pdata['map/plotting/contour_levels']
+
+        map_az = pdata['map/map_az']
+        map_za = pdata['map/map_za']
+        extent = self._get_extent(pdata)
+
+        valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
+        map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
+        for i_cov in np.arange(np.size(valid_cov_1[:,0])):
+            map_goodcov_1[i_cov] = mapp[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
+        valid_cov_2 = np.argwhere(hits_map[1] > 0.5 * np.median(hits_map[1]))
+        map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
+        for i_cov in np.arange(np.size(valid_cov_2[:,0])):
+            map_goodcov_2[i_cov] = mapp[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
+
+        netd = pdata['map/netd']
+        netd_1 = netd[pdata.detector_pol == 1]
+        netd_2 = netd[pdata.detector_pol == 2]
+        valid_netd_1 = np.argwhere(netd_1 > 0)
+        valid_netd_2 = np.argwhere(netd_2 > 0)
+
+        cb_shrink = self.params['cb_shrink']
+        max_abs_threshold = self.params['max_abs_threshold']
+        this_xlim = min(map_az), max(map_az)
+        this_ylim = max(map_za), min(map_za)
+        max_abs = np.max(np.abs(np.append(map_goodcov_1, map_goodcov_2))) * max_abs_threshold
+        med_netd_1 = 1./np.sqrt(np.sum(1./netd_1[valid_netd_1]**2)/np.size(valid_netd_1))
+        med_netd_2 = 1./np.sqrt(np.sum(1./netd_2[valid_netd_2]**2)/np.size(valid_netd_2))
+
+        t0 = time.asctime(time.localtime(pdata.timestamp[0]-7500))
+        vis = pdata.optical_visibility[()]
+
+        # TODO: Make figure size change based on the size of the map
+        # aspect_ratio = (this_ylim[0] - this_ylim[1]) / (this_xlim[1] - this_xlim[0])
+        # fig_height = 7.5
+        # fig_width = fig_height / aspect_ratio
+        fig, axes = plt.subplots(4, 1, figsize=(15, 7.5), sharex=True)
+        fig.suptitle(
+            f'{pdata.file_stub}\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
+            f'NETD V-Pol (30Hz) = {med_netd_1:.1f} mK, NETD H-Pol (30Hz) = {med_netd_2:.1f} mK'
+        )
+        for ax in axes:
+            ax.set_ylabel('ZA (degrees)')
+            ax.set_xlim(this_xlim)
+            ax.set_ylim(this_ylim)
+
+        # Vertical polarization
+        im = axes[0].imshow(
+            np.flip(np.transpose(mapp[0][::-1]), 1),
+            extent=extent,
+            aspect='equal',
+            vmin=-max_abs,
+            vmax=max_abs,
+            cmap='Blues_r',
+        )
+        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[0])
+        cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
+        axes[0].contour(
+            np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0),
+            levels=contour_levels,
+            extent=extent,
+            colors='red',
+        )
+
+        # Horizontal polarization
+        im = axes[1].imshow(
+            np.flip(np.transpose(mapp[1][::-1]), 1),
+            extent=extent,
+            aspect='equal',
+            vmin=-max_abs,
+            vmax=max_abs,
+            cmap='Reds_r'
+        )
+        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[1])
+        cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
+        axes[1].contour(
+            np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0),
+            levels=contour_levels,
+            extent=extent,
+            colors='black',
+        )
+
+        # Total signal
+        im = axes[2].imshow(
+            np.flip(np.transpose(total_map[::-1]), 1),
+            extent=extent,
+            aspect='equal',
+            vmin=-max_abs,
+            vmax=max_abs,
+            cmap='Greys_r'
+        )
+        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[2])
+        cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
+        axes[2].contour(
+            np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0),
+            levels=contour_levels,
+            extent=extent,
+            colors='red',
+        )
+
+        # Optical Image
+        optical_image = self._get_scaled_optical_image(pdata)
+        valid_opt_pix = np.where(optical_image < 240)
+        opt_vmax = 255. 
+        opt_vmin = -255  # NOTE: Shouldn't this be 0?
+        im = axes[3].imshow(
+            optical_image,
+            extent=extent,
+            aspect='equal',
+            vmin=opt_vmin,
+            vmax=opt_vmax,
+        )
+        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[3])
+        cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
+        axes[3].set_xlabel('Azimuth (degrees)')
+
+        fig.subplots_adjust(wspace=0, hspace=0)
+    #    pw.addPlot("Raw Image", this_fig)
+        path = pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
+        if not path.exists():
+            path.touch(PERMISSIONS_ALL_FULL)
+        if self.params['save']:
+            fig.savefig(path, bbox_inches='tight')
+        if self.params['show']:
+            plt.show()
 
             
 
@@ -764,8 +1059,9 @@ if __name__ == '__main__':
     hp_filter_freq= 0.25
 
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
-    # cd = ConsolidatedData.from_file(date, setnum)
     pd = cd.create_processed_data()
+
+    # pd = ProcessedData.from_file(date, setnum, mode='a')
 
     noise_removal = RemoveElectronicsNoise()
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq)
@@ -776,14 +1072,14 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filter_freq,
         az_trim=0,
         za_trim=0,
+        dpix=0.1,
     )
+    plotter = PlotMap(show=True)
 
     noise_removal.apply(pd)
     hp_filter.apply(pd)
     lp_filter.apply(pd)
     clean_tod.apply(pd)
     bin_tod_to_map.apply(pd)
-    # cutoff = CutoffFilter(10, 'low')
-    # cutoff.apply(pd)
-    pdb.set_trace()
+    plotter.apply(pd)
 

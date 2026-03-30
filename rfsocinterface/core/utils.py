@@ -20,6 +20,7 @@ import stat
 import subprocess
 import git
 from typing import Iterator
+import warnings
 
 import io
 from copy import deepcopy
@@ -989,7 +990,9 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_shape
         # pdb.set_trace()
         # x0 = axis_slice(chunk, stop=1, axis=axis)
         # zf = x0 * zi
-        y[:], zi = sosfilt(sos, chunk, axis=axis, zi=zi)
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', r'^Invalid value encountered in')
+            y[:], zi = sosfilt(sos, chunk, axis=axis, zi=zi)
 
         # decimate
         dec = axis_slice(y, step=q, axis=axis)
@@ -1071,9 +1074,10 @@ def get_azel_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTO
     # return f'{data_dir}/{date}/{date}_set{setnum}_AZEL.h5'
 
 
-def get_optcam_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+def get_optcam_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY, old: bool=False) -> str:
+    if old:
+        return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
     return f'{data_dir}/{date}/{date}_set{setnum}_optcam.h5'
-
 
 def get_processed_file_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
     return f'{data_dir}/{date}/{date}_set{setnum}_processed_data.h5'

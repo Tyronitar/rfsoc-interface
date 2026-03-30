@@ -298,10 +298,11 @@ def generate_calibrated_data(
         IQ_to_freq_diss_angle,
     )
     # Finally, we need to get data_mK
-    data_mK[:] = np.divide(
-        data_freq_diss[0],
-        df_per_mK[:, np.newaxis],
-    )
+    with np.errstate(divide='ignore', invalid='ignore'):
+        data_mK[:] = np.divide(
+            data_freq_diss[0],
+            df_per_mK[:, np.newaxis],
+        )
 
 def new_generate_calibrated_data(pd: ProcessedDataL1):
     if isinstance(pd.get_node('data_IQ'), ExternalLink):
@@ -755,9 +756,15 @@ class NewDataStorage:
     def __getitem__(self, key):
         return self.get(key)
 
+    def __delitem__(self, key: str):
+        del self.file[key]
+
     def has(self, name: str, exact_match: bool=False) -> bool:
         res = self.search(name, exact_match=exact_match)
         return res is not None
+    
+    def __contains__(self, key: str) -> bool:
+        return key in self.file
     
     def search(self, name: str, full_name: bool=True, exact_match: bool=False) -> tuple[str, H5pyObject] | None:
         return search(self.file, name, full_name=full_name, exact_match=exact_match)
@@ -886,6 +893,10 @@ class ConsolidatedData(NewDataStorage):
 
         azel_exists = tele_template.exists()
         optcam_exists = optcam_template.exists()
+        if not optcam_exists:
+            # Try old file naming format
+            optcam_template = Path(get_optcam_template(date, setnum, old=True))
+            optcam_exists = optcam_template.exists()
 
         if azel_exists:
             azel_file = h5py.File(tele_template, 'r')
@@ -994,7 +1005,12 @@ class ConsolidatedData(NewDataStorage):
         # Optical image
         if optcam_exists:
             # optical_image = optcam_file.root.optical_image
-            global_data_group.create_dataset('optical_image', data=optcam_file['optical_image'][:])
+            if 'optical_image' in optcam_file:
+                global_data_group.create_dataset('optical_image', data=optcam_file['optical_image'][:])
+            elif 'optical_video' in optcam_file:
+                global_data_group.create_dataset('optical_image', data=optcam_file['optical_video'][..., 0])
+                global_data_group.create_dataset('optical_video', data=optcam_file['optical_video'])
+                global_data_group.create_dataset('optical_video_timestamp', data=optcam_file['timestamp'])
             optcam_file.close()
         else:
             global_data_group.create_dataset('optical_image', data=np.array([]))
@@ -1082,6 +1098,7 @@ class ConsolidatedData(NewDataStorage):
             chanmask = raw_data.chanmask[:]
             off_res = np.argwhere(chanmask == 0).flatten()
             no_pol = np.argwhere(tones_table['polarization'] < 1).flatten()
+            # tones_table['polarization'][no_pol] = 0
             chanmask[no_pol] = -1
             chanmask[off_res] = 0  # Preserve off-resonance indices
             tones_table['chanmask'] = chanmask
@@ -1530,6 +1547,10 @@ class ProcessedData(NewDataStorage):
     @property
     def optical_image(self) -> h5py.Dataset:
         return self['global_data/optical_image']
+    
+    @property
+    def optical_visibility(self) -> h5py.Dataset:
+        return self['global_data/optical_visibility']
 
     @property
     def data_IQ(self) -> h5py.Dataset:
