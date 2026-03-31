@@ -9,6 +9,7 @@ import time
 import logging
 from itertools import chain, batched
 import typing
+from typing import overload
 from importlib.metadata import version
 import shutil
 
@@ -723,7 +724,6 @@ def get_detector_positions(
         )
 
 
-
 #
 # Data Classes
 #
@@ -740,7 +740,32 @@ class NewDataStorage:
         self.file = None
         self.mode = None
         self.open(mode=mode)
+
+    @overload
+    @classmethod
+    def load(cls, filename: str, mode: str='a') -> NewDataStorage:
+        pass
+
+    @overload
+    @classmethod
+    def load(cls, date: str, setnum: int, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> NewDataStorage:
+        pass
     
+    @classmethod
+    def load(cls, *args, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> NewDataStorage:
+        if len(args) == 1:
+            return cls(args[0], mode=mode)
+        elif len(args) == 2:
+            date, setnum = args
+            filename = cls.get_template(date, setnum, data_dir=data_dir)
+            return cls(filename, mode=mode)
+        else:
+            raise ValueError("Invalid number of arguments")
+    
+    @staticmethod
+    def get_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+        raise NotImplementedError("Must be implemented by subclass")
+
     def open(self, mode: str='r'):
         self.file = h5py.File(self.filename, mode=mode)
         self.mode = mode
@@ -875,6 +900,10 @@ class ConsolidatedData(NewDataStorage):
     
     Combines the data from the TOD files, LO sweeps, and params files into one file.
     """
+
+    @staticmethod
+    def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
+        return get_consolidated_file_template(date, setnum, data_dir=data_dir)
 
     @classmethod
     def from_tod(
@@ -1309,11 +1338,6 @@ class ConsolidatedData(NewDataStorage):
 
         return cdata
     
-    @classmethod
-    def from_file(cls, date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY, mode: str='r') -> ConsolidatedData:
-        fname = get_consolidated_file_template(date, setnum, data_dir=data_dir)
-        return cls(fname, mode=mode)
-    
     def create_processed_data(self, mode:str='a') -> ProcessedData:
         pfile_path = Path(self.processed_file_template)
         self.close()
@@ -1328,11 +1352,10 @@ class ConsolidatedData(NewDataStorage):
 
 class ProcessedData(NewDataStorage):
 
-    @classmethod
-    def from_file(cls, date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY, mode: str='r') -> ConsolidatedData:
-        fname = get_processed_file_template(date, setnum, data_dir=data_dir)
-        return cls(fname, mode=mode)
-    
+    @staticmethod
+    def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
+        return get_processed_file_template(date, setnum, data_dir=data_dir)
+
     def initialize_processed_data_fields(self):
         """Initialize the datasets unique to the ProcessedData File.
         
@@ -1581,17 +1604,51 @@ class ProcessedData(NewDataStorage):
     def tones_table(self) -> h5py.Dataset:
         return self['vdsets/tones']
 
+    def _set_table_field(self, table_name: str, field_name: str, new_values: npt.NDArray):
+        """Utility function for setting table fields.
+        
+        Setting values through virtual datasets doesn't work for tables, so this is the
+        work around.
+        """
+        i_tone = 0
+        for i_chan in range(self.n_chan):
+            channel_group = self.get_channel_group(i_chan)
+            n_tones = channel_group.attrs['n_tones']
+            channel_group[table_name][field_name] = new_values[i_tone:i_tone + n_tones]
+            i_tone += n_tones
+    
+    @property
+    def tone_counts(self) -> npt.NDArray:
+        counts = []
+        for i_chan in range(self.n_chan):
+            counts.append(self.get_n_tones(i_chan))
+        return np.array(counts)
+    
+    def get_channel_index_from_tone_index(self, tone_index: int) -> int:
+        cumulative_counts = np.cumsum(self.tone_counts)
+        channel_index = np.searchsorted(cumulative_counts, tone_index, side='right')
+        return channel_index
+
     @property
     def baseband_freqs(self) -> npt.NDArray:
         return self.tones_table['baseband_freq']
+    
+    def set_baseband_freqs(self, new_freqs: npt.NDArray):
+        self._set_table_field('tones', 'baseband_freq', new_freqs)
 
     @property
     def tone_powers(self) -> npt.NDArray:
         return self.tones_table['power']
+    
+    def set_tone_powers(self, new_powers: npt.NDArray):
+        self._set_table_field('tones', 'power', new_powers)
 
     @property
     def chanmask(self) -> npt.NDArray:
         return self.tones_table['chanmask']
+    
+    def set_chanmask(self, new_chanmask: npt.NDArray):
+        self._set_table_field('tones','chanmask', new_chanmask)
 
     def onres_ind(self) -> npt.NDArray:
         return np.argwhere(self.chanmask == 1)
@@ -1602,27 +1659,42 @@ class ProcessedData(NewDataStorage):
     @property
     def detector_pol(self) -> npt.NDArray:
         return self.tones_table['polarization']
+    
+    def set_detector_pol(self, new_pols: npt.NDArray):
+        self._set_table_field('tones', 'polarization', new_pols)
 
     @property
     def detector_beam_ampl(self) -> npt.NDArray:
         return self.tones_table['beam_amplitude']
+    
+    def set_detector_beam_ampl(self, new_ampls: npt.NDArray):
+        self._set_table_field('tones','beam_amplitude', new_ampls)
 
     @property
     def detector_delta_x(self) -> npt.NDArray:
         return self.tones_table['delta_x']
+    
+    def set_detector_delta_x(self, new_delta_x: npt.NDArray):
+        self._set_table_field('tones','delta_x', new_delta_x)
 
     @property
     def detector_delta_y(self) -> npt.NDArray:
         return self.tones_table['delta_y']
 
+    def set_detector_delta_y(self, new_delta_y: npt.NDArray):
+        self._set_table_field('tones', 'delta_y', new_delta_y)
+
     @property
     def dfoverf_per_mK(self) -> npt.NDArray:
         return self.tones_table['dfoverf_per_mK']
+    
+    def set_dfoverf_per_mK(self, new_dfoverf_per_mK: npt.NDArray):
+        self._set_table_field('tones', 'dfoverf_per_mK', new_dfoverf_per_mK)
 
     @property
     def carrier_amplitudes(self) -> h5py.Dataset:
         return self['vdsets/carrier_amplitudes']
-
+    
     # Calibration information 
     @property
     def calibration_info(self) -> h5py.Dataset:
@@ -1631,282 +1703,31 @@ class ProcessedData(NewDataStorage):
     @property
     def adc_units_to_hz(self) -> npt.NDArray:
         return self.calibration_info['adc_units_to_hz']
+    
+    def set_adc_units_to_hz(self, new_adc_units_to_hz: npt.NDArray):
+        self._set_table_field('calibration_info', 'adc_units_to_hz', new_adc_units_to_hz)
 
     @property
     def IQ_to_gain_phase_angle(self) -> npt.NDArray:
         return self.calibration_info['IQ_to_gain_phase_angle']
+    
+    def set_IQ_to_gain_phase_angle(self, new_angle: npt.NDArray):
+        self._set_table_field('calibration_info', 'IQ_to_gain_phase_angle', new_angle)
 
     @property
     def IQ_to_freq_diss_angle(self) -> npt.NDArray:
         return self.calibration_info['IQ_to_freq_diss_angle']
+    
+    def set_IQ_to_freq_diss_angle(self, new_angle: npt.NDArray):
+        self._set_table_field('calibration_info', 'IQ_to_freq_diss_angle', new_angle)
 
     @property
     def df_per_mK(self) -> npt.NDArray:
         return self.calibration_info['df_per_mK']
-
-# class MapData(ProcessedDataLN):
-#     def __init__(self, file, level=3):
-#         super().__init__(file, level)
-
-#     @classmethod
-#     def from_file(cls, date: str, setnum: int, mode: str='r'):
-#         file_path = Path(get_map_file_template(date, setnum))
-#         md = cls(tables.File(file_path, mode=mode), level=3)
-#         md._load_dynamic_fields()
-#         return md
-
-#     @classmethod
-#     def from_processed_data(cls, pdata: ProcessedData) -> MapData:
-#         return cls.from_previous_level(pdata)
     
-#     @classmethod
-#     def from_previous_level(cls, previous: ProcessedData) -> MapData:
-#         """Create a map file with external links to level N-1."""
-#         file_path = Path(get_map_file_template(previous.date, previous.setnum))
-#         if not file_path.exists():
-#             file_path.touch(PERMISSIONS_ALL_FULL)
-#         file = tables.File(file_path, mode='w')
-#         new_data = cls(file)
-#         new_data.link_to_file(previous)
-#         new_data._load_dynamic_fields()
+    def set_df_per_mK(self, new_df_per_mK: npt.NDArray):
+        self._set_table_field('calibration_info', 'df_per_mK', new_df_per_mK)
 
-#         # Swap the previous file to read-only
-#         previous.close()
-#         previous.open('r')
-
-#         return new_data
-
-#     def setup_map_arrays(self, n_pix_x: int, n_pix_y: int, beammap_mode: bool=False):
-#         # Create empty arrays
-#         n_maps = N_POLARIZATION if not beammap_mode else self.n_tones
-#         self.create_group('/', 'map')
-#         self.create_array('/map', 'map_az', shape=(n_pix_x,), atom=tables.Float64Atom())
-#         self.create_array('/map', 'map_za', shape=(n_pix_y,), atom=tables.Float64Atom())
-#         self.create_array('/map', 'sum_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-#         self.create_array('/map', 'hits_map', shape=(n_maps, n_pix_x, n_pix_y), atom=tables.Float64Atom())
-#         self.create_array('/map', 'netd', shape=(self.n_channels, self.max_n_tones,), atom=tables.Float64Atom())
-#         good_samples = self.create_vlarray('/map', 'good_samples', expectedrows=self.n_channels, atom=tables.UInt32Atom())
-#         for i_chan in range(self.n_channels):
-#             good_samples.append(np.setdiff1d(np.arange(self.n_samples), self.interpolated_indices[i_chan]))
-    
-#     @ensure_path(1)
-#     def compile_to_file(self, path: Path, datasets: list[str]=None, mode: str='w') -> tables.File:
-#         if datasets is None:
-#             datasets = ALL_MAP_DATA_FIELDS
-#         return super().compile_to_file(path, datasets=datasets, mode=mode)
-
-#     @property
-#     def map_az(self) -> tables.Array:
-#         return self.get_node_value('map_az', where='/map')
-
-#     @property
-#     def map_za(self) -> tables.Array:
-#         return self.get_node_value('map_za', where='/map')
-
-#     @property
-#     def sum_map(self) -> tables.Array:
-#         return self.get_node_value('sum_map', where='/map')
-
-#     @property
-#     def hits_map(self) -> tables.Array:
-#         return self.get_node_value('hits_map', where='/map')
-    
-#     @property
-#     def netd(self) -> tables.Array:
-#         return self.get_node_value('netd', where='/map')
-
-#     @property
-#     def good_samples(self) -> tables.Array:
-#         return self.get_node_value('good_samples', where='/map')
-
-#     @property
-#     def map(self) -> npt.NDArray:
-#         div = tables.Expr('sum_map / hits_map', {'sum_map': self.sum_map, 'hits_map': self.hits_map})
-#         d = div.eval()
-#         return d
-
-#     @property
-#     def total_map(self) -> npt.NDArray:
-#         return np.sum(self.sum_map, axis=0) / np.sum(self.hits_map, axis=0)
-
-#     def get_netd_pol(self, polarization: int) -> npt.NDArray:
-#         return self.netd[self.detector_pol[:] == polarization]
-
-#     @property
-#     def integration_time(self) -> npt.NDArray:
-#         integration_times = [
-#             np.flip(
-#                 np.transpose(self.hits_map[i,::-1]) * \
-#                     np.median(self.get_netd_pol(pol)) ** 2. / self.fs,
-#                 1,
-#             )
-#             for i, pol in enumerate(range(1, N_POLARIZATION + 1))
-#         ]
-#         return integration_times
-
-#     def get_scaled_optical_image(self) -> npt.NDArray:
-#         opt_npix_per_tel_npix = DEFAULT_MAP_DPIX/OPTCAM_PIX_SIZE_DEGREES
-#         opt_npix_az = int(np.size(self.map_az)*opt_npix_per_tel_npix/2)*2
-#         opt_npix_za = int(np.size(self.map_za)*opt_npix_per_tel_npix/2)*2
-#         opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
-#         opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
-#         return self.optical_image[opt_center_za-int(opt_npix_za/2):opt_center_za+int(opt_npix_za/2),\
-#                                     opt_center_az-int(opt_npix_az/2):opt_center_az+int(opt_npix_az/2)]
-
-#     def get_combined_map(self, sigma: tuple[float,...]=GAUSSIAN_SIGMA) -> npt.NDArray:
-#         flagged_map_1 = gaussian_filter(self.map[0], sigma)
-#         flagged_map_2 = gaussian_filter(self.map[1], sigma)
-#         flagged_map_3 = gaussian_filter(self.total_map, sigma)
-#        # pdb.set_trace()
-#         # flagged_map_1 = np.copy(self.map[0])
-#         # flagged_map_2 = np.copy(self.map[1])
-#         # flagged_map_3 = np.copy(self.total_map)
-
-#         final_final_map1= np.copy(flagged_map_1)
-#         final_final_map2= np.copy(flagged_map_2)
-#         final_final_map3= np.copy(flagged_map_3)
-
-#         # Convert all nans to boolean True
-#         nan_map_1 = np.isnan(flagged_map_1)
-#         nan_map_2 = np.isnan(flagged_map_2)
-#         nan_map_3 = np.isnan(flagged_map_3)
-
-#         # Combine the boolean maps such that if any pixel is flagged in any map, it is flagged in the combined map
-#         combined_nan_map = np.logical_or(np.logical_or(nan_map_1, nan_map_2), nan_map_3)
-        
-#         # Get the coordinates of True values in the combined_nan_map
-#         flagged_positions = np.where(combined_nan_map)
-#         final_flagged_coords = list(zip(flagged_positions[0], flagged_positions[1]))
-
-#         # Apply this combined map to each of the final maps
-#         flagged_map_1[combined_nan_map] = 1
-#         flagged_map_2[combined_nan_map] = 1
-#         flagged_map_3[combined_nan_map] = 1
-
-#         flagged_map_1[flagged_map_1 != 1] = 0
-#         flagged_map_2[flagged_map_2 != 1] = 0
-#         flagged_map_3[flagged_map_3 != 1] = 0
-
-#         final_final_map1[combined_nan_map] = np.nan
-#         final_final_map2[combined_nan_map] = np.nan
-#         final_final_map3[combined_nan_map] = np.nan
-
-#         contour_levels = [1]
-
-#         final_final_map1= final_final_map1.flatten()
-#         final_final_map2= final_final_map2.flatten()
-#         final_final_map3= final_final_map3.flatten()
-
-#         final_final_map1 = [x for x in final_final_map1 if not np.isnan(x)]
-#         final_final_map2 = [x for x in final_final_map2 if not np.isnan(x)]
-#         final_final_map3 = [x for x in final_final_map3 if not np.isnan(x)]
-#         return flagged_map_1, flagged_map_2, flagged_map_3, contour_levels
-    
-#     def extent(self) -> tuple[float, float, float, float]:
-#         return (
-#             min(self.map_az)-DEFAULT_MAP_DPIX /2.,
-#             max(self.map_az)+DEFAULT_MAP_DPIX /2,
-#             max(self.map_za)+DEFAULT_MAP_DPIX /2.,
-#             min(self.map_za)-DEFAULT_MAP_DPIX /2.
-#         )
-
-#     def plot_individual(self, index: int):
-#         plot_map(self.map[index], self.map_az, self.map_za, self.extent(), title=f'Resonator {index}')
-
-#     def plot(self, show: bool=True, save: bool=True):
-
-#         hits_map = self.hits_map[:]
-#         mapp = self.map[:]
-#         total_map = self.total_map[:]
-
-#         valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
-#         map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
-#         for i_cov in np.arange(np.size(valid_cov_1[:,0])):
-#             map_goodcov_1[i_cov] = mapp[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
-#         valid_cov_2 = np.argwhere(hits_map[1] > 0.5 * np.median(hits_map[1]))
-#         map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
-#         for i_cov in np.arange(np.size(valid_cov_2[:,0])):
-#             map_goodcov_2[i_cov] = mapp[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
-
-#         netd_1 = self.get_netd_pol(1)
-#         netd_2 = self.get_netd_pol(2)
-#         cb_shrink = 0.95
-#         this_xlim = min(self.map_az),max(self.map_az)
-#         this_ylim = max(self.map_za),min(self.map_za)
-#         max_abs = np.max(np.abs(np.append(map_goodcov_1,map_goodcov_2)))*0.75
-#         valid_netd_1 = np.argwhere(netd_1 > 0)
-#         med_netd_1 = 1./np.sqrt(np.sum(1./netd_1[valid_netd_1]**2)/np.size(valid_netd_1))
-#         valid_netd_2 = np.argwhere(netd_2 > 0)
-#         med_netd_2 = 1./np.sqrt(np.sum(1./netd_2[valid_netd_2]**2)/np.size(valid_netd_2))
-
-#         #Sage's plotting code---------------------------------------------------------------------------------------------
-
-#         # contour_levels, final_map_1_filt, final_map_2_filt, final_map_tot_filt, flagged_map_1_filt, flagged_map_2_filt, \
-#         # flagged_map_tot_filt, final_flagged_coordinates = combined_map(map_1_filt_final_map, map_2_filt_final_map, map_tot_filt_final_map)
-#         flagged_map_1_filt, flagged_map_2_filt, flagged_map_tot_filt, contour_levels = self.get_combined_map()
-
-#     #    pw = plotWindow()
-#         # TODO: Make figure size change based on the size of the map
-#         this_fig = plt.figure(figsize=(15,7.5))
-#         plt.subplot(4,1,1)
-#         plt.imshow(np.flip(np.transpose(mapp[0][::-1]),1), \
-#         extent = self.extent(), \
-#         aspect='equal', vmin=-max_abs, vmax=max_abs, cmap='Blues_r')
-#         cb = plt.colorbar(shrink=cb_shrink)
-#         cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
-#         plt.contour(np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-#         extent=self.extent(), colors='red')
-#         plt.title(self.file_stub + '\n' + 'Local Time = ' + time.asctime(time.localtime(self.timestamp[0]-7500.)) + \
-#         ', Optical Visibility = ' + str(self.optical_visibility[()]) + ' meters \n' + 'NETD V-Pol (30Hz) = ' + "{:.1f}".format(med_netd_1) + \
-#         ' mK, ' + 'NETD H-Pol (30Hz) = ' + "{:.1f}".format(med_netd_2) + ' mK')
-#         plt.ylabel('ZA (degrees)')
-#         plt.xlim(this_xlim), plt.ylim(this_ylim)
-
-#         plt.subplot(4,1,2)
-#         plt.imshow(np.flip(np.transpose(mapp[1][::-1]),1), \
-#         extent = self.extent(), \
-#         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Reds_r')
-#         cb = plt.colorbar(shrink=cb_shrink)
-#         cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
-#         plt.contour(np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-#         extent=self.extent(), colors='black')
-#         plt.ylabel('ZA (degrees)')
-#         plt.xlim(this_xlim), plt.ylim(this_ylim)
-
-#         plt.subplot(4,1,3)
-#         plt.imshow(np.flip(np.transpose(total_map[::-1]),1), \
-#         extent = self.extent(), \
-#         aspect='equal', vmin=-max_abs,vmax=max_abs, cmap='Greys_r')
-#         cb = plt.colorbar(shrink=cb_shrink)
-#         cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
-#         plt.contour(np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0), levels=contour_levels, \
-#         extent=self.extent(), colors='red')
-#         plt.ylabel('ZA (degrees)')
-#         plt.xlim(this_xlim), plt.ylim(this_ylim)
-        
-#         plt.subplot(4,1,4)
-#         optical_image = self.get_scaled_optical_image()
-#         valid_opt_pix = np.where(optical_image < 240)
-#         opt_vmax = 255. #np.percentile(optical_image[valid_opt_pix], 90)
-#         opt_vmin = -255. #np.percentile(optical_image[valid_opt_pix], 10)
-#         plt.imshow(optical_image, \
-#                 extent = self.extent(), \
-#                 aspect='equal', vmax=255, vmin=-255)
-#         cb = plt.colorbar(shrink=cb_shrink)
-#         cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
-#         ##Need to match aspect ratio of plots (and get rid of colorbar).
-#         plt.xlabel('Azimuth (degrees)'), plt.ylabel('ZA (degrees)')
-#         plt.xlim(this_xlim), plt.ylim(this_ylim)
-            
-#         this_fig.subplots_adjust(wspace=0, hspace=0)
-#     #    pw.addPlot("Raw Image", this_fig)
-#         path = self.folder / (self.file_stub + '_Source_Finder_Image.png')
-#         if not path.exists():
-#             path.touch(PERMISSIONS_ALL_FULL)
-#         if save:
-#             this_fig.savefig(path, bbox_inches='tight')
-#         if show:
-#             plt.show()
     
 
 def plot_map(

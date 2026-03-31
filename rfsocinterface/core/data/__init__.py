@@ -10,6 +10,8 @@ from rfsocinterface.core.data.data import (
     plot_map,
 )
 from rfsocinterface.core.data.routines import (
+    ROUTINE_REGISTRY,
+    register_routine,
     DataRoutine,
     ProcessingStage,
     CleanTOD,
@@ -17,11 +19,13 @@ from rfsocinterface.core.data.routines import (
     LowPassFilter,
     RemoveElectronicsNoise,
     PsdBasis,
+    BinTODIntoMap,
+    PlotMap
 )
 # from rfsocinterface.core.data.map import (
 #     BinTODIntoMap,
 # )
-from rfsocinterface.core.data.pipeline import DataPipeline, RoutineApplier
+from rfsocinterface.core.data.pipeline import Pipeline
 from rfsocinterface.core.params import PARAM_FILE_N_TONE_ATTRIBUTES, initialize_params_file, update_params_file
 
 ROUTINE_NAME_MAP = {
@@ -38,17 +42,18 @@ __all__ = [
     HighPassFilter,
     LowPassFilter,
     RemoveElectronicsNoise,
-    # BinTODIntoMap,
-    DataPipeline,
-    RoutineApplier,
+    BinTODIntoMap,
+    Pipeline,
     ProcessingStage,
     DataRoutine,
     PsdBasis,
+    ROUTINE_REGISTRY,
     DEFAULT_MAP_DPIX,
     N_POLARIZATION,
     PARAM_FILE_N_TONE_ATTRIBUTES,
     DECIMATE_ORDER,
     BUTTER_ORDER,
+    register_routine,
     initialize_params_file,
     update_params_file,
     flag_outliers,

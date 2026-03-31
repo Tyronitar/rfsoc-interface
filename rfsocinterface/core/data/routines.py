@@ -23,6 +23,20 @@ from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, gener
 from rfsocinterface.core.data.data import DECIMATE_ORDER
 from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash, PERMISSIONS_ALL_FULL
 
+__all__ = (
+    'ROUTINE_REGISTRY',
+    'register_routine',
+    'DataRoutine',
+    'CutoffFilter',
+    'LowPassFilter',
+    'HighPassFilter',
+    'RemoveElectronicsNoise',
+    # 'ComputeNoisePSD',
+    'CleanTOD',
+    'BinTODIntoMap',
+    'PlotMap',
+)
+
 _logger = logging.getLogger(__name__)
 
 class ProcessingStage:
@@ -31,6 +45,17 @@ class ProcessingStage:
     PROCESSING_L1 = 'processing_l1'
     PROCESSING_L2 = 'processing_l2'
     POST_PROCESSING = 'post_processing'
+
+
+ROUTINE_REGISTRY = {}
+
+def register_routine(cls: type[DataRoutine]):
+    if not issubclass(cls, DataRoutine):
+        _logger.warning(f'Failed to register class {cls.__name__} as a DataRoutine; it does not inherit from DataRoutine.')
+        return
+    ROUTINE_REGISTRY[cls.name] = cls
+    _logger.debug(f'Registered data routine: {cls.__name__}')
+    return cls
 
 
 class DataRoutine:
@@ -151,6 +176,7 @@ class DataRoutine:
 # Begin Data Routine Catlog
 #
 
+@register_routine
 class CutoffFilter(DataRoutine):
     name = "CutoffFilter"
     version = "1.0"
@@ -188,6 +214,7 @@ class CutoffFilter(DataRoutine):
         return inputs
 
 
+@register_routine
 class LowPassFilter(CutoffFilter):
 
     name = 'LowPassFilter'
@@ -200,6 +227,7 @@ class LowPassFilter(CutoffFilter):
         super().__init__(filter_freq, btype='lowpass', datasets=datasets)
 
 
+@register_routine
 class HighPassFilter(CutoffFilter):
 
     name = 'HighPassFilter'
@@ -283,6 +311,7 @@ def decode_tone_indices(pdata: ProcessedData, i_chan: int, input_indices: npt.ND
     else:
         return input_indices
 
+@register_routine
 class RemoveElectronicsNoise(DataRoutine):
     name = 'RemoveElectronicsNoise'
 
@@ -377,6 +406,7 @@ class RemoveElectronicsNoise(DataRoutine):
         return inputs
 
 
+@register_routine
 class CleanTOD(DataRoutine):
     name = 'CleanTOD'
     version = 1.0
@@ -521,6 +551,7 @@ class ComputeNoisePSD(DataRoutine):
 #     #     map_y = data['arr_3']
 #     return n_pix_x, n_pix_y, map_x, map_y
 
+@register_routine
 class BinTODIntoMap(DataRoutine):
     name = 'BinTODIntoMap'
     version = "1.0"
@@ -614,12 +645,11 @@ class BinTODIntoMap(DataRoutine):
         map_group.attrs['dpix'] = dpix
         # TODO: fix this last part
         good_samples = map_group.create_dataset('good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32))
-        # for i_chan in range(self.n_channels):
-        #     good_samples.append(np.setdiff1d(np.arange(self.n_samples), self.interpolated_indices[i_chan]))
-
+        for i_chan in range(pdata.n_chan):
+            interpolated_samples = pdata.get_from_channel(i_chan, 'time_ordered_data/interpolated_samples')
+            good_samples[i_chan] = np.setdiff1d(np.arange(pdata.n_samples), interpolated_samples)
 
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
-
         dpix = self.params['dpix']
         n_pix_x, n_pix_y, map_az, map_za = self._get_map_size(
             pdata.detector_az,
@@ -648,7 +678,7 @@ class BinTODIntoMap(DataRoutine):
         hits_map = pdata['map/hits_map'][:]
         netd = pdata['map/netd'][:]
 
-        print('computing netd...')
+        _logger.info('BinTODIntoMap: Computing netd...')
         # Compute NETD values
         hp_filter_freq = self.params['hp_filter_freq']
         lp_filter_freq = self.params['lp_filter_freq']
@@ -656,7 +686,7 @@ class BinTODIntoMap(DataRoutine):
             this_freq, this_psd = signal.periodogram(data[i_tone, :], pdata.fs, window=wind)
             valid_freq = np.where((this_freq > hp_filter_freq) & (this_freq < lp_filter_freq))
             netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
-        print('netd done!')
+        _logger.info('BinTODIntoMap: Done computing netd')
 
         # Get rid of tones with bad weights
         med_netd_cut_threshold = self.params['med_netd_cut_threshold']
@@ -680,10 +710,10 @@ class BinTODIntoMap(DataRoutine):
             tones_to_map = np.argwhere(new_chanmask == 1).flatten()
 
         # Create map
-        print('creating map...')
+        _logger.info('BinTODIntoMap: Creating map...')
         for n_loop, i_tone in enumerate(tones_to_map):
             if n_loop == np.size(tones_to_map) // 2:
-                print('halfway done...')
+                _logger.info('BinTODIntoMap: Halfway done creating map...')
             if beam_map_mode:
                 map_idx = i_tone
                 weight = 1.
@@ -704,8 +734,9 @@ class BinTODIntoMap(DataRoutine):
             y_ind = y_ind.astype('int64')
 
             #eliminate samples outside the map
-            # good_samples = md.good_samples[i_chan, :]
-            good_samples = np.arange(pdata.n_samples)  # TODO: Update this after fixing good_samples
+            i_chan = pdata.get_channel_index_from_tone_index(i_tone)
+            good_samples = pdata['map/good_samples'][i_chan][:]
+            # good_samples = np.arange(pdata.n_samples)  # TODO: Update this after fixing good_samples
             valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
                 np.logical_and(x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x), \
                 np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
@@ -715,19 +746,16 @@ class BinTODIntoMap(DataRoutine):
             for time_sample in good_samples:
                 sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
                 hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
-        i_tone = 0
-        for i_chan in range(pdata.n_chan):
-            channel_group = pdata.get_channel_group(i_chan)
-            n_tones = channel_group.attrs['n_tones']
-            channel_group['tones']['chanmask'] = new_chanmask[i_tone:i_tone + n_tones]
-            i_tone += n_tones
+        pdata.set_chanmask(new_chanmask)
         pdata['map/hits_map'][:] = hits_map
         pdata['map/sum_map'][:] = sum_map
         pdata['map/netd'][:] = netd
+        _logger.info('BinTODIntoMap: Done creating map.')
 
         return list(self.produces) + ['/vdsets/chanmask']
 
 
+@register_routine
 class PlotMap(DataRoutine):
     name = 'PlotMap'
     version = '1.0'
@@ -757,6 +785,7 @@ class PlotMap(DataRoutine):
             max_abs_threshold: float=0.75,
             save: bool=True,
             show: bool=False,
+            overwrite: bool=True,
     ):
         super().__init__(
             gaussian_sigma=gaussian_sigma,
@@ -765,17 +794,32 @@ class PlotMap(DataRoutine):
             max_abs_threshold=max_abs_threshold,
             save=save,
             show=show,
+            overwrite=overwrite,
         )
     
     def inputs(self, pdata: ProcessedData):
         return list(self.requires)
     
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
+        reset_arrays = self._intialize_arrays(pdata)
+        if reset_arrays:
+            self._get_combined_map(pdata)
+        self.plot(pdata)
+
+        if reset_arrays:
+            return list(self.produces)
+        return []
+
+    def _intialize_arrays(self, pdata: ProcessedData) -> bool:
         if pdata.has('map/plotting', exact_match=True):
-            _logger.warning('Plotting group already exists in the file; overwriting datasets.')
+            if not self.params['overwrite']:
+                # Specified not to overwrite existing plotting datasets, so just
+                # plot the data without recomputing the maps.
+                return False
+            _logger.info('Plotting group already exists in the file; overwriting datasets.')
             del pdata['map/plotting']
-        hits_map = pdata['map/hits_map']
         sum_map = pdata['map/sum_map']
+        hits_map = pdata['map/hits_map']
         mapp = pdata.create_dataset(
             '/map/plotting/map',
             shape=sum_map.shape,
@@ -783,16 +827,13 @@ class PlotMap(DataRoutine):
         )
         total_map = pdata.create_dataset(
             '/map/plotting/total_map',
-            shape=hits_map.shape[1:],
+            shape=sum_map.shape[1:],
             dtype=np.float64,
         )
         with np.errstate(divide='ignore', invalid='ignore'):
             mapp[:] = sum_map[:] / hits_map[:]
             total_map[:] = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
-        self._get_combined_map(pdata)
-        self.plot(pdata)
-
-        return list(self.produces)
+        return True
 
     def _get_combined_map(self, pdata: ProcessedData) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         sigma = self.params['gaussian_sigma']
