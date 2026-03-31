@@ -98,23 +98,23 @@ def find_peaks(data: ProcessedData, primary_direction: str='az'):
 if __name__ == '__main__':
     from rfsocinterface.core.data.routines import *
     import pdb
-    date = '20260320'
+    date = '20260309'
     setnum = 1010
 
-    lp_filter_freq = 30
+    lp_filter_freq = 15
     hp_filter_freq= 0.25
     ds_factor = 8
 
-    noise_removal = RemoveElectronicsNoise()
+    noise_removal = RemoveElectronicsNoise(max_modes=2)
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq)
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq)
     clean_tod = CleanTOD()
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        az_trim=0,
-        za_trim=0,
-        dpix=0.1,
+        # az_trim=0,
+        # za_trim=0,
+        # dpix=0.03,
     )
     plotter = PlotMap(show=True)
 
@@ -126,7 +126,7 @@ if __name__ == '__main__':
         bin_tod_to_map,
         plotter,
     ])
-    pdata = pipeline.from_tod(date, setnum, ds_factor)
-    # pdata = ProcessedData.load(date, setnum)
-    # pipeline.run(pdata)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor)
+    pdata = ProcessedData.load(date, setnum)
+    pipeline.run(pdata)
     pdb.set_trace()

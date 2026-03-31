@@ -651,22 +651,21 @@ class BinTODIntoMap(DataRoutine):
 
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
         dpix = self.params['dpix']
+        beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = self._get_map_size(
             pdata.detector_az,
             pdata.detector_za,
             self.params['az_trim'],
             self.params['za_trim'],
             dpix,
+            beam_map_mode=beam_map_mode,
         )
-        beam_map_mode = self.params['beam_map_mode']
         n_maps = N_POLARIZATION if not beam_map_mode else self.n_tones
         self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za
         detector_az = pdata.detector_az
         detector_za = pdata.detector_za
-
-        wind = signal.get_window('hamming', pdata.n_samples)
 
         match self.params['dataset']:
             case 'data_mK':
@@ -678,11 +677,30 @@ class BinTODIntoMap(DataRoutine):
         hits_map = pdata['map/hits_map'][:]
         netd = pdata['map/netd'][:]
 
-        _logger.info('BinTODIntoMap: Computing netd...')
+        chanmask = pdata.chanmask[:]
+        bad_tones = [
+            1, 3, 223, 278, 299,
+            303, 10, 69, 192, 820,
+            263, 483, 172, 574, 426,
+            569, 297, 167, 15, 717,
+            487, 842, 453, 13, 719,
+            92, 571, 630, 84, 220,
+            364, 516, 74, 726, 292,
+            519, 812, 302, 683, 537,
+            294, 534, 256, 661, 529,
+            737, 54, 782, 567, 103,
+            330, 133, 809, 460, 589,
+            387, 538, 213, 120, 79,
+            783, 612, 121, 117, 749
+        ]
+        chanmask[bad_tones] = -1
+
         # Compute NETD values
+        _logger.info('BinTODIntoMap: Computing netd...')
+        wind = signal.get_window('hamming', pdata.n_samples)
         hp_filter_freq = self.params['hp_filter_freq']
         lp_filter_freq = self.params['lp_filter_freq']
-        for i_tone in range(pdata.n_tones):
+        for i_tone in np.where(chanmask == 1)[0]:
             this_freq, this_psd = signal.periodogram(data[i_tone, :], pdata.fs, window=wind)
             valid_freq = np.where((this_freq > hp_filter_freq) & (this_freq < lp_filter_freq))
             netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
@@ -690,24 +708,23 @@ class BinTODIntoMap(DataRoutine):
 
         # Get rid of tones with bad weights
         med_netd_cut_threshold = self.params['med_netd_cut_threshold']
-        new_chanmask = pdata.chanmask
-        good_idx = np.argwhere(new_chanmask == 1).flatten()
+        good_idx = np.argwhere(chanmask == 1).flatten()
         good_netd = netd[good_idx]
-        new_chanmask[good_idx] = np.where(good_netd > med_netd_cut_threshold * np.nanmedian(good_netd), -1, new_chanmask[good_idx])
+        chanmask[good_idx] = np.where(good_netd > med_netd_cut_threshold * np.nanmedian(good_netd), -1, chanmask[good_idx])
 
-        good_idx = np.argwhere(new_chanmask == 1).flatten()
+        good_idx = np.argwhere(chanmask == 1).flatten()
         good_netd = netd[good_idx]
         netd_med = np.median(np.log10(good_netd))
         netd_std = np.std(np.log10(good_netd))
-        new_chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, new_chanmask[good_idx])
-        new_chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, new_chanmask[good_idx])
+        chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, chanmask[good_idx])
+        chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx])
 
-        netd[new_chanmask != 1] = 0
+        netd[chanmask != 1] = 0
 
         if beam_map_mode:
             tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
         else:
-            tones_to_map = np.argwhere(new_chanmask == 1).flatten()
+            tones_to_map = np.argwhere(chanmask == 1).flatten()
 
         # Create map
         _logger.info('BinTODIntoMap: Creating map...')
@@ -746,7 +763,7 @@ class BinTODIntoMap(DataRoutine):
             for time_sample in good_samples:
                 sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
                 hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
-        pdata.set_chanmask(new_chanmask)
+        pdata.set_chanmask(chanmask)
         pdata['map/hits_map'][:] = hits_map
         pdata['map/sum_map'][:] = sum_map
         pdata['map/netd'][:] = netd
