@@ -512,9 +512,9 @@ class MakeVideo(DataRoutine):
         total_map = np.nansum(this_map, axis=1)
 
         smoothed_map = np.transpose(total_map[..., ::-1], (0, 2, 1))
-        # gaussian = np.ones((1,3,3)) / 16
-        # gaussian[0, 1, 1] = 0.25
-        # smoothed_map = signal.convolve(smoothed_map, gaussian)
+        gaussian = np.ones((1,3,3)) / 16
+        gaussian[0, 1, 1] = 0.25
+        smoothed_map = signal.convolve(smoothed_map, gaussian)
         max_abs = 0.75 * np.max(np.abs(smoothed_map))
         vmax = max_abs
         vmin = -max_abs
@@ -536,6 +536,7 @@ class MakeVideo(DataRoutine):
             interval=1000 * self.block_size_s,
             repeat_delay=2000,
         )
+        an.save('video.gif')
         plt.show()
         pdb.set_trace()
             

@@ -229,8 +229,10 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
-    date = '20260320'
-    setnums = [1006]
+    date = '20260309'
+    setnums = [1013]
+    # setnums = [1010]  # On lab computer
+    # setnums = [1006]
 
     # setnums = [1013]
     # setnums = range(1009, 1016)
