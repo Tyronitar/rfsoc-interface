@@ -544,6 +544,10 @@ class MakeVideo(DataRoutine):
                     video_timestamp[i_block] = this_timestamp
                     closest_optical_frame = argclosest(optical_timestamp, this_timestamp)
                     optical_video[i_block] = full_optical_video[..., closest_optical_frame]
+        
+        # NOTE: This doesn't work properly because they're 8 bit integers
+        optical_video *= 2
+        np.clip(optical_video, 0, 255, out=optical_video)
 
         def add_colorbar_outside(mappable, ax, position='right', orientation=None):
             if orientation is None:
