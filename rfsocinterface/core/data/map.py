@@ -13,6 +13,7 @@ import matplotlib.animation as animation
 
 from rfsocinterface.core.data.data import DEFAULT_MAP_DPIX, MapData, ProcessedData
 from rfsocinterface.core.data.routines import DataRoutine, ProcessingStage, DataRoutine
+from rfsocinterface.core.utils import argclosest
 
 class BasicMapRemoval(DataRoutine):
     def forward(self, map: MapData) -> MapData:
@@ -212,9 +213,10 @@ def compute_kernel(
     dpix: float=DEFAULT_MAP_DPIX,
     sigma: float=0.087/2.3,
 ):
-    kernel_radius = int(r0 // dpix)  
-    kernel_size = kernel_radius * 2 + 1  # Number of pixels to include in the kernel
-    kernel_pos = np.linspace(-r0, r0, kernel_radius * 2 + 1)
+    kernel_pos = np.arange(-r0, r0 + dpix, dpix)
+    if 0 not in kernel_pos:
+        kernel_pos = np.insert(kernel_pos, np.searchsorted(kernel_pos, 0), 0)
+    kernel_size =  kernel_pos.size
     pos = np.array(np.meshgrid(kernel_pos, kernel_pos)).T.reshape(-1, 2)
     distances = cdist(pos, np.atleast_2d([0, 0]), 'sqeuclidean').reshape(kernel_size, kernel_size)
     kernel = np.exp(-np.pow(distances / (2 * sigma ** 2), 2))
@@ -385,6 +387,7 @@ class MakeVideo(DataRoutine):
         med_netd_cut_threshold: float=3.,
         block_size_s: float=0.25,
         dpix: float=0.08,
+        r0: float=0.15
     ):
         super().__init__()
         self.hp_filter_freq = hp_filter_freq
@@ -394,6 +397,7 @@ class MakeVideo(DataRoutine):
         self.za_trim = za_trim
         self.block_size_s = block_size_s
         self.dpix = dpix
+        self.r0 = r0
     
     def forward(self, md: MapData):
         # Bin along time dimension into time chunks
@@ -418,7 +422,7 @@ class MakeVideo(DataRoutine):
 
         wind = signal.get_window('hamming', md.n_samples)
 
-        kernel = compute_kernel()
+        kernel = compute_kernel(r0=self.r0, dpix=self.dpix)
 
         bad_tones = [
             1, 3, 223, 278, 299,
@@ -503,35 +507,68 @@ class MakeVideo(DataRoutine):
                     sum_map[i_block, map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
                     hits_map[i_block, map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
 
-
+        # Convolve with the kernel to smooth the maps to deal with pixels that have very
+        # few hits and thus are very noisy. 
         for i_block in range(n_blocks):
             for map_idx in range(sum_map.shape[1]):
                 sum_map[i_block, map_idx] = signal.convolve2d(sum_map[i_block, map_idx], kernel, mode='same')
                 hits_map[i_block, map_idx] = signal.convolve2d(hits_map[i_block, map_idx], kernel, mode='same')
+
         this_map = sum_map / hits_map
         total_map = np.nansum(this_map, axis=1)
 
         smoothed_map = np.transpose(total_map[..., ::-1], (0, 2, 1))
-        gaussian = np.ones((1,3,3)) / 16
-        gaussian[0, 1, 1] = 0.25
-        smoothed_map = signal.convolve(smoothed_map, gaussian)
+        # gaussian = np.ones((1,3,3)) / 16
+        # gaussian[0, 1, 1] = 0.25
+        # smoothed_map = signal.convolve(smoothed_map, gaussian)
         max_abs = 0.75 * np.max(np.abs(smoothed_map))
         vmax = max_abs
         vmin = -max_abs
 
-        def get_image_i(i: int) -> npt.NDArray:
-            return smoothed_map[i]
-            # im = np.flip(
-            # gaussian = np.ones((3,3)) / 16
-            # gaussian[1, 1] = 0.25
-            # return signal.convolve2d(im, gaussian)
+        if np.size(md.optical_image) == 0:
+            print('No optical image found, skipping optical video...')
+            optical_video = np.zeros_like(smoothed_map, dtype=np.uint8)
+        else:
+            full_optical_video = md.get_scaled_optical_image(self.dpix)
+            if full_optical_video.ndim == 3:
+                optical_video = np.repeat(full_optical_video[np.newaxis, ...], n_blocks, axis=0)
+            else:
+                # There are multiple frames of the optical image (i.e. it's a video)
+                optical_video = np.zeros((n_blocks, *full_optical_video.shape[:-1]), dtype=np.uint8)
+                optical_timestamp = md.get_node_value('optical_timestamp')
+                video_timestamp = np.zeros(n_blocks)
+                for i_block, block_end in enumerate(blocks[1:]):
+                    block_slice = slice(blocks[i_block], block_end)
+                    timestamp_block = md.timestamp[block_slice]
+                    this_timestamp = np.mean(timestamp_block)
+                    video_timestamp[i_block] = this_timestamp
+                    closest_optical_frame = argclosest(optical_timestamp, this_timestamp)
+                    optical_video[i_block] = full_optical_video[..., closest_optical_frame]
 
+        def add_colorbar_outside(mappable, ax, position='right', orientation=None):
+            if orientation is None:
+                if position in ['right', 'left']:
+                    orientation = 'vertical'
+                else:
+                    orientation = 'horizontal'
+            fig = ax.get_figure()
+            bbox = ax.get_position()
+            cax = fig.add_axes([bbox.x1 + 0.01, bbox.y0, 0.01, bbox.height])
+            fig.colorbar(mappable, cax=cax, location='right', orientation='vertical')
         
-        im = plt.imshow(get_image_i(0), vmin=vmin, vmax=vmax, animated=True, cmap='Greys_r')
-        plt.colorbar()
+        fig, axes = plt.subplots(2, 1, figsize=(5, 10), sharex=True)
+        im_mm = axes[0].imshow(smoothed_map[0], vmin=vmin, vmax=vmax, animated=True, cmap='Greys_r', extent=md.extent(self.dpix), aspect='equal')
+        im_opt = axes[1].imshow(optical_video[0], animated=True, extent=md.extent(self.dpix), aspect='equal')
+        fig.subplots_adjust(wspace=0, hspace=0)
+        add_colorbar_outside(im_mm, axes[0], 'right')
+
+        def animation_func(i: int):
+            im_mm.set_array(smoothed_map[i])
+            im_opt.set_array(optical_video[i])
+
         an = animation.FuncAnimation(
             plt.gcf(),
-            lambda i: im.set_array(get_image_i(i)),
+            animation_func,
             frames=total_map.shape[0],
             interval=1000 * self.block_size_s,
             repeat_delay=2000,

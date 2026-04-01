@@ -80,6 +80,7 @@ STATIC_PROCESSED_DATA_FIELDS = [
     'detector_pol',
     'optical_visibility',
     'optical_image',
+    'optical_timestamp',
     'interpolated_indices',
 ]
 
@@ -1102,6 +1103,7 @@ class ProcessedDataL0(BaseProcessedData):
             else:
                 # pfile.create_array(global_data_group, 'optical_image', obj=optcam_file.root.optical_video[:, :, :, 0])
                 pfile.create_array(global_data_group, 'optical_image', obj=optcam_file.root.optical_video[:])
+                pfile.create_array(global_data_group, 'optical_timestamp', obj=optcam_file.root.timestamp[:])
             optcam_file.close()
         else:
             pfile.create_array(global_data_group, 'optical_image', obj=np.array([]))
@@ -1373,6 +1375,8 @@ class ProcessedDataL1(ProcessedData):
         self.create_external_link(global_data_group, 'detector_beam_ampl', f'{target.filename}:/{target.detector_beam_ampl._v_pathname}')
         self.create_external_link(global_data_group, 'optical_visibility', f'{target.filename}:/{target.optical_visibility._v_pathname}')
         self.create_external_link(global_data_group, 'optical_image', f'{target.filename}:/{target.optical_image._v_pathname}')
+        if 'optical_timestamp' in target.global_data_group:
+            self.create_external_link(global_data_group, 'optical_timestamp', f'{target.filename}:/{target.global_data_group.optical_timestamp._v_pathname}')
         
     
     @classmethod
@@ -1654,6 +1658,8 @@ class ExternalLinkProcessedData(ProcessedData):
 
         # Create external links for all datasets
         for node_name in DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS:
+            if node_name == 'optical_timestamp' and not node_name in target.global_data_group:
+                continue
             node = target.get_node(node_name)
             parent_path = node._v_parent._v_pathname
             if isinstance(node, ExternalLink):
@@ -1816,8 +1822,8 @@ class MapData(ProcessedDataLN):
         ]
         return integration_times
 
-    def get_scaled_optical_image(self) -> npt.NDArray:
-        opt_npix_per_tel_npix = DEFAULT_MAP_DPIX/OPTCAM_PIX_SIZE_DEGREES
+    def get_scaled_optical_image(self, dpix: float=DEFAULT_MAP_DPIX) -> npt.NDArray:
+        opt_npix_per_tel_npix = dpix/OPTCAM_PIX_SIZE_DEGREES
         opt_npix_az = int(np.size(self.map_az)*opt_npix_per_tel_npix/2)*2
         opt_npix_za = int(np.size(self.map_za)*opt_npix_per_tel_npix/2)*2
         opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
@@ -1874,12 +1880,12 @@ class MapData(ProcessedDataLN):
         final_final_map3 = [x for x in final_final_map3 if not np.isnan(x)]
         return flagged_map_1, flagged_map_2, flagged_map_3, contour_levels
     
-    def extent(self) -> tuple[float, float, float, float]:
+    def extent(self, dpix: float=DEFAULT_MAP_DPIX) -> tuple[float, float, float, float]:
         return (
-            min(self.map_az)-DEFAULT_MAP_DPIX /2.,
-            max(self.map_az)+DEFAULT_MAP_DPIX /2,
-            max(self.map_za)+DEFAULT_MAP_DPIX /2.,
-            min(self.map_za)-DEFAULT_MAP_DPIX /2.
+            min(self.map_az)-dpix /2.,
+            max(self.map_az)+dpix /2,
+            max(self.map_za)+dpix /2.,
+            min(self.map_za)-dpix /2.
         )
 
     def plot_individual(self, index: int):

@@ -229,10 +229,11 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
-    date = '20260309'
-    setnums = [1013]
+    # date = '20260309'
+    # setnums = [1013]
+    date = '20260320'
+    setnums = [1006]  # On telescope computer
     # setnums = [1010]  # On lab computer
-    # setnums = [1006]
 
     # setnums = [1013]
     # setnums = range(1009, 1016)
@@ -260,7 +261,7 @@ if __name__ == '__main__':
     lpfilt = LowPassFilter(lp_filt_freq)
     cleaner = CleanTOD()
     binner = BinTODIntoMap()
-    video = MakeVideo()
+    video = MakeVideo(r0=0.15, dpix=0.08, block_size_s=0.1)
     # psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS)
 
     pipeline = DataPipeline(
