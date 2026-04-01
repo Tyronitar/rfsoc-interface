@@ -148,7 +148,7 @@ class FrameProducer(threading.Thread):
     #     self.cam.AcquisitionMode.set('Continuous')
 
     def run(self):
-        _tele_logger.info('Thread \'FrameProducer({})\' started.'.format(self.cam.get_id()))
+        _tele_logger.debug('Thread \'FrameProducer({})\' started.'.format(self.cam.get_id()))
 
         try:
             with self.cam:
@@ -167,7 +167,7 @@ class FrameProducer(threading.Thread):
         finally:
             try_put_frame(self.frame_queue, self.cam, None)
 
-        _tele_logger.info('Thread \'FrameProducer({})\' terminated.'.format(self.cam.get_id()))
+        _tele_logger.debug('Thread \'FrameProducer({})\' terminated.'.format(self.cam.get_id()))
 
 
 def make_controller(
