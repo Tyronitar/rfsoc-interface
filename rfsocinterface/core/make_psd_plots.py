@@ -18,7 +18,8 @@ from rfsocinterface.core.utils import ordinal
 TICK_SIZE = 20
 AXES_LABEL_SIZE = 22
 TITLE_SIZE = 26
-LEGEND_SIZE = 22
+LEGEND_SIZE = 20
+LEGEND_LABEL_SPACING = 0.15
 
 def plot_psd(
         ax: plt.Axes,
@@ -67,7 +68,7 @@ def plot_psd(
         case 'purple':
             med_color = 'purple'
             fill_color = 'violet'
-        # case 30:
+        # case 31:
         #     med_color = 'g'
         #     fill_color = 'lightgreen'
 
@@ -325,7 +326,7 @@ if __name__ == "__main__":
     #     block_length=110,
     # )
     # psd_routine = ComputeNoisePSD(
-    #     PsdBasis.GAIN_PHASE,
+    #     PsdBasis.FREQ_DISS,
     #     cut_time=2,
     #     tone_indices='onres',
     # )
@@ -333,7 +334,17 @@ if __name__ == "__main__":
     data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
     # psd_routine(data_l2)
     freq_onres = data_l2.get_node_value('freq', '/psd')[:]
-    psd_onres = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
+    psd_onres = data_l2.get_node_value('psd_freq_diss', '/psd')[:]
+    psd_onres_freq = psd_onres[np.newaxis, 0]
+    psd_onres_diss = psd_onres[np.newaxis, 1]
+
+    # Convert back to dBc/Hz
+    # Multiply psd by resonance freq to get Hz
+    # Multiply by adc/Hz to get to adc units
+    # divide by carrier amplitude squared to get to dBc
+    f = data_l2.baseband_freqs[data_l2.onres_ind] + data_l2.lo_freq
+    psd_adc = psd_onres * (f[np.newaxis, :, np.newaxis] * data_l2.adc_units_to_hz[data_l2.onres_ind][np.newaxis, :, np.newaxis]) ** 2
+    psd_onres = psd_adc / (data_l2.carrier_amplitude_norm() ** 2)
 
     data_l2.close()
     # data_l1.close()
@@ -379,7 +390,7 @@ if __name__ == "__main__":
         ax.set_yscale('linear')
         ax.set_xlim(*XLIM)
         # ylim = (-116, -75)  # Lab
-        ylim = (-108, -70)  # Telescope
+        ylim = (-108, -68)  # Telescope
         ax.set_ylim(*ylim)
         ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
         ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
@@ -389,19 +400,20 @@ if __name__ == "__main__":
         plot_psd(ax, 'red', 'IF Loopback', freq_if, psd_if, flat_spectrum=True)
         
         # plot_psd(ax, 'purple', 'KID - Dark in Lab', freq_onres, psd_onres, flat_spectrum=True, flat_spectrum_search_bounds=(150, 250))
-        plot_psd(ax, 'purple', 'KID: SKIPR on Sky', freq_onres, psd_onres, flat_spectrum=True, flat_spectrum_search_bounds=(150, 250))
+        plot_psd(ax, 'purple', 'On Sky Freq', freq_onres, psd_onres[np.newaxis, 0], flat_spectrum=True, flat_spectrum_search_bounds=(150, 250))
+        plot_psd(ax, 'orange', 'On Sky Diss', freq_onres, psd_onres[np.newaxis, 1], flat_spectrum=True, flat_spectrum_search_bounds=(150, 250))
 
         plot_psd(ax, 'turquoise', 'Off Resonance', freq_offres, psd_offres, flat_spectrum=True)
 
         ylim = ax.get_ylim()
         # ax.text(1.4 * XLIM[0], ylim[0] + 2, f'100 Tones', fontsize=TITLE_SIZE)
-        ax.text(1.4 * XLIM[0], ylim[0] + 2, f'869 Tones', fontsize=TITLE_SIZE)
+        ax.text(1.4 * XLIM[0], ylim[0] + 2, f'SKIPR: 869 Tones', fontsize=TITLE_SIZE)
         ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
-        order = [0, 2, 1]
+        order = [0, 3, 1, 2]
         handles, labels = ax.get_legend_handles_labels()
         reordered_handles = [handles[i] for i in order]
         reordered_labels = [labels[i] for i in order]
-        ax.legend(reordered_handles, reordered_labels, loc='upper right', fontsize=LEGEND_SIZE)
+        ax.legend(reordered_handles, reordered_labels, loc='upper right', fontsize=LEGEND_SIZE, labelspacing=LEGEND_LABEL_SPACING)
         fig.tight_layout()
         pdf.savefig()
     plt.show()
