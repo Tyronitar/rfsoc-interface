@@ -36,6 +36,11 @@ class RoutineApplier:
             _logger.debug(f'Running routine: {routine.__class__.__name__}')
             routine(input)
             self.pipeline.add_to_receipt(routine.get_receipt_entry())
+            # print(routine)
+            # plt.plot(input.data_mK[0])
+            # plt.title(f'data_mK after applying routine {routine.__class__.__name__}')
+            # plt.show()
+            # pdb.set_trace()
 
 
 class DataPipeline:
@@ -230,7 +235,7 @@ if __name__ == '__main__':
 
     #Telescope Testing
     date = '20260309'
-    setnums = [1013]
+    setnums = [1010]
     # date = '20260320'
     # setnums = [1006]  # On telescope computer
     # setnums = [1010]  # On lab computer
@@ -250,7 +255,7 @@ if __name__ == '__main__':
 
     dataset = 'data_mK'
     beam_map_mode = False
-    do_electronics_noise_removal = True
+    do_electronics_noise_removal = True 
     primary_direction = 'az'
 
     ds_factor = 8
@@ -277,8 +282,8 @@ if __name__ == '__main__':
     pipeline.add_routine(lpfilt)
     # pipeline.add_routine(psd)
     pipeline.add_routine(cleaner)
-    # pipeline.add_routine(binner)
-    pipeline.add_routine(video)
+    pipeline.add_routine(binner)
+    # pipeline.add_routine(video)
 
     for setnum in setnums:
         data = pipeline.run_pipeline(date, setnum)

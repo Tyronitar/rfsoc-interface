@@ -292,7 +292,7 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     """
     # subtract the mean from each detector
     # data_meansub = data - np.mean(data, axis=2)[:, :, np.newaxis]
-    deproj = data - np.mean(data, axis=2)[:, :, np.newaxis]
+    deproj = data - np.mean(data, axis=-1, keepdims=True)
     n_tones = data.shape[1]
 
     # select only the middle few detectors
@@ -350,7 +350,9 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
     """
     filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
     # data_lp = signal.sosfiltfilt(filt_sos, data)
-    data_lp = data
+    data_lp = data[:]
+    data_lp -= np.mean(data_lp, axis=-1, keepdims=True)
+    data_lp = signal.sosfiltfilt(filt_sos, data_lp)
 
     templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
     n_modes = templates.shape[1]
@@ -362,6 +364,12 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
         data = data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # N_chan x N_detector x N_samples
         # data_lp = signal.sosfiltfilt(filt_sos, data)
         data_lp = data
+    # fig, axes = plt.subplots(2, 2)
+    # for row in range(2):
+    #     for col in range(2):
+    #         axes[row, col].plot(templates[row, col])
+    # plt.show()
+    # pdb.set_trace()
 
     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
     # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
@@ -373,7 +381,7 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
     # numerator1 = np.einsum('ijk,ik->ij', deproj_lp, templates[:, 1])  # N_chan x N_detector
     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
     # clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
-    return data 
+    return data_lp
 
 
 def remove_electronics_noise_tables(
@@ -1546,6 +1554,15 @@ class ProcessedDataL1(ProcessedData):
 
         # Create calibrated data
         new_generate_calibrated_data(new_data)
+        # fig, axes = plt.subplots(1, 3)
+        # axes[0].plot(data_IQ[0, 0])
+        # axes[0].set_title('data_I')
+        # axes[1].plot(data_gain_phase[0, 0])
+        # axes[1].set_title('data_gain')
+        # axes[2].plot(data_mK[0])
+        # axes[2].set_title('data_mK')
+        # plt.show()
+        # pdb.set_trace()
         
         return new_data
 
