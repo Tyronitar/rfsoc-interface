@@ -96,6 +96,8 @@ def find_peaks(data: ProcessedData, primary_direction: str='az'):
 
 
 if __name__ == '__main__':
+    import matplotlib as mpl
+    mpl.use('TkAgg')
     from rfsocinterface.core.data.routines import *
     import pdb
     date = '20260309'
@@ -120,13 +122,13 @@ if __name__ == '__main__':
 
     pipeline = Pipeline([
         noise_removal,
-        lp_filter,
         hp_filter,
+        lp_filter,
         clean_tod,
         bin_tod_to_map,
         plotter,
     ])
-    # pdata = pipeline.from_tod(date, setnum, ds_factor)
-    pdata = ProcessedData.load(date, setnum)
-    pipeline.run(pdata)
+    pdata = pipeline.from_tod(date, setnum, ds_factor)
+    # pdata = ProcessedData.load(date, setnum)
+    # pipeline.run(pdata)
     pdb.set_trace()

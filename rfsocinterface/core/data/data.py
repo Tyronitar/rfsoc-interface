@@ -572,7 +572,7 @@ def interpolate_timestamp_streaming(
         stop = min(start + chunk_size, N)
 
         # Read chunks as plain numpy arrays
-        x_chunk = packet_indices[start:stop]
+        x_chunk = np.uint64(packet_indices[start:stop])
         y_chunk = raw_timestamp[start:stop]
 
         # Shift indices so regression is well-conditioned
@@ -689,8 +689,10 @@ def get_detector_positions(
     dy: npt.NDArray,
     elevation_angle: float
 ) -> npt.NDArray:
+    x = timestamp[:]
+    xp = tel_timestamp[:]
 
-    idx, w = build_interp_map(timestamp, tel_timestamp)
+    idx, w = build_interp_map(x, xp)
 
     chunk_size = output_detector_az.chunks[-1]
     n_samples = timestamp.size
@@ -704,7 +706,11 @@ def get_detector_positions(
 
         # telescope interpolation
         az = (1 - w_chunk) * az_tel[idx_chunk] + w_chunk * az_tel[idx_chunk + 1]
+        az[x[start:stop] < xp[0]] = az_tel[0]
+        az[x[start:stop] > xp[-1]] = az_tel[-1]
         za = (1 - w_chunk) * za_tel[idx_chunk] + w_chunk * za_tel[idx_chunk + 1]
+        za[x[start:stop] < xp[0]] = za_tel[0]
+        za[x[start:stop] > xp[-1]] = za_tel[-1]
 
         # rotation angle
         ang = np.deg2rad(elevation_angle - za)
@@ -1215,7 +1221,7 @@ class ConsolidatedData(NewDataStorage):
                 pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
 
             # valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
-            valid_tone_index = np.arange(n_tones, dtype=int) + 8  # TODO: How to make this backwards compatible?
+            valid_tone_index = np.arange(n_tones, dtype=int) + 0  # TODO: How to make this backwards compatible?
             # Interpolate missing IQ data
             if this_n_missed > 0:
                 print('interpolating data...')
@@ -1239,7 +1245,7 @@ class ConsolidatedData(NewDataStorage):
             for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_q, chunk_size=chunk_shape_read_adc[-1]):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
                 temp_data_IQ[1, :, sample_indices] = chunk[valid_tone_index]
-
+            
             # Detector Positions
             if azel_exists:
                 print('Computing detector positions...')

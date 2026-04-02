@@ -15,6 +15,8 @@ import time
 import datetime
 import json
 import h5py
+import matplotlib as mpl
+mpl.use('QtAgg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -380,6 +382,12 @@ class RemoveElectronicsNoise(DataRoutine):
                 numerator = np.einsum('ijk,ik->ij', clean_gain_phase[:, subtraction_indices], templates[:, i_mode])  # 2 x N_tones
                 corr = numerator / denominator[:, i_mode:i_mode+1]  # 2 x N_tones
                 clean_gain_phase[:, subtraction_indices] = clean_gain_phase[:, subtraction_indices] - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
+            # fig, axes = plt.subplots(2, 2)
+            # for row in range(2):
+            #     for col in range(2):
+            #         axes[row, col].plot(templates[row, col])
+            # plt.show()
+            # pdb.set_trace()
             
             # Apply clean data
             data_gain_phase[:] = clean_gain_phase
@@ -393,14 +401,27 @@ class RemoveElectronicsNoise(DataRoutine):
                 -calibration_info['IQ_to_gain_phase_angle'],
             )
             data_IQ[:] = data_IQ[:] - np.mean(data_IQ[:], axis=-1, keepdims=True)  # Mean center
+            data_freq_diss = pdata.get_from_channel(i_chan, 'time_ordered_data/data_freq_diss')
+            data_mK = pdata.get_from_channel(i_chan, 'time_ordered_data/data_mK')
             generate_calibrated_data(
                 data_IQ,
-                pdata.get_from_channel(i_chan, 'time_ordered_data/data_freq_diss'),
-                pdata.get_from_channel(i_chan, 'time_ordered_data/data_mK'),
+                data_freq_diss,
+                data_mK,
                 calibration_info['IQ_to_freq_diss_angle'],
                 calibration_info['adc_units_to_hz'],
                 calibration_info['df_per_mK'],
             )
+            # fig, axes = plt.subplots(1, 3)
+            # axes[0].plot(data_IQ[0, 0])
+            # axes[0].set_title('data_I')
+            # axes[1].plot(data_gain_phase[0, 0])
+            # axes[1].set_title('data_gain')
+            # axes[2].plot(data_mK[0])
+            # axes[2].set_title('data_mK')
+            # plt.show()
+            # pdb.set_trace()
+
+
 
         self.params['eigenmodes'] = eigenmodes
         return inputs
