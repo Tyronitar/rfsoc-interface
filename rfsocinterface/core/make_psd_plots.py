@@ -274,69 +274,81 @@ if __name__ == "__main__":
     # freq = if_data_l2.get_node_value('freq', '/psd')
     # psd = if_data_l2.get_node_value('psd_gain_phase', '/psd')
 
-    # if_data = h5py.File('/data/20250829/20250829_processed_data_set1021.h5', 'r')
-    # carrier_amp = if_data['detector_0/data/carrier_amplitudes'][:]
-    # carrier_norm = np.mean(np.abs(carrier_amp[0] + 1j*carrier_amp[1]), axis=0)
-    # in_data = if_data['detector_0/data/data_gain_phase'][:] / carrier_norm
-    # _, freq_if, psd_if = compute_noise_psd(
-    #     in_data,
-    #     if_data['detector_0/data/timestamp'][:],
-    #     if_data['detector_0/global_data/chanmask'][:],
-    #     nominal_block_length=10,
-    #     cut_time=10
-    # )
+    in_lab = True
 
-    date = '20260325'
-    
-    # IF Loopback for reference
-    setnum = 1006
-    # data_l0 = ProcessedDataL0.from_tod(date, setnum)
-    # data_l1 = ProcessedDataL1.from_level0(
-    #     data_l0,
-    #     do_electronics_noise_removal=True,
-    #     block_length=110,
-    # )
-    # data_l2 = ProcessedDataLN.from_previous_level(data_l1)
-    data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
-    # psd_routine = ComputeNoisePSD(
-    #     PsdBasis.GAIN_PHASE,
-    #     cut_time=2,
-    #     # tone_indices='onres',
-    # )
-    # psd_routine(data_l2)
-    freq_if = data_l2.get_node_value('freq', '/psd')[:]
-    psd_if = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
+    if in_lab:
+        #
+        # Lab
+        #
 
-    data_l2.close()
-    # data_l1.close()
-    # data_l0.close()
+        if_data = h5py.File('/data/20250829/20250829_processed_data_set1021.h5', 'r')
+        carrier_amp = if_data['detector_0/data/carrier_amplitudes'][:]
+        carrier_norm = np.mean(np.abs(carrier_amp[0] + 1j*carrier_amp[1]), axis=0)
+        in_data = if_data['detector_0/data/data_gain_phase'][:] / carrier_norm
+        _, freq_if, psd_if = compute_noise_psd(
+            in_data,
+            if_data['detector_0/data/timestamp'][:],
+            if_data['detector_0/global_data/chanmask'][:],
+            nominal_block_length=10,
+            cut_time=10
+        )
 
-    # data_l2 = ProcessedDataLN.from_file(date, setnum, level=2, mode='r')
+        date = '20260319'
+        onres_setnum = 1023
+        offres_setnum = 1023
+    else:
+        #
+        # Telescope
+        #
+
+        date = '20260325'
+        
+        # IF Loopback for reference
+        setnum = 1006
+        # data_l0 = ProcessedDataL0.from_tod(date, setnum)
+        # data_l1 = ProcessedDataL1.from_level0(
+        #     data_l0,
+        #     do_electronics_noise_removal=True,
+        #     block_length=110,
+        # )
+        # data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+        data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
+        # psd_routine = ComputeNoisePSD(
+        #     PsdBasis.GAIN_PHASE,
+        #     cut_time=2,
+        #     # tone_indices='onres',
+        # )
+        # psd_routine(data_l2)
+        freq_if = data_l2.get_node_value('freq', '/psd')[:]
+        psd_if = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
+
+        data_l2.close()
+        # data_l1.close()
+        # data_l0.close()
+
+        onres_setnum = 1002
+        offres_setnum = 1005
 
     # Now process the data for on-resonance PSD
-    setnum = 1002
-    # data_l0 = ProcessedDataL0.from_tod(
-    #     date,
-    #     setnum,
-    # )
-
-    # data_l1 = ProcessedDataL1.from_level0(
-    #     data_l0,
-    #     do_electronics_noise_removal=True,
-    #     block_length=110,
-    # )
-    # psd_routine = ComputeNoisePSD(
-    #     PsdBasis.FREQ_DISS,
-    #     cut_time=2,
-    #     tone_indices='onres',
-    # )
-    # data_l2 = ProcessedDataLN.from_previous_level(data_l1)
-    data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
-    # psd_routine(data_l2)
+    data_l0 = ProcessedDataL0.from_tod(
+        date,
+        onres_setnum,
+    )
+    data_l1 = ProcessedDataL1.from_level0(
+        data_l0,
+        do_electronics_noise_removal=True,
+        block_length=110,
+    )
+    psd_routine = ComputeNoisePSD(
+        PsdBasis.FREQ_DISS,
+        cut_time=2,
+        tone_indices='onres',
+    )
+    data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+    psd_routine(data_l2)
+    # data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
     freq_onres = data_l2.get_node_value('freq', '/psd')[:]
     psd_onres = data_l2.get_node_value('psd_freq_diss', '/psd')[:]
-    psd_onres_freq = psd_onres[np.newaxis, 0]
-    psd_onres_diss = psd_onres[np.newaxis, 1]
 
     # Convert back to dBc/Hz
     # Multiply psd by resonance freq to get Hz
@@ -347,50 +359,52 @@ if __name__ == "__main__":
     psd_onres = psd_adc / (data_l2.carrier_amplitude_norm() ** 2)
 
     data_l2.close()
-    # data_l1.close()
-    # data_l0.close()
+    data_l1.close()
+    data_l0.close()
 
     # Off-resonance only
-    setnum = 1005
-    # data_l0 = ProcessedDataL0.from_tod(
-    #     date,
-    #     setnum,
-    # )
-    # # data_l0.chanmask[:] = data_l0.chanmask[:] * 0
-    # data_l1 = ProcessedDataL1.from_level0(
-    #     data_l0,
-    #     do_electronics_noise_removal=True,
-    #     block_length=110,
-    #     # only_use_offres_indices=True,
-    # )
+    data_l0 = ProcessedDataL0.from_tod(
+        date,
+        offres_setnum,
+    )
+    if not in_lab:
+        data_l0.chanmask[:] = data_l0.chanmask[:] * 0
+    data_l1 = ProcessedDataL1.from_level0(
+        data_l0,
+        do_electronics_noise_removal=True,
+        block_length=110,
+        only_use_offres_indices=True,
+    )
 
-    # data_l1 = ProcessedDataL1.from_file(date, setnum)
-    # data_l2 = ProcessedDataLN.from_previous_level(data_l1)
-    data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
-    # psd_routine = ComputeNoisePSD(
-    #     PsdBasis.GAIN_PHASE,
-    #     cut_time=2,
-    #     # tone_indices='offres'
-    # )
-    # psd_routine(data_l2)
-    # Plot off-resonance PSD
+    data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+    psd_routine = ComputeNoisePSD(
+        PsdBasis.GAIN_PHASE,
+        cut_time=2,
+        tone_indices='offres'
+    )
+    psd_routine(data_l2)
+    # data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
     freq_offres = data_l2.get_node_value('freq', '/psd')[:]
     psd_offres = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
 
     data_l2.close()
-    # data_l1.close()
-    # data_l0.close()
+    data_l1.close()
+    data_l0.close()
 
     # save_name = f'noise_plot_{date}set{setnum}.pdf'
-    save_name = f'noise_plot_{date}_telescope.pdf'
+    if in_lab:
+        save_name = f'noise_plot_{date}_lab.pdf'
+    else:
+        save_name = f'noise_plot_{date}_telescope.pdf'
+ 
+
     with PdfPages(save_name) as pdf:
         fig = plt.figure(figsize=(9, 6))
         ax = plt.subplot()
         ax.set_xscale('log')
         ax.set_yscale('linear')
         ax.set_xlim(*XLIM)
-        # ylim = (-116, -75)  # Lab
-        ylim = (-108, -68)  # Telescope
+        ylim = (-116, -75) if in_lab else (-108, -68)
         ax.set_ylim(*ylim)
         ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
         ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
@@ -400,14 +414,16 @@ if __name__ == "__main__":
         plot_psd(ax, 'red', 'IF Loopback', freq_if, psd_if, flat_spectrum=True)
         
         # plot_psd(ax, 'purple', 'KID - Dark in Lab', freq_onres, psd_onres, flat_spectrum=True, flat_spectrum_search_bounds=(150, 250))
-        plot_psd(ax, 'purple', 'On Sky Freq', freq_onres, psd_onres[np.newaxis, 0], flat_spectrum=True, flat_spectrum_search_bounds=(150, 250))
-        plot_psd(ax, 'orange', 'On Sky Diss', freq_onres, psd_onres[np.newaxis, 1], flat_spectrum=True, flat_spectrum_search_bounds=(150, 250))
+        label_prefix = '' if in_lab else 'On Sky '
+        plot_psd(ax, 'purple', f'{label_prefix}Freq', freq_onres, psd_onres[np.newaxis, 0], flat_spectrum=True, flat_spectrum_search_bounds=(150, 250))
+        plot_psd(ax, 'orange', f'{label_prefix}Diss', freq_onres, psd_onres[np.newaxis, 1], flat_spectrum=True, flat_spectrum_search_bounds=(150, 250))
 
         plot_psd(ax, 'turquoise', 'Off Resonance', freq_offres, psd_offres, flat_spectrum=True)
 
         ylim = ax.get_ylim()
         # ax.text(1.4 * XLIM[0], ylim[0] + 2, f'100 Tones', fontsize=TITLE_SIZE)
-        ax.text(1.4 * XLIM[0], ylim[0] + 2, f'SKIPR: 869 Tones', fontsize=TITLE_SIZE)
+        text = '100 Tones' if in_lab else 'SKIPR: 869 Tones'
+        ax.text(1.4 * XLIM[0], ylim[0] + 2, text, fontsize=TITLE_SIZE)
         ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
         order = [0, 3, 1, 2]
         handles, labels = ax.get_legend_handles_labels()
