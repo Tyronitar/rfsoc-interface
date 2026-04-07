@@ -34,7 +34,7 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 from scipy import ndimage
-from scipy.signal import sosfilt, sosfilt_zi, cheby1
+from scipy.signal import sosfilt, sosfilt_zi, cheby1, group_delay, sos2tf
 from scipy.signal import resample_poly
 import redis
 
@@ -541,9 +541,12 @@ def chunked_downsample(
             dec = resample_poly(chunk, up=1, down=q, axis=axis)
         else:
             read_start = max(0, start)
+            # read_start = int(q * np.ceil(start / q))  # Start reading at multiple of q
             read_stop = min(N, start + chunk_size)
             chunk = axis_slice(dset, start=read_start, stop=read_stop, axis=axis)
-            dec = axis_slice(chunk, step=q, axis=axis)
+            # dec = axis_slice(chunk, step=q, axis=axis)
+            dec_start = int(q * np.ceil(start / q)) - start  # Make sure we start on a multiple of q
+            dec = axis_slice(chunk, start=dec_start, step=q, axis=axis)
 
         valid_start = downsampled_equiv(start - read_start)
         valid_stop = valid_start + min(downsampled_equiv(min(chunk_size, N - start)), out_dset.shape[axis] - out_index)
@@ -946,9 +949,19 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
     else:
         out[...] = axis_slice(y, step=q, axis=axis)
 
-def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_shape=None):
+def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_shape=None):
 
-    sos = cheby1(8, 0.05, 0.8 / q, output="sos")
+    # Copmpute values to account for phase lag from the filter
+    wc = 0.8 / q
+    sos = cheby1(8, 0.05, wc, output="sos")
+    b, a = sos2tf(sos)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', r'^The filter\'s denominator')
+        w, gd = group_delay((b, a))
+    passband = w <= wc * np.pi
+    gd_passband = gd[passband]
+    delay = int(np.ceil(np.median(gd_passband)))
+    delay_out = int(np.round(delay / q))
 
     n_sections = sos.shape[0]
 
@@ -960,8 +973,6 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_shape
     zi = zi.reshape((n_sections, *zi_shape))
     x0 = axis_slice(dset, stop=1, axis=axis)
     zi = x0 * zi
-
-
     N = dset.shape[axis]
 
     out_pos = 0
@@ -970,6 +981,8 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_shape
     chunk = np.empty(chunk_shape, dtype=dset.dtype)
     chunk_size = chunk_shape[axis]
     y = np.empty_like(chunk)
+
+    out_pos -= delay_out
 
     for start in range(0, N, chunk_size):
 
@@ -980,36 +993,37 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q, axis=-1, chunk_shape
             chunk = np.empty(shape, dtype=dset.dtype)
             y = np.empty_like(chunk)
 
-        # sl = get_axis_slice(dset, start, stop, axis=axis)
-        # dset.read_direct(chunk, source_sel=sl)
         chunk[:] = axis_slice(dset, start, stop, axis=axis)
-        # chunk = axis_slice(dset, start, stop, axis=axis, direct_read=True)
-        # chunk = dset[sl]
 
-        # filter chunk
-        # pdb.set_trace()
-        # x0 = axis_slice(chunk, stop=1, axis=axis)
-        # zf = x0 * zi
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', r'^Invalid value encountered in')
             y[:], zi = sosfilt(sos, chunk, axis=axis, zi=zi)
 
         # decimate
-        dec = axis_slice(y, step=q, axis=axis)
+        dec_start = int(q * np.ceil(start / q)) - start  # Make sure we start on a multiple of q
+        dec = axis_slice(y, start=dec_start, step=q, axis=axis)
 
         n_out = dec.shape[axis]
 
         write_start = out_pos
+        if write_start < 0:
+            # Skip the fisrt `delay_out` samples
+            dec = axis_slice(dec, start=delay_out, axis=axis)
+            write_start = 0
+            out_pos = 0
+            n_out = dec.shape[axis]
         write_stop = min(out_pos + n_out, out_dset.shape[axis])
 
         out_sl = get_axis_slice(out_dset, start=write_start, stop=write_stop, axis=axis)
 
-        # out_sl = [slice(None)] * out_dset.ndim
-        # out_sl[axis] = slice(out_pos, min(out_pos + n_out, out_dset.shape[axis]))
-
-        out_dset[tuple(out_sl)] = axis_slice(dec, stop=write_stop-write_start, axis=axis)
+        out_dset[out_sl] = axis_slice(dec, stop=write_stop-write_start, axis=axis)
 
         out_pos += n_out
+
+    # Use reflect padding for the last `delay_out` samples
+    same_slice = get_axis_slice(out_dset, start=out_pos, axis=axis)
+    last_values = np.take(out_dset, np.arange(out_pos - 1, out_pos - delay_out - 1, -1), axis=axis)
+    out_dset[same_slice] = last_values
 
 
 def iterate_chunks(x: npt.NDArray | h5py.Dataset, chunk_size: int=None, axis: int=-1) -> Iterator[tuple[int, int, npt.NDArray]]:

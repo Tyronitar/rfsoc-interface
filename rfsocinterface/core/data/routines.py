@@ -366,7 +366,8 @@ class RemoveElectronicsNoise(DataRoutine):
                     BUTTER_ORDER,
                     lp_filt_freq,
                     btype='low',
-                    fs=fs,output='sos',
+                    fs=fs,
+                    output='sos',
                     analog=False,
                 )
                 clean_gain_phase = signal.sosfiltfilt(filt_sos, clean_gain_phase)
@@ -382,12 +383,6 @@ class RemoveElectronicsNoise(DataRoutine):
                 numerator = np.einsum('ijk,ik->ij', clean_gain_phase[:, subtraction_indices], templates[:, i_mode])  # 2 x N_tones
                 corr = numerator / denominator[:, i_mode:i_mode+1]  # 2 x N_tones
                 clean_gain_phase[:, subtraction_indices] = clean_gain_phase[:, subtraction_indices] - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
-            # fig, axes = plt.subplots(2, 2)
-            # for row in range(2):
-            #     for col in range(2):
-            #         axes[row, col].plot(templates[row, col])
-            # plt.show()
-            # pdb.set_trace()
             
             # Apply clean data
             data_gain_phase[:] = clean_gain_phase
@@ -411,17 +406,22 @@ class RemoveElectronicsNoise(DataRoutine):
                 calibration_info['adc_units_to_hz'],
                 calibration_info['df_per_mK'],
             )
-            # fig, axes = plt.subplots(1, 3)
-            # axes[0].plot(data_IQ[0, 0])
-            # axes[0].set_title('data_I')
-            # axes[1].plot(data_gain_phase[0, 0])
-            # axes[1].set_title('data_gain')
-            # axes[2].plot(data_mK[0])
-            # axes[2].set_title('data_mK')
+            # fig, axes = plt.subplots(2, 3)
+            # fig.suptitle('Datasets after noise removal')
+            # axes[0, 0].set_title('data_I')
+            # axes[0, 0].plot(data_IQ[0, 241])
+            # axes[1, 0].set_title('data_Q')
+            # axes[1, 0].plot(data_IQ[1, 241])
+            # axes[0, 1].set_title('data_gain')
+            # axes[0, 1].plot(data_gain_phase[0, 241])
+            # axes[1, 1].set_title('data_phase')
+            # axes[1, 1].plot(data_gain_phase[1, 241])
+            # axes[0, 2].set_title('data_freq')
+            # axes[0, 2].plot(data_freq_diss[0, 241])
+            # axes[1, 2].set_title('data_diss')
+            # axes[1, 2].plot(data_freq_diss[1, 241])
             # plt.show()
             # pdb.set_trace()
-
-
 
         self.params['eigenmodes'] = eigenmodes
         return inputs

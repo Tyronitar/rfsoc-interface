@@ -275,8 +275,8 @@ def rotate_basis(
     out_data[0] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0] - \
         np.sin(rotation_angle)[:, np.newaxis] * in_data[1]
 
-    out_data[1] = np.sin(rotation_angle)[:, np.newaxis] * in_data[0] - \
-        np.sin(rotation_angle)[:, np.newaxis] * in_data[1]
+    out_data[1] = np.sin(rotation_angle)[:, np.newaxis] * in_data[0] + \
+        np.cos(rotation_angle)[:, np.newaxis] * in_data[1]
 
 
 # TODO: Optimize this for chunked data
@@ -1096,7 +1096,8 @@ class ConsolidatedData(NewDataStorage):
             use_filter=False,
         )
         raw_data.close()
-        global_data_group.attrs['fs'] = 1 / (timestamp[1] - timestamp[0])
+        fs = 1 / (timestamp[1] - timestamp[0])
+        global_data_group.attrs['fs'] = fs
 
 
         # Intiialize group for storing data per-channel
@@ -1129,7 +1130,7 @@ class ConsolidatedData(NewDataStorage):
             tones_table['delta_y'] = raw_data.detector_delta_y[:]
             tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
             tones_table['polarization']  = raw_data.detector_pol[:]
-            tones_table['dfoverf_per_mK'] = raw_data. dfoverf_per_mK[:]
+            tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
             chanmask = raw_data.chanmask[:]
             off_res = np.argwhere(chanmask == 0).flatten()
             no_pol = np.argwhere(tones_table['polarization'] < 1).flatten()
@@ -1301,17 +1302,6 @@ class ConsolidatedData(NewDataStorage):
             del time_ordered_data_group['temp_detector_az']
             del time_ordered_data_group['temp_detector_za']
             
-        # iq = cd.get('/channels/channel_000/time_ordered_data/temp_data_IQ')
-        # plt.plot(temp_timestamp[:], temp_data_IQ[0, 0], label='Full data')
-        # plt.plot(timestamp[:], data_IQ[0, 0], label='Downsampled data')
-        # plt.legend()
-        # plt.show()
-        # plt.scatter(temp_detector_az[0], temp_detector_za[0], label='Full data')
-        # plt.scatter(detector_az[0], detector_za[0], label='Downsampled data')
-        # plt.legend()
-        # plt.show()
-        # pdb.set_trace()
-
         # Get rid of full timestamp now
         del global_data_group['temp_timestamp']
 
@@ -1421,16 +1411,15 @@ class ProcessedData(NewDataStorage):
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
             calibration_info['adc_units_to_hz'] = adc_units_to_hz 
 
+            detector_f = tones_table['baseband_freq'] + channel_group.attrs['lo_freq']
             df_per_mK = compute_df_per_mK(
                 tones_table['polarization'],
                 tones_table['beam_amplitude'],
-                tones_table['baseband_freq'],
+                detector_f,
                 tones_table['dfoverf_per_mK'],
             )
             calibration_info['df_per_mK'] = df_per_mK
 
-            # First mean center IQ data
-            data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
 
             # Rotate to Gain / Phase
             IQ_to_gain_phase_angle = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])
@@ -1441,6 +1430,8 @@ class ProcessedData(NewDataStorage):
                 IQ_to_gain_phase_angle,
             )
             # Generate calibrated data
+            # First mean center IQ data
+            data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
             generate_calibrated_data(
                 data_IQ,
                 data_freq_diss,
@@ -1449,6 +1440,23 @@ class ProcessedData(NewDataStorage):
                 adc_units_to_hz,
                 df_per_mK,
             )
+
+            # fig, axes = plt.subplots(2, 3)
+            # fig.suptitle('Datasets before further processing')
+            # axes[0, 0].set_title('data_I')
+            # axes[0, 0].plot(data_IQ[0, 241])
+            # axes[1, 0].set_title('data_Q')
+            # axes[1, 0].plot(data_IQ[1, 241])
+            # axes[0, 1].set_title('data_gain')
+            # axes[0, 1].plot(data_gain_phase[0, 241])
+            # axes[1, 1].set_title('data_phase')
+            # axes[1, 1].plot(data_gain_phase[1, 241])
+            # axes[0, 2].set_title('data_freq')
+            # axes[0, 2].plot(data_freq_diss[0, 241])
+            # axes[1, 2].set_title('data_diss')
+            # axes[1, 2].plot(data_freq_diss[1, 241])
+            # plt.show()
+            # pdb.set_trace()
 
         # Make virtual datasets for the new stuff
         total_tones = self['vdsets'].attrs['n_tones']
