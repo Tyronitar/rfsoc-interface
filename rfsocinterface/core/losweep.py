@@ -24,7 +24,7 @@ import h5py
 import tables
 
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW, parallel_plot
+from rfsocinterface.core.utils import ensure_path, PERMISSIONS_USR_RW, parallel_plot
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.params import initialize_params_file, update_params_file
@@ -784,7 +784,7 @@ class LoSweep:
         Qmed = np.median(Q, axis=0)
 
         Z = Imed + 1j * Qmed
-        Z = Z[BAD_RFSOC_TONE_START_INDEX: BAD_RFSOC_TONE_START_INDEX + len(self.tone_list)]
+        Z = Z[:len(self.tone_list)]
 
         return Z
 

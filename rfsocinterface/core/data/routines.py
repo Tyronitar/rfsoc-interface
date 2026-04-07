@@ -39,6 +39,8 @@ __all__ = (
     'PlotMap',
 )
 
+ROUTINE_REGISTRY = {}
+
 _logger = logging.getLogger(__name__)
 
 class ProcessingStage:
@@ -48,8 +50,6 @@ class ProcessingStage:
     PROCESSING_L2 = 'processing_l2'
     POST_PROCESSING = 'post_processing'
 
-
-ROUTINE_REGISTRY = {}
 
 def register_routine(cls: type[DataRoutine]):
     if not issubclass(cls, DataRoutine):
@@ -128,7 +128,7 @@ class DataRoutine:
         return shapes
 
     def _log_step(self, pdata: ProcessedData, meta: str):
-        hist = pdata.file.require_group("processing_history")
+        hist = pdata.file.require_group('processing_history')
 
         step_idx = len(hist)
         step_name = get_step_group_name(step_idx, self.name)
@@ -142,14 +142,14 @@ class DataRoutine:
                 step_group.attrs[k] = v
 
     def _checkpoint(self, pdata: ProcessedData):
-        chk_group = pdata.file.require_group("checkpoints")
+        chk_group = pdata.file.require_group('checkpoints')
         name = get_step_group_name(len(chk_group), self.name)
 
         g = chk_group.create_group(name)
 
         # naive: copy all datasets (you can refine later)
         for key, item in pdata.file.items():
-            if isinstance(item, type(pdata.file["/"])):  # dataset
+            if isinstance(item, type(pdata.file['/'])):  # dataset
                 pdata.file.copy(item, g, name=key)
     
     def _get_metadata(
@@ -162,16 +162,16 @@ class DataRoutine:
         runtime: float,
     ) -> dict:
         return {
-            "name": self.name,
-            "version": self.version,
-            "timestamp": timestamp,
-            "params": self.params,
-            "inputs": inputs,
-            "outputs": outputs,
-            "shape_before": shapes_before,
-            "shape_after": shapes_after,
-            "code_version": get_git_hash(),
-            "runtime_sec": runtime,
+            'name': self.name,
+            'version': self.version,
+            'timestamp': timestamp,
+            'params': self.params,
+            'inputs': inputs,
+            'outputs': outputs,
+            'shape_before': shapes_before,
+            'shape_after': shapes_after,
+            'code_version': get_git_hash(),
+            'runtime_sec': runtime,
         }
 
 #
@@ -180,8 +180,8 @@ class DataRoutine:
 
 @register_routine
 class CutoffFilter(DataRoutine):
-    name = "CutoffFilter"
-    version = "1.0"
+    name = 'CutoffFilter'
+    version = '1.0.0'
 
     def __init__(self,
         filter_freq: float,
@@ -259,9 +259,9 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     deproj = data - np.mean(data, axis=-1, keepdims=True)
     n_tones = data.shape[1]
 
-
     # create a separate correlation matrix for all data channels
     correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
+
     # calculate the eigenmodes of the correlation matrices
     eigen_values, v = np.linalg.eig(correlation_matrices)
     sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
@@ -278,7 +278,8 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     n_modes = 2
     new_modes = -1
     while new_modes != 0 and n_modes <= max_modes:
-        log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
+        with np.errstate(invalid='ignore'):
+            log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
         mu = np.mean(log_eigen_values, axis=1)
         sigma = np.std(log_eigen_values, axis=1)
         large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis])
@@ -286,11 +287,10 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
         q_count = large_eigen_values[0].size - i_count
         new_modes = max(i_count, q_count)
         n_modes += new_modes
-    # pdb.set_trace()
     n_modes = min(n_modes, max_modes)
     _logger.debug(f'Using {n_modes} eigen modes')
 
-        # create templates based on the N_mode largest eigenmodes of each
+    # create templates based on the N_mode largest eigenmodes of each
     templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj)
 
     # subtract the mean again to be sure
@@ -316,6 +316,7 @@ def decode_tone_indices(pdata: ProcessedData, i_chan: int, input_indices: npt.ND
 @register_routine
 class RemoveElectronicsNoise(DataRoutine):
     name = 'RemoveElectronicsNoise'
+    version = '1.0.0'
 
     def __init__(
         self,
@@ -355,6 +356,7 @@ class RemoveElectronicsNoise(DataRoutine):
         template_subtraction_indices = self.params['template_subtraction_indices']
         max_modes = self.params['max_modes']
         fs = pdata.fs
+
         for i_chan in range(pdata.n_chan):
             selection_indices = decode_tone_indices(pdata, i_chan, template_selection_indices)
 
@@ -406,22 +408,6 @@ class RemoveElectronicsNoise(DataRoutine):
                 calibration_info['adc_units_to_hz'],
                 calibration_info['df_per_mK'],
             )
-            # fig, axes = plt.subplots(2, 3)
-            # fig.suptitle('Datasets after noise removal')
-            # axes[0, 0].set_title('data_I')
-            # axes[0, 0].plot(data_IQ[0, 241])
-            # axes[1, 0].set_title('data_Q')
-            # axes[1, 0].plot(data_IQ[1, 241])
-            # axes[0, 1].set_title('data_gain')
-            # axes[0, 1].plot(data_gain_phase[0, 241])
-            # axes[1, 1].set_title('data_phase')
-            # axes[1, 1].plot(data_gain_phase[1, 241])
-            # axes[0, 2].set_title('data_freq')
-            # axes[0, 2].plot(data_freq_diss[0, 241])
-            # axes[1, 2].set_title('data_diss')
-            # axes[1, 2].plot(data_freq_diss[1, 241])
-            # plt.show()
-            # pdb.set_trace()
 
         self.params['eigenmodes'] = eigenmodes
         return inputs
@@ -430,9 +416,11 @@ class RemoveElectronicsNoise(DataRoutine):
 @register_routine
 class CleanTOD(DataRoutine):
     name = 'CleanTOD'
-    version = 1.0
+    version = '1.0.0'
 
     def __init__(self, dataset: Literal['data_mK', 'data_freq']='data_mK'):
+        if dataset not in ('data_mK', 'data_freq'):
+            raise ValueError(f'Unable to use dataset {dataset} for CleanTOD; choose "data_mK" or "data_freq".')
         super().__init__(dataset=dataset)
     
     def inputs(self, pdata: ProcessedData):
@@ -548,34 +536,10 @@ class ComputeNoisePSD(DataRoutine):
 # 
 # Mapping
 #
-
-# def get_map_size(map: MapData, az_trim: float, za_trim: float, map_dpix: float, beam_map_mode: bool=False) -> npt.NDArray:
-
-#     max_az = np.max(map.detector_az) - az_trim
-#     min_az = np.min(map.detector_az) + az_trim
-#     max_za = np.max(map.detector_za) - za_trim
-#     min_za = np.min(map.detector_za) + za_trim
-#     n_pix_x = int(np.ceil((max_az - min_az) / map_dpix))
-#     n_pix_y = int(np.ceil((max_za - min_za) / map_dpix))
-#     map_x = np.arange(n_pix_x) * map_dpix + min_az + map_dpix / 2.
-#     map_y = np.arange(n_pix_y) * map_dpix + min_za + map_dpix / 2.
-#     if not beam_map_mode:
-#         map_y += 0.1  # 0.1 accounts for assymmetry in array
-
-#     # if map.setnum in [1007, 1009]:
-#     #     np.savez('map_size.npz', n_pix_x, n_pix_y, map_x, map_y)
-#     # elif map.setnum in [1008, 1010]:
-#     #     data = np.load('map_size.npz')
-#     #     n_pix_x = data['arr_0']
-#     #     n_pix_y = data['arr_1']
-#     #     map_x = data['arr_2']
-#     #     map_y = data['arr_3']
-#     return n_pix_x, n_pix_y, map_x, map_y
-
 @register_routine
 class BinTODIntoMap(DataRoutine):
     name = 'BinTODIntoMap'
-    version = "1.0"
+    version = '1.0.0'
 
     produces = {
         '/map/netd',
@@ -598,7 +562,7 @@ class BinTODIntoMap(DataRoutine):
             dpix: int=DEFAULT_MAP_DPIX,
     ):
         if dataset not in ('data_mK', 'data_freq'):
-            raise ValueError(f'Unable to use dataset {dataset} for CleanTOD; choose "data_mK" or "data_freq".')
+            raise ValueError(f'Unable to use dataset {dataset} for BinTODIntoMap; choose "data_mK" or "data_freq".')
         if beam_map_mode:
             az_trim = 0.
             za_trim = 0.
@@ -796,7 +760,7 @@ class BinTODIntoMap(DataRoutine):
 @register_routine
 class PlotMap(DataRoutine):
     name = 'PlotMap'
-    version = '1.0'
+    version = '1.0.0'
 
     requires = {
         '/map/map_az',
@@ -940,8 +904,8 @@ class PlotMap(DataRoutine):
         opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
         opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
         # TODO: Replace these with references to optical camera dimensions
-        opt_center_az = int(2592/2)+OPTCAM_OFFSET_AZ_PIX
-        opt_center_za = int(1944/2)+OPTCAM_OFFSET_ZA_PIX
+        opt_center_az = int(2592 / 2) + OPTCAM_OFFSET_AZ_PIX
+        opt_center_za = int(1944 / 2) + OPTCAM_OFFSET_ZA_PIX
         az_range = slice(
             opt_center_az - int(opt_npix_az / 2),
             opt_center_az + int(opt_npix_az / 2),
@@ -1061,7 +1025,6 @@ class PlotMap(DataRoutine):
 
         # Optical Image
         optical_image = self._get_scaled_optical_image(pdata)
-        valid_opt_pix = np.where(optical_image < 240)
         opt_vmax = 255. 
         opt_vmin = -255  # NOTE: Shouldn't this be 0?
         im = axes[3].imshow(
@@ -1076,7 +1039,8 @@ class PlotMap(DataRoutine):
         axes[3].set_xlabel('Azimuth (degrees)')
 
         fig.subplots_adjust(wspace=0, hspace=0)
-    #    pw.addPlot("Raw Image", this_fig)
+
+        # TODO: Move this to some global getter function
         path = pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
         if not path.exists():
             path.touch(PERMISSIONS_ALL_FULL)
@@ -1084,50 +1048,6 @@ class PlotMap(DataRoutine):
             fig.savefig(path, bbox_inches='tight')
         if self.params['show']:
             plt.show()
-
-            
-
-# class RemovePointLomaPickup(DataRoutine):
-#     def __init__(self, ds_factor: int=6, pickup_filter_freq: float=1):
-#         super().__init__()
-#         self.ds_factor = ds_factor
-#         self.pickup_filter_freq = pickup_filter_freq
-    
-#     def forward(self, pd: ProcessedData) -> MapData:
-#         #need to high pass filter the data to remove basline drift
-#         data_raw = pd.data_mK
-#         chanmask = pd.chanmask
-
-#         pickup_hpfilt_sos = signal.butter(6, self.pickup_filter_freq, 'hp', fs=pd.fs, output='sos', analog=False)
-
-#         #sum all the data at each time sample, then look for outliers in this sum
-#         data_sum_raw = np.zeros(np.size(data_raw[0,:]))
-#         for i_chan in range(np.size(chanmask)):
-#             if chanmask[i_chan] == 1:      
-#                 data_sum_raw += np.abs(data_raw[i_chan,:])
-#         data_sum = signal.sosfiltfilt(pickup_hpfilt_sos, data_sum_raw)
-
-#         pickup_data = np.ndarray.flatten(np.argwhere(np.abs(data_sum) > 5.*np.median(np.abs(data_sum))))
-#         pickup_good_index = []
-#         valid_time = np.arange(np.size(data_sum))
-#         if np.size(pickup_data > 0):
-#             pickup_start = pickup_data[np.argwhere(pickup_data - np.roll(pickup_data,1) != 1)]
-#             pickup_end = pickup_data[np.argwhere(np.roll(pickup_data,-1) - pickup_data != 1)]
-#             for i_start in pickup_start:
-#                 pickup_data = np.append(pickup_data, i_start - 1 - np.arange(10))
-#             for i_end in pickup_end:
-#                 pickup_data = np.append(pickup_data, i_end + 1 + np.arange(10))
-#             pickup_data.sort()
-#             valid_pickup = np.ndarray.flatten(np.argwhere(np.bitwise_and(pickup_data >= 0,pickup_data < np.size(valid_time))))
-#             pickup_data = pickup_data[valid_pickup]
-#             pickup_good_index = [element for element in np.arange(np.size(valid_time)) if element not in pickup_data]
-#             pickup_good_index = np.divide(pickup_good_index[0::self.ds_factor], self.ds_factor)
-#             pickup_good_index = pickup_good_index.astype(int)
-
-#         m = MapData.from_processed_data(pd)
-#         m.good_samples = np.array(pickup_good_index)
-#         # pdb.set_trace()
-#         return m
 
 
 if __name__ == '__main__':

@@ -34,7 +34,6 @@ from rfsocinterface.core.losweep import LoSweepData
 from rfsocinterface.core.utils import (
     gaussian_filter,
     GAUSSIAN_SIGMA,
-    BAD_RFSOC_TONE_START_INDEX,
     PERMISSIONS_ALL_FULL,
     get_tod_template,
     get_azel_template,
@@ -76,76 +75,6 @@ AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
 RFSOC_TIME_OFFSET = -0.012  # -12 ms, empirically determined
-
-
-DYNAMIC_PROCESSED_DATA_FIELDS = [
-    'carrier_amplitudes',
-    'data_IQ',
-    'IQ_to_gain_phase_angle',
-    'adc_units_to_hz',
-    'data_gain_phase',
-    'data_freq_diss',
-    'data_mK',
-    'timestamp',
-    'chanmask',
-]
-
-STATIC_BASE_PROCESSED_DATA_FIELDS = [
-    'dfoverf_per_mK',
-    'detector_pol',
-    'detector_beam_ampl',
-    'optical_visibility',
-    'optical_image',
-    'baseband_freqs',
-    'lo_freq',
-    'tones_per_channel'
-]
-
-
-STATIC_PROCESSED_DATA_FIELDS = [
-    'detector_az',
-    'detector_za',
-    'interpolated_indices',
-    'df_per_mK',
-]
-
-ALL_PROCESSED_DATA_FIELDS = DYNAMIC_PROCESSED_DATA_FIELDS + STATIC_PROCESSED_DATA_FIELDS + STATIC_BASE_PROCESSED_DATA_FIELDS
-
-MAP_DATA_FIELDS = [
-    'hits_map',
-    'sum_map',
-    'map_az',
-    'map_za',
-    'net',
-    'good_samples'
-]
-
-ALL_MAP_DATA_FIELDS = ALL_PROCESSED_DATA_FIELDS + MAP_DATA_FIELDS
-
-PROCESSED_DATA_FIELD_LOCATIONS = {
-    'carrier_amplitudes': '/data',
-    'data_IQ': '/data',
-    'IQ_to_gain_phase_angle': '/data',
-    'adc_units_to_hz': '/data',
-    'data_gain_phase': '/data',
-    'data_freq_diss': '/data',
-    'data_mK': '/data',
-    'timestamp': '/data',
-    'interpolated_indices': '/data',
-    'detector_az': '/data',
-    'detector_za': '/data',
-    'optical_image': '/global_data',
-    'chanmask': '/global_data',
-    'vis': '/global_data',
-    'df_per_mK': '/global_data',
-    'detector_pol': '/global_data',
-    'detector_beam_ampl': '/global_data',
-    'optical_visibility': '/global_data',
-    'baseband_freqs': '/global_data',
-    'lo_freq': '/global_data',
-    'tones_per_channel': '/global_data',
-    'dfoverf_per_mK': '/global_data',
-}
 
 
 TONES_TABLE_DTYPE = [
@@ -305,63 +234,6 @@ def generate_calibrated_data(
             df_per_mK[:, np.newaxis],
         )
 
-def new_generate_calibrated_data(pd: ProcessedDataL1):
-    if isinstance(pd.get_node('data_IQ'), ExternalLink):
-        data = pd.data_IQ[:]
-        pd.remove_node('/data', 'data_IQ')
-        pd.create_array('/data', 'data_IQ', obj=data)
-    data_IQ = pd.data_IQ
-        
-
-    for i_chan in range(pd.n_channels):
-        rotate_basis(
-            pd.data_gain_phase[:],
-            data_IQ,
-            -pd.IQ_to_gain_phase_angle[:],
-            i_chan=i_chan,
-            valid_tone_indices=np.arange(pd.get_n_tones(i_chan))
-        )
-    data_IQ[:] = data_IQ[:] - np.mean(data_IQ[:], axis=2, keepdims=True)
-    # data.data_IQ[0, :] = data.data_IQ[0, :] - np.mean(data.data_IQ[0, :], axis=1, keepdims=True)
-    # data.data_IQ[1, :] = data.data_IQ[1, :] - np.mean(data.data_IQ[1, :], axis=1, keepdims=True)
-
-
-    #now use the derivatives to convert to a frequency shift
-    #need to optimally weight the data based on the response
-    #in each direction (assuming the noise is identical in I and Q)
-    #this will then yield data_f
-
-    for i_chan in range(pd.n_channels):
-        rotate_basis(
-            data_IQ[:] / pd.adc_units_to_hz[:][:, :, np.newaxis],
-            pd.data_freq_diss,
-            pd.IQ_to_freq_diss_angle[:],
-            i_chan=i_chan,
-            valid_tone_indices=np.arange(pd.get_n_tones(i_chan))
-        )
-    # rotate_basis(data.data_IQ, data.data_freq_diss, data.IQ_to_freq_diss_angle[:])
-
-    # Finally, we need to get data_mK
-    pd.data_mK[:] = np.divide(pd.data_freq_diss[:, 0], pd.df_per_mK[:][:, :, np.newaxis])
-    # data.data_mK[:] = np.where(np.isinf(data.data_mK), np.nan, data.data_mK)
-
-
-    # for i_chan in range(data_gain_phase.shape[0]):
-    #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
-    #     # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
-
-    #     # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 1 x 2
-    #     # pdb.set_trace()
-    #     # numerator0 = np.einsum('jk,k->j', data_gain_phase[i_chan], templates[0])  # N_detector
-    #     # pdb.set_trace()
-    #     # corr0 = numerator0 / denominator[:, 0:1]  # N_detector
-    #     # deproj = data_gain_phase[i_chan] - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
-
-    #     # numerator1 = np.einsum('ijk,ik->ij', deproj, templates[:, 1])  # N_chan x N_detector
-    #     # pdb.set_trace()
-    #     # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
-    #     data_gain_phase[i_chan, :] = clean_data.squeeze()
-
 #
 # Code for recitifying the timestamp
 #
@@ -390,20 +262,6 @@ def find_missed_packets(
     std_dtime = np.std(dtime)
     bad_samples = np.argwhere(np.abs(dtime - med_dtime) > sigma * std_dtime).flatten()
 
-    # Plotting specfically for 20251006set1009
-    # plt.scatter(range(1, n_samples), dtime, label='Delta Time for each sample')
-    # plt.scatter(bad_samples + 1, dtime[bad_samples], color='red', label='Flagged Samples')
-    # plt.axhline(med_dtime, linestyle='--', color='blue', label=f'Median Delta T $\\mu = {med_dtime:.5f}$')
-    # plt.xlim(235450, 235500)
-    # plt.ylim(0.00001, 0.2)
-    # plt.yscale('log')
-
-    # plt.xlabel('Sample Index')
-    # plt.ylabel('Delta Time (s)')
-    # plt.legend()
-    # plt.show()
-    # pdb.set_trace()
-    # corrected_packet_idx = np.zeros(n_samples, dtype=int)
     missed_packets = np.empty((0, 2), dtype=int)
     i = 1
     while i < n_samples:
@@ -433,102 +291,14 @@ def find_missed_packets(
                 large_actual_samples = large_window_max_idx - large_window_min_idx
                 large_window_packets_missed = large_expected_samples - large_actual_samples + 1
                 if large_expected_samples > large_actual_samples:
-                    # print(f'Missed {large_missed_packets} in large window, {missed_packets} in original')
-                    # plt.scatter(range(large_window_min_idx, large_window_max_idx + 1), large_window)
-                    # plt.scatter(range(window_min_idx, window_max_idx + 1), window)
-                    # plt.scatter(i, timestamp[i], color='red')
-                    # plt.show()
-                    # pdb.set_trace()
                     missed_packets = np.vstack([missed_packets, [i, large_window_packets_missed]])
-                    # corrected_packet_idx[i] = corrected_packet_idx[i - 1] + large_window_packets_missed + 1
-
-                    # Don't need to re-evaluate the next few samples, since their offset
-                    # was already accounted for.
-                    # for j in range(i + 1, i + large_window_packets_missed + 1):
-                    #     corrected_packet_idx[j] = corrected_packet_idx[j - 1] + 1
-                    # i = j
                     continue
-                else:
-                    # corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
-                    pass
-            else:
-                # corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
-                pass
-
-            # plt.scatter(range(window_min_idx, window_max_idx + 1), timestamp_window)
-            # plt.show()
-            # pdb.set_trace()
-        else:
-            # corrected_packet_idx[i] = corrected_packet_idx[i - 1] + 1
-            pass
         i += 1
 
-    # new_timestamp.append(fit.slope * corrected_packet_idx + fit.intercept)
     _logger.debug(f'{np.sum(missed_packets[:, 1])} missed packets')
 
-    # Plotting Code for Debugging
-    # fit = linregress(corrected_packet_idx, raw_timestamp[:])
-    # x = np.arange(n_samples)
-    # y = fit.slope * x + fit.intercept
-    # plt.scatter(corrected_packet_idx, timestamp[:])
-    # plt.scatter(corrected_packet_idx, new_timestamp)
-    # plt.plot(x, y, color='red', linestyle='--')
-    # plt.show()
-    # pdb.set_trace()
     return missed_packets
 
-
-
-# Note, I may have to move the downsampling unitl after all of the interpolation
-# I should look more into that though (i.e. ask ChatGPT)
-def interpolate_timestamp(
-    raw_timestamp: h5py.Dataset,
-    new_timestamp: h5py.Dataset,
-    packet_indices: h5py.Dataset,
-    ds_factor: int=1,
-):
-    chunk_size = new_timestamp.chunks[-1]
-    chunk_size_ds = int(np.ceil(chunk_size / ds_factor))
-
-    # TODO: find a way to not have all of normalized_packet_indices in memory at once
-    # May require some code duplication, or storing an intermediate array on disk
-    # normalized_packet_indices = packet_indices - packet_indices[0]
-    n_samples = raw_timestamp.size
-    n_samples_ds = new_timestamp.size
-
-    sum_x = 0.0
-    sum_y = 0.0
-    sum_x2 = 0.0
-    sum_xy = 0.0
-    N = 0
-
-    for c0, c1, x_chunk in iterate_chunks(packet_indices, chunk_size=chunk_size):
-        x_chunk -= packet_indices[0]
-        y_chunk = raw_timestamp[c0:c1]
-        x_chunk = np.array(x_chunk, copy=False)
-        y_chunk = np.array(y_chunk, copy=False)
-
-        sum_x += x_chunk.sum()
-        sum_y += y_chunk.sum()
-        sum_x2 += np.dot(x_chunk, x_chunk)
-        sum_xy += np.dot(x_chunk, y_chunk)
-
-        N += x_chunk.size
-
-    a = (N * sum_xy - sum_x * sum_y) / (N * sum_x2 - sum_x**2)
-    b = (sum_y - a * sum_x) / N
-    # res = linregress(packet_indices - packet_indices[0], raw_timestamp)
-    # a = res.slope
-    # b = res.intercept
-    exit()
-    # a, b = linregress_in_chunks(normalized_packet_indices, raw_timestamp)
-    
-    # Compute the new timestamp in chunks while simultaneously downsampling
-    for i_chunk, chunk_start in enumerate(range(0, n_samples, chunk_size)):
-        this_new_timestamp = a * np.arange(chunk_start, chunk_start + chunk_size) + b + RFSOC_TIME_OFFSET
-        chunk_start_ds = i_chunk * chunk_size_ds
-        chunk_stop_ds = min(chunk_start_ds + chunk_size_ds, n_samples_ds)
-        new_timestamp[chunk_start_ds:chunk_stop_ds] = this_new_timestamp[::ds_factor]
 
 def interpolate_timestamp_streaming(
     raw_timestamp: h5py.Dataset,
@@ -537,7 +307,7 @@ def interpolate_timestamp_streaming(
     ds_factor: int = 1,
     chunk_size: int = 4096,
     time_offset: float = 0.0
-) -> None:
+):
     """
     Compute a linear fit of raw_timestamp vs packet_indices and generate
     an equally spaced new timestamp dataset in chunks.
@@ -618,15 +388,11 @@ def interpolate_missing_data(
     packet_indices: h5py.Dataset,
     missed_packets: npt.NDArray,
     valid_tone_index: npt.NDArray,
-) -> tuple[npt.NDArray. npt.NDArray, npt.NDArray]:
+):
     total_missed_packets = np.sum(missed_packets[:, 1])
     n_tones = np.size(valid_tone_index)
     n_samples = input_data_I.shape[-1]
 
-    # interpolated_indices = []
-    # interpolated_data = np.zeros((2, n_tones, total_missed_packets), dtype=input_data_I.dtype)
-
-    # Iterate over the spots where data was missed
     # count = 0
     for i, this_missed_packets in missed_packets:
         window_size = 5 * this_missed_packets
@@ -654,29 +420,12 @@ def interpolate_missing_data(
         new_data = np.stack((new_data_I, new_data_Q))
 
         this_interpolated_indices = list(range(prev_index + 1, index))
-        # interpolated_indices.extend(this_interpolated_indices)
 
         old_size = output_indices_dset.size
         output_indices_dset.resize(old_size + np.size(this_interpolated_indices))
         output_indices_dset[old_size:] = this_interpolated_indices
-        # data_IQ[:, :, this_interpolated_indices] = new_data
-        # interpolated_data[:, :, count:count + this_missed_packets] = new_data
         output_dset[..., window_packet_indices] = new_data
-        # count += this_missed_packets
 
-        # Plotting Code for Debugging
-        ax = plt.axes(projection='3d')
-        x = np.linspace(times[0], times[-1], 150)
-        ax.plot3D(x, poly.polyval(x - times[0], fit_I)[0], poly.polyval(x - times[0], fit_Q)[0], label='Polynomial Fit')
-        ax.scatter3D(times, i_data[0, :], q_data[0, :], label='Actual Values')
-        ax.scatter3D(missed_packet_t, *new_data[:, 0], label='Interpolated Points')
-        ax.set_xlabel('Timestamp (s)')
-        ax.set_ylabel('ADC I')
-        ax.set_zlabel('ADC Q')
-        ax.legend()
-        plt.show()
-        pdb.set_trace()
-    # return interpolated_indices, interpolated_data
 
 def get_detector_positions(
     timestamp: h5py.Dataset,
@@ -768,10 +517,6 @@ class NewDataStorage:
         else:
             raise ValueError("Invalid number of arguments")
     
-    @staticmethod
-    def get_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
-        raise NotImplementedError("Must be implemented by subclass")
-
     def open(self, mode: str='r'):
         self.file = h5py.File(self.filename, mode=mode)
         self.mode = mode
@@ -857,14 +602,9 @@ class NewDataStorage:
     def setnum(self, setnum: int):
         self.attrs['setnum'] = setnum
 
-    @property
-    def receipt(self) -> str:
-        return self.attrs['receipt']
-
-    @receipt.setter
-    def receipt(self, receipt: str):
-        """Add a receipt entry to the processed data file."""
-        self.attrs['receipt'] = receipt
+    @staticmethod
+    def get_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+        raise NotImplementedError("Must be implemented by subclass")
 
     @property
     def tod_template(self) -> str:
@@ -876,7 +616,7 @@ class NewDataStorage:
 
     @property
     def optcam_template(self) -> str:
-        return get_optcam_template(self.date ,self.setnum)
+        return get_optcam_template(self.date, self.setnum)
 
     @property
     def consolidated_file_template(self) -> str:
@@ -920,8 +660,6 @@ class ConsolidatedData(NewDataStorage):
         downsampling_factor: int=1,
     ) -> ConsolidatedData:
         
-
-        folder = Path(f'{data_dir}/{date}')
         todtemplate = get_tod_template(date, setnum)
         tele_template = Path(get_azel_template(date, setnum))
         optcam_template = Path(get_optcam_template(date , setnum))
@@ -939,7 +677,6 @@ class ConsolidatedData(NewDataStorage):
         if optcam_exists:
             optcam_file = h5py.File(optcam_template, 'r')
         
-
         # Find TOD files
         todlist = glob.glob(todtemplate)
         nchan = len(todlist)
@@ -975,11 +712,9 @@ class ConsolidatedData(NewDataStorage):
                     raw_data.timestamp,
                     n_samples
                 )
-            
 
             n_missed = int(np.sum(missed_packets[:, 1]))
             missed_sample_counts.append(n_missed)
-            # total_samples = n_samples + n_missed
             sample_counts.append(n_samples)
             missed_packets_list.append(missed_packets)
 
@@ -1049,10 +784,7 @@ class ConsolidatedData(NewDataStorage):
             optcam_file.close()
         else:
             global_data_group.create_dataset('optical_image', data=np.array([]))
-            optical_image = None
-        optical_visibility = global_data_group.create_dataset('optical_visibility', data=vis)
-
-
+        global_data_group.create_dataset('optical_visibility', data=vis)
 
         chunk_shape_1d = compute_chunk_shape(tuple(), 8, max_chunk_size=total_samples)
         chunk_shape_1d_ds = compute_chunk_shape(tuple(), 8, max_chunk_size=n_samples_ds)
@@ -1081,13 +813,13 @@ class ConsolidatedData(NewDataStorage):
         else:
             pkt_idx = np.arange(n_samples)
             pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
-        print('Interpolating timestamp...')
+        _logger.debug('ConsolidatedData: Interpolating timestamp...')
         interpolate_timestamp_streaming(
             raw_data.timestamp,
             temp_timestamp,
             pkt_idx,
         )
-        print('Downsampling timestamp...')
+        _logger.debug('ConsolidatedData: Downsampling timestamp...')
         chunked_downsample(
             temp_timestamp,
             timestamp,
@@ -1098,7 +830,6 @@ class ConsolidatedData(NewDataStorage):
         raw_data.close()
         fs = 1 / (timestamp[1] - timestamp[0])
         global_data_group.attrs['fs'] = fs
-
 
         # Intiialize group for storing data per-channel
         all_channels_group = cdata.create_group('channels')
@@ -1122,7 +853,6 @@ class ConsolidatedData(NewDataStorage):
 
             # Store the tone parameters
             tones_table = this_channel_group.create_dataset('tones', shape=(n_tones,), dtype=TONES_TABLE_DTYPE)
-            # tones_table = np.zeros(n_tones, dtype=TONES_TABLE_DTYPE)
 
             tones_table['baseband_freq'] = raw_data.baseband_freqs[:]
             tones_table['power'] = raw_data.tone_powers[:]
@@ -1134,7 +864,6 @@ class ConsolidatedData(NewDataStorage):
             chanmask = raw_data.chanmask[:]
             off_res = np.argwhere(chanmask == 0).flatten()
             no_pol = np.argwhere(tones_table['polarization'] < 1).flatten()
-            # tones_table['polarization'][no_pol] = 0
             chanmask[no_pol] = -1
             chanmask[off_res] = 0  # Preserve off-resonance indices
             tones_table['chanmask'] = chanmask
@@ -1220,12 +949,11 @@ class ConsolidatedData(NewDataStorage):
             else:
                 pkt_idx = np.arange(n_samples)
                 pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
+            valid_tone_index = np.arange(n_tones, dtype=int)
 
-            # valid_tone_index = np.arange(n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
-            valid_tone_index = np.arange(n_tones, dtype=int) + 0  # TODO: How to make this backwards compatible?
             # Interpolate missing IQ data
             if this_n_missed > 0:
-                print('interpolating data...')
+                _logger.debug('ConsolidatedData: Interpolating missing IQ data...')
                 interpolate_missing_data(
                     raw_data.adc_i,
                     raw_data.adc_q,
@@ -1237,7 +965,7 @@ class ConsolidatedData(NewDataStorage):
                     valid_tone_index
                 )
             
-            print('Copying Raw IQ data')
+            _logger.debug('ConsolidatedData: Copying Raw IQ data...')
             chunk_shape_read_adc = compute_chunk_shape((1024, ), 8, max_chunk_size=n_samples)
             for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_i, chunk_size=chunk_shape_read_adc[-1]):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
@@ -1249,7 +977,7 @@ class ConsolidatedData(NewDataStorage):
             
             # Detector Positions
             if azel_exists:
-                print('Computing detector positions...')
+                _logger.debug('ConsolidatedDaata: Computing detector positions...')
                 get_detector_positions(
                     temp_timestamp,
                     timestamp_tel[:],
@@ -1263,7 +991,7 @@ class ConsolidatedData(NewDataStorage):
                 )
 
             # Downsample timestamp and IQ data
-            print('Downsampling data...')
+            _logger.debug('ConsolidatedData: Downsampling IQ data...')
             new_decimate_in_chunks(
                 temp_data_IQ,
                 data_IQ,
@@ -1275,12 +1003,11 @@ class ConsolidatedData(NewDataStorage):
                 if sample % downsampling_factor == 0:
                     downsampled_interpolated_samples.append(sample // downsampling_factor)
             downsampled_interpolated_samples = np.array(downsampled_interpolated_samples)
-            # downsampled_interpolated_samples = temp_interpolated_samples[temp_interpolated_samples % downsampling_factor == 0] // downsampling_factor
             interpolated_samples.resize(downsampled_interpolated_samples.shape)
             interpolated_samples = downsampled_interpolated_samples[:]
 
             if azel_exists:
-                print('Downsampling detector position arrays...')
+                _logger.debug('ConsolidatedData: Downsampling detector position arrays...')
                 chunked_downsample(
                     temp_detector_az,
                     detector_az,
@@ -1302,7 +1029,7 @@ class ConsolidatedData(NewDataStorage):
             del time_ordered_data_group['temp_detector_az']
             del time_ordered_data_group['temp_detector_za']
             
-        # Get rid of full timestamp now
+        # Get rid of full timestamp now that data from all channels read
         del global_data_group['temp_timestamp']
 
         # Create virtual datasets
@@ -1345,6 +1072,7 @@ class ConsolidatedData(NewDataStorage):
         pd = ProcessedData(pfile_path, mode=mode)
         pd.initialize_processed_data_fields()
         return pd
+
 
 class ProcessedData(NewDataStorage):
 
@@ -1420,7 +1148,6 @@ class ProcessedData(NewDataStorage):
             )
             calibration_info['df_per_mK'] = df_per_mK
 
-
             # Rotate to Gain / Phase
             IQ_to_gain_phase_angle = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])
             calibration_info['IQ_to_gain_phase_angle'] = IQ_to_gain_phase_angle
@@ -1429,6 +1156,7 @@ class ProcessedData(NewDataStorage):
                 data_gain_phase,
                 IQ_to_gain_phase_angle,
             )
+
             # Generate calibrated data
             # First mean center IQ data
             data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
@@ -1440,23 +1168,6 @@ class ProcessedData(NewDataStorage):
                 adc_units_to_hz,
                 df_per_mK,
             )
-
-            # fig, axes = plt.subplots(2, 3)
-            # fig.suptitle('Datasets before further processing')
-            # axes[0, 0].set_title('data_I')
-            # axes[0, 0].plot(data_IQ[0, 241])
-            # axes[1, 0].set_title('data_Q')
-            # axes[1, 0].plot(data_IQ[1, 241])
-            # axes[0, 1].set_title('data_gain')
-            # axes[0, 1].plot(data_gain_phase[0, 241])
-            # axes[1, 1].set_title('data_phase')
-            # axes[1, 1].plot(data_gain_phase[1, 241])
-            # axes[0, 2].set_title('data_freq')
-            # axes[0, 2].plot(data_freq_diss[0, 241])
-            # axes[1, 2].set_title('data_diss')
-            # axes[1, 2].plot(data_freq_diss[1, 241])
-            # plt.show()
-            # pdb.set_trace()
 
         # Make virtual datasets for the new stuff
         total_tones = self['vdsets'].attrs['n_tones']
@@ -1613,7 +1324,9 @@ class ProcessedData(NewDataStorage):
     def detector_za(self) -> h5py.Dataset:
         return self['vdsets/detector_za']
     
+    #
     # Tone/detector properties
+    #
     @property
     def tones_table(self) -> h5py.Dataset:
         return self['vdsets/tones']
@@ -1709,7 +1422,9 @@ class ProcessedData(NewDataStorage):
     def carrier_amplitudes(self) -> h5py.Dataset:
         return self['vdsets/carrier_amplitudes']
     
+    #
     # Calibration information 
+    #
     @property
     def calibration_info(self) -> h5py.Dataset:
         return self['vdsets/calibration_info']
@@ -1742,7 +1457,6 @@ class ProcessedData(NewDataStorage):
     def set_df_per_mK(self, new_df_per_mK: npt.NDArray):
         self._set_table_field('calibration_info', 'df_per_mK', new_df_per_mK)
 
-    
 
 def plot_map(
         map: npt.NDArray,
@@ -1791,6 +1505,42 @@ def plot_map(
     return fig
 
 
+def find_peaks(data: ProcessedData, primary_direction: str='az'):
+    import numpy as np
+    from numpy.polynomial import Polynomial
+    # find peak going forward / back
+    # fit gaussian
+    # take position of both peask
+    # right is 10-15
+    # left is 20-25
+    i_res = 241
+    right_indices = np.argwhere(np.logical_and(10 <= data.time, data.time <= 15)).flatten()
+    left_indices = np.argwhere(np.logical_and(20 <= data.time, data.time <= 25)).flatten()
+    telescope_pos = data.detector_az[i_res] if primary_direction.lower() == 'az' else data.detector_za[i_res]
+
+    right_peak_idx = right_indices[np.argmax(data.data_mK[i_res, right_indices])]
+    left_peak_idx = left_indices[np.argmax(data.data_mK[i_res, left_indices])]
+
+    right_slice = slice(right_peak_idx - 2, right_peak_idx + 3)
+    left_slice = slice(left_peak_idx - 2, left_peak_idx + 3)
+
+    right_fit = Polynomial.fit(telescope_pos[right_slice], data.data_mK[i_res, right_slice], 2).convert()
+    left_fit = Polynomial.fit(telescope_pos[left_slice], data.data_mK[i_res, left_slice], 2).convert()
+
+    right_az_0 = (-1 * right_fit.coef[1]) / (2 * right_fit.coef[2])
+    left_az_0 = (-1 * left_fit.coef[1]) / (2 * left_fit.coef[2])
+    plt.plot(telescope_pos[:], data.data_mK[i_res, :], label=f'Full Trace')
+    plt.plot(telescope_pos[right_slice], data.data_mK[i_res, right_slice], label=f'Right {primary_direction.upper()}_0 = {right_az_0}')
+    plt.plot(telescope_pos[left_slice], data.data_mK[i_res, left_slice], label=f'Left {primary_direction.upper()}_0 = {left_az_0}')
+    scan_rate = (telescope_pos[right_peak_idx + 10] - telescope_pos[right_peak_idx - 10]) \
+        / (data.time[right_peak_idx + 10] - data.time[right_peak_idx - 10])
+    time_delay = (left_az_0 - right_az_0) / scan_rate / 2  # Amount RFSoC is behind the telescope
+    plt.annotate(f'Time Delay (seconds RFSoC lags behind telescope)= {time_delay:.3f}s', (.1, .1), xycoords='axes fraction')
+    plt.legend()
+    plt.show()
+
+
+
 if __name__ == '__main__':
     # Telescope Testing
     date = '20260320'
@@ -1803,68 +1553,3 @@ if __name__ == '__main__':
     pd = cd.create_processed_data()
 
     pdb.set_trace()
-
-    pd = ProcessedDataL0.from_tod(date, setnum, beam_map_mode=False)
-    # pd = ProcessedDataL0.from_file(date, setnum)
-    pd1 = ProcessedDataL1.from_level0(pd, ds_factor=1, do_electronics_noise_removal=True)
-    # f = tables.File(f'/data/{date}/{date}_Device_aSi1_Channel2_telescope_275mK_TOD_set{setnum}.h5', 'r')
-    # corrected_timestamp, missed_packets, corrected_packet_index = compute_timestamp(f, sigma=2.0)
-    # data_I = f.root.time_ordered_data.adc_i
-    # data_Q = f.root.time_ordered_data.adc_q
-    # interpolate_data(data_I, data_Q, corrected_timestamp, missed_packets, corrected_packet_index)
-    # f.close()
-    pdb.set_trace()
-   
-    # pd.close()
-#     date = '20250916'
-#     setnum = 1017
-#     # date = '20250529'
-#     # setnum = 1011
-#     pd = ProcessedDataL1.from_tod(date, setnum)
-#     pd2 = ProcessedDataLN.from_previous_level(pd)
-#     pd2.data_IQ[:] = 0
-#     pd3 = ProcessedDataLN.from_previous_level(pd2)
-#     pdb.set_trace()
-#     pd.close()
-#     pd2.close()
-#     pd3.close()
-
-    # pd_old = ProcessedData.from_tod(date, setnum)
-    # pd_new = ProcessedDataL1.from_tod(date, setnum)
-    # plt.show()
-    # plt.plot(pd_old.df_per_mK[:], label='Old')
-    # plt.plot(pd_new.df_per_mK[:], label='New')
-    # plt.legend()
-    # plt.show()
-    # pdb.set_trace()
-    # pd_old.close()
-    # pd_new.close()
-    # data = ProcessedData.from_file(date, setnum)
-    # pfile = PyTablesProcessedData.from_tod(date, setnum, save=False)
-    # todtemplate = get_tod_template(date, setnum)
-    # todlist = glob.glob(todtemplate)
-
-    # # h5file = RawDataFile(todlist[0], 'r')
-    # # data_I = h5file.adc_i[:]
-    # # data_Q = h5file.adc_q[:]
-
-    # h5file = tables.open_file(todlist[0], 'r')
-    # data_I = h5file.root.time_ordered_data.adc_i[:]
-    # data_Q = h5file.root.time_ordered_data.adc_q[:]
-
-    # carrier_amp_I = np.nanmedian(data_I, axis=1)
-    # carrier_amp_Q = np.nanmedian(data_Q, axis=1)
-    
-    # # Rotate to Gain / Phase
-    # this_gain_phase_angle = np.atan2(carrier_amp_I, carrier_amp_Q)  # N_chan
-
-    # data_IQ = np.stack((data_I, data_Q), axis=0)
-    # this_data_gain_phase = rotate_basis(
-    #     data_IQ,
-    #     this_gain_phase_angle
-    # )
-    # clean_data = remove_electronics_noise(this_data_gain_phase)
-
-    # # pdb.set_trace()
-    # h5file.close()
-    # # pdb.set_trace()

@@ -8,7 +8,7 @@ from scipy.signal import decimate
 
 
 from rfsocinterface.core.losweep import LoSweepData
-from rfsocinterface.core.data.data import ProcessedData, BAD_RFSOC_TONE_START_INDEX
+from rfsocinterface.core.data.data import ProcessedData 
 
 
 if __name__ == '__main__':
