@@ -10,8 +10,9 @@ import time
 import matplotlib.pyplot as plt
 
 import rfsocinterface
-from rfsocinterface.core.data.data import ProcessedData, ConsolidatedData
+from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.data.routines import DataRoutine, ROUTINE_REGISTRY
+from rfsocinterface.core.data.storage import ConsolidatedData
 
 _logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ if __name__ == '__main__':
     import matplotlib as mpl
     mpl.use('TkAgg')
     from rfsocinterface.core.data.routines import *
-    from rfsocinterface.core.data.data import PsdBasis
+    from rfsocinterface.core.data.utils import PsdBasis
     import pdb
     date = '20260309'
     setnum = 1010
@@ -91,11 +92,11 @@ if __name__ == '__main__':
         noise_removal,
         hp_filter,
         lp_filter,
-        psd,
-        psd_plotter,
-        # clean_tod,
-        # bin_tod_to_map,
-        # plotter,
+        # psd,
+        # psd_plotter,
+        clean_tod,
+        bin_tod_to_map,
+        plotter,
     ])
     pdata = pipeline.from_tod(date, setnum, ds_factor)
     # pdata = ProcessedData.load(date, setnum)

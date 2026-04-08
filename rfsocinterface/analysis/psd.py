@@ -17,11 +17,11 @@ from kidpy3 import RawDataFile
 
 from rfsocinterface.core.data import (
     flag_outliers,
-    ProcessedData,
     DataRoutine,
     ProcessingStage,
 )
-from rfsocinterface.core.data.data import PsdBasis
+from rfsocinterface.core.data.utils import PsdBasis
+from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
 
 XLIM = (0.1, 250)

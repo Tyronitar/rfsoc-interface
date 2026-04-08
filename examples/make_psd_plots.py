@@ -8,7 +8,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 
 
-from rfsocinterface.core.data import ProcessedData
+from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.analysis.psd import compute_noise_psd, XLIM
 from rfsocinterface.core.utils import ordinal
 

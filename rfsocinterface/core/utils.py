@@ -5,7 +5,7 @@ import pdb
 import os
 from pathlib import Path
 import json
-from enum import IntEnum, StrEnum
+from enum import EnumMeta, IntEnum, StrEnum
 from dataclasses import dataclass
 from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Literal
 from datetime import datetime
@@ -61,13 +61,6 @@ H5pyObject = TypeVar('H5pyObject', h5py.Dataset, h5py.Group)
 
 GAUSSIAN_SIGMA = (0.5, 0.33)
 BUTTER_ORDER = 6
-class TabName(StrEnum):
-    """Possible tab names for the GUI."""
-    INITIALIZATION = 'initialization'
-    LOSWEEP = 'losweep'
-    TELESCOPE = 'telescope'
-    DATA = 'data'
-    IMAGING = 'imaging'
 
 # Generic types for type hints
 T = TypeVar('T')
@@ -81,6 +74,22 @@ PERMISSIONS_ALL_RW = PERMISSIONS_USR_RW | stat.S_IWGRP | stat.S_IWOTH
 PERMISSIONS_ALL_FULL = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH | PERMISSIONS_ALL_RW
 
 DEFAULT_CHUNK_SIZE = 100
+
+class TabName(StrEnum):
+    """Possible tab names for the GUI."""
+    INITIALIZATION = 'initialization'
+    LOSWEEP = 'losweep'
+    TELESCOPE = 'telescope'
+    DATA = 'data'
+    IMAGING = 'imaging'
+
+class MetaEnum(EnumMeta):
+    def __contains__(cls, item):
+        try:
+            cls(item)
+        except ValueError:
+            return False
+        return True
 
 
 def convert_path(path: PathLike) -> Path:
@@ -1216,6 +1225,7 @@ if __name__ == '__main__':
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
     y = np.zeros(n // q)
+
     # decimate_in_chunks(x, q, out=y)
 
     # n_repeats = 20

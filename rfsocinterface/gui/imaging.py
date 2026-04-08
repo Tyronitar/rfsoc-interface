@@ -10,6 +10,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout, QProgressDialog
 from kidpy3 import capture
 
+from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget, DataCollectionMainWidget
@@ -19,7 +20,6 @@ from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
 from rfsocinterface.gui.widgets import FunctionWidget, ArgumentType
 from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.data import (
-    ProcessedData,
     MapData,
     DataPipeline,
     DataRoutine,

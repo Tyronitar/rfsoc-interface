@@ -1,5 +1,5 @@
 import pdb
-from rfsocinterface.core.data import ProcessedData
+from rfsocinterface.core.data.storage import ProcessedData
 from pathlib import Path
 from typing import Literal
 import numpy as np
