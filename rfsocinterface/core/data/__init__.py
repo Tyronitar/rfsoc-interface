@@ -1,6 +1,5 @@
 """Submodule for data storage / processing related code."""
 
-
 from rfsocinterface.core.data.pipeline import Pipeline
 from rfsocinterface.core.data.routines import (
     ROUTINE_REGISTRY,

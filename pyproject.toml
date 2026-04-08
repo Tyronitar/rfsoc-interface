@@ -20,7 +20,6 @@ kidpy3 = {git = "https://github.com/ASU-Astronomical-Instrumentation/readout.git
 exscript = "^2.6.28"
 psutil = "^6.1.1"
 vmbpy = "^1.1.0"
-tables = "^3.10.2"
 gitpython = "^3.1.44"
 numpy = "^2.3.1"
 scipy = "^1.16.0"
