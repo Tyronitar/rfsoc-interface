@@ -20,8 +20,8 @@ from rfsocinterface.core.data import (
     ProcessedData,
     DataRoutine,
     ProcessingStage,
-    PsdBasis,
 )
+from rfsocinterface.core.data.data import PsdBasis
 from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
 
 XLIM = (0.1, 250)
@@ -84,26 +84,6 @@ def _compute_psd(
     """Compute the PSD."""
     return signal.welch(data, fs, nperseg=n_samples_per_block)
 
-
-class ComputeNoisePSD(DataRoutine):
-    stage = ProcessingStage.PROCESSING_L2
-
-    def __init__(self, dataset: str='data_mK'):
-        # TODO: Add parameters for the PSD computation
-        super().__init__()
-        self.dataset = dataset
-    
-    def forward(self, pd: ProcessedData):
-        data = getattr(pd, self.dataset)
-        chanmask, psd, freq = compute_noise_psd(
-            data[:],
-            timestamp=pd.timestamp[:],
-            chanmask=pd.chanmask[:],
-            nominal_block_length=self.nominal_block_length,
-        )
-        with tables.File(pd.cleaned_file_template, 'a') as cfile:
-            cfile.create_array('/', 'psd', psd)
-            cfile.create_array('/', 'psd_freq', freq)
 
 @ensure_path(2)
 def plot_psd(

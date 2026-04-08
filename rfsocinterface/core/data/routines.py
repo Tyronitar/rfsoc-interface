@@ -6,6 +6,8 @@ import pdb
 import logging
 from typing import Literal
 import warnings
+from pathlib import Path
+
 
 import numpy as np
 import numpy.typing as npt
@@ -19,11 +21,12 @@ import matplotlib as mpl
 mpl.use('QtAgg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.figure import Figure
 
 
-from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, DEFAULT_MAP_DPIX, N_POLARIZATION, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX
+from rfsocinterface.core.data.data import ConsolidatedData, ProcessedData, PsdBasis, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, DEFAULT_MAP_DPIX, N_POLARIZATION, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX
 from rfsocinterface.core.data.data import DECIMATE_ORDER
-from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash, PERMISSIONS_ALL_FULL
+from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash, PERMISSIONS_ALL_FULL, axis_slice
 
 __all__ = (
     'ROUTINE_REGISTRY',
@@ -33,7 +36,8 @@ __all__ = (
     'LowPassFilter',
     'HighPassFilter',
     'RemoveElectronicsNoise',
-    # 'ComputeNoisePSD',
+    'ComputeNoisePSD',
+    'PlotPSD',
     'CleanTOD',
     'BinTODIntoMap',
     'PlotMap',
@@ -455,14 +459,10 @@ class CleanTOD(DataRoutine):
             return inputs
 
 
-class PsdBasis:
-    """Enum for the different bases to use for computing the PSD."""
-    IQ = 'iq'
-    GAIN_PHASE = 'gain_phase'
-    FREQ_DISS = 'freq_diss'
-
+@register_routine
 class ComputeNoisePSD(DataRoutine):
-    stage = ProcessingStage.PROCESSING_L2
+    name = 'ComputeNoisePSD'
+    version = '1.0.0'
 
     def __init__(
             self,
@@ -470,68 +470,262 @@ class ComputeNoisePSD(DataRoutine):
             nominal_block_length: float=10,
             cut_time: float=0.0,
     ):
-        super().__init__()
-        self.bases = bases
-        self.nominal_block_length = nominal_block_length
-        self.cut_time = cut_time
+        super().__init__(
+            bases=bases,
+            nominal_block_length=nominal_block_length,
+            cut_time=cut_time,
+        )
     
-    def forward(self, pd: ProcessedData):
-        # Initialize PSD group in the file if needed
-        if not pd.test_node('psd'):
-            psd_group = pd.create_group('/', 'psd')
-        else:
-            psd_group = pd.get_node('psd')
-
-        for basis in self.bases:
-            time = pd.time
+    def inputs(self, pdata: ProcessedData) -> list[str]:
+        dsets = []
+        bases = self.params['bases']
+        for basis in bases:
             match basis:
                 case PsdBasis.IQ:
-                    data = pd.data_IQ[:]
+                    dsets.append('/vdsets/data_IQ')
                 case PsdBasis.GAIN_PHASE:
-                    data = pd.data_gain_phase[:] / pd.carrier_amplitude_norm()
+                    dsets.append('/vdsets/data_gain_phase')
+                    dsets.append('/vdsets/carrier_amplitudes')
                 case PsdBasis.FREQ_DISS:
-                    f = pd.baseband_freqs[:] + pd.lo_freq[:]
-                    data = pd.data_freq_diss[:] / f[:, np.newaxis, :, np.newaxis]
+                    dsets.append('/vdsets/data_freq_diss')
+                    dsets.append('/vdsets/tones')
                 case _:
                     raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')
-            if self.cut_time > 0:
-                n_samples_to_cut = np.round(self.cut_time * pd.fs).astype(int)
+        return dsets
+    
+    def run(self, pdata: ProcessedData, inputs: list[str]=None) -> list[str]:
+        # Initialize PSD group in the file if needed
+        if not pdata.has('psd', exact_match=True):
+            psd_group = pdata.create_group('psd')
+
+        psd_group = pdata['psd']
+        
+        time = pdata.timestamp[:] - pdata.timestamp[0]
+        bases = self.params['bases']
+        cut_time = self.params['cut_time']
+        nominal_block_length = self.params['nominal_block_length']
+
+        outputs = []
+
+        for basis in bases:
+            match basis:
+                case PsdBasis.IQ:
+                    data = pdata.data_IQ[:]
+                case PsdBasis.GAIN_PHASE:
+                    data = pdata.data_gain_phase[:] / pdata.carrier_amplitude_norm()
+                case PsdBasis.FREQ_DISS:
+                    f = pdata.detector_f()
+                    data = pdata.data_freq_diss[:] / f[:, np.newaxis, :, np.newaxis]
+                case _:
+                    raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')
+            if cut_time > 0:
+                n_samples_to_cut = np.round(cut_time * pdata.fs).astype(int)
                 data = data[:, :, n_samples_to_cut:-n_samples_to_cut]
                 time = time[n_samples_to_cut:-n_samples_to_cut]
 
             # Determine the number of blocks for computing the PSD
-            n_samples = np.size(time)
-            n_samples_per_block = int(2**np.ceil(np.log2(self.nominal_block_length * pd.fs)))
+            n_samples = pdata.n_samples
+            n_samples_per_block = int(2**np.ceil(np.log2(nominal_block_length * pdata.fs)))
             n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
             if n_blocks == 0:
                 n_blocks = 1
                 n_samples_per_block = n_samples
             
             # Compute the PSD
-            for i_chan in range(pd.n_channels):
-                good_tones = np.argwhere(pd.chanmask[i_chan, :] == 1).flatten()
-                freq, psd = signal.welch(
-                    axis_index(data[i_chan], good_tones, axis=-2),
-                    pd.fs[i_chan],
-                    nperseg=n_samples_per_block,
-                )
+            good_tones = pdata.onres_ind
+            freq, psd = signal.welch(
+                data[:, good_tones, :],
+                pdata.fs,
+                nperseg=n_samples_per_block,
+            )
 
-                # Save to the file
-                if not pd.test_node('freq'):
-                    pd.create_array(psd_group, 'freq', obj=freq)
-                if not pd.test_node(f'psd_{basis}'):
-                    psd_shape = (pd.n_channels, *psd.shape)
-                    psd_dtype = psd.dtype
-                    psd_array = pd.create_array(psd_group, f'psd_{basis}', shape=psd_shape, atom=tables.Atom.from_dtype(psd_dtype))
-                psd_array[i_chan, :] = psd
-                
+            if basis in psd_group:
+                del psd_group[basis]
+            basis_group = psd_group.create_group(basis)
+            psd_dset = basis_group.create_dataset('psd', data=psd)
+            outputs.append(psd_dset.name)
+            freq_dset = basis_group.create_dataset('freq', data=freq)
+            outputs.append(freq_dset.name)
+        
+        return outputs
 
-    def get_receipt_entry(self) -> str:
-        return f'ComputeNoisePSD: {{\n' \
-               f'\tbases: {self.bases},\n' \
-               f'\tcut_time: {self.cut_time},\n' \
-               f'\tnominal_block_length: {self.nominal_block_length},\n' \
-               f'}}'
+
+def plot_psd_df_over_f(
+    freq: npt.NDArray,
+    psd: npt.NDArray,
+    filename: Path,
+    min_percentile: float=16,
+    max_percentile: float=84,
+    title: str | None=None,
+    resonators: list[int]=[0],
+) -> Figure:
+    raise NotImplementedError
+
+
+def plot_psd_dbc_hz(
+    freq: npt.NDArray,
+    psd: npt.NDArray,
+    xlim: tuple[float, float]=None,
+    ylim: tuple[float, float]=None,
+    show_error_band: bool=True,
+    error_band_min_percentile: float=16,
+    error_band_max_percentile: float=84,
+    show_flat_spectrum_level: bool=True,
+    flat_spectrum_search_bounds: tuple[float, float]=(10, 50),
+    label: str=None,
+    title: str | None=None,
+    ax: plt.Axes=None,
+    figure_kwargs: dict={},
+) -> Figure | None:
+    """Create plots for the psd.
+    
+    Args:
+        freq (npt.NDArray): Array of frequencies (N_freq).
+        psd: (npt.NDArray): PSD (N_tones x N_freq).
+        show_error_band (bool, optional): Whether to show the error band. Defaults
+            to True.
+        error_band_min_perncentile (float, optional): Percentile of lower error bound for the plot.
+            Defaults to 16.
+        error_band_max_perncentile (float, optional): Percentile of upper error bound for the plot
+            Defaults to 84.
+        title (str, optional): Title to give to the plot. Defaults to None.
+        `ax` (plt.Axes, optional): Axes to plot in.
+    
+    Returns:
+        Figure | None: If no `ax` was provided, a new figure is generated to
+            create the plot and is returned.
+    
+    Raises:
+        ValueError: If `basis` is not a valid basis (see `VALID_BASES`).
+    """
+    fig = None
+
+    # Create figure if needed
+    if ax is None:
+        fig = plt.figure(**figure_kwargs)
+        ax = fig.add_subplot()
+    
+    # Setup plot
+    ax.set_xscale('log')
+    ax.set_yscale('linear')
+    if xlim is not None:
+        ax.set_xlim(*xlim)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    ax.set_xlabel('Frequency (Hz)', fontsize=16)
+    ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
+    ax.tick_params(labelsize=14)
+    if title is not None:
+        ax.set_title(title, fontsize=16)
+
+    # Plot median
+    psd_med = np.median(psd, axis=0)
+    plot_data_med = 10 * np.log10(psd_med)
+    lines = ax.plot(freq, plot_data_med, color='b', label='Median Noise')
+    if label is not None:
+        lines[0].set_label(label)
+
+    # Error band
+    if show_error_band:
+        psd_min = np.percentile(psd, error_band_min_percentile, axis=0)
+        psd_max = np.percentile(psd, error_band_max_percentile, axis=0)
+        plot_data_min = 10 * np.log10(psd_min)
+        plot_data_max = 10 * np.log10(psd_max)
+        ax.fill_between(
+            freq,
+            plot_data_min,
+            plot_data_max,
+            facecolor='c',
+            alpha=0.5,
+        )
+    
+    # Flat spectrum level
+    if show_flat_spectrum_level:
+        flat_spectrum_idx = np.where(
+            (freq > flat_spectrum_search_bounds[0]) & 
+            (freq < flat_spectrum_search_bounds[1])
+        )
+        flat_spectrum_noise_level = np.median(plot_data_med[flat_spectrum_idx])
+        ax.axhline(
+            flat_spectrum_noise_level,
+            color='r',
+            linestyle='dashed',
+            label=f'Flat Spectrum Level = {flat_spectrum_noise_level:.1f} dBc/Hz'
+        )
+
+    # Add legend
+    ax.legend(fontsize=14)
+
+    if fig is not None:
+        fig.tight_layout()
+        return fig
+
+
+@register_routine
+class PlotPSD(DataRoutine):
+    name = 'PlotPSD'
+    version = '1.0.0'
+
+    def __init__(
+            self,
+            *bases: PsdBasis,
+            min_percentile: float=16,
+            max_percentile: float=84,
+            title: str=None,
+    ):
+        super().__init__(
+            bases=bases,
+            min_percentile=min_percentile,
+            max_percentile=max_percentile,
+            title=title,
+        )
+    
+    def inputs(self, pdata: ProcessedData) -> list[str]:
+        dsets = []
+        bases = self.params['bases']
+        for basis in bases:
+            if basis not in PsdBasis:
+                raise ValueError(f'Unknown PSD basis "{basis}"')
+            dsets.append(f'/psd/{basis}/psd')
+            dsets.append(f'/psd/{basis}/freq')
+        return dsets
+    
+    def run(self, pdata: ProcessedData, inputs: list[str]=None) -> list[str]:
+        bases = self.params['bases']
+        for basis in bases:
+            pdf_path = f'{pdata.file_stub}_psd_{basis}.pdf'
+            basis_group = pdata[f'psd/{basis}']
+            match basis:
+                case PsdBasis.IQ | PsdBasis.GAIN_PHASE:
+                    if basis == PsdBasis.IQ:
+                        titles = ['I', 'Q', 'Average']
+                    else:
+                        titles = ['Gain', 'Phase', 'Average']
+                    with PdfPages(pdf_path) as pdf:
+                        fig0 = plot_psd_dbc_hz(
+                            basis_group['freq'][:],
+                            basis_group['psd'][0],
+                            title=titles[0],
+                        )
+                        fig1 = plot_psd_dbc_hz(
+                            basis_group['freq'][:],
+                            basis_group['psd'][1],
+                            title=titles[1],
+                        )
+                        fig2 = plot_psd_dbc_hz(
+                            basis_group['freq'][:],
+                            np.mean(basis_group['psd'], axis=0),
+                            title=titles[2],
+                        )
+                        pdf.savefig(fig0)
+                        pdf.savefig(fig1)
+                        pdf.savefig(fig2)
+                        plt.close(fig0)
+                        plt.close(fig1)
+                        plt.close(fig2)
+                case PsdBasis.FREQ_DISS:
+                    raise NotImplementedError
+        return []
 
 # 
 # Mapping

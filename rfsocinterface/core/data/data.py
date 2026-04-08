@@ -9,9 +9,10 @@ import time
 import logging
 from itertools import chain, batched
 import typing
-from typing import overload
+from typing import overload, Iterator
 from importlib.metadata import version
 import shutil
+from enum import StrEnum, EnumMeta
 
 # import tables
 import h5py
@@ -95,6 +96,19 @@ CALIBRATION_TABLE_DTYPE = [
     ('df_per_mK', 'f8'),
 ]
 
+class MetaEnum(EnumMeta):
+    def __contains__(cls, item):
+        try:
+            cls(item)
+        except ValueError:
+            return False
+        return True
+
+class PsdBasis(StrEnum, metaclass=MetaEnum):
+    """Enum for the different bases to use for computing the PSD."""
+    IQ = 'IQ'
+    GAIN_PHASE = 'gain_phase'
+    FREQ_DISS = 'freq_diss'
 
 
 def get_channel_group_name(idx: int) -> str:
@@ -1220,6 +1234,9 @@ class ProcessedData(NewDataStorage):
 
                 param_str = ', '.join(f'{k}={v}' for k, v in params.items())
                 print(f'[{k}] {name}({param_str})')
+    
+    def channels(self) -> Iterator[h5py.Group]:
+        yield from self['channels'].values()
 
     def get_channel_group(self, i_chan: int) -> h5py.Group:
         return self[f'channels/channel_{i_chan:03d}']
@@ -1362,6 +1379,18 @@ class ProcessedData(NewDataStorage):
     
     def set_baseband_freqs(self, new_freqs: npt.NDArray):
         self._set_table_field('tones', 'baseband_freq', new_freqs)
+    
+    def get_lo_freq(self, i_chan: int) -> float:
+        return  self.get_channel_group(i_chan).attrs['lo_freq']
+    
+    def detector_f(self) -> npt.NDArray:
+        f = self.baseband_freqs
+        i_tone = 0
+        for channel_group in self.channels():
+            n_tones = channel_group.attrs['n_tones']
+            f[i_tone:i_tone+n_tones] += channel_group.attrs['lo_freq']
+            i_tone += n_tones
+        return f
 
     @property
     def tone_powers(self) -> npt.NDArray:
@@ -1377,11 +1406,13 @@ class ProcessedData(NewDataStorage):
     def set_chanmask(self, new_chanmask: npt.NDArray):
         self._set_table_field('tones','chanmask', new_chanmask)
 
+    @property
     def onres_ind(self) -> npt.NDArray:
-        return np.argwhere(self.chanmask == 1)
+        return np.argwhere(self.chanmask == 1).flatten()
 
+    @property
     def offres_ind(self) -> npt.NDArray:
-        return np.argwhere(self.chanmask == 0)
+        return np.argwhere(self.chanmask == 0).flatten()
 
     @property
     def detector_pol(self) -> npt.NDArray:
@@ -1421,6 +1452,11 @@ class ProcessedData(NewDataStorage):
     @property
     def carrier_amplitudes(self) -> h5py.Dataset:
         return self['vdsets/carrier_amplitudes']
+    
+    def carrier_amplitude_norm(self) -> float:
+        amps = self.carrier_amplitudes[:]
+        z = amps[0] + amps[1] * 1j
+        return np.mean(np.abs(z))
     
     #
     # Calibration information 
@@ -1553,3 +1589,4 @@ if __name__ == '__main__':
     pd = cd.create_processed_data()
 
     pdb.set_trace()
+

@@ -6,6 +6,7 @@ from rfsocinterface.core.data.data import (
     N_POLARIZATION,
     DECIMATE_ORDER,
     BUTTER_ORDER,
+    PsdBasis,
     flag_outliers,
     plot_map,
 )
@@ -18,7 +19,6 @@ from rfsocinterface.core.data.routines import (
     HighPassFilter,
     LowPassFilter,
     RemoveElectronicsNoise,
-    PsdBasis,
     BinTODIntoMap,
     PlotMap
 )

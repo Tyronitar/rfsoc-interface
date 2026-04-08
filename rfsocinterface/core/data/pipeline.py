@@ -63,6 +63,7 @@ if __name__ == '__main__':
     import matplotlib as mpl
     mpl.use('TkAgg')
     from rfsocinterface.core.data.routines import *
+    from rfsocinterface.core.data.data import PsdBasis
     import pdb
     date = '20260309'
     setnum = 1010
@@ -75,6 +76,8 @@ if __name__ == '__main__':
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq)
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq)
     clean_tod = CleanTOD()
+    psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE)
+    psd_plotter = PlotPSD(PsdBasis.GAIN_PHASE)
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
@@ -88,9 +91,11 @@ if __name__ == '__main__':
         noise_removal,
         hp_filter,
         lp_filter,
-        clean_tod,
-        bin_tod_to_map,
-        plotter,
+        psd,
+        psd_plotter,
+        # clean_tod,
+        # bin_tod_to_map,
+        # plotter,
     ])
     pdata = pipeline.from_tod(date, setnum, ds_factor)
     # pdata = ProcessedData.load(date, setnum)
