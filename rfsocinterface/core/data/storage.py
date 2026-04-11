@@ -681,8 +681,8 @@ class ConsolidatedData(NewDataStorage):
             # n_samples = f.n_sample[0]
             n_samples = raw_data.adc_i.shape[-1]
 
-            if hasattr(raw_data, 'pkt_idx'):
-                _logger.debug('Using pkt_idx to find missed packets')
+            if raw_data.pkt_idx is not None:
+                _logger.debug('ConsolidatedData: Using pkt_idx to find missed packets')
                 missed_packets = find_missed_packets_with_indices(raw_data.pkt_idx)
             else:
                 missed_packets = find_missed_packets(
@@ -785,18 +785,18 @@ class ConsolidatedData(NewDataStorage):
         # n_samples = f.n_sample[0]
         n_samples = raw_data.adc_i.shape[-1]
         this_missed_packets = missed_packets_list[least_samples_channel]
-        if hasattr(raw_data, 'pkt_idx'):
+        if raw_data.pkt_idx is not None:
             pkt_idx = raw_data.pkt_idx
         else:
             pkt_idx = np.arange(n_samples)
             pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
-        _logger.debug('ConsolidatedData: Interpolating timestamp...')
+        _logger.info('ConsolidatedData: Interpolating timestamp...')
         interpolate_timestamp_streaming(
             raw_data.timestamp,
             temp_timestamp,
             pkt_idx,
         )
-        _logger.debug('ConsolidatedData: Downsampling timestamp...')
+        _logger.info('ConsolidatedData: Downsampling timestamp...')
         chunked_downsample(
             temp_timestamp,
             timestamp,
@@ -921,16 +921,17 @@ class ConsolidatedData(NewDataStorage):
                 shuffle=True,
             )
 
-            if hasattr(raw_data, 'pkt_idx'):
+            if raw_data.pkt_idx is not None:
                 pkt_idx = raw_data.pkt_idx
             else:
                 pkt_idx = np.arange(n_samples)
-                pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
-            valid_tone_index = np.arange(n_tones, dtype=int)
+                for sample, n_missed in this_missed_packets:
+                    pkt_idx[sample:] += n_missed
+            valid_tone_index = np.arange(n_tones, dtype=int) + 0
 
             # Interpolate missing IQ data
             if this_n_missed > 0:
-                _logger.debug('ConsolidatedData: Interpolating missing IQ data...')
+                _logger.info('ConsolidatedData: Interpolating missing IQ data...')
                 interpolate_missing_data(
                     raw_data.adc_i,
                     raw_data.adc_q,
@@ -942,7 +943,7 @@ class ConsolidatedData(NewDataStorage):
                     valid_tone_index
                 )
 
-            _logger.debug('ConsolidatedData: Copying Raw IQ data...')
+            _logger.info('ConsolidatedData: Copying Raw IQ data...')
             chunk_shape_read_adc = compute_chunk_shape((1024, ), 8, max_chunk_size=n_samples)
             for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_i, chunk_size=chunk_shape_read_adc[-1]):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
@@ -954,7 +955,7 @@ class ConsolidatedData(NewDataStorage):
 
             # Detector Positions
             if azel_exists:
-                _logger.debug('ConsolidatedDaata: Computing detector positions...')
+                _logger.info('ConsolidatedDaata: Computing detector positions...')
                 get_detector_positions(
                     temp_timestamp,
                     timestamp_tel[:],
@@ -968,7 +969,7 @@ class ConsolidatedData(NewDataStorage):
                 )
 
             # Downsample timestamp and IQ data
-            _logger.debug('ConsolidatedData: Downsampling IQ data...')
+            _logger.info('ConsolidatedData: Downsampling IQ data...')
             new_decimate_in_chunks(
                 temp_data_IQ,
                 data_IQ,
@@ -984,7 +985,7 @@ class ConsolidatedData(NewDataStorage):
             interpolated_samples = downsampled_interpolated_samples[:]
 
             if azel_exists:
-                _logger.debug('ConsolidatedData: Downsampling detector position arrays...')
+                _logger.info('ConsolidatedData: Downsampling detector position arrays...')
                 chunked_downsample(
                     temp_detector_az,
                     detector_az,

@@ -60,7 +60,7 @@ FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
 H5pyObject = TypeVar('H5pyObject', h5py.Dataset, h5py.Group)
 
 GAUSSIAN_SIGMA = (0.5, 0.33)
-BUTTER_ORDER = 6
+BUTTER_ORDER = 2
 
 # Generic types for type hints
 T = TypeVar('T')
@@ -958,6 +958,21 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
         out[...] = axis_slice(y, step=q, axis=axis)
 
 def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_shape=None):
+    N = dset.shape[axis]
+
+    if chunk_shape is None:
+        chunk_shape = dset.chunks
+    chunk_size = chunk_shape[axis]
+    if q == 1:
+        for start in range(0, N, chunk_size):
+            stop = min(start + chunk_size, N)
+            out_sl = get_axis_slice(out_dset, start=start, stop=stop, axis=axis)
+            out_dset[out_sl] = axis_slice(dset, start, stop, axis=axis)
+        return
+
+    # Create buffer for storing chunks
+    chunk = np.empty(chunk_shape, dtype=dset.dtype)
+    y = np.empty_like(chunk)
 
     # Copmpute values to account for phase lag from the filter
     wc = 0.8 / q
@@ -981,15 +996,9 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_
     zi = zi.reshape((n_sections, *zi_shape))
     x0 = axis_slice(dset, stop=1, axis=axis)
     zi = x0 * zi
-    N = dset.shape[axis]
+
 
     out_pos = 0
-    if chunk_shape is None:
-        chunk_shape = dset.chunks
-    chunk = np.empty(chunk_shape, dtype=dset.dtype)
-    chunk_size = chunk_shape[axis]
-    y = np.empty_like(chunk)
-
     out_pos -= delay_out
 
     for start in range(0, N, chunk_size):

@@ -265,7 +265,6 @@ def find_missed_packets(
                 large_window_packets_missed = large_expected_samples - large_actual_samples + 1
                 if large_expected_samples > large_actual_samples:
                     missed_packets = np.vstack([missed_packets, [i, large_window_packets_missed]])
-                    continue
         i += 1
 
     _logger.debug(f'{np.sum(missed_packets[:, 1])} missed packets')
@@ -395,9 +394,9 @@ def interpolate_missing_data(
         this_interpolated_indices = list(range(prev_index + 1, index))
 
         old_size = output_indices_dset.size
-        output_indices_dset.resize(old_size + np.size(this_interpolated_indices))
+        output_indices_dset.resize(old_size + np.size(this_interpolated_indices), axis=0)
         output_indices_dset[old_size:] = this_interpolated_indices
-        output_dset[..., window_packet_indices] = new_data
+        output_dset[..., this_interpolated_indices] = new_data
 
 
 def get_detector_positions(

@@ -261,10 +261,11 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     """
     # subtract the mean from each detector
     deproj = data - np.mean(data, axis=-1, keepdims=True)
+    deproj_flat = deproj / np.std(deproj, axis=-1, keepdims=True)
     n_tones = data.shape[1]
 
     # create a separate correlation matrix for all data channels
-    correlation_matrices = np.matmul(deproj, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
+    correlation_matrices = np.matmul(deproj_flat, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
 
     # calculate the eigenmodes of the correlation matrices
     eigen_values, v = np.linalg.eig(correlation_matrices)
@@ -292,7 +293,7 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
         new_modes = max(i_count, q_count)
         n_modes += new_modes
     n_modes = min(n_modes, max_modes)
-    _logger.debug(f'Using {n_modes} eigen modes')
+    _logger.debug(f'RemoveElectronincsNoise: Using {n_modes} eigen modes')
 
     # create templates based on the N_mode largest eigenmodes of each
     templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj)
@@ -376,8 +377,10 @@ class RemoveElectronicsNoise(DataRoutine):
                     output='sos',
                     analog=False,
                 )
-                clean_gain_phase = signal.sosfiltfilt(filt_sos, clean_gain_phase)
-            templates = compute_templates(clean_gain_phase[:, selection_indices], max_modes=max_modes)  # 2 x N_modes x N_samples
+                data_lp = signal.sosfiltfilt(filt_sos, clean_gain_phase)
+            else:
+                data_lp = clean_gain_phase[:]
+            templates = compute_templates(data_lp[:, selection_indices], max_modes=max_modes)  # 2 x N_modes x N_samples
 
             n_modes = templates.shape[1]
             eigenmodes.append(n_modes)
@@ -386,6 +389,7 @@ class RemoveElectronicsNoise(DataRoutine):
             subtraction_indices = decode_tone_indices(pdata, i_chan, template_subtraction_indices)
 
             for i_mode in range(n_modes):
+                clean_gain_phase -= np.mean(clean_gain_phase, axis=-1, keepdims=True)
                 numerator = np.einsum('ijk,ik->ij', clean_gain_phase[:, subtraction_indices], templates[:, i_mode])  # 2 x N_tones
                 corr = numerator / denominator[:, i_mode:i_mode+1]  # 2 x N_tones
                 clean_gain_phase[:, subtraction_indices] = clean_gain_phase[:, subtraction_indices] - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
@@ -515,16 +519,17 @@ class ComputeNoisePSD(DataRoutine):
                     data = pdata.data_gain_phase[:] / pdata.carrier_amplitude_norm()
                 case PsdBasis.FREQ_DISS:
                     f = pdata.detector_f()
+                    f[pdata.offres_ind] = 1
                     data = pdata.data_freq_diss[:] / f[:, np.newaxis, :, np.newaxis]
                 case _:
                     raise ValueError(f'Cannot compute noise PSD for unknown basis "{basis}"')
             if cut_time > 0:
                 n_samples_to_cut = np.round(cut_time * pdata.fs).astype(int)
-                data = data[:, :, n_samples_to_cut:-n_samples_to_cut]
+                data = data[..., n_samples_to_cut:-n_samples_to_cut]
                 time = time[n_samples_to_cut:-n_samples_to_cut]
 
             # Determine the number of blocks for computing the PSD
-            n_samples = pdata.n_samples
+            n_samples = np.size(time)
             n_samples_per_block = int(2**np.ceil(np.log2(nominal_block_length * pdata.fs)))
             n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
             if n_blocks == 0:
@@ -532,7 +537,7 @@ class ComputeNoisePSD(DataRoutine):
                 n_samples_per_block = n_samples
             
             # Compute the PSD
-            good_tones = pdata.onres_ind
+            good_tones = np.append(pdata.onres_ind, pdata.offres_ind)
             freq, psd = signal.welch(
                 data[:, good_tones, :],
                 pdata.fs,
@@ -574,6 +579,7 @@ def plot_psd_dbc_hz(
     flat_spectrum_search_bounds: tuple[float, float]=(10, 50),
     label: str=None,
     title: str | None=None,
+    add_legend: bool=True,
     ax: plt.Axes=None,
     figure_kwargs: dict={},
 ) -> Figure | None:
@@ -605,25 +611,22 @@ def plot_psd_dbc_hz(
         fig = plt.figure(**figure_kwargs)
         ax = fig.add_subplot()
     
-    # Setup plot
-    ax.set_xscale('log')
-    ax.set_yscale('linear')
-    if xlim is not None:
-        ax.set_xlim(*xlim)
-    if ylim is not None:
-        ax.set_ylim(*ylim)
-    ax.set_xlabel('Frequency (Hz)', fontsize=16)
-    ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
-    ax.tick_params(labelsize=14)
-    if title is not None:
-        ax.set_title(title, fontsize=16)
+        # Setup plot
+        ax.set_xscale('log')
+        ax.set_yscale('linear')
+        if xlim is not None:
+            ax.set_xlim(*xlim)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+        ax.set_xlabel('Frequency (Hz)', fontsize=16)
+        ax.set_ylabel(r'Noise PSD (dBc/Hz)', fontsize=16)
+        ax.tick_params(labelsize=14)
+        if title is not None:
+            ax.set_title(title, fontsize=16)
 
     # Plot median
     psd_med = np.median(psd, axis=0)
     plot_data_med = 10 * np.log10(psd_med)
-    lines = ax.plot(freq, plot_data_med, color='b', label='Median Noise')
-    if label is not None:
-        lines[0].set_label(label)
 
     # Error band
     if show_error_band:
@@ -646,15 +649,24 @@ def plot_psd_dbc_hz(
             (freq < flat_spectrum_search_bounds[1])
         )
         flat_spectrum_noise_level = np.median(plot_data_med[flat_spectrum_idx])
+        lines = ax.plot(
+            freq,
+            plot_data_med,
+            color='b',
+        )
+        if label is not None:
+            lines[0].set_label(rf'{label} ({flat_spectrum_noise_level:.1f} dBc Hz$^{{-1}}$)')
         ax.axhline(
             flat_spectrum_noise_level,
             color='r',
             linestyle='dashed',
-            label=f'Flat Spectrum Level = {flat_spectrum_noise_level:.1f} dBc/Hz'
         )
+    else:
+        lines = ax.plot(freq, plot_data_med, color='b', label=label)
 
     # Add legend
-    ax.legend(fontsize=14)
+    if add_legend and label is not None:
+        ax.legend(fontsize=14)
 
     if fig is not None:
         fig.tight_layout()
@@ -672,12 +684,14 @@ class PlotPSD(DataRoutine):
             min_percentile: float=16,
             max_percentile: float=84,
             title: str=None,
+            show: bool=False,
     ):
         super().__init__(
             bases=bases,
             min_percentile=min_percentile,
             max_percentile=max_percentile,
             title=title,
+            show=show,
         )
     
     def inputs(self, pdata: ProcessedData) -> list[str]:
@@ -720,6 +734,8 @@ class PlotPSD(DataRoutine):
                         pdf.savefig(fig0)
                         pdf.savefig(fig1)
                         pdf.savefig(fig2)
+                        if self.params['show']:
+                            plt.show()
                         plt.close(fig0)
                         plt.close(fig1)
                         plt.close(fig2)
