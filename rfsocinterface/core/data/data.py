@@ -361,9 +361,9 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
     for i in range(n_modes):
         numerator = np.einsum('ijk,ik->ij', data_lp, templates[:, i])  # N_chan x N_detector
         corr = numerator / denominator[:, i:i+1]  # N_chan x N_detector
-        data = data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # N_chan x N_detector x N_samples
+        data_lp = data_lp - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # N_chan x N_detector x N_samples
         # data_lp = signal.sosfiltfilt(filt_sos, data)
-        data_lp = data
+        # data_lp = data
     # fig, axes = plt.subplots(2, 2)
     # for row in range(2):
     #     for col in range(2):
@@ -1537,7 +1537,7 @@ class ProcessedDataL1(ProcessedData):
             detector_az = new_data.create_external_link(new_data.data_group, 'detector_az', f'{l0.filename}:{l0.detector_az._v_pathname}')
             detector_za = new_data.create_external_link(new_data.data_group, 'detector_za', f'{l0.filename}:{l0.detector_za._v_pathname}')
             interpolated_indices = new_data.create_external_link(new_data.data_group, 'interpolated_indices', f'{l0.filename}:{l0.interpolated_indices._v_pathname}')
-        carrier_amplitudes[:] = np.nanmedian(new_data.data_IQ[:])
+        carrier_amplitudes[:] = np.nanmedian(new_data.data_IQ[:], axis=-1)
 
         # Rotate to Gain / Phase
         IQ_to_gain_phase_angle[:] = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])  # N_chan
@@ -1548,21 +1548,14 @@ class ProcessedDataL1(ProcessedData):
         )
         fs = 1 / np.median(np.diff(new_data.timestamp[:]))
 
+        # Create calibrated data
+        new_generate_calibrated_data(new_data)
+
         # Remove electronics noise if specified
         if do_electronics_noise_removal:
             remove_electronics_noise_tables(data_gain_phase, fs, lp_filt_freq=electronics_noise_lp_filt_freq, max_modes=max_modes)
-
-        # Create calibrated data
-        new_generate_calibrated_data(new_data)
-        # fig, axes = plt.subplots(1, 3)
-        # axes[0].plot(data_IQ[0, 0])
-        # axes[0].set_title('data_I')
-        # axes[1].plot(data_gain_phase[0, 0])
-        # axes[1].set_title('data_gain')
-        # axes[2].plot(data_mK[0])
-        # axes[2].set_title('data_mK')
-        # plt.show()
-        # pdb.set_trace()
+            # Update calibrated data
+            new_generate_calibrated_data(new_data)
         
         return new_data
 
