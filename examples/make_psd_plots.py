@@ -2,6 +2,8 @@ from pathlib import Path
 from typing import Literal
 import shutil
 
+from datetime import datetime
+
 import numpy as np
 import numpy.typing as npt
 import matplotlib.pyplot as plt
@@ -274,7 +276,11 @@ if __name__ == "__main__":
     # freq = if_data_l2.get_node_value('freq', '/psd')
     # psd = if_data_l2.get_node_value('psd_gain_phase', '/psd')
 
-    in_lab = True
+    in_lab = False
+
+    use_cached_onres = False
+    use_cached_offres = True
+    use_cached_if = True
 
     if in_lab:
         #
@@ -293,32 +299,37 @@ if __name__ == "__main__":
             cut_time=10
         )
 
-        date = '20260319'
+        if_date = '20260319'
+        onres_date = '20260319'
         onres_setnum = 1023
+        offres_date = '20260319'
         offres_setnum = 1023
     else:
         #
         # Telescope
         #
 
-        date = '20260325'
+        if_date = '20260325'
         
         # IF Loopback for reference
-        setnum = 1006
-        # data_l0 = ProcessedDataL0.from_tod(date, setnum)
-        # data_l1 = ProcessedDataL1.from_level0(
-        #     data_l0,
-        #     do_electronics_noise_removal=True,
-        #     block_length=110,
-        # )
-        # data_l2 = ProcessedDataLN.from_previous_level(data_l1)
-        data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
-        # psd_routine = ComputeNoisePSD(
-        #     PsdBasis.GAIN_PHASE,
-        #     cut_time=2,
-        #     # tone_indices='onres',
-        # )
-        # psd_routine(data_l2)
+        if_setnum = 1006
+        if use_cached_if:
+            print(f'Using cached IF Loopback data from {if_date}_set{if_setnum}')
+            data_l2 = ProcessedDataLN.from_file(if_date, if_setnum, level=2)
+        else:
+            data_l0 = ProcessedDataL0.from_tod(if_date, if_setnum)
+            data_l1 = ProcessedDataL1.from_level0(
+                data_l0,
+                do_electronics_noise_removal=True,
+                block_length=110,
+            )
+            data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+            psd_routine = ComputeNoisePSD(
+                PsdBasis.GAIN_PHASE,
+                cut_time=2,
+                # tone_indices='onres',
+            )
+            psd_routine(data_l2)
         freq_if = data_l2.get_node_value('freq', '/psd')[:]
         psd_if = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
 
@@ -326,27 +337,32 @@ if __name__ == "__main__":
         # data_l1.close()
         # data_l0.close()
 
-        onres_setnum = 1002
+        onres_date = '20260413'
+        onres_setnum = 1004
+        offres_date = '20260325'
         offres_setnum = 1005
 
     # Now process the data for on-resonance PSD
-    data_l0 = ProcessedDataL0.from_tod(
-        date,
-        onres_setnum,
-    )
-    data_l1 = ProcessedDataL1.from_level0(
-        data_l0,
-        do_electronics_noise_removal=True,
-        block_length=110,
-    )
-    psd_routine = ComputeNoisePSD(
-        PsdBasis.FREQ_DISS,
-        cut_time=2,
-        tone_indices='onres',
-    )
-    data_l2 = ProcessedDataLN.from_previous_level(data_l1)
-    psd_routine(data_l2)
-    # data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
+    if use_cached_onres:
+        print(f'Using cached on-resonance data from {onres_date}_set{onres_setnum}')
+        data_l2 = ProcessedDataLN.from_file(onres_date, onres_setnum, level=2)
+    else:
+        data_l0 = ProcessedDataL0.from_tod(
+            onres_date,
+            onres_setnum,
+        )
+        data_l1 = ProcessedDataL1.from_level0(
+            data_l0,
+            do_electronics_noise_removal=True,
+            block_length=110,
+        )
+        psd_routine = ComputeNoisePSD(
+            PsdBasis.FREQ_DISS,
+            cut_time=2,
+            tone_indices='onres',
+        )
+        data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+        psd_routine(data_l2)
     freq_onres = data_l2.get_node_value('freq', '/psd')[:]
     psd_onres = data_l2.get_node_value('psd_freq_diss', '/psd')[:]
 
@@ -363,27 +379,30 @@ if __name__ == "__main__":
     data_l0.close()
 
     # Off-resonance only
-    data_l0 = ProcessedDataL0.from_tod(
-        date,
-        offres_setnum,
-    )
-    if not in_lab:
-        data_l0.chanmask[:] = data_l0.chanmask[:] * 0
-    data_l1 = ProcessedDataL1.from_level0(
-        data_l0,
-        do_electronics_noise_removal=True,
-        block_length=110,
-        only_use_offres_indices=True,
-    )
+    if use_cached_offres:
+        print(f'Using cached off-resonance data from {offres_date}_set{offres_setnum}')
+        data_l2 = ProcessedDataLN.from_file(offres_date, offres_setnum, level=2)
+    else:
+        data_l0 = ProcessedDataL0.from_tod(
+            offres_date,
+            offres_setnum,
+        )
+        if not in_lab:
+            data_l0.chanmask[:] = data_l0.chanmask[:] * 0
+        data_l1 = ProcessedDataL1.from_level0(
+            data_l0,
+            do_electronics_noise_removal=True,
+            block_length=110,
+            only_use_offres_indices=True,
+        )
 
-    data_l2 = ProcessedDataLN.from_previous_level(data_l1)
-    psd_routine = ComputeNoisePSD(
-        PsdBasis.GAIN_PHASE,
-        cut_time=2,
-        tone_indices='offres'
-    )
-    psd_routine(data_l2)
-    # data_l2 = ProcessedDataLN.from_file(date, setnum, level=2)
+        data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+        psd_routine = ComputeNoisePSD(
+            PsdBasis.GAIN_PHASE,
+            cut_time=2,
+            tone_indices='offres'
+        )
+        psd_routine(data_l2)
     freq_offres = data_l2.get_node_value('freq', '/psd')[:]
     psd_offres = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
 
@@ -392,6 +411,7 @@ if __name__ == "__main__":
     data_l0.close()
 
     # save_name = f'noise_plot_{date}set{setnum}.pdf'
+    date = datetime.now().strftime('%Y%m%d')
     if in_lab:
         save_name = f'noise_plot_{date}_lab.pdf'
     else:

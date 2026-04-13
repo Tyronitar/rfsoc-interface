@@ -277,7 +277,7 @@ def new_generate_calibrated_data(pd: ProcessedDataL1):
 # Electronics Noise Removal
 #
 
-def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bool=False) -> npt.NDArray:
+def compute_templates(data: npt.NDArray, min_modes: int=2, max_modes: int=30, plot_eigenvalues: bool=False) -> npt.NDArray:
     """Compute templates for correlated noise removal.
 
     Args:
@@ -319,7 +319,7 @@ def compute_templates(data: npt.NDArray, max_modes: int=30, plot_eigenvalues: bo
     else:
         sigma_mult = 3
 
-    n_modes = 2
+    n_modes = min_modes
     new_modes = -1
     while new_modes != 0 and n_modes <= max_modes:
         log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
@@ -406,7 +406,7 @@ def plot_corellation_matrices(
 
     plt.show()
 
-def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
+def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=10, min_modes: int=2, max_modes: int=30, template_data_selection: npt.NDArray|None = None) -> npt.NDArray:
     """Remove correlated electronics noise templates from the data.
 
     Args:
@@ -425,10 +425,10 @@ def remove_electronics_noise(data: npt.NDArray, fs: float, lp_filt_freq: float=1
         data_lp = data
     if template_data_selection is not None:
         template_data_lp = data_lp[:,template_data_selection, :]
-        templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # N_chan x 2 x N_samples
+        templates = compute_templates(template_data_lp, min_modes=min_modes, max_modes=max_modes, plot_eigenvalues=False)  # N_chan x 2 x N_samples
         
     else:
-        templates = compute_templates(data_lp, max_modes=max_modes)  # N_chan x 2 x N_samples
+        templates = compute_templates(data_lp, min_modes=min_modes, max_modes=max_modes)  # N_chan x 2 x N_samples
 
 
     # data_lp = data
@@ -459,6 +459,7 @@ def remove_electronics_noise_tables(
     data_gain_phase: tables.Array,
     fs: float,
     lp_filt_freq: float=10,
+    min_modes: int=2,
     max_modes: int=30,
     chanmask: npt.NDArray | None=None, 
     template_data_selection: npt.NDArray|None = None,
@@ -474,7 +475,7 @@ def remove_electronics_noise_tables(
     Returns:
         npt.NDarray: Cleaned data (N_chan x N_detector x N_samples).
     """
-    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq = lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
+    clean_data = remove_electronics_noise(data_gain_phase[:], fs, lp_filt_freq = lp_filt_freq, min_modes=min_modes, max_modes=max_modes, template_data_selection=template_data_selection)
 
     data_gain_phase[:] = clean_data
     # for i_chan in range(data_gain_phase.shape[0]):
@@ -496,6 +497,7 @@ def remove_electronics_noise_blocks(
     input_blocked_data_gain_phase: tables.Array,
     fs: float,
     lp_filt_freq: float=10,
+    min_modes: int=30,
     max_modes: int=30,
     chanmask: npt.NDArray | None=None, 
     template_data_selection: npt.NDArray|None = None,
@@ -513,7 +515,7 @@ def remove_electronics_noise_blocks(
     """
     clean_data = np.zeros_like(input_blocked_data_gain_phase)
     for i in range(input_blocked_data_gain_phase.shape[2]):
-        clean_data[:, :, i, :] = remove_electronics_noise(input_blocked_data_gain_phase[:, :, i,:],  fs, lp_filt_freq = lp_filt_freq, max_modes=max_modes, template_data_selection=template_data_selection)
+        clean_data[:, :, i, :] = remove_electronics_noise(input_blocked_data_gain_phase[:, :, i,:],  fs, lp_filt_freq = lp_filt_freq, min_modes=min_modes, max_modes=max_modes, template_data_selection=template_data_selection)
     # for i_chan in range(data_gain_phase.shape[0]):
     #     clean_data = remove_electronics_noise(data_gain_phase[i_chan][np.newaxis])
     #     # templates = compute_templates(data_gain_phase[i_chan][np.newaxis]) # 1 x 2 x N_samples
@@ -1527,6 +1529,7 @@ class ProcessedDataL1(ProcessedData):
         only_use_onres_indices: bool=False,
         electronics_noise_lp_filt_freq: float=10,
         ds_factor: int=1,
+        min_modes: int=2,
         max_modes: int=30,
         block_length: float = 100,
     ) -> ProcessedDataL1:
@@ -1692,7 +1695,7 @@ class ProcessedDataL1(ProcessedData):
                 offres_clean_data = new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length)
             else:
                 print('Removing off-resonance electronincs noise')
-                offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+                offres_clean_data = remove_electronics_noise_blocks(new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length), fs, lp_filt_freq=1000, min_modes=min_modes, max_modes=max_modes, template_data_selection=new_data.offres_ind)
             
             # if only_use_onres_indices:
             #     offres_clean_data = new_data.get_array_in_blocks('data_gain_phase', block_length_sec=block_length)
@@ -1703,7 +1706,7 @@ class ProcessedDataL1(ProcessedData):
                 onres_clean_data = offres_clean_data
             else:
                 print('Removing on-resonance electronincs noise')
-                onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.onres_ind)
+                onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, min_modes=min_modes, max_modes=max_modes, template_data_selection=new_data.onres_ind)
             #     onres_clean_data = remove_electronics_noise_blocks(offres_clean_data, fs, lp_filt_freq=1000, max_modes=max_modes, template_data_selection=new_data.onres_ind)
 
             #Finally remove blocking of data clumps
