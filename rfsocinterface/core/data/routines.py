@@ -302,21 +302,21 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
     return templates
 
-def decode_tone_indices(pdata: ProcessedData, i_chan: int, input_indices: npt.NDArray | str):
+def decode_tone_indices(pdata: ProcessedData, selection_indices: npt.NDArray | str, i_chan: int=None):
     """Helper method for decoding the selected indices for noise removal."""
-    if isinstance(input_indices, str):
-        match input_indices.lower():
+    if isinstance(selection_indices, str):
+        match selection_indices.lower():
             case 'onres' | 'on_res' | 'on_resonance':
-                return pdata.get_onres_ind(i_chan)
+                return pdata.get_onres_ind(i_chan) if i_chan is not None else pdata.onres_ind
             case 'offres' | 'off_res' | 'off_resonance':
-                return pdata.get_offres_ind(i_chan)
+                return pdata.get_offres_ind(i_chan) if i_chan is not None else pdata.offres_ind
             case 'all':
-                return np.arange(pdata.get_n_tones(i_chan), dtype=int)
+                return np.arange(pdata.get_n_tones(i_chan), dtype=int) if i_chan is not None else np.arange(pdata.n_tones, dtype=int)
             case _:
-                _logger.warning(f'Unkown index selection string: {input_indices}; defaulting to all tones')
-                return np.arange(pdata.get_n_tones(i_chan), dtype=int)
+                _logger.warning(f'Unkown index selection string: {selection_indices}; defaulting to all tones')
+                return np.arange(pdata.get_n_tones(i_chan), dtype=int) if i_chan is not None else np.arange(pdata.n_tones, dtype=int)
     else:
-        return input_indices
+        return selection_indices
 
 @register_routine
 class RemoveElectronicsNoise(DataRoutine):
@@ -328,13 +328,11 @@ class RemoveElectronicsNoise(DataRoutine):
         max_modes: int=30,
         lp_filt_freq: float=10,
         template_selection_indices: npt.NDArray | str='all',
-        template_subtraction_indices: npt.NDArray | str='all',
     ):
         super().__init__(
             max_modes=max_modes,
             lp_filt_freq=lp_filt_freq,
             template_selection_indices=template_selection_indices,
-            template_subtraction_indices=template_subtraction_indices,
         )
     
     def inputs(self, pdata: ProcessedData):
@@ -358,12 +356,11 @@ class RemoveElectronicsNoise(DataRoutine):
         eigenmodes = []  # The actual number of modes we use for each channel
         lp_filt_freq = self.params['lp_filt_freq']
         template_selection_indices = self.params['template_selection_indices']
-        template_subtraction_indices = self.params['template_subtraction_indices']
         max_modes = self.params['max_modes']
         fs = pdata.fs
 
         for i_chan in range(pdata.n_chan):
-            selection_indices = decode_tone_indices(pdata, i_chan, template_selection_indices)
+            selection_indices = decode_tone_indices(pdata, template_selection_indices, i_chan)
 
             data_gain_phase = pdata.get_from_channel(i_chan, 'time_ordered_data/data_gain_phase')
             clean_gain_phase = np.copy(data_gain_phase)
@@ -386,13 +383,12 @@ class RemoveElectronicsNoise(DataRoutine):
             eigenmodes.append(n_modes)
             denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
 
-            subtraction_indices = decode_tone_indices(pdata, i_chan, template_subtraction_indices)
 
             for i_mode in range(n_modes):
                 clean_gain_phase -= np.mean(clean_gain_phase, axis=-1, keepdims=True)
-                numerator = np.einsum('ijk,ik->ij', clean_gain_phase[:, subtraction_indices], templates[:, i_mode])  # 2 x N_tones
+                numerator = np.einsum('ijk,ik->ij', clean_gain_phase, templates[:, i_mode])  # 2 x N_tones
                 corr = numerator / denominator[:, i_mode:i_mode+1]  # 2 x N_tones
-                clean_gain_phase[:, subtraction_indices] = clean_gain_phase[:, subtraction_indices] - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
+                clean_gain_phase[:] = clean_gain_phase - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
             
             # Apply clean data
             data_gain_phase[:] = clean_gain_phase
@@ -473,11 +469,13 @@ class ComputeNoisePSD(DataRoutine):
             *bases: PsdBasis,
             nominal_block_length: float=10,
             cut_time: float=0.0,
+            selection_indices: npt.NDArray | str='all',
     ):
         super().__init__(
             bases=bases,
             nominal_block_length=nominal_block_length,
             cut_time=cut_time,
+            selection_indices=selection_indices,
         )
     
     def inputs(self, pdata: ProcessedData) -> list[str]:
@@ -508,6 +506,7 @@ class ComputeNoisePSD(DataRoutine):
         bases = self.params['bases']
         cut_time = self.params['cut_time']
         nominal_block_length = self.params['nominal_block_length']
+        selection_indices = decode_tone_indices(pdata, self.params['selection_indices'])
 
         outputs = []
 
@@ -537,9 +536,8 @@ class ComputeNoisePSD(DataRoutine):
                 n_samples_per_block = n_samples
             
             # Compute the PSD
-            good_tones = np.append(pdata.onres_ind, pdata.offres_ind)
             freq, psd = signal.welch(
-                data[:, good_tones, :],
+                data[:, selection_indices],
                 pdata.fs,
                 nperseg=n_samples_per_block,
             )

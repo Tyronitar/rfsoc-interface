@@ -156,27 +156,30 @@ if __name__ == '__main__':
     import pdb
     # date = '20260319'
     # setnum = 1023
-    date = '20260309'
-    setnum = 1010
+    date = '20260319'
+    setnum = 1023
 
     lp_filter_freq = 15
     hp_filter_freq= 0.25
+    noise_removal_lp_filt_freq = 1000
     ds_factor = 1
 
     noise_removal_offres = RemoveElectronicsNoise(
         max_modes=30,
         template_selection_indices='offres',
-        template_subtraction_indices='offres',
+        lp_filt_freq=noise_removal_lp_filt_freq,
+        # template_subtraction_indices='offres',
     )
     noise_removal_onres = RemoveElectronicsNoise(
         max_modes=30,
         template_selection_indices='onres',
-        template_subtraction_indices='onres',
+        lp_filt_freq=noise_removal_lp_filt_freq,
+        # template_subtraction_indices='onres',
     )
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq)
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq)
     clean_tod = CleanTOD()
-    compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, cut_time=2)
+    compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, cut_time=2, selection_indices='onres')
     psd_plotter = PlotPSD(
         PsdBasis.GAIN_PHASE,
         show=True,
@@ -193,13 +196,13 @@ if __name__ == '__main__':
     pipeline = Pipeline([
         noise_removal_offres,
         noise_removal_onres,
-        # compute_psd,
-        # psd_plotter,
-        hp_filter,
-        lp_filter,
-        clean_tod,
-        bin_tod_to_map,
-        plotter,
+        compute_psd,
+        psd_plotter,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
+        # bin_tod_to_map,
+        # plotter,
     ])
     pdata = pipeline.from_tod(date, setnum, ds_factor)
     pdb.set_trace()
