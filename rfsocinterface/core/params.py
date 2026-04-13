@@ -284,6 +284,7 @@ if __name__ == "__main__":
     print(chanmask)
     print(tone_powers)
     offres_ind = np.where(chanmask ==0)
+    pdb.set_trace()
     tone_powers[offres_ind] = tone_powers[offres_ind]*(len(tone_powers)/sum(tone_powers))
     pdb.set_trace()
 

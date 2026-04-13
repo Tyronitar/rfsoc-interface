@@ -1152,6 +1152,7 @@ class PowerSweepData:
         power_level_non_linear = np.zeros(self.n_tones)
         onres_ind = np.where(self.chanmask ==1)[0]
         offres_ind = np.where(self.chanmask == 0)[0]
+        depth_data = np.zeros(self.n_tones)
 
         for i_res in onres_ind:
             #if plot:
@@ -1185,6 +1186,10 @@ class PowerSweepData:
                 resonant_freqs.append(f0)
             
                 q_tot.append(1/(1/qi + 1/qc))
+                baseline = np.median(resonator.s21)
+                depth = baseline - np.min(resonator.s21)
+                if i_p == 0:
+                    depth_data[i_res] = depth
             
                 if plot:
                    
@@ -1257,7 +1262,7 @@ class PowerSweepData:
             for fig in figs:
                 pdf.savefig(fig)
 
-        return power_level_non_linear, np.max(power_level_non_linear)
+        return power_level_non_linear, np.max(power_level_non_linear), depth_data
         
 
 class PowerSweep:
@@ -1385,11 +1390,38 @@ if __name__ == '__main__':
 
     sweep_data = PowerSweepData.from_h5('/data/20260318/20260318_Be231102p2_100_tones_Power_Sweep_hour16p7561.h5')
     sweep_data.fit()
-    max_readout, readout_power_inc = sweep_data.find_optimal_readout_power()
+    max_readout, readout_power_inc, depth_data = sweep_data.find_optimal_readout_power()
     max_readout_lin = 10**((max_readout-readout_power_inc)/20)
     print(max_readout_lin, "With a power at device increase of", readout_power_inc)
     sweep_data.saveh5('/data/20260318/20260318_Be231102p2_100_tones_Power_Sweep_hour16p7561.h5')
     np.save('max_readout_power', max_readout_lin)
+    power_at_device =np.array([ -90.82786209,  -97.24975794,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329, -104.40405686,  -96.57831542, -103.84409766,
+       -102.46939725,  -95.02472687,  -92.835558  ,  -95.08755059,
+        -92.6872361 , -108.78383178,  -98.27758022, -110.88541483,
+        -92.9941071 ,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329, -109.16496051,  -98.27758022,
+        -98.26120705,  -96.59327271,  -96.56644409,  -92.95976836,
+        -97.25631925,  -90.96769556,  -88.63657797,  -95.94570813,
+        -95.99178143,  -97.70649446,  -93.68596005,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
+        -86.40473329,  -94.27643565,  -98.27758022,  -99.4537407 ,
+        -98.27758022,  -96.31624429,  -84.36825263,  -95.25522978,
+        -89.4163151 ,  -87.07198984,  -83.16462187,  -83.17267851,
+        -83.23921076,  -83.22907499,  -83.32081674,  -83.2597422])
+
+
     pdb.set_trace()
 
     # tile_name = 'Device_aSi2_Channel3'
