@@ -744,6 +744,28 @@ class PlotPSD(DataRoutine):
 # 
 # Mapping
 #
+def get_map_size(
+    detector_az: h5py.Dataset,
+    detector_za: h5py.Dataset,
+    az_trim: float,
+    za_trim: float,
+    dpix: float=DEFAULT_MAP_DPIX,
+    beam_map_mode: bool=False,
+) -> tuple[int, int, npt.NDArray, npt.NDArray]:
+
+    max_az = np.max(detector_az) - az_trim
+    min_az = np.min(detector_az) + az_trim
+    max_za = np.max(detector_za) - za_trim
+    min_za = np.min(detector_za) + za_trim
+    n_pix_x = int(np.ceil((max_az - min_az) / dpix))
+    n_pix_y = int(np.ceil((max_za - min_za) / dpix))
+    map_x = np.arange(n_pix_x) * dpix + min_az + dpix / 2.
+    map_y = np.arange(n_pix_y) * dpix + min_za + dpix / 2.
+    if not beam_map_mode:
+        map_y += 0.1  # 0.1 accounts for assymmetry in array
+
+    return n_pix_x, n_pix_y, map_x, map_y
+
 @register_routine
 class BinTODIntoMap(DataRoutine):
     name = 'BinTODIntoMap'
@@ -795,28 +817,6 @@ class BinTODIntoMap(DataRoutine):
             dsets.append(f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}')
         return dsets
     
-    def _get_map_size(
-        self,
-        detector_az: h5py.Dataset,
-        detector_za: h5py.Dataset,
-        az_trim: float,
-        za_trim: float,
-        dpix: float=DEFAULT_MAP_DPIX,
-        beam_map_mode: bool=False,
-    ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
-
-        max_az = np.max(detector_az) - az_trim
-        min_az = np.min(detector_az) + az_trim
-        max_za = np.max(detector_za) - za_trim
-        min_za = np.min(detector_za) + za_trim
-        n_pix_x = int(np.ceil((max_az - min_az) / dpix))
-        n_pix_y = int(np.ceil((max_za - min_za) / dpix))
-        map_x = np.arange(n_pix_x) * dpix + min_az + dpix / 2.
-        map_y = np.arange(n_pix_y) * dpix + min_za + dpix / 2.
-        if not beam_map_mode:
-            map_y += 0.1  # 0.1 accounts for assymmetry in array
-
-        return n_pix_x, n_pix_y, map_x, map_y
     
     def _initialize_map_arrays(
         self,
@@ -845,7 +845,7 @@ class BinTODIntoMap(DataRoutine):
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
-        n_pix_x, n_pix_y, map_az, map_za = self._get_map_size(
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(
             pdata.detector_az,
             pdata.detector_za,
             self.params['az_trim'],
@@ -1257,6 +1257,215 @@ class PlotMap(DataRoutine):
         if self.params['show']:
             plt.show()
 
+
+class MakeVideo(DataRoutine):
+    name = 'MakeVideo'
+    version = '1.0.0'
+
+    produces = {
+        '/video/netd',
+        '/video/hits_map',
+        '/video/sum_map',
+        '/video/map_az',
+        '/video/map_za',
+        '/video/good_samples',
+    }
+
+    def __init__(
+            self,
+            dataset: Literal['data_mK', 'data_freq']='data_mK',
+            hp_filter_freq: float=0.5,
+            lp_filter_freq: float=10.,
+            az_trim: float=2.3,
+            za_trim: float=0.2,
+            med_netd_cut_threshold: float=3.,
+            beam_map_mode: bool=False,
+            dpix: int=DEFAULT_MAP_DPIX,
+            block_size_s: int=1,
+    ):
+        if dataset not in ('data_mK', 'data_freq'):
+            raise ValueError(f'Unable to use dataset {dataset} for BinTODIntoMap; choose "data_mK" or "data_freq".')
+        if beam_map_mode:
+            az_trim = 0.
+            za_trim = 0.
+
+        super().__init__(
+            dataset=dataset,
+            hp_filter_freq=hp_filter_freq,
+            lp_filter_freq=lp_filter_freq,
+            az_trim=az_trim,
+            za_trim=za_trim,
+            med_netd_cut_threshold=med_netd_cut_threshold,
+            beam_map_mode=beam_map_mode,
+            dpix=dpix,
+            block_size_s=block_size_s,
+        )
+
+    def inputs(self, pdata: ProcessedData):
+        dsets = []
+        dataset = self.params['dataset']
+        if dataset == 'data_freq':
+            dataset = 'data_freq_diss'
+        for i_chan in range(pdata.n_chan):
+            dsets.append(f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}')
+        dsets.append('/global_data/optical_video')
+        dsets.append('/global_data/optical_timestamp')
+        return dsets
+    
+    def _initialize_map_arrays(
+        self,
+        pdata: ProcessedData,
+        n_blocks: int,
+        n_maps: int,
+        n_pix_x: int,
+        n_pix_y: int,
+        dpix: float,
+        block_size_s: float,
+    ):
+        if pdata.has('map', exact_match=True):
+            _logger.warning('Map group already exists in the file; overwriting datasets.')
+            del pdata['map']
+        video_group = pdata.create_group('video')
+        video_group.create_dataset('map_az', shape=(n_pix_x,), dtype=np.float64)
+        video_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
+        video_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
+        video_group.create_dataset('sum_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
+        video_group.create_dataset('hits_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), chunks=(1, 1, n_pix_x, n_pix_y), dtype=np.float64)
+        video_group.create_dataset('cropped_optical_video', shape=(n_blocks, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
+        video_group.attrs['dpix'] = dpix
+        video_group.attrs['block_size_s'] = block_size_s
+        good_samples = video_group.create_dataset('good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32))
+        for i_chan in range(pdata.n_chan):
+            interpolated_samples = pdata.get_from_channel(i_chan, 'time_ordered_data/interpolated_samples')
+            good_samples[i_chan] = np.setdiff1d(np.arange(pdata.n_samples), interpolated_samples)
+
+    def run(self, pdata: ProcessedData, inputs: list[str]=None):
+        dpix = self.params['dpix']
+        beam_map_mode = self.params['beam_map_mode']
+        block_size_s = self.params['block_size_s']
+        blocks = np.arange(0, pdata.n_samples, int(pdata.fs * block_size_s))
+        n_blocks = blocks.size - 1
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(
+            pdata.detector_az,
+            pdata.detector_za,
+            self.params['az_trim'],
+            self.params['za_trim'],
+            dpix,
+            beam_map_mode=beam_map_mode,
+        )
+        n_maps = N_POLARIZATION if not beam_map_mode else self.n_tones
+        self._initialize_map_arrays(pdata, n_blocks, n_maps, n_pix_x, n_pix_y, dpix, block_size_s)
+        pdata['video/map_az'][:] = map_az
+        pdata['video/map_za'][:] = map_za
+        detector_az = pdata.detector_az
+        detector_za = pdata.detector_za
+
+        match self.params['dataset']:
+            case 'data_mK':
+                data = pdata.data_mK[:]
+            case 'data_freq':
+                data = pdata.data_freq_diss[0]
+
+        sum_map = pdata['video/sum_map'][:]
+        hits_map = pdata['video/hits_map'][:]
+        netd = pdata['video/netd'][:]
+
+        chanmask = pdata.chanmask[:]
+        bad_tones = [
+            1, 3, 223, 278, 299,
+            303, 10, 69, 192, 820,
+            263, 483, 172, 574, 426,
+            569, 297, 167, 15, 717,
+            487, 842, 453, 13, 719,
+            92, 571, 630, 84, 220,
+            364, 516, 74, 726, 292,
+            519, 812, 302, 683, 537,
+            294, 534, 256, 661, 529,
+            737, 54, 782, 567, 103,
+            330, 133, 809, 460, 589,
+            387, 538, 213, 120, 79,
+            783, 612, 121, 117, 749
+        ]
+        chanmask[bad_tones] = -1
+
+        # Compute NETD values
+        _logger.info('MakeVideo: Computing netd...')
+        wind = signal.get_window('hamming', pdata.n_samples)
+        hp_filter_freq = self.params['hp_filter_freq']
+        lp_filter_freq = self.params['lp_filter_freq']
+        for i_tone in np.where(chanmask == 1)[0]:
+            this_freq, this_psd = signal.periodogram(data[i_tone, :], pdata.fs, window=wind)
+            valid_freq = np.where((this_freq > hp_filter_freq) & (this_freq < lp_filter_freq))
+            netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
+        _logger.info('MakeVideo: Done computing netd')
+
+        # Get rid of tones with bad weights
+        med_netd_cut_threshold = self.params['med_netd_cut_threshold']
+        good_idx = np.argwhere(chanmask == 1).flatten()
+        good_netd = netd[good_idx]
+        chanmask[good_idx] = np.where(good_netd > med_netd_cut_threshold * np.nanmedian(good_netd), -1, chanmask[good_idx])
+
+        good_idx = np.argwhere(chanmask == 1).flatten()
+        good_netd = netd[good_idx]
+        netd_med = np.median(np.log10(good_netd))
+        netd_std = np.std(np.log10(good_netd))
+        chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, chanmask[good_idx])
+        chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx])
+
+        netd[chanmask != 1] = 0
+
+        if beam_map_mode:
+            tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
+        else:
+            tones_to_map = np.argwhere(chanmask == 1).flatten()
+
+        # Create map
+        _logger.info('MakeVideo: Creating map...')
+        for n_loop, i_tone in enumerate(tones_to_map):
+            if n_loop == np.size(tones_to_map) // 2:
+                _logger.info('MakeVideo: Halfway done creating map...')
+            if beam_map_mode:
+                map_idx = i_tone
+                weight = 1.
+            else:
+                map_idx = pdata.detector_pol[i_tone] - 1  # Polarization 1 -> Index 0, 2 -> 1, etc.
+                weight = 1./ netd[i_tone] ** 2.
+
+            this_detector_az = detector_az[i_tone]
+            this_detector_za = detector_za[i_tone]
+
+            # Get the good samples if they haven't been specified
+            this_clean_data = np.squeeze(data[i_tone])
+
+            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+            x_ind = np.squeeze(np.round((this_detector_az-map_az[0])/dpix))
+            x_ind = x_ind.astype('int64')
+            y_ind = np.squeeze(np.round((this_detector_za-map_za[0])/dpix))
+            y_ind = y_ind.astype('int64')
+
+            #eliminate samples outside the map
+            i_chan = pdata.get_channel_index_from_tone_index(i_tone)
+            good_samples = pdata['video/good_samples'][i_chan][:]
+            valid_index = np.ndarray.flatten(np.argwhere(np.logical_and( \
+                np.logical_and(x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x), \
+                np.logical_and(y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y))))
+            good_samples = good_samples[valid_index]
+
+            #loop over samples to create sum and hits maps
+            for i_block, block_end in enumerate(blocks[1:]):
+                block_slice = slice(blocks[i_block], block_end)
+                for time_sample in good_samples[block_slice]:
+                    sum_map[i_block, map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
+                    hits_map[i_block, map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+        pdata.set_chanmask(chanmask)
+        pdata['video/hits_map'][:] = hits_map
+        pdata['video/sum_map'][:] = sum_map
+        pdata['video/netd'][:] = netd
+        _logger.info('MakeVideo: Done creating maps.')
+
+        #TODO: Make optical video and plots / animation
+
+ 
 
 def find_peaks(data: ProcessedData, primary_direction: str='az'):
     import numpy as np
