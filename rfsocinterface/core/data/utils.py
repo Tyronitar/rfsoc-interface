@@ -34,6 +34,8 @@ OPTCAM_OFFSET_AZ_PIX = 57
 OPTCAM_OFFSET_ZA_PIX = 49
 OPTCAM_PIX_SIZE_DEGREES = 0.0104
 DEFAULT_MAP_DPIX = 0.03
+OPTCAM_HEIGHT_PIXELS = 1944
+OPTCAM_WIDTH_PIXELS = 2592 
 # DATA_DIRECTORY = 'reference_data'  # For testing with local data files
 
 N_POLARIZATION = 2
@@ -496,4 +498,39 @@ def plot_map(
     plt.xlim(xlim), plt.ylim(ylim)
 
     return fig
+
+def get_scaled_optical_image(
+        dpix: float,
+        optical_image: npt.NDArray,
+        map_az: npt.NDArray,
+        map_za: npt.NDArray,
+        optcam_pix_size_degrees: float=OPTCAM_PIX_SIZE_DEGREES,
+        optcam_offset_az_pix: float=OPTCAM_OFFSET_AZ_PIX,
+        optcam_offset_za_pix: float=OPTCAM_OFFSET_ZA_PIX,
+        optcam_height_pixels: int=OPTCAM_HEIGHT_PIXELS,
+        optcam_width_pixels: int=OPTCAM_WIDTH_PIXELS,
+) -> npt.NDArray:
+    opt_npix_per_tel_npix = dpix / optcam_pix_size_degrees
+    opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
+    opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
+    opt_center_az = int(optcam_width_pixels / 2) + optcam_offset_az_pix
+    opt_center_za = int(optcam_height_pixels / 2) + optcam_offset_za_pix
+    az_range = slice(
+        opt_center_az - int(opt_npix_az / 2),
+        opt_center_az + int(opt_npix_az / 2),
+    )
+    za_range = slice(
+        opt_center_za - int(opt_npix_za / 2),
+        opt_center_za + int(opt_npix_za / 2),
+    )
+    return optical_image[za_range, az_range]
+
+def get_extent(map_az: npt.NDArray, map_za: npt.NDArray, dpix: float=DEFAULT_MAP_DPIX) -> tuple[float, float, float, float]:
+    return (
+        min(map_az)-dpix /2.,
+        max(map_az)+dpix /2,
+        max(map_za)+dpix /2.,
+        min(map_za)-dpix /2.
+    )
+
 

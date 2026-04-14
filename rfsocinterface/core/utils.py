@@ -1205,6 +1205,27 @@ def reset_axes(ax: plt.Axes):
     # Grid & ticks (optional, but predictable)
     ax.grid(False)
 
+def add_colorbar_outside(mappable, ax: plt.Axes, position='right', orientation=None):
+    if orientation is None:
+        if position in ['right', 'left']:
+            orientation = 'vertical'
+        else:
+            orientation = 'horizontal'
+    fig = ax.get_figure()
+    bbox = ax.get_position()
+    cax = fig.add_axes([bbox.x1 + 0.01, bbox.y0, 0.01, bbox.height])
+    fig.colorbar(mappable, cax=cax, location='right', orientation='vertical')
+    
+
+def closest(x: npt.NDArray, y: float) -> float:
+    """Find the closest value in x to y."""
+    return x[np.argmin(np.abs(x - y))]
+
+def argclosest(x: npt.NDArray, y: float) -> int:
+    """Find the index of the closest value in x to y."""
+    return np.argmin(np.abs(x - y))
+
+
 
 if __name__ == '__main__':
     def plot_function(fig, ax, x, y):

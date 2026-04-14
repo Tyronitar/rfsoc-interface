@@ -156,25 +156,21 @@ if __name__ == '__main__':
     import pdb
     # date = '20260319'
     # setnum = 1023
-    date = '20260319'
-    setnum = 1023
+    date = '20260309'
+    setnum = 1010
 
     lp_filter_freq = 15
     hp_filter_freq= 0.25
     noise_removal_lp_filt_freq = 1000
-    ds_factor = 1
+    ds_factor = 8
 
     noise_removal_offres = RemoveElectronicsNoise(
-        max_modes=30,
         template_selection_indices='offres',
         lp_filt_freq=noise_removal_lp_filt_freq,
-        # template_subtraction_indices='offres',
     )
     noise_removal_onres = RemoveElectronicsNoise(
-        max_modes=30,
         template_selection_indices='onres',
         lp_filt_freq=noise_removal_lp_filt_freq,
-        # template_subtraction_indices='onres',
     )
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq)
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq)
@@ -192,15 +188,22 @@ if __name__ == '__main__':
         # dpix=0.03,
     )
     plotter = PlotMap(show=True)
+    make_video = MakeVideo(
+        hp_filter_freq=hp_filter_freq,
+        lp_filter_freq=lp_filter_freq,
+        block_size_s=0.1,
+        dpix=0.08
+    )
 
     pipeline = Pipeline([
         noise_removal_offres,
         noise_removal_onres,
-        compute_psd,
-        psd_plotter,
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
+        # compute_psd,
+        # psd_plotter,
+        hp_filter,
+        lp_filter,
+        clean_tod,
+        make_video,
         # bin_tod_to_map,
         # plotter,
     ])

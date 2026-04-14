@@ -16,6 +16,7 @@ import datetime
 import json
 import h5py
 import matplotlib as mpl
+import matplotlib.animation as animation
 
 from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
 mpl.use('QtAgg')
@@ -24,9 +25,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 
 
-from rfsocinterface.core.data.utils import PsdBasis, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, DEFAULT_MAP_DPIX, N_POLARIZATION, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX
+from rfsocinterface.core.data.utils import PsdBasis, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, DEFAULT_MAP_DPIX, N_POLARIZATION, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX, get_scaled_optical_image, get_extent
 from rfsocinterface.core.data.utils import DECIMATE_ORDER
-from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash, PERMISSIONS_ALL_FULL, axis_slice
+from rfsocinterface.core.utils import BUTTER_ORDER, GAUSSIAN_SIGMA, gaussian_filter, axis_index, get_git_hash, PERMISSIONS_ALL_FULL, axis_slice, argclosest, add_colorbar_outside
 
 __all__ = (
     'ROUTINE_REGISTRY',
@@ -41,6 +42,7 @@ __all__ = (
     'CleanTOD',
     'BinTODIntoMap',
     'PlotMap',
+    'MakeVideo',
 )
 
 ROUTINE_REGISTRY = {}
@@ -964,7 +966,6 @@ class BinTODIntoMap(DataRoutine):
 
         return list(self.produces) + ['/vdsets/chanmask']
 
-
 @register_routine
 class PlotMap(DataRoutine):
     name = 'PlotMap'
@@ -1093,37 +1094,6 @@ class PlotMap(DataRoutine):
         pdata.create_dataset('/map/plotting/flagged_total_map', data=flagged_map_3)
         pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
     
-    def _get_extent(self, pdata: ProcessedData) -> tuple[float, float, float, float]:
-        map_az = pdata['map/map_az'][:]
-        map_za = pdata['map/map_za'][:]
-        dpix = pdata['map'].attrs['dpix']
-        return (
-            min(map_az)-dpix /2.,
-            max(map_az)+dpix /2,
-            max(map_za)+dpix /2.,
-            min(map_za)-dpix /2.
-        )
-
-    def _get_scaled_optical_image(self, pdata: ProcessedData) -> npt.NDArray:
-        dpix = pdata['map'].attrs['dpix']
-        map_az = pdata['map/map_az']
-        map_za = pdata['map/map_za']
-        opt_npix_per_tel_npix = dpix / OPTCAM_PIX_SIZE_DEGREES
-        opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
-        opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
-        # TODO: Replace these with references to optical camera dimensions
-        opt_center_az = int(2592 / 2) + OPTCAM_OFFSET_AZ_PIX
-        opt_center_za = int(1944 / 2) + OPTCAM_OFFSET_ZA_PIX
-        az_range = slice(
-            opt_center_az - int(opt_npix_az / 2),
-            opt_center_az + int(opt_npix_az / 2),
-        )
-        za_range = slice(
-            opt_center_za - int(opt_npix_za / 2),
-            opt_center_za + int(opt_npix_za / 2),
-        )
-        return pdata.optical_image[za_range, az_range]
-
     def plot(self, pdata: ProcessedData):
         hits_map = pdata['map/hits_map']
         mapp = pdata['map/plotting/map'][:]
@@ -1132,10 +1102,11 @@ class PlotMap(DataRoutine):
         flagged_map_2_filt = pdata['map/plotting/flagged_map_2'][:]
         flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
         contour_levels = pdata['map/plotting/contour_levels']
+        dpix = pdata['map'].attrs['dpix']
 
         map_az = pdata['map/map_az']
         map_za = pdata['map/map_za']
-        extent = self._get_extent(pdata)
+        extent = get_extent(map_az, map_za, dpix)
 
         valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
         map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
@@ -1232,7 +1203,7 @@ class PlotMap(DataRoutine):
         )
 
         # Optical Image
-        optical_image = self._get_scaled_optical_image(pdata)
+        optical_image = get_scaled_optical_image(dpix, pdata.optical_image, map_az, map_za)
         opt_vmax = 255. 
         opt_vmin = -255  # NOTE: Shouldn't this be 0?
         im = axes[3].imshow(
@@ -1257,7 +1228,45 @@ class PlotMap(DataRoutine):
         if self.params['show']:
             plt.show()
 
+def animate_video(
+    total_map: npt.NDArray,
+    optical_video: npt.NDArray,
+    interval_ms: float,
+    extent: tuple[int, ...],
+    repeat_delay_ms: float=2000,
+    show: bool=False,
+) -> tuple[Figure, animation.FuncAnimation]:
+    smoothed_map = np.transpose(total_map[..., ::-1], (0, 2, 1))
+    # gaussian = np.ones((1,3,3)) / 16
+    # gaussian[0, 1, 1] = 0.25
+    # smoothed_map = signal.convolve(smoothed_map, gaussian)
+    max_abs = 0.75 * np.max(np.abs(smoothed_map))
+    vmax = max_abs
+    vmin = -max_abs
 
+    fig, axes = plt.subplots(2, 1, figsize=(5, 10), sharex=True)
+    im_mm = axes[0].imshow(smoothed_map[0], vmin=vmin, vmax=vmax, animated=True, cmap='Greys_r', extent=extent, aspect='equal')
+    im_opt = axes[1].imshow(optical_video[0], animated=True, extent=extent, aspect='equal')
+    fig.subplots_adjust(wspace=0, hspace=0)
+    add_colorbar_outside(im_mm, axes[0], 'right')
+
+    def animation_func(i: int):
+        im_mm.set_array(smoothed_map[i])
+        im_opt.set_array(optical_video[i])
+
+    an = animation.FuncAnimation(
+        fig,
+        animation_func,
+        frames=total_map.shape[0],
+        interval=interval_ms,
+        repeat_delay=2000,
+    )
+    an.save('video.gif')
+    if show:
+        plt.show()
+    return fig, an
+
+@register_routine
 class MakeVideo(DataRoutine):
     name = 'MakeVideo'
     version = '1.0.0'
@@ -1268,6 +1277,7 @@ class MakeVideo(DataRoutine):
         '/video/sum_map',
         '/video/map_az',
         '/video/map_za',
+        '/video/cropped_optical_video',
         '/video/good_samples',
     }
 
@@ -1281,7 +1291,7 @@ class MakeVideo(DataRoutine):
             med_netd_cut_threshold: float=3.,
             beam_map_mode: bool=False,
             dpix: int=DEFAULT_MAP_DPIX,
-            block_size_s: int=1,
+            block_size_s: float=1,
     ):
         if dataset not in ('data_mK', 'data_freq'):
             raise ValueError(f'Unable to use dataset {dataset} for BinTODIntoMap; choose "data_mK" or "data_freq".')
@@ -1319,6 +1329,7 @@ class MakeVideo(DataRoutine):
         n_maps: int,
         n_pix_x: int,
         n_pix_y: int,
+        optical_video_shape: tuple[int, ...],
         dpix: float,
         block_size_s: float,
     ):
@@ -1331,7 +1342,7 @@ class MakeVideo(DataRoutine):
         video_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
         video_group.create_dataset('sum_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
         video_group.create_dataset('hits_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), chunks=(1, 1, n_pix_x, n_pix_y), dtype=np.float64)
-        video_group.create_dataset('cropped_optical_video', shape=(n_blocks, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
+        video_group.create_dataset('cropped_optical_video', shape=(n_blocks, *optical_video_shape), chunks=(1, *optical_video_shape), dtype=np.int8)
         video_group.attrs['dpix'] = dpix
         video_group.attrs['block_size_s'] = block_size_s
         good_samples = video_group.create_dataset('good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32))
@@ -1354,11 +1365,16 @@ class MakeVideo(DataRoutine):
             beam_map_mode=beam_map_mode,
         )
         n_maps = N_POLARIZATION if not beam_map_mode else self.n_tones
-        self._initialize_map_arrays(pdata, n_blocks, n_maps, n_pix_x, n_pix_y, dpix, block_size_s)
+        # Determine optical video dimenmsions before intiializing arryas
+        full_optical_video = pdata['global_data/optical_video']
+        full_scaled_video = get_scaled_optical_image(dpix, full_optical_video, map_az, map_za)
+
+        self._initialize_map_arrays(pdata, n_blocks, n_maps, n_pix_x, n_pix_y, full_scaled_video.shape[:-1], dpix, block_size_s)
         pdata['video/map_az'][:] = map_az
         pdata['video/map_za'][:] = map_za
         detector_az = pdata.detector_az
         detector_za = pdata.detector_za
+        optical_video = pdata['video/cropped_optical_video']
 
         match self.params['dataset']:
             case 'data_mK':
@@ -1463,8 +1479,30 @@ class MakeVideo(DataRoutine):
         pdata['video/netd'][:] = netd
         _logger.info('MakeVideo: Done creating maps.')
 
-        #TODO: Make optical video and plots / animation
+        # Optical Video processing
+        optical_timestamp = pdata['global_data/optical_timestamp'][:]
+        video_timestamp = np.zeros(n_blocks)
+        for i_block, block_end in enumerate(blocks[1:]):
+            block_slice = slice(blocks[i_block], block_end)
+            timestamp_block = pdata.timestamp[block_slice]
+            this_timestamp = np.mean(timestamp_block)
+            video_timestamp[i_block] = this_timestamp
+            closest_optical_frame = argclosest(optical_timestamp, this_timestamp)
+            optical_video[i_block] = full_optical_video[..., closest_optical_frame]
+        
+        # TODO: Scale optical video to increase exposure
 
+        # Animation
+        total_map = np.nan_sum(sum_map[:] / hits_map[:], axis=1)
+        smoothed_map = np.transpose(total_map[..., ::-1], (0, 2, 1))
+        fig, an = animate_video(
+            smoothed_map,
+            optical_video[:],
+            1000 * block_size_s,
+            get_extent(map_az, map_za, dpix),
+        )
+        return list(self.produces)
+    
  
 
 def find_peaks(data: ProcessedData, primary_direction: str='az'):
