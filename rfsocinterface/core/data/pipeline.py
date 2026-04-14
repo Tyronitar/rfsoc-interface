@@ -157,7 +157,7 @@ if __name__ == '__main__':
     # date = '20260319'
     # setnum = 1023
     date = '20260309'
-    setnum = 1010
+    setnum = 1013
 
     lp_filter_freq = 15
     hp_filter_freq= 0.25
@@ -192,7 +192,10 @@ if __name__ == '__main__':
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
         block_size_s=0.1,
-        dpix=0.08
+        dpix=0.08,
+        az_trim=0,
+        za_trim=0,
+        show=True,
     )
 
     pipeline = Pipeline([
@@ -208,4 +211,6 @@ if __name__ == '__main__':
         # plotter,
     ])
     pdata = pipeline.from_tod(date, setnum, ds_factor)
+    # pdata = ProcessedData.load(date, setnum, mode='a')
+    # pipeline.run(pdata)
     pdb.set_trace()
