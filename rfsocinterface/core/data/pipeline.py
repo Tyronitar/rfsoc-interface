@@ -327,7 +327,7 @@ if __name__ == '__main__':
 
     ds_factor = 1
     lp_filt_freq = 500
-    block_length = 20
+    block_length = 10
     hp_filt_freq = 1/block_length
 
 
@@ -375,4 +375,6 @@ if __name__ == '__main__':
     dev_pwr = get_power_at_device(freq = probe_freq)
     
     plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnums[-1]}.pdf',f0 = probe_freq[0],adc_units_to_hz =  adc_units_to_hz[0], basis=PsdBasis.FREQ_DISS, resonators = chanmask[0,:]==1, csd = None)
+    
+
     

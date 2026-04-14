@@ -447,7 +447,7 @@ def compute_templates_fspace(data: npt.NDArray,fs:float,lp_filt_freq:int = 1,  m
     # create templates based on the N_mode largest eigenmodes of each
     filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs[0], output='sos', analog=False)
     data_lp = signal.sosfiltfilt(filt_sos, whitened_noise)
-    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], data_lp)
+    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], whitened_noise)
 
     # subtract the mean again to be sure
     templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
@@ -633,24 +633,21 @@ def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: f
             data_lp = data[i_chan]
         if template_data_selection is not None:
             if fspace:
-                templates = compute_templates_fspace(data[i_chan][ :, template_data_selection, :], fs, lp_filt_freq=lp_filt_freq, max_modes= max_modes)
+                templates = compute_templates_fspace(data[i_chan][ :, template_data_selection, :], fs, lp_filt_freq=lp_filt_freq)
             else:
                 template_data_lp = data_lp[:, template_data_selection, :]
            
                 templates = compute_templates(template_data_lp, max_modes=max_modes, plot_eigenvalues=False)  # 2 x N_modes x N_samples
         else:
             if fspace:
-                templates = compute_templates_fspace(data[i_chan], fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
+                templates = compute_templates_fspace(data[i_chan], fs, lp_filt_freq=lp_filt_freq)
             else:
                 templates = compute_templates(data_lp, max_modes=max_modes)  # 2 x N_modes x N_samples
 
         n_modes = templates.shape[1]
         denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
         clean_data = (data[i_chan]-np.mean(data[i_chan], axis = -1, keepdims=True))
-
         for i in range(n_modes):
-            clean_data = (clean_data-np.mean(clean_data, axis = -1, keepdims=True))
-
             numerator = np.einsum('ijk,ik->ij', clean_data, templates[:, i])  # 2 x N_tones
             corr = numerator / denominator[:, i:i+1]  # N_chan x N_tones
             clean_data = clean_data - np.einsum('ij,ikl->ijl', corr, templates[:, i:i+1])  # 2 x N_tones x N_samples
@@ -658,8 +655,18 @@ def remove_electronics_noise(data: npt.NDArray, fs: npt.NDArray, lp_filt_freq: f
         
         out_data[i_chan] = clean_data
 
+    # denominator = np.einsum('ijk,ijk->ij', templates, templates)  # N_chan x 2
+    # numerator0 = np.einsum('ijk,ik->ij', data_lp, templates[:, 0])  # N_chan x N_detector
+    # corr0 = numerator0 / denominator[:, 0:1]  # N_chan x N_detector
+    # deproj = data - np.einsum('ij,ikl->ijl', corr0, templates[:, 0:1])  # N_chan x N_detector x N_samples
 
+    # deproj_lp = signal.sosfiltfilt(filt_sos, deproj)
+
+    # numerator1 = np.einsum('ijk,ik->ij', deproj_lp, templates[:, 1])  # N_chan x N_detector
+    # corr1 = numerator1 / denominator[:, 1:]  # N_chan x N_detector
+    # clean_data = deproj - np.einsum('ij,ikl->ijl', corr1, templates[:, 1:])
     return out_data
+
 
 
 def remove_electronics_noise_tables(
@@ -2039,13 +2046,12 @@ class ProcessedDataL1(ProcessedData):
         #time_streams.plot_timestream_errors(z_freq, z_diss,fs)
 
         if do_electronics_noise_removal:
-            plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
+            #plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
 
-            remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=10, max_modes=max_modes, template_data_selection=new_data.offres_ind)
-            plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
-            
-            new_data.data_gain_phase[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_gain_phase[:, :, new_data.onres_ind, :], fs, lp_filt_freq=10, max_modes=10,)
-            plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
+            remove_electronics_noise_tables(new_data.data_gain_phase, fs, lp_filt_freq=100, max_modes=max_modes, template_data_selection=new_data.offres_ind)
+            #plot_correlation_matrices_fspace(new_data.data_gain_phase, fs)
+
+            new_data.data_gain_phase[:, :, new_data.onres_ind, :] = remove_electronics_noise(new_data.data_gain_phase[:, :, new_data.onres_ind, :], fs, lp_filt_freq=10, max_modes=max_modes,)
 
         new_generate_calibrated_data(new_data)
         #if do_electronics_noise_removal:
