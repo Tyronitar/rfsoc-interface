@@ -10,6 +10,7 @@ from rfsocinterface.core.data.routines import (
     DataRoutine,
     HighPassFilter,
     LowPassFilter,
+    MakeVideo,
     PlotMap,
     PlotPSD,
     ProcessingStage,
@@ -41,19 +42,14 @@ from rfsocinterface.core.data.utils import (
     PsdBasis,
     flag_outliers,
     get_channel_group_name,
+    get_extent,
+    get_scaled_optical_image,
     get_step_group_name,
     generate_calibrated_data,
     plot_map,
     rotate_basis,
 )
 
-# ROUTINE_NAME_MAP = {
-#     'CleanTOD': CleanTOD,
-#     'HighPassFilter': HighPassFilter,
-#     'LowPassFilter': LowPassFilter,
-#     'RemoveElectronicsNoise': RemoveElectronicsNoise,
-#     # 'BinTODIntoMap': BinTODIntoMap,
-# }
 ROUTINE_NAME_MAP = ROUTINE_REGISTRY  # Temporary fix until further edits made
 
 __all__ = [
@@ -77,6 +73,7 @@ __all__ = [
     DataRoutine,
     HighPassFilter,
     LowPassFilter,
+    MakeVideo,
     NewDataStorage,
     Pipeline,
     PlotMap,
@@ -89,9 +86,11 @@ __all__ = [
     decode_tone_indices,
     find_peaks,
     flag_outliers,
-    get_channel_group_name,
-    get_step_group_name,
     generate_calibrated_data,
+    get_channel_group_name,
+    get_extent,
+    get_scaled_optical_image,
+    get_step_group_name,
     plot_map,
     plot_psd_dbc_hz,
     plot_psd_df_over_f,
