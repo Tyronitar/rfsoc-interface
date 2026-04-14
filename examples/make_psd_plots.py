@@ -116,169 +116,9 @@ def plot_psd(
 
 
 if __name__ == "__main__":
-    # # loopback = 'IF'
-    # loopback = 'Digital'
-    # if loopback == 'IF':
-    #     set1000 = 1018
-    #     set100 = 1021
-    #     set10 = 1024
-    #     set30 = 1026
-    # else:
-    #     set1000 = 1028
-    #     set100 = 1029
-    #     set10 = 1031
-    #     set30 = 1033    
-
-    # # Make Raw Spectrum Plot
-    # data_1000 = ProcessedData.from_tod(
-    #     '20250829',
-    #     set1000,
-    #     do_electronics_noise_removal=False,
-    # )
-    # input_data_1000 = data_1000.data_gain_phase / data_1000.carrier_amplitude_norm()
-    # _, freq_1000, psd_1000 = compute_noise_psd(
-    #     input_data_1000,
-    #     data_1000.timestamp,
-    #     chanmask=data_1000.chanmask[:],
-    #     nominal_block_length=10,
-    #     cut_time=10,
-    # )
-
-
-    # ylim = (-110, -70)
-    # with PdfPages(f'raw_psd_plots_{loopback}.pdf') as pdf:
-    #     fig = plt.figure(figsize=(9, 6))
-    #     ax = plt.subplot()
-    #     ax.set_xscale('log')
-    #     ax.set_yscale('linear')
-    #     ax.set_xlim(*XLIM)
-    #     ax.set_ylim(*ylim)
-    #     ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
-    #     ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
-    #     ax.tick_params(labelsize=TICK_SIZE)
-
-    #     plot_psd(ax, 'black', 'Raw Spectrum', freq_1000, psd_1000, flat_spectrum=False)
-
-
-    #     data_1000.close()
-
-    #     data_1000 = ProcessedData.from_tod(
-    #         '20250829',
-    #         set1000,
-    #         do_electronics_noise_removal=True,
-    #     )
-    #     input_data_1000 = data_1000.data_gain_phase / data_1000.carrier_amplitude_norm()
-    #     _, freq_1000, psd_1000 = compute_noise_psd(
-    #         input_data_1000,
-    #         data_1000.timestamp,
-    #         chanmask=data_1000.chanmask[:],
-    #         nominal_block_length=10,
-    #         cut_time=10,
-    #     )
-
-    #     plot_psd(ax, 'b', 'Clean Spectrum', freq_1000, psd_1000, flat_spectrum=False)
-
-    #     ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
-    #     ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=TITLE_SIZE)
-
-    #     plt.tight_layout()
-
-    #     pdf.savefig(fig)
-
-
-    # # Make Cleaned Spectrum Plots
-    # data_100 = ProcessedData.from_file('20250829', set100, mode='r')
-    # input_data_100 = data_100.data_gain_phase / data_100.carrier_amplitude_norm()
-    # _, freq_100, psd_100 = compute_noise_psd(
-    #     input_data_100,
-    #     data_100.timestamp,
-    #     chanmask=data_100.chanmask[:],
-    #     nominal_block_length=10,
-    #     cut_time=10,
-    # )
-
-    # data_10 = ProcessedData.from_file('20250829', set10, mode='r')
-    # input_data_10 = data_10.data_gain_phase / data_10.carrier_amplitude_norm()
-    # _, freq_10, psd_10 = compute_noise_psd(
-    #     input_data_10,
-    #     data_10.timestamp,
-    #     chanmask=data_10.chanmask[:],
-    #     nominal_block_length=10,
-    #     cut_time=10,
-    # )
-
-    # data_30 = ProcessedData.from_file('20250829', set30, mode='r')
-    # input_data_30 = data_30.data_gain_phase / data_30.carrier_amplitude_norm()
-    # _, freq_30, psd_30 = compute_noise_psd(
-    #     input_data_30,
-    #     data_30.timestamp,
-    #     chanmask=data_30.chanmask[:],
-    #     nominal_block_length=10,
-    #     cut_time=10,
-    # )
-
-    # ylim = (-135, -80)
-    # with PdfPages(f'psd_plots_{loopback}.pdf') as pdf:
-    #     fig = plt.figure(figsize=(9, 6))
-    #     ax = plt.subplot()
-    #     ax.set_xscale('log')
-    #     ax.set_yscale('linear')
-    #     ax.set_xlim(*XLIM)
-    #     ax.set_ylim(*ylim)
-    #     ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
-    #     ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
-    #     ax.tick_params(labelsize=TICK_SIZE)
-
-
-    #     plot_psd(ax, 'b', '1000 Tones', freq_1000, psd_1000)
-    #     plot_psd(ax, 'g', '10 Tones', freq_10, psd_10)
-    #     plot_psd(ax, 'r', '100 Tones', freq_100, psd_100)
-    #     handles, labels = plt.gca().get_legend_handles_labels()
-    #     order = [0,2,1]
-    #     ax.legend([handles[idx] for idx in order],[labels[idx] for idx in order], fontsize=LEGEND_SIZE, loc='upper right')
-
-    #     # ax.legend(fontsize=LEGEND_SIZE, loc='upper right')
-
-    #     ax.text(1.4 * XLIM[0], ylim[0] + 2, f'{loopback} Loopback', fontsize=TITLE_SIZE)
-
-    #     plt.tight_layout()
-
-    #     pdf.savefig(fig)
-    # # plt.show()
-
-    # data_1000.close()
-    # data_100.close()
-    # data_10.close()
-    # data_30.close()
-
-
-    # date = '20250829'
-    # setnum = 1021
-    # date = '20260107'
-    # setnum = 1005
-    # if_data_l0 = ProcessedDataL0.from_tod(
-    #     '20250829',
-    #     1021,
-    #     do_cr_removal=False,
-    # )
-    # if_data_l0.chanmask[:8] = -1
-    # if_data_l1 = ProcessedDataL1.from_level0(
-    #     if_data_l0,
-    #     do_electronics_noise_removal=True,
-    # )
-    # if_data_l2 = ProcessedDataLN.from_previous_level(if_data_l1)
-    # psd_routine = ComputeNoisePSD(
-    #     PsdBasis.GAIN_PHASE,
-    #     cut_time=10,
-    #     nominal_block_length=10,
-    # )
-    # psd_routine(if_data_l2)
-    # freq = if_data_l2.get_node_value('freq', '/psd')
-    # psd = if_data_l2.get_node_value('psd_gain_phase', '/psd')
-
     in_lab = False
 
-    use_cached_onres = False
+    use_cached_onres = True
     use_cached_offres = True
     use_cached_if = True
 
@@ -339,6 +179,8 @@ if __name__ == "__main__":
 
         onres_date = '20260413'
         onres_setnum = 1004
+        # onres_date = '20260325'
+        # onres_setnum = 1002
         offres_date = '20260325'
         offres_setnum = 1005
 
@@ -375,8 +217,9 @@ if __name__ == "__main__":
     psd_onres = psd_adc / (data_l2.carrier_amplitude_norm() ** 2)
 
     data_l2.close()
-    data_l1.close()
-    data_l0.close()
+    if not use_cached_onres:
+        data_l1.close()
+        data_l0.close()
 
     # Off-resonance only
     if use_cached_offres:
@@ -407,8 +250,9 @@ if __name__ == "__main__":
     psd_offres = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
 
     data_l2.close()
-    data_l1.close()
-    data_l0.close()
+    if not use_cached_offres:
+        data_l1.close()
+        data_l0.close()
 
     # save_name = f'noise_plot_{date}set{setnum}.pdf'
     date = datetime.now().strftime('%Y%m%d')
