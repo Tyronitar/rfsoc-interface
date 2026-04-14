@@ -19,9 +19,6 @@ from scipy.interpolate import make_interp_spline
 from numpy.polynomial import Polynomial
 from scipy.stats import linregress
 from scipy import signal
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-import kidpy3
 
 from rfsocinterface.core.utils import (
     build_interp_map,
@@ -451,86 +448,4 @@ def get_detector_positions(
             + np.outer(dx[:], sin_ang)
             + za
         )
-
-
-def plot_map(
-        map: npt.NDArray,
-        map_x: npt.NDArray,
-        map_y: npt.NDArray,
-        extent: tuple[float, float, float, float],
-        max_abs: float=None,
-        flagged_map: npt.NDArray=None,
-        contour_levels: npt.NDArray=None,
-        cb_shrink: float=0.95,
-        cb_label: str='Signal (mK)',
-        cmap: str='Greys_r',
-        title: str='',
-        add_x_label: bool=True,
-) -> Figure:
-    xlim = min(map_x),max(map_x)
-    ylim = max(map_y),min(map_y)
-
-    if max_abs is None:
-        max_abs = np.nanmax(np.abs(map))
-
-    fig = plt.figure()
-    plt.imshow(
-        np.flip(np.transpose(map[::-1]),1),
-        aspect='equal',
-        extent=extent,
-        vmin=-max_abs,
-        vmax=max_abs,
-        cmap=cmap,
-    )
-    cb = plt.colorbar(shrink=cb_shrink)
-    cb.set_label(cb_label, rotation=270, labelpad=15)
-    if flagged_map:
-        plt.contour(
-            np.flip(np.flip(np.transpose(flagged_map[::-1]), axis=1), axis=0),
-            levels=contour_levels,
-            extent=extent,
-            colors='red',
-        )
-    plt.title(title)
-    if add_x_label:
-        plt.xlabel('Azimuth (degrees)')
-    plt.ylabel('ZA (degrees)')
-    plt.xlim(xlim), plt.ylim(ylim)
-
-    return fig
-
-def get_scaled_optical_image(
-        dpix: float,
-        optical_image: npt.NDArray,
-        map_az: npt.NDArray,
-        map_za: npt.NDArray,
-        optcam_pix_size_degrees: float=OPTCAM_PIX_SIZE_DEGREES,
-        optcam_offset_az_pix: float=OPTCAM_OFFSET_AZ_PIX,
-        optcam_offset_za_pix: float=OPTCAM_OFFSET_ZA_PIX,
-        optcam_height_pixels: int=OPTCAM_HEIGHT_PIXELS,
-        optcam_width_pixels: int=OPTCAM_WIDTH_PIXELS,
-) -> npt.NDArray:
-    opt_npix_per_tel_npix = dpix / optcam_pix_size_degrees
-    opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
-    opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
-    opt_center_az = int(optcam_width_pixels / 2) + optcam_offset_az_pix
-    opt_center_za = int(optcam_height_pixels / 2) + optcam_offset_za_pix
-    az_range = slice(
-        opt_center_az - int(opt_npix_az / 2),
-        opt_center_az + int(opt_npix_az / 2),
-    )
-    za_range = slice(
-        opt_center_za - int(opt_npix_za / 2),
-        opt_center_za + int(opt_npix_za / 2),
-    )
-    return optical_image[za_range, az_range]
-
-def get_extent(map_az: npt.NDArray, map_za: npt.NDArray, dpix: float=DEFAULT_MAP_DPIX) -> tuple[float, float, float, float]:
-    return (
-        min(map_az)-dpix /2.,
-        max(map_az)+dpix /2,
-        max(map_za)+dpix /2.,
-        min(map_za)-dpix /2.
-    )
-
 

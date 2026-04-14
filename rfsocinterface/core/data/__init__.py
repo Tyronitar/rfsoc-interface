@@ -1,17 +1,22 @@
 """Submodule for data storage / processing related code."""
 
+from rfsocinterface.core.data.map import (
+    BinTODIntoMap,
+    MakeVideo,
+    PlotMap,
+    get_extent,
+    get_scaled_optical_image,
+    plot_map,
+)
 from rfsocinterface.core.data.pipeline import Pipeline
 from rfsocinterface.core.data.routines import (
     ROUTINE_REGISTRY,
-    BinTODIntoMap,
     CleanTOD,
     ComputeNoisePSD,
     CutoffFilter,
     DataRoutine,
     HighPassFilter,
     LowPassFilter,
-    MakeVideo,
-    PlotMap,
     PlotPSD,
     ProcessingStage,
     RemoveElectronicsNoise,
@@ -42,11 +47,8 @@ from rfsocinterface.core.data.utils import (
     PsdBasis,
     flag_outliers,
     get_channel_group_name,
-    get_extent,
-    get_scaled_optical_image,
     get_step_group_name,
     generate_calibrated_data,
-    plot_map,
     rotate_basis,
 )
 

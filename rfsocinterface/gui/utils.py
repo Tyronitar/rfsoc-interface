@@ -4,13 +4,13 @@ from PySide6.QtCore import QCoreApplication
 
 from rfsocinterface.core.data import (
     DECIMATE_ORDER,
-    BinTODIntoMap,
     CleanTOD, 
     Downsample,
     GaussianFilter,
     HighPassFilter,
     LowPassFilter
 )
+from rfsocinterface.core.data.map import BinTODIntoMap
 from rfsocinterface.core.utils import GAUSSIAN_SIGMA
 from rfsocinterface.gui.widgets import ArgumentType
 

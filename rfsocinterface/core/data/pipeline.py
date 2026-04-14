@@ -9,6 +9,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 import pdb
 
+from rfsocinterface.core.data.map import BinTODIntoMap, MakeVideo, PlotMap
 from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.data.routines import DataRoutine, ROUTINE_REGISTRY
 from rfsocinterface.core.data.storage import ConsolidatedData
@@ -152,6 +153,7 @@ def plot_psd(
 
 if __name__ == '__main__':
     from rfsocinterface.core.data.routines import *
+    from rfsocinterface.core.data.map import *
     from rfsocinterface.core.data.utils import PsdBasis
     import pdb
     # date = '20260319'
