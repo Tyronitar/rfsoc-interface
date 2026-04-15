@@ -532,11 +532,11 @@ class ProcessedData(NewDataStorage):
 
     @property
     def onres_ind(self) -> npt.NDArray:
-        return np.argwhere(self.chanmask == 1).flatten()
+        return np.argwhere(self.chanmask == 1).flatten().astype(int)
 
     @property
     def offres_ind(self) -> npt.NDArray:
-        return np.argwhere(self.chanmask == 0).flatten()
+        return np.argwhere(self.chanmask == 0).flatten().astype(int)
 
     @property
     def detector_pol(self) -> npt.NDArray:
