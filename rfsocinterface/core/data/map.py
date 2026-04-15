@@ -413,6 +413,7 @@ class MakeVideo(DataRoutine):
             self.dpix,
             False,
         )
+
         # md.setup_map_arrays(n_pix_x, n_pix_y)
         md.setup_map_video_arrays(n_pix_x, n_pix_y, n_blocks=n_blocks)
         sum_map = np.zeros(md.get_node_value('video_sum_map').shape)
@@ -517,7 +518,10 @@ class MakeVideo(DataRoutine):
         this_map = sum_map / hits_map
         total_map = np.nansum(this_map, axis=1)
 
-        smoothed_map = np.transpose(total_map[..., ::-1], (0, 2, 1))
+        # Currently has shape (time, x->X, y->Y)
+        # needs shape (time, Y->y, x->X)
+
+        smoothed_map = np.transpose(total_map, (0, 2, 1))
         # gaussian = np.ones((1,3,3)) / 16
         # gaussian[0, 1, 1] = 0.25
         # smoothed_map = signal.convolve(smoothed_map, gaussian)
@@ -546,8 +550,18 @@ class MakeVideo(DataRoutine):
                     optical_video[i_block] = full_optical_video[..., closest_optical_frame]
         
         # NOTE: This doesn't work properly because they're 8 bit integers
-        optical_video *= 2
-        np.clip(optical_video, 0, 255, out=optical_video)
+        # optical_video *= 2
+        # np.clip(optical_video, 0, 255, out=optical_video)
+
+        pdb.set_trace()
+
+        # Truncate the videos to match the shorter of the two videos
+
+        if np.max(optical_timestamp[:]) < np.max(md.timestamp[:]):
+            # optical video was shorter
+            n_blocks_truncated = int(np.ptp(optical_timestamp[:]) // self.block_size_s)
+            smoothed_map = smoothed_map[:n_blocks_truncated]
+            optical_video = optical_video[:n_blocks_truncated]
 
         def add_colorbar_outside(mappable, ax, position='right', orientation=None):
             if orientation is None:
@@ -573,7 +587,7 @@ class MakeVideo(DataRoutine):
         an = animation.FuncAnimation(
             plt.gcf(),
             animation_func,
-            frames=total_map.shape[0],
+            frames=smoothed_map.shape[0],
             interval=1000 * self.block_size_s,
             repeat_delay=2000,
         )

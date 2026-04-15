@@ -819,6 +819,7 @@ class TelescopeMotorController:
             self.send('stared_image_label', label_text)
             self.send('stared_image_progress', int((time.time() - start_time) / duration * 100))
             time.sleep(AZ_SAMPLING_TIME)
+        self.send('stared_image_progress', 100)
 
         if not self._run:
             _tele_logger.info("Stared Image canceled before completion.")

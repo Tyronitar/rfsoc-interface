@@ -5,9 +5,10 @@ from threading import Thread
 from multiprocessing import Pipe
 import h5py
 import copy
+import time
 
 import numpy as np
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Signal, Slot, QCoreApplication
 from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout, QProgressDialog
 from kidpy3 import capture
 
@@ -64,6 +65,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.pipeline = DataPipeline()
         self._add_default_routines()
         self.video_file: h5py.File = None
+        self.video_thread = None
 
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
@@ -74,6 +76,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.stacked_layout = QStackedLayout(parent=self)
         self.dither_groupBox.layout().addLayout(self.stacked_layout, 2, 0, 1, 2)
         self.startMapping.connect(self.make_map)
+        self.optical_frame_rate = 5  # Frames / second
 
         self.add_dither_pattern(
             'AZ Scan Mode',
@@ -220,6 +223,21 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             # TODO: validate the inputs somehow...
         print(self.pipeline.all_routines())
     
+    def capture_image(self):
+        savefile = get_filename(file_type='optcam').with_suffix('.h5')
+        savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
+        optcam_file = h5py.File(savefile, 'a')
+        optical_image_array = optcam_file.create_dataset(
+            'optical_image',
+            shape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3),
+            dtype=np.uint8,
+            compression='lzf',
+        )
+        image,  = self.get_current_image()
+        optical_image_array[:] = image
+        optcam_file.close()
+
+    
     def start_recording_video(self):
         savefile = get_filename(file_type='optcam').with_suffix('.h5')
         savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
@@ -229,21 +247,30 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             shape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 0),
             maxshape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, None),
             dtype=np.uint8,
+            compression='lzf',
         )
         self.video_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
-        self.connect_to_camera_command('image', self.append_video_frame)
+        self.video_thread = Thread(target=self.video_loop)
+        self.video_thread.start()
+    
+    def video_loop(self):
+        while self.video_file is not None:
+            t0 = time.time()
+            self.append_video_frame()
+            while time.time() < t0 + 1 / self.optical_frame_rate:
+                time.sleep(1e-3)
     
     def stop_recording_video(self):
-        self.disconnect_camera_command('image', self.append_video_frame)
         self.video_file.close()
         self.video_file = None
+        self.video_thread.join()
     
-    @Slot(float)
-    def append_video_frame(self, timestamp: float):
+    def append_video_frame(self):
         if self.video_file:
             n_frames = self.video_file['optical_video'].shape[-1]
+            image, timestamp = self.get_current_image()
             self.video_file['optical_video'].resize(n_frames + 1, axis=3)
-            self.video_file['optical_video'][:, :, :, -1] = self.get_current_image()
+            self.video_file['optical_video'][:, :, :, -1] = image
             self.video_file['timestamp'].resize(n_frames + 1, axis=0)
             self.video_file['timestamp'][-1] = timestamp
     
@@ -256,7 +283,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         if self.buttonGroup.checkedButton() == self.video_radioButton:
             self.start_recording_video()
         else:
-            self.cam_ctrl.take_pic(save=True)
+            self.capture_image()
 
         # Dither telescope and collect data in separate thread
         capture(rfchans, self.active_pattern.call_function)

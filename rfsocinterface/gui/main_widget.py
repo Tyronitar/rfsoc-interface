@@ -80,7 +80,7 @@ class TelescopeMainWidget(MainWidget):
             for callback in self.camera_commands[command]:
                 callback(*args)
     
-    def get_current_image(self) -> npt.NDArray:
+    def get_current_image(self) -> tuple[npt.NDArray, float]:
         return self.main_window.get_current_image()
     
     def connect_to_telescope_command(self, command: str, callback: Callable):

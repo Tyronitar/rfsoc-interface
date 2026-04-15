@@ -208,9 +208,10 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     #
     # Camera Handlers
     #
-    def update_live_footage(self, timestamp: float):
+    def update_live_footage(self):
         if self.is_active_tab:
-            self.live_footage_im.set_array(self.get_current_image())
+            image, _ = self.get_current_image()
+            self.live_footage_im.set_array(image)
             self.live_footage_canvas.canvas.draw()
             self.live_footage_canvas.canvas.flush_events()
 

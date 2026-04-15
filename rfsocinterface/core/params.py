@@ -237,10 +237,11 @@ if __name__ == "__main__":
     # Be231102p2_LO_freq = 300e6
     # lo_freq = 4e8
     lo_freq = 4e8
-    n_tones = 1
+    n_tones = 1000
+    baseband_freqs = np.linspace(-200e6, 200e6, n_tones)
     # baseband_freqs = np.concatenate([np.linspace(-246e6, -11e6, n_tones // 2), np.linspace(10e6, 245e6, n_tones // 2)])
-    baseband_freqs = np.arange(-200e6, 200e6 + 1, 400e3)
-    n_tones = np.size(baseband_freqs)
+    # baseband_freqs = np.arange(-200e6, 200e6 + 1, 400e3)
+    # n_tones = np.size(baseband_freqs)
     # baseband_freqs = [450e6 - lo_freq]
     # tile_name = f'{n_tones}_tone_uniform_202050829'
 
@@ -258,35 +259,36 @@ if __name__ == "__main__":
     
     # tile_name = 'Be231102p2_100_tones'
     # tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
-    tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260304'
-    bad_tones = [
-        1, 3, 223, 278, 299,
-        303, 10, 69, 192, 820,
-        263, 483, 172, 574, 426,
-        569, 297, 167, 15, 717,
-        487, 842, 453, 13, 719,
-        92, 571, 630, 84, 220,
-        364, 516, 74, 726, 292,
-        519, 812, 302, 683, 537,
-        294, 534, 256, 661, 529,
-        737, 54, 782, 567, 103,
-        330, 133, 809, 460, 589,
-        387, 538, 213, 120, 79,
-        783, 612, 121, 117, 749
-    ]
-    old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
-    chanmask = old_params.root.chanmask[:]
-    chanmask[bad_tones] = -1
-    lo_freq = old_params.root.lo_freq[()]
-    detdx = old_params.root.detector_delta_x[:]
-    detdy = old_params.root.detector_delta_y[:]
-    det_beam_ampl = old_params.root.detector_beam_ampl[:]
-    det_pol = old_params.root.detector_pol[:]
-    tone_powers = old_params.root.tone_powers[:]
-    df_overf_per_mK = old_params.root.dfoverf_per_mK[:]
-    # tone_list = np.load('/data/20260304/20260304_Device_aSi1_Channel2_telescope_275mK_tone_list_hour16p6706.npy')
-    baseband_freqs = old_params.root.baseband_freqs[:]
-    old_params.close()
+    tile_name = f'{n_tones}_tones_equally_spaced'
+    # tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260304'
+    # bad_tones = [
+    #     1, 3, 223, 278, 299,
+    #     303, 10, 69, 192, 820,
+    #     263, 483, 172, 574, 426,
+    #     569, 297, 167, 15, 717,
+    #     487, 842, 453, 13, 719,
+    #     92, 571, 630, 84, 220,
+    #     364, 516, 74, 726, 292,
+    #     519, 812, 302, 683, 537,
+    #     294, 534, 256, 661, 529,
+    #     737, 54, 782, 567, 103,
+    #     330, 133, 809, 460, 589,
+    #     387, 538, 213, 120, 79,
+    #     783, 612, 121, 117, 749
+    # ]
+    # old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
+    # chanmask = old_params.root.chanmask[:]
+    # chanmask[bad_tones] = -1
+    # lo_freq = old_params.root.lo_freq[()]
+    # detdx = old_params.root.detector_delta_x[:]
+    # detdy = old_params.root.detector_delta_y[:]
+    # det_beam_ampl = old_params.root.detector_beam_ampl[:]
+    # det_pol = old_params.root.detector_pol[:]
+    # tone_powers = old_params.root.tone_powers[:]
+    # df_overf_per_mK = old_params.root.dfoverf_per_mK[:]
+    # # tone_list = np.load('/data/20260304/20260304_Device_aSi1_Channel2_telescope_275mK_tone_list_hour16p6706.npy')
+    # baseband_freqs = old_params.root.baseband_freqs[:]
+    # old_params.close()
     # tile_name = 'Device_aSi1_Channel2_blind'
     # baseband_freqs = baseband_freqs - lo_freq
     # baseband_freqs =  np.load('/home/onrkids/readout/host/params/Default_tone_list.npy')
@@ -299,7 +301,7 @@ if __name__ == "__main__":
     # det_pol = np.load('/home/onrkids/readout/host/params/detector_pol_tile2.npy')
     # tone_powers = np.load('/home/onrkids/onrkidpy/params/Device_aSi1_Channel2_max_readout_power_dB.npy')
     # df_overf_per_mK = np.load('/home/onrkids/readout/host/params/dfoverf_per_mK_tile2.npy')
-    # detdx = detdy = chanmask = det_beam_ampl = det_pol = tone_powers = df_overf_per_mK = None
+    detdx = detdy = chanmask = det_beam_ampl = det_pol = tone_powers = df_overf_per_mK = None
     # chanmask = np.zeros_like(baseband_freqs)
     # chanmask[np.where(sorted_indices < len(Be231102p2_tones))[0]] = 1
 

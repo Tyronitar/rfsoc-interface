@@ -30,6 +30,7 @@ import json
 
 _logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
+_camera_logger = logging.getLogger('rfsocinterface.cameraControl')
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -56,8 +57,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.camera_child_conn: Connection = None
         self.camera_controller_process: Process = None
         self.shared_camera_array = Array('B', MAX_FRAME_HEIGHT * MAX_FRAME_WIDTH * 3)
+        self.shared_timestamp_array = Array('d', 1)
         self.camera_array = np.frombuffer(self.shared_camera_array.get_obj(), dtype=np.uint8).reshape(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)
+        self.timestamp_array = np.frombuffer(self.shared_timestamp_array.get_obj(), dtype=np.float64).reshape(1)
         self.camera_array_lock = Lock()
+        self.timestamp_array_lock = Lock()
 
         
         self.tabs: dict[TabName, MainWidget] = {}
@@ -68,9 +72,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._additional_ui_setup()
         self.closeWindow.connect(self.close)
     
-    def get_current_image(self) -> npt.NDArray:
+    def get_current_image(self) -> tuple[npt.NDArray, float]:
         with self.camera_array_lock:
-            return self.camera_array
+            with self.timestamp_array_lock:
+                return self.camera_array[:], self.timestamp_array[:]
     
     def _make_telescope_controller(self):
         from rfsocinterface.core.telescope import make_controller
@@ -91,7 +96,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.camera_controller_process is not None:
             return
         self.camera_parent_conn, self.camera_child_conn = Pipe(duplex=True)
-        self.camera_controller_process = Process(target=make_controller, args=(self.camera_child_conn, self.shared_camera_array, self.camera_array_lock))
+        self.camera_controller_process = Process(target=make_controller, args=(self.camera_child_conn, self.shared_camera_array, self.shared_timestamp_array, self.camera_array_lock, self.timestamp_array_lock))
         self.camera_controller_process.start()
 
         self._camera_listener_thread = Thread(target=self._camera_listener_loop)
@@ -240,7 +245,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if not self.camera_parent_conn.poll(1e-4):
                     continue
                 response, *data = self.camera_parent_conn.recv()
-                _tele_logger.debug(f'MAIN got response from CAMERA: "{response}", data: {data}')
+                _camera_logger.debug(f'MAIN got response from CAMERA: "{response}", data: {data}')
                 match response.lower():
                     case 'err':
                         criticality = data[0]

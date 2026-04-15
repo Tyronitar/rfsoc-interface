@@ -234,7 +234,7 @@ if __name__ == '__main__':
     # setnum = 1017
 
     #Telescope Testing
-    date = '20260309'
+    date = '20260415'
     setnums = [1010]
     # date = '20260320'
     # setnums = [1006]  # On telescope computer
@@ -282,8 +282,8 @@ if __name__ == '__main__':
     pipeline.add_routine(lpfilt)
     # pipeline.add_routine(psd)
     pipeline.add_routine(cleaner)
-    pipeline.add_routine(binner)
-    # pipeline.add_routine(video)
+    # pipeline.add_routine(binner)
+    pipeline.add_routine(video)
 
     for setnum in setnums:
         data = pipeline.run_pipeline(date, setnum)
