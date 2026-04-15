@@ -302,11 +302,11 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260224'
-    setnums = np.array([1008])
+    date = '20260415'
+    setnums = np.array([1014])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
-    date = '20260212'
-    setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
+    # date = '20260212'
+    # setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
     #Good Dataset, miniC = [0.5, 0] No 30dB Warm Amp #Not compensated for increase in output power, so may be wrong
     #date = '20260212'
     #setnums = np.array([1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021])
@@ -327,10 +327,21 @@ if __name__ == '__main__':
     primary_direction = 'az'
 
     ds_factor = 1
-    lp_filt_freq = 500
+    lp_filt_freq = 1000
     block_length = 100
     hp_filt_freq = 1/block_length
 
+    pipeline = DataPipeline(
+        ds_factor=ds_factor,
+        hp_filter_freq=hp_filt_freq,
+        lp_filter_freq=lp_filt_freq,
+        dataset=dataset,
+        beam_map_mode=beam_map_mode,
+        do_electronics_noise_removal= do_electronics_noise_removal,
+        block_length = block_length,
+        do_cr_removal = do_cr_removal,
+        max_modes=10
+    )
 
     hpfilt = HighPassFilter(hp_filt_freq)
     lpfilt = LowPassFilter(lp_filt_freq)
@@ -357,7 +368,7 @@ if __name__ == '__main__':
     )
     psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, tone_indices=None, nominal_block_length=block_length)
     pipeline.add_routine(psd)
-    pipeline.add_routine(cleaner)
+    # pipeline.add_routine(cleaner)
     
     data = pipeline.run_pipeline(date, setnums[-1])
     freq = data.get_node_value('freq')[:min_len]

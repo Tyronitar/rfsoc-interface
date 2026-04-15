@@ -116,6 +116,34 @@ def plot_psd(
 
 
 if __name__ == "__main__":
+    date = '20260415'
+    setnum = 1014
+
+    data_l0 = ProcessedDataL0.from_tod(
+            date,
+            setnum,
+        )
+    data_l1 = ProcessedDataL1.from_level0(
+        data_l0,
+        do_electronics_noise_removal=True,
+        block_length=110,
+    )
+    psd_routine = ComputeNoisePSD(
+        PsdBasis.GAIN_PHASE,
+        cut_time=2,
+    )
+    data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+    psd_routine(data_l2)
+    freq = data_l2.get_node_value('freq', '/psd')[:]
+    psd = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
+
+    plt.plot(freq, 10 * np.log10(np.median(psd[0], axis=0)))
+    plt.show()
+
+    pdb.set_trace()
+
+
+
     in_lab = False
 
     use_cached_onres = True
