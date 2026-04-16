@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING, Callable, Any, Concatenate
 from pathlib import Path
-from threading import Thread
+from threading import Thread, Lock
 from multiprocessing import Pipe
 import h5py
 import copy
@@ -65,7 +65,9 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.pipeline = DataPipeline()
         self._add_default_routines()
         self.video_file: h5py.File = None
+        self.video_file_lock = Lock()
         self.video_thread = None
+        self._recording = False
 
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
@@ -241,38 +243,45 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
     def start_recording_video(self):
         savefile = get_filename(file_type='optcam').with_suffix('.h5')
         savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
-        self.video_file = h5py.File(savefile, 'a')
-        self.video_file.create_dataset(
-            'optical_video',
-            shape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 0),
-            maxshape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, None),
-            dtype=np.uint8,
-            compression='lzf',
-        )
-        self.video_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
+        with self.video_file_lock:
+            self.video_file = h5py.File(savefile, 'a')
+            self.video_file.create_dataset(
+                'optical_video',
+                shape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 0),
+                maxshape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, None),
+                dtype=np.uint8,
+                compression='lzf',
+            )
+            self.video_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
         self.video_thread = Thread(target=self.video_loop)
         self.video_thread.start()
+        _logger.info('Optical video recording started')
     
     def video_loop(self):
-        while self.video_file is not None:
+        self._recording = True
+        while self._recording:
             t0 = time.time()
             self.append_video_frame()
             while time.time() < t0 + 1 / self.optical_frame_rate:
                 time.sleep(1e-3)
     
     def stop_recording_video(self):
-        self.video_file.close()
-        self.video_file = None
+        self._recording = False
+        with self.video_file_lock:
+            self.video_file.close()
+            self.video_file = None
         self.video_thread.join()
+        _logger.info('Optical video recording ended')
     
     def append_video_frame(self):
-        if self.video_file:
-            n_frames = self.video_file['optical_video'].shape[-1]
-            image, timestamp = self.get_current_image()
-            self.video_file['optical_video'].resize(n_frames + 1, axis=3)
-            self.video_file['optical_video'][:, :, :, -1] = image
-            self.video_file['timestamp'].resize(n_frames + 1, axis=0)
-            self.video_file['timestamp'][-1] = timestamp
+        with self.video_file_lock:
+            if self.video_file is not None:
+                n_frames = self.video_file['optical_video'].shape[-1]
+                image, timestamp = self.get_current_image()
+                self.video_file['optical_video'].resize(n_frames + 1, axis=3)
+                self.video_file['optical_video'][:, :, :, -1] = image
+                self.video_file['timestamp'].resize(n_frames + 1, axis=0)
+                self.video_file['timestamp'][-1] = timestamp
     
     def run(self):
         # Update the current save file
@@ -286,7 +295,9 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             self.capture_image()
 
         # Dither telescope and collect data in separate thread
+        _logger.info('Beginning data capture')
         capture(rfchans, self.active_pattern.call_function)
+        _logger.info('Data capture ended')
         if self.buttonGroup.checkedButton() == self.video_radioButton:
             self.stop_recording_video()
 
