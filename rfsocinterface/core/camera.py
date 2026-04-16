@@ -409,19 +409,16 @@ class CameraController:
 
                 # Construct image by stitching frames together.
                 if frames:
-                    _camera_logger.debug('Converting frames to numpy arrays')
                     cv_images = [frames[cam_id].as_numpy_ndarray() for cam_id in sorted(frames.keys())]
 
                     # Rotate image so it's aligned properly
                     cv_images = np.flip(np.flip(cv_images, 1), 2)
 
                     # Send timestamp and image to the main process
-                    _camera_logger.debug('Writing to shared arrays...')
                     with self.camera_lock:
                         with self.timestamp_lock:
                             self.camera_array[:] = cv_images[0]
                             self.timestamp_array[:] = time.time()
-                    _camera_logger.debug('Done writing to shared arrays.')
                     if self.connection is None:
                         self.im.set_array(cv_images[0])
                         self.figure.canvas.draw()

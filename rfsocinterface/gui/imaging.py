@@ -160,9 +160,11 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.connect_to_telescope_command(f'{command}_maximum', pd.setMaximum)
         self.connect_to_telescope_command(f'{command}_progress', pd.setValue)
         self.connect_to_telescope_command(f'{command}_label', pd.setLabelText)
+        _logger.debug('Connected to telescope commands')
 
         # Tell the controller to start moving the telescope according to the scan type
         self.send_telescope_command(command, *args)
+        _logger.debug('Started telescope command')
         pd.show()
 
         # Wait until the motor controller indicates the scan is complete
@@ -234,11 +236,11 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             shape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3),
             dtype=np.uint8,
             compression='lzf',
+            # chunks=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3),  # TODO: Is this a valid chunk shape?
         )
         image,  = self.get_current_image()
         optical_image_array[:] = image
         optcam_file.close()
-
     
     def start_recording_video(self):
         savefile = get_filename(file_type='optcam').with_suffix('.h5')
@@ -251,6 +253,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
                 maxshape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, None),
                 dtype=np.uint8,
                 compression='lzf',
+                chunks=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 1),
             )
             self.video_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
         self.video_thread = Thread(target=self.video_loop)
@@ -262,14 +265,16 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         while self._recording:
             t0 = time.time()
             self.append_video_frame()
-            while time.time() < t0 + 1 / self.optical_frame_rate:
+            while time.time() < t0 + (1 / self.optical_frame_rate):
                 time.sleep(1e-3)
+        _logger.debug('Video loop thread done')
     
     def stop_recording_video(self):
         self._recording = False
         with self.video_file_lock:
             self.video_file.close()
             self.video_file = None
+        _logger.debug('Joining optical video thread...')
         self.video_thread.join()
         _logger.info('Optical video recording ended')
     
@@ -279,9 +284,9 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
                 n_frames = self.video_file['optical_video'].shape[-1]
                 image, timestamp = self.get_current_image()
                 self.video_file['optical_video'].resize(n_frames + 1, axis=3)
-                self.video_file['optical_video'][:, :, :, -1] = image
                 self.video_file['timestamp'].resize(n_frames + 1, axis=0)
                 self.video_file['timestamp'][-1] = timestamp
+                self.video_file['optical_video'][:, :, :, -1] = image
     
     def run(self):
         # Update the current save file
@@ -297,7 +302,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         # Dither telescope and collect data in separate thread
         _logger.info('Beginning data capture')
         capture(rfchans, self.active_pattern.call_function)
-        _logger.info('Data capture ended')
+        _logger.info('Data capture complete')
         if self.buttonGroup.checkedButton() == self.video_radioButton:
             self.stop_recording_video()
 
