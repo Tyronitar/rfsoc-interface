@@ -1,6 +1,7 @@
 from typing import Literal
 import time
 import logging
+from pathlib import Path
 
 import h5py
 import matplotlib.animation as animation
@@ -13,7 +14,7 @@ from scipy import signal
 from rfsocinterface.core.data.routines import DataRoutine, register_routine
 from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.data.utils import DEFAULT_MAP_DPIX, N_POLARIZATION, OPTCAM_HEIGHT_PIXELS, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_WIDTH_PIXELS, get_channel_group_name
-from rfsocinterface.core.utils import GAUSSIAN_SIGMA, PERMISSIONS_ALL_FULL, add_colorbar_outside, argclosest, gaussian_filter
+from rfsocinterface.core.utils import GAUSSIAN_SIGMA, PERMISSIONS_ALL_FULL, add_colorbar_outside, argclosest, gaussian_filter, PathLike, convert_path, ensure_path
 
 _logger = logging.getLogger(__name__)
 
@@ -344,13 +345,15 @@ class PlotMap(DataRoutine):
         '/map/plotting/contour_levels',
     }
 
+    @ensure_path('savefile')
     def __init__(
             self,
             gaussian_sigma: float=GAUSSIAN_SIGMA,
             valid_covariance_threshold: float=0.5,
             cb_shrink: float=0.95,
             max_abs_threshold: float=0.75,
-            save: bool=True,
+            save_plot: bool=True,
+            savefile: Path=None,
             show: bool=False,
             overwrite: bool=True,
     ):
@@ -359,7 +362,8 @@ class PlotMap(DataRoutine):
             valid_covariance_threshold=valid_covariance_threshold,
             cb_shrink=cb_shrink,
             max_abs_threshold=max_abs_threshold,
-            save=save,
+            save_plot=save_plot,
+            savefile=savefile,
             show=show,
             overwrite=overwrite,
         )
@@ -575,16 +579,20 @@ class PlotMap(DataRoutine):
 
         fig.subplots_adjust(wspace=0, hspace=0)
 
-        # TODO: Move this to some global getter function
-        path = pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
-        if not path.exists():
-            path.touch(PERMISSIONS_ALL_FULL)
-        if self.params['save']:
-            fig.savefig(path, bbox_inches='tight')
+        if self.params['save_plot']:
+            if self.params['savefile'] is None:
+                # TODO: Move this to some global getter function
+                self.params['savefile'] = pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
+            if not self.params['savefile'].exists():
+                self.params['savefile'].touch(PERMISSIONS_ALL_FULL)
+            fig.savefig(self.params['savefile'], bbox_inches='tight')
         if self.params['show']:
             plt.show()
 
+        plt.close(fig)
 
+
+@ensure_path('savefile')
 def animate_video(
     total_map: npt.NDArray,
     optical_video: npt.NDArray,
@@ -592,6 +600,7 @@ def animate_video(
     extent: tuple[int, ...],
     repeat_delay_ms: float=2000,
     show: bool=False,
+    savefile: Path=None,
 ) -> tuple[Figure, animation.FuncAnimation]:
     smoothed_map = np.transpose(total_map[..., ::-1], (0, 2, 1))
     # gaussian = np.ones((1,3,3)) / 16
@@ -618,7 +627,8 @@ def animate_video(
         interval=interval_ms,
         repeat_delay=repeat_delay_ms,
     )
-    an.save('video.gif')
+    if savefile is not None:
+        an.save(savefile)
     if show:
         plt.show()
     return fig, an
@@ -639,6 +649,7 @@ class MakeVideo(DataRoutine):
         '/video/good_samples',
     }
 
+    @ensure_path('savefile')
     def __init__(
             self,
             dataset: Literal['data_mK', 'data_freq']='data_mK',
@@ -650,6 +661,8 @@ class MakeVideo(DataRoutine):
             beam_map_mode: bool=False,
             dpix: int=DEFAULT_MAP_DPIX,
             block_size_s: float=1,
+            plot: bool=True,
+            savefile: Path=None,
             show: bool=False,
     ):
         if dataset not in ('data_mK', 'data_freq'):
@@ -668,7 +681,9 @@ class MakeVideo(DataRoutine):
             beam_map_mode=beam_map_mode,
             dpix=dpix,
             block_size_s=block_size_s,
+            plot=plot,
             show=show,
+            savefile=savefile,
         )
 
     def inputs(self, pdata: ProcessedData):
@@ -855,21 +870,25 @@ class MakeVideo(DataRoutine):
                 this_timestamp = np.mean(timestamp_block)
                 video_timestamp[i_block] = this_timestamp
                 closest_optical_frame = argclosest(optical_timestamp, this_timestamp)
-                optical_video[i_block] = full_optical_video[..., closest_optical_frame]
+                optical_video[i_block] = full_scaled_video[..., closest_optical_frame]
         else:
             optical_video[:] = np.repeat(scaled_optical_image[np.newaxis], n_blocks, axis=0)
 
         # TODO: Scale optical video to increase exposure
 
         # Animation
-        total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
         if self.params['plot']:
             _logger.info(f'{self.name}: Creating animation...')
+            if self.params['savefile'] is None:
+                self.params['savefile'] = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.gif')
             animate_video(
                 total_map,
                 optical_video[:],
                 1000 * block_size_s,
                 get_extent(map_az, map_za, dpix),
-                show=self.params['show']
+                show=self.params['show'],
+                savefile=self.params['savefile'],
             )
         return list(self.produces)

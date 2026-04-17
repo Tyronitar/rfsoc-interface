@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 import logging
-from typing import Literal
+from typing import Literal, TypeVar
 import warnings
+import functools
+from pathlib import Path
 
 import pdb
 
@@ -47,13 +49,22 @@ class ProcessingStage:
     POST_PROCESSING = 'post_processing'
 
 
-def register_routine(cls: type[DataRoutine]):
+T = TypeVar('DataRoutine', bound='DataRoutine')
+
+def register_routine(cls: type[T]) -> type[T]:
     if not issubclass(cls, DataRoutine):
         _logger.warning(f'Failed to register class {cls.__name__} as a DataRoutine; it does not inherit from DataRoutine.')
         return
     ROUTINE_REGISTRY[cls.name] = cls
     _logger.debug(f'Registered data routine: {cls.__name__}')
     return cls
+
+
+class PathJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Path):
+            return str(obj)
+        return super().default(obj)
 
 
 class DataRoutine:
@@ -135,7 +146,7 @@ class DataRoutine:
 
         for k, v in meta.items():
             if isinstance(v, (dict, list)):
-                step_group.attrs[k] = json.dumps(v)
+                step_group.attrs[k] = json.dumps(v, cls=PathJSONEncoder)
             else:
                 step_group.attrs[k] = v
 
@@ -277,7 +288,7 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     n_modes = 2
     new_modes = -1
     while new_modes != 0 and n_modes <= max_modes:
-        with np.errstate(invalid='ignore'):
+        with np.errstate(divide='ignore', invalid='ignore'):
             log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
         mu = np.mean(log_eigen_values, axis=1)
         sigma = np.std(log_eigen_values, axis=1)

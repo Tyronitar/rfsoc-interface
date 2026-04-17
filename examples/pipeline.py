@@ -5,10 +5,10 @@ import pdb
 
 
 if __name__ == '__main__':
-    date = '20260319'
-    setnum = 1023
-    # date = '20260309'
-    # setnum = 1013
+    # date = '20260319'
+    # setnum = 1023
+    date = '20260309'
+    setnum = 1010
 
     lp_filter_freq = 15
     hp_filter_freq= 0.25
@@ -48,19 +48,20 @@ if __name__ == '__main__':
         az_trim=0,
         za_trim=0,
         show=True,
+        savefile='test.gif',
     )
 
     pipeline = Pipeline([
         # noise_removal_offres,
         # noise_removal_onres,
-        compute_psd,
-        psd_plotter,
+        # compute_psd,
+        # psd_plotter,
         # hp_filter,
         # lp_filter,
         # clean_tod,
         # make_video,
-        # bin_tod_to_map,
-        # plotter,
+        bin_tod_to_map,
+        plotter,
     ])
     # pdata = pipeline.from_tod(date, setnum, ds_factor)
     pdata = ProcessedData.load(date, setnum, mode='a')

@@ -92,8 +92,10 @@ class MetaEnum(EnumMeta):
         return True
 
 
-def convert_path(path: PathLike) -> Path:
+def convert_path(path: PathLike) -> Path | None:
     """Ensure that a Path is a Path object."""
+    if path is None:
+        return path
     if isinstance(path, Path):
         return path
     if isinstance(path, bytes):
@@ -107,7 +109,7 @@ def convert_path(path: PathLike) -> Path:
 
 def ensure_path(
     *targets: int | str,
-) -> Callable[[Callable[P, R]], Callable[Q, R]]:
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Function decorator factory for converting PathLike's to Path's.
 
     Arguments:
@@ -117,7 +119,7 @@ def ensure_path(
             convert.
     """
 
-    def decorator(func: Callable[P, R]) -> Callable[Q, R]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         """Decorator that converts PathLike's into Path's before calling the function.
 
         Arguments:
