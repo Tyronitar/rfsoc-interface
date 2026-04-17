@@ -8,7 +8,7 @@ if __name__ == '__main__':
     # date = '20260319'
     # setnum = 1023
     date = '20260309'
-    setnum = 1010
+    setnum = 1013
 
     lp_filter_freq = 15
     hp_filter_freq= 0.25
@@ -59,9 +59,9 @@ if __name__ == '__main__':
         # hp_filter,
         # lp_filter,
         # clean_tod,
-        # make_video,
-        bin_tod_to_map,
-        plotter,
+        make_video,
+        # bin_tod_to_map,
+        # plotter,
     ])
     # pdata = pipeline.from_tod(date, setnum, ds_factor)
     pdata = ProcessedData.load(date, setnum, mode='a')

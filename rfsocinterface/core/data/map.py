@@ -10,6 +10,7 @@ import numpy as np
 import numpy.typing as npt
 from matplotlib.figure import Figure
 from scipy import signal
+from scipy.spatial.distance import cdist
 
 from rfsocinterface.core.data.routines import DataRoutine, register_routine
 from rfsocinterface.core.data.storage import ProcessedData
@@ -123,11 +124,26 @@ def get_map_size(
 
     return n_pix_x, n_pix_y, map_x, map_y
 
+def compute_map_kernel(
+    r0: float=0.15,
+    dpix: float=DEFAULT_MAP_DPIX,
+    sigma: float=0.087/2.3,
+) -> npt.NDArray:
+    kernel_pos = np.arange(-r0, r0 + dpix, dpix)
+    if 0 not in kernel_pos:
+        kernel_pos = np.insert(kernel_pos, np.searchsorted(kernel_pos, 0), 0)
+    kernel_size =  kernel_pos.size
+    pos = np.array(np.meshgrid(kernel_pos, kernel_pos)).T.reshape(-1, 2)
+    distances = cdist(pos, np.atleast_2d([0, 0]), 'sqeuclidean').reshape(kernel_size, kernel_size)
+    kernel = np.exp(-np.pow(distances / (2 * sigma ** 2), 2))
+    kernel[distances>r0] = 0
+    return kernel
+
 
 @register_routine
 class BinTODIntoMap(DataRoutine):
     name = 'BinTODIntoMap'
-    version = '1.0.0'
+    version = '1.1.0'
 
     produces = {
         '/map/netd',
@@ -148,6 +164,8 @@ class BinTODIntoMap(DataRoutine):
             med_netd_cut_threshold: float=3.,
             beam_map_mode: bool=False,
             dpix: int=DEFAULT_MAP_DPIX,
+            r0: float=0.15,
+            sigma: float=0.087/2.3,
     ):
         if dataset not in ('data_mK', 'data_freq'):
             raise ValueError(f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or "data_freq".')
@@ -164,6 +182,8 @@ class BinTODIntoMap(DataRoutine):
             med_netd_cut_threshold=med_netd_cut_threshold,
             beam_map_mode=beam_map_mode,
             dpix=dpix,
+            r0=r0,
+            sigma=sigma,
         )
 
     def inputs(self, pdata: ProcessedData):
@@ -314,6 +334,13 @@ class BinTODIntoMap(DataRoutine):
             for time_sample in good_samples:
                 sum_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
                 hits_map[map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+
+        # Create kernel and convolve with map to get more accurate values for pixels with few hits
+        kernel = compute_map_kernel(r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma'])
+        for map_idx in range(n_maps):
+            sum_map[map_idx] = signal.convolve2d(sum_map[map_idx], kernel, mode='same')
+            hits_map[map_idx] = signal.convolve2d(hits_map[map_idx], kernel, mode='same')
+
         pdata.set_chanmask(chanmask)
         pdata['map/hits_map'][:] = hits_map
         pdata['map/sum_map'][:] = sum_map
@@ -602,10 +629,7 @@ def animate_video(
     show: bool=False,
     savefile: Path=None,
 ) -> tuple[Figure, animation.FuncAnimation]:
-    smoothed_map = np.transpose(total_map[..., ::-1], (0, 2, 1))
-    # gaussian = np.ones((1,3,3)) / 16
-    # gaussian[0, 1, 1] = 0.25
-    # smoothed_map = signal.convolve(smoothed_map, gaussian)
+    smoothed_map = np.transpose(total_map, (0, 2, 1))
     max_abs = 0.75 * np.max(np.abs(smoothed_map))
     vmax = max_abs
     vmin = -max_abs
@@ -637,7 +661,7 @@ def animate_video(
 @register_routine
 class MakeVideo(DataRoutine):
     name = 'MakeVideo'
-    version = '1.0.0'
+    version = '1.1.0'
 
     produces = {
         '/video/netd',
@@ -660,6 +684,8 @@ class MakeVideo(DataRoutine):
             med_netd_cut_threshold: float=3.,
             beam_map_mode: bool=False,
             dpix: int=DEFAULT_MAP_DPIX,
+            r0: float=0.15,
+            sigma: float=0.087/2.3,
             block_size_s: float=1,
             plot: bool=True,
             savefile: Path=None,
@@ -680,6 +706,8 @@ class MakeVideo(DataRoutine):
             med_netd_cut_threshold=med_netd_cut_threshold,
             beam_map_mode=beam_map_mode,
             dpix=dpix,
+            r0=r0,
+            sigma=sigma,
             block_size_s=block_size_s,
             plot=plot,
             show=show,
@@ -852,6 +880,14 @@ class MakeVideo(DataRoutine):
                 for time_sample in good_samples[block_slice]:
                     sum_map[i_block, map_idx, x_ind[time_sample],y_ind[time_sample]] += this_clean_data[time_sample] * weight
                     hits_map[i_block, map_idx, x_ind[time_sample],y_ind[time_sample]] += 1. * weight
+
+        # Create kernel and convolve with map to get more accurate values for pixels with few hits
+        kernel = compute_map_kernel(r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma'])
+        for i_block in range(n_blocks):
+            for map_idx in range(n_maps):
+                sum_map[i_block, map_idx] = signal.convolve2d(sum_map[i_block, map_idx], kernel, mode='same')
+                hits_map[i_block, map_idx] = signal.convolve2d(hits_map[i_block, map_idx], kernel, mode='same')
+
         pdata.set_chanmask(chanmask)
         pdata['video/hits_map'][:] = hits_map
         pdata['video/sum_map'][:] = sum_map
