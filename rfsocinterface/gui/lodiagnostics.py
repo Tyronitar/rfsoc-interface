@@ -14,7 +14,7 @@ import numpy as np
 from matplotlib.backend_bases import MouseButton, MouseEvent
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
-from PySide6.QtCore import Qt, SignalInstance, Slot
+from PySide6.QtCore import Qt, SignalInstance, Slot, QCoreApplication
 from PySide6.QtGui import QDoubleValidator, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -290,6 +290,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.save_plots_pushButton.clicked.connect(self.save_plots_as)
 
         self.edited = False
+
+    def set_window_name(self, name: str):
+        self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
     
     def click_button_box(self, button: QAbstractButton):
         if self.buttonBox.buttonRole(button) == QDialogButtonBox.ButtonRole.DestructiveRole:
@@ -495,6 +498,6 @@ if __name__ == '__main__':
 
     app = QApplication()
 
-    dw = DiagnosticsDialog.from_h5('/data/20251212/20251212_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour14p1672.h5')
+    dw = DiagnosticsDialog.from_h5('/data/20260127/20260127_Device_aSi1_Channel3_blind_LO_Sweep_hour13p6814.h5')
     dw.show()
     app.exec()

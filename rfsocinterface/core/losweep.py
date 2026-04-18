@@ -17,13 +17,17 @@ from numpy.polynomial import Polynomial
 from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from matplotlib.gridspec import GridSpec
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.lines import Line2D
 from scipy.signal import savgol_filter
 import h5py
+import tables
 
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW, parallel_plot
+from rfsocinterface.core.utils import ensure_path, PERMISSIONS_USR_RW, parallel_plot
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.params import initialize_params_file, update_params_file
 from kidpy3 import capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
@@ -600,8 +604,67 @@ class LoSweepData:
     
     def find_resonances(self) -> tuple[npt.NDArray, npt.NDArray]:
         rf = ResonatorFinder(self.data, self.f_center, self.df)
-        res_freq, res_depth = rf.find_resonators()
-        return res_freq, res_depth
+        res_freq, res_depth = rf.find_resonators(min_resonance_depth_dB=0.3, spacing_threshold_Hz=3e3, min_samples_per_resonance=2)
+        return res_freq , res_depth
+    
+    def plot_new_resonances(self, tile_name: str, f0: npt.NDArray, old_f0: npt.NDArray | None=None, nrows: int=4, ncols: int=3):
+        with PdfPages(f'{tile_name}_new_tones.pdf') as pdf:
+            custom_lines = [
+                Line2D([0], [0], color='blue', linestyle='-'),
+                Line2D([0], [0], color='red', linestyle='-'),
+            ]
+            custom_labels = [r'$S_{21}$', 'New Resonances']
+            if old_f0 is not None:
+                custom_lines.append(Line2D([0], [0], color='green', linestyle='--'))
+                custom_labels.append('Old Resonances')
+            group_size = nrows * ncols
+            group_starts = np.arange(0, self.nchan + group_size, group_size, dtype=int)
+            for start_idx, end_idx in zip(group_starts, group_starts[1:]):
+                fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
+                for i, i_tone in enumerate(range(start_idx, min(end_idx, self.nchan))):
+                    ax = np.ravel(axes)[i]
+                    ax.set_title(f'Tone {i_tone + 1}')
+                    this_freq = self.freq[i_tone]
+                    ax.plot(this_freq, self.s21[i_tone], color='blue')
+                    this_f0 = f0[(this_freq.min() <= f0) & (f0 <= this_freq.max())]
+                    for resonance in this_f0:
+                        ax.axvline(resonance, linestyle='-', color='red')
+                    if old_f0 is not None:
+                        this_old_f0 = old_f0[(this_freq.min() <= old_f0) & (old_f0 <= this_freq.max())]
+                        for resonance in this_old_f0:
+                            ax.axvline(resonance, linestyle='--', color='green')
+                    ax.set_xlabel('Frequency (MHz)')
+                    ax.set_ylabel(r'$|S_{21}|$')
+                    ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
+                fig.legend(
+                    custom_lines,
+                    custom_labels,
+                    loc='lower center',
+                    bbox_to_anchor=(0.5, 0.0),
+                    bbox_transform=fig.transFigure,
+                    ncol=3 if old_f0 is not None else 2,
+                )
+                fig.tight_layout(rect=[0, 0.05, 1, 1])
+                pdf.savefig(fig)
+                # plt.show()
+                plt.close(fig)
+                # pdb.set_trace()
+
+    
+    def generate_new_params_file(self, tile_name: str, old_params: tables.File | None=None, plot: bool=False):
+        f0, depths = self.find_resonances()
+        if plot:
+            old_f0 = None
+            if old_params is not None:
+                old_f0 = old_params.root.baseband_freqs[:] + old_params.root.lo_freq[()]
+            self.plot_new_resonances(tile_name, f0, old_f0)
+            
+        initialize_params_file(
+            tile_name,
+            f0 - self.f_center,
+            self.f_center,
+        )
+        pdb.set_trace()
 
 
 def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
@@ -702,6 +765,7 @@ class LoSweep:
         packets = self.rfsoc.capture_packets(self.chan, 20)
 
         # Actually use this data
+        # TODO: Can reduce Naccums to speed up LO sweep
         Naccums = 100
         packets = self.rfsoc.capture_packets(self.chan, Naccums)
         I = []
@@ -720,7 +784,7 @@ class LoSweep:
         Qmed = np.median(Q, axis=0)
 
         Z = Imed + 1j * Qmed
-        Z = Z[BAD_RFSOC_TONE_START_INDEX: BAD_RFSOC_TONE_START_INDEX + len(self.tone_list)]
+        Z = Z[:len(self.tone_list)]
 
         return Z
 

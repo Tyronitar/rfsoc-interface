@@ -13,7 +13,7 @@ import tables
 from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.utils import get_filename, PERMISSIONS_USR_RW, get_tod_template, TabName
-from rfsocinterface.core.data import ProcessedData
+from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.gui.main_widget import DataCollectionMainWidget
 from rfsocinterface.gui.widgets import PathValidator, get_lineEdit_text, get_num_value
 

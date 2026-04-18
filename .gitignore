@@ -196,3 +196,7 @@ data/
 *.yaml
 *.json
 !*example*.json
+
+
+# Extra UI files
+ui_resources/*.py

@@ -347,6 +347,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
             # Make diagnostics window and setup connections
             dw = DiagnosticsDialog(sweep_data, sweep.savefile, parent=self)
+            dw.set_window_name(rfsoc.get_channel(chan).tile_name)
             # dw.finished.connect(lambda result: self._finish_sweep(result, sweep.savefile, sweep_data, rfsoc, chan, dw, False))
             dw.finished.connect(self.handle_diagnostic_window_finished)
             dw.upload_pushButton.clicked.connect(lambda: self._write_new_tones(sweep_data, rfsoc, chan))

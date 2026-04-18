@@ -12,6 +12,7 @@ from PySide6.QtCore import Signal, Slot, QCoreApplication
 from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout, QProgressDialog
 from kidpy3 import capture
 
+from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget, DataCollectionMainWidget
@@ -21,9 +22,7 @@ from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
 from rfsocinterface.gui.widgets import FunctionWidget, ArgumentType
 from rfsocinterface.core.camera import SKPR_Camera_Control, MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
 from rfsocinterface.core.data import (
-    ProcessedData,
-    MapData,
-    DataPipeline,
+    Pipeline,
     DataRoutine,
 )
 
@@ -62,7 +61,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         # self.cam_ctrl = SKPR_Camera_Control()
         self.cam_ctrl = None
         self.pipeline_dialog = PipelineDialog(self)
-        self.pipeline = DataPipeline()
+        self.pipeline = Pipeline()
         self._add_default_routines()
         self.video_file: h5py.File = None
         self.video_file_lock = Lock()
@@ -225,7 +224,6 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             self.pipeline = self.pipeline_dialog.make_pipeline()
             # Get the selected routines, instantiate them, and store in the class
             # TODO: validate the inputs somehow...
-        print(self.pipeline.all_routines())
     
     def capture_image(self):
         savefile = get_filename(file_type='optcam').with_suffix('.h5')

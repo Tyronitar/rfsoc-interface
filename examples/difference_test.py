@@ -4,7 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import tables
-from rfsocinterface.core.data import MapData, plot_map
+from rfsocinterface.core.data import MapData
+from rfsocinterface.core.data.map import plot_map
 
 
 def diff(date: str, setnum_up: int, setnum_down: int) -> Figure:
