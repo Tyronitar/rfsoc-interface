@@ -20,8 +20,7 @@ from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
 from rfsocinterface.gui.widgets import FunctionWidget, ArgumentType
 from rfsocinterface.core.camera import SKPR_Camera_Control
 from rfsocinterface.core.data import (
-    MapData,
-    DataPipeline,
+    Pipeline,
     DataRoutine,
 )
 
@@ -58,7 +57,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.setupUi(self)
         self.cam_ctrl = SKPR_Camera_Control()
         self.pipeline_dialog = PipelineDialog(self)
-        self.pipeline = DataPipeline()
+        self.pipeline = Pipeline()
         self._add_default_routines()
 
         self._file =  '.'
