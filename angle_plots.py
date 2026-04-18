@@ -1,5 +1,5 @@
 import tables
-from rfsocinterface.core.data import ProcessedData, MapData
+from rfsocinterface.core.data import MapData
 import numpy as np
 from numpy.polynomial import Polynomial
 import numpy.typing as npt
@@ -8,6 +8,8 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy import signal
 import pdb
+
+from rfsocinterface.core.data.storage import ProcessedData
 
 def line_and_circle_intersection_points(m,b,x0,y0,r):
     x_list = []

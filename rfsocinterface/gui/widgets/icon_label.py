@@ -1,6 +1,6 @@
-import qtawesome as qta
 from PySide6.QtCore import QSize, Qt, Signal, QCoreApplication
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QLineEdit, QSizePolicy
+import qtawesome as qta
 
 ERROR_ICON_CODE = 'fa5s.exclamation-circle'
 

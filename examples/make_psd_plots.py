@@ -8,7 +8,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 
 
-from rfsocinterface.core.data import ProcessedData
+from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.analysis.psd import compute_noise_psd, XLIM
 from rfsocinterface.core.utils import ordinal
 
@@ -159,7 +159,7 @@ if __name__ == "__main__":
 
 
     # Make Cleaned Spectrum Plots
-    data_100 = ProcessedData.from_file('20250829', set100, mode='r')
+    data_100 = ProcessedData.load('20250829', set100, mode='r')
     input_data_100 = data_100.data_gain_phase / data_100.carrier_amplitude_norm()
     _, freq_100, psd_100 = compute_noise_psd(
         input_data_100,
@@ -169,7 +169,7 @@ if __name__ == "__main__":
         cut_time=10,
     )
 
-    data_10 = ProcessedData.from_file('20250829', set10, mode='r')
+    data_10 = ProcessedData.load('20250829', set10, mode='r')
     input_data_10 = data_10.data_gain_phase / data_10.carrier_amplitude_norm()
     _, freq_10, psd_10 = compute_noise_psd(
         input_data_10,
@@ -179,7 +179,7 @@ if __name__ == "__main__":
         cut_time=10,
     )
 
-    data_30 = ProcessedData.from_file('20250829', set30, mode='r')
+    data_30 = ProcessedData.load('20250829', set30, mode='r')
     input_data_30 = data_30.data_gain_phase / data_30.carrier_amplitude_norm()
     _, freq_30, psd_30 = compute_noise_psd(
         input_data_30,

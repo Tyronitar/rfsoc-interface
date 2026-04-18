@@ -1,0 +1,1067 @@
+from __future__ import annotations
+
+import glob
+from importlib.metadata import version
+from pathlib import Path
+import logging
+import shutil
+from typing import Iterator, overload
+
+import pdb
+
+import h5py
+import json
+from kidpy3.data_handler import RawDataFile
+import numpy as np
+import numpy.typing as npt
+
+from rfsocinterface import __version__ as VERSION
+from rfsocinterface.core.data.utils import (
+    CALIBRATION_TABLE_DTYPE,
+    TONES_TABLE_DTYPE,
+    compute_df_per_mK,
+    find_missed_packets,
+    find_missed_packets_with_indices,
+    generate_calibrated_data,
+    get_channel_group_name,
+    get_detector_positions,
+    get_step_group_name,
+    interpolate_missing_data,
+    interpolate_timestamp_streaming,
+    rotate_basis,
+)
+from rfsocinterface.core.losweep import LoSweepData
+from rfsocinterface.core.utils import (
+    DEFAULT_DATA_DIRECTORY,
+    PERMISSIONS_ALL_FULL,
+    H5pyObject,
+    PathLike,
+    chunked_downsample,
+    compute_chunk_shape,
+    ensure_path,
+    get_azel_template,
+    get_consolidated_file_template,
+    get_file_stub,
+    get_git_hash,
+    get_optcam_template,
+    get_processed_file_template,
+    get_tod_template,
+    iterate_chunks,
+    list_datasets,
+    new_decimate_in_chunks,
+    search,
+)
+
+_logger = logging.getLogger(__name__)
+
+class NewDataStorage:
+    """This wrapper around HDF5 files for data storage.
+
+    Attributes:
+        file (h5py.File): The file that the file is stored in.
+    """
+    @ensure_path(1)
+    def __init__(self, filename: Path, mode: str='a'):
+        self.filename = filename
+        self.file = None
+        self.mode = None
+        self.open(mode=mode)
+
+    @overload
+    @classmethod
+    def load(cls, filename: str, mode: str='a') -> NewDataStorage:
+        pass
+
+    @overload
+    @classmethod
+    def load(cls, date: str, setnum: int, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> NewDataStorage:
+        pass
+
+    @classmethod
+    def load(cls, *args, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> NewDataStorage:
+        if len(args) == 1:
+            return cls(args[0], mode=mode)
+        elif len(args) == 2:
+            date, setnum = args
+            filename = cls.get_template(date, setnum, data_dir=data_dir)
+            return cls(filename, mode=mode)
+        else:
+            raise ValueError("Invalid number of arguments")
+
+    def open(self, mode: str='r'):
+        self.file = h5py.File(self.filename, mode=mode)
+        self.mode = mode
+
+    def close(self):
+        if self.file is None:
+            raise IOError(f'Attempting to close {self.filename} before opening file.')
+        self.file.close()
+
+    def get(self, name: str) -> H5pyObject:
+        return self.file[name]
+
+    def __getitem__(self, key):
+        return self.get(key)
+
+    def __delitem__(self, key: str):
+        del self.file[key]
+
+    def has(self, name: str, exact_match: bool=False) -> bool:
+        res = self.search(name, exact_match=exact_match)
+        return res is not None
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.file
+
+    def search(self, name: str, full_name: bool=True, exact_match: bool=False) -> tuple[str, H5pyObject] | None:
+        return search(self.file, name, full_name=full_name, exact_match=exact_match)
+
+    def list_datasets(self, full_names: bool=False) -> list[tuple[str, h5py.Dataset]]:
+        return list_datasets(self.file, full_names=full_names)
+
+    def list_dataset_names(self, full_names: bool=False) -> list[str]:
+        l = self.list_datasets(full_names=full_names)
+        return [name for (name, _) in l]
+
+    def create_group(
+        self,
+        name: str,
+        track_order: bool | None=None,
+        track_times: bool | None=None,
+    ) -> h5py.Group:
+        return self.file.create_group(name, track_order=track_order, track_times=track_times)
+
+    def create_dataset(
+        self,
+        name: str,
+        shape: tuple | None=None,
+        dtype: npt.DTypeLike | None=None,
+        data: npt.ArrayLike | None=None,
+        chunks: tuple | bool | None=True,
+        **kwargs,
+    ) -> h5py.Dataset:
+        """Create a new dataset in the file.
+
+        Auto chunking enabled by default.
+        """
+        return self.file.create_dataset(
+            name,
+            shape=shape,
+            dtype=dtype,
+            data=data,
+            chunks=chunks,
+            **kwargs,
+        )
+
+    @property
+    def attrs(self) -> h5py.AttributeManager:
+        return self.file.attrs
+
+    @property
+    def date(self) -> str:
+        return self.attrs['date']
+
+    @date.setter
+    def date(self, date: str):
+        self.attrs['date'] = date
+
+    @property
+    def setnum(self) -> int:
+        return self.attrs['setnum']
+
+    @setnum.setter
+    def setnum(self, setnum: int):
+        self.attrs['setnum'] = setnum
+
+    @staticmethod
+    def get_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+        raise NotImplementedError("Must be implemented by subclass")
+
+    @property
+    def tod_template(self) -> str:
+        return get_tod_template(self.date, self.setnum)
+
+    @property
+    def azel_template(self) -> str:
+        return get_azel_template(self.date, self.setnum)
+
+    @property
+    def optcam_template(self) -> str:
+        return get_optcam_template(self.date, self.setnum)
+
+    @property
+    def consolidated_file_template(self) -> str:
+        return get_consolidated_file_template(self.date, self.setnum)
+
+    @property
+    def processed_file_template(self) -> str:
+        return get_processed_file_template(self.date, self.setnum)
+
+    @property
+    def file_stub(self) -> str:
+        return get_file_stub(self.date, self.setnum)
+
+    @property
+    def folder(self) -> Path:
+        return Path(self.filename).parent
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+
+class ProcessedData(NewDataStorage):
+
+    @staticmethod
+    def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
+        return get_processed_file_template(date, setnum, data_dir=data_dir)
+
+    def initialize_processed_data_fields(self):
+        """Initialize the datasets unique to the ProcessedData File.
+
+        Will create the following datasets for each channel:
+            * data_gain_phase (2, n_tones, n_samples): Detector data rotated to 
+                gain/phase basis.
+            * data_freq_diss (2, n_tones, n_samples): Detector data rotated to 
+                frequency/dissipation basis.
+            * data_mK (n_tones, n_samples): Calibrated detector data in mK units.
+            * carrier_amplitudes (2, n_tones): The median I/Q values for each tone.
+            * calibration_info (n_tones,): Structered datset containing various 
+                information for creating the calibrated data. Contains:
+                * adc_units_to_hz: Conversion factor from ADC units (IQ data) to
+                    Hz (frequency/dissipation).
+                * IQ_to_gain_phase_angle: Angle in radians to rotate IQ basis to
+                    gain/phase.
+                * IQ_to_freq_diss_angle: Angle in radians to rotate IQ basis to
+                    frequency/dissipation.
+                * df_per_mK: Conversion factor to convert Hz to mK.
+        Also creates virtual datasets for each dataset, combined across channels.
+        """
+        n_samples = self['global_data'].attrs['n_samples']
+        for _, channel_group in self['channels'].items():
+            time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
+            n_tones = channel_group.attrs['n_tones']
+            data_IQ = time_ordered_data_group['data_IQ']
+            tones_table = channel_group['tones']
+
+            # Initialize caliibration-related datasets
+            data_gain_phase = time_ordered_data_group.create_dataset_like('data_gain_phase', data_IQ)
+            data_freq_diss = time_ordered_data_group.create_dataset_like('data_freq_diss', data_IQ)
+            mK_chunks = compute_chunk_shape((n_tones,), 8, max_chunk_size=n_samples)
+            data_mK = time_ordered_data_group.create_dataset(
+                'data_mK',
+                (n_tones, n_samples),
+                dtype=np.float64,
+                chunks=mK_chunks,
+            )
+            carrier_amplitudes = time_ordered_data_group.create_dataset(
+                'carrier_amplitudes',
+                data=np.nanmedian(data_IQ[:], axis=-1)
+            )
+            calibration_info = channel_group.create_dataset(
+                'calibration_info',
+                shape=(n_tones,),
+                dtype=CALIBRATION_TABLE_DTYPE,
+            )
+
+            # Collect calibration information
+            sweep = LoSweepData(
+                tones_table['baseband_freq'],
+                channel_group.attrs['lo_freq'],
+                channel_group['lo_sweep'][:],
+                tones_table['chanmask'],
+            )
+            IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
+            calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
+            calibration_info['adc_units_to_hz'] = adc_units_to_hz
+
+            detector_f = tones_table['baseband_freq'] + channel_group.attrs['lo_freq']
+            df_per_mK = compute_df_per_mK(
+                tones_table['polarization'],
+                tones_table['beam_amplitude'],
+                detector_f,
+                tones_table['dfoverf_per_mK'],
+            )
+            calibration_info['df_per_mK'] = df_per_mK
+
+            # Rotate to Gain / Phase
+            IQ_to_gain_phase_angle = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])
+            calibration_info['IQ_to_gain_phase_angle'] = IQ_to_gain_phase_angle
+            rotate_basis(
+                data_IQ,
+                data_gain_phase,
+                IQ_to_gain_phase_angle,
+            )
+
+            # Generate calibrated data
+            # First mean center IQ data
+            data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
+            generate_calibrated_data(
+                data_IQ,
+                data_freq_diss,
+                data_mK,
+                IQ_to_freq_diss_angle,
+                adc_units_to_hz,
+                df_per_mK,
+            )
+
+        # Make virtual datasets for the new stuff
+        total_tones = self['vdsets'].attrs['n_tones']
+        data_gain_phase_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
+        data_freq_diss_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
+        data_mK_layout = h5py.VirtualLayout((total_tones, n_samples), 'f8')
+        carrier_amplitudes_layout = h5py.VirtualLayout((2, total_tones), 'f8')
+        calibration_info_layout = h5py.VirtualLayout((total_tones,), CALIBRATION_TABLE_DTYPE)
+
+        i_tone = 0
+        for _, channel_group in self['channels'].items():
+            n_tones = channel_group.attrs['n_tones']
+            this_data_group = channel_group['time_ordered_data']
+            data_gain_phase_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_gain_phase'])
+            data_freq_diss_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_freq_diss'])
+            data_mK_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_mK'])
+            carrier_amplitudes_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['carrier_amplitudes'])
+            calibration_info_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(channel_group['calibration_info'])
+            i_tone += n_tones
+
+        self['vdsets'].create_virtual_dataset('data_gain_phase', data_gain_phase_layout)
+        self['vdsets'].create_virtual_dataset('data_freq_diss', data_freq_diss_layout)
+        self['vdsets'].create_virtual_dataset('data_mK', data_mK_layout)
+        self['vdsets'].create_virtual_dataset('carrier_amplitudes', carrier_amplitudes_layout)
+        self['vdsets'].create_virtual_dataset('calibration_info', calibration_info_layout)
+
+    #
+    # Useful getter methods
+    #
+    def list_history(self) -> list[dict]:
+        if not self.has('processing_history'):
+            return []
+        hist = self['processing_history']
+        return list(hist.keys())
+
+    def print_history(self, verbose: bool=False):
+        if not self.has('processing_history'):
+            print('No history')
+            return
+
+        hist = self.file['processing_history']
+
+        for k in sorted(hist.keys()):
+            step = hist[k]
+            name = step.attrs.get('name', '?')
+            if verbose:
+                print(f'[{k}]:\n{json.dumps(dict(step.attrs), indent=4)}')
+            else:
+                params = json.loads(step.attrs.get('params', '{}'))
+
+                param_str = ', '.join(f'{k}={v}' for k, v in params.items())
+                print(f'[{k}] {name}({param_str})')
+
+    def channels(self) -> Iterator[h5py.Group]:
+        yield from self['channels'].values()
+
+    def get_channel_group(self, i_chan: int) -> h5py.Group:
+        return self[f'channels/channel_{i_chan:03d}']
+
+    def get_channel_group_from_tile_name(self, tile_name: str) -> h5py.Group:
+        tile_names = []
+        for _, channel_group in self['channels'].items():
+            this_tile_name = channel_group.attrs['tile_name']
+            tile_names.append(this_tile_name)
+            if this_tile_name == tile_name:
+                return channel_group
+        raise KeyError(f'Unable to find channel with name "{tile_name}". Tile names found: {tile_names}')
+
+    def get_from_channel(self, i_chan: int, obj_name: str) -> H5pyObject:
+        return self.get_channel_group(i_chan)[obj_name]
+
+    def get_from_all_channels(self, obj_name: str) -> list[H5pyObject]:
+        l = []
+        for channel_group in self['channels'].values():
+            l.append(channel_group[obj_name])
+        return l
+
+    def search_in_channel(self, i_chan: int, name: str, full_name: bool=True, exact_match: bool=False) -> tuple[str, H5pyObject] | None:
+        return search(self.get_channel_group(i_chan), name, full_name=full_name, exact_match=exact_match)
+
+    def search_in_all_channels(self, name: str, full_name: bool=True, exact_match: bool=False) -> list[tuple[str, H5pyObject]] | None:
+        l = []
+        for channel_group in self['channels'].values():
+            l.append(search(channel_group, name, full_name=full_name, exact_match=exact_match))
+        return l
+
+    def get_n_tones(self, i_chan: int) -> int:
+        return self.get_channel_group(i_chan).attrs['n_tones']
+
+    def get_chanmask(self, i_chan: int) -> npt.NDArray:
+        return  self.get_from_channel(i_chan, 'tones')['chanmask']
+
+    def get_onres_ind(self, i_chan: int) -> npt.NDArray:
+        return np.argwhere(self.get_chanmask(i_chan) == 1).flatten()
+
+    def get_offres_ind(self, i_chan: int) -> npt.NDArray:
+        return np.argwhere(self.get_chanmask(i_chan) == 0).flatten()
+
+    #
+    # Useful properties 
+    #
+    @property
+    def n_chan(self) -> int:
+        return self['channels'].attrs['n_channels']
+
+    @property
+    def n_samples(self) -> int:
+        return self['vdsets'].attrs['n_samples']
+
+    @property
+    def n_tones(self) -> int:
+        return self['vdsets'].attrs['n_tones']
+
+    @property
+    def fs(self) -> float:
+        """Return the averaged sampling rate across channels."""
+        return self['global_data'].attrs['fs']
+
+    @property
+    def virtual_datasets(self) -> h5py.Group:
+        return self['vdsets']
+
+    # Time-ordered data
+    @property
+    def timestamp(self) -> h5py.Dataset:
+        return self['global_data/timestamp']
+
+    @property
+    def optical_image(self) -> h5py.Dataset:
+        return self['global_data/optical_image']
+
+    @property
+    def optical_visibility(self) -> h5py.Dataset:
+        return self['global_data/optical_visibility']
+
+    @property
+    def data_IQ(self) -> h5py.Dataset:
+        return self['vdsets/data_IQ']
+
+    @property
+    def data_gain_phase(self) -> h5py.Dataset:
+        return self['vdsets/data_gain_phase']
+
+    @property
+    def data_freq_diss(self) -> h5py.Dataset:
+        return self['vdsets/data_freq_diss']
+
+    @property
+    def data_mK(self) -> h5py.Dataset:
+        return self['vdsets/data_mK']
+
+    @property
+    def detector_az(self) -> h5py.Dataset:
+        return self['vdsets/detector_az']
+
+    @property
+    def detector_za(self) -> h5py.Dataset:
+        return self['vdsets/detector_za']
+
+    #
+    # Tone/detector properties
+    #
+    @property
+    def tones_table(self) -> h5py.Dataset:
+        return self['vdsets/tones']
+
+    def _set_table_field(self, table_name: str, field_name: str, new_values: npt.NDArray):
+        """Utility function for setting table fields.
+
+        Setting values through virtual datasets doesn't work for tables, so this is the
+        work around.
+        """
+        i_tone = 0
+        for i_chan in range(self.n_chan):
+            channel_group = self.get_channel_group(i_chan)
+            n_tones = channel_group.attrs['n_tones']
+            channel_group[table_name][field_name] = new_values[i_tone:i_tone + n_tones]
+            i_tone += n_tones
+
+    @property
+    def tone_counts(self) -> npt.NDArray:
+        counts = []
+        for i_chan in range(self.n_chan):
+            counts.append(self.get_n_tones(i_chan))
+        return np.array(counts)
+
+    def get_channel_index_from_tone_index(self, tone_index: int) -> int:
+        cumulative_counts = np.cumsum(self.tone_counts)
+        channel_index = np.searchsorted(cumulative_counts, tone_index, side='right')
+        return channel_index
+
+    @property
+    def baseband_freqs(self) -> npt.NDArray:
+        return self.tones_table['baseband_freq']
+
+    def set_baseband_freqs(self, new_freqs: npt.NDArray):
+        self._set_table_field('tones', 'baseband_freq', new_freqs)
+
+    def get_lo_freq(self, i_chan: int) -> float:
+        return  self.get_channel_group(i_chan).attrs['lo_freq']
+
+    def detector_f(self) -> npt.NDArray:
+        f = self.baseband_freqs
+        i_tone = 0
+        for channel_group in self.channels():
+            n_tones = channel_group.attrs['n_tones']
+            f[i_tone:i_tone+n_tones] += channel_group.attrs['lo_freq']
+            i_tone += n_tones
+        return f
+
+    @property
+    def tone_powers(self) -> npt.NDArray:
+        return self.tones_table['power']
+
+    def set_tone_powers(self, new_powers: npt.NDArray):
+        self._set_table_field('tones', 'power', new_powers)
+
+    @property
+    def chanmask(self) -> npt.NDArray:
+        return self.tones_table['chanmask']
+
+    def set_chanmask(self, new_chanmask: npt.NDArray):
+        self._set_table_field('tones','chanmask', new_chanmask)
+
+    @property
+    def onres_ind(self) -> npt.NDArray:
+        return np.argwhere(self.chanmask == 1).flatten().astype(int)
+
+    @property
+    def offres_ind(self) -> npt.NDArray:
+        return np.argwhere(self.chanmask == 0).flatten().astype(int)
+
+    @property
+    def detector_pol(self) -> npt.NDArray:
+        return self.tones_table['polarization']
+
+    def set_detector_pol(self, new_pols: npt.NDArray):
+        self._set_table_field('tones', 'polarization', new_pols)
+
+    @property
+    def detector_beam_ampl(self) -> npt.NDArray:
+        return self.tones_table['beam_amplitude']
+
+    def set_detector_beam_ampl(self, new_ampls: npt.NDArray):
+        self._set_table_field('tones','beam_amplitude', new_ampls)
+
+    @property
+    def detector_delta_x(self) -> npt.NDArray:
+        return self.tones_table['delta_x']
+
+    def set_detector_delta_x(self, new_delta_x: npt.NDArray):
+        self._set_table_field('tones','delta_x', new_delta_x)
+
+    @property
+    def detector_delta_y(self) -> npt.NDArray:
+        return self.tones_table['delta_y']
+
+    def set_detector_delta_y(self, new_delta_y: npt.NDArray):
+        self._set_table_field('tones', 'delta_y', new_delta_y)
+
+    @property
+    def dfoverf_per_mK(self) -> npt.NDArray:
+        return self.tones_table['dfoverf_per_mK']
+
+    def set_dfoverf_per_mK(self, new_dfoverf_per_mK: npt.NDArray):
+        self._set_table_field('tones', 'dfoverf_per_mK', new_dfoverf_per_mK)
+
+    @property
+    def carrier_amplitudes(self) -> h5py.Dataset:
+        return self['vdsets/carrier_amplitudes']
+
+    def carrier_amplitude_norm(self) -> float:
+        amps = self.carrier_amplitudes[:]
+        z = amps[0] + amps[1] * 1j
+        return np.mean(np.abs(z))
+
+    #
+    # Calibration information 
+    #
+    @property
+    def calibration_info(self) -> h5py.Dataset:
+        return self['vdsets/calibration_info']
+
+    @property
+    def adc_units_to_hz(self) -> npt.NDArray:
+        return self.calibration_info['adc_units_to_hz']
+
+    def set_adc_units_to_hz(self, new_adc_units_to_hz: npt.NDArray):
+        self._set_table_field('calibration_info', 'adc_units_to_hz', new_adc_units_to_hz)
+
+    @property
+    def IQ_to_gain_phase_angle(self) -> npt.NDArray:
+        return self.calibration_info['IQ_to_gain_phase_angle']
+
+    def set_IQ_to_gain_phase_angle(self, new_angle: npt.NDArray):
+        self._set_table_field('calibration_info', 'IQ_to_gain_phase_angle', new_angle)
+
+    @property
+    def IQ_to_freq_diss_angle(self) -> npt.NDArray:
+        return self.calibration_info['IQ_to_freq_diss_angle']
+
+    def set_IQ_to_freq_diss_angle(self, new_angle: npt.NDArray):
+        self._set_table_field('calibration_info', 'IQ_to_freq_diss_angle', new_angle)
+
+    @property
+    def df_per_mK(self) -> npt.NDArray:
+        return self.calibration_info['df_per_mK']
+
+    def set_df_per_mK(self, new_df_per_mK: npt.NDArray):
+        self._set_table_field('calibration_info', 'df_per_mK', new_df_per_mK)
+
+
+class ConsolidatedData(NewDataStorage):
+    """Class representing the data from the various sources consolidated into one file.
+
+    Combines the data from the TOD files, LO sweeps, and params files into one file.
+    """
+
+    @staticmethod
+    def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
+        return get_consolidated_file_template(date, setnum, data_dir=data_dir)
+
+    @classmethod
+    def from_tod(
+        cls,
+        date: str,
+        setnum: int,
+        data_dir: PathLike=DEFAULT_DATA_DIRECTORY,
+        downsampling_factor: int=1,
+    ) -> ConsolidatedData:
+
+        todtemplate = get_tod_template(date, setnum)
+        tele_template = Path(get_azel_template(date, setnum))
+        optcam_template = Path(get_optcam_template(date , setnum))
+
+        azel_exists = tele_template.exists()
+        optcam_exists = optcam_template.exists()
+        if not optcam_exists:
+            # Try old file naming format
+            optcam_template = Path(get_optcam_template(date, setnum, old=True))
+            optcam_exists = optcam_template.exists()
+
+        if azel_exists:
+            azel_file = h5py.File(tele_template, 'r')
+
+        if optcam_exists:
+            optcam_file = h5py.File(optcam_template, 'r')
+
+        # Find TOD files
+        todlist = glob.glob(todtemplate)
+        nchan = len(todlist)
+        if nchan == 0:
+            raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
+
+        # Get the n_tones and n_samples from all TOD files to determine array sizes
+        sample_counts = []
+        missed_sample_counts = []
+        missed_packets_list = []
+        tile_names = []
+        tone_counts = []
+        for file in todlist:
+            raw_data = RawDataFile(file, 'r')
+            tone_counts.append(raw_data.n_tones[0])
+
+            # TODO: Make kidpy store the tile name in the file
+            # Temporary way to determine tile name from file names
+            this_file_stem = Path(file).stem
+            this_tile_name = this_file_stem[:this_file_stem.index('TOD')].split('_')[1]
+            tile_names.append(this_tile_name)
+
+            # Find the total number of samples accounting for missed packets
+            # NOTE: Temporary fix until n_sample is fixed in the raw files
+            # n_samples = f.n_sample[0]
+            n_samples = raw_data.adc_i.shape[-1]
+
+            if raw_data.pkt_idx is not None:
+                _logger.debug('ConsolidatedData: Using pkt_idx to find missed packets')
+                missed_packets = find_missed_packets_with_indices(raw_data.pkt_idx)
+            else:
+                missed_packets = find_missed_packets(
+                    raw_data.timestamp,
+                    n_samples
+                )
+
+            n_missed = int(np.sum(missed_packets[:, 1]))
+            missed_sample_counts.append(n_missed)
+            sample_counts.append(n_samples)
+            missed_packets_list.append(missed_packets)
+
+            raw_data.fh.close()
+
+        # Normalize samle counts to the minimum across all channels
+        total_samples = min(np.add(sample_counts, missed_sample_counts))
+        n_samples_ds = int(np.ceil(total_samples / downsampling_factor))
+
+        # NOTE: I forsee a potnetial bug where we try to interpolate the data for channel
+        # say 2, which missed packet X, but channel 0 only had X - 1 total packets, so
+        # trying to operate on packet X would be out of bounds. For now, we will just
+        # limit the total samples to the minimum across all channels, and hope that this
+        # doesn't happen.
+
+        if azel_exists:
+            # pdb.set_trace()
+            az_tel = azel_file['az_tel']
+            try:
+                za_tel = azel_file['za_tel']
+            except:
+                za_tel = azel_file['el_tel']
+            timestamp_tel = azel_file['timestamp_tel']
+            # vis = azel_tfile.root.optical_visibility[0]
+            vis = np.nan
+            if isinstance(vis, bytes):
+                vis = np.nan
+        else:
+            vis=0.
+
+        # Initialize coalesced data file
+        cfile_path = Path(get_consolidated_file_template(date, setnum, data_dir=data_dir))
+        if not cfile_path.exists():
+            cfile_path.touch(PERMISSIONS_ALL_FULL)
+        cdata = cls(cfile_path, mode='w')
+        cdata.date = date
+        cdata.setnum = setnum
+
+        # Create processing history
+        processing_history = cdata.create_group('processing_history')
+        step_0 = processing_history.create_group(get_step_group_name(0, 'consolidated'))
+        step_0.attrs['name'] = 'ConsolidatedData'
+        step_0.attrs['params'] = json.dumps({'downsampling_factor': downsampling_factor})
+        step_0.attrs['rfsocinterface_version'] = VERSION
+        step_0.attrs['code_version'] = get_git_hash()
+
+        try:
+            kidpy_version = version('kidpy3')
+        except Exception as e:
+            _logger.warning(f'kidpy3 version could not be accessed: {e}')
+            kidpy_version = 'N/A'
+        step_0.attrs['kidpy_version'] = kidpy_version
+
+        # Initialize global data group
+        global_data_group = cdata.create_group('global_data')
+        global_data_group.attrs['n_samples'] = n_samples_ds
+
+        # Optical image
+        if optcam_exists:
+            # optical_image = optcam_file.root.optical_image
+            if 'optical_image' in optcam_file:
+                global_data_group.create_dataset('optical_image', data=optcam_file['optical_image'][:])
+            elif 'optical_video' in optcam_file:
+                global_data_group.create_dataset('optical_image', data=optcam_file['optical_video'][..., 0])
+                global_data_group.create_dataset('optical_video', data=optcam_file['optical_video'])
+                global_data_group.create_dataset('optical_video_timestamp', data=optcam_file['timestamp'])
+            optcam_file.close()
+        else:
+            global_data_group.create_dataset('optical_image', data=np.array([]))
+        global_data_group.create_dataset('optical_visibility', data=vis)
+
+        chunk_shape_1d = compute_chunk_shape(tuple(), 8, max_chunk_size=total_samples)
+        chunk_shape_1d_ds = compute_chunk_shape(tuple(), 8, max_chunk_size=n_samples_ds)
+        timestamp = global_data_group.create_dataset(
+            'timestamp',
+            shape=(n_samples_ds,),
+            chunks=chunk_shape_1d_ds,
+            dtype=np.float64,
+        )
+        temp_timestamp = global_data_group.create_dataset(
+            'temp_timestamp',
+            shape=(total_samples,),
+            chunks=chunk_shape_1d,
+            dtype=np.float64,
+        )
+        least_samples_channel = np.argmin(np.add(sample_counts, missed_sample_counts))
+
+        # Interpolate timestamp using the channel with the limiting number of samples
+        raw_data = RawDataFile(todlist[least_samples_channel], 'r')
+        # NOTE: Temporary fix until n_sample is fixed in the raw files
+        # n_samples = f.n_sample[0]
+        n_samples = raw_data.adc_i.shape[-1]
+        this_missed_packets = missed_packets_list[least_samples_channel]
+        if raw_data.pkt_idx is not None:
+            pkt_idx = raw_data.pkt_idx
+        else:
+            pkt_idx = np.arange(n_samples)
+            pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
+        _logger.info('ConsolidatedData: Interpolating timestamp...')
+        interpolate_timestamp_streaming(
+            raw_data.timestamp,
+            temp_timestamp,
+            pkt_idx,
+        )
+        _logger.info('ConsolidatedData: Downsampling timestamp...')
+        chunked_downsample(
+            temp_timestamp,
+            timestamp,
+            downsampling_factor,
+            temp_timestamp.chunks[-1],
+            use_filter=False,
+        )
+        raw_data.close()
+        fs = 1 / (timestamp[1] - timestamp[0])
+        global_data_group.attrs['fs'] = fs
+
+        # Intiialize group for storing data per-channel
+        all_channels_group = cdata.create_group('channels')
+        all_channels_group.attrs['n_channels'] = nchan
+
+        # Get the data from each channel
+        for i_chan, file in enumerate(todlist):
+            raw_data = RawDataFile(file, 'r')
+
+            this_missed_packets = missed_packets_list[i_chan]
+            this_n_missed = missed_sample_counts[i_chan]
+
+            # Create the HDF5 group for this channel
+            this_channel_group = all_channels_group.create_group(get_channel_group_name(i_chan))
+            this_channel_group.attrs['tile_name'] = tile_names[i_chan]
+            this_channel_group.attrs['lo_freq'] = raw_data.lo_freq[0]
+            this_channel_group.attrs['detector_dx_dy_elevation_angle'] = raw_data.detector_dx_dy_elevation_angle[:]
+            this_channel_group.attrs['attenuator_settings'] = raw_data.attenuator_settings[:]
+            n_tones = raw_data.n_tones[0]
+            this_channel_group.attrs['n_tones'] = n_tones
+
+            # Store the tone parameters
+            tones_table = this_channel_group.create_dataset('tones', shape=(n_tones,), dtype=TONES_TABLE_DTYPE)
+
+            tones_table['baseband_freq'] = raw_data.baseband_freqs[:]
+            tones_table['power'] = raw_data.tone_powers[:]
+            tones_table['delta_x'] = raw_data.detector_delta_x[:]
+            tones_table['delta_y'] = raw_data.detector_delta_y[:]
+            tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
+            tones_table['polarization']  = raw_data.detector_pol[:]
+            tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
+            chanmask = raw_data.chanmask[:]
+            off_res = np.argwhere(chanmask == 0).flatten()
+            no_pol = np.argwhere(tones_table['polarization'] < 1).flatten()
+            chanmask[no_pol] = -1
+            chanmask[off_res] = 0  # Preserve off-resonance indices
+            tones_table['chanmask'] = chanmask
+
+            # Copy LO sweep
+            this_channel_group.create_dataset('lo_sweep', data=raw_data.lo_sweep[:])
+
+            # Compute the chunk sizes to use
+            azel_shape = (n_tones, total_samples) if azel_exists else (n_tones, 1)
+            azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
+            chunk_shape_3d = compute_chunk_shape((2, n_tones), 8, max_chunk_size=total_samples)
+            chunk_shape_3d_ds = compute_chunk_shape((2, n_tones), 8, max_chunk_size=n_samples_ds)
+            chunk_shape_azel = compute_chunk_shape((1,), 8, max_chunk_size=azel_shape[-1])
+            chunk_shape_azel_ds = compute_chunk_shape((1,), 8, max_chunk_size=azel_shape_ds[-1])
+
+            # Time ordered data
+            time_ordered_data_group = this_channel_group.create_group('time_ordered_data')
+            interpolated_samples = time_ordered_data_group.create_dataset(
+                'interpolated_samples',
+                shape=(0,),
+                maxshape=(None,),
+                dtype=np.uint32,
+            )
+            data_IQ = time_ordered_data_group.create_dataset(
+                'data_IQ',
+                shape=(2, n_tones, n_samples_ds),
+                dtype=np.float64,
+                chunks=chunk_shape_3d_ds,
+                compression='lzf',
+                shuffle=True,
+            )
+            # Create temporary datasets for the pre-downsampled data 
+            temp_interpolated_samples = time_ordered_data_group.create_dataset(
+                'temp_interpolated_samples',
+                shape=(0,),
+                maxshape=(None,),
+                dtype=np.uint32,
+            )
+            temp_data_IQ = time_ordered_data_group.create_dataset(
+                'temp_data_IQ',
+                shape=(2, n_tones, total_samples),
+                dtype=np.float64,
+                chunks=chunk_shape_3d,
+                compression='lzf',
+                shuffle=True,
+            )
+            # Detector Positions
+            temp_detector_az = time_ordered_data_group.create_dataset(
+                'temp_detector_az',
+                shape=azel_shape,
+                chunks=chunk_shape_azel,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+            temp_detector_za = time_ordered_data_group.create_dataset(
+                'temp_detector_za',
+                shape=azel_shape,
+                chunks=chunk_shape_azel,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+            detector_az = time_ordered_data_group.create_dataset(
+                'detector_az',
+                shape=azel_shape_ds,
+                chunks=chunk_shape_azel_ds,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+            detector_za = time_ordered_data_group.create_dataset(
+                'detector_za',
+                shape=azel_shape_ds,
+                chunks=chunk_shape_azel_ds,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+
+            if raw_data.pkt_idx is not None:
+                pkt_idx = raw_data.pkt_idx
+            else:
+                pkt_idx = np.arange(n_samples)
+                for sample, n_missed in this_missed_packets:
+                    pkt_idx[sample:] += n_missed
+            valid_tone_index = np.arange(n_tones, dtype=int) + 0
+
+            # Interpolate missing IQ data
+            if this_n_missed > 0:
+                _logger.info('ConsolidatedData: Interpolating missing IQ data...')
+                interpolate_missing_data(
+                    raw_data.adc_i,
+                    raw_data.adc_q,
+                    temp_timestamp,
+                    temp_data_IQ,
+                    temp_interpolated_samples,
+                    pkt_idx,
+                    this_missed_packets,
+                    valid_tone_index
+                )
+
+            _logger.info('ConsolidatedData: Copying Raw IQ data...')
+            chunk_shape_read_adc = compute_chunk_shape((1024, ), 8, max_chunk_size=n_samples)
+            for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_i, chunk_size=chunk_shape_read_adc[-1]):
+                sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
+                temp_data_IQ[0, :, sample_indices] = chunk[valid_tone_index]
+
+            for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.adc_q, chunk_size=chunk_shape_read_adc[-1]):
+                sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
+                temp_data_IQ[1, :, sample_indices] = chunk[valid_tone_index]
+
+            # Detector Positions
+            if azel_exists:
+                _logger.info('ConsolidatedDaata: Computing detector positions...')
+                get_detector_positions(
+                    temp_timestamp,
+                    timestamp_tel[:],
+                    az_tel[:],
+                    za_tel[:],
+                    temp_detector_az,
+                    temp_detector_za,
+                    tones_table['delta_x'][:],
+                    tones_table['delta_y'][:],
+                    this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                )
+
+            # Downsample timestamp and IQ data
+            _logger.info('ConsolidatedData: Downsampling IQ data...')
+            new_decimate_in_chunks(
+                temp_data_IQ,
+                data_IQ,
+                downsampling_factor,
+                chunk_shape=temp_data_IQ.chunks,
+            )
+            downsampled_interpolated_samples = []
+            for sample in temp_interpolated_samples:
+                if sample % downsampling_factor == 0:
+                    downsampled_interpolated_samples.append(sample // downsampling_factor)
+            downsampled_interpolated_samples = np.array(downsampled_interpolated_samples)
+            interpolated_samples.resize(downsampled_interpolated_samples.shape)
+            interpolated_samples = downsampled_interpolated_samples[:]
+
+            if azel_exists:
+                _logger.info('ConsolidatedData: Downsampling detector position arrays...')
+                chunked_downsample(
+                    temp_detector_az,
+                    detector_az,
+                    downsampling_factor,
+                    detector_az.chunks[-1],
+                    use_filter=False,
+                )
+                chunked_downsample(
+                    temp_detector_za,
+                    detector_za,
+                    downsampling_factor,
+                    detector_za.chunks[-1],
+                    use_filter=False,
+                )
+
+            # Delete temporary datasets
+            del time_ordered_data_group['temp_data_IQ']
+            del time_ordered_data_group['temp_interpolated_samples']
+            del time_ordered_data_group['temp_detector_az']
+            del time_ordered_data_group['temp_detector_za']
+
+        # Get rid of full timestamp now that data from all channels read
+        del global_data_group['temp_timestamp']
+
+        # Create virtual datasets
+        vdsets = cdata.create_group('vdsets')
+        total_tones = sum(tone_counts)
+        vdsets.attrs['n_tones'] = total_tones
+        vdsets.attrs['n_samples'] = n_samples_ds
+        channel_groups = all_channels_group.items()
+        data_IQ_layout = h5py.VirtualLayout((2, total_tones, n_samples_ds), 'f8')
+        azel_shape = (total_tones, n_samples_ds) if azel_exists else (total_tones, 1)
+        detector_az_layout = h5py.VirtualLayout(azel_shape, 'f8')
+        detector_za_layout = h5py.VirtualLayout(azel_shape, 'f8')
+        tones_table_layout = h5py.VirtualLayout((total_tones,), TONES_TABLE_DTYPE)
+
+        i_tone = 0
+        for _, channel_group in channel_groups:
+            n_tones = channel_group.attrs['n_tones']
+            this_data_group = channel_group['time_ordered_data']
+            data_IQ_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_IQ'])
+            detector_az_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['detector_az'])
+            detector_za_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['detector_za'])
+            tones_table_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(channel_group['tones'])
+            i_tone += n_tones
+
+        vdsets.create_virtual_dataset('data_IQ', data_IQ_layout)
+        vdsets.create_virtual_dataset('detector_az', detector_az_layout)
+        vdsets.create_virtual_dataset('detector_za', detector_za_layout)
+        vdsets.create_virtual_dataset('tones', tones_table_layout)
+
+        return cdata
+
+    def create_processed_data(self, mode:str='a') -> ProcessedData:
+        pfile_path = Path(self.processed_file_template)
+        self.close()
+        shutil.copy2(self.filename, pfile_path)
+        if self.mode == 'w':
+            self.mode = 'a'
+        self.open(self.mode)
+
+        pd = ProcessedData(pfile_path, mode=mode)
+        pd.initialize_processed_data_fields()
+        return pd
+
+
+if __name__ == '__main__':
+    # Telescope Testing
+    date = '20260320'
+    setnum = 1010
+    # Lab Testing
+    # date = '20260212'
+    # setnum = 1003
+
+    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
+    pd = cd.create_processed_data()
+
+    pdb.set_trace()
+

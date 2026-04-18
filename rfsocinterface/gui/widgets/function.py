@@ -1,17 +1,12 @@
+from typing import Any, Callable, Concatenate, overload
 
-
-from email.mime import application
+import numpy as np
 from PySide6.QtCore import Qt, Slot, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QFormLayout, QWidget, QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedWidget, QScrollArea, QLabel
 
-
-from typing import Any, Callable, Concatenate, overload
-
-import numpy as np
-
 from rfsocinterface.core.utils import P, R, Q
-from rfsocinterface.gui.utils import ArgumentType
+from rfsocinterface.gui.widgets.utils import ArgumentType
 from rfsocinterface.gui.widgets.drag_and_drop import ClickableDragWidget, ClickableDragItem, ClickableMultiSectionDragWidget
 
 
@@ -283,7 +278,6 @@ class MultiSectionDragFunctionWidget(QWidget):
     def item_data_separated(self) -> list[list]:
         return self.drag.get_item_data_separated()
 
-
     @Slot()
     def display_args(self):
         item: FunctionDragItem = self.sender()
@@ -298,20 +292,16 @@ class MultiSectionDragFunctionWidget(QWidget):
         return super().mousePressEvent(event)
 
 
-    
-    
-enum_choices = ['hello', 'world']
-
-def dummy_func(string: str, num: float, nums: tuple[float, float], enum: str, check: bool):
-    assert enum in enum_choices
-    print(f'"{string}", {num}, {nums}, {enum}, {check}')
-
-
-def root(n: float) -> float:
-    return np.sqrt(n)
-
-
 if __name__ == '__main__':
+    enum_choices = ['hello', 'world']
+
+    def dummy_func(string: str, num: float, nums: tuple[float, float], enum: str, check: bool):
+        assert enum in enum_choices
+        print(f'"{string}", {num}, {nums}, {enum}, {check}')
+
+    def root(n: float) -> float:
+        return np.sqrt(n)
+
     app = QApplication()
     w = QMainWindow()
     # ...

@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Slot, Signal
 from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIntValidator
 from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
 from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import Ui_RFSOCAdvancedSettingsWidget
-from rfsocinterface.gui.utils import PathValidator, get_lineEdit_text, get_num_value
+from rfsocinterface.gui.widgets.utils import PathValidator
 from rfsocinterface.gui.widgets.icon_label import IconLabel
 from PySide6.QtWidgets import QWidget, QFileDialog, QVBoxLayout
 
@@ -25,6 +25,7 @@ from rfsocinterface.core.utils import IPV4_REGEX, MAC_REGEX
 from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY
+from rfsocinterface.gui.widgets import get_lineEdit_text, get_num_value
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
