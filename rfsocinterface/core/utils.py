@@ -148,6 +148,13 @@ def ensure_path(
     return decorator
 
 
+class PathJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Path):
+            return str(obj)
+        return super().default(obj)
+
+
 def analog_to_digital(a: int, min: float, max: float, bits: int) -> int:
     """Convert an analog number to digital.
     
@@ -1257,7 +1264,6 @@ if __name__ == '__main__':
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
     y = np.zeros(n // q)
-
     # decimate_in_chunks(x, q, out=y)
 
     # n_repeats = 20

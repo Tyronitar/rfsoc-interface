@@ -77,6 +77,7 @@ def get_scaled_optical_image(
         optcam_height_pixels: int=OPTCAM_HEIGHT_PIXELS,
         optcam_width_pixels: int=OPTCAM_WIDTH_PIXELS,
 ) -> npt.NDArray:
+    """Scale the optical image to match the pixel scale of the map."""
     opt_npix_per_tel_npix = dpix / optcam_pix_size_degrees
     opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
     opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
@@ -94,6 +95,7 @@ def get_scaled_optical_image(
 
 
 def get_extent(map_az: npt.NDArray, map_za: npt.NDArray, dpix: float=DEFAULT_MAP_DPIX) -> tuple[float, float, float, float]:
+    """Get the extent of the map for plotting."""
     return (
         min(map_az)-dpix /2.,
         max(map_az)+dpix /2,
@@ -110,6 +112,7 @@ def get_map_size(
     dpix: float=DEFAULT_MAP_DPIX,
     beam_map_mode: bool=False,
 ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
+    """Determine map size based on detector positions and desired pixel size."""
 
     max_az = np.max(detector_az) - az_trim
     min_az = np.min(detector_az) + az_trim
@@ -124,11 +127,22 @@ def get_map_size(
 
     return n_pix_x, n_pix_y, map_x, map_y
 
+
 def compute_map_kernel(
     r0: float=0.15,
     dpix: float=DEFAULT_MAP_DPIX,
     sigma: float=0.087/2.3,
 ) -> npt.NDArray:
+    """Compute a Gaussian kernel for smoothing the map.
+    
+    Arguemnts:
+        r0 (float, optional): The radius of the kernel in degrees. Defaults to 0.15 
+            degrees.
+        dpix (float, optional): The pixel size of the map in degrees. Defaults to 0.03 
+            degrees.
+        sigma (float, optional): The standard deviation of the Gaussian kernel in 
+            degrees. Defaults to 0.087/2.3 degrees.
+    """
     kernel_pos = np.arange(-r0, r0 + dpix, dpix)
     if 0 not in kernel_pos:
         kernel_pos = np.insert(kernel_pos, np.searchsorted(kernel_pos, 0), 0)
@@ -142,6 +156,21 @@ def compute_map_kernel(
 
 @register_routine
 class BinTODIntoMap(DataRoutine):
+    """Bin time-ordered data into a map based on detector positions and pointing information.
+    
+    Creates the following items in the HDF5 file:
+    - /map: group containing the map datasets.
+    - /map/map_az: 1D array of azimuth values for the map pixels.
+    - /map/map_za: 1D array of zenith angle values for the map pixels.
+    - /map/netd: 1D array of length n_tones containing the NETD values for each tone.
+    - /map/sum_map: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing the sum 
+        of the data values for each pixel.
+    - /map/hits_map: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing the 
+        number of hits for each pixel.
+    - /map/good_samples: 2D variable length array of length n_chan containing the 
+        indices of the good samples for each channel.
+
+    """
     name = 'BinTODIntoMap'
     version = '1.1.0'
 
@@ -159,14 +188,40 @@ class BinTODIntoMap(DataRoutine):
             dataset: Literal['data_mK', 'data_freq']='data_mK',
             hp_filter_freq: float=0.5,
             lp_filter_freq: float=10.,
+            med_netd_cut_threshold: float=3.,
             az_trim: float=2.3,
             za_trim: float=0.2,
-            med_netd_cut_threshold: float=3.,
             beam_map_mode: bool=False,
             dpix: int=DEFAULT_MAP_DPIX,
             r0: float=0.15,
             sigma: float=0.087/2.3,
     ):
+        """Initialize the BinTODIntoMap routine.
+        
+        Arguments:
+            dataset (str, optional): The name of the dataset to clean. Must be either 
+                'data_mK' or 'data_freq'. Defaults to 'data_mK'.
+            hp_filter_freq (float, optional): The cutoff frequency for the high-pass 
+                filter applied to the data when computing NETD values.
+            lp_filter_freq (float, optional): The cutoff frequency for the low-pass 
+                filter applied to the data when computing NETD values.
+            med_netd_cut_threshold (float, optional): The threshold for cutting tones 
+                based on their NETD values.
+            az_trim (float, optional): The amount to trim from the edges of the map in 
+                the azimuth direction, in degrees. Defaults to 2.3 degrees.
+            za_trim (float, optional): The amount to trim from the edges of the map in 
+                the zenith angle direction, in degrees. Defaults to 0.2 degrees.
+            beam_map_mode (bool, optional): Whether to create a beam map instead of a 
+                polarization map.
+            dpix (float, optional): The pixel size of the map in degrees. Defaults to 
+                0.03 degrees.
+            r0 (float, optional): The radius of the kernel used for smoothing the map, 
+                in degrees. Defaults to 0.15 degrees.
+            sigma (float, optional): The standard deviation of the Gaussian kernel used
+                for smoothing the map, in degrees. Defaults to 0.087/2.3 degrees, which
+                corresponds to a FWHM of 0.087 degrees (the approximate beam size of
+                SKIPR).
+        """
         if dataset not in ('data_mK', 'data_freq'):
             raise ValueError(f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or "data_freq".')
         if beam_map_mode:
@@ -177,9 +232,9 @@ class BinTODIntoMap(DataRoutine):
             dataset=dataset,
             hp_filter_freq=hp_filter_freq,
             lp_filter_freq=lp_filter_freq,
+            med_netd_cut_threshold=med_netd_cut_threshold,
             az_trim=az_trim,
             za_trim=za_trim,
-            med_netd_cut_threshold=med_netd_cut_threshold,
             beam_map_mode=beam_map_mode,
             dpix=dpix,
             r0=r0,
@@ -204,6 +259,10 @@ class BinTODIntoMap(DataRoutine):
         n_pix_y: int,
         dpix: float,
     ):
+        """Initialize the map arrays in the ProcessedData object.
+
+        Overwrites existing "map" group if it already exists. 
+        """
         if pdata.has('map', exact_match=True):
             _logger.warning(f'{self.name}: Map group already exists in the file; overwriting datasets.')
             del pdata['map']
@@ -352,6 +411,23 @@ class BinTODIntoMap(DataRoutine):
 
 @register_routine
 class PlotMap(DataRoutine):
+    """Plot the map created by BinTODIntoMap.
+
+    Creates the following items in the HDF5 file:
+    - /plotting: group containing the plotting datasets.
+    - /plotting/map: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing 
+        the binned map values (i.e. sum_map / hits_map).
+    - /plotting/total_map: 2D array of shape (n_pix_x, n_pix_y) containing 
+        the total map values (sum over all maps).
+    - /plotting/flagged_map_1: 2D array of shape (n_pix_x, n_pix_y) containing
+        the flagged pixels based on the first map (e.g. polarization 1).
+    - /plotting/flagged_map_2: 2D array of shape (n_pix_x, n_pix_y) containing 
+        the flagged pixels based on the second map (e.g. polarization 2).
+    - /plotting/flagged_total_map: 2D array of shape (n_pix_x, n_pix_y) 
+        containing the flagged pixels based on the total map
+    - /plotting/contour_levels: 1D array containing the contour levels used for 
+        plotting the flagged pixels.
+    """
     name = 'PlotMap'
     version = '1.0.0'
 
@@ -384,6 +460,27 @@ class PlotMap(DataRoutine):
             show: bool=False,
             overwrite: bool=True,
     ):
+        """Initialize the PlotMap routine.
+        
+        Arguments:
+            gaussian_sigma (float, optional): The standard deviation of the Gaussian 
+                kernel for for determining flagged pixels. Defaults to GAUSSIAN_SIGMA.
+            valid_covariance_threshold (float, optional): The threshold for determining 
+                whether a pixel is flagged based on the covariance of the maps. Defaults
+                to 0.5.
+            cb_shrink (float, optional): The shrink factor for the colorbar in the plot.
+                Defaults to 0.95.
+            max_abs_threshold (float, optional): The maximum absolute value multiplier 
+                for the color scale in the plot. Defaults to 0.75.
+            save_plot (bool, optional): Whether to save the plot as a PNG file. Defaults
+                to True.
+            savefile (Path, optional): The path to save the plot PNG file. If None, the 
+                plot will be saved in the same directory as the HDF5 file. Defaults to 
+                None.
+            show (bool, optional): Whether to display the plot. Defaults to False.
+            overwrite (bool, optional): Whether to overwrite existing plotting datasets 
+                in the HDF5 file. Defaults to True.
+        """
         super().__init__(
             gaussian_sigma=gaussian_sigma,
             valid_covariance_threshold=valid_covariance_threshold,
@@ -409,6 +506,18 @@ class PlotMap(DataRoutine):
         return []
 
     def _intialize_arrays(self, pdata: ProcessedData) -> bool:
+        """Initialize the plotting datasets in the ProcessedData object.
+        
+        If the plotting datasets already exist and overwrite is set to False, 
+        this function will return False and not modify the existing datasets. 
+        If overwrite is True, it will delete the existing plotting group and
+        create new datasets. If the plotting datasets do not already exist, 
+        it will create them and return True.
+
+        Returns:
+            (bool): Whether new plotting datasets were created (True) or existing 
+                datasets were used (False).
+        """
         if pdata.has('map/plotting', exact_match=True):
             if not self.params['overwrite']:
                 # Specified not to overwrite existing plotting datasets, so just
@@ -434,6 +543,7 @@ class PlotMap(DataRoutine):
         return True
 
     def _get_combined_map(self, pdata: ProcessedData) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        """Get the combined map of flagged pixels based on individual maps and the total map."""
         sigma = self.params['gaussian_sigma']
         map = pdata['map/plotting/map']
         total_map = pdata['map/plotting/total_map']
@@ -482,6 +592,11 @@ class PlotMap(DataRoutine):
         pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
 
     def plot(self, pdata: ProcessedData):
+        """Plot the maps using matplotlib.
+        
+        Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical 
+        image.
+        """
         hits_map = pdata['map/hits_map']
         mapp = pdata['map/plotting/map'][:]
         total_map = pdata['map/plotting/total_map'][:]
@@ -629,6 +744,22 @@ def animate_video(
     show: bool=False,
     savefile: Path=None,
 ) -> tuple[Figure, animation.FuncAnimation]:
+    """Animate the video of the map evolution over time.
+
+    Arguments:
+        total_map (npt.NDArray): 3D array of shape (n_frames, n_pix_x, n_pix_y) 
+            containing the total map values for each frame.
+        optical_video (npt.NDArray): 4D array of shape (n_frames, height, width, 3) 
+            containing the optical video frames for each frame.
+        interval_ms (float): The interval between frames in milliseconds.
+        extent (tuple[int, ...]): The extent of the map in the format (xmin, xmax, ymin,
+             ymax).
+        repeat_delay_ms (float, optional): The delay between repeats of the animation in 
+            milliseconds. Defaults to 2000 ms.
+        show (bool, optional): Whether to display the animation. Defaults to False.
+        savefile (Path, optional): The path to save the animation file. If None, the 
+            animation will not be saved. Defaults to None.
+    """
     smoothed_map = np.transpose(total_map, (0, 2, 1))
     max_abs = 0.75 * np.max(np.abs(smoothed_map))
     vmax = max_abs
@@ -660,6 +791,22 @@ def animate_video(
 
 @register_routine
 class MakeVideo(DataRoutine):
+    """Create a video of the map evolution over time.
+    
+    Creates the following items in the HDF5 file:
+    - /video: group containing the video datasets
+    - /video/map_az: 1D array of azimuth values for the map pixels
+    - /video/map_za: 1D array of zenith angle values for the map pixels
+    - /video/netd: 1D array of length n_tones containing the NETD values for each tone
+    - /video/sum_map: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing 
+        the sum of the data values for each pixel, for each time block.
+    - /video/hits_map: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing 
+        the number of hitsfor each pixel, for each time block.
+    - /video/good_samples: 2D variable length array of length n_chan containing the 
+        indices of the good samples for each channel
+    - /video/cropped_optical_video: 4D array of shape (n_blocks, height, width, 3) 
+        containing the cropped optical video frames for each time block. 
+    """
     name = 'MakeVideo'
     version = '1.1.0'
 
@@ -679,18 +826,52 @@ class MakeVideo(DataRoutine):
             dataset: Literal['data_mK', 'data_freq']='data_mK',
             hp_filter_freq: float=0.5,
             lp_filter_freq: float=10.,
+            med_netd_cut_threshold: float=3.,
             az_trim: float=2.3,
             za_trim: float=0.2,
-            med_netd_cut_threshold: float=3.,
             beam_map_mode: bool=False,
             dpix: int=DEFAULT_MAP_DPIX,
             r0: float=0.15,
             sigma: float=0.087/2.3,
             block_size_s: float=1,
             plot: bool=True,
-            savefile: Path=None,
             show: bool=False,
+            savefile: Path=None,
     ):
+        """Initialize the MakeVideo routine.
+
+        Arguments:
+            dataset (str, optional): The name of the dataset to clean. Must be either 
+                'data_mK' or 'data_freq'. Defaults to 'data_mK'.
+            hp_filter_freq (float, optional): The cutoff frequency for the high-pass 
+                filter applied to the data when computing NETD values.
+            lp_filter_freq (float, optional): The cutoff frequency for the low-pass 
+                filter applied to the data when computing NETD values.
+            med_netd_cut_threshold (float, optional): The threshold for cutting tones 
+                based on their NETD values.
+            az_trim (float, optional): The amount to trim from the edges of the map in 
+                the azimuth direction, in degrees. Defaults to 2.3 degrees.
+            za_trim (float, optional): The amount to trim from the edges of the map in 
+                the zenith angle direction, in degrees. Defaults to 0.2 degrees.
+            beam_map_mode (bool, optional): Whether to create a beam map instead of a 
+                polarization map.
+            dpix (float, optional): The pixel size of the map in degrees. Defaults to 
+                0.03 degrees.
+            r0 (float, optional): The radius of the kernel used for smoothing the map, 
+                in degrees. Defaults to 0.15 degrees.
+            sigma (float, optional): The standard deviation of the Gaussian kernel used
+                for smoothing the map, in degrees. Defaults to 0.087/2.3 degrees, which
+                corresponds to a FWHM of 0.087 degrees (the approximate beam size of
+                SKIPR).
+            block_size_s (float, optional): The size of the blocks in seconds to divide
+                the data into when creating the video. Defaults to 1 second.
+            plot (bool, optional): Whether to create an animated plot of the video.
+                Defaults to True.
+            show (bool, optional): Whether to display the animated plot. Defaults to 
+                False.
+            savefile (Path, optional): The path to save the animated plot to. If None, 
+                the animation will not be saved.
+        """
         if dataset not in ('data_mK', 'data_freq'):
             raise ValueError(f'Unable to use dataset {dataset} for BinTODIntoMap; choose "data_mK" or "data_freq".')
         if beam_map_mode:
@@ -701,9 +882,9 @@ class MakeVideo(DataRoutine):
             dataset=dataset,
             hp_filter_freq=hp_filter_freq,
             lp_filter_freq=lp_filter_freq,
+            med_netd_cut_threshold=med_netd_cut_threshold,
             az_trim=az_trim,
             za_trim=za_trim,
-            med_netd_cut_threshold=med_netd_cut_threshold,
             beam_map_mode=beam_map_mode,
             dpix=dpix,
             r0=r0,
@@ -736,6 +917,10 @@ class MakeVideo(DataRoutine):
         dpix: float,
         block_size_s: float,
     ):
+        """Initialize the datasets for the video in the ProcessedData object.
+        
+        If the 'video' group already exists, it will overwrite it, creating new datasets. 
+        """
         if pdata.has('video', exact_match=True):
             _logger.warning(f'{self.name}: Video group already exists in the file; overwriting datasets.')
             del pdata['video']

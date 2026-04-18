@@ -7,7 +7,6 @@ import time
 import logging
 from itertools import chain, batched
 import typing
-from enum import StrEnum
 
 # import tables
 import h5py
@@ -23,7 +22,6 @@ from scipy import signal
 from rfsocinterface.core.utils import (
     build_interp_map,
 )
-from rfsocinterface.core.utils import MetaEnum
 
 _logger = logging.getLogger(__name__)
 
@@ -61,13 +59,6 @@ CALIBRATION_TABLE_DTYPE = [
     ('IQ_to_freq_diss_angle', 'f8'),
     ('df_per_mK', 'f8'),
 ]
-
-class PsdBasis(StrEnum, metaclass=MetaEnum):
-    """Enum for the different bases to use for computing the PSD."""
-    IQ = 'IQ'
-    GAIN_PHASE = 'gain_phase'
-    FREQ_DISS = 'freq_diss'
-
 
 def get_channel_group_name(idx: int) -> str:
     """Return the properly formatted group name for the channel with index `idx`"""

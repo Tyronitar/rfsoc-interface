@@ -1,18 +1,18 @@
-from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD
+from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis
 from rfsocinterface.core.data import *
 from rfsocinterface.analysis.psd import *
 import pdb
 
 
 if __name__ == '__main__':
-    # date = '20260319'
-    # setnum = 1023
-    date = '20260309'
-    setnum = 1013
+    date = '20260319'
+    setnum = 1023
+    # date = '20260309'
+    # setnum = 1010
 
     lp_filter_freq = 15
     hp_filter_freq= 0.25
-    noise_removal_lp_filt_freq = 1000
+    noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
     ds_factor = 3
 
     noise_removal_offres = RemoveElectronicsNoise(
@@ -28,7 +28,7 @@ if __name__ == '__main__':
     clean_tod = CleanTOD()
     compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, cut_time=2, selection_indices='onres')
     psd_plotter = PlotPSD(
-        # PsdBasis.GAIN_PHASE,
+        PsdBasis.GAIN_PHASE,
         PsdBasis.FREQ_DISS,
         show=True,
     )
@@ -52,17 +52,17 @@ if __name__ == '__main__':
     )
 
     pipeline = Pipeline([
-        # noise_removal_offres,
-        # noise_removal_onres,
-        # compute_psd,
-        # psd_plotter,
+        noise_removal_offres,
+        noise_removal_onres,
+        compute_psd,
+        psd_plotter,
         # hp_filter,
         # lp_filter,
         # clean_tod,
-        make_video,
+        # make_video,
         # bin_tod_to_map,
         # plotter,
     ])
-    # pdata = pipeline.from_tod(date, setnum, ds_factor)
-    pdata = ProcessedData.load(date, setnum, mode='a')
-    pipeline.run(pdata)
+    pdata = pipeline.from_tod(date, setnum, ds_factor)
+    # pdata = ProcessedData.load(date, setnum, mode='a')
+    # pipeline.run(pdata)
