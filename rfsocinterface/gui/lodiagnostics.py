@@ -618,11 +618,12 @@ class BlindSweepDialog(QDialog):
         # The first n_tones lines should be the S21 traces for each tone
         return self.ax.lines[self.n_tones:]
     
-    def plot(self):
-        f0, depths = self.data.find_resonances()
+    def plot(self, **kwargs):
+        f0, depths = self.data.find_resonances(**kwargs)
         self.f0 = f0
         self.depths = depths
         
+        self.data.plot_new_resonances('blind_sweep', f0)
         self.replot_figure(self.data.plot_blind_sweep, f0)
         # fig = self.data.plot_blind_sweep(f0)
         # self.set_figure(fig)
@@ -689,15 +690,15 @@ class BlindSweepDialog(QDialog):
         self.stack_pointer += 1
         self.action_stack = self.action_stack[:self.stack_pointer]
         self.action_stack.append((action, *data))
-        print(f'Pushed action "{action}" to stack with data {data}')
+        # print(f'Pushed action "{action}" to stack with data {data}')
     
     def undo(self):
-        print(f'Called UNDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
+        # print(f'Called UNDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
         # If nothing to undo return
         if len(self.action_stack[:self.stack_pointer + 1]) == 0:
             return
         action, *data = self.action_stack[self.stack_pointer]
-        print(f'UNDO: action={action} with data {data}')
+        # print(f'UNDO: action={action} with data {data}')
         match action:
             case 'move_line':
                 line, old_x, new_x = data
@@ -717,12 +718,12 @@ class BlindSweepDialog(QDialog):
         self.stack_pointer -= 1
 
     def redo(self):
-        print(f'Called REDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
+        # print(f'Called REDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
         # If nothing to redo return
         if self.stack_pointer + 2 > len(self.action_stack):
             return
         action, *data = self.action_stack[self.stack_pointer + 1]
-        print(f'REDO: action={action} with data {data}')
+        # print(f'REDO: action={action} with data {data}')
         match action:
             case 'move_line':
                 line, old_x, new_x = data
@@ -884,9 +885,14 @@ if __name__ == '__main__':
     # win.show()
     # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
     # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    data = LoSweepData.from_h5('/data/20260203/20260203_Device_aSi2_Channel3_blind_LO_Sweep_hour14p2056.h5')
+    data = LoSweepData.from_h5('/data/20260420/20260420_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour14p7439.h5')
     win = BlindSweepDialog(data)
-    win.plot()
+    win.plot(
+        min_resonance_depth_dB=0.3,
+        spacing_threshold_Hz=3e3,
+        min_samples_per_resonance=4,
+        max_noise_fluctuation_dB=0.05,
+    )
     win.show()
 
     # dw.show()
