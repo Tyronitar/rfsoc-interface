@@ -58,26 +58,27 @@ if __name__ == '__main__':
         dpix=0.08,
         az_trim=0,
         za_trim=0,
-        show=True,
+        # show=True,
         # savefile='test.gif',
     )
 
     pipeline = Pipeline([
-        noise_removal_offres,
-        noise_removal_onres,
+        # noise_removal_offres,
+        # noise_removal_onres,
         # noise_removal,
-        compute_psd,
+        # compute_psd,
         # psd_plotter,
         # hp_filter,
         # lp_filter,
         # clean_tod,
-        # make_video,
+        make_video,
         # bin_tod_to_map,
         # plotter,
     ])
-    pdata = pipeline.from_tod(date, setnum, ds_factor)
-    # pdata = ProcessedData.load(date, setnum, mode='a')
-    # pipeline.run(pdata)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor)
+    setnum = 1005
+    pdata = ProcessedData.load(date, setnum, mode='a')
+    pipeline.run(pdata)
     # freq = pdata['psd/freq_diss/freq'][:]
     # psd = pdata['psd/freq_diss/psd'][:]
     # # convert to dBc/Hz

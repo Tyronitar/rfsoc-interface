@@ -1117,7 +1117,9 @@ class MakeVideo(DataRoutine):
         if self.params['plot']:
             _logger.info(f'{self.name}: Creating animation...')
             if self.params['savefile'] is None:
-                self.params['savefile'] = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
+                savefile = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
+            else:
+                savefile = self.params['savefile']
             animate_video(
                 total_map,
                 optical_video[:],
@@ -1125,6 +1127,6 @@ class MakeVideo(DataRoutine):
                 get_extent(map_az, map_za, dpix),
                 max_abs_threshold=self.params['max_abs_threshold'],
                 show=self.params['show'],
-                savefile=self.params['savefile'],
+                savefile=savefile,
             )
         return list(self.produces)
