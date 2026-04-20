@@ -104,7 +104,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.send_telescope_command('stop_telescope')
     
     def take_pic(self):
-        pic_data = self.cam_ctrl.take_pic(show=False)
+        pic_data = self.get_current_image()[0]
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.imshow(pic_data)

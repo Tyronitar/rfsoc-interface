@@ -741,6 +741,7 @@ def animate_video(
     optical_video: npt.NDArray,
     interval_ms: float,
     extent: tuple[int, ...],
+    max_abs_threshold: float=0.75,
     repeat_delay_ms: float=2000,
     show: bool=False,
     savefile: Path=None,
@@ -755,6 +756,8 @@ def animate_video(
         interval_ms (float): The interval between frames in milliseconds.
         extent (tuple[int, ...]): The extent of the map in the format (xmin, xmax, ymin,
              ymax).
+        max_abs_threshold (float, optional): The maximum absolute value multiplier for
+            the color scale in the animation. Defaults to 0.75.
         repeat_delay_ms (float, optional): The delay between repeats of the animation in 
             milliseconds. Defaults to 2000 ms.
         show (bool, optional): Whether to display the animation. Defaults to False.
@@ -765,6 +768,8 @@ def animate_video(
     max_abs = 0.75 * np.max(np.abs(smoothed_map))
     vmax = max_abs
     vmin = -max_abs
+    vmax = 500
+    vmin = -500
 
     fig, axes = plt.subplots(2, 1, figsize=(5, 10), sharex=True)
     im_mm = axes[0].imshow(smoothed_map[0], vmin=vmin, vmax=vmax, animated=True, cmap='Greys_r', extent=extent, aspect='equal')
@@ -828,6 +833,7 @@ class MakeVideo(DataRoutine):
             hp_filter_freq: float=0.5,
             lp_filter_freq: float=10.,
             med_netd_cut_threshold: float=3.,
+            max_abs_threshold: float=0.75,
             az_trim: float=2.3,
             za_trim: float=0.2,
             beam_map_mode: bool=False,
@@ -884,6 +890,7 @@ class MakeVideo(DataRoutine):
             hp_filter_freq=hp_filter_freq,
             lp_filter_freq=lp_filter_freq,
             med_netd_cut_threshold=med_netd_cut_threshold,
+            max_abs_threshold=max_abs_threshold,
             az_trim=az_trim,
             za_trim=za_trim,
             beam_map_mode=beam_map_mode,
@@ -931,7 +938,7 @@ class MakeVideo(DataRoutine):
         video_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
         video_group.create_dataset('sum_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), chunks=(1, 1, n_pix_x, n_pix_y), dtype=np.float64)
         video_group.create_dataset('hits_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), chunks=(1, 1, n_pix_x, n_pix_y), dtype=np.float64)
-        video_group.create_dataset('cropped_optical_video', shape=(n_blocks, *optical_video_shape), chunks=(1, *optical_video_shape), dtype=np.int8)
+        video_group.create_dataset('cropped_optical_video', shape=(n_blocks, *optical_video_shape), chunks=(1, *optical_video_shape), dtype=np.uint8)
         video_group.attrs['dpix'] = dpix
         video_group.attrs['block_size_s'] = block_size_s
         good_samples = video_group.create_dataset('good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32))
@@ -1081,8 +1088,8 @@ class MakeVideo(DataRoutine):
         _logger.info(f'{self.name}: Done creating maps.')
 
         # Optical Video processing
-        if pdata.has('/global_data/optical_video', exact_match=True):
-            optical_timestamp = pdata['global_data/optical_timestamp'][:]
+        if pdata.has('global_data/optical_video', exact_match=True):
+            optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
             full_optical_video = pdata['global_data/optical_video']
             full_scaled_video = get_scaled_optical_image(dpix, full_optical_video, map_az, map_za)
             video_timestamp = np.zeros(n_blocks)
@@ -1098,18 +1105,25 @@ class MakeVideo(DataRoutine):
 
         # TODO: Scale optical video to increase exposure
 
+        optical_video[:] = np.clip(optical_video[:], 0, 127)
+        optical_video[:] = optical_video[:] * 2
+        # brighter_optical_video = 2 * np.astype(optical_video[:], np.int16)
+        # brighter_optical_video = np.clip(brighter_optical_video, 0, 255).astype(np.int8)
+        # optical_video[:] = brighter_optical_video
+
         # Animation
         with np.errstate(divide='ignore', invalid='ignore'):
             total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
         if self.params['plot']:
             _logger.info(f'{self.name}: Creating animation...')
             if self.params['savefile'] is None:
-                self.params['savefile'] = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.gif')
+                self.params['savefile'] = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
             animate_video(
                 total_map,
                 optical_video[:],
                 1000 * block_size_s,
                 get_extent(map_az, map_za, dpix),
+                max_abs_threshold=self.params['max_abs_threshold'],
                 show=self.params['show'],
                 savefile=self.params['savefile'],
             )

@@ -752,12 +752,15 @@ class ConsolidatedData(NewDataStorage):
 
         # Optical image
         if optcam_exists:
+            _logger.info('ConsolidatedData: Copying optical data...')
             # optical_image = optcam_file.root.optical_image
             if 'optical_image' in optcam_file:
                 global_data_group.create_dataset('optical_image', data=optcam_file['optical_image'][:])
             elif 'optical_video' in optcam_file:
                 global_data_group.create_dataset('optical_image', data=optcam_file['optical_video'][..., 0])
-                global_data_group.create_dataset('optical_video', data=optcam_file['optical_video'])
+                optical_video = optcam_file['optical_video']
+                chunk_shape = optical_video.shape[:-1] + (1,)
+                global_data_group.create_dataset('optical_video', data=optical_video, compression='lzf', chunks=chunk_shape)
                 global_data_group.create_dataset('optical_video_timestamp', data=optcam_file['timestamp'])
             optcam_file.close()
         else:

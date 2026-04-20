@@ -20,7 +20,7 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW, TabName, get_filename
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
 from rfsocinterface.gui.widgets import FunctionWidget, ArgumentType
-from rfsocinterface.core.camera import SKPR_Camera_Control, MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
+from rfsocinterface.core.camera import MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
 from rfsocinterface.core.data import (
     Pipeline,
     DataRoutine,
@@ -58,15 +58,16 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None) -> None:
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
-        # self.cam_ctrl = SKPR_Camera_Control()
-        self.cam_ctrl = None
         self.pipeline_dialog = PipelineDialog(self)
         self.pipeline = Pipeline()
-        self._add_default_routines()
+        # self._add_default_routines()
         self.video_file: h5py.File = None
         self.video_file_lock = Lock()
         self.video_thread = None
         self._recording = False
+        self._video_frames = []
+        self._timestamps = []
+        self.optical_frame_rate = 5 # Frames / second
 
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
@@ -77,7 +78,6 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.stacked_layout = QStackedLayout(parent=self)
         self.dither_groupBox.layout().addLayout(self.stacked_layout, 2, 0, 1, 2)
         self.startMapping.connect(self.make_map)
-        self.optical_frame_rate = 5  # Frames / second
 
         self.add_dither_pattern(
             'AZ Scan Mode',
@@ -236,7 +236,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             compression='lzf',
             # chunks=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3),  # TODO: Is this a valid chunk shape?
         )
-        image,  = self.get_current_image()
+        image, _ = self.get_current_image()
         optical_image_array[:] = image
         optcam_file.close()
     
@@ -254,6 +254,8 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
                 chunks=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 1),
             )
             self.video_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
+            self._video_frames = []
+            self._timestamps = []
         self.video_thread = Thread(target=self.video_loop)
         self.video_thread.start()
         _logger.info('Optical video recording started')
@@ -270,6 +272,14 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
     def stop_recording_video(self):
         self._recording = False
         with self.video_file_lock:
+            n_frames = len(self._video_frames)
+            # Write all of the stored frames now
+            # _logger.info('Writing optical video to file...')
+            # self.video_file['optical_video'].resize(n_frames, axis=3)
+            # self.video_file['timestamp'].resize(n_frames, axis=0)
+            # for i_frame in range(n_frames):
+            #     self.video_file['optical_video'][:, :, :, i_frame] = self._video_frames[i_frame]
+            #     self.video_file['timestamp'][i_frame] = self._timestamps[i_frame]
             self.video_file.close()
             self.video_file = None
         _logger.debug('Joining optical video thread...')
@@ -281,6 +291,8 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             if self.video_file is not None:
                 n_frames = self.video_file['optical_video'].shape[-1]
                 image, timestamp = self.get_current_image()
+                # self._video_frames.append(image)
+                # self._timestamps.append(timestamp[:])
                 self.video_file['optical_video'].resize(n_frames + 1, axis=3)
                 self.video_file['timestamp'].resize(n_frames + 1, axis=0)
                 self.video_file['timestamp'][-1] = timestamp
