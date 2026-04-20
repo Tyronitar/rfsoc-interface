@@ -225,15 +225,33 @@ def create_params_file_from_VNA_sweep(
 
 
 if __name__ == "__main__":
-    Be231102p2_tones = np.array([213078506, 214801178, 247405640, 255826241, 256855576, 260115494,
-         263857108, 265547813, 269670205, 270298250, 272671603, 274710449,
-         276383775, 278960930, 308519951, 312882861, 313150099, 314004392,
-         314391462, 318555194, 322412444, 323717312, 326364689, 328323325,
-         328705367, 335793390, 340651152, 368175878, 373470266, 375799889,
-         375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
-         393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
+    #Be231102p2_tones = np.array([213078506, 214801178, 247405640, 255826241, 256855576, 260115494,
+    #     263857108, 265547813, 269670205, 270298250, 272671603, 274710449,
+    #     276383775, 278960930, 308519951, 312882861, 313150099, 314004392,
+    #     314391462, 318555194, 322412444, 323717312, 326364689, 328323325,
+    #     328705367, 335793390, 340651152, 368175878, 373470266, 375799889,
+    #     375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
+    #     393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
 
-    Be231102p2_LO_freq = 430e6
+    Be260114Tr_tones_1 = np.array([173585000, 211857500, 216760000, 217702500, 218967500, 232777500,
+    254320000, 260177500, 273445000, 282582500, 286537500, 304115000,
+    312987500, 316692500, 320352500, 323742500, 327667500, 337145000,
+    340375000, 357022500, 358847500, 449282500, 492040000, 502837500,
+    507970000])
+    Be260114Tr_tones_2 = np.array([645211000, 672578500, 703408500, 727816000, 737451000,
+    810936000, 879973500, 1035102000, 1038294500, 1057924500, 1092882000,
+    1126594500, 1148194500, 1154394500, 1180667000, 1189129500, 1190174500,
+    1221847000, 1232217000, 1246642000, 1266664500, 1296274500,])
+    Be260114Tr_tones_3 = np.array([1180667000, 1189129500, 1190174500,
+    1221847000, 1232217000, 1246642000, 1266664500, 1296274500, 1321964500,
+    1322962000, 1340739500, 1379649500, 1395659500, 1398229500, 1427789500,
+    1452124500, 1463652000, 1511963252, 1529370290, 1534427740, 1561959479,
+    1570283199, 1657808451])
+
+
+
+
+    LO_freq = 1420e6
     # lo_freq = 4e8
     #lo_freq = 4e8
     n_tones = 1
@@ -243,15 +261,21 @@ if __name__ == "__main__":
     # baseband_freqs = [450e6 - lo_freq]
     # tile_name = f'{n_tones}_tone_uniform_202050829'
         # Add 58 more tones
-    new_tones = np.concatenate([
-         Be231102p2_tones,
-         np.linspace(218, 244, 27) * 1e6,
-         np.linspace(344, 365, 22) * 1e6,
-         np.linspace(284, 302, 9) * 1e6,
-     ])
-    original_tone_indices = [i for i,t in enumerate(new_tones) if t  in Be231102p2_tones]
+    target_n_tones = 100
+    new_tones = Be260114Tr_tones_3.copy()
+    while len(new_tones) < target_n_tones:
+        sorted_tones = np.sort(new_tones)
+        gaps = np.diff(sorted_tones)
+        max_gap_idx = np.argmax(gaps)
+        
+        # Add a tone in the middle of the largest gap
+        new_tone = (sorted_tones[max_gap_idx] + sorted_tones[max_gap_idx + 1]) / 2
+        new_tones = np.append(new_tones, new_tone)
+    new_tones = np.sort(new_tones)
+
+    original_tone_indices = [i for i, t in enumerate(new_tones) if t in Be260114Tr_tones_3]
     print(f"Original tones not in new list: {original_tone_indices}")
-    baseband_freqs = np.array(new_tones) - Be231102p2_LO_freq
+    baseband_freqs = np.array(new_tones) - LO_freq
 
 
     # sorted_indices = baseband_freqs.argsort()
@@ -259,7 +283,7 @@ if __name__ == "__main__":
     # baseband_freqs = baseband_freqs[sorted_indices] - lo_freq
     
     
-    tile_name = 'Be231102p2_100_tones_power_shifted'
+    tile_name = 'Be260114Tr_100_tones_3'
     #tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
     # tile_name = 'Device_aSi1_Channel2_blind'
     # baseband_freqs = baseband_freqs - lo_freq
@@ -274,7 +298,7 @@ if __name__ == "__main__":
     #pdb.set_trace()
     # df_overf_per_mK = np.load('/home/onrkids/readout/host/params/dfoverf_per_mK_tile2.npy')
     detdx = detdy = chanmask = det_beam_ampl = det_pol = tone_powers = df_overf_per_mK = None
-    tone_powers = np.load('max_readout_power_simon_manual_adjusted.npy')
+    #tone_powers = np.load('max_readout_power_simon_manual_adjusted.npy')
 
     chanmask = np.zeros_like(baseband_freqs)
     chanmask[original_tone_indices] = 1
@@ -284,11 +308,9 @@ if __name__ == "__main__":
     print(chanmask)
     print(tone_powers)
     offres_ind = np.where(chanmask ==0)
-    pdb.set_trace()
-    tone_powers[offres_ind] = tone_powers[offres_ind]*(len(tone_powers)/sum(tone_powers))
-    pdb.set_trace()
 
-    initialize_params_file(tile_name, baseband_freqs, Be231102p2_LO_freq, DEFAULT_PARAMS_DIRECTORY)
+
+    initialize_params_file(tile_name, baseband_freqs, LO_freq, DEFAULT_PARAMS_DIRECTORY)
     update_params_file(
         tile_name,
         params_dir=DEFAULT_PARAMS_DIRECTORY,
