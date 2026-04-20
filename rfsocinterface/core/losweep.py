@@ -1327,19 +1327,33 @@ class PowerSweep:
         starting_rfin = self.rfsoc.get_rfin(self.chan)
         starting_rfout = self.rfsoc.get_rfout(self.chan)
         data = []
-        for power_level in self.power_levels:
+        pdb.set_trace()
+
+        is_temp_sweep = all(p==0 for p in self.power_levels)
+        fp_temps = []
+        for i, power_level in enumerate(self.power_levels):
             if self._cancel:
                 data = None
                 break
             print(power_level)
-            this_rfout = starting_rfout - power_level
-            this_rfin = starting_rfin + power_level
-            if this_rfin < 0 or this_rfin > 31.75 or this_rfout < 0 or this_rfout > 31.75:
-                raise ValueError(f'All power levels must be in range [0, 31.75].')
-            self.rfsoc.set_rfin(self.chan, this_rfin)
-            self.rfsoc.set_rfout(self.chan, this_rfout)
-
-            this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{power_level:+f}dB'.replace('.', '_'))
+            if is_temp_sweep:
+                while True:
+                    try:
+                        fp_temp = float(input(f"input the {i + 1} power level and let system get to temp:\n"))
+                        break
+                    except ValueError:
+                        print("Invalid input. Please enter a valid number.")
+                #fp_temp = float(input(f"input the {i + 1} power level and let system get to temp:\n"))
+                fp_temps.append(fp_temp)
+                this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{fp_temp:+f}mk'.replace('.', '_'))
+            else:
+                this_rfout = starting_rfout - power_level
+                this_rfin = starting_rfin + power_level
+                if this_rfin < 0 or this_rfin > 31.75 or this_rfout < 0 or this_rfout > 31.75:
+                    raise ValueError(f'All power levels must be in range [0, 31.75].')
+                self.rfsoc.set_rfin(self.chan, this_rfin)
+                self.rfsoc.set_rfout(self.chan, this_rfout)
+                this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{power_level:+f}dB'.replace('.', '_'))
 
             sweep = LoSweep(
                 self.rfsoc, self.chan, this_savefile, self.tone_shift,
@@ -1354,6 +1368,9 @@ class PowerSweep:
         if data is None:
             _logger.info('Sweep cancelled. Exiting...')
             self._data = None
+        elif is_temp_sweep:
+            self._data = TempSweepData(self.tone_list, self.f_center, data, fp_temps, starting_rfin, starting_rfout)
+            self._data.saveh5(self.savefile)
         else:
             self._data = PowerSweepData(self.tone_list, self.f_center, data, self.power_levels, starting_rfin, starting_rfout)
             self._data.saveh5(self.savefile)
@@ -1361,9 +1378,252 @@ class PowerSweep:
         # Reset to original power levels
         self.rfsoc.set_rfin(self.chan, starting_rfin)
         self.rfsoc.set_rfout(self.chan, starting_rfout)
+
+class TempSweepData:
+    def __init__(
+        self,
+        tone_list: npt.NDArray,
+        f_center: float,
+        sweeps: list[LoSweepData],
+        fp_temps: npt.NDArray,
+        rfin: float,
+        rfout: float,
+    ):
+        self.f_center = f_center
+        self.tone_list = tone_list
+        self.sweeps = sweeps
+        self.fp_temps = np.array(fp_temps)
+        self.rfin = rfin
+        self.rfout = rfout
+        self.max_readout_power = np.zeros(self.n_tones)
+        self.fit_f0 = np.zeros(self.n_tones)
     
+    @property
+    def chanmask(self) -> npt.NDArray:
+        """The chanmask used during the power sweep."""
+        return self.sweeps[0].chanmask
+    
+    @property
+    def combined_sweep_array(self) -> npt.NDArray:
+        """The LO sweep data from each lo sweep as one array.
+
+        Resulting array will have shape (N_sweeps, 2, N_tones, N_samples) 
+        """
+        #pdb.set_trace()
+        return np.stack([sweep.data for sweep in self.sweeps], axis=0)
+    
+    @property
+    def n_tones(self) -> int:
+        #TODO this is broken
+        return 100
+    
+    @property
+    def n_sweeps(self) -> int:
+        return len(self.power_levels)
+    
+    @property
+    def tile_names(self) -> list[str]:
+        return [sweep.tile_name for sweep in self.sweeps]
+    
+    def get_fit_f0(self) -> npt.NDArray:
+        fit_f0 = np.stack([sweep.fit_f0 for sweep in self.sweeps], axis=0)
+        self.fit_f0 = fit_f0
+        return fit_f0
+    
+    def fit(self):
+        for sweep in self.sweeps:
+            sweep.fit()
+        self.get_fit_f0()
+
+    @ensure_path(1)
+    def saveh5(self, fname: Path):
+        """Save the power sweep to an HDF5 file."""
+        path = fname.with_suffix('.h5')
+        path.touch(PERMISSIONS_USR_RW)
+        with tables.File(path, 'w') as fh:
+            fh.create_array('/', 'sweeps', obj=self.combined_sweep_array)
+            fh.create_array('/','lo_freq', obj=self.f_center)
+            fh.create_array('/','baseband_freqs', obj=self.tone_list - self.f_center)
+            fh.create_array('/','chanmask', obj=self.chanmask)
+            fh.create_array('/','fp_temps', obj=self.fp_temps)
+            fh.create_array('/','rfin', obj=self.rfin)
+            fh.create_array('/','rfout', obj=self.rfout)
+            fh.create_array('/','fit_f0', obj=self.fit_f0)
+            fh.create_array('/','max_readout_power', obj=self.max_readout_power)
+            fh.root._v_attrs.tile_names = self.tile_names
+        _logger.info(f'PowerSweepData saved to {str(fname)}')
+    
+    @classmethod
+    @ensure_path(1)
+    def from_h5(cls, fname: Path) -> PowerSweepData:
+        with tables.File(fname, 'r') as fh:
+            if datetime.datetime.fromtimestamp(fname.stat().st_mtime) < datetime.datetime.strptime(NEW_LO_SWEEP_FORMAT_DATE, '%Y%m%d'):
+                _logger.warning(f'LO sweep file {str(fname)} is from before {NEW_LO_SWEEP_FORMAT_DATE}. Attempting to load with backwards compatibility.')
+                tone_list = fh.root.global_data.baseband_freqs[:]
+                f_center = fh.root.global_data.lo_freq[()]
+                rfin = fh.root.global_data.rfin[()]
+                rfout = fh.root.global_data.rfout[()]
+                fp_temps = fh.root.global_data.fp_temps[:]
+                chanmask = fh.root.global_data.chanmask[:]
+                sweep_data = fh.root.global_data.sweeps[:]
+                fit_f0 = fh.root.global_data.fit_f0[:]
+                max_readout_power = fh.root.global_data.max_readout_power[:]
+            else:
+                tone_list = fh.root.baseband_freqs[:]
+                f_center = fh.root.lo_freq[()]
+                rfin = fh.root.rfin[()]
+                rfout = fh.root.rfout[()]
+                chanmask = fh.root.chanmask[:]
+                fp_temps = fh.root.fp_temps[:]
+                sweep_data = fh.root.sweeps[:]
+                fit_f0 = fh.root.fit_f0[:]
+                max_readout_power = fh.root.max_readout_power[:]
+                tile_names = fh.root._v_attrs.tile_names
 
 
+            sweeps = []
+            for this_fit_f0, arr, tile_name in zip(fit_f0, sweep_data, tile_names):
+            # for arr in sweep_data:
+                sweep = LoSweepData(tone_list, f_center, arr, chanmask, tile_name)
+                sweep.fit_f0[:] = this_fit_f0
+                sweeps.append(sweep)
+
+        temp_sweep = cls(tone_list, f_center, sweeps,fp_temps, rfin, rfout)
+        temp_sweep.get_fit_f0()
+        temp_sweep.max_readout_power = max_readout_power
+
+        return temp_sweep
+
+    def process_temperature_sweep(self, plot: bool = True):
+        self.fit()
+        f0_data = self.fit_f0[:]
+        fp_temps = self.fp_temps[:]
+        figs = []
+        
+        # Sort data by temperature
+        sorted_data_ind = np.argsort(fp_temps)
+        self.fp_temps = fp_temps[sorted_data_ind]
+        f0_data = f0_data[sorted_data_ind, :]
+        
+        q_data = np.zeros_like(f0_data)
+        q_i_data = np.zeros_like(f0_data)
+        q_c_data = np.zeros_like(f0_data)
+
+        power_level_non_linear = np.zeros(self.n_tones)
+        onres_ind = np.where(self.chanmask == 1)[0]
+        offres_ind = np.where(self.chanmask == 0)[0]
+        depth_data = np.zeros(self.n_tones)
+
+        for i_res in onres_ind:
+            resonant_freqs = []
+            q_tot = []
+            q_i = []
+            q_c = []
+            colors = plt.cm.viridis(np.linspace(0, 1, len(fp_temps)))
+            
+            # Initialize the resonator-specific IQ and S21 plot
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+            
+            for i_p in range(len(fp_temps)):
+                resonator = self.sweeps[i_p].resonator_data[i_res]
+                
+                # Extract IQ data
+                I = self.sweeps[i_p].data_I[i_res]
+                Q = self.sweeps[i_p].data_Q[i_res]
+                
+                # Perform scraps fit to get resonant properties
+                res_obj = get_scraps_fit(
+                    I,
+                    Q,
+                    resonator.freq,
+                    resonator.tone,
+                    resonator.s21,
+                )
+
+                
+                # Extract fitted parameters
+                f0 = res_obj.lmfit_result['default']['result'].params['f0'].value
+                qi = res_obj.lmfit_result['default']['result'].params['qi'].value
+                qc = res_obj.lmfit_result['default']['result'].params['qc'].value
+                
+                resonant_freqs.append(f0)
+                q_tot.append(1/(1/qi + 1/qc))
+                q_c.append(qc)
+                q_i.append(qi)
+
+                
+                baseline = np.median(resonator.s21)
+                depth = baseline - np.min(resonator.s21)
+                
+                depth_data[i_res] = depth
+                if plot:
+                    # Plot S21 Magnitude
+                    ax1.plot(resonator.freq, resonator.s21, label=f'fp_temp: {fp_temps[i_p]:.1f} mK', color=colors[i_p])
+                    ax1.axvline(x=f0, color=colors[i_p], alpha=0.5)
+
+                    # Plot IQ Circle
+                    ax2.plot(I, Q, label=f'fp_temps {fp_temps[i_p]:.1f} mK', color=colors[i_p])
+        
+            
+
+            if plot:
+                ax1.set_xlabel('Frequency (Hz)')
+                ax1.set_ylabel('|S21| (dB)')
+                ax1.set_title(f'Resonator {i_res} S21')
+                
+                ax2.set_xlabel('I')
+                ax2.set_ylabel('Q')
+                ax2.set_title('IQ Circle')
+                ax2.set_aspect('equal')
+                plt.tight_layout()
+                
+            f0_data[:, i_res] = resonant_freqs
+            q_data[:, i_res] = q_tot
+            q_i_data[:, i_res] = q_i
+            q_c_data[:, i_res] = q_c
+            
+            # Calculate fractional frequency shift (df/f0)
+            this_fp_temps = fp_temps.copy()
+            this_dfres = (f0_data[:, i_res] - f0_data[0, i_res]) / (f0_data[0, i_res])
+
+            figs.append(fig)
+            
+            if plot:
+                # Create a single figure with three subplots
+                fig_temp, (ax_temp, ax_qi, ax_qc) = plt.subplots(3, 1, figsize=(8, 12))
+
+                # T vs dfres plot
+                ax_temp.plot(this_fp_temps, this_dfres, 'o', label='dfres')
+                ax_temp.set_xlabel('Temperature (mK)')
+                ax_temp.set_ylabel(r'$\Delta f / f_0$')
+                ax_temp.legend()
+                ax_temp.set_title('Temperature vs dfres')
+
+                # T vs q_i plot
+                ax_qi.plot(this_fp_temps, q_i_data[:, i_res], 'o', label='q_i')
+                ax_qi.set_xlabel('Temperature (mK)')
+                ax_qi.set_ylabel('q_i')
+                ax_qi.legend()
+                ax_qi.set_title('Temperature vs q_i')
+
+                # T vs q_c plot
+                ax_qc.plot(this_fp_temps, q_c_data[:, i_res], 'o', label='q_c')
+                ax_qc.set_xlabel('Temperature (mK)')
+                ax_qc.set_ylabel('q_c')
+                ax_qc.legend()
+                ax_qc.set_title('Temperature vs q_c')
+
+                # Adjust layout and add the figure to the list
+                fig_temp.tight_layout()
+                figs.append(fig_temp)
+
+
+        self.max_readout_power = power_level_non_linear
+        
+        # Save all generated figures to PDF
+        with PdfPages('Temp_sweep.pdf') as pdf:
+            for fig in figs:
+                pdf.savefig(fig)
 if __name__ == '__main__':
     import pdb
 
@@ -1388,38 +1648,11 @@ if __name__ == '__main__':
     # sweeps = [LoSweepData.from_h5(filename) for filename in lo_sweep_files]
     # sweep_data = PowerSweepData(sweeps[0].tone_list, sweeps[0].f_center, sweeps, np.array([-3, 0, 3, 6, 9]), 17, 13)
 
-    sweep_data = PowerSweepData.from_h5('/data/20260318/20260318_Be231102p2_100_tones_Power_Sweep_hour16p7561.h5')
+    sweep_data = TempSweepData.from_h5('/data/20260417/20260417_Be260114Tr_100_tones_3_Power_Sweep_hour11p3133.h5')
     sweep_data.fit()
-    max_readout, readout_power_inc, depth_data = sweep_data.find_optimal_readout_power()
-    max_readout_lin = 10**((max_readout-readout_power_inc)/20)
-    print(max_readout_lin, "With a power at device increase of", readout_power_inc)
+    sweep_data.process_temperature_sweep()
     sweep_data.saveh5('/data/20260318/20260318_Be231102p2_100_tones_Power_Sweep_hour16p7561.h5')
-    np.save('max_readout_power', max_readout_lin)
-    power_at_device =np.array([ -90.82786209,  -97.24975794,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329, -104.40405686,  -96.57831542, -103.84409766,
-       -102.46939725,  -95.02472687,  -92.835558  ,  -95.08755059,
-        -92.6872361 , -108.78383178,  -98.27758022, -110.88541483,
-        -92.9941071 ,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329, -109.16496051,  -98.27758022,
-        -98.26120705,  -96.59327271,  -96.56644409,  -92.95976836,
-        -97.25631925,  -90.96769556,  -88.63657797,  -95.94570813,
-        -95.99178143,  -97.70649446,  -93.68596005,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -86.40473329,  -86.40473329,  -86.40473329,
-        -86.40473329,  -94.27643565,  -98.27758022,  -99.4537407 ,
-        -98.27758022,  -96.31624429,  -84.36825263,  -95.25522978,
-        -89.4163151 ,  -87.07198984,  -83.16462187,  -83.17267851,
-        -83.23921076,  -83.22907499,  -83.32081674,  -83.2597422])
+
 
 
     pdb.set_trace()
