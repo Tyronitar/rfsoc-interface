@@ -20,7 +20,7 @@ from rfsocinterface.core.utils import ordinal
 TICK_SIZE = 20
 AXES_LABEL_SIZE = 22
 TITLE_SIZE = 26
-LEGEND_SIZE = 20
+LEGEND_SIZE = 18
 LEGEND_LABEL_SPACING = 0.15
 
 def plot_psd(
@@ -116,31 +116,31 @@ def plot_psd(
 
 
 if __name__ == "__main__":
-    date = '20260415'
-    setnum = 1014
+    # date = '20260415'
+    # setnum = 1014
 
-    data_l0 = ProcessedDataL0.from_tod(
-            date,
-            setnum,
-        )
-    data_l1 = ProcessedDataL1.from_level0(
-        data_l0,
-        do_electronics_noise_removal=True,
-        block_length=110,
-    )
-    psd_routine = ComputeNoisePSD(
-        PsdBasis.GAIN_PHASE,
-        cut_time=2,
-    )
-    data_l2 = ProcessedDataLN.from_previous_level(data_l1)
-    psd_routine(data_l2)
-    freq = data_l2.get_node_value('freq', '/psd')[:]
-    psd = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
+    # data_l0 = ProcessedDataL0.from_tod(
+    #         date,
+    #         setnum,
+    #     )
+    # data_l1 = ProcessedDataL1.from_level0(
+    #     data_l0,
+    #     do_electronics_noise_removal=True,
+    #     block_length=110,
+    # )
+    # psd_routine = ComputeNoisePSD(
+    #     PsdBasis.GAIN_PHASE,
+    #     cut_time=2,
+    # )
+    # data_l2 = ProcessedDataLN.from_previous_level(data_l1)
+    # psd_routine(data_l2)
+    # freq = data_l2.get_node_value('freq', '/psd')[:]
+    # psd = data_l2.get_node_value('psd_gain_phase', '/psd')[:]
 
-    plt.plot(freq, 10 * np.log10(np.median(psd[0], axis=0)))
-    plt.show()
+    # plt.plot(freq, 10 * np.log10(np.median(psd[0], axis=0)))
+    # plt.show()
 
-    pdb.set_trace()
+    # pdb.set_trace()
 
 
 
@@ -205,8 +205,8 @@ if __name__ == "__main__":
         # data_l1.close()
         # data_l0.close()
 
-        onres_date = '20260413'
-        onres_setnum = 1004
+        onres_date = '20260420'
+        onres_setnum = 1024
         # onres_date = '20260325'
         # onres_setnum = 1002
         offres_date = '20260325'
@@ -296,7 +296,7 @@ if __name__ == "__main__":
         ax.set_xscale('log')
         ax.set_yscale('linear')
         ax.set_xlim(*XLIM)
-        ylim = (-116, -75) if in_lab else (-108, -68)
+        ylim = (-116, -75) if in_lab else (-110, -53)
         ax.set_ylim(*ylim)
         ax.set_xlabel('Frequency (Hz)', fontsize=AXES_LABEL_SIZE)
         ax.set_ylabel(r'Noise PSD ($\text{dBc Hz}^{-1})$', fontsize=AXES_LABEL_SIZE)
@@ -324,7 +324,7 @@ if __name__ == "__main__":
         ax.legend(reordered_handles, reordered_labels, loc='upper right', fontsize=LEGEND_SIZE, labelspacing=LEGEND_LABEL_SPACING)
         fig.tight_layout()
         pdf.savefig()
-    plt.show()
+    # plt.show()
 
 
     # _, freq_1000, psd_1000 = compute_noise_psd(
