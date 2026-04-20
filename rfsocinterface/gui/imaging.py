@@ -58,7 +58,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.cam_ctrl = SKPR_Camera_Control()
         self.pipeline_dialog = PipelineDialog(self)
         self.pipeline = Pipeline()
-        self._add_default_routines()
+        # self._add_default_routines()
 
         self._file =  '.'
         self.channel_comboBox.set_default_title('Select Channels...')
