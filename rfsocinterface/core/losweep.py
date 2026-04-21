@@ -7,7 +7,7 @@ from concurrent.futures import Future
 from typing import Callable
 from multiprocessing import Lock
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
-
+import rfsocinterface.analysis.KID_fitting_analysis.fit_mb_params as mb_params
 from pathlib import Path
 from PySide6.QtWidgets import QProgressDialog
 
@@ -420,6 +420,7 @@ class LoSweepData:
         self.chanmask = chanmask
         self.resonator_data = [ResonatorData(self, i) for i in range(self.nchan)]
         self.tile_name = tile_name
+        pdb.set_trace()
         self.fit_f0 = self.tone_list.copy()
         self.fit_qi = np.zeros(self.nchan)
         self.fit_qc = np.zeros(self.nchan)
@@ -880,6 +881,7 @@ class LoSweep:
             _logger.debug(f'Tone shift != 0. Computing new tones...')
             self.f_center = rfsoc.get_frequency(chan)  # Hz
             curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
+            pdb.set_trace()
             new_tones = np.ndarray.tolist(
                 curr_tone_list
                 + float(tone_shift)
@@ -1327,7 +1329,6 @@ class PowerSweep:
         starting_rfin = self.rfsoc.get_rfin(self.chan)
         starting_rfout = self.rfsoc.get_rfout(self.chan)
         data = []
-        pdb.set_trace()
 
         is_temp_sweep = all(p==0 for p in self.power_levels)
         fp_temps = []
@@ -1360,7 +1361,7 @@ class PowerSweep:
                 self.freq_step, self.full_span,
             )
             self._sweeps.append(sweep)
-
+    
             this_sweep_data = sweep.run_sweep(callback=callback, save=False)
             data.append(this_sweep_data)
 
@@ -1589,6 +1590,11 @@ class TempSweepData:
             figs.append(fig)
             
             if plot:
+                params_fres, params_Qi = mb_params.MB_fit(f0_data[:, i_res], q_i_data[:, i_res], this_fp_temps)
+
+                alpha_fres = params_fres['alpha'].value
+                Delta_fres = params_fres['Delta'].value
+
                 # Create a single figure with three subplots
                 fig_temp, (ax_temp, ax_qi, ax_qc) = plt.subplots(3, 1, figsize=(8, 12))
 
@@ -1597,21 +1603,23 @@ class TempSweepData:
                 ax_temp.set_xlabel('Temperature (mK)')
                 ax_temp.set_ylabel(r'$\Delta f / f_0$')
                 ax_temp.legend()
-                ax_temp.set_title('Temperature vs dfres')
+                ax_temp.text(0.05, 0.95, f'α={alpha_fres:.2e}, Δ={Delta_fres:.2e}', transform=ax_temp.transAxes, fontsize=10, verticalalignment='top')
 
+                alpha_Qi = params_Qi['alpha'].value
+                Delta_Qi = params_Qi['Delta'].value
                 # T vs q_i plot
                 ax_qi.plot(this_fp_temps, q_i_data[:, i_res], 'o', label='q_i')
                 ax_qi.set_xlabel('Temperature (mK)')
                 ax_qi.set_ylabel('q_i')
                 ax_qi.legend()
-                ax_qi.set_title('Temperature vs q_i')
+                ax_qi.text(0.05, 0.95, f'α={alpha_Qi:.2e}, Δ={Delta_Qi:.2e}', transform=ax_qi.transAxes, fontsize=10, verticalalignment='top')
 
                 # T vs q_c plot
                 ax_qc.plot(this_fp_temps, q_c_data[:, i_res], 'o', label='q_c')
                 ax_qc.set_xlabel('Temperature (mK)')
                 ax_qc.set_ylabel('q_c')
                 ax_qc.legend()
-                ax_qc.set_title('Temperature vs q_c')
+                ax_qc.set_title(f'Temperature vs q_c)')
 
                 # Adjust layout and add the figure to the list
                 fig_temp.tight_layout()
@@ -1648,10 +1656,10 @@ if __name__ == '__main__':
     # sweeps = [LoSweepData.from_h5(filename) for filename in lo_sweep_files]
     # sweep_data = PowerSweepData(sweeps[0].tone_list, sweeps[0].f_center, sweeps, np.array([-3, 0, 3, 6, 9]), 17, 13)
 
-    sweep_data = TempSweepData.from_h5('/data/20260417/20260417_Be260114Tr_100_tones_3_Power_Sweep_hour11p3133.h5')
+    sweep_data = TempSweepData.from_h5('/data/20260416/20260416_Be231102p2_100_tones_Power_Sweep_hour14p6231.h5')
     sweep_data.fit()
     sweep_data.process_temperature_sweep()
-    sweep_data.saveh5('/data/20260318/20260318_Be231102p2_100_tones_Power_Sweep_hour16p7561.h5')
+    #sweep_data.saveh5('/data/20260318/20260318_Be231102p2_100_tones_Power_Sweep_hour16p7561.h5')
 
 
 
