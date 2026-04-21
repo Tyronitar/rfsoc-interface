@@ -55,7 +55,7 @@ def resonator_plot_formatter(x: float, pos: int) -> str:
     Returns:
         str: The formatted string for the x-axis label.
     """
-    return f'{x * 1e-6:.3f}'
+    return f'{x * 1e-6:.1f}'
 
 def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
 
@@ -665,13 +665,21 @@ class LoSweepData:
         
         return fig
     
-    def find_resonances(self) -> tuple[npt.NDArray, npt.NDArray]:
+    def find_resonances(
+        self,
+        min_resonance_depth_dB: float=0.2,
+        spacing_threshold_Hz: float=3e3,
+        min_samples_per_resonance: float=2,
+        max_noise_fluctuation_dB: float=0.05,
+        baseline_percentile: float=50,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         rf = ResonatorFinder(self.data, self.f_center, self.df)
         res_freq, res_depth = rf.find_resonators(
-            min_resonance_depth_dB=0.2,
-            spacing_threshold_Hz=3e3,
-            min_samples_per_resonance=2,
-            max_noise_fluctuation_dB=0.05,
+            min_resonance_depth_dB=min_resonance_depth_dB,
+            spacing_threshold_Hz=spacing_threshold_Hz,
+            min_samples_per_resonance=min_samples_per_resonance,
+            max_noise_fluctuation_dB=max_noise_fluctuation_dB,
+            baseline_percentile=baseline_percentile,
         )
         return res_freq , res_depth
     
@@ -1189,6 +1197,13 @@ class PowerSweep:
 
 if __name__ == '__main__':
     import pdb
+
+    sweep_data = LoSweepData.from_h5('/data/20260420/20260420_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour14p7439.h5')
+    freq, depth = sweep_data.find_resonances()
+    # sweep_data.plot_blind_sweep(freq)
+    # plt.show()
+    sweep_data.plot_new_resonances('ONR_Blind_180_to_620MHz_1000_tones', freq)
+    pdb.set_trace()
 
     # Lab Testing
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
