@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout
 
 from rfsocinterface.gui.widgets.function import FunctionDragItem
 from rfsocinterface.core.data import (
-    DataPipeline,
+    Pipeline,
     ProcessingStage,
     DataRoutine,
     ROUTINE_NAME_MAP,
@@ -86,8 +86,8 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
     #     self._current_items = items
     #     print('updated order')
     
-    def make_pipeline(self) -> DataPipeline:
-        new_pipeline = DataPipeline()
+    def make_pipeline(self) -> Pipeline:
+        new_pipeline = Pipeline()
         for item in self.drag_function_widget.items():
             new_pipeline.add_routine(item.func_widget.call_function())
         return new_pipeline
