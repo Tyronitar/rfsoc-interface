@@ -23,7 +23,6 @@ from matplotlib.lines import Line2D
 from scipy.signal import savgol_filter
 from scipy.optimize import curve_fit
 import h5py
-import tables
 
 from PySide6.QtWidgets import QApplication
 from rfsocinterface.core.utils import ensure_path, PERMISSIONS_USR_RW, parallel_plot
@@ -383,15 +382,16 @@ class LoSweepData:
         """Save the LO Sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
-        with tables.File(path, 'w') as fh:
+        with h5py.File(path, 'w') as fh:
             fh.root._v_attrs.lo_freq = self.f_center
-            fh.root._v_attrs.tile_name = self.tile_name
-            fh.create_array('/global_data', 'lo_sweep', obj=self.data)
-            fh.create_array('/global_data', 'baseband_freqs', obj=self.tone_list - self.f_center)
-            fh.create_array('/global_data', 'chanmask', obj=self.chanmask)
-            fh.create_array('/global_data', 'fit_f0', obj=self.fit_f0)
-            fh.create_array('/global_data', 'fit_qi', obj=self.fit_qi)
-            fh.create_array('/global_data', 'fit_qc', obj=self.fit_qc)
+            fh.attrs['lo_freq'] = self.f_center
+            fh.attrs['tile_name'] = self.tile_name
+            fh.create_dataset('/global_data/lo_sweep', data=self.data)
+            fh.create_dataset('/global_data/baseband_freqs', data=self.tone_list - self.f_center)
+            fh.create_dataset('/global_data/chanmask', data=self.chanmask)
+            fh.create_dataset('/global_data/fit_f0', data=self.fit_f0)
+            fh.create_dataset('/global_data/fit_qi', data=self.fit_qi)
+            fh.create_dataset('/global_data/fit_qc', data=self.fit_qc)
         _logger.info(f'LoSweepData saved to {str(fname)}')
     
     @classmethod
@@ -399,26 +399,26 @@ class LoSweepData:
     def from_h5(cls, path: Path) -> LoSweepData:
         """Create a LoSweepData object from a sweep file."""
         path = path.with_suffix('.h5')
-        with tables.File(path, 'r') as f:
+        with h5py.File(path, 'r') as f:
             if datetime.datetime.fromtimestamp(path.stat().st_mtime) < datetime.datetime.strptime(NEW_LO_SWEEP_FORMAT_DATE, '%Y%m%d'):
                 _logger.warning(f'LO sweep file {str(path)} is from before {NEW_LO_SWEEP_FORMAT_DATE}. Attempting to load with backwards compatibility.')
-                tone_list = f.root.global_data.baseband_freqs[:]
-                data = f.root.global_data.lo_sweep[:]
-                chanmask = f.root.global_data.chanmask[:]
-                fit_f0 = f.root.global_data.fit_f0[:]
-                fit_qi = f.root.global_data.fit_qi[:]
-                fit_qc = f.root.global_data.fit_qc[:]
-                f_center = f.root.global_data.lo_freq[()]
+                tone_list = f['global_data/baseband_freqs'][:]
+                data = f['global_data/lo_sweep'][:]
+                chanmask = f['global_data/chanmask'][:]
+                fit_f0 = f['global_data/fit_f0'][:]
+                fit_qi = f['global_data/fit_qi'][:]
+                fit_qc = f['global_data/fit_qc'][:]
+                f_center = f['global_data/lo_freq'][()]
                 tile_name = ''
             else:
-                tone_list = f.root.baseband_freqs[:]
-                data = f.root.lo_sweep[:]
-                chanmask = f.root.chanmask[:]
-                fit_f0 = f.root.fit_f0[:]
-                fit_qi = f.root.fit_qi[:]
-                fit_qc = f.root.fit_qc[:]
-                f_center = f.root._v_attrs.lo_freq
-                tile_name = f.root._v_attrs.tile_name
+                tone_list = f['baseband_freqs'][:]
+                data = f['lo_sweep'][:]
+                chanmask = f['chanmask'][:]
+                fit_f0 = f['fit_f0'][:]
+                fit_qi = f['fit_qi'][:]
+                fit_qc = f['fit_qc'][:]
+                f_center = f.attrs['lo_freq']
+                tile_name = f.attrs['tile_name']
 
         sweep = cls(tone_list, f_center, data, chanmask, tile_name)
         sweep.fit_f0 = fit_f0
@@ -728,12 +728,12 @@ class LoSweepData:
                 # pdb.set_trace()
 
     
-    def generate_new_params_file(self, tile_name: str, old_params: tables.File | None=None, plot: bool=False):
+    def generate_new_params_file(self, tile_name: str, old_params: h5py.File | None=None, plot: bool=False):
         f0, depths = self.find_resonances()
         if plot:
             old_f0 = None
             if old_params is not None:
-                old_f0 = old_params.root.baseband_freqs[:] + old_params.root.lo_freq[()]
+                old_f0 = old_params['baseband_freqs'][:] + old_params['lo_freq'][()]
             self.plot_new_resonances(tile_name, f0, old_f0)
             
         initialize_params_file(
@@ -983,61 +983,46 @@ class PowerSweepData:
         """Save the power sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
-        with tables.File(path, 'w') as fh:
-            fh.create_array('sweeps', obj=self.combined_sweep_array)
-            fh.create_array('lo_freq', obj=self.f_center)
-            fh.create_array('baseband_freqs', obj=self.tone_list - self.f_center)
-            fh.create_array('chanmask', obj=self.chanmask)
-            fh.create_array('power_levels', obj=self.power_levels)
-            fh.create_array('rfin', obj=self.rfin)
-            fh.create_array('rfout', obj=self.rfout)
-            fh.create_array('fit_f0', obj=self.fit_f0)
-            fh.create_array('max_readout_power', obj=self.max_readout_power)
-            fh.root._v_attrs.tile_names = self.tile_names
+        with h5py.File(path, 'w') as fh:
+            fh.create_dataset('sweeps', data=self.combined_sweep_array)
+            fh.create_dataset('lo_freq', data=self.f_center)
+            fh.create_dataset('baseband_freqs', data=self.tone_list - self.f_center)
+            fh.create_dataset('chanmask', data=self.chanmask)
+            fh.create_dataset('power_levels', data=self.power_levels)
+            fh.create_dataset('rfin', data=self.rfin)
+            fh.create_dataset('rfout', data=self.rfout)
+            fh.create_dataset('fit_f0', data=self.fit_f0)
+            fh.create_dataset('max_readout_power', data=self.max_readout_power)
+            fh.attrs['tile_names'] = self.tile_names
         _logger.info(f'PowerSweepData saved to {str(fname)}')
     
     @classmethod
     @ensure_path(1)
     def from_h5(cls, fname: Path) -> PowerSweepData:
-        with tables.File(fname, 'r') as fh:
-            if datetime.datetime.fromtimestamp(fname.stat().st_mtime) < datetime.datetime.strptime(NEW_LO_SWEEP_FORMAT_DATE, '%Y%m%d'):
-                _logger.warning(f'LO sweep file {str(fname)} is from before {NEW_LO_SWEEP_FORMAT_DATE}. Attempting to load with backwards compatibility.')
-                tone_list = fh.root.global_data.baseband_freqs[:]
-                f_center = fh.root.global_data.lo_freq[()]
-                power_levels = fh.root.global_data.power_levels[:]
-                rfin = fh.root.global_data.rfin[()]
-                rfout = fh.root.global_data.rfout[()]
-                chanmask = fh.root.global_data.chanmask[:]
-                sweep_data = fh.root.global_data.sweeps[:]
-                fit_f0 = fh.root.global_data.fit_f0[:]
-                max_readout_power = fh.root.global_data.max_readout_power[:]
-                tile_names = ['' for _ in power_levels]
-            else:
-                tone_list = fh.root.baseband_freqs[:]
-                f_center = fh.root.lo_freq[()]
-                power_levels = fh.root.power_levels[:]
-                rfin = fh.root.rfin[()]
-                rfout = fh.root.rfout[()]
-                chanmask = fh.root.chanmask[:]
-                sweep_data = fh.root.sweeps[:]
-                fit_f0 = fh.root.fit_f0[:]
-                max_readout_power = fh.root.max_readout_power[:]
-                tile_names = fh.root._v_attrs.tile_names
+        with h5py.File(fname, 'r') as fh:
+            tone_list = fh['baseband_freqs'][:]
+            f_center = fh['lo_freq'][()]
+            power_levels = fh['power_levels'][:]
+            rfin = fh['rfin'][()]
+            rfout = fh['rfout'][()]
+            chanmask = fh['chanmask'][:]
+            sweep_data = fh['sweeps'][:]
+            fit_f0 = fh['fit_f0'][:]
+            tile_names = fh['tile_names'][:]
+            max_readout_power = fh['max_readout_power'][:]
 
-
-            sweeps = []
-            for this_fit_f0, arr, tile_name in zip(fit_f0, sweep_data, tile_names):
-            # for arr in sweep_data:
-                sweep = LoSweepData(tone_list, f_center, arr, chanmask, tile_name)
-                sweep.fit_f0[:] = this_fit_f0
-                sweeps.append(sweep)
+        sweeps = []
+        for this_fit_f0, arr, tile_name in zip(fit_f0, sweep_data, tile_names):
+        # for arr in sweep_data:
+            sweep = LoSweepData(tone_list, f_center, arr, chanmask, tile_name)
+            sweep.fit_f0[:] = this_fit_f0
+            sweeps.append(sweep)
 
         power_sweep = cls(tone_list, f_center, sweeps, power_levels, rfin, rfout)
         power_sweep.get_fit_f0()
         power_sweep.max_readout_power = max_readout_power
 
         return power_sweep
-
 
     def find_optimal_readout_power(self):
 
@@ -1210,7 +1195,7 @@ if __name__ == '__main__':
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
 
     tile_name = 'Device_aSi1_Channel2'
-    old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
+    old_params = h5py.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
     
     # lo_sweep_files = [
     #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_-3.h5',
