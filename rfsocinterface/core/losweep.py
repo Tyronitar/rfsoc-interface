@@ -25,7 +25,7 @@ from scipy.optimize import curve_fit
 import h5py
 
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import ensure_path, PERMISSIONS_USR_RW, parallel_plot
+from rfsocinterface.core.utils import ensure_path, PERMISSIONS_USR_RW, parallel_plot, mHz_formatter
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.params import initialize_params_file, update_params_file
@@ -43,18 +43,6 @@ POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB = 5
 
 NEW_LO_SWEEP_FORMAT_DATE = '20260213'  # For backwards compatibility
 
-
-def resonator_plot_formatter(x: float, pos: int) -> str:
-    """Format the x-axis labels for the resonator plot, converting to MHz.
-
-    Arguments:
-        x (float): The x value to format.
-        pos (int): The position of the tick.
-
-    Returns:
-        str: The formatted string for the x-axis label.
-    """
-    return f'{x * 1e-6:.1f}'
 
 def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
 
@@ -184,7 +172,7 @@ class ResonatorData:
         ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
         ax.set_xlabel('Frequency (MHz)')
         ax.set_ylabel(r'$|S_{21}|$')
-        ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
+        ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
 
         ax.plot(self.freq, self.s21)
         ax.axvline(x=self.fit_f0, color='r', animated=animated)
@@ -634,7 +622,7 @@ class LoSweepData:
 
         ax.set_xlabel('Frequency (MHz)')
         ax.set_ylabel(r'$|S_{21}|$')
-        ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
+        ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
 
         for i_tone in range(self.nchan):
             ax.plot(self.freq[i_tone], self.s21[i_tone], color='blue')
@@ -712,7 +700,7 @@ class LoSweepData:
                             ax.axvline(resonance, linestyle='--', color='green')
                     ax.set_xlabel('Frequency (MHz)')
                     ax.set_ylabel(r'$|S_{21}|$')
-                    ax.xaxis.set_major_formatter(FuncFormatter(resonator_plot_formatter))
+                    ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
                 fig.legend(
                     custom_lines,
                     custom_labels,

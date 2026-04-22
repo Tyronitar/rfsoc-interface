@@ -190,6 +190,7 @@ data/
 *.pdf
 *.png
 *.gif
+*.mp4
 
 # Configuration Files
 *.yml

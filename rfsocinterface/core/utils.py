@@ -92,6 +92,19 @@ class MetaEnum(EnumMeta):
         return True
 
 
+def mHz_formatter(x: float, pos: int) -> str:
+    """Format the x-axis labels for the resonator plot, converting to MHz.
+
+    Arguments:
+        x (float): The x value to format.
+        pos (int): The position of the tick.
+
+    Returns:
+        str: The formatted string for the x-axis label.
+    """
+    return f'{x * 1e-6:.1f}'
+
+
 def convert_path(path: PathLike) -> Path | None:
     """Ensure that a Path is a Path object."""
     if path is None:
@@ -1266,6 +1279,7 @@ if __name__ == '__main__':
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
     y = np.zeros(n // q)
+
     # decimate_in_chunks(x, q, out=y)
 
     # n_repeats = 20
