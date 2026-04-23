@@ -21,20 +21,22 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.lines import Line2D
 from scipy.signal import savgol_filter, find_peaks
+from scipy.ndimage import gaussian_filter1d
+
 import scraps as scr
 from scipy.optimize import curve_fit
 import h5py
 import tables
 
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW, parallel_plot
+from rfsocinterface.core.utils import BAD_RFSOC_TONE_START_INDEX, ensure_path, PERMISSIONS_USR_RW, parallel_plot, mHz_formatter
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 #from rfsocinterface.core.params import initialize_params_file, update_params_file
 from kidpy3 import capture_packets
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
-# from kidpy3.measure import ResonatorFinder
+from kidpy3.measure import ResonatorFinder
 
 
 _logger = logging.getLogger(__name__)
@@ -102,11 +104,50 @@ def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s2
     return fit_f0, fit_qc, fit_qi
 
 
-def get_scraps_fit(I: npt.NDArray,Q:np.NDarray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, power: npt.NDArray = None, temp:npt.NDArray = None):
-    data_dict = {'I': I, 'Q': Q, 'freq': freq, 'name': "resonance", 'pwr': power, 'temp': temp}
+def get_scraps_fit(
+    I: npt.NDArray,
+    Q: npt.NDArray,
+    freq: npt.NDArray,
+    tone_list: npt.NDArray,
+    s21: npt.NDArray,
+    power: npt.NDArray = None,
+    temp: npt.NDArray = None,
+    initial_guesses: dict = None,
+):
+    data_dict = {
+        'I': I,
+        'Q': Q,
+        'freq': freq,
+        'name': "resonance",
+        'pwr': power,
+        'temp': temp
+    }
+
     res_obj = scr.makeResFromData(data_dict)
+
+    # Load default hanger parameters
     res_obj.load_params(scr.hanger_params)
+    print(initial_guesses)
+    if initial_guesses is not None:
+        params = res_obj.params
+
+        for key, val in initial_guesses.items():
+            if key in params:
+                if isinstance(val, dict):
+                    # full control: value, vary, bounds
+                    if 'value' in val:
+                        params[key].set(value=val['value'])
+                    if 'vary' in val:
+                        params[key].set(vary=val['vary'])
+                    if 'min' in val or 'max' in val:
+                        params[key].set(min=val.get('min', -np.inf),
+                                        max=val.get('max', np.inf))
+                else:
+                    # simple value override
+                    params[key].set(value=val)
+
     res_obj.do_lmfit(scr.hanger_fit)
+
     return res_obj
 
 
@@ -420,7 +461,6 @@ class LoSweepData:
         self.chanmask = chanmask
         self.resonator_data = [ResonatorData(self, i) for i in range(self.nchan)]
         self.tile_name = tile_name
-        pdb.set_trace()
         self.fit_f0 = self.tone_list.copy()
         self.fit_qi = np.zeros(self.nchan)
         self.fit_qc = np.zeros(self.nchan)
@@ -1340,7 +1380,7 @@ class PowerSweep:
             if is_temp_sweep:
                 while True:
                     try:
-                        fp_temp = float(input(f"input the {i + 1} power level and let system get to temp:\n"))
+                        fp_temp = float(input(f"input temperature setpoint {i} and let system get to temp:\n"))
                         break
                     except ValueError:
                         print("Invalid input. Please enter a valid number.")
@@ -1363,6 +1403,8 @@ class PowerSweep:
             self._sweeps.append(sweep)
     
             this_sweep_data = sweep.run_sweep(callback=callback, save=False)
+            this_sweep_data.fit()
+            mean_f0_shift = np.mean(this_sweep_data.difference[this_sweep_data.onres_ind])
             data.append(this_sweep_data)
 
 
@@ -1495,143 +1537,222 @@ class TempSweepData:
 
         return temp_sweep
 
-    def process_temperature_sweep(self, plot: bool = True):
+    def process_temperature_sweep(self, plot: bool = True, output_plot_filename: str = "TempSweep.pdf"):
         self.fit()
-        f0_data = self.fit_f0[:]
-        fp_temps = self.fp_temps[:]
-        figs = []
-        
-        # Sort data by temperature
-        sorted_data_ind = np.argsort(fp_temps)
-        self.fp_temps = fp_temps[sorted_data_ind]
-        f0_data = f0_data[sorted_data_ind, :]
-        
+
+        sorted_idx = np.argsort(self.fp_temps)
+        self.fp_temps = self.fp_temps[sorted_idx]
+        f0_data = self.fit_f0[sorted_idx, :]
+
+        n_temps, n_res = f0_data.shape
         q_data = np.zeros_like(f0_data)
         q_i_data = np.zeros_like(f0_data)
         q_c_data = np.zeros_like(f0_data)
 
-        power_level_non_linear = np.zeros(self.n_tones)
+        figs = []
+
         onres_ind = np.where(self.chanmask == 1)[0]
-        offres_ind = np.where(self.chanmask == 0)[0]
-        depth_data = np.zeros(self.n_tones)
 
         for i_res in onres_ind:
-            resonant_freqs = []
-            q_tot = []
-            q_i = []
-            q_c = []
-            colors = plt.cm.viridis(np.linspace(0, 1, len(fp_temps)))
-            
-            # Initialize the resonator-specific IQ and S21 plot
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-            
-            for i_p in range(len(fp_temps)):
-                resonator = self.sweeps[i_p].resonator_data[i_res]
-                
-                # Extract IQ data
-                I = self.sweeps[i_p].data_I[i_res]
-                Q = self.sweeps[i_p].data_Q[i_res]
-                
-                # Perform scraps fit to get resonant properties
+            results = self._fit_single_resonator(i_res)
+
+            f0_data[:, i_res] = results["f0"]
+            q_data[:, i_res] = results["q_tot"]
+            q_i_data[:, i_res] = results["qi"]
+            q_c_data[:, i_res] = results["qc"]
+
+            if plot:
+                figs.append(
+                    self._plot_resonator_sweeps(i_res, results)
+                )
+
+                figs.append(
+                    self._plot_temperature_dependence(
+                        i_res,
+                        f0_data[:, i_res],
+                        q_i_data[:, i_res],
+                        q_c_data[:, i_res],
+                    )
+                )
+        with PdfPages(output_plot_filename) as pdf:
+            for fig in figs:
+                pdf.savefig(fig)
+
+    def _fit_single_resonator(self, i_res):
+        f0_list, qi_list, qc_list, qtot_list = [], [], [], []
+
+        f0_guess = None
+        fit_ires = i_res
+        for i_p, temp in enumerate(self.fp_temps):
+            sweep = self.sweeps[i_p]
+            resonator = sweep.resonator_data[i_res]
+            initial_fit = find_peaks(-sweep.s21[i_res], prominence=0.2)
+            if len(initial_fit[0]) ==0:
+                try:
+                    fit_ires = i_res - 1
+                    print(initial_fit)
+                    resonator = sweep.resonator_data[fit_ires]
+                    pdb.set_trace()
+                except IndexError:
+                    fit_ires = i_res
+                    resonator = sweep.resonator_data[fit_ires]
+
+
+            Q = sweep.data_Q[fit_ires]
+            I = sweep.data_I[fit_ires]
+
+
+
+
+            if i_p == 0:
                 res_obj = get_scraps_fit(
-                    I,
-                    Q,
+                    I, Q,
                     resonator.freq,
                     resonator.tone,
                     resonator.s21,
+                    temp=temp
                 )
+            else:
+                freq_range = resonator.freq[-1] - resonator.freq[0]
 
-                
-                # Extract fitted parameters
-                f0 = res_obj.lmfit_result['default']['result'].params['f0'].value
-                qi = res_obj.lmfit_result['default']['result'].params['qi'].value
-                qc = res_obj.lmfit_result['default']['result'].params['qc'].value
-                
-                resonant_freqs.append(f0)
-                q_tot.append(1/(1/qi + 1/qc))
-                q_c.append(qc)
-                q_i.append(qi)
+                res_obj = get_scraps_fit(
+                    I, Q,
+                    resonator.freq,
+                    resonator.tone,
+                    resonator.s21,
+                    initial_guesses={
+                        "f0": {
+                            "value": f0_guess,
+                            "min": resonator.freq[0],
+                            "max": f0_guess + 0.01 * freq_range,
+                            "vary": True,
+                        }
+                    }
+                )
+            print(res_obj.hasFit)
 
+            params = res_obj.lmfit_result['default']['result'].params
+
+            f0 = params['f0'].value
+            qi = params['qi'].value
+            qc = params['qc'].value
+
+            f0_guess = f0  # tracking
+            print(f0)
+
+            f0_list.append(f0)
+            qi_list.append(qi)
+            qc_list.append(qc)
+            qtot_list.append(1 / (1/qi + 1/qc))
+
+        return {
+            "f0": np.array(f0_list),
+            "qi": np.array(qi_list),
+            "qc": np.array(qc_list),
+            "q_tot": np.array(qtot_list),
+        }
+    
+    def _plot_resonator_sweeps(self, i_res, results):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+        colors = plt.cm.viridis(np.linspace(0, 1, len(self.fp_temps)))
+
+        for i_p, temp in enumerate(self.fp_temps):
+            sweep = self.sweeps[i_p]
+            resonator = sweep.resonator_data[i_res]
+
+            I = sweep.data_I[i_res]
+            Q = sweep.data_Q[i_res]
+            f0 = results["f0"][i_p]
+
+            ax1.plot(resonator.freq, resonator.s21, color=colors[i_p])
+            ax1.axvline(f0, color=colors[i_p], alpha=0.5)
+
+            ax2.plot(I, Q, color=colors[i_p])
+
+        ax1.set(title=f"Resonator {i_res} S21", xlabel="Frequency", ylabel="|S21|")
+        ax2.set(title="IQ Circle", xlabel="I", ylabel="Q")
+        ax2.set_aspect("equal")
+
+        fig.tight_layout()
+        return fig
+    
+    def _plot_temperature_dependence(self, i_res, f0, qi, qc):
+        temps = self.fp_temps
+        df = (f0 - f0[0]) / f0[0]
+
+        params_fres, params_qi = mb_params.MB_fit(f0, qi, temps)
+
+        fig, axes = plt.subplots(3, 1, figsize=(8, 12))
+
+        # df/f
+        axes[0].plot(temps, df, 'o')
+        axes[0].set(xlabel="Temperature (mK)", ylabel="Δf/f0")
+
+        # Qi
+        axes[1].plot(temps, qi, 'o')
+        axes[1].set(xlabel="Temperature", ylabel="Qi")
+
+        # Qc
+        axes[2].plot(temps, qc, 'o')
+        axes[2].set(xlabel="Temperature", ylabel="Qc")
+
+        fig.tight_layout()
+        return fig
+    
+    def process_full_vna_scan_temp_sweep(self,expected_resonances_at_base_temp:np.ndarray, plot: bool = True, ):
+        fp_temps = self.fp_temps[:]
+        figs = []
+
+        # Sort data by temperature
+        sorted_data_ind = np.argsort(fp_temps)
+        self.fp_temps = fp_temps[sorted_data_ind]
+        full_s21 = []
+        full_I = []
+        full_Q = []
+
+
+
+        for i_p, sweep_data in enumerate(self.sweeps):
+            sorted_idx = np.argsort(sweep_data.tone_list + sweep_data.f_center)
+            freq = sweep_data.freq[sorted_idx].flatten()
+            full_I.append(sweep_data.data_I[sorted_idx].flatten())
+            full_Q.append(sweep_data.data_Q[sorted_idx].flatten())
+            full_s21.append(sweep_data.s21[sorted_idx].flatten())
+        resonances = []
+        freq_half_span = 5e6
+        sorted_sweeps = [self.sweeps[i] for i in sorted_data_ind]
+
+        for res_freq in expected_resonances_at_base_temp:
+            pdb.set_trace()
+            fig, ax = plt.subplots(figsize=(8, 5))
+            plotted = False
+
+            for i_p, sweep_data in enumerate(sorted_sweeps):
+                sweep_data.plot_full_trace()
+                s21 = full_s21[i_p]
+                mask = np.where((res_freq-freq_half_span < freq) & (freq < freq_half_span+res_freq))
+                if not np.any(mask):
+                    continue
                 
-                baseline = np.median(resonator.s21)
-                depth = baseline - np.min(resonator.s21)
-                
-                depth_data[i_res] = depth
+                plotted = True
+                ax.plot(freq[mask], s21[mask], label=f'{self.fp_temps[i_p]:.1f} mK')
+
+
+
+                ax.set_title(f'Resonance around {res_freq * 1e-6:.6f} MHz')
+                ax.set_xlabel('Frequency (Hz)')
+                ax.set_ylabel('|S21| (dB)')
+                ax.legend()
+                ax.grid(True)
+                fig.tight_layout()
                 if plot:
-                    # Plot S21 Magnitude
-                    ax1.plot(resonator.freq, resonator.s21, label=f'fp_temp: {fp_temps[i_p]:.1f} mK', color=colors[i_p])
-                    ax1.axvline(x=f0, color=colors[i_p], alpha=0.5)
+                    figs.append(fig)
+            plt.show()
 
-                    # Plot IQ Circle
-                    ax2.plot(I, Q, label=f'fp_temps {fp_temps[i_p]:.1f} mK', color=colors[i_p])
-        
-            
-
-            if plot:
-                ax1.set_xlabel('Frequency (Hz)')
-                ax1.set_ylabel('|S21| (dB)')
-                ax1.set_title(f'Resonator {i_res} S21')
-                
-                ax2.set_xlabel('I')
-                ax2.set_ylabel('Q')
-                ax2.set_title('IQ Circle')
-                ax2.set_aspect('equal')
-                plt.tight_layout()
-                
-            f0_data[:, i_res] = resonant_freqs
-            q_data[:, i_res] = q_tot
-            q_i_data[:, i_res] = q_i
-            q_c_data[:, i_res] = q_c
-            
-            # Calculate fractional frequency shift (df/f0)
-            this_fp_temps = fp_temps.copy()
-            this_dfres = (f0_data[:, i_res] - f0_data[0, i_res]) / (f0_data[0, i_res])
-
-            figs.append(fig)
-            
-            if plot:
-                params_fres, params_Qi = mb_params.MB_fit(f0_data[:, i_res], q_i_data[:, i_res], this_fp_temps)
-
-                alpha_fres = params_fres['alpha'].value
-                Delta_fres = params_fres['Delta'].value
-
-                # Create a single figure with three subplots
-                fig_temp, (ax_temp, ax_qi, ax_qc) = plt.subplots(3, 1, figsize=(8, 12))
-
-                # T vs dfres plot
-                ax_temp.plot(this_fp_temps, this_dfres, 'o', label='dfres')
-                ax_temp.set_xlabel('Temperature (mK)')
-                ax_temp.set_ylabel(r'$\Delta f / f_0$')
-                ax_temp.legend()
-                ax_temp.text(0.05, 0.95, f'α={alpha_fres:.2e}, Δ={Delta_fres:.2e}', transform=ax_temp.transAxes, fontsize=10, verticalalignment='top')
-
-                alpha_Qi = params_Qi['alpha'].value
-                Delta_Qi = params_Qi['Delta'].value
-                # T vs q_i plot
-                ax_qi.plot(this_fp_temps, q_i_data[:, i_res], 'o', label='q_i')
-                ax_qi.set_xlabel('Temperature (mK)')
-                ax_qi.set_ylabel('q_i')
-                ax_qi.legend()
-                ax_qi.text(0.05, 0.95, f'α={alpha_Qi:.2e}, Δ={Delta_Qi:.2e}', transform=ax_qi.transAxes, fontsize=10, verticalalignment='top')
-
-                # T vs q_c plot
-                ax_qc.plot(this_fp_temps, q_c_data[:, i_res], 'o', label='q_c')
-                ax_qc.set_xlabel('Temperature (mK)')
-                ax_qc.set_ylabel('q_c')
-                ax_qc.legend()
-                ax_qc.set_title(f'Temperature vs q_c)')
-
-                # Adjust layout and add the figure to the list
-                fig_temp.tight_layout()
-                figs.append(fig_temp)
+            resonances.append(res_freq)
 
 
-        self.max_readout_power = power_level_non_linear
-        
-        # Save all generated figures to PDF
-        with PdfPages('Temp_sweep.pdf') as pdf:
-            for fig in figs:
-                pdf.savefig(fig)
+        return resonances
 if __name__ == '__main__':
     import pdb
 
@@ -1656,9 +1777,15 @@ if __name__ == '__main__':
     # sweeps = [LoSweepData.from_h5(filename) for filename in lo_sweep_files]
     # sweep_data = PowerSweepData(sweeps[0].tone_list, sweeps[0].f_center, sweeps, np.array([-3, 0, 3, 6, 9]), 17, 13)
 
-    sweep_data = TempSweepData.from_h5('/data/20260416/20260416_Be231102p2_100_tones_Power_Sweep_hour14p6231.h5')
-    sweep_data.fit()
-    sweep_data.process_temperature_sweep()
+    sweep_data = TempSweepData.from_h5('/data/20260422/20260422_Be260114TR_1000_tones_1420LO_260303_Power_Sweep_hour9p7750.h5')
+    #sweep_data.fit()
+    Be260114Tr_tones_3 = np.array([1180667000, 1189129500, 1190174500,
+    1221847000, 1232217000, 1246642000, 1254937000, 1266664500,1268920000, 1296274500, 1321964500,
+    1322962000, 1340739500, 1379649500, 1395659500, 1398229500, 1427789500,
+    1452124500, 1463652000, 1511963252, 1529370290, 1534427740, 1561959479,
+    1570283199,1577083000, 1657808451])
+    sweep_data.process_full_vna_scan_temp_sweep(expected_resonances_at_base_temp = Be260114Tr_tones_3)
+    #sweep_data.process_temperature_sweep()
     #sweep_data.saveh5('/data/20260318/20260318_Be231102p2_100_tones_Power_Sweep_hour16p7561.h5')
 
 

@@ -300,8 +300,8 @@ if __name__ == '__main__':
     import pdb
     import matplotlib.pyplot as plt
     # Lab Testing
-    date = '20260413'
-    setnums = np.array([ 1002])
+    date = '20260414'
+    setnums = np.array([ 1009])
     #High Quality Dataset, miniC = [2.5, 0] No 30dB Warm Amp
     #date = '20260212'
     #setnums = np.array([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011])
@@ -377,4 +377,3 @@ if __name__ == '__main__':
     plot_psd(freq, psd_avg, f'noise_freq_dis_{date}_set{setnums[-1]}.pdf',f0 = probe_freq[0],adc_units_to_hz =  adc_units_to_hz[0], basis=PsdBasis.FREQ_DISS, resonators = chanmask[0,:]==1, csd = None)
     
 
-    

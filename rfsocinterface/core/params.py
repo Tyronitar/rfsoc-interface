@@ -263,16 +263,20 @@ if __name__ == "__main__":
         # Add 58 more tones
     target_n_tones = 100
     new_tones = Be260114Tr_tones_3.copy()
-    while len(new_tones) < target_n_tones:
+    space_covered = False
+    while not space_covered:
         sorted_tones = np.sort(new_tones)
         gaps = np.diff(sorted_tones)
         max_gap_idx = np.argmax(gaps)
+        print(gaps[max_gap_idx])
+        if gaps[max_gap_idx]<5e6:
+            space_covered = True
         
         # Add a tone in the middle of the largest gap
         new_tone = (sorted_tones[max_gap_idx] + sorted_tones[max_gap_idx + 1]) / 2
         new_tones = np.append(new_tones, new_tone)
     new_tones = np.sort(new_tones)
-
+    print(len(new_tones))
     original_tone_indices = [i for i, t in enumerate(new_tones) if t in Be260114Tr_tones_3]
     print(f"Original tones not in new list: {original_tone_indices}")
     baseband_freqs = np.array(new_tones) - LO_freq
