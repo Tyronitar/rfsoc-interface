@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 
 _logger = logging.getLogger(__name__)
+_camera_logger = logging.getLogger('rfsocinterface.cameraControl')
 
 enum_choices = ['hello', 'world']
 
@@ -289,6 +290,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
     def append_video_frame(self):
         with self.video_file_lock:
             if self.video_file is not None:
+                t0 = time.time()
                 n_frames = self.video_file['optical_video'].shape[-1]
                 image, timestamp = self.get_current_image()
                 # self._video_frames.append(image)
@@ -297,6 +299,8 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
                 self.video_file['timestamp'].resize(n_frames + 1, axis=0)
                 self.video_file['timestamp'][-1] = timestamp
                 self.video_file['optical_video'][:, :, :, -1] = image
+                t1 = time.time()
+                _camera_logger.debug(f'Wrote frame to optcam file in {t1 - t0:.3f} seconds')
     
     def run(self):
         # Update the current save file

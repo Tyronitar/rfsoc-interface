@@ -415,10 +415,13 @@ class CameraController:
                     cv_images = np.flip(np.flip(cv_images, 1), 2)
 
                     # Send timestamp and image to the main process
+                    t0 = time.time()
                     with self.camera_lock:
                         with self.timestamp_lock:
                             self.camera_array[:] = cv_images[0]
                             self.timestamp_array[:] = time.time()
+                    t1 = time.time()
+                    _camera_logger.debug(f'Wrote to shared arrays in {t1 - t0:.3f} seconds')
                     if self.connection is None:
                         self.im.set_array(cv_images[0])
                         self.figure.canvas.draw()
