@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtWidgets import QWidget, QMainWindow, QApplication, QAbstractButton, QDialog, QVBoxLayout
-from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread, QTimer, QMutexLocker
+from PySide6.QtWidgets import QWidget, QMainWindow, QApplication, QAbstractButton, QDialog, QVBoxLayout, QCheckBox
+from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread, QTimer, QMutexLocker, QCoreApplication
 import serial.tools
 from rfsocinterface.core.telescope import ZE_OUT_CHANNEL
 from rfsocinterface.core.telescope import AZ_OUT_CHANNEL
@@ -57,6 +57,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.az_jog_voltage = 5  # Degrees / second
 
         # Control Connections
+        self.enable_motion_checkBox.toggled.connect(self.toggle_motion_enabled)
         self.stop_pushButton.clicked.connect(self.stop_motion)
         self.azimuth_setpushButton.clicked.connect(self.set_az_pos)
         self.zenith_setpushButton.clicked.connect(self.set_ze_pos)
@@ -69,16 +70,15 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.connect_to_telescope_command('az_pos_comm', self.update_az_cmd)
         self.connect_to_telescope_command('ze_pos_comm', self.update_ze_cmd)
 
+        # Set up Optical Camera
         self.live_footage_fig, self.live_footage_ax = plt.subplots()
         self.live_footage_im = self.live_footage_ax.imshow(np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)))
+        self.live_footage_fig.tight_layout()
         self.live_footage_canvas.set_figure(self.live_footage_fig)
         self.live_footage_ax.set_axis_off()
-        self.connect_to_camera_command('image', self.update_live_footage)
-
-
-        # Set up Optical Camera
-        self.optical_pushButton.clicked.connect(self.take_pic)
-
+        self.live_footage_thread = None
+        self.optical_pushButton.clicked.connect(self.toggle_live_footage)
+        self.frame_rate = 5 # FPS
 
         # Initialize the numbers in the GUI
         self.az_pos = self.last_az = 0
@@ -98,7 +98,20 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_ui_telescope)
         self.timer.start(500)
+    
+    def toggle_controls_enabled(self, enabled: bool):
+        self.azimuth_setlineEdit.setEnabled(enabled)
+        self.zenith_setlineEdit.setEnabled(enabled)
+        self.azimuth_setpushButton.setEnabled(enabled)
+        self.zenith_setpushButton.setEnabled(enabled)
+        self.controller.setEnabled(enabled)
 
+    @Slot
+    def toggle_motion_enabled(self):
+        if self.enable_motion_checkBox.isChecked():
+            self.toggle_controls_enabled(True)
+        else:
+            self.toggle_controls_enabled(False)
 
     def stop_motion(self):
         self.send_telescope_command('stop_telescope')
@@ -208,8 +221,28 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     #
     # Camera Handlers
     #
+    def optical_camera_loop(self):
+        while self.optical_pushButton.isChecked():
+            self.update_live_footage()
+            time.sleep(1 / self.frame_rate)
+
+    @Slot
+    def toggle_live_footage(self):
+        if self.optical_pushButton.isChecked():
+            # Start showing live footage
+            self.live_footage_thread = Thread(target=(self.optical_camera_loop))
+            self.live_footage_thread.start()
+            self.optical_pushButton.setText('Hide Optical Video')
+        else:
+            # Stop showing live footage
+            while self.live_footage_thread.is_alive():
+                self.live_footage_thread.join(0)
+                QCoreApplication.processEvents()
+                time.sleep(5e-3)
+            self.optical_pushButton.setText('Show Optical Video')
+
     def update_live_footage(self):
-        if self.is_active_tab:
+        if self.is_active_tab:  # Only update the canvas if the tab is in focus
             image, _ = self.get_current_image()
             self.live_footage_im.set_array(image)
             self.live_footage_canvas.canvas.draw()
