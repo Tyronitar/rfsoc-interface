@@ -28,7 +28,7 @@ from rfsocinterface.core.utils import (
 _logger = logging.getLogger(__name__)
 
 OPTCAM_PIX_SIZE_DEGREES = 0.0104
-OPTCAM_OFFSET_AZ_PIX = 57 + int(0.18 / OPTCAM_PIX_SIZE_DEGREES)
+OPTCAM_OFFSET_AZ_PIX = 74
 OPTCAM_OFFSET_ZA_PIX = 49
 DEFAULT_MAP_DPIX = 0.03
 OPTCAM_HEIGHT_PIXELS = 1944
