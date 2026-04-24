@@ -103,7 +103,7 @@ class TelescopeMainWidget(MainWidget):
 
     def wait_for_telescope_command(self, command: str, err_msg: str=''):
         wait = True
-        def stop_waiting(data: tuple):
+        def stop_waiting(*data):
             nonlocal wait
             wait = False
             self._telescope_command_data = data
@@ -115,7 +115,7 @@ class TelescopeMainWidget(MainWidget):
     
     def wait_for_camera_command(self, command: str, err_msg: str=''):
         wait = True
-        def stop_waiting(data: tuple):
+        def stop_waiting(*data):
             nonlocal wait
             wait = False
             self._camera_command_data = data

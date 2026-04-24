@@ -113,10 +113,10 @@ def try_put_frame(q: queue.Queue, cam: Camera, frame: Optional[Frame]):
 
 class VideoFileWriter(threading.Thread):
     def __init__(self, frame_file: str, timestamp_file: str, frame_queue: Queue):
+        threading.Thread.__init__(self)
         self.frame_file = frame_file
         self.timestamp_file = timestamp_file
         self.queue = frame_queue
-        self.killswitch = threading.Event()
 
         cmd = [
             'ffmpeg',
@@ -125,12 +125,14 @@ class VideoFileWriter(threading.Thread):
             '-vcodec', 'rawvideo',
             '-pix_fmt', 'rgb24',
             '-s', f'{MAX_FRAME_WIDTH}x{MAX_FRAME_HEIGHT}',
+            '-loglevel', 'fatal',
             '-i', '-',  # Read from stdin
             '-an',
             str(frame_file),
         ]
 
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+        _camera_logger.debug('VideoFileWriter: Succesfully opened ffmpeg subprocess.')
 
     def run(self):
         _camera_logger.debug('VideoFileWriter: Started writing to file.')
@@ -144,7 +146,9 @@ class VideoFileWriter(threading.Thread):
             frame, timestamp = obj
             self.proc.stdin.write(frame.tobytes())
             n_frames = timestamp_dataset.size
-            timestamp_dataset.resize(n_frames + 1)
+            if n_frames % 10 == 0:
+                _camera_logger.debug(f'VideoFileWriter: {n_frames} frames written...')
+            timestamp_dataset.resize(n_frames + 1, axis=0)
             timestamp_dataset[-1] = timestamp
     
         timestamp_file.close()
@@ -323,6 +327,13 @@ class CameraController:
 
         self._consumer_loop()
 
+        # Stop recording if still doing that
+        if self._recording:
+            self._recording = False
+            self._write_queue.put(None)
+            self._writer_thread.join()
+            self.send('recording_stopped')
+
         self.vmb.unregister_camera_change_handler(self)
 
         # Stop all FrameProducer threads
@@ -334,6 +345,7 @@ class CameraController:
             # Wait for shutdown to complete
             for producer in self.producers.values():
                 producer.join()
+        
 
         _logger.debug('All camera FrameProducer threads joined.')
         self.send('done')
@@ -391,7 +403,7 @@ class CameraController:
 
         _camera_logger.debug('Camera consumer loop started.')
 
-        interval = 0.1
+        interval = 0.2
 
         try:
             while self.alive:
@@ -404,12 +416,14 @@ class CameraController:
                             video_file, timestamp_file = args
                             self._writer_thread = VideoFileWriter(video_file, timestamp_file, self._write_queue)
                             self._recording = True
+                            interval = 0.05  # faster frame rate when recording
                             self._writer_thread.start()
                             self.send('recording_started')
                         case 'stop_recording':
                             if self._recording:
                                 self._write_queue.put(None)
                                 self._recording = False
+                                interval = 0.2
                                 self._joining_writer_thread = True
                         case 'set_feature':
                             if len(args) == 2:
@@ -484,15 +498,16 @@ class CameraController:
                     # Write the frame to file if recording
                     if self._recording:
                         self._write_queue.put_nowait((cv_images[0], timestamp))
+                    else:
+                        with self.camera_lock:
+                            with self.timestamp_lock:
+                                self.camera_array[:] = cv_images[0]
+                                self.timestamp_array[:] = timestamp
 
                     # Send timestamp and image to the main process
-                    t0 = time.time()
-                    with self.camera_lock:
-                        with self.timestamp_lock:
-                            self.camera_array[:] = cv_images[0]
-                            self.timestamp_array[:] = timestamp
-                    t1 = time.time()
-                    _camera_logger.debug(f'Wrote to shared arrays in {t1 - t0:.3f} seconds')
+                    # t0 = time.time()
+                    # t1 = time.time()
+                    # _camera_logger.debug(f'Wrote to shared arrays in {t1 - t0:.3f} seconds')
                     if self.connection is None:
                         self.im.set_array(cv_images[0])
                         self.figure.canvas.draw()
