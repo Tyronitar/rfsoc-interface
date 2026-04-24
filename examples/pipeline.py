@@ -5,25 +5,16 @@ from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis
 from rfsocinterface.core.data import *
 from rfsocinterface.analysis import *
 import pdb
+import matplotlib.pyplot as plt
 
 
 if __name__ == '__main__':
     logging.config.fileConfig('rfsocinterface/logging.conf')
     _logger = logging.getLogger('rfsocinterface')
     _logger.handlers[0].setLevel(logging.INFO)
-    # date = '20260319'
-    # setnum = 1023
-    # date = '20260309'
-    # setnum = 1010
-    date = '20260420'
-    setnum = 1019
-    # date = '20260325'
-    # setnum = 1002
-    # date = '20260223'
-    # setnum = 1010  # 1009 - 1015
 
     lp_filter_freq = 15
-    hp_filter_freq = 0.1
+    hp_filter_freq = 0.25
     noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
     ds_factor = 6
 
@@ -57,7 +48,7 @@ if __name__ == '__main__':
         # za_trim=0,
         # dpix=0.03,
     )
-    plotter = PlotMap(show=True)
+    plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
     make_video = MakeVideo(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
@@ -75,18 +66,42 @@ if __name__ == '__main__':
         # noise_removal,
         # compute_psd,
         # psd_plotter,
-        hp_filter,
-        lp_filter,
+        # hp_filter,
+        # lp_filter,
         # clean_tod,
         make_video,
         # bin_tod_to_map,
         # plotter,
         # find_fwhm,
     ])
+
+    # date = '20260319'
+    # setnum = 1023
+    # date = '20260309'
+    # setnum = 1010
+    date = '20260424'
+    setnum = 1014
+    # date = '20260325'
+    # setnum = 1002
+    # date = '20260223'
+    # setnum = 1010  # 1009 - 1015
+
+
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=False)
-    pdata = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum, mode='a')
+    # pdata = pipeline.from_consolidated_data(date, setnum)
+    pdata = ProcessedData.load(date, setnum, mode='a')
+    pipeline.run(pdata)
+
+    # pdata = ProcessedData.load(date, 1008, mode='a')
     # pipeline.run(pdata)
+
+    # pdata = ProcessedData.load(date, 1009, mode='a')
+    # pipeline.run(pdata)
+
+    # plt.show()
+
+
+
     # freq = pdata['psd/freq_diss/freq'][:]
     # psd = pdata['psd/freq_diss/psd'][:]
     # # convert to dBc/Hz

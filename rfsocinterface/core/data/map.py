@@ -8,6 +8,7 @@ import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import av
 from matplotlib.figure import Figure
 from scipy import signal
 from scipy.spatial.distance import cdist
@@ -459,6 +460,7 @@ class PlotMap(DataRoutine):
             save_plot: bool=True,
             savefile: Path=None,
             show: bool=False,
+            keep_figure_open: bool=False,
             overwrite: bool=True,
     ):
         """Initialize the PlotMap routine.
@@ -490,6 +492,7 @@ class PlotMap(DataRoutine):
             save_plot=save_plot,
             savefile=savefile,
             show=show,
+            keep_figure_open=keep_figure_open,
             overwrite=overwrite,
         )
 
@@ -732,7 +735,8 @@ class PlotMap(DataRoutine):
         if self.params['show']:
             plt.show()
 
-        plt.close(fig)
+        if not self.params['keep_figure_open']:
+            plt.close(fig)
 
 
 @ensure_path('savefile')
@@ -969,6 +973,21 @@ class MakeVideo(DataRoutine):
             scaled_optical_image = get_scaled_optical_image(dpix, pdata.optical_image[:], map_az, map_za)
             optical_image_shape = scaled_optical_image.shape
 
+        if 'optical_video_file' in pdata['global_data'].attrs:
+            container = av.open(pdata['global_data'].attrs['optical_video_file'])
+            video = container.streams.video[0]
+            n_frames = video.frames
+            shape = (video.height, video.width, 3, n_frames)
+            full_optical_video = np.zeros(shape, dtype=np.uint8)
+            _logger.info(f'{self.name}: Reading optical video from mp4 file...')
+            for i_frame, frame in enumerate(container.decode(video=0)):
+                full_optical_video[..., i_frame] = frame.to_ndarray(format='rgb24')
+            _logger.info(f'{self.name}: Finished reading optical video.')
+            scaled_optical_image = get_scaled_optical_image(dpix, full_optical_video[..., 0], map_az, map_za)
+            optical_image_shape = scaled_optical_image.shape
+        elif 'optical_video' in pdata['global_data']:
+            full_optical_video = pdata['global_data/optical_video']
+
         self._initialize_map_arrays(pdata, n_blocks, n_maps, n_pix_x, n_pix_y, optical_image_shape, dpix, block_size_s)
         pdata['video/map_az'][:] = map_az
         pdata['video/map_za'][:] = map_za
@@ -1088,9 +1107,9 @@ class MakeVideo(DataRoutine):
         _logger.info(f'{self.name}: Done creating maps.')
 
         # Optical Video processing
-        if pdata.has('global_data/optical_video', exact_match=True):
+        if pdata.has('global_data/optical_video_timestamp', exact_match=True):
+            _logger.info(f'{self.name}: Synchronizing mm and optical videos...')
             optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
-            full_optical_video = pdata['global_data/optical_video']
             full_scaled_video = get_scaled_optical_image(dpix, full_optical_video, map_az, map_za)
             video_timestamp = np.zeros(n_blocks)
             for i_block, block_end in enumerate(blocks[1:]):

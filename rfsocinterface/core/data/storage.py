@@ -773,6 +773,7 @@ class ConsolidatedData(NewDataStorage):
                 # Only 'timestamp' exists (i.e. video was saved in a seperate file)
                 global_data_group.attrs['optical_video_file'] = optcam_file.attrs['video_file']
                 global_data_group.create_dataset('optical_video_timestamp', data=optcam_file['timestamp'])
+                global_data_group.create_dataset('optical_image', data=np.array([]))
             optcam_file.close()
         else:
             global_data_group.create_dataset('optical_image', data=np.array([]))
