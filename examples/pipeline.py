@@ -15,17 +15,17 @@ if __name__ == '__main__':
     # setnum = 1023
     # date = '20260309'
     # setnum = 1010
-    # date = '20260420'
-    # setnum = 1024
+    date = '20260420'
+    setnum = 1019
     # date = '20260325'
     # setnum = 1002
-    date = '20260223'
-    setnum = 1010  # 1009 - 1015
+    # date = '20260223'
+    # setnum = 1010  # 1009 - 1015
 
     lp_filter_freq = 15
-    hp_filter_freq= 0.1
+    hp_filter_freq = 0.1
     noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
-    ds_factor = 10
+    ds_factor = 6
 
     find_fwhm = FindFWHM(
         'za',
@@ -76,14 +76,15 @@ if __name__ == '__main__':
         # compute_psd,
         # psd_plotter,
         hp_filter,
-        # lp_filter,
+        lp_filter,
         # clean_tod,
-        # make_video,
+        make_video,
         # bin_tod_to_map,
         # plotter,
-        find_fwhm,
+        # find_fwhm,
     ])
-    pdata = pipeline.from_tod(date, setnum, ds_factor)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=False)
+    pdata = pipeline.from_consolidated_data(date, setnum)
     # pdata = ProcessedData.load(date, setnum, mode='a')
     # pipeline.run(pdata)
     # freq = pdata['psd/freq_diss/freq'][:]

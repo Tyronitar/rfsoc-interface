@@ -25,6 +25,7 @@ from rfsocinterface.core.data.utils import (
     generate_calibrated_data,
     get_channel_group_name,
     get_detector_positions,
+    get_detector_positions_no_interp,
     get_step_group_name,
     interpolate_missing_data,
     interpolate_timestamp_streaming,
@@ -636,6 +637,7 @@ class ConsolidatedData(NewDataStorage):
         setnum: int,
         data_dir: PathLike=DEFAULT_DATA_DIRECTORY,
         downsampling_factor: int=1,
+        use_pps: bool=True,
     ) -> ConsolidatedData:
 
         todtemplate = get_tod_template(date, setnum)
@@ -716,6 +718,11 @@ class ConsolidatedData(NewDataStorage):
             except:
                 za_tel = azel_file['el_tel']
             timestamp_tel = azel_file['timestamp_tel']
+            if 'az_pps' in azel_file:
+                az_pps_tel = azel_file['az_pps']
+                za_pps_tel = azel_file['za_pps']
+            else:
+                az_pps_tel = za_pps_tel = None
             # vis = azel_tfile.root.optical_visibility[0]
             vis = np.nan
             if isinstance(vis, bytes):
@@ -935,7 +942,7 @@ class ConsolidatedData(NewDataStorage):
                 pkt_idx = np.arange(n_samples)
                 for sample, n_missed in this_missed_packets:
                     pkt_idx[sample:] += n_missed
-            valid_tone_index = np.arange(n_tones, dtype=int) + 8
+            valid_tone_index = np.arange(n_tones, dtype=int) + 0
 
             # Interpolate missing IQ data
             if this_n_missed > 0:
@@ -963,18 +970,46 @@ class ConsolidatedData(NewDataStorage):
 
             # Detector Positions
             if azel_exists:
-                _logger.info('ConsolidatedDaata: Computing detector positions...')
-                get_detector_positions(
-                    temp_timestamp,
-                    timestamp_tel[:],
-                    az_tel[:],
-                    za_tel[:],
-                    temp_detector_az,
-                    temp_detector_za,
-                    tones_table['delta_x'][:],
-                    tones_table['delta_y'][:],
-                    this_channel_group.attrs['detector_dx_dy_elevation_angle'],
-                )
+                if use_pps and raw_data.pps is not None and az_pps_tel is not None and za_pps_tel is not None:
+                    _logger.info('ConsolidatedDaata: Computing detector positions with PPS...')
+                    corrected_az_tel = interpolate_telescope_position(
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        az_tel[:],
+                        az_pps_tel[:],
+                        raw_data.pps[:],
+                        direction='az',
+                    )
+                    corrected_za_tel = interpolate_telescope_position(
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        za_tel[:],
+                        za_pps_tel[:],
+                        raw_data.pps[:],
+                        direction='za',
+                    )
+                    get_detector_positions_no_interp(
+                        corrected_az_tel,
+                        corrected_za_tel,
+                        temp_detector_az,
+                        temp_detector_za,
+                        tones_table['delta_x'][:],
+                        tones_table['delta_y'][:],
+                        this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                    )
+                else:
+                    _logger.info('ConsolidatedData: Computing detector positions...')
+                    get_detector_positions(
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        az_tel[:],
+                        za_tel[:],
+                        temp_detector_az,
+                        temp_detector_za,
+                        tones_table['delta_x'][:],
+                        tones_table['delta_y'][:],
+                        this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                    )
 
             # Downsample timestamp and IQ data
             _logger.info('ConsolidatedData: Downsampling IQ data...')

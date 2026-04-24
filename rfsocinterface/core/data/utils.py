@@ -392,6 +392,47 @@ def interpolate_missing_data(
         output_dset[..., this_interpolated_indices] = new_data
 
 
+def get_detector_positions_no_interp(
+    az_tel: npt.NDArray,
+    za_tel: npt.NDArray,
+    output_detector_az: h5py.Dataset,
+    output_detector_za: h5py.Dataset,
+    dx: npt.NDArray,
+    dy: npt.NDArray,
+    elevation_angle: float
+) -> npt.NDArray:
+    chunk_size = output_detector_az.chunks[-1]
+    n_samples = az_tel.size
+
+    for start in range(0, n_samples, chunk_size):
+
+        stop = min(start + chunk_size, n_samples)
+
+        # telescope interpolation
+        az = az_tel[start:stop]
+        za = za_tel[start:stop]
+
+
+        # rotation angle
+        ang = np.deg2rad(elevation_angle - za)
+
+        cos_ang = np.cos(ang)
+        sin_ang = np.sin(ang)
+
+        output_detector_az[:, start:stop] = (
+            np.outer(dx[:], cos_ang)
+            - np.outer(dy[:], sin_ang)
+            + az
+        )
+        output_detector_za[:, start:stop] = (
+            np.outer(dy[:], cos_ang)
+            + np.outer(dx[:], sin_ang)
+            + za
+        )
+
+
+
+
 # TODO: Update this to the new data processing scheme
 def get_detector_positions(
     timestamp: h5py.Dataset,
@@ -490,7 +531,6 @@ def interpolate_telescope_position(
         pps_samples_tel[i] = argclosest(interpolated_tel_pos[sample-search_radius:sample+search_radius+1], pps_tel_pos[i]) + sample - search_radius
 
 
-    pdb.set_trace()
     # The first pps pulse that was receied in both the raw data and the telescope data 
     start_idx = argclosest(pps_samples_data, pps_samples_tel[0])
 
@@ -513,7 +553,6 @@ def interpolate_telescope_position(
     # the RFSoC, so we shift to the left. If it's negative, the telescope data is ahead 
     # of the RFSoC, so we shift to the right. Hence the negative sign. 
     fixed_positions = np.roll(interpolated_tel_pos, -median_offset)
-    pdb.set_trace()
     
     # Fill the array with nans where we shifted away from
     if median_offset < 0:
