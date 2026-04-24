@@ -126,7 +126,7 @@ def update_params_file(
     chanmask_isolated: npt.NDArray=None,
     tone_powers: npt.NDArray=None,
 ):
-    if Path(target).exists:
+    if Path(target).exists():
         # the first argument was the path to the file
         params_tile_file = Path(target)
     else:
@@ -168,12 +168,13 @@ def update_params_file(
 @ensure_path(0)
 def add_off_resonance_tones(
     params_file: Path,
+    new_tile_name: str,
     n_offres: int,
     f_min: float,
     f_max: float,
     q: float=1/1000.,
     delta_offres_min: float=1e6,
-    collision_threshold: float=1/2000,
+    collision_threshold: float=1/5000,
 ):
     """Add off-resonance tones to an existing params file. 
     
@@ -192,7 +193,7 @@ def add_off_resonance_tones(
         collision_threshold (float): Maximum fractional separation between collided 
             resonances. Defaults to 1/2000.
     """
-    with h5py.File(params_file, 'a') as params_file:
+    with h5py.File(params_file, 'r') as params_file:
         baseband_freqs = params_file['baseband_freqs'][:]
         chanmask = params_file['chanmask'][:]
         if 'lo_freq' not in params_file.attrs:
@@ -207,11 +208,12 @@ def add_off_resonance_tones(
         dfoverf_per_mK = params_file['dfoverf_per_mK'][:]
 
     # Find collided resonances
-    shift1 = np.abs(baseband_freqs - np.roll(baseband_freqs, 1))
-    shift2 = np.abs(np.roll(baseband_freqs, -1) - baseband_freqs)
-    nearest_res = np.abs(np.minimum(shift1, shift2) / baseband_freqs)
-    collided_ind = np.argwhere(nearest_res < collision_threshold)
-    chanmask[collided_ind] = -1
+    # shift1 = np.abs(baseband_freqs - np.roll(baseband_freqs, 1))
+    # shift2 = np.abs(np.roll(baseband_freqs, -1) - baseband_freqs)
+    # nearest_res = np.abs(np.minimum(shift1, shift2) / (baseband_freqs + lo_freq))
+    # collided_ind = np.argwhere(nearest_res < collision_threshold)
+    # chanmask[collided_ind] = -1
+    collided_ind = []
 
     offres_tones = []
     tones_left = n_offres
@@ -267,13 +269,12 @@ def add_off_resonance_tones(
     tones_added = len(offres_tones)
     all_tones = np.concatenate((baseband_freqs, offres_tones))
     sorted_ind = np.argsort(all_tones)
+    collided_ind = np.isin(sorted_ind, collided_ind).nonzero()[0]
 
     new_baseband_freqs = all_tones[sorted_ind]
     new_chanmask = np.concatenate((chanmask, np.zeros(tones_added, dtype=np.int8)))[sorted_ind]
 
-
-
-    new_tone_powers = np.concatenate((tone_powers, np.ones(tones_added, dtype=np.float32)))[sorted_ind]
+    new_tone_powers = np.concatenate((tone_powers, np.zeros(tones_added, dtype=np.float32)))[sorted_ind]
     new_detdx = np.concatenate((detdx, np.zeros(tones_added, dtype=np.float32)))[sorted_ind]
     new_detdy = np.concatenate((detdy, np.zeros(tones_added, dtype=np.float32)))[sorted_ind]
     new_det_beam_ampl = np.concatenate((det_beam_ampl, np.ones(tones_added, dtype=np.float32)))[sorted_ind]
@@ -286,7 +287,7 @@ def add_off_resonance_tones(
     plt.stem(new_baseband_freqs[onres_ind], new_tone_powers[onres_ind], linefmt='b', markerfmt='none', basefmt='none',label='On-resonance tones')
     if tones_added > 0:
         offres_ind = np.argwhere(new_chanmask == 0).flatten()
-        plt.stem(new_baseband_freqs[offres_ind], new_tone_powers[offres_ind], linefmt='orange', markerfmt='none', basefmt='none', label='Off-resonance tones')
+        plt.stem(new_baseband_freqs[offres_ind], new_tone_powers[offres_ind] + 1, linefmt='orange', markerfmt='none', basefmt='none', label='Off-resonance tones')
     if collided_ind.size > 0:
         plt.stem(new_baseband_freqs[collided_ind], new_tone_powers[collided_ind], linefmt='r', markerfmt='none', basefmt='none',label='Collided Resonances')
     plt.axvline(f_min - lo_freq, color='black', linestyle='--')
@@ -300,10 +301,13 @@ def add_off_resonance_tones(
 
     pdb.set_trace()
 
+    initialize_params_file(
+        new_tile_name,
+        new_baseband_freqs,
+        lo_freq,
+    )
     update_params_file(
-        params_file.name,
-        params_dir=params_file.parent,
-        baseband_freqs=new_baseband_freqs,
+        new_tile_name,
         chanmask=new_chanmask,
         tone_powers=new_tone_powers,
         detector_delta_x=new_detdx,
@@ -392,19 +396,22 @@ if __name__ == "__main__":
     #     375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
     #     393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
 
-    params_file = 'params_tile_Device_aSi1_Channel2_telescope_275mK_20260420.h5'
+    params_file = '/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260325.h5'
+    new_tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260325_with_offres'
     # with h5py.File(params_file, 'a') as params_fh:
     #     # params_fh.attrs['lo_freq'] = params_fh['lo_freq'][()]
     #     # del params_fh['lo_freq']
     #     params_fh['baseband_freqs'][:] = np.sort(params_fh['baseband_freqs'][:])
     add_off_resonance_tones(
         params_file,
+        new_tile_name,
         100,
         200e6,
         600e6,
         # q=1/100,
         # delta_offres_min=1e7,
     )
+    exit()
 
     # Be231102p2_LO_freq = 300e6
     # lo_freq = 4e8
