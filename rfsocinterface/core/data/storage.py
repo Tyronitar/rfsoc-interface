@@ -935,7 +935,7 @@ class ConsolidatedData(NewDataStorage):
                 pkt_idx = np.arange(n_samples)
                 for sample, n_missed in this_missed_packets:
                     pkt_idx[sample:] += n_missed
-            valid_tone_index = np.arange(n_tones, dtype=int) + 0
+            valid_tone_index = np.arange(n_tones, dtype=int) + 8
 
             # Interpolate missing IQ data
             if this_n_missed > 0:

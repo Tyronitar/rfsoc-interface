@@ -7,9 +7,13 @@ from rfsocinterface.analysis.psd import (
     plot_psd_df_over_f,
     plot_psd_dbc_hz,
 )
+from rfsocinterface.analysis.peak import (
+    FindFWHM,
+)
 
 __all__ = [
     'ComputeNoisePSD',
+    'FindFWHM',
     'PlotPSD',
     'PsdBasis',
     'plot_psd_dbc_hz',

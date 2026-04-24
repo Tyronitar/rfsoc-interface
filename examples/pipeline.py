@@ -3,7 +3,7 @@ import logging.config
 
 from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis
 from rfsocinterface.core.data import *
-from rfsocinterface.analysis.psd import *
+from rfsocinterface.analysis import *
 import pdb
 
 
@@ -15,15 +15,22 @@ if __name__ == '__main__':
     # setnum = 1023
     # date = '20260309'
     # setnum = 1010
-    date = '20260420'
-    setnum = 1024
+    # date = '20260420'
+    # setnum = 1024
     # date = '20260325'
     # setnum = 1002
+    date = '20260223'
+    setnum = 1010  # 1009 - 1015
 
     lp_filter_freq = 15
-    hp_filter_freq= 0.25
+    hp_filter_freq= 0.1
     noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
-    ds_factor = 1
+    ds_factor = 10
+
+    find_fwhm = FindFWHM(
+        'za',
+        [241],
+    )
 
     noise_removal_offres = RemoveElectronicsNoise(
         template_selection_indices='offres',
@@ -68,17 +75,17 @@ if __name__ == '__main__':
         # noise_removal,
         # compute_psd,
         # psd_plotter,
-        # hp_filter,
+        hp_filter,
         # lp_filter,
         # clean_tod,
-        make_video,
+        # make_video,
         # bin_tod_to_map,
         # plotter,
+        find_fwhm,
     ])
-    # pdata = pipeline.from_tod(date, setnum, ds_factor)
-    setnum = 1005
-    pdata = ProcessedData.load(date, setnum, mode='a')
-    pipeline.run(pdata)
+    pdata = pipeline.from_tod(date, setnum, ds_factor)
+    # pdata = ProcessedData.load(date, setnum, mode='a')
+    # pipeline.run(pdata)
     # freq = pdata['psd/freq_diss/freq'][:]
     # psd = pdata['psd/freq_diss/psd'][:]
     # # convert to dBc/Hz

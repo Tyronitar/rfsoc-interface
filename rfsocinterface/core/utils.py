@@ -1234,6 +1234,9 @@ def argclosest(x: npt.NDArray, y: float) -> int:
     """Find the index of the closest value in x to y."""
     return np.argmin(np.abs(x - y))
 
+def sigma_to_fwhm(sigma: float) -> float:
+    return 2 * np.sqrt(2 * np.log(2)) * sigma
+
 
 
 if __name__ == '__main__':
