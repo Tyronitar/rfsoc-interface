@@ -241,7 +241,7 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
                     strings = [yymmdd, chan_name, 'LO_Sweep', hour_str]
                 case 'tonelist':
                     strings = [yymmdd, chan_name, 'tone_list', hour_str]
-        case 'tod' | 'azel' | 'optcam':
+        case 'tod' | 'azel' | 'optcam' | 'optcam_video':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:
                 setnum = 1001
@@ -251,8 +251,8 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
                 setnums = [f.name[-7:-3] for f in this_dir_files]
                 setnums.sort()
                 setnum = int(setnums[-1]) + offset
-            if file_type.lower() == 'optcam':
-                strings = [yymmdd, 'optcam', f'set{setnum}']
+            if file_type.lower() == 'optcam' or file_type.lower() == 'optcam_video':
+                strings = [yymmdd, file_type.lower(), f'set{setnum}']
             else:
                 strings = [yymmdd, chan_name, file_type.upper(), f'set{setnum}']
         case 'attenuator':

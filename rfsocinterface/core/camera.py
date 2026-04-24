@@ -238,6 +238,10 @@ class CameraController:
         self.camera_lock = camera_lock
         self.timestamp_lock = timestamp_lock
         self._listener_thread = threading.Thread(target=self._consumer_loop)
+        self._writer_thread = None
+        self._recording = False
+        self._joining_writer_thread = False
+        self._write_queue = Queue()
         if self.connection is None:
             # Plot the images instead
             self.figure, self.axes = plt.subplots()
@@ -396,6 +400,17 @@ class CameraController:
                     command, *args = self.connection.recv()
                     _camera_logger.debug(f'CAMERA received command: "{command}", args: {args}')
                     match command:
+                        case 'start_recording':
+                            video_file, timestamp_file = args
+                            self._writer_thread = VideoFileWriter(video_file, timestamp_file, self._write_queue)
+                            self._recording = True
+                            self._writer_thread.start()
+                            self.send('recording_started')
+                        case 'stop_recording':
+                            if self._recording:
+                                self._write_queue.put(None)
+                                self._recording = False
+                                self._joining_writer_thread = True
                         case 'set_feature':
                             if len(args) == 2:
                                 feature_name, val = args
@@ -432,6 +447,13 @@ class CameraController:
                         case _:
                             self.send('err', 'NON-CRITICAL', f'Unknown command "{command}" received.')
                             continue
+                
+                if self._joining_writer_thread:
+                    # join(0) returns immediately without waiting
+                    self._writer_thread.join(0)
+                    if not self._writer_thread.is_alive():
+                        self._joining_writer_thread = False
+                        self.send('recording_stopped')
 
                 # Update current state by dequeuing all currently available frames.
                 while True:
@@ -457,12 +479,18 @@ class CameraController:
                     # Rotate image so it's aligned properly
                     cv_images = np.flip(np.flip(cv_images, 1), 2)
 
+                    timestamp = time.time()
+
+                    # Write the frame to file if recording
+                    if self._recording:
+                        self._write_queue.put_nowait((cv_images[0], timestamp))
+
                     # Send timestamp and image to the main process
                     t0 = time.time()
                     with self.camera_lock:
                         with self.timestamp_lock:
                             self.camera_array[:] = cv_images[0]
-                            self.timestamp_array[:] = time.time()
+                            self.timestamp_array[:] = timestamp
                     t1 = time.time()
                     _camera_logger.debug(f'Wrote to shared arrays in {t1 - t0:.3f} seconds')
                     if self.connection is None:

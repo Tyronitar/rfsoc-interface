@@ -242,23 +242,27 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         optcam_file.close()
     
     def start_recording_video(self):
-        savefile = get_filename(file_type='optcam').with_suffix('.h5')
-        savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
-        with self.video_file_lock:
-            self.video_file = h5py.File(savefile, 'a')
-            self.video_file.create_dataset(
-                'optical_video',
-                shape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 0),
-                maxshape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, None),
-                dtype=np.uint8,
-                compression='lzf',
-                chunks=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 1),
-            )
-            self.video_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
-            self._video_frames = []
-            self._timestamps = []
-        self.video_thread = Thread(target=self.video_loop)
-        self.video_thread.start()
+        optcam_savefile = get_filename(file_type='optcam').with_suffix('.h5')
+        video_savefile = get_filename(file_type='optcam_video').with_suffix('.mp4')
+        optcam_savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
+        video_savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
+        # with self.video_file_lock:
+        #     self.video_file = h5py.File(optcam_savefile, 'a')
+        #     self.video_file.create_dataset(
+        #         'optical_video',
+        #         shape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 0),
+        #         maxshape=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, None),
+        #         dtype=np.uint8,
+        #         compression='lzf',
+        #         chunks=(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3, 1),
+        #     )
+        #     self.video_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
+        #     self._video_frames = []
+        #     self._timestamps = []
+        # self.video_thread = Thread(target=self.video_loop)
+        # self.video_thread.start()
+        self.send_camera_command('start_recording', str(video_savefile), str(optcam_savefile))
+        self.wait_for_camera_command('recording_started')
         _logger.info('Optical video recording started')
     
     def video_loop(self):
@@ -271,20 +275,22 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         _logger.debug('Video loop thread done')
     
     def stop_recording_video(self):
-        self._recording = False
-        with self.video_file_lock:
-            n_frames = len(self._video_frames)
-            # Write all of the stored frames now
-            # _logger.info('Writing optical video to file...')
-            # self.video_file['optical_video'].resize(n_frames, axis=3)
-            # self.video_file['timestamp'].resize(n_frames, axis=0)
-            # for i_frame in range(n_frames):
-            #     self.video_file['optical_video'][:, :, :, i_frame] = self._video_frames[i_frame]
-            #     self.video_file['timestamp'][i_frame] = self._timestamps[i_frame]
-            self.video_file.close()
-            self.video_file = None
-        _logger.debug('Joining optical video thread...')
-        self.video_thread.join()
+        self.send_camera_command('stop_recording')
+        self.wait_for_camera_command('recording_stopped')
+        # self._recording = False
+        # with self.video_file_lock:
+        #     n_frames = len(self._video_frames)
+        #     # Write all of the stored frames now
+        #     # _logger.info('Writing optical video to file...')
+        #     # self.video_file['optical_video'].resize(n_frames, axis=3)
+        #     # self.video_file['timestamp'].resize(n_frames, axis=0)
+        #     # for i_frame in range(n_frames):
+        #     #     self.video_file['optical_video'][:, :, :, i_frame] = self._video_frames[i_frame]
+        #     #     self.video_file['timestamp'][i_frame] = self._timestamps[i_frame]
+        #     self.video_file.close()
+        #     self.video_file = None
+        # _logger.debug('Joining optical video thread...')
+        # self.video_thread.join()
         _logger.info('Optical video recording ended')
     
     def append_video_frame(self):
