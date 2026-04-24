@@ -762,6 +762,10 @@ class ConsolidatedData(NewDataStorage):
                 chunk_shape = optical_video.shape[:-1] + (1,)
                 global_data_group.create_dataset('optical_video', data=optical_video, compression='lzf', chunks=chunk_shape)
                 global_data_group.create_dataset('optical_video_timestamp', data=optcam_file['timestamp'])
+            elif 'timestamp' in optcam_file:
+                # Only 'timestamp' exists (i.e. video was saved in a seperate file)
+                global_data_group.attrs['optical_video_file'] = optcam_file.attrs['video_file']
+                global_data_group.create_dataset('optical_video_timestamp', data=optcam_file['timestamp'])
             optcam_file.close()
         else:
             global_data_group.create_dataset('optical_image', data=np.array([]))

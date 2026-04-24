@@ -112,9 +112,9 @@ def try_put_frame(q: queue.Queue, cam: Camera, frame: Optional[Frame]):
 
 
 class VideoFileWriter(threading.Thread):
-    def __init__(self, frame_file: str, timestamp_file: str, frame_queue: Queue):
+    def __init__(self, video_file: str, timestamp_file: str, frame_queue: Queue):
         threading.Thread.__init__(self)
-        self.frame_file = frame_file
+        self.video_file = video_file
         self.timestamp_file = timestamp_file
         self.queue = frame_queue
 
@@ -128,7 +128,7 @@ class VideoFileWriter(threading.Thread):
             '-loglevel', 'fatal',
             '-i', '-',  # Read from stdin
             '-an',
-            str(frame_file),
+            str(video_file),
         ]
 
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
@@ -138,6 +138,7 @@ class VideoFileWriter(threading.Thread):
         _camera_logger.debug('VideoFileWriter: Started writing to file.')
         timestamp_file = h5py.File(self.timestamp_file, 'a')
         timestamp_dataset = timestamp_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
+        timestamp_file.attrs['video_file'] = str(self.video_file)
         while True:
             obj = self.queue.get()
             if obj is None:

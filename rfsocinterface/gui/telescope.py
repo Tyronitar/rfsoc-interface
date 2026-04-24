@@ -71,7 +71,8 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.connect_to_telescope_command('ze_pos_comm', self.update_ze_cmd)
 
         # Set up Optical Camera
-        self.live_footage_fig, self.live_footage_ax = plt.subplots()
+        self.live_footage_canvas.hide()
+        self.live_footage_fig, self.live_footage_ax = plt.subplots(figsize=(4,3))
         self.live_footage_im = self.live_footage_ax.imshow(np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)))
         self.live_footage_fig.tight_layout()
         self.live_footage_canvas.set_figure(self.live_footage_fig)
@@ -104,14 +105,15 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.zenith_setlineEdit.setEnabled(enabled)
         self.azimuth_setpushButton.setEnabled(enabled)
         self.zenith_setpushButton.setEnabled(enabled)
-        self.controller.setEnabled(enabled)
 
-    @Slot
+    @Slot()
     def toggle_motion_enabled(self):
         if self.enable_motion_checkBox.isChecked():
             self.toggle_controls_enabled(True)
+            self.toggle_jogging()
         else:
             self.toggle_controls_enabled(False)
+            self.controller.setEnabled(False)
 
     def stop_motion(self):
         self.send_telescope_command('stop_telescope')
@@ -226,15 +228,17 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
             self.update_live_footage()
             time.sleep(1 / self.frame_rate)
 
-    @Slot
+    @Slot()
     def toggle_live_footage(self):
         if self.optical_pushButton.isChecked():
             # Start showing live footage
+            self.live_footage_canvas.show()
             self.live_footage_thread = Thread(target=(self.optical_camera_loop))
             self.live_footage_thread.start()
             self.optical_pushButton.setText('Hide Optical Video')
         else:
             # Stop showing live footage
+            self.live_footage_canvas.hide()
             while self.live_footage_thread.is_alive():
                 self.live_footage_thread.join(0)
                 QCoreApplication.processEvents()
@@ -251,6 +255,9 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def closeEvent(self, event):
         self.timer.stop()
         # don't need to wait for success msg, since listener thread will eat the message
+        # Stop the live footage thread if it's still going
+        if self.live_footage_thread is not None and self.live_footage_thread.is_alive():
+            self.optical_pushButton.click()
         return super().closeEvent(event)
     
 
