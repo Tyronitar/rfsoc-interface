@@ -4,12 +4,14 @@ from pathlib import Path
 import threading
 from multiprocessing.connection import Connection
 from multiprocessing import Array, Lock
+import subprocess
 import queue
 from queue import Queue
 import copy
 import time
 from typing import Any, Optional
 import pdb
+import h5py
 
 from vmbpy import (
     VmbSystem,
@@ -108,6 +110,47 @@ def try_put_frame(q: queue.Queue, cam: Camera, frame: Optional[Frame]):
     except queue.Full:
         pass
 
+
+class VideoFileWriter(threading.Thread):
+    def __init__(self, frame_file: str, timestamp_file: str, frame_queue: Queue):
+        self.frame_file = frame_file
+        self.timestamp_file = timestamp_file
+        self.queue = frame_queue
+        self.killswitch = threading.Event()
+
+        cmd = [
+            'ffmpeg',
+            '-y',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-pix_fmt', 'rgb24',
+            '-s', f'{MAX_FRAME_WIDTH}x{MAX_FRAME_HEIGHT}',
+            '-i', '-',  # Read from stdin
+            '-an',
+            str(frame_file),
+        ]
+
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+
+    def run(self):
+        _camera_logger.debug('VideoFileWriter: Started writing to file.')
+        timestamp_file = h5py.File(self.timestamp_file, 'a')
+        timestamp_dataset = timestamp_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
+        while True:
+            obj = self.queue.get()
+            if obj is None:
+                _camera_logger.debug('VideoFileWriter: Received stop signal.')
+                break  # None indicates the queue is finished
+            frame, timestamp = obj
+            self.proc.stdin.write(frame.tobytes())
+            n_frames = timestamp_dataset.size
+            timestamp_dataset.resize(n_frames + 1)
+            timestamp_dataset[-1] = timestamp
+    
+        timestamp_file.close()
+        self.proc.stdin.close()
+        self.proc.wait()
+        _camera_logger.debug('VideoFileWriter: Finished cleanup.')
 
 class FrameProducer(threading.Thread):
     def __init__(self, cam: Camera, frame_queue: Queue):
