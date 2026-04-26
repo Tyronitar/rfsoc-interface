@@ -8,6 +8,7 @@ from typing import Callable
 from multiprocessing import Lock
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
 import rfsocinterface.analysis.KID_fitting_analysis.fit_mb_params as mb_params
+
 from pathlib import Path
 from PySide6.QtWidgets import QProgressDialog
 
@@ -85,14 +86,8 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
                 center_ind = lo_ind + min_ind
 
    
-    peaks = find_peaks(-s21, prominence=2)
-    if len(peaks[0]) != 0:
-        prominances = peaks[1]['prominences']
-        highest_prom_index = np.argmax(prominances)
-        #print(freq[peaks[0][highest_prom_index]])
-        f0 = freq[peaks[0][highest_prom_index]]
-    else:
-        f0 = freq[center_ind]
+   
+    f0 = freq[center_ind]
     
     return f0
 
@@ -127,7 +122,6 @@ def get_scraps_fit(
 
     # Load default hanger parameters
     res_obj.load_params(scr.hanger_params)
-    print(initial_guesses)
     if initial_guesses is not None:
         params = res_obj.params
 
@@ -1421,6 +1415,123 @@ class PowerSweep:
         # Reset to original power levels
         self.rfsoc.set_rfin(self.chan, starting_rfin)
         self.rfsoc.set_rfout(self.chan, starting_rfout)
+
+
+class TempSweepData:
+    def __init__(
+        self,
+        tone_list: npt.NDArray,
+        f_center: float,
+        sweeps: list[LoSweepData],
+        fp_temps: npt.NDArray,
+        rfin: float,
+        rfout: float,
+    ):
+        self.f_center = f_center
+        self.tone_list = tone_list
+        self.sweeps = sweeps
+        self.fp_temps = np.array(fp_temps)
+        self.rfin = rfin
+        self.rfout = rfout
+        self.max_readout_power = np.zeros(self.n_tones)
+        self.fit_f0 = np.zeros(self.n_tones)
+    
+    @property
+    def chanmask(self) -> npt.NDArray:
+        """The chanmask used during the power sweep."""
+        return self.sweeps[0].chanmask
+    
+    @property
+    def combined_sweep_array(self) -> npt.NDArray:
+        """The LO sweep data from each lo sweep as one array.
+
+        Resulting array will have shape (N_sweeps, 2, N_tones, N_samples) 
+        """
+        #pdb.set_trace()
+        return np.stack([sweep.data for sweep in self.sweeps], axis=0)
+    
+    @property
+    def n_tones(self) -> int:
+        #TODO this is broken
+        return 100
+    
+    @property
+    def n_sweeps(self) -> int:
+        return len(self.power_levels)
+    
+    @property
+    def tile_names(self) -> list[str]:
+        return [sweep.tile_name for sweep in self.sweeps]
+    
+    def get_fit_f0(self) -> npt.NDArray:
+        fit_f0 = np.stack([sweep.fit_f0 for sweep in self.sweeps], axis=0)
+        self.fit_f0 = fit_f0
+        return fit_f0
+    
+    def fit(self):
+        for sweep in self.sweeps:
+            sweep.fit()
+        self.get_fit_f0()
+
+    @ensure_path(1)
+    def saveh5(self, fname: Path):
+        """Save the power sweep to an HDF5 file."""
+        path = fname.with_suffix('.h5')
+        path.touch(PERMISSIONS_USR_RW)
+        with tables.File(path, 'w') as fh:
+            fh.create_array('/', 'sweeps', obj=self.combined_sweep_array)
+            fh.create_array('/','lo_freq', obj=self.f_center)
+            fh.create_array('/','baseband_freqs', obj=self.tone_list - self.f_center)
+            fh.create_array('/','chanmask', obj=self.chanmask)
+            fh.create_array('/','fp_temps', obj=self.fp_temps)
+            fh.create_array('/','rfin', obj=self.rfin)
+            fh.create_array('/','rfout', obj=self.rfout)
+            fh.create_array('/','fit_f0', obj=self.fit_f0)
+            fh.create_array('/','max_readout_power', obj=self.max_readout_power)
+            fh.root._v_attrs.tile_names = self.tile_names
+        _logger.info(f'PowerSweepData saved to {str(fname)}')
+    
+    @classmethod
+    @ensure_path(1)
+    def from_h5(cls, fname: Path) -> PowerSweepData:
+        with tables.File(fname, 'r') as fh:
+            if datetime.datetime.fromtimestamp(fname.stat().st_mtime) < datetime.datetime.strptime(NEW_LO_SWEEP_FORMAT_DATE, '%Y%m%d'):
+                _logger.warning(f'LO sweep file {str(fname)} is from before {NEW_LO_SWEEP_FORMAT_DATE}. Attempting to load with backwards compatibility.')
+                tone_list = fh.root.global_data.baseband_freqs[:]
+                f_center = fh.root.global_data.lo_freq[()]
+                rfin = fh.root.global_data.rfin[()]
+                rfout = fh.root.global_data.rfout[()]
+                fp_temps = fh.root.global_data.fp_temps[:]
+                chanmask = fh.root.global_data.chanmask[:]
+                sweep_data = fh.root.global_data.sweeps[:]
+                fit_f0 = fh.root.global_data.fit_f0[:]
+                max_readout_power = fh.root.global_data.max_readout_power[:]
+            else:
+                tone_list = fh.root.baseband_freqs[:]
+                f_center = fh.root.lo_freq[()]
+                rfin = fh.root.rfin[()]
+                rfout = fh.root.rfout[()]
+                chanmask = fh.root.chanmask[:]
+                fp_temps = fh.root.fp_temps[:]
+                sweep_data = fh.root.sweeps[:]
+                fit_f0 = fh.root.fit_f0[:]
+                max_readout_power = fh.root.max_readout_power[:]
+                tile_names = fh.root._v_attrs.tile_names
+
+
+            sweeps = []
+            for this_fit_f0, arr, tile_name in zip(fit_f0, sweep_data, tile_names):
+            # for arr in sweep_data:
+                sweep = LoSweepData(tone_list, f_center, arr, chanmask, tile_name)
+                sweep.fit_f0[:] = this_fit_f0
+                sweeps.append(sweep)
+
+        temp_sweep = cls(tone_list, f_center, sweeps,fp_temps, rfin, rfout)
+        temp_sweep.get_fit_f0()
+        temp_sweep.max_readout_power = max_readout_power
+
+        return temp_sweep
+
 
 if __name__ == '__main__':
     import pdb
