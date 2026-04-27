@@ -41,7 +41,8 @@ DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
-RFSOC_TIME_OFFSET_AZ = -12e-3 # -12 ms, empirically determined
+# RFSOC_TIME_OFFSET_AZ = -12e-3 # -12 ms, empirically determined
+RFSOC_TIME_OFFSET_AZ = 0 # -12 ms, empirically determined
 RFSOC_TIME_OFFSET_ZA = -3e-3 # -3 ms, empirically determined
 
 
@@ -504,7 +505,9 @@ def interpolate_telescope_position(
     if pps_tel_idx.size == 0:
         # The telescoep never mvoed in this direction, so aligning the times doesn't
         # matter. Just upsample the positions.
+        _logger.info(f'Doing simple interpolation for detector positions in {direction.upper()} direction.')
         return np.interp(data_timestamp, telescope_timestamp, tel_position)
+    _logger.info(f'Using PPS for detector positions in {direction.upper()} direction.')
 
     # Upsample the telescope positions ignoring the positions when the pulse is receivd,
     # since the extra commands slow the loop 

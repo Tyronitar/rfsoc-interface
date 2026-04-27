@@ -9,6 +9,7 @@ from rfsocinterface.analysis.psd import (
 )
 from rfsocinterface.analysis.peak import (
     FindFWHM,
+    check_focus,
 )
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     'FindFWHM',
     'PlotPSD',
     'PsdBasis',
+    'check_focus',
     'plot_psd_dbc_hz',
     'plot_psd_df_over_f',
 ]

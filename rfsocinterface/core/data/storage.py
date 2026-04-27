@@ -971,8 +971,8 @@ class ConsolidatedData(NewDataStorage):
 
             # Detector Positions
             if azel_exists:
+                _logger.info('ConsolidatedData: Computing detector positions...')
                 if use_pps and raw_data.pps is not None and az_pps_tel is not None and za_pps_tel is not None:
-                    _logger.info('ConsolidatedDaata: Computing detector positions with PPS...')
                     corrected_az_tel = interpolate_telescope_position(
                         temp_timestamp,
                         timestamp_tel[:],
@@ -999,7 +999,6 @@ class ConsolidatedData(NewDataStorage):
                         this_channel_group.attrs['detector_dx_dy_elevation_angle'],
                     )
                 else:
-                    _logger.info('ConsolidatedData: Computing detector positions...')
                     get_detector_positions(
                         temp_timestamp,
                         timestamp_tel[:],
