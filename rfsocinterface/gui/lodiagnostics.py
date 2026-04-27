@@ -582,14 +582,16 @@ class BlindSweepDialog(QDialog):
             filter='HDF5 (*.h5);;All Files (*)'
         )
         if fname:
-            f0 = [line.get_xdata()[0] for line in self.get_vlines()]
+            f0 = np.real(np.array([line.get_xdata()[0] for line in self.get_vlines()]))
+            bb_freqs = f0 - self.data.f_center
+            bb_freqs = np.sort(bb_freqs)
             path = Path(fname).with_suffix('.h5')
             if not path.exists():
                 # TODO: Get the actual tile name
                 tile_name = path.stem[12:]
-                initialize_params_file(tile_name, f0, self.data.f_center)
+                initialize_params_file(tile_name, bb_freqs, self.data.f_center)
             else:
-                update_params_file(path, baseband_freqs=f0)
+                update_params_file(path, baseband_freqs=bb_freqs)
             return super().accept()
 
     @property

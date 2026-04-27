@@ -374,12 +374,12 @@ class LoSweepData:
             fh.root._v_attrs.lo_freq = self.f_center
             fh.attrs['lo_freq'] = self.f_center
             fh.attrs['tile_name'] = self.tile_name
-            fh.create_dataset('/global_data/lo_sweep', data=self.data)
-            fh.create_dataset('/global_data/baseband_freqs', data=self.tone_list - self.f_center)
-            fh.create_dataset('/global_data/chanmask', data=self.chanmask)
-            fh.create_dataset('/global_data/fit_f0', data=self.fit_f0)
-            fh.create_dataset('/global_data/fit_qi', data=self.fit_qi)
-            fh.create_dataset('/global_data/fit_qc', data=self.fit_qc)
+            fh.create_dataset('/global_data/lo_sweep', data=self.data, dtype=np.float64)
+            fh.create_dataset('/global_data/baseband_freqs', data=np.real(self.tone_list - self.f_center), dtype=np.float64)
+            fh.create_dataset('/global_data/chanmask', data=self.chanmask, dtype=np.int8)
+            fh.create_dataset('/global_data/fit_f0', data=self.fit_f0, dtype=np.float64)
+            fh.create_dataset('/global_data/fit_qi', data=self.fit_qi, dtype=np.float64)
+            fh.create_dataset('/global_data/fit_qc', data=self.fit_qc, dtype=np.float64)
         _logger.info(f'LoSweepData saved to {str(fname)}')
     
     @classmethod
@@ -547,7 +547,7 @@ class LoSweepData:
         if fig is None:
             nrows = int(np.ceil(nchan / ncols))
             fig = plt.figure(figsize=(ncols, nrows), dpi=100)
-            for i in range(1, self.sweep_data.nchan + 1):
+            for i in range(1, self.nchan + 1):
                 fig.add_subplot(nrows, ncols, i, aspect='equal', xticks=[], yticks=[])
         axes = fig.axes
 
@@ -972,31 +972,31 @@ class PowerSweepData:
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
         with h5py.File(path, 'w') as fh:
-            fh.create_dataset('sweeps', data=self.combined_sweep_array)
-            fh.create_dataset('lo_freq', data=self.f_center)
-            fh.create_dataset('baseband_freqs', data=self.tone_list - self.f_center)
-            fh.create_dataset('chanmask', data=self.chanmask)
-            fh.create_dataset('power_levels', data=self.power_levels)
-            fh.create_dataset('rfin', data=self.rfin)
-            fh.create_dataset('rfout', data=self.rfout)
-            fh.create_dataset('fit_f0', data=self.fit_f0)
-            fh.create_dataset('max_readout_power', data=self.max_readout_power)
+            fh.attrs['lo_freq'] = self.f_center
+            fh.attrs['rfin'] = self.f_center
+            fh.attrs['rfout'] = self.f_center
             fh.attrs['tile_names'] = self.tile_names
+            fh.create_dataset('sweeps', data=self.combined_sweep_array, dtype=np.complex128)
+            fh.create_dataset('baseband_freqs', data=np.real(self.tone_list - self.f_center), dtype=np.float64)
+            fh.create_dataset('chanmask', data=self.chanmask, dtype=np.int8)
+            fh.create_dataset('power_levels', data=self.power_levels, dtype=np.float64)
+            fh.create_dataset('fit_f0', data=self.fit_f0, dtype=np.float64)
+            fh.create_dataset('max_readout_power', data=self.max_readout_power, dtype=np.float64)
         _logger.info(f'PowerSweepData saved to {str(fname)}')
     
     @classmethod
     @ensure_path(1)
     def from_h5(cls, fname: Path) -> PowerSweepData:
         with h5py.File(fname, 'r') as fh:
-            tone_list = fh['baseband_freqs'][:]
-            f_center = fh['lo_freq'][()]
-            power_levels = fh['power_levels'][:]
-            rfin = fh['rfin'][()]
-            rfout = fh['rfout'][()]
-            chanmask = fh['chanmask'][:]
+            f_center = fh.attrs['lo_freq']
+            rfin = fh.attrs['rfin']
+            rfout = fh.attrs['rfout']
+            tile_names = fh.attrs['tile_names']
             sweep_data = fh['sweeps'][:]
+            tone_list = fh['baseband_freqs'][:]
+            chanmask = fh['chanmask'][:]
+            power_levels = fh['power_levels'][:]
             fit_f0 = fh['fit_f0'][:]
-            tile_names = fh['tile_names'][:]
             max_readout_power = fh['max_readout_power'][:]
 
         sweeps = []
@@ -1016,11 +1016,14 @@ class PowerSweepData:
 
         f0_data = self.fit_f0[:]
         power_levels = self.power_levels[:]
+        print('test')
+        pdb.set_trace()
 
         sorted_data_ind = np.argsort(power_levels)
         power_levels = power_levels[sorted_data_ind]
         f0_data = f0_data[sorted_data_ind, :]
         power_level_non_linear = np.zeros(self.n_tones)
+        pdb.set_trace()
 
         for i_res in range(self.n_tones):
 
@@ -1126,7 +1129,6 @@ class PowerSweep:
         self._cancel = True
         for sweep in self._sweeps:
             sweep.cancel()
-
     
     def run_sweep(self, callback: Callable | None=None) -> ...:
         starting_rfin = self.rfsoc.get_rfin(self.chan)
@@ -1149,10 +1151,11 @@ class PowerSweep:
                 self.rfsoc, self.chan, this_savefile, self.tone_shift,
                 self.freq_step, self.full_span,
             )
-
-        for sweep in self._sweeps:
             self._sweeps.append(sweep)
             this_sweep_data = sweep.run_sweep(callback=callback, save=False)
+            if self._cancel:
+                data = None
+                break
             data.append(this_sweep_data)
 
         if data is None:
@@ -1165,6 +1168,7 @@ class PowerSweep:
         # Reset to original power levels
         self.rfsoc.set_rfin(self.chan, starting_rfin)
         self.rfsoc.set_rfout(self.chan, starting_rfout)
+        self._processed = True
     
 
 

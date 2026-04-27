@@ -528,8 +528,6 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        pdb.set_trace()
-
         if pd.wasCanceled():
             _logger.info('Power Sweep Cancelled')
             return False

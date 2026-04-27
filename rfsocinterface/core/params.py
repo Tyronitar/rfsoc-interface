@@ -67,30 +67,32 @@ def initialize_params_file(
         )
         params_fh.create_dataset(
             'baseband_freqs',
-            data=baseband_freqs,
+            data=np.real(baseband_freqs),
             maxshape=(1024,),
+            dtype=np.float64,
         )
         params_fh.create_dataset(
             'tone_powers',
-            data=np.ones(n_tones, dtype=np.float32),
+            data=np.ones(n_tones, dtype=np.float64),
             maxshape=(1024,),
+            dtype=np.float64,
         )
         params_fh.create_dataset(
             'detector_delta_x',
             shape=(n_tones,),
-            dtype=np.float32,
+            dtype=np.float64,
             maxshape=(1024,),
         )
         params_fh.create_dataset(
             'detector_delta_y',
             shape=(n_tones,),
-            dtype=np.float32,
+            dtype=np.float64,
             maxshape=(1024,),
         )
         params_fh.create_dataset(
             'detector_beam_ampl',
             shape=(n_tones,),
-            dtype=np.float32,
+            dtype=np.float64,
             maxshape=(1024,),
             fillvalue=1,
         )
@@ -267,6 +269,7 @@ def add_off_resonance_tones(
     ]
     # Create new arrays with offres tones added in the correct locations
     tones_added = len(offres_tones)
+    print(f'Added {tones_added} / {n_offres} new off-resonance tones')
     all_tones = np.concatenate((baseband_freqs, offres_tones))
     sorted_ind = np.argsort(all_tones)
     collided_ind = np.isin(sorted_ind, collided_ind).nonzero()[0]
@@ -396,18 +399,21 @@ if __name__ == "__main__":
     #     375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
     #     393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
 
-    params_file = '/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260325.h5'
-    new_tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260325_with_offres'
+    # params_file = '/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260325.h5'
+    params_file = '/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260420.h5'
+    new_tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260420_with_offres'
     # with h5py.File(params_file, 'a') as params_fh:
-    #     # params_fh.attrs['lo_freq'] = params_fh['lo_freq'][()]
-    #     # del params_fh['lo_freq']
-    #     params_fh['baseband_freqs'][:] = np.sort(params_fh['baseband_freqs'][:])
+        # params_fh.attrs['lo_freq'] = params_fh['lo_freq'][()]
+        # del params_fh['lo_freq']
+        # pdb.set_trace()
+        # params_fh['baseband_freqs'][:] = np.sort(params_fh['baseband_freqs'][:])
+        # params_fh['baseband_freqs'][:] = params_fh['baseband_freqs'] - params_fh.attrs['lo_freq']
     add_off_resonance_tones(
         params_file,
         new_tile_name,
         100,
-        200e6,
-        600e6,
+        180e6,
+        620e6,
         # q=1/100,
         # delta_offres_min=1e7,
     )
