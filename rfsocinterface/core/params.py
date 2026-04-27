@@ -233,24 +233,14 @@ if __name__ == "__main__":
     #     375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
     #     393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
 
-    Be260114Tr_tones_1 = np.array([170000000,173585000, 211857500, 216760000, 217702500, 218967500, 232777500,
-    254320000, 260177500, 273445000, 282582500, 286537500, 304115000,
-    312987500, 316692500, 320352500, 323742500, 324141000, 327667500, 337145000,
-    340375000, 357022500, 358847500, 413091000,429853000, 449282500, 492040000, 502837500,
-    507970000,615725000, 645211000])
-    Be260114Tr_tones_2 = np.array([ 672578500, 703408500, 727816000, 737451000,
-    810936000, 879973500, 1035102000, 1038294500, 1057924500, 1092882000,
-    1126594500, 1148194500, 1154394500])
-    Be260114Tr_tones_3 = np.array([1170000000, 1180667000, 1189129500, 1190174500,
-    1221847000, 1232217000, 1246642000, 1266664500, 1296274500, 1321964500,
-    1322962000, 1340739500, 1379649500, 1395659500, 1398229500, 1427789500,
-    1452124500, 1463652000, 1511963252, 1529370290, 1534427740, 1561959479,
-    1570283199, 1657808451])
+    Be260114Tr_tones_2 = np.array([ 670000000, 672578500, 703408500, 727816000, 737451000,
+                    742617910, 810936000,834667640, 860017347, 879973500,990609000, 1035102000, 1038294500, 1057924500, 1092882000,
+                    1126594500, 1148194500, 1154394500])
 
 
 
 
-    LO_freq = 420e6
+    LO_freq = 920e6
     # lo_freq = 4e8
     #lo_freq = 4e8
     n_tones = 1
@@ -261,7 +251,7 @@ if __name__ == "__main__":
     # tile_name = f'{n_tones}_tone_uniform_202050829'
         # Add 58 more tones
     target_n_tones = 1000
-    new_tones = Be260114Tr_tones_1.copy()
+    new_tones = Be260114Tr_tones_2.copy()
     while len(new_tones) < target_n_tones:
         sorted_tones = np.sort(new_tones)
         gaps = np.diff(sorted_tones)
@@ -273,7 +263,7 @@ if __name__ == "__main__":
         new_tones = np.append(new_tones, new_tone)
     new_tones = np.sort(new_tones)
 
-    original_tone_indices = [i for i, t in enumerate(new_tones) if t in Be260114Tr_tones_1]
+    original_tone_indices = [i for i, t in enumerate(new_tones) if t in Be260114Tr_tones_2]
     print(f"Original tones in new list: {original_tone_indices}")
     baseband_freqs = np.array(new_tones) - LO_freq
 
@@ -283,7 +273,7 @@ if __name__ == "__main__":
     # baseband_freqs = baseband_freqs[sorted_indices] - lo_freq
     
     
-    tile_name = 'Be260114Tr_1000_tones_1'
+    tile_name = 'Be260114Tr_1000_tones_2'
     #tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
     # tile_name = 'Device_aSi1_Channel2_blind'
     # baseband_freqs = baseband_freqs - lo_freq
@@ -302,7 +292,7 @@ if __name__ == "__main__":
 
     chanmask = np.zeros_like(baseband_freqs)
     chanmask[original_tone_indices] = 1
-    chanmask[0] = 0
+    chanmask[0] = 0#I put in the first tone as a fake tone, to provide a gap such that the first resonance can move down
     baseband_freqs_sorted_idx = np.argsort(baseband_freqs)
     baseband_freqs = baseband_freqs[baseband_freqs_sorted_idx]
     chanmask = chanmask[baseband_freqs_sorted_idx]
