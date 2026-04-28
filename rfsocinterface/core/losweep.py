@@ -1536,8 +1536,9 @@ class TempSweepData:
 if __name__ == '__main__':
     import pdb
 
-    data = LoSweepData.from_h5('/data/20260318/20260318_Be231102p2_100_tones_LO_Sweep_hour16p6906.h5')
-    
+    data = LoSweepData.from_h5('/data/20260427/20260427_Be260114BL_1000_tones_2_LO_Sweep_hour17p9839.h5')
+    freq, depth = data.find_resonances()
+    data.plot_new_resonances("resonances", freq)
     #pdb.set_trace()
 
     # Lab Testing

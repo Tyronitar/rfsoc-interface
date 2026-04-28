@@ -38,6 +38,57 @@ _logger = logging.getLogger(__name__)
 NEW_LO_SWEEP_FORMAT_DATE = '20260213'
 
 
+def generate_full_array_plots(file_list:list):
+    
+    fig1, axes = plt.subplots(4, 1, figsize=(8, 12))
+    fig2, axes2 = plt.subplots(5, 1, figsize=(8, 12))
+    full_df_list = []
+    for filename in file_list:
+        with h5py.File(filename, "r") as f:
+            
+            fp_temps = f["fp_temps"][:]
+            onres_ind = f["onres_ind"][:]
+            f0_data = f["f0"][:]
+            qi_data = f["qi"][:]
+            qc_data = f["qc"][:]
+            q_tot_data = f['q_tot'][:]
+        df_list = []
+        for i_res in onres_ind:
+            f0_base = f0_data[0, i_res]
+            norm_f0 = (f0_base - 1e8) / (1.6e9 - 1e8)
+            norm_f0 = np.clip(norm_f0, 0, 1)
+            color = plt.cm.viridis(norm_f0)
+            
+            df_res = (f0_data[:, i_res]-f0_data[0,i_res])/f0_data[0,i_res]
+            df_list.append(df_res)
+            axes[0].plot(fp_temps, df_res, color=color)
+            axes[0].set(xlabel="Temperature (mK)", ylabel="Δf/f₀")
+
+            axes[1].plot(fp_temps, qi_data[:, i_res], color=color)
+            axes[1].set(xlabel="Temperature (mK)", ylabel="Qi")
+            axes[2].plot(fp_temps, qc_data[:, i_res], color=color)
+
+            axes[2].set(xlabel="Temperature (mK)", ylabel="Qc")
+            axes[3].plot(fp_temps, q_tot_data[:, i_res], color=color)
+
+            axes[3].set(xlabel="Temperature (mK)", ylabel="Q_tot")
+        full_df_list.append(np.array(df_list).T)
+    for i_p in range(1,len(fp_temps)):
+        df_at_fp_temp = np.array([])
+        for f in range(len(full_df_list)):
+            df_at_fp_temp = np.append(df_at_fp_temp, full_df_list[f][i_p])
+        axes2[i_p-1].hist(df_at_fp_temp, bins = 20)
+        axes2[i_p-1].set(xlabel="Δf/f₀", ylabel="Count", title=f"Δf/f₀ distribution at {fp_temps[i_p]}")
+
+        #pdb.set_trace()
+
+    fig1.tight_layout()
+    fig2.tight_layout()
+    plt.show()
+
+    pdb.set_trace()
+
+
 
 class TempSweepDataAnalyzer:
     """Analyses a set of LO sweeps taken at different fridge temperatures."""
@@ -207,6 +258,7 @@ class TempSweepDataAnalyzer:
         fig1,fig2 = self._generate_summary_plots(self.fp_temps, f0_data, q_i_data, q_c_data)
         figs.append(fig1)
         figs.append(fig2)
+        pdb.set_trace()
         with PdfPages(output_plot_filename) as pdf:
             for fig in figs:
                 pdf.savefig(fig)
@@ -456,19 +508,18 @@ class TempSweepDataAnalyzer:
         fig._axes_click_cid = fig.canvas.mpl_connect("button_press_event", on_axes_click)
 
     def _add_overlay_controls(self, fig, ax_mag, ax_phase, i_res, results):
-        if i_res <= 0:
-            return
-
-        freqs  = results["freqs"]
-        s21    = results["s21"]
-        I_data = results["I"]
-        Q_data = results["Q"]
-        temps  = results["temps"]
+        freqs   = results["freqs"]
+        s21     = results["s21"]
+        I_data  = results["I"]
+        Q_data  = results["Q"]
+        temps   = results["temps"]
+        n_res   = len(freqs[0])
 
         overlay_state = {}
-        shown = {"min_res": i_res}
+        shown = {"min_res": i_res, "max_res": i_res}
 
-        label_ax = fig.add_axes([0.25, 0.145, 0.50, 0.05])
+        # --- label ---
+        label_ax = fig.add_axes([0.20, 0.145, 0.60, 0.05])
         label_ax.axis("off")
         label_text = label_ax.text(
             0.5, 0.5, "no overlays",
@@ -483,44 +534,32 @@ class TempSweepDataAnalyzer:
             )
             fig.canvas.draw_idle()
 
-        ax_add = fig.add_axes([0.38, 0.055, 0.10, 0.07])
-        btn_add = widgets.Button(ax_add, "+ add", color="0.85", hovercolor="0.70")
-
-        def on_add(event):
-            next_res = shown["min_res"] - 1
-            if next_res < 0 or next_res in overlay_state:
+        def draw_overlay(res_idx):
+            if res_idx < 0 or res_idx >= n_res or res_idx in overlay_state or res_idx == i_res:
                 return
-            artists    = []
+            artists     = []
             line_colors = plt.cm.tab10(np.linspace(0, 1, len(temps)))
             for i_p in range(len(temps)):
-                phase = np.angle(I_data[i_p][next_res] + 1j * Q_data[i_p][next_res], deg=True)
+                phase = np.angle(I_data[i_p][res_idx] + 1j * Q_data[i_p][res_idx], deg=True)
                 l1, = ax_mag.plot(
-                    freqs[i_p][next_res], s21[i_p][next_res],
+                    freqs[i_p][res_idx], s21[i_p][res_idx],
                     color=line_colors[i_p], lw=1, ls="--", alpha=0.7,
-                    label=f"res {next_res}" if i_p == 0 else "_",
+                    label=f"res {res_idx}" if i_p == 0 else "_",
                 )
                 l2, = ax_phase.plot(
-                    freqs[i_p][next_res], phase,
+                    freqs[i_p][res_idx], phase,
                     color=line_colors[i_p], lw=1, ls="--", alpha=0.7,
                 )
                 artists.extend([l1, l2])
-            overlay_state[next_res] = artists
-            shown["min_res"] = next_res
+            overlay_state[res_idx] = artists
             ax_mag.legend(fontsize=7, loc="upper right")
             refresh_label()
 
-        btn_add.on_clicked(on_add)
-
-        ax_rem = fig.add_axes([0.50, 0.055, 0.10, 0.07])
-        btn_rem = widgets.Button(ax_rem, "- remove", color="0.85", hovercolor="0.70")
-
-        def on_remove(event):
-            if not overlay_state:
+        def remove_overlay(res_idx):
+            if res_idx not in overlay_state:
                 return
-            lowest = min(overlay_state)
-            for artist in overlay_state.pop(lowest):
+            for artist in overlay_state.pop(res_idx):
                 artist.remove()
-            shown["min_res"] = lowest + 1
             legend = ax_mag.get_legend()
             if legend:
                 legend.remove()
@@ -528,12 +567,72 @@ class TempSweepDataAnalyzer:
                 ax_mag.legend(fontsize=7, loc="upper right")
             refresh_label()
 
-        btn_rem.on_clicked(on_remove)
+        # --- prev add ---
+        ax_prev_add = fig.add_axes([0.20, 0.055, 0.12, 0.07])
+        btn_prev_add = widgets.Button(ax_prev_add, "< add prev", color="0.85", hovercolor="0.70")
 
-        fig._overlay_btn_add = btn_add
-        fig._overlay_btn_rem = btn_rem
-        fig._overlay_state   = overlay_state
+        def on_prev_add(event):
+            next_res = shown["min_res"] - 1
+            draw_overlay(next_res)
+            if next_res in overlay_state:
+                shown["min_res"] = next_res
+            fig.canvas.draw_idle()
 
+        btn_prev_add.on_clicked(on_prev_add)
+
+        # --- prev remove ---
+        ax_prev_rem = fig.add_axes([0.34, 0.055, 0.12, 0.07])
+        btn_prev_rem = widgets.Button(ax_prev_rem, "< rem prev", color="0.85", hovercolor="0.70")
+
+        def on_prev_rem(event):
+            if not overlay_state:
+                return
+            prev_overlays = [r for r in overlay_state if r < i_res]
+            if not prev_overlays:
+                return
+            lowest = min(prev_overlays)
+            remove_overlay(lowest)
+            shown["min_res"] = lowest + 1
+            fig.canvas.draw_idle()
+
+        btn_prev_rem.on_clicked(on_prev_rem)
+
+        # --- next add ---
+        ax_next_add = fig.add_axes([0.50, 0.055, 0.12, 0.07])
+        btn_next_add = widgets.Button(ax_next_add, "add next >", color="0.85", hovercolor="0.70")
+
+        def on_next_add(event):
+            next_res = shown["max_res"] + 1
+            draw_overlay(next_res)
+            if next_res in overlay_state:
+                shown["max_res"] = next_res
+            fig.canvas.draw_idle()
+
+        btn_next_add.on_clicked(on_next_add)
+
+        # --- next remove ---
+        ax_next_rem = fig.add_axes([0.64, 0.055, 0.12, 0.07])
+        btn_next_rem = widgets.Button(ax_next_rem, "rem next >", color="0.85", hovercolor="0.70")
+
+        def on_next_rem(event):
+            if not overlay_state:
+                return
+            next_overlays = [r for r in overlay_state if r > i_res]
+            if not next_overlays:
+                return
+            highest = max(next_overlays)
+            remove_overlay(highest)
+            shown["max_res"] = highest - 1
+            fig.canvas.draw_idle()
+
+        btn_next_rem.on_clicked(on_next_rem)
+
+        # keep refs alive
+        fig._overlay_btn_prev_add = btn_prev_add
+        fig._overlay_btn_prev_rem = btn_prev_rem
+        fig._overlay_btn_next_add = btn_next_add
+        fig._overlay_btn_next_rem = btn_next_rem
+        fig._overlay_state        = overlay_state
     def _plot_temperature_dependence(self, i_res, f0, qi, qc, res_objs=None, stitched_dataset=None):
         temps = self.fp_temps
         df    = (f0 - f0[0]) / f0[0]
@@ -571,9 +670,9 @@ class TempSweepDataAnalyzer:
             fig1.tight_layout()
 
         fig2, axes = plt.subplots(len(fp_temps),1, figsize=(8, 12))
-        for i_p, temp in enumerate(fp_temps):
+        for i_p, temp in enumerate(fp_temps[0:-1]):
             axes[i_p].hist((f0_data[i_p, onres_ind]-f0_data[0,onres_ind])/f0_data[0,onres_ind])
-            axes[i_p].set(xlabel="Temperature (mK)", title = f"Δf/f₀ at {temp}")
+            axes[i_p].set( title = f"Δf/f₀ at {temp}")
 
         plt.show()
         return fig1, fig2
@@ -593,8 +692,7 @@ class TempSweepDataAnalyzer:
 
         for i_p in sorted_data_ind:
             sweep_data = self.sweeps[i_p]
-            sorted_idx = np.argsort(sweep_data.tone_list + sweep_data.f_center)
-
+            sorted_idx = np.argsort(sweep_data.tone_list + sweep_data.f_center),
             freqs.append(sweep_data.freq[sorted_idx])
             full_s21.append(self._stitch_traces(sweep_data.freq, sweep_data.s21))
             full_I.append(self._stitch_traces(sweep_data.freq, sweep_data.data_I))
@@ -682,11 +780,14 @@ class TempSweepDataAnalyzer:
         return figs
 
 if __name__ == '__main__':
-    data_analyzer = TempSweepDataAnalyzer.from_h5(
-        '/data/20260426/20260426_Be260114Tr_1000_tones_2_Power_Sweep_hour22p9183.h5'
-    )
-    clean_dataset = data_analyzer.stitch_full_dataset()
-    data_analyzer.process_temperature_sweep(
-        clean_dataset,
-        fit_results_h5="fit_results.h5",   # omit if no previous results
-    )
+    #data_analyzer = TempSweepDataAnalyzer.from_h5(
+    #    '/data/20260426/20260426_Be260114Tr_1000_tones_1_Power_Sweep_hour21p2014.h5'
+    #)
+    #clean_dataset = data_analyzer.stitch_full_dataset()
+    #data_analyzer.process_temperature_sweep(
+    #    clean_dataset,
+    #    fit_results_h5="TempSweepBe260114TR-set1_fit_results.h5",   # omit if no previous results
+    #)
+    generate_full_array_plots(['/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114BL-set2_fit_results.h5', 
+                               '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set2_fit_results.h5',
+                               '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set3_fit_results.h5'])
