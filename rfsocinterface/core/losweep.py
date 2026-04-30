@@ -42,6 +42,7 @@ from kidpy3.measure import ResonatorFinder
 
 _logger = logging.getLogger(__name__)
 
+
 DEFAULT_NCOLS = 10
 POWER_SWEEP_FRACTIONAL_FREQ_SHIFT = 1e-5
 POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB = 5
@@ -1363,32 +1364,21 @@ class PowerSweep:
         starting_rfin = self.rfsoc.get_rfin(self.chan)
         starting_rfout = self.rfsoc.get_rfout(self.chan)
         data = []
-
-        is_temp_sweep = all(p==0 for p in self.power_levels)
         fp_temps = []
         for i, power_level in enumerate(self.power_levels):
             if self._cancel:
                 data = None
                 break
             print(power_level)
-            if is_temp_sweep:
-                while True:
-                    try:
-                        fp_temp = float(input(f"input temperature setpoint {i} and let system get to temp:\n"))
-                        break
-                    except ValueError:
-                        print("Invalid input. Please enter a valid number.")
-                #fp_temp = float(input(f"input the {i + 1} power level and let system get to temp:\n"))
-                fp_temps.append(fp_temp)
-                this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{fp_temp:+f}mk'.replace('.', '_'))
-            else:
-                this_rfout = starting_rfout - power_level
-                this_rfin = starting_rfin + power_level
-                if this_rfin < 0 or this_rfin > 31.75 or this_rfout < 0 or this_rfout > 31.75:
-                    raise ValueError(f'All power levels must be in range [0, 31.75].')
-                self.rfsoc.set_rfin(self.chan, this_rfin)
-                self.rfsoc.set_rfout(self.chan, this_rfout)
-                this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{power_level:+f}dB'.replace('.', '_'))
+        
+        
+            this_rfout = starting_rfout - power_level
+            this_rfin = starting_rfin + power_level
+            if this_rfin < 0 or this_rfin > 31.75 or this_rfout < 0 or this_rfout > 31.75:
+                raise ValueError(f'All power levels must be in range [0, 31.75].')
+            self.rfsoc.set_rfin(self.chan, this_rfin)
+            self.rfsoc.set_rfout(self.chan, this_rfout)
+            this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{power_level:+f}dB'.replace('.', '_'))
 
             sweep = LoSweep(
                 self.rfsoc, self.chan, this_savefile, self.tone_shift,
@@ -1405,13 +1395,11 @@ class PowerSweep:
         if data is None:
             _logger.info('Sweep cancelled. Exiting...')
             self._data = None
-        elif is_temp_sweep:
-            self._data = TempSweepData(self.tone_list, self.f_center, data, fp_temps, starting_rfin, starting_rfout)
-            self._data.saveh5(self.savefile)
-        else:
-            self._data = PowerSweepData(self.tone_list, self.f_center, data, self.power_levels, starting_rfin, starting_rfout)
-            self._data.saveh5(self.savefile)
-        
+
+    
+        self._data = PowerSweepData(self.tone_list, self.f_center, data, self.power_levels, starting_rfin, starting_rfout)
+        self._data.saveh5(self.savefile)
+    
         # Reset to original power levels
         self.rfsoc.set_rfin(self.chan, starting_rfin)
         self.rfsoc.set_rfout(self.chan, starting_rfout)

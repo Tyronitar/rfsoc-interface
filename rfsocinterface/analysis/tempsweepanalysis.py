@@ -42,6 +42,7 @@ def generate_full_array_plots(file_list:list):
     
     fig1, axes = plt.subplots(4, 1, figsize=(8, 12))
     fig2, axes2 = plt.subplots(5, 1, figsize=(8, 12))
+    fig3,axes3 = plt.subplots(5, 1, figsize=(8, 12))
     full_df_list = []
     for filename in file_list:
         with h5py.File(filename, "r") as f:
@@ -64,14 +65,20 @@ def generate_full_array_plots(file_list:list):
             axes[0].plot(fp_temps, df_res, color=color)
             axes[0].set(xlabel="Temperature (mK)", ylabel="Δf/f₀")
 
-            axes[1].plot(fp_temps, qi_data[:, i_res], color=color)
+            axes[1].semilogy(fp_temps, qi_data[:, i_res], color=color)
             axes[1].set(xlabel="Temperature (mK)", ylabel="Qi")
-            axes[2].plot(fp_temps, qc_data[:, i_res], color=color)
+            axes[2].semilogy(fp_temps, qc_data[:, i_res], color=color)
 
             axes[2].set(xlabel="Temperature (mK)", ylabel="Qc")
-            axes[3].plot(fp_temps, q_tot_data[:, i_res], color=color)
+            axes[3].semilogy(fp_temps, q_tot_data[:, i_res], color=color)
 
             axes[3].set(xlabel="Temperature (mK)", ylabel="Q_tot")
+            axes3[0].scatter(f0_data[:,i_res], np.log10(qi_data[:, i_res]))
+            
+            axes3[1].scatter(f0_data[0,i_res], df_res[-1])
+            axes3[2].scatter(f0_data[0,i_res], np.log10(qc_data[0, i_res]))
+
+
         full_df_list.append(np.array(df_list).T)
     for i_p in range(1,len(fp_temps)):
         df_at_fp_temp = np.array([])
@@ -397,7 +404,7 @@ class TempSweepDataAnalyzer:
         fig, (ax_mag, ax_phase) = plt.subplots(2, 1, figsize=(8, 8), sharex=True)
         fig.subplots_adjust(left=0.10, right=0.97, top=0.92, bottom=0.42)
 
-        colors    = plt.cm.tab10(np.linspace(0, 1, len(results["temps"])))
+        colors    = plt.cm.Spectral(np.linspace(0, 1, len(results["temps"])))
         f0_values = list(initial_f0s)
         active    = {"idx": None}
 
@@ -538,7 +545,7 @@ class TempSweepDataAnalyzer:
             if res_idx < 0 or res_idx >= n_res or res_idx in overlay_state or res_idx == i_res:
                 return
             artists     = []
-            line_colors = plt.cm.tab10(np.linspace(0, 1, len(temps)))
+            line_colors = plt.cm.Spectral(np.linspace(0, 1, len(temps)))
             for i_p in range(len(temps)):
                 phase = np.angle(I_data[i_p][res_idx] + 1j * Q_data[i_p][res_idx], deg=True)
                 l1, = ax_mag.plot(
@@ -780,14 +787,14 @@ class TempSweepDataAnalyzer:
         return figs
 
 if __name__ == '__main__':
-    #data_analyzer = TempSweepDataAnalyzer.from_h5(
-    #    '/data/20260426/20260426_Be260114Tr_1000_tones_1_Power_Sweep_hour21p2014.h5'
-    #)
-    #clean_dataset = data_analyzer.stitch_full_dataset()
-    #data_analyzer.process_temperature_sweep(
-    #    clean_dataset,
-    #    fit_results_h5="TempSweepBe260114TR-set1_fit_results.h5",   # omit if no previous results
-    #)
-    generate_full_array_plots(['/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114BL-set2_fit_results.h5', 
-                               '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set2_fit_results.h5',
-                               '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set3_fit_results.h5'])
+    data_analyzer = TempSweepDataAnalyzer.from_h5(
+        '/data/20260429/20260429_Be260114BL_1000_tones_2_Power_Sweep_hour20p8697.h5'
+    )
+    clean_dataset = data_analyzer.stitch_full_dataset()
+    data_analyzer.process_temperature_sweep(
+        clean_dataset,
+        fit_results_h5="TempSweepBe260114TR-set1_fit_results.h5",   # omit if no previous results
+    )
+    #generate_full_array_plots(['/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set1_fit_results.h5', 
+    #                           '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set2_fit_results.h5',
+    #                           '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set3_fit_results.h5'])
