@@ -235,7 +235,13 @@ def get_chanmask(chanmask_file=''):
     return chanmask
 
 
-def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', attenuation=0., mkdir: bool=False):
+def get_filename(
+    base_dir: Path=Path('/data/'),
+    file_type='lo',
+    chan_name='',
+    attenuation=0.,
+    mkdir: bool=False,
+):
     #see if we already have the parent folder for today's date
     yymmdd = get_yymmdd()
     date_folder = base_dir / yymmdd
@@ -274,6 +280,40 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
             strings = [yymmdd, chan_name, f'attenuator{attenuation:02d}']
         case _:
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
+    return date_folder / '_'.join(filter(None, strings))
+
+
+@ensure_path('data_dir')
+def get_sweep_filename(
+    data_dir: Path=DEFAULT_DATA_DIRECTORY,
+    sweep_type='lo',
+    chan_name='',
+    suffix: str='',
+    mkdir: bool=False,
+):
+    # See if we already have the parent folder for today's date
+    yymmdd = get_yymmdd()
+    date_folder = data_dir / yymmdd
+    if mkdir:
+        date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
+
+    #provide the name of the file
+    hour = float(datetime.now().strftime('%H')) \
+        + float(datetime.now().strftime('%M'))/60. \
+        + float(datetime.now().strftime('%S'))/3600.
+    hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
+    match sweep_type.lower():
+        case 'lo':
+            sweep_name = 'LO_Sweep'
+        case 'power':
+            sweep_name = 'Power_Sweep'
+        case 'temperature':
+            sweep_name = 'Temperature_Sweep'
+        case 'blind':
+            sweep_name = 'Blind_Sweep'
+        case _:
+            raise ValueError(f'Invalid file type: "{sweep_type.lower()}"; must be one of {FileType}')
+    strings = [yymmdd, chan_name, sweep_name, hour_str, suffix]
     return date_folder / '_'.join(filter(None, strings))
 
 def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):

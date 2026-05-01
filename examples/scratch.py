@@ -20,9 +20,9 @@ if __name__ == '__main__':
     # date = '20250902'
 
     # actual_sweep = LoSweepData.from_h5('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour11p6619_high_res.h5')
-    actual_sweep = LoSweepData.from_h5('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour13p3533_high_res.h5')
-    sweep_off = LoSweepData.from_h5('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour13p7597.h5')
-    sweep_on = LoSweepData.from_h5('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour13p7733.h5')
+    actual_sweep = LoSweepData.load('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour13p3533_high_res.h5')
+    sweep_off = LoSweepData.load('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour13p7597.h5')
+    sweep_on = LoSweepData.load('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour13p7733.h5')
     setnum = 1008
     date = '20250912'
 

@@ -501,7 +501,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     @ensure_path(1)
     def from_h5(cls, filepath: Path, parent: QWidget | None = None) -> DiagnosticsDialog:
         """Create a DiagnosticsDialog from an HDF5 file."""
-        sweep_data = LoSweepData.from_h5(filepath)
+        sweep_data = LoSweepData.load(filepath)
         dialog = cls(sweep_data, savefile=filepath, parent=parent)
 
         pd = IncrementalProgressDialog(
@@ -887,7 +887,7 @@ if __name__ == '__main__':
     # win.show()
     # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
     # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    data = LoSweepData.from_h5('/data/20260420/20260420_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour14p7439.h5')
+    data = LoSweepData.load('/data/20260420/20260420_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour14p7439.h5')
     win = BlindSweepDialog(data)
     win.plot(
         min_resonance_depth_dB=0.3,

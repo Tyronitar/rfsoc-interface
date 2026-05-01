@@ -256,7 +256,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             sweep_thread.start()
 
         # Wait for all sweeps to finish or cancel
-        while not all ((sweep._processed or sweep._cancel) for sweep in sweeps):
+        while not all ((sweep._processed or sweep._cancelled) for sweep in sweeps):
             QApplication.processEvents()
             time.sleep(0.1)
         
@@ -375,7 +375,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # Save over sweeps now that fitting is completed
         for sweep in sweeps:
-            sweep.data.saveh5(sweep.savefile)
+            sweep.data.save(sweep.savefile)
         
         return True
     
@@ -678,7 +678,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     @ensure_path(1)
     def save_sweep(self, savefile: Path, sweep_data: LoSweepData):
-        sweep_data.saveh5(savefile)
+        sweep_data.save(savefile)
         sweep_data.savenp(savefile)
         _logger.info(f'Saved LO sweep data to {savefile}')
     
