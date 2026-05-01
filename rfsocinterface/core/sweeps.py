@@ -330,12 +330,12 @@ class LoSweepData:
         self.freq = np.real(self.data[0, :, :])
         self.s21 = np.real(10.0 * np.log10(np.abs(self.data[1, :, :])))
         self.chanmask = chanmask
-        self.resonator_data = [ResonatorData(self, i) for i in range(self.nchan)]
+        self.resonator_data = [ResonatorData(self, i) for i in range(self.n_tones)]
         self.tile_name = tile_name
 
         self.fit_f0 = self.detector_f.copy()
-        self.fit_qi = np.zeros(self.nchan)
-        self.fit_qc = np.zeros(self.nchan)
+        self.fit_qi = np.zeros(self.n_tones)
+        self.fit_qc = np.zeros(self.n_tones)
         self.fit_f0[self.offres_ind] = self.detector_f[self.offres_ind]
         self.set_diff_to_flag(val=diff_to_flag)
         self._fitted = False
@@ -362,7 +362,7 @@ class LoSweepData:
     def save_new_tone_list(self, fname: Path):
         path = fname.with_suffix('.npy')
         path.touch(PERMISSIONS_USR_RW, exist_ok=True)
-        np.save(fname, self.new_tone_list)
+        np.save(fname, self.new_baseband_freqs)
         _logger.debug(f'LoSweepData saved new tone list to {str(fname)}')
 
     @ensure_path(1)
@@ -372,7 +372,7 @@ class LoSweepData:
         path.touch(PERMISSIONS_USR_RW)
         with h5py.File(path, 'w') as fh:
             fh.root._v_attrs.lo_freq = self.f_center
-            fh.attrs['lo_freq'] = self.f_center
+            fh.attrs['f_center'] = self.f_center
             fh.attrs['tile_name'] = self.tile_name
             fh.create_dataset('/global_data/lo_sweep', data=self.data, dtype=np.float64)
             fh.create_dataset('/global_data/baseband_freqs', data=np.real(self.detector_f - self.f_center), dtype=np.float64)
@@ -405,7 +405,7 @@ class LoSweepData:
                 fit_f0 = f['fit_f0'][:]
                 fit_qi = f['fit_qi'][:]
                 fit_qc = f['fit_qc'][:]
-                f_center = f.attrs['lo_freq']
+                f_center = f.attrs['f_center']
                 tile_name = f.attrs['tile_name']
 
         sweep = cls(tone_list, f_center, data, chanmask, tile_name)
@@ -421,17 +421,17 @@ class LoSweepData:
         return np.abs(self.fit_f0 - self.detector_f)
 
     @property
-    def nchan(self) -> int:
+    def n_tones(self) -> int:
         """The number of resonators."""
         return np.size(self.chanmask)
 
     @property
     def nfreq(self) -> int:
-        """The number of frequencies."""
+        """The number of frequency points in the sweep."""
         return np.size(self.freq[0, :])
 
     @property
-    def ngoodchan(self) -> int:
+    def n_good_tones(self) -> int:
         """The number of good resonators."""
         return np.size(self.onres_ind)
 
@@ -466,7 +466,7 @@ class LoSweepData:
         return np.argwhere(np.abs(self.difference) > self.diff_to_flag)
     
     @property
-    def new_tone_list(self) -> npt.NDArray:
+    def new_baseband_freqs(self) -> npt.NDArray:
         """The new base band frequencies, based on the fit"""
         return self.fit_f0 - self.f_center
     
@@ -489,7 +489,7 @@ class LoSweepData:
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             res = executor.map(
                 simple_derivative_fits,
-                (self.df for _ in range(self.ngoodchan)),
+                (self.df for _ in range(self.n_good_tones)),
                 self.freq[self.onres_ind, :],
                 self.detector_f[self.onres_ind],
                 self.s21[self.onres_ind, :],
@@ -506,28 +506,6 @@ class LoSweepData:
             
         self._fitted = True
 
-    def _fit_i(self, i_chan):
-            # pull in the sweep data for this tone
-            i = i_chan[0]
-            resonator = self.resonator_data[i]
-
-            # call the resonator fitter
-            f0, qc, qi = resonator.fit(self.df)
-            self.fit_f0[i] = f0
-            self.fit_qc[i] = qc
-            self.fit_qi[i] = qi
-
-            diff = resonator.difference
-            if np.abs(diff) > self.diff_to_flag[i]:
-                resonator.flagged = True
-                string = ' || '.join([
-                    f'tone index = {i:4d}',
-                    f'new tone = {self.fit_f0[i] * 1.0e-6:9.5f} MHz',
-                    f'old tone = {self.detector_f[i] * 1.0e-6:9.5f} MHz',
-                    f'difference (kHz) = {diff * 1e-3:+5.3f}',
-                ])
-                _logger.info(string)
-
     def plot(self, ncols: int=DEFAULT_NCOLS, callback: Callable | None=None, fig: Figure=None) -> Figure:
         """Plot the results of fitting the LO sweep.
 
@@ -542,11 +520,10 @@ class LoSweepData:
         self._plot_cancelled = False
 
         # Setup for plots
-        nchan = self.nchan
         if fig is None:
-            nrows = int(np.ceil(nchan / ncols))
+            nrows = int(np.ceil(self.n_tones / ncols))
             fig = plt.figure(figsize=(ncols, nrows), dpi=100)
-            for i in range(1, self.nchan + 1):
+            for i in range(1, self.n_tones + 1):
                 fig.add_subplot(nrows, ncols, i, aspect='equal', xticks=[], yticks=[])
         axes = fig.axes
 
@@ -562,12 +539,12 @@ class LoSweepData:
                 fig,
                 axes,
                 create_resonator_mini_plot,
-                np.arange(nchan),
-                self.freq[:nchan],
-                self.s21[:nchan],
-                self.fit_f0[:nchan],
-                np.isin(np.arange(nchan), self.onres_ind[:nchan]),
-                np.isin(np.arange(nchan), self.flagged[:nchan]),
+                np.arange(self.n_tones),
+                self.freq[:self.n_tones],
+                self.s21[:self.n_tones],
+                self.fit_f0[:self.n_tones],
+                np.isin(np.arange(self.n_tones), self.onres_ind[:self.n_tones]),
+                np.isin(np.arange(self.n_tones), self.flagged[:self.n_tones]),
                 callback=callback_wrapper,
             )
         except InterruptedError:
@@ -577,19 +554,19 @@ class LoSweepData:
         return fig
 
     def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
-        dIQ_df = np.zeros((2, self.nchan))
+        dIQ_df = np.zeros((2, self.n_tones))
         mid_ind = self.nfreq // 2
         edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
         ind_val = np.arange(edge_indices[0], edge_indices[1])
         freq_val = self.freq[:, ind_val] - self.detector_f[:, np.newaxis]
 
-        for i_chan in range(0, self.nchan):
-            fit_I = Polynomial.fit(freq_val[i_chan], self.data_I[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+        for i_tone in range(0, self.n_tones):
+            fit_I = Polynomial.fit(freq_val[i_tone], self.data_I[i_tone, edge_indices[0]:edge_indices[1]], fit_order)
             fit_I_deriv = fit_I.deriv()
-            dIQ_df[0, i_chan] = fit_I_deriv(freq_val[i_chan, deriv_length])
-            fit_Q = Polynomial.fit(freq_val[i_chan], self.data_Q[i_chan, edge_indices[0]:edge_indices[1]], fit_order)
+            dIQ_df[0, i_tone] = fit_I_deriv(freq_val[i_tone, deriv_length])
+            fit_Q = Polynomial.fit(freq_val[i_tone], self.data_Q[i_tone, edge_indices[0]:edge_indices[1]], fit_order)
             fit_Q_deriv = fit_Q.deriv()
-            dIQ_df[1, i_chan] = fit_Q_deriv(freq_val[i_chan, deriv_length])
+            dIQ_df[1, i_tone] = fit_Q_deriv(freq_val[i_tone, deriv_length])
 
         # Q in y direction, I in x direction
         # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
@@ -617,7 +594,7 @@ class LoSweepData:
         ax.set_ylabel(r'$|S_{21}|$')
         ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
 
-        for i_tone in range(self.nchan):
+        for i_tone in range(self.n_tones):
             ax.plot(self.freq[i_tone], self.s21[i_tone], color='blue')
         
         return fig
@@ -675,7 +652,7 @@ class LoSweepData:
                 custom_lines.append(Line2D([0], [0], color='green', linestyle='--'))
                 custom_labels.append('Old Resonances')
             group_size = nrows * ncols
-            stop = self.nchan
+            stop = self.n_tones
             group_starts = np.arange(0, stop + group_size, group_size, dtype=int)
             for start_idx, end_idx in zip(group_starts, group_starts[1:]):
                 fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
@@ -708,7 +685,6 @@ class LoSweepData:
                 plt.close(fig)
                 # pdb.set_trace()
 
-    
     def generate_new_params_file(self, tile_name: str, old_params: h5py.File | None=None, plot: bool=False):
         f0, depths = self.find_resonances()
         if plot:
@@ -722,12 +698,6 @@ class LoSweepData:
             f0 - self.f_center,
             self.f_center,
         )
-
-
-def get_tone_list(filename: str, lo_freq: float = 400) -> npt.NDArray:
-    """Get the data from a tone-list and convert to Hz from MHz."""
-    flist = np.load(filename)
-    return lo_freq * 1.0e6 + flist
 
 
 class LoSweep:
@@ -1047,7 +1017,7 @@ class CompositeSweepData:
     
     @property
     def n_tones(self) -> int:
-        return self.sweeps[0].nchan
+        return self.sweeps[0].n_tones
     
     @property
     def n_sweeps(self) -> int:
@@ -1074,7 +1044,7 @@ class CompositeSweepData:
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
         with h5py.File(path, 'w') as fh:
-            fh.attrs['lo_freq'] = self.f_center
+            fh.attrs['f_center'] = self.f_center
             fh.attrs['tile_names'] = self.tile_names
             fh.create_dataset('sweeps', data=self.combined_sweep_array, dtype=np.complex128)
             fh.create_dataset('baseband_freqs', data=self.bb_freqs, dtype=np.float64)
@@ -1130,7 +1100,7 @@ class PowerSweepData(CompositeSweepData):
     @ensure_path(1)
     def load(cls, fname: Path) -> PowerSweepData:
         with h5py.File(fname, 'r') as fh:
-            f_center = fh.attrs['lo_freq']
+            f_center = fh.attrs['f_center']
             tile_names = fh.attrs['tile_names']
             sweep_data = fh['sweeps'][:]
             bb_freqs = fh['baseband_freqs'][:]
@@ -1214,6 +1184,7 @@ class PowerSweepData(CompositeSweepData):
         self.max_readout_power = max_readout_power
 
         return max_readout_power
+
 
 class PowerSweep(CompositeSweep):
     sweep_type = 'Power'

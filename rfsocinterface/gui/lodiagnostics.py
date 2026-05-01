@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, get_tone_list, LoSweep, DEFAULT_NCOLS
+from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS
 from rfsocinterface.core.params import update_params_file, initialize_params_file
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
@@ -468,9 +468,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
             ncols = DEFAULT_NCOLS
 
         if fig is None:
-            nrows = int(np.ceil(self.sweep_data.nchan / ncols))
+            nrows = int(np.ceil(self.sweep_data.n_tones / ncols))
             fig = plt.figure(figsize=(ncols, nrows))
-            for i in range(1, self.sweep_data.nchan + 1):
+            for i in range(1, self.sweep_data.n_tones + 1):
                 ax = fig.add_subplot(nrows, ncols, i, xticks=[], yticks=[])
                 # ax.set_aspect('equal', adjustable='box')
                 ax.set_box_aspect(1.0)
@@ -508,7 +508,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
             f'Plotting LO sweep...',
             'Cancel',
             0,
-            sweep_data.nchan,
+            sweep_data.n_tones,
             parent=parent,
         )
         pd.setAutoClose(True)
@@ -613,7 +613,7 @@ class BlindSweepDialog(QDialog):
     
     @property
     def n_tones(self) -> int:
-        return self.data.nchan
+        return self.data.n_tones
 
     def get_vlines(self) -> list[plt.Line2D]:
         """Get the vertical lines in the plot."""

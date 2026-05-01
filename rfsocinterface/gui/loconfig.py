@@ -334,7 +334,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     def fit_sweeps(self, sweeps: list[LoSweep]):
         # Setup progress dialog 
-        total_steps = sum(sweep.data.ngoodchan for sweep in sweeps)
+        total_steps = sum(sweep.data.n_good_tones for sweep in sweeps)
         pd = IncrementalProgressDialog(
             f'Fitting LO Sweep{"s" if len(sweeps) > 1 else ""}...',
             'Cancel',
@@ -393,7 +393,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
 
         # Setup progress dialog 
-        total_steps = sum(sweep.data.nchan for sweep in sweeps)
+        total_steps = sum(sweep.data.n_tones for sweep in sweeps)
         pd = IncrementalProgressDialog(
             f'Setting up plotting for LO sweep{"s" if len(sweeps) > 1 else ""}...',
             'Cancel',
@@ -425,9 +425,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             QApplication.processEvents()
 
             ncols = DEFAULT_NCOLS
-            nrows = int(np.ceil(sweep_data.nchan / ncols))
+            nrows = int(np.ceil(sweep_data.n_tones / ncols))
             fig = plt.figure(figsize=(ncols, nrows), dpi=100)
-            for i in range(1, sweep_data.nchan + 1):
+            for i in range(1, sweep_data.n_tones + 1):
                 fig.add_subplot(nrows, ncols, i, aspect='equal', xticks=[], yticks=[])
             figs.append(fig)
             thread = Thread(target=dw.plot, kwargs={'fig': fig, 'callback': increment_progress})
@@ -673,7 +673,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         tone_file = get_filename(file_type='tonelist', chan_name=rfsoc.get_channel_name(chan))
         sweep_data.save_new_tone_list(tone_file)
         _, curr_amp_list = rfsoc.get_tone_list(chan)  # Keep current amplitudes
-        rfsoc.set_tone_list(chan, sweep_data.new_tone_list, amplitudes=curr_amp_list)
+        rfsoc.set_tone_list(chan, sweep_data.new_baseband_freqs, amplitudes=curr_amp_list)
         _logger.info('Wrote new tone list to RFSoC')
 
     @ensure_path(1)
