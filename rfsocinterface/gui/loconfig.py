@@ -24,7 +24,7 @@ from rfsocinterface.gui.widgets import (
     ERROR_ICON_CODE
 )
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import ensure_path, get_filename, TabName
+from rfsocinterface.core.utils import ensure_path, get_filename, TabName, get_sweep_filename
 from rfsocinterface.gui.main_widget import MainWidget
 
 import time
@@ -56,7 +56,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.setupUi(self)
 
         self._sweep_dialog_results = []
-        self._second_sweep_ran = False
+        self._highres_sweep_ran = False
 
         self.channel_comboBox.set_default_title('Select Channels...')
 
@@ -77,11 +77,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             self.global_shift_lineEdit
         ]
 
-        self.second_sweep_widgets = [
-            self.second_sweep_checkBox,
-            self.second_sweep_df_label,
-            self.second_sweep_df_lineEdit,
-            self.second_sweep_save_plots_checkBox,
+        self.highres_sweep_widgets = [
+            self.highres_sweep_checkBox,
+            self.highres_sweep_df_label,
+            self.highres_sweep_df_lineEdit,
+            self.highres_sweep_save_plots_checkBox,
         ]
         self.power_sweep_widgets = [
             self.power_levels_Label,
@@ -95,7 +95,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         self.filename_buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
         self.sweep_type_buttonGroup.buttonClicked.connect(self.select_sweep_type)
-        self.second_sweep_checkBox.clicked.connect(self.check_second_sweep)
+        self.highres_sweep_checkBox.clicked.connect(self.check_highres_sweep)
         self.show_diagnostics_checkBox.clicked.connect(self.check_diagnostics)
         self.filename_temperature_lineEdit.textEdited.connect(
             self.update_filename_example
@@ -120,7 +120,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             raise SettingsError(f'Invalid value for defaults.losweep.file_suffix: "{file_suffix}; valid values are: {FILE_SUFFIXES}')
         self.active_suffix: Literal['none', 'temperature', 'elevation'] = file_suffix
 
-        self.second_sweep_df_lineEdit.setText(str(defaults['secondSweep']['df']))
+        self.highres_sweep_df_lineEdit.setText(str(defaults['secondSweep']['df']))
 
         self.channel_comboBox.deselect_all()
 
@@ -165,29 +165,29 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         match self.sweep_type_buttonGroup.checkedButton():
             case self.lo_sweep_radioButton:
-                # Always have to upload the new tones before the second sweep
-                do_second_sweep = self.second_sweep_checkBox.isChecked()
-                do_upload = True if do_second_sweep else self.upload_checkBox.isChecked()
+                # Always have to upload the new tones before the highres sweep
+                do_highres_sweep = self.highres_sweep_checkBox.isChecked()
+                do_upload = True if do_highres_sweep else self.upload_checkBox.isChecked()
 
                 _logger.info('Beginning LO sweep...')
                 sweep_succesful = self.run_sweeps(
                     selected_channels,
                     show_diagnostics=self.show_diagnostics_checkBox.isChecked(),
                     upload_all_new_tone_lists=do_upload,
-                    second_sweep=False,
+                    high_res_sweep=False,
                 )
 
                 if not sweep_succesful:
                     _logger.info('Cancelling after first sweep...')
                     return
 
-                if do_second_sweep:
-                    _logger.info('Beginning Second LO sweep...')
+                if do_highres_sweep:
+                    _logger.info('Beginning High Resolution LO sweep...')
                     self.run_sweeps(
                         selected_channels,
                         show_diagnostics=False,
                         upload_all_new_tone_lists=False,
-                        second_sweep=True,
+                        high_res_sweep=True,
                     )
             case self.blind_sweep_radioButton:
                 _logger.info('Beginning blind sweep...')
@@ -195,7 +195,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                     selected_channels,
                     show_diagnostics=self.show_diagnostics_checkBox.isChecked(),
                     upload_all_new_tone_lists=False,
-                    second_sweep=False,
+                    high_res_sweep=False,
                     sweep_type='blind',
                 )
 
@@ -209,23 +209,19 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 if not sweep_succesful:
                     _logger.info('Power sweep cancelled...')
                 
-
-
-       
-    
     def run_sweeps(
             self,
             selected_channels: list[tuple[RFSOCWrapper, int]],
             show_diagnostics: bool=True,
             upload_all_new_tone_lists: bool=True,
-            second_sweep: bool=False,
+            high_res_sweep: bool=False,
             sweep_type: Literal['lo', 'blind']='lo',
     ) -> bool:
 
         blind_sweep = sweep_type == 'blind'
 
         pd = IncrementalProgressDialog(
-            f'Setting Up{" Second" if second_sweep else ""} {"Blind" if blind_sweep else "LO"} Sweep...',
+            f'Setting Up{" High Resolution" if high_res_sweep else ""} {"Blind" if blind_sweep else "LO"} Sweep...',
             'Cancel',
             0,
             100,
@@ -238,7 +234,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
 
         # Setup sweeps for each selected channel
-        sweeps = self.setup_sweeps(selected_channels, second_sweep=second_sweep)
+        sweeps = self.setup_sweeps(selected_channels, high_res_sweep=high_res_sweep)
 
         # Update progress dialog values
         pd.setValue(0)
@@ -271,8 +267,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         
         pd.close()
 
-        if not blind_sweep and second_sweep:
-            return True  # No fitting or plotting for second sweep
+        if not blind_sweep and high_res_sweep:
+            return True  # No fitting or plotting for highres sweep
 
         # Below this comment, we're only dealing with the first sweep
 
@@ -288,7 +284,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 return False
 
         # Upload new tone lists as needed
-        # If a second sweep is going to happen (i.e `upload_all_new_tone_lists` = True),
+        # If a highres sweep is going to happen (i.e `upload_all_new_tone_lists` = True),
         # all tone liusts are updated. Otherwise, only for sweeps that were acxcepted.
         for i, ((rfsoc, chan), sweep) in enumerate(zip(selected_channels, sweeps)):
             if upload_all_new_tone_lists or self._sweep_dialog_results[i] == QDialog.DialogCode.Accepted:
@@ -296,7 +292,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         return True
     
-    def setup_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]], second_sweep: bool=False) -> list[LoSweep]:
+    def setup_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]], high_res_sweep: bool=False) -> list[LoSweep]:
         # Get values from GUI, converting KHz to Hz
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
         diff_to_flag = get_num_value(self.flagging_lineEdit, float) * 1e3
@@ -308,26 +304,30 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             chan_name = rfsoc.get_channel_name(chan)
 
 
-            savefile = get_filename(
-                file_type="LO", chan_name=chan_name, mkdir=True
-            )
+            suffix = ''
             match self.filename_buttonGroup.checkedButton():
                 case self.filename_elevation_radioButton:
-                    savefile = savefile.with_stem(f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}')
+                    suffix += f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}'
                 case self.filename_temperature_radioButton:
-                    savefile = savefile.with_stem(f'{savefile.stem}_temp_{self.filename_temperature_lineEdit.text()}')
+                    suffix += f'{savefile.stem}_temp_{self.filename_temperature_lineEdit.text()}'
                 case _:
                     pass
+            if high_res_sweep:
+                suffix += f'_high_res'
+            savefile = get_sweep_filename(
+                sweep_type='lo',
+                chan_name=chan_name,
+                suffix=suffix,
+                mkdir=True,
+            )
             
-            if second_sweep:
-                savefile = savefile.with_stem(f'{savefile.stem}_high_res')
             sweeps.append(LoSweep(
                 rfsoc,
                 chan,
                 savefile,
                 tone_shift,
                 freq_step,
-                full_span / 5 if second_sweep else full_span,
+                full_span / 5 if high_res_sweep else full_span,
                 diff_to_flag=diff_to_flag,
             ))
         return sweeps
@@ -693,16 +693,16 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             self.review_tones_checkbox.hide()
             self.save_plots_CheckBox.hide()
 
-    def check_second_sweep(self):
-        """Callback for when the "perform second sweep" box is clicked."""
-        if self.second_sweep_checkBox.isChecked():
-            self.second_sweep_df_label.show()
-            self.second_sweep_df_lineEdit.show()
-            self.second_sweep_save_plots_checkBox.show()
+    def check_highres_sweep(self):
+        """Callback for when the "perform highres sweep" box is clicked."""
+        if self.highres_sweep_checkBox.isChecked():
+            self.highres_sweep_df_label.show()
+            self.highres_sweep_df_lineEdit.show()
+            self.highres_sweep_save_plots_checkBox.show()
         else:
-            self.second_sweep_df_label.hide()
-            self.second_sweep_df_lineEdit.hide()
-            self.second_sweep_save_plots_checkBox.hide()
+            self.highres_sweep_df_label.hide()
+            self.highres_sweep_df_lineEdit.hide()
+            self.highres_sweep_save_plots_checkBox.hide()
 
     def swap_filename_suffix(self, button: QRadioButton):
         """Callback for when the filename suffix is changed."""
@@ -733,19 +733,19 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                     widget.hide()
                 for widget in self.blind_sweep_widgets:
                     widget.hide()
-                for widget in self.lo_sweep_widgets + self.second_sweep_widgets:
+                for widget in self.lo_sweep_widgets + self.highres_sweep_widgets:
                     widget.show()
                 self.check_diagnostics()
-                self.check_second_sweep()
+                self.check_highres_sweep()
             case self.power_sweep_radioButton:
-                for widget in self.lo_sweep_widgets + self.second_sweep_widgets:
+                for widget in self.lo_sweep_widgets + self.highres_sweep_widgets:
                     widget.hide()
                 for widget in self.blind_sweep_widgets:
                     widget.hide()
                 for widget in self.power_sweep_widgets:
                     widget.show()
             case self.blind_sweep_radioButton:
-                for widget in self.lo_sweep_widgets + self.second_sweep_widgets:
+                for widget in self.lo_sweep_widgets + self.highres_sweep_widgets:
                     widget.hide()
                 for widget in self.power_sweep_widgets:
                     widget.hide()
