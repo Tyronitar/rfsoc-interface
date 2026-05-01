@@ -82,6 +82,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             self.highres_sweep_df_label,
             self.highres_sweep_df_lineEdit,
             self.highres_sweep_save_plots_checkBox,
+            self.only_highres_checkBox,
         ]
         self.power_sweep_widgets = [
             self.power_levels_Label,
@@ -97,6 +98,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.sweep_type_buttonGroup.buttonClicked.connect(self.select_sweep_type)
         self.highres_sweep_checkBox.clicked.connect(self.check_highres_sweep)
         self.show_diagnostics_checkBox.clicked.connect(self.check_diagnostics)
+        self.only_highres_checkBox.clicked.connect(self.check_only_highres)
         self.filename_temperature_lineEdit.textEdited.connect(
             self.update_filename_example
         )
@@ -165,23 +167,24 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         match self.sweep_type_buttonGroup.checkedButton():
             case self.lo_sweep_radioButton:
-                # Always have to upload the new tones before the highres sweep
-                do_highres_sweep = self.highres_sweep_checkBox.isChecked()
-                do_upload = True if do_highres_sweep else self.upload_checkBox.isChecked()
+                if not self.only_highres_checkBox.isChecked():
+                    # Always have to upload the new tones before the highres sweep
+                    do_highres_sweep = self.highres_sweep_checkBox.isChecked()
+                    do_upload = True if do_highres_sweep else self.upload_checkBox.isChecked()
 
-                _logger.info('Beginning LO sweep...')
-                sweep_succesful = self.run_sweeps(
-                    selected_channels,
-                    show_diagnostics=self.show_diagnostics_checkBox.isChecked(),
-                    upload_all_new_tone_lists=do_upload,
-                    high_res_sweep=False,
-                )
+                    _logger.info('Beginning LO sweep...')
+                    sweep_succesful = self.run_sweeps(
+                        selected_channels,
+                        show_diagnostics=self.show_diagnostics_checkBox.isChecked(),
+                        upload_all_new_tone_lists=do_upload,
+                        high_res_sweep=False,
+                    )
 
-                if not sweep_succesful:
-                    _logger.info('Cancelling after first sweep...')
-                    return
+                    if not sweep_succesful:
+                        _logger.info('Cancelling after first sweep...')
+                        return
 
-                if do_highres_sweep:
+                if self.only_highres_checkBox.isChecked() or do_highres_sweep:
                     _logger.info('Beginning High Resolution LO sweep...')
                     self.run_sweeps(
                         selected_channels,
@@ -703,6 +706,18 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             self.highres_sweep_df_label.hide()
             self.highres_sweep_df_lineEdit.hide()
             self.highres_sweep_save_plots_checkBox.hide()
+    
+    def check_only_highres(self):
+        """Callback for when the "ONLY perform highres sweep" box is clicked."""
+        self.only_flag_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
+        self.review_tones_checkbox.setVisible(not self.only_highres_checkBox.isChecked())
+        self.save_plots_CheckBox.setVisible(not self.only_highres_checkBox.isChecked())
+        self.show_diagnostics_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
+        self.highres_sweep_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
+        self.highres_sweep_df_label.setVisible(not self.only_highres_checkBox.isChecked())
+        self.highres_sweep_df_lineEdit.setVisible(not self.only_highres_checkBox.isChecked())
+        self.highres_sweep_save_plots_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
+        self.upload_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
 
     def swap_filename_suffix(self, button: QRadioButton):
         """Callback for when the filename suffix is changed."""
@@ -737,6 +752,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                     widget.show()
                 self.check_diagnostics()
                 self.check_highres_sweep()
+                self.check_only_highres()
             case self.power_sweep_radioButton:
                 for widget in self.lo_sweep_widgets + self.highres_sweep_widgets:
                     widget.hide()

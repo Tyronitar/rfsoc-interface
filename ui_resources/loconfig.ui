@@ -28,8 +28,18 @@
         <height>708</height>
        </rect>
       </property>
-      <layout class="QVBoxLayout" name="verticalLayout_3">
-       <item>
+      <layout class="QGridLayout" name="gridLayout">
+       <item row="0" column="2">
+        <widget class="QRadioButton" name="power_sweep_radioButton">
+         <property name="text">
+          <string>Power Sweep</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">sweep_type_buttonGroup</string>
+         </attribute>
+        </widget>
+       </item>
+       <item row="0" column="1">
         <widget class="QRadioButton" name="lo_sweep_radioButton">
          <property name="text">
           <string>LO Sweep</string>
@@ -42,17 +52,7 @@
          </attribute>
         </widget>
        </item>
-       <item>
-        <widget class="QRadioButton" name="power_sweep_radioButton">
-         <property name="text">
-          <string>Power Sweep</string>
-         </property>
-         <attribute name="buttonGroup">
-          <string notr="true">sweep_type_buttonGroup</string>
-         </attribute>
-        </widget>
-       </item>
-       <item>
+       <item row="0" column="3">
         <widget class="QRadioButton" name="blind_sweep_radioButton">
          <property name="text">
           <string>Blind Sweep</string>
@@ -62,12 +62,191 @@
          </attribute>
         </widget>
        </item>
-       <item>
+       <item row="4" column="1">
+        <spacer name="verticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Orientation::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>0</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item row="0" column="0">
+        <widget class="QLabel" name="sweep_type_label">
+         <property name="text">
+          <string>Sweep Type:</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0" colspan="4">
         <widget class="QGroupBox" name="lo_settings_groupBox">
          <property name="title">
           <string>Sweep Settings</string>
          </property>
          <layout class="QGridLayout" name="lo_gridLayout">
+          <item row="0" column="0">
+           <widget class="QLabel" name="channel_label">
+            <property name="text">
+             <string>Channels:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="12" column="1">
+           <layout class="QHBoxLayout" name="highres_sweep_horizontalLayout">
+            <item>
+             <widget class="QLabel" name="highres_sweep_df_label">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+              <property name="toolTip">
+               <string>Spacing between data points in KHz</string>
+              </property>
+              <property name="whatsThis">
+               <string>Spacing between data points in KHz</string>
+              </property>
+              <property name="text">
+               <string>LO Spacing df (KHz):</string>
+              </property>
+              <property name="buddy">
+               <cstring>highres_sweep_df_lineEdit</cstring>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="highres_sweep_df_lineEdit">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>100</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+              <property name="placeholderText">
+               <string>0.1</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="highres_sweep_horizontalSpacer">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item row="9" column="2">
+           <widget class="QCheckBox" name="save_plots_CheckBox">
+            <property name="text">
+             <string>Save resonator plots</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="flagging_label">
+            <property name="toolTip">
+             <string>Maximum shift to flag</string>
+            </property>
+            <property name="whatsThis">
+             <string>Maximum shift to flag</string>
+            </property>
+            <property name="text">
+             <string>Maximum shift to flag (KHz):</string>
+            </property>
+            <property name="buddy">
+             <cstring>flagging_lineEdit</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="12" column="0">
+           <widget class="QCheckBox" name="highres_sweep_checkBox">
+            <property name="toolTip">
+             <string>Run a second LO sweep</string>
+            </property>
+            <property name="whatsThis">
+             <string>Run a second LO sweep</string>
+            </property>
+            <property name="text">
+             <string>Perform high resolution sweep</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="9" column="1">
+           <widget class="QCheckBox" name="only_flag_checkBox">
+            <property name="text">
+             <string>Only show flagged resonators</string>
+            </property>
+           </widget>
+          </item>
+          <item row="12" column="2">
+           <widget class="QCheckBox" name="highres_sweep_save_plots_checkBox">
+            <property name="text">
+             <string>Save resonator plots</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout">
+            <item>
+             <widget class="CheckableComboBox" name="channel_comboBox">
+              <property name="placeholderText">
+               <string>Please Select an Item...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QToolButton" name="channel_toolButton">
+              <property name="toolTip">
+               <string>Open in &quot;Initialization&quot; tab</string>
+              </property>
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="icon">
+               <iconset resource="icons.qrc">
+                <normaloff>:/icons/external-link.svg</normaloff>:/icons/external-link.svg</iconset>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
           <item row="1" column="1">
            <widget class="QLabel" name="channel_error_label">
             <property name="text">
@@ -75,16 +254,26 @@
             </property>
            </widget>
           </item>
-          <item row="3" column="1">
-           <widget class="QLineEdit" name="df_lineEdit">
-            <property name="maximumSize">
-             <size>
-              <width>100</width>
-              <height>16777215</height>
-             </size>
+          <item row="6" column="0">
+           <widget class="QLabel" name="power_levels_Label">
+            <property name="text">
+             <string>Power Levels (dB):</string>
             </property>
-            <property name="placeholderText">
-             <string>1</string>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="df_label">
+            <property name="toolTip">
+             <string>Spacing between data points in KHz</string>
+            </property>
+            <property name="whatsThis">
+             <string>Spacing between data points in KHz</string>
+            </property>
+            <property name="text">
+             <string>LO spacing df (KHz):</string>
+            </property>
+            <property name="buddy">
+             <cstring>df_lineEdit</cstring>
             </property>
            </widget>
           </item>
@@ -120,30 +309,36 @@
             </property>
            </widget>
           </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="flagging_label">
+          <item row="10" column="1">
+           <widget class="QCheckBox" name="review_tones_checkbox">
             <property name="toolTip">
-             <string>Maximum shift to flag</string>
+             <string>Review the new tone list after the sweep</string>
             </property>
             <property name="whatsThis">
-             <string>Maximum shift to flag</string>
+             <string>Review the new tone list after the sweep. Unchecking this box will accept the input tone list</string>
             </property>
             <property name="text">
-             <string>Maximum shift to flag (KHz):</string>
+             <string>Review new tones</string>
             </property>
-            <property name="buddy">
-             <cstring>flagging_lineEdit</cstring>
+            <property name="checked">
+             <bool>true</bool>
             </property>
            </widget>
           </item>
-          <item row="10" column="0">
-           <widget class="QCheckBox" name="upload_checkBox">
-            <property name="text">
-             <string>Write new tone list to RFSoC</string>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="df_lineEdit">
+            <property name="maximumSize">
+             <size>
+              <width>100</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>1</string>
             </property>
            </widget>
           </item>
-          <item row="7" column="0" colspan="3">
+          <item row="8" column="0" colspan="3">
            <widget class="QGroupBox" name="groupBox">
             <property name="title">
              <string>Filename Suffix</string>
@@ -240,75 +435,10 @@
             </layout>
            </widget>
           </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="channel_label">
-            <property name="text">
-             <string>Channels:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="9" column="1">
-           <widget class="QCheckBox" name="review_tones_checkbox">
-            <property name="toolTip">
-             <string>Review the new tone list after the sweep</string>
-            </property>
-            <property name="whatsThis">
-             <string>Review the new tone list after the sweep. Unchecking this box will accept the input tone list</string>
-            </property>
-            <property name="text">
-             <string>Review new tones</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="8" column="1">
-           <widget class="QCheckBox" name="only_flag_checkBox">
-            <property name="text">
-             <string>Only show flagged resonators</string>
-            </property>
-           </widget>
-          </item>
           <item row="11" column="0">
-           <widget class="QCheckBox" name="highres_sweep_checkBox">
-            <property name="toolTip">
-             <string>Run a second LO sweep</string>
-            </property>
-            <property name="whatsThis">
-             <string>Run a second LO sweep</string>
-            </property>
+           <widget class="QCheckBox" name="upload_checkBox">
             <property name="text">
-             <string>Perform high resolution sweep</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="df_label">
-            <property name="toolTip">
-             <string>Spacing between data points in KHz</string>
-            </property>
-            <property name="whatsThis">
-             <string>Spacing between data points in KHz</string>
-            </property>
-            <property name="text">
-             <string>LO spacing df (KHz):</string>
-            </property>
-            <property name="buddy">
-             <cstring>df_lineEdit</cstring>
-            </property>
-           </widget>
-          </item>
-          <item row="8" column="2">
-           <widget class="QCheckBox" name="save_plots_CheckBox">
-            <property name="text">
-             <string>Save resonator plots</string>
-            </property>
-            <property name="checked">
-             <bool>false</bool>
+             <string>Write new tone list to RFSoC</string>
             </property>
            </widget>
           </item>
@@ -328,108 +458,8 @@
             </property>
            </widget>
           </item>
-          <item row="11" column="1">
-           <layout class="QHBoxLayout" name="highres_sweep_horizontalLayout">
-            <item>
-             <widget class="QLabel" name="highres_sweep_df_label">
-              <property name="enabled">
-               <bool>true</bool>
-              </property>
-              <property name="toolTip">
-               <string>Spacing between data points in KHz</string>
-              </property>
-              <property name="whatsThis">
-               <string>Spacing between data points in KHz</string>
-              </property>
-              <property name="text">
-               <string>LO Spacing df (KHz):</string>
-              </property>
-              <property name="buddy">
-               <cstring>highres_sweep_df_lineEdit</cstring>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="highres_sweep_df_lineEdit">
-              <property name="enabled">
-               <bool>true</bool>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>100</width>
-                <height>16777215</height>
-               </size>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-              <property name="placeholderText">
-               <string>0.1</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <spacer name="highres_sweep_horizontalSpacer">
-              <property name="orientation">
-               <enum>Qt::Orientation::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-           </layout>
-          </item>
-          <item row="11" column="2">
-           <widget class="QCheckBox" name="highres_sweep_save_plots_checkBox">
-            <property name="text">
-             <string>Save resonator plots</string>
-            </property>
-            <property name="checked">
-             <bool>false</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <layout class="QHBoxLayout" name="horizontalLayout">
-            <item>
-             <widget class="CheckableComboBox" name="channel_comboBox">
-              <property name="placeholderText">
-               <string>Please Select an Item...</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QToolButton" name="channel_toolButton">
-              <property name="toolTip">
-               <string>Open in &quot;Initialization&quot; tab</string>
-              </property>
-              <property name="text">
-               <string>...</string>
-              </property>
-              <property name="icon">
-               <iconset resource="icons.qrc">
-                <normaloff>:/icons/external-link.svg</normaloff>:/icons/external-link.svg</iconset>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <spacer name="horizontalSpacer">
-              <property name="orientation">
-               <enum>Qt::Orientation::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-           </layout>
+          <item row="6" column="1" colspan="2">
+           <widget class="QLineEdit" name="power_levels_lineEdit"/>
           </item>
           <item row="2" column="1">
            <widget class="QLineEdit" name="global_shift_lineEdit">
@@ -447,7 +477,20 @@
             </property>
            </widget>
           </item>
-          <item row="8" column="0">
+          <item row="5" column="1">
+           <widget class="QLineEdit" name="flagging_lineEdit">
+            <property name="maximumSize">
+             <size>
+              <width>100</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>3</string>
+            </property>
+           </widget>
+          </item>
+          <item row="9" column="0">
            <widget class="QCheckBox" name="show_diagnostics_checkBox">
             <property name="toolTip">
              <string>Show diagnostics after running the sweep</string>
@@ -463,44 +506,15 @@
             </property>
            </widget>
           </item>
-          <item row="5" column="1">
-           <widget class="QLineEdit" name="flagging_lineEdit">
-            <property name="maximumSize">
-             <size>
-              <width>100</width>
-              <height>16777215</height>
-             </size>
-            </property>
-            <property name="placeholderText">
-             <string>3</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="0">
-           <widget class="QLabel" name="power_levels_Label">
+          <item row="7" column="0">
+           <widget class="QCheckBox" name="only_highres_checkBox">
             <property name="text">
-             <string>Power Levels (dB):</string>
+             <string>Only run high resolution sweep</string>
             </property>
            </widget>
-          </item>
-          <item row="6" column="1">
-           <widget class="QLineEdit" name="power_levels_lineEdit"/>
           </item>
          </layout>
         </widget>
-       </item>
-       <item>
-        <spacer name="verticalSpacer">
-         <property name="orientation">
-          <enum>Qt::Orientation::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>0</height>
-          </size>
-         </property>
-        </spacer>
        </item>
       </layout>
      </widget>
@@ -562,7 +576,7 @@
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="sweep_type_buttonGroup"/>
   <buttongroup name="filename_buttonGroup"/>
+  <buttongroup name="sweep_type_buttonGroup"/>
  </buttongroups>
 </ui>
