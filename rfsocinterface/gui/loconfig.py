@@ -14,7 +14,7 @@ from kidpy3.measure import ResonatorFinder
 
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
-from rfsocinterface.core.losweep import LoSweepData, LoSweep, DEFAULT_NCOLS, PowerSweep
+from rfsocinterface.core.sweeps import LoSweepData, LoSweep, DEFAULT_NCOLS, PowerSweep
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog, BlindSweepDialog
 from rfsocinterface.gui.widgets import (
     get_num_value,

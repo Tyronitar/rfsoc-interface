@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list, LoSweep, DEFAULT_NCOLS
+from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, get_tone_list, LoSweep, DEFAULT_NCOLS
 from rfsocinterface.core.params import update_params_file, initialize_params_file
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog

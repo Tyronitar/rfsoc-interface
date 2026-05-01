@@ -1,6 +1,6 @@
 
 from rfsocinterface.core.data import *
-from rfsocinterface.core.losweep import PowerSweepData
+from rfsocinterface.core.sweeps import PowerSweepData
 
 
 if __name__ == '__main__':

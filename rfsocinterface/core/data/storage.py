@@ -30,7 +30,7 @@ from rfsocinterface.core.data.utils import (
     interpolate_timestamp_streaming,
     rotate_basis,
 )
-from rfsocinterface.core.losweep import LoSweepData
+from rfsocinterface.core.sweeps import LoSweepData
 from rfsocinterface.core.utils import (
     DEFAULT_DATA_DIRECTORY,
     PERMISSIONS_ALL_FULL,

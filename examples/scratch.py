@@ -7,7 +7,7 @@ from kidpy3 import RawDataFile
 from scipy.signal import decimate
 
 
-from rfsocinterface.core.losweep import LoSweepData
+from rfsocinterface.core.sweeps import LoSweepData
 from rfsocinterface.core.data.storage import ProcessedData 
 
 
