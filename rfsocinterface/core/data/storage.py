@@ -25,9 +25,11 @@ from rfsocinterface.core.data.utils import (
     generate_calibrated_data,
     get_channel_group_name,
     get_detector_positions,
+    get_detector_positions_no_interp,
     get_step_group_name,
     interpolate_missing_data,
     interpolate_timestamp_streaming,
+    interpolate_telescope_position,
     rotate_basis,
 )
 from rfsocinterface.core.losweep import LoSweepData
@@ -635,6 +637,7 @@ class ConsolidatedData(NewDataStorage):
         setnum: int,
         data_dir: PathLike=DEFAULT_DATA_DIRECTORY,
         downsampling_factor: int=1,
+        use_pps: bool=True,
     ) -> ConsolidatedData:
 
         todtemplate = get_tod_template(date, setnum)
@@ -715,6 +718,11 @@ class ConsolidatedData(NewDataStorage):
             except:
                 za_tel = azel_file['el_tel']
             timestamp_tel = azel_file['timestamp_tel']
+            if 'az_pps' in azel_file:
+                az_pps_tel = azel_file['az_pps']
+                za_pps_tel = azel_file['za_pps']
+            else:
+                az_pps_tel = za_pps_tel = None
             # vis = azel_tfile.root.optical_visibility[0]
             vis = np.nan
             if isinstance(vis, bytes):
@@ -751,13 +759,21 @@ class ConsolidatedData(NewDataStorage):
 
         # Optical image
         if optcam_exists:
+            _logger.info('ConsolidatedData: Copying optical data...')
             # optical_image = optcam_file.root.optical_image
             if 'optical_image' in optcam_file:
                 global_data_group.create_dataset('optical_image', data=optcam_file['optical_image'][:])
             elif 'optical_video' in optcam_file:
                 global_data_group.create_dataset('optical_image', data=optcam_file['optical_video'][..., 0])
-                global_data_group.create_dataset('optical_video', data=optcam_file['optical_video'])
+                optical_video = optcam_file['optical_video']
+                chunk_shape = optical_video.shape[:-1] + (1,)
+                global_data_group.create_dataset('optical_video', data=optical_video, compression='lzf', chunks=chunk_shape)
                 global_data_group.create_dataset('optical_video_timestamp', data=optcam_file['timestamp'])
+            elif 'timestamp' in optcam_file:
+                # Only 'timestamp' exists (i.e. video was saved in a seperate file)
+                global_data_group.attrs['optical_video_file'] = optcam_file.attrs['video_file']
+                global_data_group.create_dataset('optical_video_timestamp', data=optcam_file['timestamp'])
+                global_data_group.create_dataset('optical_image', data=np.array([]))
             optcam_file.close()
         else:
             global_data_group.create_dataset('optical_image', data=np.array([]))
@@ -955,18 +971,45 @@ class ConsolidatedData(NewDataStorage):
 
             # Detector Positions
             if azel_exists:
-                _logger.info('ConsolidatedDaata: Computing detector positions...')
-                get_detector_positions(
-                    temp_timestamp,
-                    timestamp_tel[:],
-                    az_tel[:],
-                    za_tel[:],
-                    temp_detector_az,
-                    temp_detector_za,
-                    tones_table['delta_x'][:],
-                    tones_table['delta_y'][:],
-                    this_channel_group.attrs['detector_dx_dy_elevation_angle'],
-                )
+                _logger.info('ConsolidatedData: Computing detector positions...')
+                if use_pps and raw_data.pps is not None and az_pps_tel is not None and za_pps_tel is not None:
+                    corrected_az_tel = interpolate_telescope_position(
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        az_tel[:],
+                        az_pps_tel[:],
+                        raw_data.pps[:],
+                        direction='az',
+                    )
+                    corrected_za_tel = interpolate_telescope_position(
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        za_tel[:],
+                        za_pps_tel[:],
+                        raw_data.pps[:],
+                        direction='za',
+                    )
+                    get_detector_positions_no_interp(
+                        corrected_az_tel,
+                        corrected_za_tel,
+                        temp_detector_az,
+                        temp_detector_za,
+                        tones_table['delta_x'][:],
+                        tones_table['delta_y'][:],
+                        this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                    )
+                else:
+                    get_detector_positions(
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        az_tel[:],
+                        za_tel[:],
+                        temp_detector_az,
+                        temp_detector_za,
+                        tones_table['delta_x'][:],
+                        tones_table['delta_y'][:],
+                        this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                    )
 
             # Downsample timestamp and IQ data
             _logger.info('ConsolidatedData: Downsampling IQ data...')

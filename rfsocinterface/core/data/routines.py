@@ -10,6 +10,7 @@ import pdb
 
 import numpy as np
 import numpy.typing as npt
+from numpy.polynomial import Polynomial
 from scipy import signal
 import time
 import datetime

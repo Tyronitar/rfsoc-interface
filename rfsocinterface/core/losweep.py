@@ -849,16 +849,20 @@ if __name__ == '__main__':
     # Lab Testing
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
-    tile_name = 'Device_aSi1_Channel3'
-    data = LoSweepData.from_h5(f'/data/20260127/20260127_{tile_name}_blind_LO_Sweep_hour13p8542.h5')
-    # old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
-    old_params = None
-    pdb.set_trace()
-    data.generate_new_params_file(tile_name, old_params, plot=True)
-    pdb.set_trace()
+    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p1558.h5')
+    data = [
+        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p1581.h5'),
+        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p1750.h5'),
+        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p1906.h5'),
+        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p2503.h5'),
+    ]
+    for sweep in data:
+        plt.plot(sweep.freq[0, :], sweep.s21[0, :])
+    plt.show()
     # data = LoSweepData.from_h5('/data/20251204/20251204_100_tone_uniform_202050829_LO_Sweep_hour16p4036.h5')
     # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
     # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
+    pdb.set_trace()
 
     # """  """class Incrementer:
     #     def __init__(self):

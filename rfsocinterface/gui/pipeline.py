@@ -71,7 +71,6 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         self.drag_function_widget.add_section('Processing Level 1')
         self.drag_function_widget.add_section('Processing Level 2')
         self.drag_function_widget.add_section('Post-processing')
-        print('Flushing buffer mayber idk')
         # self.drag_function_widget.orderChanged.connect(self.update_order)
 
     def exec(self):

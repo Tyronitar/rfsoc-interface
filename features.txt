@@ -1,0 +1,2000 @@
+///////////////////////////////////
+/// VmbPy List Features Example ///
+///////////////////////////////////
+
+/// Feature name   : DeviceScanType
+/// Display name   : Device Scan Type
+/// Tooltip        : Scan type of the sensor of the device.
+/// Description    : Scan type of the sensor of the device.
+/// SFNC Namespace : Standard
+/// Value          : Areascan
+
+/// Feature name   : DeviceVendorName
+/// Display name   : Device Vendor Name
+/// Tooltip        : Name of the manufacturer of the device.
+/// Description    : Name of the manufacturer of the device.
+/// SFNC Namespace : Standard
+/// Value          : Allied Vision
+
+/// Feature name   : DeviceModelName
+/// Display name   : Device Model Name
+/// Tooltip        : Model of the device.
+/// Description    : Model of the device.
+/// SFNC Namespace : Standard
+/// Value          : 1800 U-500c
+
+/// Feature name   : DeviceFamilyName
+/// Display name   : Device Family Name
+/// Tooltip        : Identifier of the product family of the device.
+/// Description    : Identifier of the product family of the device.
+/// SFNC Namespace : Standard
+/// Value          : ALVIUM
+
+/// Feature name   : DeviceManufacturerInfo
+/// Display name   : Device Manufacturer Info
+/// Tooltip        : Manufacturer information about the device.
+/// Description    : Manufacturer information about the device.
+/// SFNC Namespace : Standard
+/// Value          : 0-D2-0-263209-0-0
+
+/// Feature name   : DeviceVersion
+/// Display name   : Device Version
+/// Tooltip        : Version of the device.
+/// Description    : Version of the device.
+/// SFNC Namespace : Standard
+/// Value          : 13623
+
+/// Feature name   : DeviceFirmwareVersion
+/// Display name   : Device Firmware Version
+/// Tooltip        : Version of the firmware in the device.
+/// Description    : Version of the firmware in the device.
+/// SFNC Namespace : Standard
+/// Value          : 13.1.794391F9
+
+/// Feature name   : DeviceFirmwareVersionSelector
+/// Display name   : Device Firmware Version Selector
+/// Tooltip        : Selects the DeviceFirmwareVersion to read.
+/// Description    : Selects the DeviceFirmwareVersion to read.
+/// SFNC Namespace : Custom
+/// Value          : Current
+
+/// Feature name   : DeviceFirmwareID
+/// Display name   : Device Firmware ID
+/// Tooltip        : Device firmware ID.
+/// Description    : Device firmware ID.
+/// SFNC Namespace : Custom
+/// Value          : 44-0010102C
+
+/// Feature name   : DeviceFirmwareIDSelector
+/// Display name   : Device Firmware ID Selector
+/// Tooltip        : Selects the DeviceFirmwareID to read.
+/// Description    : Selects the DeviceFirmwareID to read.
+/// SFNC Namespace : Custom
+/// Value          : Current
+
+/// Feature name   : DeviceSerialNumber
+/// Display name   : Device Serial Number
+/// Tooltip        : Device`s serial number.
+/// Description    : Device`s serial number. This string is a unique identifier of the device.
+/// SFNC Namespace : Standard
+/// Value          : 05J13
+
+/// Feature name   : DeviceUserID
+/// Display name   : Device User ID
+/// Tooltip        : User-programmable device identifier.
+/// Description    : User-programmable device identifier.
+/// SFNC Namespace : Standard
+/// Value          : 
+
+/// Feature name   : DeviceSFNCVersionMajor
+/// Display name   : Device SFNC Version Major
+/// Tooltip        : Major version of the Standard Features Naming Convention that was used to create the device`s GenICam XML.
+/// Description    : Major version of the Standard Features Naming Convention that was used to create the device`s GenICam XML.
+/// SFNC Namespace : Standard
+/// Value          : 2
+
+/// Feature name   : DeviceSFNCVersionMinor
+/// Display name   : Device SFNC Version Minor
+/// Tooltip        : Minor version of the Standard Features Naming Convention that was used to create the device`s GenICam XML.
+/// Description    : Minor version of the Standard Features Naming Convention that was used to create the device`s GenICam XML.
+/// SFNC Namespace : Standard
+/// Value          : 7
+
+/// Feature name   : DeviceSFNCVersionSubMinor
+/// Display name   : Device SFNC Version Sub Minor
+/// Tooltip        : Sub minor version of Standard Features Naming Convention that was used to create the device`s GenICam XML.
+/// Description    : Sub minor version of Standard Features Naming Convention that was used to create the device`s GenICam XML.
+/// SFNC Namespace : Standard
+/// Value          : 1
+
+/// Feature name   : DeviceGenCPVersionMajor
+/// Display name   : Device Gen CP Version Major
+/// Tooltip        : Major version of the GenCP protocol supported by the device.
+/// Description    : Major version of the GenCP protocol supported by the device.
+/// SFNC Namespace : Standard
+/// Value          : 1
+
+/// Feature name   : DeviceGenCPVersionMinor
+/// Display name   : Device Gen CP Version Minor
+/// Tooltip        : Minor version of the GenCP protocol supported by the device.
+/// Description    : Minor version of the GenCP protocol supported by the device.
+/// SFNC Namespace : Standard
+/// Value          : 3
+
+/// Feature name   : DeviceLinkThroughputLimitMode
+/// Display name   : Device Link Throughput Limit Mode
+/// Tooltip        : Controls if the DeviceLinkThroughputLimit is active.
+/// Description    : Controls if the DeviceLinkThroughputLimit is active. When disabled, lower level TL specific features are expected to control the throughput. When enabled, DeviceLinkThroughputLimit controls the overall throughput.
+/// SFNC Namespace : Standard
+/// Value          : On
+
+/// Feature name   : DeviceLinkThroughputLimit
+/// Display name   : Device Link Throughput Limit
+/// Tooltip        : Limits the maximum bandwidth of the data that will be streamed out by the device on the selected Link.
+/// Description    : Limits the maximum bandwidth of the data that will be streamed out by the device on the selected Link. If necessary, delays will be uniformly inserted between transport layer packets in order to control the peak bandwidth.
+/// SFNC Namespace : Standard
+/// Value          : 200000000
+
+/// Feature name   : DeviceReset
+/// Display name   : Device Reset
+/// Tooltip        : Resets the device to its power up state.
+/// Description    : Resets the device to its power up state. After reset, the device must be rediscovered.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : DeviceLinkSpeed
+/// Display name   : Device Link Speed
+/// Tooltip        : Indicates the speed of transmission negotiated on the specified Link.
+/// Description    : Indicates the speed of transmission negotiated and represents the total speed of all the connections of the specified Link.
+/// SFNC Namespace : Standard
+/// Value          : 450000000
+
+/// Feature name   : DeviceIndicatorMode
+/// Display name   : Device Indicator Mode
+/// Tooltip        : Controls the behavior of the indicators (such as LEDs) showing the status of the Device.
+/// Description    : Controls the behavior of the indicators (such as LEDs) showing the status of the Device.
+/// SFNC Namespace : Standard
+/// Value          : Active
+
+/// Feature name   : DeviceIndicatorLuminance
+/// Display name   : Device Indicator Luminance
+/// Tooltip        : Controls the luminance of the indicators (such as LEDs) showing the status of the Device.
+/// Description    : Controls the luminance of the indicators (such as LEDs) showing the status of the Device.
+/// SFNC Namespace : Custom
+/// Value          : 10
+
+/// Feature name   : DeviceTemperatureSelector
+/// Display name   : Device Temperature Selector
+/// Tooltip        : Selects the location within the device, where the temperature will be measured.
+/// Description    : Selects the location within the device, where the temperature will be measured.
+/// SFNC Namespace : Standard
+/// Value          : Mainboard
+
+/// Feature name   : DeviceTemperature
+/// Display name   : Device Temperature
+/// Tooltip        : Device temperature in degrees Celsius (C).
+/// Description    : Device temperature in degrees Celsius (C). It is measured at the location selected by DeviceTemperatureSelector.
+/// SFNC Namespace : Standard
+/// Value          : 37.5
+
+/// Feature name   : DeviceTemperatureStatus
+/// Display name   : Device Temperature Status
+/// Tooltip        : Describes the temperature status of the device.
+/// Description    : Describes the temperature status of the device.
+/// SFNC Namespace : Custom
+/// Value          : OK
+
+/// Feature name   : DeviceLinkCommandTimeout
+/// Display name   : Device Link Command Timeout
+/// Tooltip        : Indicates the command timeout of the specified Link.
+/// Description    : Indicates the command timeout of the specified Link. This corresponds to the maximum response time of the device for a command sent on that link.
+/// SFNC Namespace : Standard
+/// Value          : 100000.0
+
+/// Feature name   : DeviceTLVersionMajor
+/// Display name   : Device Transport Layer Version Major
+/// Tooltip        : Major version of the Transport Layer of the device.
+/// Description    : Major version of the Transport Layer of the device.
+/// SFNC Namespace : Standard
+/// Value          : 1
+
+/// Feature name   : DeviceTLVersionMinor
+/// Display name   : Device Transport Layer Version Minor
+/// Tooltip        : Minor version of the Transport Layer of the device.
+/// Description    : Minor version of the Transport Layer of the device.
+/// SFNC Namespace : Standard
+/// Value          : 1
+
+/// Feature name   : TimestampLatch
+/// Display name   : Timestamp Latch
+/// Tooltip        : Latches the current timestamp counter into TimestampLatchValue.
+/// Description    : Latches the current timestamp counter into TimestampLatchValue.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : TimestampReset
+/// Display name   : Timestamp Reset
+/// Tooltip        : Resets the current value of the device timestamp counter.
+/// Description    : Resets the current value of the device timestamp counter.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : TimestampLatchValue
+/// Display name   : Timestamp Latch Value
+/// Tooltip        : Returns the latched value of the timestamp counter.
+/// Description    : Returns the latched value of the timestamp counter.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : DevicePowerSavingMode
+/// Display name   : Device Power Saving Mode
+/// Tooltip        : Selects between various power saving modes.
+/// Description    : Selects between various power saving modes.
+            To apply the selected power saving mode, the device needs to receive a DevicePowerSave command or
+            a respective backend command from the Host.
+/// SFNC Namespace : Custom
+/// Value          : Disabled
+
+/// Feature name   : EventSelector
+/// Display name   : Event Selector
+/// Tooltip        : Selects which Event to signal to the host application.
+/// Description    : Selects which Event to signal to the host application.
+/// SFNC Namespace : Standard
+/// Value          : Test
+
+/// Feature name   : EventNotification
+/// Display name   : Event Notification
+/// Tooltip        : Activate or deactivate the notification to the host application of the occurrence of the selected Event.
+/// Description    : Activate or deactivate the notification to the host application of the occurrence of the selected Event.
+/// SFNC Namespace : Standard
+/// Value          : On
+
+/// Feature name   : EventAcquisitionStart
+/// Display name   : Event AcquisitionStart
+/// Tooltip        : Returns the unique Identifier of the AcquisitionStart type of Event.
+/// Description    : Returns the unique Identifier of the AcquisitionStart type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventAcquisitionStartTimestamp
+/// Display name   : Event AcquisitionStart Timestamp
+/// Tooltip        : Returns the Timestamp of the AcquisitionStart Event.
+/// Description    : Returns the Timestamp of the AcquisitionStart Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventAcquisitionEnd
+/// Display name   : Event AcquisitionEnd
+/// Tooltip        : Returns the unique Identifier of the AcquisitionEnd type of Event.
+/// Description    : Returns the unique Identifier of the AcquisitionEnd type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventAcquisitionEndTimestamp
+/// Display name   : Event AcquisitionEnd Timestamp
+/// Tooltip        : Returns the Timestamp of the AcquisitionEnd Event.
+/// Description    : Returns the Timestamp of the AcquisitionEnd Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventExposureEnd
+/// Display name   : Event ExposureEnd
+/// Tooltip        : Returns the unique Identifier of the ExposureEnd type of Event.
+/// Description    : Returns the unique Identifier of the ExposureEnd type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventExposureEndTimestamp
+/// Display name   : Event ExposureEnd Timestamp
+/// Tooltip        : Returns the Timestamp of the ExposureEnd Event.
+/// Description    : Returns the Timestamp of the ExposureEnd Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventExposureStart
+/// Display name   : Event ExposureStart
+/// Tooltip        : Returns the unique Identifier of the ExposureStart type of Event.
+/// Description    : Returns the unique Identifier of the ExposureStart type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventExposureStartTimestamp
+/// Display name   : Event ExposureStart Timestamp
+/// Tooltip        : Returns the Timestamp of the ExposureStart Event.
+/// Description    : Returns the Timestamp of the ExposureStart Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine0RisingEdge
+/// Display name   : Event Line0RisingEdge
+/// Tooltip        : Returns the unique Identifier of the Line0RisingEdge type of Event.
+/// Description    : Returns the unique Identifier of the Line0RisingEdge type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine0RisingEdgeTimestamp
+/// Display name   : Event Line0RisingEdge Timestamp
+/// Tooltip        : Returns the Timestamp of the Line0RisingEdge Event.
+/// Description    : Returns the Timestamp of the Line0RisingEdge Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine0FallingEdge
+/// Display name   : Event Line0FallingEdge
+/// Tooltip        : Returns the unique Identifier of the Line0FallingEdge type of Event.
+/// Description    : Returns the unique Identifier of the Line0FallingEdge type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine0FallingEdgeTimestamp
+/// Display name   : Event Line0FallingEdge Timestamp
+/// Tooltip        : Returns the Timestamp of the Line0FallingEdge Event.
+/// Description    : Returns the Timestamp of the Line0FallingEdge Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine1RisingEdge
+/// Display name   : Event Line1RisingEdge
+/// Tooltip        : Returns the unique Identifier of the Line1RisingEdge type of Event.
+/// Description    : Returns the unique Identifier of the Line1RisingEdge type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine1RisingEdgeTimestamp
+/// Display name   : Event Line1RisingEdge Timestamp
+/// Tooltip        : Returns the Timestamp of the Line1RisingEdge Event.
+/// Description    : Returns the Timestamp of the Line1RisingEdge Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine1FallingEdge
+/// Display name   : Event Line1FallingEdge
+/// Tooltip        : Returns the unique Identifier of the Line1FallingEdge type of Event.
+/// Description    : Returns the unique Identifier of the Line1FallingEdge type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine1FallingEdgeTimestamp
+/// Display name   : Event Line1FallingEdge Timestamp
+/// Tooltip        : Returns the Timestamp of the Line1FallingEdge Event.
+/// Description    : Returns the Timestamp of the Line1FallingEdge Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine2RisingEdge
+/// Display name   : Event Line2RisingEdge
+/// Tooltip        : Returns the unique Identifier of the Line2RisingEdge type of Event.
+/// Description    : Returns the unique Identifier of the Line2RisingEdge type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine2RisingEdgeTimestamp
+/// Display name   : Event Line2RisingEdge Timestamp
+/// Tooltip        : Returns the Timestamp of the Line2RisingEdge Event.
+/// Description    : Returns the Timestamp of the Line2RisingEdge Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine2FallingEdge
+/// Display name   : Event Line2FallingEdge
+/// Tooltip        : Returns the unique Identifier of the Line2FallingEdge type of Event.
+/// Description    : Returns the unique Identifier of the Line2FallingEdge type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine2FallingEdgeTimestamp
+/// Display name   : Event Line2FallingEdge Timestamp
+/// Tooltip        : Returns the Timestamp of the Line2FallingEdge Event.
+/// Description    : Returns the Timestamp of the Line2FallingEdge Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine3RisingEdge
+/// Display name   : Event Line3RisingEdge
+/// Tooltip        : Returns the unique Identifier of the Line3RisingEdge type of Event.
+/// Description    : Returns the unique Identifier of the Line3RisingEdge type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine3RisingEdgeTimestamp
+/// Display name   : Event Line3RisingEdge Timestamp
+/// Tooltip        : Returns the Timestamp of the Line3RisingEdge Event.
+/// Description    : Returns the Timestamp of the Line3RisingEdge Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine3FallingEdge
+/// Display name   : Event Line3FallingEdge
+/// Tooltip        : Returns the unique Identifier of the Line3FallingEdge type of Event.
+/// Description    : Returns the unique Identifier of the Line3FallingEdge type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventLine3FallingEdgeTimestamp
+/// Display name   : Event Line3FallingEdge Timestamp
+/// Tooltip        : Returns the Timestamp of the Line3FallingEdge Event.
+/// Description    : Returns the Timestamp of the Line3FallingEdge Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventFrameBufferOverflow
+/// Display name   : Event FrameBufferOverflow
+/// Tooltip        : Returns the unique Identifier of the FrameBufferOverflow type of Event.
+/// Description    : Returns the unique Identifier of the FrameBufferOverflow type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventFrameBufferOverflowTimestamp
+/// Display name   : Event FrameBufferOverflow Timestamp
+/// Tooltip        : Returns the Timestamp of the FrameBufferOverflow Event.
+/// Description    : Returns the Timestamp of the FrameBufferOverflow Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventFrameTriggerWait
+/// Display name   : Event FrameTriggerWait
+/// Tooltip        : Returns the unique Identifier of the FrameTriggerWait type of Event.
+/// Description    : Returns the unique Identifier of the FrameTriggerWait type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventFrameTriggerWaitTimestamp
+/// Display name   : Event FrameTriggerWait Timestamp
+/// Tooltip        : Returns the Timestamp of the FrameTriggerWait Event.
+/// Description    : Returns the Timestamp of the FrameTriggerWait Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTemperatureWarning
+/// Display name   : Event TemperatureWarning
+/// Tooltip        : Returns the unique Identifier of the TemperatureWarning type of Event.
+/// Description    : Returns the unique Identifier of the TemperatureWarning type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTemperatureWarningTimestamp
+/// Display name   : Event TemperatureWarning Timestamp
+/// Tooltip        : Returns the Timestamp of the TemperatureWarning Event.
+/// Description    : Returns the Timestamp of the TemperatureWarning Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTemperatureShutOff
+/// Display name   : Event TemperatureShutOff
+/// Tooltip        : Returns the unique Identifier of the TemperatureShutOff type of Event.
+/// Description    : Returns the unique Identifier of the TemperatureShutOff type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTemperatureShutOffTimestamp
+/// Display name   : Event TemperatureShutOff Timestamp
+/// Tooltip        : Returns the Timestamp of the TemperatureShutOff Event.
+/// Description    : Returns the Timestamp of the TemperatureShutOff Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventFrameTriggerMissed
+/// Display name   : Event FrameTriggerMissed
+/// Tooltip        : Returns the unique Identifier of the FrameTriggerMissed type of Event.
+/// Description    : Returns the unique Identifier of the FrameTriggerMissed type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventFrameTriggerMissedTimestamp
+/// Display name   : Event FrameTriggerMissed Timestamp
+/// Tooltip        : Returns the Timestamp of the FrameTriggerMissed Event.
+/// Description    : Returns the Timestamp of the FrameTriggerMissed Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter0Start
+/// Display name   : Event Counter0Start
+/// Tooltip        : Returns the unique Identifier of the Counter0Start type of Event.
+/// Description    : Returns the unique Identifier of the Counter0Start type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter0StartTimestamp
+/// Display name   : Event Counter0Start Timestamp
+/// Tooltip        : Returns the Timestamp of the Counter0Start Event.
+/// Description    : Returns the Timestamp of the Counter0Start Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter1Start
+/// Display name   : Event Counter1Start
+/// Tooltip        : Returns the unique Identifier of the Counter1Start type of Event.
+/// Description    : Returns the unique Identifier of the Counter1Start type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter1StartTimestamp
+/// Display name   : Event Counter1Start Timestamp
+/// Tooltip        : Returns the Timestamp of the Counter1Start Event.
+/// Description    : Returns the Timestamp of the Counter1Start Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter2Start
+/// Display name   : Event Counter2Start
+/// Tooltip        : Returns the unique Identifier of the Counter2Start type of Event.
+/// Description    : Returns the unique Identifier of the Counter2Start type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter2StartTimestamp
+/// Display name   : Event Counter2Start Timestamp
+/// Tooltip        : Returns the Timestamp of the Counter2Start Event.
+/// Description    : Returns the Timestamp of the Counter2Start Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter3Start
+/// Display name   : Event Counter3Start
+/// Tooltip        : Returns the unique Identifier of the Counter3Start type of Event.
+/// Description    : Returns the unique Identifier of the Counter3Start type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter3StartTimestamp
+/// Display name   : Event Counter3Start Timestamp
+/// Tooltip        : Returns the Timestamp of the Counter3Start Event.
+/// Description    : Returns the Timestamp of the Counter3Start Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter0End
+/// Display name   : Event Counter0End
+/// Tooltip        : Returns the unique Identifier of the Counter0End type of Event.
+/// Description    : Returns the unique Identifier of the Counter0End type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter0EndTimestamp
+/// Display name   : Event Counter0End Timestamp
+/// Tooltip        : Returns the Timestamp of the Counter0End Event.
+/// Description    : Returns the Timestamp of the Counter0End Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter1End
+/// Display name   : Event Counter1End
+/// Tooltip        : Returns the unique Identifier of the Counter1End type of Event.
+/// Description    : Returns the unique Identifier of the Counter1End type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter1EndTimestamp
+/// Display name   : Event Counter1End Timestamp
+/// Tooltip        : Returns the Timestamp of the Counter1End Event.
+/// Description    : Returns the Timestamp of the Counter1End Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter2End
+/// Display name   : Event Counter2End
+/// Tooltip        : Returns the unique Identifier of the Counter2End type of Event.
+/// Description    : Returns the unique Identifier of the Counter2End type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter2EndTimestamp
+/// Display name   : Event Counter2End Timestamp
+/// Tooltip        : Returns the Timestamp of the Counter2End Event.
+/// Description    : Returns the Timestamp of the Counter2End Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter3End
+/// Display name   : Event Counter3End
+/// Tooltip        : Returns the unique Identifier of the Counter3End type of Event.
+/// Description    : Returns the unique Identifier of the Counter3End type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventCounter3EndTimestamp
+/// Display name   : Event Counter3End Timestamp
+/// Tooltip        : Returns the Timestamp of the Counter3End Event.
+/// Description    : Returns the Timestamp of the Counter3End Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTimer0Start
+/// Display name   : Event Timer0Start
+/// Tooltip        : Returns the unique Identifier of the Timer0Start type of Event.
+/// Description    : Returns the unique Identifier of the Timer0Start type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTimer0StartTimestamp
+/// Display name   : Event Timer0Start Timestamp
+/// Tooltip        : Returns the Timestamp of the Timer0Start Event.
+/// Description    : Returns the Timestamp of the Timer0Start Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTimer1Start
+/// Display name   : Event Timer1Start
+/// Tooltip        : Returns the unique Identifier of the Timer1Start type of Event.
+/// Description    : Returns the unique Identifier of the Timer1Start type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTimer1StartTimestamp
+/// Display name   : Event Timer1Start Timestamp
+/// Tooltip        : Returns the Timestamp of the Timer1Start Event.
+/// Description    : Returns the Timestamp of the Timer1Start Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTimer0End
+/// Display name   : Event Timer0End
+/// Tooltip        : Returns the unique Identifier of the Timer0End type of Event.
+/// Description    : Returns the unique Identifier of the Timer0End type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTimer0EndTimestamp
+/// Display name   : Event Timer0End Timestamp
+/// Tooltip        : Returns the Timestamp of the Timer0End Event.
+/// Description    : Returns the Timestamp of the Timer0End Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTimer1End
+/// Display name   : Event Timer1End
+/// Tooltip        : Returns the unique Identifier of the Timer1End type of Event.
+/// Description    : Returns the unique Identifier of the Timer1End type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTimer1EndTimestamp
+/// Display name   : Event Timer1End Timestamp
+/// Tooltip        : Returns the Timestamp of the Timer1End Event.
+/// Description    : Returns the Timestamp of the Timer1End Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventSoftwareSignal0
+/// Display name   : Event SoftwareSignal0
+/// Tooltip        : Returns the unique Identifier of the SoftwareSignal0 type of Event.
+/// Description    : Returns the unique Identifier of the SoftwareSignal0 type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventSoftwareSignal0Timestamp
+/// Display name   : Event SoftwareSignal0 Timestamp
+/// Tooltip        : Returns the Timestamp of the SoftwareSignal0 Event.
+/// Description    : Returns the Timestamp of the SoftwareSignal0 Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventSoftwareSignal1
+/// Display name   : Event SoftwareSignal1
+/// Tooltip        : Returns the unique Identifier of the SoftwareSignal1 type of Event.
+/// Description    : Returns the unique Identifier of the SoftwareSignal1 type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventSoftwareSignal1Timestamp
+/// Display name   : Event SoftwareSignal1 Timestamp
+/// Tooltip        : Returns the Timestamp of the SoftwareSignal1 Event.
+/// Description    : Returns the Timestamp of the SoftwareSignal1 Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTest
+/// Display name   : Event Test
+/// Tooltip        : Returns the unique Identifier of the Test type of Event.
+/// Description    : Returns the unique Identifier of the Test type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTestTimestamp
+/// Display name   : Event Test Timestamp
+/// Tooltip        : Returns the Timestamp of the Test Event.
+/// Description    : Returns the Timestamp of the Test Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventOverflow
+/// Display name   : Event Overflow
+/// Tooltip        : Returns the unique Identifier of the Overflow type of Event.
+/// Description    : Returns the unique Identifier of the Overflow type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventOverflowTimestamp
+/// Display name   : Event Overflow Timestamp
+/// Tooltip        : Returns the Timestamp of the Overflow Event.
+/// Description    : Returns the Timestamp of the Overflow Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTemperatureOvertemperature
+/// Display name   : Event TemperatureOvertemperature
+/// Tooltip        : Returns the unique Identifier of the TemperatureOvertemperature type of Event.
+/// Description    : Returns the unique Identifier of the TemperatureOvertemperature type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTemperatureOvertemperatureTimestamp
+/// Display name   : Event TemperatureOvertemperature Timestamp
+/// Tooltip        : Returns the Timestamp of the TemperatureOvertemperature Event.
+/// Description    : Returns the Timestamp of the TemperatureOvertemperature Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTemperatureOK
+/// Display name   : Event TemperatureOK
+/// Tooltip        : Returns the unique Identifier of the TemperatureOK type of Event.
+/// Description    : Returns the unique Identifier of the TemperatureOK type of Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : EventTemperatureOKTimestamp
+/// Display name   : Event TemperatureOK Timestamp
+/// Tooltip        : Returns the Timestamp of the TemperatureOK Event.
+/// Description    : Returns the Timestamp of the TemperatureOK Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : SensorWidth
+/// Display name   : Sensor Width
+/// Tooltip        : Effective width of the sensor in pixels.
+/// Description    : Effective width of the sensor in pixels.
+/// SFNC Namespace : Standard
+/// Value          : 2592
+
+/// Feature name   : SensorHeight
+/// Display name   : Sensor Height
+/// Tooltip        : Effective height of the sensor in pixels.
+/// Description    : Effective height of the sensor in pixels.
+/// SFNC Namespace : Standard
+/// Value          : 1944
+
+/// Feature name   : SensorShutterMode
+/// Display name   : Shutter Mode
+/// Tooltip        : Selects the sensor shutter mode
+/// Description    : Selects the sensor shutter mode. Available for CMOS sensors supporting either global shutter, rolling shutter or global reset shutter mode.
+/// SFNC Namespace : Standard
+/// Value          : RollingShutter
+
+/// Feature name   : WidthMax
+/// Display name   : Width Max
+/// Tooltip        : Maximum width of the image (in pixels).
+/// Description    : Maximum width of the image (in pixels). The dimension is calculated after horizontal binning, decimation or any other function changing the horizontal dimension of the image.
+/// SFNC Namespace : Standard
+/// Value          : 2592
+
+/// Feature name   : HeightMax
+/// Display name   : Height Max
+/// Tooltip        : Maximum height of the image (in pixels).
+/// Description    : Maximum height of the image (in pixels). This dimension is calculated after vertical binning, decimation or any other function changing the vertical dimension of the image
+/// SFNC Namespace : Standard
+/// Value          : 1944
+
+/// Feature name   : Width
+/// Display name   : Width
+/// Tooltip        : Width of the image provided by the device (in pixels).
+/// Description    : Width of the image provided by the device (in pixels).
+/// SFNC Namespace : Standard
+/// Value          : 2592
+
+/// Feature name   : Height
+/// Display name   : Height
+/// Tooltip        : Height of the image provided by the device (in pixels).
+/// Description    : Height of the image provided by the device (in pixels).
+/// SFNC Namespace : Standard
+/// Value          : 1944
+
+/// Feature name   : OffsetX
+/// Display name   : Offset X
+/// Tooltip        : Horizontal offset from the origin to the region of interest (in pixels).
+/// Description    : Horizontal offset from the origin to the region of interest (in pixels).
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : OffsetY
+/// Display name   : Offset Y
+/// Tooltip        : Vertical offset from the origin to the region of interest (in pixels).
+/// Description    : Vertical offset from the origin to the region of interest (in pixels).
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : BinningSelector
+/// Display name   : Binning Selector
+/// Tooltip        : Selects which binning engine is controlled by the BinningHorizontal and BinningVertical features.
+/// Description    : Selects which binning engine is controlled by the BinningHorizontal and BinningVertical features.
+/// SFNC Namespace : Standard
+/// Value          : Digital
+
+/// Feature name   : BinningHorizontalMode
+/// Display name   : Binning Horizontal Mode
+/// Tooltip        : Sets the mode to use to combine horizontal photo-sensitive cells together when BinningHorizontal is used.
+/// Description    : Sets the mode to use to combine horizontal photo-sensitive cells together when BinningHorizontal is used.
+/// SFNC Namespace : Standard
+/// Value          : Sum
+
+/// Feature name   : BinningHorizontal
+/// Display name   : Binning Horizontal
+/// Tooltip        : Number of horizontal photo-sensitive cells to combine together.
+/// Description    : Number of horizontal photo-sensitive cells to combine together. This reduces the horizontal resolution (width) of the image.
+/// SFNC Namespace : Standard
+/// Value          : 1
+
+/// Feature name   : BinningVerticalMode
+/// Display name   : Binning Vertical Mode
+/// Tooltip        : Sets the mode used to combine horizontal photo-sensitive cells together when BinningVertical is used.
+/// Description    : Sets the mode used to combine horizontal photo-sensitive cells together when BinningVertical is used.
+/// SFNC Namespace : Standard
+/// Value          : Sum
+
+/// Feature name   : BinningVertical
+/// Display name   : Binning Vertical
+/// Tooltip        : Number of vertical photo-sensitive cells to combine together.
+/// Description    : Number of vertical photo-sensitive cells to combine together. This reduces the vertical resolution (height) of the image.
+/// SFNC Namespace : Standard
+/// Value          : 1
+
+/// Feature name   : ReverseX
+/// Display name   : Reverse X
+/// Tooltip        : Flip horizontally the image sent by the device.
+/// Description    : Flip horizontally the image sent by the device. The Region of interest is applied after the flipping.
+/// SFNC Namespace : Standard
+/// Value          : False
+
+/// Feature name   : ReverseY
+/// Display name   : Reverse Y
+/// Tooltip        : Flip vertically the image sent by the device.
+/// Description    : Flip vertically the image sent by the device. The Region of interest is applied after the flipping.
+/// SFNC Namespace : Standard
+/// Value          : False
+
+/// Feature name   : TestPattern
+/// Display name   : Test Pattern
+/// Tooltip        : Selects the type of test pattern.
+/// Description    : Selects the type of test pattern that is generated. 
+/// SFNC Namespace : Standard
+/// Value          : Off
+
+/// Feature name   : PixelFormat
+/// Display name   : Pixel Format
+/// Tooltip        : Format of the pixels provided by the device.
+/// Description    : Format of the pixels provided by the device. It represents all the information provided by PixelCoding, PixelSize, PixelColorFilter combined in a single feature.
+/// SFNC Namespace : Standard
+/// Value          : Mono8
+
+/// Feature name   : PixelSize
+/// Display name   : Pixel Size
+/// Tooltip        : Total size in bits of a pixel of the image.
+/// Description    : Total size in bits of a pixel of the image.
+/// SFNC Namespace : Standard
+/// Value          : Bpp8
+
+/// Feature name   : SensorBitDepth
+/// Display name   : Sensor Bit Depth
+/// Tooltip        : Selects resolution of sensor's ADC.
+/// Description    : Selects resolution of sensor's ADC. The adaptive setting causes an automatic selection depending on the selected PixelFormat and limitations of sensor and camera.
+/// SFNC Namespace : Custom
+/// Value          : Bpp10
+
+/// Feature name   : SubRegionSelector
+/// Display name   : Sub Region Selector
+/// Tooltip        : Selects the Region of interest to control.
+/// Description    : Selects the Region of interest to control. The SubRegionSelector feature allows devices that are able to extract multiple regions out of an image, to configure the features of those individual regions independently.
+/// SFNC Namespace : Standard
+/// Value          : Region0
+
+/// Feature name   : AutoModeRegionSelector
+/// Display name   : Auto Mode Region Selector
+/// Tooltip        : Selects the Auto Mode Region to configure.
+/// Description    : Selects the Auto Mode Region to configure.
+/// SFNC Namespace : Custom
+/// Value          : AutoModeRegion1
+
+/// Feature name   : AutoModeRegionWidth
+/// Display name   : Auto Mode Region Width
+/// Tooltip        : Defines the width of the window used to measure the actual value for the auto function
+/// Description    : Defines the width of the window used to measure the actual value for the auto function
+/// SFNC Namespace : Custom
+/// Value          : 1296
+
+/// Feature name   : AutoModeRegionHeight
+/// Display name   : Auto Mode Region Height
+/// Tooltip        : Defines the height of the window used to measure values for auto functions
+/// Description    : Defines the height of the window used to measure values for auto functions
+/// SFNC Namespace : Custom
+/// Value          : 648
+
+/// Feature name   : AutoModeRegionOffsetX
+/// Display name   : Auto Mode Region OffsetX
+/// Tooltip        : Defines the horizontal position of the window used to measure the actual value for the auto function
+/// Description    : Defines the horizontal position of the window used to measure the actual value for the auto function
+/// SFNC Namespace : Custom
+/// Value          : 0
+
+/// Feature name   : AutoModeRegionOffsetY
+/// Display name   : Auto Mode Region OffsetY
+/// Tooltip        : Defines the vertical position of the window used to measure the actual value for the auto function.
+/// Description    : Defines the vertical position of the window used to measure the actual value for the auto function.
+/// SFNC Namespace : Custom
+/// Value          : 0
+
+/// Feature name   : IntensityControllerSelector
+/// Display name   : Intensity Controller Selector
+/// Tooltip        : Selects the Intensity controller to configure.
+/// Description    : Selects the Intensity controller to configure.
+/// SFNC Namespace : Custom
+/// Value          : IntensityController1
+
+/// Feature name   : IntensityControllerTarget
+/// Display name   : Intensity Controller Target
+/// Tooltip        : Target intensity value for auto intensity control
+/// Description    : Target intensity value for auto intensity control (using ExposureTime, Gain, and Iris as configured).
+/// SFNC Namespace : Custom
+/// Value          : 50.0
+
+/// Feature name   : IntensityControllerTolerance
+/// Display name   : Intensity Controller Tolerance
+/// Tooltip        : Tolerance in variation from the target value in which the algorithm will not react.
+/// Description    : Tolerance in variation from the target value in which the algorithm will not react.
+/// SFNC Namespace : Custom
+/// Value          : 5
+
+/// Feature name   : IntensityControllerAlgorithm
+/// Display name   : Intensity Controller Algorithm
+/// Tooltip        : Algorithm determining how the histogram is used to determine the current intensity value.
+/// Description    : Algorithm determining how the histogram is used to determine the current intensity value.
+/// SFNC Namespace : Custom
+/// Value          : Mean
+
+/// Feature name   : IntensityControllerRate
+/// Display name   : Intensity Controller Rate
+/// Tooltip        : The rate at which the controller should compute an intensity value. This rate also defines the period where the associated auto functions change their control value.
+/// Description    : The rate at which the controller should compute an intensity value. This rate also defines the period where the associated auto functions change their control value.
+/// SFNC Namespace : Custom
+/// Value          : 100
+
+/// Feature name   : IntensityControllerRegion
+/// Display name   : Intensity Controller Region
+/// Tooltip        : The subregion of the image where the intensity controller operates on.
+/// Description    : The subregion of the image where the intensity controller operates on.
+/// SFNC Namespace : Custom
+/// Value          : FullImage
+
+/// Feature name   : ExposureAutoMin
+/// Display name   : Exposure Auto Min
+/// Tooltip        : Minimum for auto exposure control value.
+/// Description    : Minimum for auto exposure control value.The output of the auto exposure function affects the whole image.
+/// SFNC Namespace : Custom
+/// Value          : 38.87
+
+/// Feature name   : ExposureAutoMax
+/// Display name   : Exposure Auto Max
+/// Tooltip        : Maximum for auto exposure control value
+/// Description    : Maximum for auto exposure control value.The output of the auto exposure function affects the whole image
+/// SFNC Namespace : Custom
+/// Value          : 481205.217
+
+/// Feature name   : GainAutoMin
+/// Display name   : Gain Auto Min
+/// Tooltip        : Minimum for auto gain control value.
+/// Description    : Minimum for auto gain control value.The output of the auto gain function affects the whole image.
+/// SFNC Namespace : Custom
+/// Value          : 0.0
+
+/// Feature name   : GainAutoMax
+/// Display name   : Gain Auto Max
+/// Tooltip        : Maximum for auto gain control value
+/// Description    : Maximum for auto gain control value.The output of the auto gain function affects the whole image
+/// SFNC Namespace : Custom
+/// Value          : 24.184701919555664
+
+/// Feature name   : BalanceWhiteAutoRate
+/// Display name   : Balance White Auto Rate
+/// Tooltip        : The rate at which the auto function changes the white balance.
+/// Description    : The rate at which the auto function changes the white balance.
+/// SFNC Namespace : Custom
+/// Value          : 100.0
+
+/// Feature name   : BalanceWhiteAutoTolerance
+/// Display name   : Balance White Auto Tolerance
+/// Tooltip        : Tolerance in variation from the ideal white balance value in which the algorithm will not react.
+/// Description    : Tolerance in variation from the ideal white balance value in which the algorithm will not react.
+/// SFNC Namespace : Custom
+/// Value          : 5.0
+
+/// Feature name   : IntensityAutoPrecedence
+/// Display name   : Intensity Auto Precedence
+/// Tooltip        : Selects the Precedence for Intensity Controller
+/// Description    : Selects the Precedence of Intensity Controller
+/// SFNC Namespace : Custom
+/// Value          : MinimizeNoise
+
+/// Feature name   : AcquisitionMode
+/// Display name   : Acquisition Mode
+/// Tooltip        : Sets the acquisition mode of the device.
+/// Description    : Sets the acquisition mode of the device. It defines mainly the number of frames to capture during an acquisition and the way the acquisition stops.
+/// SFNC Namespace : Standard
+/// Value          : Continuous
+
+/// Feature name   : AcquisitionStart
+/// Display name   : Acquisition Start
+/// Tooltip        : Starts the Acquisition of the device.
+/// Description    : Starts the Acquisition of the device. The number of frames captured is specified by AcquisitionMode.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : AcquisitionStop
+/// Display name   : Acquisition Stop
+/// Tooltip        : Stops the Acquisition of the device at the end of the current Frame.
+/// Description    : Stops the Acquisition of the device at the end of the current Frame. It is mainly used when AcquisitionMode is Continuous but can be used in any acquisition mode.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : AcquisitionFrameCount
+/// Display name   : Acquisition Frame Count
+/// Tooltip        : Number of frames to acquire in MultiFrame Acquisition mode.
+/// Description    : Number of frames to acquire in MultiFrame Acquisition mode.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : AcquisitionFrameRateEnable
+/// Display name   : Acquisition Frame Rate Enable
+/// Tooltip        : Controls if the AcquisitionFrameRate feature is used to control the acquisition rate.
+/// Description    : Controls if the AcquisitionFrameRate feature is writable and used to control the acquisition rate. Otherwise, the acquisition rate is implicitly controlled by the combination of other features like ExposureTime, etc...
+/// SFNC Namespace : Standard
+/// Value          : False
+
+/// Feature name   : AcquisitionFrameRateMode
+/// Display name   : Acquisition Frame Rate Mode
+/// Tooltip        : Defines the interconnection between the AcquisitionFrameRate affecting features.
+/// Description    : Defines the interconnection between the AcquisitionFrameRate affecting features.
+/// SFNC Namespace : Custom
+/// Value          : Basic
+
+/// Feature name   : AcquisitionFrameRate
+/// Display name   : Acquisition Frame Rate
+/// Tooltip        : Controls the acquisition rate (in Hertz) at which the frames are captured.
+/// Description    : Controls the acquisition rate (in Hertz) at which the frames are captured.
+/// SFNC Namespace : Standard
+/// Value          : 38.78429412841797
+
+/// Feature name   : AcquisitionStatusSelector
+/// Display name   : Acquisition Status Selector
+/// Tooltip        : Selects the internal acquisition signal to read using AcquisitionStatus.
+/// Description    : Selects the internal acquisition signal to read using AcquisitionStatus.
+/// SFNC Namespace : Standard
+/// Value          : AcquisitionActive
+
+/// Feature name   : AcquisitionStatus
+/// Display name   : Acquisition Status
+/// Tooltip        : Reads the state of the internal acquisition signal selected using AcquisitionStatusSelector.
+/// Description    : Reads the state of the internal acquisition signal selected using AcquisitionStatusSelector.
+/// SFNC Namespace : Standard
+/// Value          : False
+
+/// Feature name   : TriggerSelector
+/// Display name   : Trigger Selector
+/// Tooltip        : Selects the type of trigger to configure.
+/// Description    : Selects the type of trigger to configure.
+/// SFNC Namespace : Standard
+/// Value          : FrameStart
+
+/// Feature name   : TriggerMode
+/// Display name   : Trigger Mode
+/// Tooltip        : Controls if the selected trigger is active.
+/// Description    : Controls if the selected trigger is active.
+/// SFNC Namespace : Standard
+/// Value          : Off
+
+/// Feature name   : TriggerSoftware
+/// Display name   : Trigger Software
+/// Tooltip        : Generates an internal trigger.
+/// Description    : Generates an internal trigger. TriggerSource must be set to Software.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : TriggerSource
+/// Display name   : Trigger Source
+/// Tooltip        : Specifies the internal signal or physical input Line to use as the trigger source.
+/// Description    : Specifies the internal signal or physical input Line to use as the trigger source. The selected trigger must have its TriggerMode set to On.
+/// SFNC Namespace : Standard
+/// Value          : Software
+
+/// Feature name   : TriggerActivation
+/// Display name   : Trigger Activation
+/// Tooltip        : Specifies the activation mode of the trigger.
+/// Description    : Specifies the activation mode of the trigger.
+/// SFNC Namespace : Standard
+/// Value          : RisingEdge
+
+/// Feature name   : TriggerDelay
+/// Display name   : Trigger Delay
+/// Tooltip        : Specifies the delay in microseconds [µs] to apply after the trigger reception before activating it.
+/// Description    : Specifies the delay in microseconds [µs] to apply after the trigger reception before activating it.
+/// SFNC Namespace : Standard
+/// Value          : 0.0
+
+/// Feature name   : ExposureMode
+/// Display name   : Exposure Mode
+/// Tooltip        : Sets the operation mode of the Exposure (or shutter).
+/// Description    : Sets the operation mode of the Exposure (or shutter).
+/// SFNC Namespace : Standard
+/// Value          : Timed
+
+/// Feature name   : ExposureTime
+/// Display name   : Exposure Time
+/// Tooltip        : Sets the Exposure time [µs] when ExposureMode is Timed and ExposureAuto is Off.
+/// Description    : Sets the Exposure time [µs] when ExposureMode is Timed and ExposureAuto is Off. This controls the duration where the photosensitive cells are exposed to light.
+/// SFNC Namespace : Standard
+/// Value          : 1166.087
+
+/// Feature name   : ExposureAuto
+/// Display name   : Exposure Auto
+/// Tooltip        : Sets the auto exposure mode.
+/// Description    : Sets the auto exposure mode.The output of the auto exposure function affects the whole image
+/// SFNC Namespace : Standard
+/// Value          : Off
+
+/// Feature name   : ExposureActiveMode
+/// Display name   : Exposure Active Mode
+/// Tooltip        : Selects the mode of the ExposureActive signal.
+/// Description    : Selects the mode of the ExposureActive signal.
+/// SFNC Namespace : Custom
+/// Value          : FlashWindow
+
+/// Feature name   : GainSelector
+/// Display name   : Gain Selector
+/// Tooltip        : Selects which Gain is controlled by the various Gain features.
+/// Description    : Selects which Gain is controlled by the various Gain features.
+/// SFNC Namespace : Standard
+/// Value          : All
+
+/// Feature name   : Gain
+/// Display name   : Gain
+/// Tooltip        : Controls the selected gain [dB] as an absolute physical value.
+/// Description    : Controls the selected gain [dB] as an absolute physical value. This is an amplification factor applied to the video signal.
+/// SFNC Namespace : Standard
+/// Value          : 0.0
+
+/// Feature name   : GainAuto
+/// Display name   : Gain Auto
+/// Tooltip        : Sets the auto gain mode.
+/// Description    : Sets the auto gain mode.The output of the auto gain function affects the whole image
+/// SFNC Namespace : Standard
+/// Value          : Off
+
+/// Feature name   : BlackLevelSelector
+/// Display name   : Black Level Selector
+/// Tooltip        : Selects which Black Level is controlled by the various Black Level features.
+/// Description    : Selects which Black Level is controlled by the various Black Level features.
+/// SFNC Namespace : Standard
+/// Value          : All
+
+/// Feature name   : BlackLevel
+/// Display name   : Black Level
+/// Tooltip        : Controls the analog black level as an absolute physical value.
+/// Description    : Controls the analog black level as an absolute physical value. This represents a DC offset applied to the video signal.
+/// SFNC Namespace : Standard
+/// Value          : 0.0
+
+/// Feature name   : BalanceRatioSelector
+/// Display name   : Balance Ratio Selector
+/// Tooltip        : Selects which Balance ratio to control.
+/// Description    : Selects which Balance ratio to control.
+/// SFNC Namespace : Standard
+/// Value          : Red
+
+/// Feature name   : BalanceRatio
+/// Display name   : Balance Ratio
+/// Tooltip        : Controls ratio of the selected color component to a reference color component.
+/// Description    : Controls ratio of the selected color component to a reference color component. It is used for white balancing.
+/// SFNC Namespace : Standard
+/// Value          : 2.1201171875
+
+/// Feature name   : BalanceWhiteAuto
+/// Display name   : Balance White Auto
+/// Tooltip        : Sets the auto white balance mode.
+/// Description    : Sets the auto white balance mode.
+/// SFNC Namespace : Standard
+/// Value          : Off
+
+/// Feature name   : Gamma
+/// Display name   : Gamma
+/// Tooltip        : Controls the gamma correction of pixel intensity.
+/// Description    : Controls the gamma correction of pixel intensity. This is typically used to compensate for non-linearity of the display system (such as CRT).
+/// SFNC Namespace : Standard
+/// Value          : 1.0
+
+/// Feature name   : LUTSelector
+/// Display name   : LUT Selector
+/// Tooltip        : Selects which LUT to control.
+/// Description    : Selects which LUT to control.
+/// SFNC Namespace : Standard
+/// Value          : Red
+
+/// Feature name   : LUTEnable
+/// Display name   : LUT Enable
+/// Tooltip        : Activates the selected LUT.
+/// Description    : Activates the selected LUT.
+/// SFNC Namespace : Standard
+/// Value          : False
+
+/// Feature name   : LUTIndex
+/// Display name   : LUT Index
+/// Tooltip        : Control the index (offset) of the coefficient to access in the selected LUT.
+/// Description    : Control the index (offset) of the coefficient to access in the selected LUT.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : LUTValueAll
+/// Display name   : LUT Value All
+/// Tooltip        : Accesses all the LUT coefficients in a single access without using individual LUTIndex
+/// Description    : Accesses all the LUT coefficients in a single access without using individual LUTIndex
+/// SFNC Namespace : Custom
+/// Value          : b'\x00\x00\x01\x00\x02\x00\x03\x00\x04\x00\x05\x00\x06\x00\x07\x00\x08\x00\t\x00\n\x00\x0b\x00\x0c\x00\r\x00\x0e\x00\x0f\x00\x10\x00\x11\x00\x12\x00\x13\x00\x14\x00\x15\x00\x16\x00\x17\x00\x18\x00\x19\x00\x1a\x00\x1b\x00\x1c\x00\x1d\x00\x1e\x00\x1f\x00 \x00!\x00"\x00#\x00$\x00%\x00&\x00\'\x00(\x00)\x00*\x00+\x00,\x00-\x00.\x00/\x000\x001\x002\x003\x004\x005\x006\x007\x008\x009\x00:\x00;\x00<\x00=\x00>\x00?\x00@\x00A\x00B\x00C\x00D\x00E\x00F\x00G\x00H\x00I\x00J\x00K\x00L\x00M\x00N\x00O\x00P\x00Q\x00R\x00S\x00T\x00U\x00V\x00W\x00X\x00Y\x00Z\x00[\x00\\\x00]\x00^\x00_\x00`\x00a\x00b\x00c\x00d\x00e\x00f\x00g\x00h\x00i\x00j\x00k\x00l\x00m\x00n\x00o\x00p\x00q\x00r\x00s\x00t\x00u\x00v\x00w\x00x\x00y\x00z\x00{\x00|\x00}\x00~\x00\x7f\x00\x80\x00\x81\x00\x82\x00\x83\x00\x84\x00\x85\x00\x86\x00\x87\x00\x88\x00\x89\x00\x8a\x00\x8b\x00\x8c\x00\x8d\x00\x8e\x00\x8f\x00\x90\x00\x91\x00\x92\x00\x93\x00\x94\x00\x95\x00\x96\x00\x97\x00\x98\x00\x99\x00\x9a\x00\x9b\x00\x9c\x00\x9d\x00\x9e\x00\x9f\x00\xa0\x00\xa1\x00\xa2\x00\xa3\x00\xa4\x00\xa5\x00\xa6\x00\xa7\x00\xa8\x00\xa9\x00\xaa\x00\xab\x00\xac\x00\xad\x00\xae\x00\xaf\x00\xb0\x00\xb1\x00\xb2\x00\xb3\x00\xb4\x00\xb5\x00\xb6\x00\xb7\x00\xb8\x00\xb9\x00\xba\x00\xbb\x00\xbc\x00\xbd\x00\xbe\x00\xbf\x00\xc0\x00\xc1\x00\xc2\x00\xc3\x00\xc4\x00\xc5\x00\xc6\x00\xc7\x00\xc8\x00\xc9\x00\xca\x00\xcb\x00\xcc\x00\xcd\x00\xce\x00\xcf\x00\xd0\x00\xd1\x00\xd2\x00\xd3\x00\xd4\x00\xd5\x00\xd6\x00\xd7\x00\xd8\x00\xd9\x00\xda\x00\xdb\x00\xdc\x00\xdd\x00\xde\x00\xdf\x00\xe0\x00\xe1\x00\xe2\x00\xe3\x00\xe4\x00\xe5\x00\xe6\x00\xe7\x00\xe8\x00\xe9\x00\xea\x00\xeb\x00\xec\x00\xed\x00\xee\x00\xef\x00\xf0\x00\xf1\x00\xf2\x00\xf3\x00\xf4\x00\xf5\x00\xf6\x00\xf7\x00\xf8\x00\xf9\x00\xfa\x00\xfb\x00\xfc\x00\xfd\x00\xfe\x00\xff\x00\x00\x01\x01\x01\x02\x01\x03\x01\x04\x01\x05\x01\x06\x01\x07\x01\x08\x01\t\x01\n\x01\x0b\x01\x0c\x01\r\x01\x0e\x01\x0f\x01\x10\x01\x11\x01\x12\x01\x13\x01\x14\x01\x15\x01\x16\x01\x17\x01\x18\x01\x19\x01\x1a\x01\x1b\x01\x1c\x01\x1d\x01\x1e\x01\x1f\x01 \x01!\x01"\x01#\x01$\x01%\x01&\x01\'\x01(\x01)\x01*\x01+\x01,\x01-\x01.\x01/\x010\x011\x012\x013\x014\x015\x016\x017\x018\x019\x01:\x01;\x01<\x01=\x01>\x01?\x01@\x01A\x01B\x01C\x01D\x01E\x01F\x01G\x01H\x01I\x01J\x01K\x01L\x01M\x01N\x01O\x01P\x01Q\x01R\x01S\x01T\x01U\x01V\x01W\x01X\x01Y\x01Z\x01[\x01\\\x01]\x01^\x01_\x01`\x01a\x01b\x01c\x01d\x01e\x01f\x01g\x01h\x01i\x01j\x01k\x01l\x01m\x01n\x01o\x01p\x01q\x01r\x01s\x01t\x01u\x01v\x01w\x01x\x01y\x01z\x01{\x01|\x01}\x01~\x01\x7f\x01\x80\x01\x81\x01\x82\x01\x83\x01\x84\x01\x85\x01\x86\x01\x87\x01\x88\x01\x89\x01\x8a\x01\x8b\x01\x8c\x01\x8d\x01\x8e\x01\x8f\x01\x90\x01\x91\x01\x92\x01\x93\x01\x94\x01\x95\x01\x96\x01\x97\x01\x98\x01\x99\x01\x9a\x01\x9b\x01\x9c\x01\x9d\x01\x9e\x01\x9f\x01\xa0\x01\xa1\x01\xa2\x01\xa3\x01\xa4\x01\xa5\x01\xa6\x01\xa7\x01\xa8\x01\xa9\x01\xaa\x01\xab\x01\xac\x01\xad\x01\xae\x01\xaf\x01\xb0\x01\xb1\x01\xb2\x01\xb3\x01\xb4\x01\xb5\x01\xb6\x01\xb7\x01\xb8\x01\xb9\x01\xba\x01\xbb\x01\xbc\x01\xbd\x01\xbe\x01\xbf\x01\xc0\x01\xc1\x01\xc2\x01\xc3\x01\xc4\x01\xc5\x01\xc6\x01\xc7\x01\xc8\x01\xc9\x01\xca\x01\xcb\x01\xcc\x01\xcd\x01\xce\x01\xcf\x01\xd0\x01\xd1\x01\xd2\x01\xd3\x01\xd4\x01\xd5\x01\xd6\x01\xd7\x01\xd8\x01\xd9\x01\xda\x01\xdb\x01\xdc\x01\xdd\x01\xde\x01\xdf\x01\xe0\x01\xe1\x01\xe2\x01\xe3\x01\xe4\x01\xe5\x01\xe6\x01\xe7\x01\xe8\x01\xe9\x01\xea\x01\xeb\x01\xec\x01\xed\x01\xee\x01\xef\x01\xf0\x01\xf1\x01\xf2\x01\xf3\x01\xf4\x01\xf5\x01\xf6\x01\xf7\x01\xf8\x01\xf9\x01\xfa\x01\xfb\x01\xfc\x01\xfd\x01\xfe\x01\xff\x01\x00\x02\x01\x02\x02\x02\x03\x02\x04\x02\x05\x02\x06\x02\x07\x02\x08\x02\t\x02\n\x02\x0b\x02\x0c\x02\r\x02\x0e\x02\x0f\x02\x10\x02\x11\x02\x12\x02\x13\x02\x14\x02\x15\x02\x16\x02\x17\x02\x18\x02\x19\x02\x1a\x02\x1b\x02\x1c\x02\x1d\x02\x1e\x02\x1f\x02 \x02!\x02"\x02#\x02$\x02%\x02&\x02\'\x02(\x02)\x02*\x02+\x02,\x02-\x02.\x02/\x020\x021\x022\x023\x024\x025\x026\x027\x028\x029\x02:\x02;\x02<\x02=\x02>\x02?\x02@\x02A\x02B\x02C\x02D\x02E\x02F\x02G\x02H\x02I\x02J\x02K\x02L\x02M\x02N\x02O\x02P\x02Q\x02R\x02S\x02T\x02U\x02V\x02W\x02X\x02Y\x02Z\x02[\x02\\\x02]\x02^\x02_\x02`\x02a\x02b\x02c\x02d\x02e\x02f\x02g\x02h\x02i\x02j\x02k\x02l\x02m\x02n\x02o\x02p\x02q\x02r\x02s\x02t\x02u\x02v\x02w\x02x\x02y\x02z\x02{\x02|\x02}\x02~\x02\x7f\x02\x80\x02\x81\x02\x82\x02\x83\x02\x84\x02\x85\x02\x86\x02\x87\x02\x88\x02\x89\x02\x8a\x02\x8b\x02\x8c\x02\x8d\x02\x8e\x02\x8f\x02\x90\x02\x91\x02\x92\x02\x93\x02\x94\x02\x95\x02\x96\x02\x97\x02\x98\x02\x99\x02\x9a\x02\x9b\x02\x9c\x02\x9d\x02\x9e\x02\x9f\x02\xa0\x02\xa1\x02\xa2\x02\xa3\x02\xa4\x02\xa5\x02\xa6\x02\xa7\x02\xa8\x02\xa9\x02\xaa\x02\xab\x02\xac\x02\xad\x02\xae\x02\xaf\x02\xb0\x02\xb1\x02\xb2\x02\xb3\x02\xb4\x02\xb5\x02\xb6\x02\xb7\x02\xb8\x02\xb9\x02\xba\x02\xbb\x02\xbc\x02\xbd\x02\xbe\x02\xbf\x02\xc0\x02\xc1\x02\xc2\x02\xc3\x02\xc4\x02\xc5\x02\xc6\x02\xc7\x02\xc8\x02\xc9\x02\xca\x02\xcb\x02\xcc\x02\xcd\x02\xce\x02\xcf\x02\xd0\x02\xd1\x02\xd2\x02\xd3\x02\xd4\x02\xd5\x02\xd6\x02\xd7\x02\xd8\x02\xd9\x02\xda\x02\xdb\x02\xdc\x02\xdd\x02\xde\x02\xdf\x02\xe0\x02\xe1\x02\xe2\x02\xe3\x02\xe4\x02\xe5\x02\xe6\x02\xe7\x02\xe8\x02\xe9\x02\xea\x02\xeb\x02\xec\x02\xed\x02\xee\x02\xef\x02\xf0\x02\xf1\x02\xf2\x02\xf3\x02\xf4\x02\xf5\x02\xf6\x02\xf7\x02\xf8\x02\xf9\x02\xfa\x02\xfb\x02\xfc\x02\xfd\x02\xfe\x02\xff\x02\x00\x03\x01\x03\x02\x03\x03\x03\x04\x03\x05\x03\x06\x03\x07\x03\x08\x03\t\x03\n\x03\x0b\x03\x0c\x03\r\x03\x0e\x03\x0f\x03\x10\x03\x11\x03\x12\x03\x13\x03\x14\x03\x15\x03\x16\x03\x17\x03\x18\x03\x19\x03\x1a\x03\x1b\x03\x1c\x03\x1d\x03\x1e\x03\x1f\x03 \x03!\x03"\x03#\x03$\x03%\x03&\x03\'\x03(\x03)\x03*\x03+\x03,\x03-\x03.\x03/\x030\x031\x032\x033\x034\x035\x036\x037\x038\x039\x03:\x03;\x03<\x03=\x03>\x03?\x03@\x03A\x03B\x03C\x03D\x03E\x03F\x03G\x03H\x03I\x03J\x03K\x03L\x03M\x03N\x03O\x03P\x03Q\x03R\x03S\x03T\x03U\x03V\x03W\x03X\x03Y\x03Z\x03[\x03\\\x03]\x03^\x03_\x03`\x03a\x03b\x03c\x03d\x03e\x03f\x03g\x03h\x03i\x03j\x03k\x03l\x03m\x03n\x03o\x03p\x03q\x03r\x03s\x03t\x03u\x03v\x03w\x03x\x03y\x03z\x03{\x03|\x03}\x03~\x03\x7f\x03\x80\x03\x81\x03\x82\x03\x83\x03\x84\x03\x85\x03\x86\x03\x87\x03\x88\x03\x89\x03\x8a\x03\x8b\x03\x8c\x03\x8d\x03\x8e\x03\x8f\x03\x90\x03\x91\x03\x92\x03\x93\x03\x94\x03\x95\x03\x96\x03\x97\x03\x98\x03\x99\x03\x9a\x03\x9b\x03\x9c\x03\x9d\x03\x9e\x03\x9f\x03\xa0\x03\xa1\x03\xa2\x03\xa3\x03\xa4\x03\xa5\x03\xa6\x03\xa7\x03\xa8\x03\xa9\x03\xaa\x03\xab\x03\xac\x03\xad\x03\xae\x03\xaf\x03\xb0\x03\xb1\x03\xb2\x03\xb3\x03\xb4\x03\xb5\x03\xb6\x03\xb7\x03\xb8\x03\xb9\x03\xba\x03\xbb\x03\xbc\x03\xbd\x03\xbe\x03\xbf\x03\xc0\x03\xc1\x03\xc2\x03\xc3\x03\xc4\x03\xc5\x03\xc6\x03\xc7\x03\xc8\x03\xc9\x03\xca\x03\xcb\x03\xcc\x03\xcd\x03\xce\x03\xcf\x03\xd0\x03\xd1\x03\xd2\x03\xd3\x03\xd4\x03\xd5\x03\xd6\x03\xd7\x03\xd8\x03\xd9\x03\xda\x03\xdb\x03\xdc\x03\xdd\x03\xde\x03\xdf\x03\xe0\x03\xe1\x03\xe2\x03\xe3\x03\xe4\x03\xe5\x03\xe6\x03\xe7\x03\xe8\x03\xe9\x03\xea\x03\xeb\x03\xec\x03\xed\x03\xee\x03\xef\x03\xf0\x03\xf1\x03\xf2\x03\xf3\x03\xf4\x03\xf5\x03\xf6\x03\xf7\x03\xf8\x03\xf9\x03\xfa\x03\xfb\x03\xfc\x03\xfd\x03\xfe\x03\xff\x03\x00\x04\x01\x04\x02\x04\x03\x04\x04\x04\x05\x04\x06\x04\x07\x04\x08\x04\t\x04\n\x04\x0b\x04\x0c\x04\r\x04\x0e\x04\x0f\x04\x10\x04\x11\x04\x12\x04\x13\x04\x14\x04\x15\x04\x16\x04\x17\x04\x18\x04\x19\x04\x1a\x04\x1b\x04\x1c\x04\x1d\x04\x1e\x04\x1f\x04 \x04!\x04"\x04#\x04$\x04%\x04&\x04\'\x04(\x04)\x04*\x04+\x04,\x04-\x04.\x04/\x040\x041\x042\x043\x044\x045\x046\x047\x048\x049\x04:\x04;\x04<\x04=\x04>\x04?\x04@\x04A\x04B\x04C\x04D\x04E\x04F\x04G\x04H\x04I\x04J\x04K\x04L\x04M\x04N\x04O\x04P\x04Q\x04R\x04S\x04T\x04U\x04V\x04W\x04X\x04Y\x04Z\x04[\x04\\\x04]\x04^\x04_\x04`\x04a\x04b\x04c\x04d\x04e\x04f\x04g\x04h\x04i\x04j\x04k\x04l\x04m\x04n\x04o\x04p\x04q\x04r\x04s\x04t\x04u\x04v\x04w\x04x\x04y\x04z\x04{\x04|\x04}\x04~\x04\x7f\x04\x80\x04\x81\x04\x82\x04\x83\x04\x84\x04\x85\x04\x86\x04\x87\x04\x88\x04\x89\x04\x8a\x04\x8b\x04\x8c\x04\x8d\x04\x8e\x04\x8f\x04\x90\x04\x91\x04\x92\x04\x93\x04\x94\x04\x95\x04\x96\x04\x97\x04\x98\x04\x99\x04\x9a\x04\x9b\x04\x9c\x04\x9d\x04\x9e\x04\x9f\x04\xa0\x04\xa1\x04\xa2\x04\xa3\x04\xa4\x04\xa5\x04\xa6\x04\xa7\x04\xa8\x04\xa9\x04\xaa\x04\xab\x04\xac\x04\xad\x04\xae\x04\xaf\x04\xb0\x04\xb1\x04\xb2\x04\xb3\x04\xb4\x04\xb5\x04\xb6\x04\xb7\x04\xb8\x04\xb9\x04\xba\x04\xbb\x04\xbc\x04\xbd\x04\xbe\x04\xbf\x04\xc0\x04\xc1\x04\xc2\x04\xc3\x04\xc4\x04\xc5\x04\xc6\x04\xc7\x04\xc8\x04\xc9\x04\xca\x04\xcb\x04\xcc\x04\xcd\x04\xce\x04\xcf\x04\xd0\x04\xd1\x04\xd2\x04\xd3\x04\xd4\x04\xd5\x04\xd6\x04\xd7\x04\xd8\x04\xd9\x04\xda\x04\xdb\x04\xdc\x04\xdd\x04\xde\x04\xdf\x04\xe0\x04\xe1\x04\xe2\x04\xe3\x04\xe4\x04\xe5\x04\xe6\x04\xe7\x04\xe8\x04\xe9\x04\xea\x04\xeb\x04\xec\x04\xed\x04\xee\x04\xef\x04\xf0\x04\xf1\x04\xf2\x04\xf3\x04\xf4\x04\xf5\x04\xf6\x04\xf7\x04\xf8\x04\xf9\x04\xfa\x04\xfb\x04\xfc\x04\xfd\x04\xfe\x04\xff\x04\x00\x05\x01\x05\x02\x05\x03\x05\x04\x05\x05\x05\x06\x05\x07\x05\x08\x05\t\x05\n\x05\x0b\x05\x0c\x05\r\x05\x0e\x05\x0f\x05\x10\x05\x11\x05\x12\x05\x13\x05\x14\x05\x15\x05\x16\x05\x17\x05\x18\x05\x19\x05\x1a\x05\x1b\x05\x1c\x05\x1d\x05\x1e\x05\x1f\x05 \x05!\x05"\x05#\x05$\x05%\x05&\x05\'\x05(\x05)\x05*\x05+\x05,\x05-\x05.\x05/\x050\x051\x052\x053\x054\x055\x056\x057\x058\x059\x05:\x05;\x05<\x05=\x05>\x05?\x05@\x05A\x05B\x05C\x05D\x05E\x05F\x05G\x05H\x05I\x05J\x05K\x05L\x05M\x05N\x05O\x05P\x05Q\x05R\x05S\x05T\x05U\x05V\x05W\x05X\x05Y\x05Z\x05[\x05\\\x05]\x05^\x05_\x05`\x05a\x05b\x05c\x05d\x05e\x05f\x05g\x05h\x05i\x05j\x05k\x05l\x05m\x05n\x05o\x05p\x05q\x05r\x05s\x05t\x05u\x05v\x05w\x05x\x05y\x05z\x05{\x05|\x05}\x05~\x05\x7f\x05\x80\x05\x81\x05\x82\x05\x83\x05\x84\x05\x85\x05\x86\x05\x87\x05\x88\x05\x89\x05\x8a\x05\x8b\x05\x8c\x05\x8d\x05\x8e\x05\x8f\x05\x90\x05\x91\x05\x92\x05\x93\x05\x94\x05\x95\x05\x96\x05\x97\x05\x98\x05\x99\x05\x9a\x05\x9b\x05\x9c\x05\x9d\x05\x9e\x05\x9f\x05\xa0\x05\xa1\x05\xa2\x05\xa3\x05\xa4\x05\xa5\x05\xa6\x05\xa7\x05\xa8\x05\xa9\x05\xaa\x05\xab\x05\xac\x05\xad\x05\xae\x05\xaf\x05\xb0\x05\xb1\x05\xb2\x05\xb3\x05\xb4\x05\xb5\x05\xb6\x05\xb7\x05\xb8\x05\xb9\x05\xba\x05\xbb\x05\xbc\x05\xbd\x05\xbe\x05\xbf\x05\xc0\x05\xc1\x05\xc2\x05\xc3\x05\xc4\x05\xc5\x05\xc6\x05\xc7\x05\xc8\x05\xc9\x05\xca\x05\xcb\x05\xcc\x05\xcd\x05\xce\x05\xcf\x05\xd0\x05\xd1\x05\xd2\x05\xd3\x05\xd4\x05\xd5\x05\xd6\x05\xd7\x05\xd8\x05\xd9\x05\xda\x05\xdb\x05\xdc\x05\xdd\x05\xde\x05\xdf\x05\xe0\x05\xe1\x05\xe2\x05\xe3\x05\xe4\x05\xe5\x05\xe6\x05\xe7\x05\xe8\x05\xe9\x05\xea\x05\xeb\x05\xec\x05\xed\x05\xee\x05\xef\x05\xf0\x05\xf1\x05\xf2\x05\xf3\x05\xf4\x05\xf5\x05\xf6\x05\xf7\x05\xf8\x05\xf9\x05\xfa\x05\xfb\x05\xfc\x05\xfd\x05\xfe\x05\xff\x05\x00\x06\x01\x06\x02\x06\x03\x06\x04\x06\x05\x06\x06\x06\x07\x06\x08\x06\t\x06\n\x06\x0b\x06\x0c\x06\r\x06\x0e\x06\x0f\x06\x10\x06\x11\x06\x12\x06\x13\x06\x14\x06\x15\x06\x16\x06\x17\x06\x18\x06\x19\x06\x1a\x06\x1b\x06\x1c\x06\x1d\x06\x1e\x06\x1f\x06 \x06!\x06"\x06#\x06$\x06%\x06&\x06\'\x06(\x06)\x06*\x06+\x06,\x06-\x06.\x06/\x060\x061\x062\x063\x064\x065\x066\x067\x068\x069\x06:\x06;\x06<\x06=\x06>\x06?\x06@\x06A\x06B\x06C\x06D\x06E\x06F\x06G\x06H\x06I\x06J\x06K\x06L\x06M\x06N\x06O\x06P\x06Q\x06R\x06S\x06T\x06U\x06V\x06W\x06X\x06Y\x06Z\x06[\x06\\\x06]\x06^\x06_\x06`\x06a\x06b\x06c\x06d\x06e\x06f\x06g\x06h\x06i\x06j\x06k\x06l\x06m\x06n\x06o\x06p\x06q\x06r\x06s\x06t\x06u\x06v\x06w\x06x\x06y\x06z\x06{\x06|\x06}\x06~\x06\x7f\x06\x80\x06\x81\x06\x82\x06\x83\x06\x84\x06\x85\x06\x86\x06\x87\x06\x88\x06\x89\x06\x8a\x06\x8b\x06\x8c\x06\x8d\x06\x8e\x06\x8f\x06\x90\x06\x91\x06\x92\x06\x93\x06\x94\x06\x95\x06\x96\x06\x97\x06\x98\x06\x99\x06\x9a\x06\x9b\x06\x9c\x06\x9d\x06\x9e\x06\x9f\x06\xa0\x06\xa1\x06\xa2\x06\xa3\x06\xa4\x06\xa5\x06\xa6\x06\xa7\x06\xa8\x06\xa9\x06\xaa\x06\xab\x06\xac\x06\xad\x06\xae\x06\xaf\x06\xb0\x06\xb1\x06\xb2\x06\xb3\x06\xb4\x06\xb5\x06\xb6\x06\xb7\x06\xb8\x06\xb9\x06\xba\x06\xbb\x06\xbc\x06\xbd\x06\xbe\x06\xbf\x06\xc0\x06\xc1\x06\xc2\x06\xc3\x06\xc4\x06\xc5\x06\xc6\x06\xc7\x06\xc8\x06\xc9\x06\xca\x06\xcb\x06\xcc\x06\xcd\x06\xce\x06\xcf\x06\xd0\x06\xd1\x06\xd2\x06\xd3\x06\xd4\x06\xd5\x06\xd6\x06\xd7\x06\xd8\x06\xd9\x06\xda\x06\xdb\x06\xdc\x06\xdd\x06\xde\x06\xdf\x06\xe0\x06\xe1\x06\xe2\x06\xe3\x06\xe4\x06\xe5\x06\xe6\x06\xe7\x06\xe8\x06\xe9\x06\xea\x06\xeb\x06\xec\x06\xed\x06\xee\x06\xef\x06\xf0\x06\xf1\x06\xf2\x06\xf3\x06\xf4\x06\xf5\x06\xf6\x06\xf7\x06\xf8\x06\xf9\x06\xfa\x06\xfb\x06\xfc\x06\xfd\x06\xfe\x06\xff\x06\x00\x07\x01\x07\x02\x07\x03\x07\x04\x07\x05\x07\x06\x07\x07\x07\x08\x07\t\x07\n\x07\x0b\x07\x0c\x07\r\x07\x0e\x07\x0f\x07\x10\x07\x11\x07\x12\x07\x13\x07\x14\x07\x15\x07\x16\x07\x17\x07\x18\x07\x19\x07\x1a\x07\x1b\x07\x1c\x07\x1d\x07\x1e\x07\x1f\x07 \x07!\x07"\x07#\x07$\x07%\x07&\x07\'\x07(\x07)\x07*\x07+\x07,\x07-\x07.\x07/\x070\x071\x072\x073\x074\x075\x076\x077\x078\x079\x07:\x07;\x07<\x07=\x07>\x07?\x07@\x07A\x07B\x07C\x07D\x07E\x07F\x07G\x07H\x07I\x07J\x07K\x07L\x07M\x07N\x07O\x07P\x07Q\x07R\x07S\x07T\x07U\x07V\x07W\x07X\x07Y\x07Z\x07[\x07\\\x07]\x07^\x07_\x07`\x07a\x07b\x07c\x07d\x07e\x07f\x07g\x07h\x07i\x07j\x07k\x07l\x07m\x07n\x07o\x07p\x07q\x07r\x07s\x07t\x07u\x07v\x07w\x07x\x07y\x07z\x07{\x07|\x07}\x07~\x07\x7f\x07\x80\x07\x81\x07\x82\x07\x83\x07\x84\x07\x85\x07\x86\x07\x87\x07\x88\x07\x89\x07\x8a\x07\x8b\x07\x8c\x07\x8d\x07\x8e\x07\x8f\x07\x90\x07\x91\x07\x92\x07\x93\x07\x94\x07\x95\x07\x96\x07\x97\x07\x98\x07\x99\x07\x9a\x07\x9b\x07\x9c\x07\x9d\x07\x9e\x07\x9f\x07\xa0\x07\xa1\x07\xa2\x07\xa3\x07\xa4\x07\xa5\x07\xa6\x07\xa7\x07\xa8\x07\xa9\x07\xaa\x07\xab\x07\xac\x07\xad\x07\xae\x07\xaf\x07\xb0\x07\xb1\x07\xb2\x07\xb3\x07\xb4\x07\xb5\x07\xb6\x07\xb7\x07\xb8\x07\xb9\x07\xba\x07\xbb\x07\xbc\x07\xbd\x07\xbe\x07\xbf\x07\xc0\x07\xc1\x07\xc2\x07\xc3\x07\xc4\x07\xc5\x07\xc6\x07\xc7\x07\xc8\x07\xc9\x07\xca\x07\xcb\x07\xcc\x07\xcd\x07\xce\x07\xcf\x07\xd0\x07\xd1\x07\xd2\x07\xd3\x07\xd4\x07\xd5\x07\xd6\x07\xd7\x07\xd8\x07\xd9\x07\xda\x07\xdb\x07\xdc\x07\xdd\x07\xde\x07\xdf\x07\xe0\x07\xe1\x07\xe2\x07\xe3\x07\xe4\x07\xe5\x07\xe6\x07\xe7\x07\xe8\x07\xe9\x07\xea\x07\xeb\x07\xec\x07\xed\x07\xee\x07\xef\x07\xf0\x07\xf1\x07\xf2\x07\xf3\x07\xf4\x07\xf5\x07\xf6\x07\xf7\x07\xf8\x07\xf9\x07\xfa\x07\xfb\x07\xfc\x07\xfd\x07\xfe\x07\xff\x07\x00\x08\x01\x08\x02\x08\x03\x08\x04\x08\x05\x08\x06\x08\x07\x08\x08\x08\t\x08\n\x08\x0b\x08\x0c\x08\r\x08\x0e\x08\x0f\x08\x10\x08\x11\x08\x12\x08\x13\x08\x14\x08\x15\x08\x16\x08\x17\x08\x18\x08\x19\x08\x1a\x08\x1b\x08\x1c\x08\x1d\x08\x1e\x08\x1f\x08 \x08!\x08"\x08#\x08$\x08%\x08&\x08\'\x08(\x08)\x08*\x08+\x08,\x08-\x08.\x08/\x080\x081\x082\x083\x084\x085\x086\x087\x088\x089\x08:\x08;\x08<\x08=\x08>\x08?\x08@\x08A\x08B\x08C\x08D\x08E\x08F\x08G\x08H\x08I\x08J\x08K\x08L\x08M\x08N\x08O\x08P\x08Q\x08R\x08S\x08T\x08U\x08V\x08W\x08X\x08Y\x08Z\x08[\x08\\\x08]\x08^\x08_\x08`\x08a\x08b\x08c\x08d\x08e\x08f\x08g\x08h\x08i\x08j\x08k\x08l\x08m\x08n\x08o\x08p\x08q\x08r\x08s\x08t\x08u\x08v\x08w\x08x\x08y\x08z\x08{\x08|\x08}\x08~\x08\x7f\x08\x80\x08\x81\x08\x82\x08\x83\x08\x84\x08\x85\x08\x86\x08\x87\x08\x88\x08\x89\x08\x8a\x08\x8b\x08\x8c\x08\x8d\x08\x8e\x08\x8f\x08\x90\x08\x91\x08\x92\x08\x93\x08\x94\x08\x95\x08\x96\x08\x97\x08\x98\x08\x99\x08\x9a\x08\x9b\x08\x9c\x08\x9d\x08\x9e\x08\x9f\x08\xa0\x08\xa1\x08\xa2\x08\xa3\x08\xa4\x08\xa5\x08\xa6\x08\xa7\x08\xa8\x08\xa9\x08\xaa\x08\xab\x08\xac\x08\xad\x08\xae\x08\xaf\x08\xb0\x08\xb1\x08\xb2\x08\xb3\x08\xb4\x08\xb5\x08\xb6\x08\xb7\x08\xb8\x08\xb9\x08\xba\x08\xbb\x08\xbc\x08\xbd\x08\xbe\x08\xbf\x08\xc0\x08\xc1\x08\xc2\x08\xc3\x08\xc4\x08\xc5\x08\xc6\x08\xc7\x08\xc8\x08\xc9\x08\xca\x08\xcb\x08\xcc\x08\xcd\x08\xce\x08\xcf\x08\xd0\x08\xd1\x08\xd2\x08\xd3\x08\xd4\x08\xd5\x08\xd6\x08\xd7\x08\xd8\x08\xd9\x08\xda\x08\xdb\x08\xdc\x08\xdd\x08\xde\x08\xdf\x08\xe0\x08\xe1\x08\xe2\x08\xe3\x08\xe4\x08\xe5\x08\xe6\x08\xe7\x08\xe8\x08\xe9\x08\xea\x08\xeb\x08\xec\x08\xed\x08\xee\x08\xef\x08\xf0\x08\xf1\x08\xf2\x08\xf3\x08\xf4\x08\xf5\x08\xf6\x08\xf7\x08\xf8\x08\xf9\x08\xfa\x08\xfb\x08\xfc\x08\xfd\x08\xfe\x08\xff\x08\x00\t\x01\t\x02\t\x03\t\x04\t\x05\t\x06\t\x07\t\x08\t\t\t\n\t\x0b\t\x0c\t\r\t\x0e\t\x0f\t\x10\t\x11\t\x12\t\x13\t\x14\t\x15\t\x16\t\x17\t\x18\t\x19\t\x1a\t\x1b\t\x1c\t\x1d\t\x1e\t\x1f\t \t!\t"\t#\t$\t%\t&\t\'\t(\t)\t*\t+\t,\t-\t.\t/\t0\t1\t2\t3\t4\t5\t6\t7\t8\t9\t:\t;\t<\t=\t>\t?\t@\tA\tB\tC\tD\tE\tF\tG\tH\tI\tJ\tK\tL\tM\tN\tO\tP\tQ\tR\tS\tT\tU\tV\tW\tX\tY\tZ\t[\t\\\t]\t^\t_\t`\ta\tb\tc\td\te\tf\tg\th\ti\tj\tk\tl\tm\tn\to\tp\tq\tr\ts\tt\tu\tv\tw\tx\ty\tz\t{\t|\t}\t~\t\x7f\t\x80\t\x81\t\x82\t\x83\t\x84\t\x85\t\x86\t\x87\t\x88\t\x89\t\x8a\t\x8b\t\x8c\t\x8d\t\x8e\t\x8f\t\x90\t\x91\t\x92\t\x93\t\x94\t\x95\t\x96\t\x97\t\x98\t\x99\t\x9a\t\x9b\t\x9c\t\x9d\t\x9e\t\x9f\t\xa0\t\xa1\t\xa2\t\xa3\t\xa4\t\xa5\t\xa6\t\xa7\t\xa8\t\xa9\t\xaa\t\xab\t\xac\t\xad\t\xae\t\xaf\t\xb0\t\xb1\t\xb2\t\xb3\t\xb4\t\xb5\t\xb6\t\xb7\t\xb8\t\xb9\t\xba\t\xbb\t\xbc\t\xbd\t\xbe\t\xbf\t\xc0\t\xc1\t\xc2\t\xc3\t\xc4\t\xc5\t\xc6\t\xc7\t\xc8\t\xc9\t\xca\t\xcb\t\xcc\t\xcd\t\xce\t\xcf\t\xd0\t\xd1\t\xd2\t\xd3\t\xd4\t\xd5\t\xd6\t\xd7\t\xd8\t\xd9\t\xda\t\xdb\t\xdc\t\xdd\t\xde\t\xdf\t\xe0\t\xe1\t\xe2\t\xe3\t\xe4\t\xe5\t\xe6\t\xe7\t\xe8\t\xe9\t\xea\t\xeb\t\xec\t\xed\t\xee\t\xef\t\xf0\t\xf1\t\xf2\t\xf3\t\xf4\t\xf5\t\xf6\t\xf7\t\xf8\t\xf9\t\xfa\t\xfb\t\xfc\t\xfd\t\xfe\t\xff\t\x00\n\x01\n\x02\n\x03\n\x04\n\x05\n\x06\n\x07\n\x08\n\t\n\n\n\x0b\n\x0c\n\r\n\x0e\n\x0f\n\x10\n\x11\n\x12\n\x13\n\x14\n\x15\n\x16\n\x17\n\x18\n\x19\n\x1a\n\x1b\n\x1c\n\x1d\n\x1e\n\x1f\n \n!\n"\n#\n$\n%\n&\n\'\n(\n)\n*\n+\n,\n-\n.\n/\n0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n:\n;\n<\n=\n>\n?\n@\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\n[\n\\\n]\n^\n_\n`\na\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\nm\nn\no\np\nq\nr\ns\nt\nu\nv\nw\nx\ny\nz\n{\n|\n}\n~\n\x7f\n\x80\n\x81\n\x82\n\x83\n\x84\n\x85\n\x86\n\x87\n\x88\n\x89\n\x8a\n\x8b\n\x8c\n\x8d\n\x8e\n\x8f\n\x90\n\x91\n\x92\n\x93\n\x94\n\x95\n\x96\n\x97\n\x98\n\x99\n\x9a\n\x9b\n\x9c\n\x9d\n\x9e\n\x9f\n\xa0\n\xa1\n\xa2\n\xa3\n\xa4\n\xa5\n\xa6\n\xa7\n\xa8\n\xa9\n\xaa\n\xab\n\xac\n\xad\n\xae\n\xaf\n\xb0\n\xb1\n\xb2\n\xb3\n\xb4\n\xb5\n\xb6\n\xb7\n\xb8\n\xb9\n\xba\n\xbb\n\xbc\n\xbd\n\xbe\n\xbf\n\xc0\n\xc1\n\xc2\n\xc3\n\xc4\n\xc5\n\xc6\n\xc7\n\xc8\n\xc9\n\xca\n\xcb\n\xcc\n\xcd\n\xce\n\xcf\n\xd0\n\xd1\n\xd2\n\xd3\n\xd4\n\xd5\n\xd6\n\xd7\n\xd8\n\xd9\n\xda\n\xdb\n\xdc\n\xdd\n\xde\n\xdf\n\xe0\n\xe1\n\xe2\n\xe3\n\xe4\n\xe5\n\xe6\n\xe7\n\xe8\n\xe9\n\xea\n\xeb\n\xec\n\xed\n\xee\n\xef\n\xf0\n\xf1\n\xf2\n\xf3\n\xf4\n\xf5\n\xf6\n\xf7\n\xf8\n\xf9\n\xfa\n\xfb\n\xfc\n\xfd\n\xfe\n\xff\n\x00\x0b\x01\x0b\x02\x0b\x03\x0b\x04\x0b\x05\x0b\x06\x0b\x07\x0b\x08\x0b\t\x0b\n\x0b\x0b\x0b\x0c\x0b\r\x0b\x0e\x0b\x0f\x0b\x10\x0b\x11\x0b\x12\x0b\x13\x0b\x14\x0b\x15\x0b\x16\x0b\x17\x0b\x18\x0b\x19\x0b\x1a\x0b\x1b\x0b\x1c\x0b\x1d\x0b\x1e\x0b\x1f\x0b \x0b!\x0b"\x0b#\x0b$\x0b%\x0b&\x0b\'\x0b(\x0b)\x0b*\x0b+\x0b,\x0b-\x0b.\x0b/\x0b0\x0b1\x0b2\x0b3\x0b4\x0b5\x0b6\x0b7\x0b8\x0b9\x0b:\x0b;\x0b<\x0b=\x0b>\x0b?\x0b@\x0bA\x0bB\x0bC\x0bD\x0bE\x0bF\x0bG\x0bH\x0bI\x0bJ\x0bK\x0bL\x0bM\x0bN\x0bO\x0bP\x0bQ\x0bR\x0bS\x0bT\x0bU\x0bV\x0bW\x0bX\x0bY\x0bZ\x0b[\x0b\\\x0b]\x0b^\x0b_\x0b`\x0ba\x0bb\x0bc\x0bd\x0be\x0bf\x0bg\x0bh\x0bi\x0bj\x0bk\x0bl\x0bm\x0bn\x0bo\x0bp\x0bq\x0br\x0bs\x0bt\x0bu\x0bv\x0bw\x0bx\x0by\x0bz\x0b{\x0b|\x0b}\x0b~\x0b\x7f\x0b\x80\x0b\x81\x0b\x82\x0b\x83\x0b\x84\x0b\x85\x0b\x86\x0b\x87\x0b\x88\x0b\x89\x0b\x8a\x0b\x8b\x0b\x8c\x0b\x8d\x0b\x8e\x0b\x8f\x0b\x90\x0b\x91\x0b\x92\x0b\x93\x0b\x94\x0b\x95\x0b\x96\x0b\x97\x0b\x98\x0b\x99\x0b\x9a\x0b\x9b\x0b\x9c\x0b\x9d\x0b\x9e\x0b\x9f\x0b\xa0\x0b\xa1\x0b\xa2\x0b\xa3\x0b\xa4\x0b\xa5\x0b\xa6\x0b\xa7\x0b\xa8\x0b\xa9\x0b\xaa\x0b\xab\x0b\xac\x0b\xad\x0b\xae\x0b\xaf\x0b\xb0\x0b\xb1\x0b\xb2\x0b\xb3\x0b\xb4\x0b\xb5\x0b\xb6\x0b\xb7\x0b\xb8\x0b\xb9\x0b\xba\x0b\xbb\x0b\xbc\x0b\xbd\x0b\xbe\x0b\xbf\x0b\xc0\x0b\xc1\x0b\xc2\x0b\xc3\x0b\xc4\x0b\xc5\x0b\xc6\x0b\xc7\x0b\xc8\x0b\xc9\x0b\xca\x0b\xcb\x0b\xcc\x0b\xcd\x0b\xce\x0b\xcf\x0b\xd0\x0b\xd1\x0b\xd2\x0b\xd3\x0b\xd4\x0b\xd5\x0b\xd6\x0b\xd7\x0b\xd8\x0b\xd9\x0b\xda\x0b\xdb\x0b\xdc\x0b\xdd\x0b\xde\x0b\xdf\x0b\xe0\x0b\xe1\x0b\xe2\x0b\xe3\x0b\xe4\x0b\xe5\x0b\xe6\x0b\xe7\x0b\xe8\x0b\xe9\x0b\xea\x0b\xeb\x0b\xec\x0b\xed\x0b\xee\x0b\xef\x0b\xf0\x0b\xf1\x0b\xf2\x0b\xf3\x0b\xf4\x0b\xf5\x0b\xf6\x0b\xf7\x0b\xf8\x0b\xf9\x0b\xfa\x0b\xfb\x0b\xfc\x0b\xfd\x0b\xfe\x0b\xff\x0b\x00\x0c\x01\x0c\x02\x0c\x03\x0c\x04\x0c\x05\x0c\x06\x0c\x07\x0c\x08\x0c\t\x0c\n\x0c\x0b\x0c\x0c\x0c\r\x0c\x0e\x0c\x0f\x0c\x10\x0c\x11\x0c\x12\x0c\x13\x0c\x14\x0c\x15\x0c\x16\x0c\x17\x0c\x18\x0c\x19\x0c\x1a\x0c\x1b\x0c\x1c\x0c\x1d\x0c\x1e\x0c\x1f\x0c \x0c!\x0c"\x0c#\x0c$\x0c%\x0c&\x0c\'\x0c(\x0c)\x0c*\x0c+\x0c,\x0c-\x0c.\x0c/\x0c0\x0c1\x0c2\x0c3\x0c4\x0c5\x0c6\x0c7\x0c8\x0c9\x0c:\x0c;\x0c<\x0c=\x0c>\x0c?\x0c@\x0cA\x0cB\x0cC\x0cD\x0cE\x0cF\x0cG\x0cH\x0cI\x0cJ\x0cK\x0cL\x0cM\x0cN\x0cO\x0cP\x0cQ\x0cR\x0cS\x0cT\x0cU\x0cV\x0cW\x0cX\x0cY\x0cZ\x0c[\x0c\\\x0c]\x0c^\x0c_\x0c`\x0ca\x0cb\x0cc\x0cd\x0ce\x0cf\x0cg\x0ch\x0ci\x0cj\x0ck\x0cl\x0cm\x0cn\x0co\x0cp\x0cq\x0cr\x0cs\x0ct\x0cu\x0cv\x0cw\x0cx\x0cy\x0cz\x0c{\x0c|\x0c}\x0c~\x0c\x7f\x0c\x80\x0c\x81\x0c\x82\x0c\x83\x0c\x84\x0c\x85\x0c\x86\x0c\x87\x0c\x88\x0c\x89\x0c\x8a\x0c\x8b\x0c\x8c\x0c\x8d\x0c\x8e\x0c\x8f\x0c\x90\x0c\x91\x0c\x92\x0c\x93\x0c\x94\x0c\x95\x0c\x96\x0c\x97\x0c\x98\x0c\x99\x0c\x9a\x0c\x9b\x0c\x9c\x0c\x9d\x0c\x9e\x0c\x9f\x0c\xa0\x0c\xa1\x0c\xa2\x0c\xa3\x0c\xa4\x0c\xa5\x0c\xa6\x0c\xa7\x0c\xa8\x0c\xa9\x0c\xaa\x0c\xab\x0c\xac\x0c\xad\x0c\xae\x0c\xaf\x0c\xb0\x0c\xb1\x0c\xb2\x0c\xb3\x0c\xb4\x0c\xb5\x0c\xb6\x0c\xb7\x0c\xb8\x0c\xb9\x0c\xba\x0c\xbb\x0c\xbc\x0c\xbd\x0c\xbe\x0c\xbf\x0c\xc0\x0c\xc1\x0c\xc2\x0c\xc3\x0c\xc4\x0c\xc5\x0c\xc6\x0c\xc7\x0c\xc8\x0c\xc9\x0c\xca\x0c\xcb\x0c\xcc\x0c\xcd\x0c\xce\x0c\xcf\x0c\xd0\x0c\xd1\x0c\xd2\x0c\xd3\x0c\xd4\x0c\xd5\x0c\xd6\x0c\xd7\x0c\xd8\x0c\xd9\x0c\xda\x0c\xdb\x0c\xdc\x0c\xdd\x0c\xde\x0c\xdf\x0c\xe0\x0c\xe1\x0c\xe2\x0c\xe3\x0c\xe4\x0c\xe5\x0c\xe6\x0c\xe7\x0c\xe8\x0c\xe9\x0c\xea\x0c\xeb\x0c\xec\x0c\xed\x0c\xee\x0c\xef\x0c\xf0\x0c\xf1\x0c\xf2\x0c\xf3\x0c\xf4\x0c\xf5\x0c\xf6\x0c\xf7\x0c\xf8\x0c\xf9\x0c\xfa\x0c\xfb\x0c\xfc\x0c\xfd\x0c\xfe\x0c\xff\x0c\x00\r\x01\r\x02\r\x03\r\x04\r\x05\r\x06\r\x07\r\x08\r\t\r\n\r\x0b\r\x0c\r\r\r\x0e\r\x0f\r\x10\r\x11\r\x12\r\x13\r\x14\r\x15\r\x16\r\x17\r\x18\r\x19\r\x1a\r\x1b\r\x1c\r\x1d\r\x1e\r\x1f\r \r!\r"\r#\r$\r%\r&\r\'\r(\r)\r*\r+\r,\r-\r.\r/\r0\r1\r2\r3\r4\r5\r6\r7\r8\r9\r:\r;\r<\r=\r>\r?\r@\rA\rB\rC\rD\rE\rF\rG\rH\rI\rJ\rK\rL\rM\rN\rO\rP\rQ\rR\rS\rT\rU\rV\rW\rX\rY\rZ\r[\r\\\r]\r^\r_\r`\ra\rb\rc\rd\re\rf\rg\rh\ri\rj\rk\rl\rm\rn\ro\rp\rq\rr\rs\rt\ru\rv\rw\rx\ry\rz\r{\r|\r}\r~\r\x7f\r\x80\r\x81\r\x82\r\x83\r\x84\r\x85\r\x86\r\x87\r\x88\r\x89\r\x8a\r\x8b\r\x8c\r\x8d\r\x8e\r\x8f\r\x90\r\x91\r\x92\r\x93\r\x94\r\x95\r\x96\r\x97\r\x98\r\x99\r\x9a\r\x9b\r\x9c\r\x9d\r\x9e\r\x9f\r\xa0\r\xa1\r\xa2\r\xa3\r\xa4\r\xa5\r\xa6\r\xa7\r\xa8\r\xa9\r\xaa\r\xab\r\xac\r\xad\r\xae\r\xaf\r\xb0\r\xb1\r\xb2\r\xb3\r\xb4\r\xb5\r\xb6\r\xb7\r\xb8\r\xb9\r\xba\r\xbb\r\xbc\r\xbd\r\xbe\r\xbf\r\xc0\r\xc1\r\xc2\r\xc3\r\xc4\r\xc5\r\xc6\r\xc7\r\xc8\r\xc9\r\xca\r\xcb\r\xcc\r\xcd\r\xce\r\xcf\r\xd0\r\xd1\r\xd2\r\xd3\r\xd4\r\xd5\r\xd6\r\xd7\r\xd8\r\xd9\r\xda\r\xdb\r\xdc\r\xdd\r\xde\r\xdf\r\xe0\r\xe1\r\xe2\r\xe3\r\xe4\r\xe5\r\xe6\r\xe7\r\xe8\r\xe9\r\xea\r\xeb\r\xec\r\xed\r\xee\r\xef\r\xf0\r\xf1\r\xf2\r\xf3\r\xf4\r\xf5\r\xf6\r\xf7\r\xf8\r\xf9\r\xfa\r\xfb\r\xfc\r\xfd\r\xfe\r\xff\r\x00\x0e\x01\x0e\x02\x0e\x03\x0e\x04\x0e\x05\x0e\x06\x0e\x07\x0e\x08\x0e\t\x0e\n\x0e\x0b\x0e\x0c\x0e\r\x0e\x0e\x0e\x0f\x0e\x10\x0e\x11\x0e\x12\x0e\x13\x0e\x14\x0e\x15\x0e\x16\x0e\x17\x0e\x18\x0e\x19\x0e\x1a\x0e\x1b\x0e\x1c\x0e\x1d\x0e\x1e\x0e\x1f\x0e \x0e!\x0e"\x0e#\x0e$\x0e%\x0e&\x0e\'\x0e(\x0e)\x0e*\x0e+\x0e,\x0e-\x0e.\x0e/\x0e0\x0e1\x0e2\x0e3\x0e4\x0e5\x0e6\x0e7\x0e8\x0e9\x0e:\x0e;\x0e<\x0e=\x0e>\x0e?\x0e@\x0eA\x0eB\x0eC\x0eD\x0eE\x0eF\x0eG\x0eH\x0eI\x0eJ\x0eK\x0eL\x0eM\x0eN\x0eO\x0eP\x0eQ\x0eR\x0eS\x0eT\x0eU\x0eV\x0eW\x0eX\x0eY\x0eZ\x0e[\x0e\\\x0e]\x0e^\x0e_\x0e`\x0ea\x0eb\x0ec\x0ed\x0ee\x0ef\x0eg\x0eh\x0ei\x0ej\x0ek\x0el\x0em\x0en\x0eo\x0ep\x0eq\x0er\x0es\x0et\x0eu\x0ev\x0ew\x0ex\x0ey\x0ez\x0e{\x0e|\x0e}\x0e~\x0e\x7f\x0e\x80\x0e\x81\x0e\x82\x0e\x83\x0e\x84\x0e\x85\x0e\x86\x0e\x87\x0e\x88\x0e\x89\x0e\x8a\x0e\x8b\x0e\x8c\x0e\x8d\x0e\x8e\x0e\x8f\x0e\x90\x0e\x91\x0e\x92\x0e\x93\x0e\x94\x0e\x95\x0e\x96\x0e\x97\x0e\x98\x0e\x99\x0e\x9a\x0e\x9b\x0e\x9c\x0e\x9d\x0e\x9e\x0e\x9f\x0e\xa0\x0e\xa1\x0e\xa2\x0e\xa3\x0e\xa4\x0e\xa5\x0e\xa6\x0e\xa7\x0e\xa8\x0e\xa9\x0e\xaa\x0e\xab\x0e\xac\x0e\xad\x0e\xae\x0e\xaf\x0e\xb0\x0e\xb1\x0e\xb2\x0e\xb3\x0e\xb4\x0e\xb5\x0e\xb6\x0e\xb7\x0e\xb8\x0e\xb9\x0e\xba\x0e\xbb\x0e\xbc\x0e\xbd\x0e\xbe\x0e\xbf\x0e\xc0\x0e\xc1\x0e\xc2\x0e\xc3\x0e\xc4\x0e\xc5\x0e\xc6\x0e\xc7\x0e\xc8\x0e\xc9\x0e\xca\x0e\xcb\x0e\xcc\x0e\xcd\x0e\xce\x0e\xcf\x0e\xd0\x0e\xd1\x0e\xd2\x0e\xd3\x0e\xd4\x0e\xd5\x0e\xd6\x0e\xd7\x0e\xd8\x0e\xd9\x0e\xda\x0e\xdb\x0e\xdc\x0e\xdd\x0e\xde\x0e\xdf\x0e\xe0\x0e\xe1\x0e\xe2\x0e\xe3\x0e\xe4\x0e\xe5\x0e\xe6\x0e\xe7\x0e\xe8\x0e\xe9\x0e\xea\x0e\xeb\x0e\xec\x0e\xed\x0e\xee\x0e\xef\x0e\xf0\x0e\xf1\x0e\xf2\x0e\xf3\x0e\xf4\x0e\xf5\x0e\xf6\x0e\xf7\x0e\xf8\x0e\xf9\x0e\xfa\x0e\xfb\x0e\xfc\x0e\xfd\x0e\xfe\x0e\xff\x0e\x00\x0f\x01\x0f\x02\x0f\x03\x0f\x04\x0f\x05\x0f\x06\x0f\x07\x0f\x08\x0f\t\x0f\n\x0f\x0b\x0f\x0c\x0f\r\x0f\x0e\x0f\x0f\x0f\x10\x0f\x11\x0f\x12\x0f\x13\x0f\x14\x0f\x15\x0f\x16\x0f\x17\x0f\x18\x0f\x19\x0f\x1a\x0f\x1b\x0f\x1c\x0f\x1d\x0f\x1e\x0f\x1f\x0f \x0f!\x0f"\x0f#\x0f$\x0f%\x0f&\x0f\'\x0f(\x0f)\x0f*\x0f+\x0f,\x0f-\x0f.\x0f/\x0f0\x0f1\x0f2\x0f3\x0f4\x0f5\x0f6\x0f7\x0f8\x0f9\x0f:\x0f;\x0f<\x0f=\x0f>\x0f?\x0f@\x0fA\x0fB\x0fC\x0fD\x0fE\x0fF\x0fG\x0fH\x0fI\x0fJ\x0fK\x0fL\x0fM\x0fN\x0fO\x0fP\x0fQ\x0fR\x0fS\x0fT\x0fU\x0fV\x0fW\x0fX\x0fY\x0fZ\x0f[\x0f\\\x0f]\x0f^\x0f_\x0f`\x0fa\x0fb\x0fc\x0fd\x0fe\x0ff\x0fg\x0fh\x0fi\x0fj\x0fk\x0fl\x0fm\x0fn\x0fo\x0fp\x0fq\x0fr\x0fs\x0ft\x0fu\x0fv\x0fw\x0fx\x0fy\x0fz\x0f{\x0f|\x0f}\x0f~\x0f\x7f\x0f\x80\x0f\x81\x0f\x82\x0f\x83\x0f\x84\x0f\x85\x0f\x86\x0f\x87\x0f\x88\x0f\x89\x0f\x8a\x0f\x8b\x0f\x8c\x0f\x8d\x0f\x8e\x0f\x8f\x0f\x90\x0f\x91\x0f\x92\x0f\x93\x0f\x94\x0f\x95\x0f\x96\x0f\x97\x0f\x98\x0f\x99\x0f\x9a\x0f\x9b\x0f\x9c\x0f\x9d\x0f\x9e\x0f\x9f\x0f\xa0\x0f\xa1\x0f\xa2\x0f\xa3\x0f\xa4\x0f\xa5\x0f\xa6\x0f\xa7\x0f\xa8\x0f\xa9\x0f\xaa\x0f\xab\x0f\xac\x0f\xad\x0f\xae\x0f\xaf\x0f\xb0\x0f\xb1\x0f\xb2\x0f\xb3\x0f\xb4\x0f\xb5\x0f\xb6\x0f\xb7\x0f\xb8\x0f\xb9\x0f\xba\x0f\xbb\x0f\xbc\x0f\xbd\x0f\xbe\x0f\xbf\x0f\xc0\x0f\xc1\x0f\xc2\x0f\xc3\x0f\xc4\x0f\xc5\x0f\xc6\x0f\xc7\x0f\xc8\x0f\xc9\x0f\xca\x0f\xcb\x0f\xcc\x0f\xcd\x0f\xce\x0f\xcf\x0f\xd0\x0f\xd1\x0f\xd2\x0f\xd3\x0f\xd4\x0f\xd5\x0f\xd6\x0f\xd7\x0f\xd8\x0f\xd9\x0f\xda\x0f\xdb\x0f\xdc\x0f\xdd\x0f\xde\x0f\xdf\x0f\xe0\x0f\xe1\x0f\xe2\x0f\xe3\x0f\xe4\x0f\xe5\x0f\xe6\x0f\xe7\x0f\xe8\x0f\xe9\x0f\xea\x0f\xeb\x0f\xec\x0f\xed\x0f\xee\x0f\xef\x0f\xf0\x0f\xf1\x0f\xf2\x0f\xf3\x0f\xf4\x0f\xf5\x0f\xf6\x0f\xf7\x0f\xf8\x0f\xf9\x0f\xfa\x0f\xfb\x0f\xfc\x0f\xfd\x0f\xfe\x0f\xff\x0f'
+
+/// Feature name   : LUTValue
+/// Display name   : LUT Value
+/// Tooltip        : Returns the Value at entry LUTIndex of the LUT selected by LUTSelector.
+/// Description    : Returns the Value at entry LUTIndex of the LUT selected by LUTSelector.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : LUTSaveAll
+/// Display name   : LUT Save All
+/// Tooltip        : Saves all available LUTs configuration in non-volatile memory.
+/// Description    : Saves current LUT configuration in non-volatile memory.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : LUTLoadAll
+/// Display name   : LUT Load All
+/// Tooltip        : Loads all available LUTs stored in non-volatile memory into current LUT configuration.
+/// Description    : Loads the LUT stored in non-volatile memory into current LUT configuration.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : LensShadingEnable
+/// Display name   : Lens Shading Enable
+/// Tooltip        : Enables Lens Shading.
+/// Description    : Enables Lens Shading.
+/// SFNC Namespace : Custom
+/// Value          : False
+
+/// Feature name   : LensShadingCenterOffsetX
+/// Display name   : Lens Shading Center OffsetX
+/// Tooltip        : Lens Shading Center Offset X.
+/// Description    : Lens Shading Center Offset X.
+/// SFNC Namespace : Custom
+/// Value          : 1296
+
+/// Feature name   : LensShadingCenterOffsetY
+/// Display name   : Lens Shading Center OffsetY
+/// Tooltip        : Lens Shading Center Offset Y.
+/// Description    : Lens Shading Center Offset Y.
+/// SFNC Namespace : Custom
+/// Value          : 972
+
+/// Feature name   : LensShadingIndex
+/// Display name   : Lens Shading Index
+/// Tooltip        : Lens Shading Index.
+/// Description    : Lens Shading Index.
+/// SFNC Namespace : Custom
+/// Value          : 0
+
+/// Feature name   : LensShadingValue
+/// Display name   : Lens Shading Value
+/// Tooltip        : Returns the Value at entry Lens Shading Index.
+/// Description    : Returns the Value at entry Lens Shading Index.
+/// SFNC Namespace : Custom
+/// Value          : 1.0
+
+/// Feature name   : LensShadingSaveAll
+/// Display name   : Lens Shading Save All
+/// Tooltip        : Saves all available Lens Shadings configuration in non-volatile memory.
+/// Description    : Saves current Lens Shading configuration in non-volatile memory.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : LensShadingLoadAll
+/// Display name   : Lens Shading Load All
+/// Tooltip        : Loads all available Lens Shadings stored in non-volatile memory into current Lens Shading configuration.
+/// Description    : Loads the Lens Shading stored in non-volatile memory into current Lens Shading configuration.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : Hue
+/// Display name   : Hue
+/// Tooltip        : Controls the hue correction of color tone.
+/// Description    : Controls the hue correction of color tone. It rotates the chrominance field clockwise with values > 0 and counter clockwise with values < 0.
+/// SFNC Namespace : Custom
+/// Value          : 0.0
+
+/// Feature name   : Saturation
+/// Display name   : Saturation
+/// Tooltip        : Controls the amplification of only the chrominance signal in the color space.
+/// Description    : Controls the amplification of only the chrominance signal in the color space.
+/// SFNC Namespace : Custom
+/// Value          : 1.0
+
+/// Feature name   : ColorTransformationEnable
+/// Display name   : Color Transformation Enable
+/// Tooltip        : Enable for the Color Transformation module feature
+/// Description    : Enable for the Color Transformation module feature.
+/// SFNC Namespace : Standard
+/// Value          : False
+
+/// Feature name   : ColorTransformationValueSelector
+/// Display name   : Color Transformation Value Selector
+/// Tooltip        : Selects the Gain factor or Offset of the Transformation matrix to access in the selected Color Transformation module.
+/// Description    : Selects the Gain factor or Offset of the Transformation matrix to access in the selected Color Transformation module.
+/// SFNC Namespace : Standard
+/// Value          : Gain00
+
+/// Feature name   : ColorTransformationValue
+/// Display name   : Color Transformation Value
+/// Tooltip        : Represents the value of the selected Gain factor or Offset inside the Transformation matrix.
+/// Description    : Represents the value of the selected Gain factor or Offset inside the Transformation matrix.
+/// SFNC Namespace : Standard
+/// Value          : 1.0
+
+/// Feature name   : LineSelector
+/// Display name   : Line Selector
+/// Tooltip        : Selects the physical line (or pin) of the external device connector or the virtual line of the Transport Layer to configure.
+/// Description    : Selects the physical line (or pin) of the external device connector or the virtual line of the Transport Layer to configure.
+/// SFNC Namespace : Standard
+/// Value          : Line0
+
+/// Feature name   : LineMode
+/// Display name   : Line Mode
+/// Tooltip        : Controls if the physical Line is used to Input or Output a signal.
+/// Description    : Controls if the physical Line is used to Input or Output a signal.
+/// SFNC Namespace : Standard
+/// Value          : Input
+
+/// Feature name   : LineInverter
+/// Display name   : Line Inverter
+/// Tooltip        : Controls the inversion of the signal of the selected input or output Line.
+/// Description    : Controls the inversion of the signal of the selected input or output Line.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : LineStatus
+/// Display name   : Line Status
+/// Tooltip        : Returns the current status of the selected input or output Line.
+/// Description    : Returns the current status of the selected input or output Line.
+/// SFNC Namespace : Standard
+/// Value          : True
+
+/// Feature name   : LineStatusAll
+/// Display name   : Line StatusAll
+/// Tooltip        : Returns the current status of the all input or output Line.
+/// Description    : Returns the current status of the all input or output Line.
+/// SFNC Namespace : Standard
+/// Value          : 15
+
+/// Feature name   : LineSource
+/// Display name   : Line Source
+/// Tooltip        : Selects which internal acquisition or I/O source signal to output on the selected Line.
+/// Description    : Selects which internal acquisition or I/O source signal to output on the selected Line. LineMode must be Output.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : LineDebounceMode
+/// Display name   : Line Debounce Mode
+/// Tooltip        : Controls the Line Debouncing feature for a particular input line.
+/// Description    : Controls the Line Debouncing feature for a particular input line. Can be turned off to be transparent or switched to one of two functional modes.
+/// SFNC Namespace : Custom
+/// Value          : Off
+
+/// Feature name   : LineDebounceDuration
+/// Display name   : Line Debounce Duration
+/// Tooltip        : Controls the time constant in microseconds for Line Debounce Mode.
+/// Description    : Controls the time constant in microseconds for Line Debounce Mode. In case of Delay Mode controls how long signal level has to be sustained for before it is accepted. In case of Stall Mode controls insensitivity duration after signal edge.
+/// SFNC Namespace : Custom
+/// Value          : 0.01932367149758454
+
+/// Feature name   : SerialHubEnable
+/// Display name   : Serial Hub Enable
+/// Tooltip        : Enable or disable serial port.
+/// Description    : Enable or disable serial port. When enabled, overrides control of Rx and Tx Lines.
+/// SFNC Namespace : Custom
+/// Value          : False
+
+/// Feature name   : SerialBaudRate
+/// Display name   : Serial Baud Rate
+/// Tooltip        : Selection of Uart port baud rate in bits per second.
+/// Description    : Selection of Uart port baud rate in bits per second.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : SerialStopBits
+/// Display name   : Serial Stop Bits
+/// Tooltip        : Number of stop bits at the end of UART frame.
+/// Description    : Number of stop bits at the end of UART frame.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : SerialParityBit
+/// Display name   : Serial Parity Bit
+/// Tooltip        : Parity bit at the end of UART frame.
+/// Description    : Parity bit at the end of UART frame.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : SerialRxData
+/// Display name   : Serial Rx Data
+/// Tooltip        : Data to be fetched from Rx queue.
+/// Description    : Data to be fetched from Rx queue.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : SerialRxSize
+/// Display name   : Serial Rx Size
+/// Tooltip        : How many bytes from Rx queue are inserted into Rx data.
+/// Description    : How many bytes from Rx queue are inserted into Rx data.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : SerialRxWaiting
+/// Display name   : Serial Rx Waiting
+/// Tooltip        : How many bytes in Rx queue are waiting for reception.
+/// Description    : How many bytes in Rx queue are waiting for reception.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : SerialTxData
+/// Display name   : Serial Tx Data
+/// Tooltip        : Data to be put into serial transmit queue.
+/// Description    : Data to be put into serial transmit queue.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : SerialTxSize
+/// Display name   : Serial Tx Size
+/// Tooltip        : How many bytes from Tx data are inserted into Tx queue.
+/// Description    : How many bytes from Tx data are inserted into Tx queue.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : SerialTxRemaining
+/// Display name   : Serial Tx Remaining
+/// Tooltip        : How many bytes in Tx queue remained free.
+/// Description    : How many bytes in Tx queue remained free.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : SerialTxLock
+/// Display name   : Serial Tx Lock
+/// Tooltip        : Lock or unlock transmission from Tx queue.
+/// Description    : Lock or unlock transmission from Tx queue. When unlocked, Tx queue is immidiately sent over serial port.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : TimerSelector
+/// Display name   : Timer Selector
+/// Tooltip        : Selects which Timer to configure.
+/// Description    : Selects which Timer to configure.
+/// SFNC Namespace : Standard
+/// Value          : Timer0
+
+/// Feature name   : TimerDuration
+/// Display name   : Timer Duration
+/// Tooltip        : Sets the duration (in microseconds) of the Timer pulse.
+/// Description    : Sets the duration (in microseconds) of the Timer pulse. When the Timer reaches the TimerDuration value,
+                         a TimerEnd event is generated, the TimerActive signal becomes low and the Timer stops counting
+                         until a new trigger happens or it is explicitly reset with TimerReset.
+/// SFNC Namespace : Standard
+/// Value          : 0.0
+
+/// Feature name   : TimerDelay
+/// Display name   : Timer Delay
+/// Tooltip        : Sets the duration (in microseconds) of the delay to apply at the reception of a trigger before starting the Timer.
+/// Description    : Sets the duration (in microseconds) of the delay to apply at the reception of a trigger before starting the Timer.
+/// SFNC Namespace : Standard
+/// Value          : 0.0
+
+/// Feature name   : TimerReset
+/// Display name   : Timer Reset
+/// Tooltip        : Does a software reset of the selected timer and starts it.
+/// Description    : Does a software reset of the selected timer and starts it. The timer starts immediately after the reset unless a 
+                         timer trigger is active.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : TimerStatus
+/// Display name   : Timer Status
+/// Tooltip        : Returns the current status of the Timer.
+/// Description    : Returns the current status of the Timer.
+/// SFNC Namespace : Standard
+/// Value          : TimerIdle
+
+/// Feature name   : TimerTriggerSource
+/// Display name   : Timer Trigger Source
+/// Tooltip        : Selects the source of the trigger to start the Timer.
+/// Description    : Selects the source of the trigger to start the Timer.
+/// SFNC Namespace : Standard
+/// Value          : Off
+
+/// Feature name   : TimerTriggerActivation
+/// Display name   : Timer Trigger Activation
+/// Tooltip        : Selects the activation mode of the trigger to start the Timer.
+/// Description    : Selects the activation mode of the trigger to start the Timer.
+/// SFNC Namespace : Standard
+/// Value          : RisingEdge
+
+/// Feature name   : CounterSelector
+/// Display name   : Counter Selector
+/// Tooltip        : Selects which counter to configure.
+/// Description    : Selects which counter to configure.
+/// SFNC Namespace : Standard
+/// Value          : Counter0
+
+/// Feature name   : CounterStatus
+/// Display name   : Counter Status
+/// Tooltip        : The current status of the counter.
+/// Description    : The current status of the counter.
+/// SFNC Namespace : Standard
+/// Value          : CounterIdle
+
+/// Feature name   : CounterValue
+/// Display name   : Counter Value
+/// Tooltip        : The current value of the counter.
+/// Description    : The current value of the counter.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : CounterValueAtReset
+/// Display name   : Counter Value At Reset
+/// Tooltip        : The last counter value latched before resetting the counter.
+/// Description    : The last counter value latched before resetting the counter.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : CounterDuration
+/// Display name   : Counter Duration
+/// Tooltip        : The number of events before the CounterEnd event is generated.
+/// Description    : When the counter reaches the CounterDuration value, a CounterEnd event is generated, the CounterActive
+                         signal becomes inactive and the counter stops counting until a new trigger happens or it is explicitly reset with
+                         CounterReset.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : CounterReset
+/// Display name   : Counter Reset
+/// Tooltip        : Does a software reset of the counter and starts it.
+/// Description    : Does a software reset of the counter and starts it. The counter starts counting events immediately after the reset unless a
+                         counter trigger is active.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : CounterTriggerSource
+/// Display name   : Counter Trigger Source
+/// Tooltip        : The signal source that starts the counter.
+/// Description    : The signal source that starts the counter.
+/// SFNC Namespace : Standard
+/// Value          : Off
+
+/// Feature name   : CounterTriggerActivation
+/// Display name   : Counter Trigger Activation
+/// Tooltip        : Selects the activation mode of the trigger to start the counter.
+/// Description    : Selects the activation mode of the trigger to start the counter.
+/// SFNC Namespace : Standard
+/// Value          : RisingEdge
+
+/// Feature name   : CounterEventSource
+/// Display name   : Counter Event Source
+/// Tooltip        : The event that will be the source to increment the counter.
+/// Description    : The event that will be the source to increment the counter.
+/// SFNC Namespace : Standard
+/// Value          : Off
+
+/// Feature name   : CounterEventActivation
+/// Display name   : Counter Event Activation
+/// Tooltip        : Selects the activation mode for the event that increments the counter.
+/// Description    : Selects the activation mode for the event that increments the counter.
+/// SFNC Namespace : Standard
+/// Value          : RisingEdge
+
+/// Feature name   : CounterResetSource
+/// Display name   : Counter Reset Source
+/// Tooltip        : The signal source that resets the counter.
+/// Description    : The signal source that resets the counter.
+/// SFNC Namespace : Standard
+/// Value          : Off
+
+/// Feature name   : CounterResetActivation
+/// Display name   : Counter Reset Activation
+/// Tooltip        : Selects the activation mode of the trigger to reset the counter.
+/// Description    : Selects the activation mode of the trigger to reset the counter.
+/// SFNC Namespace : Standard
+/// Value          : RisingEdge
+
+/// Feature name   : UserSetSelector
+/// Display name   : User Set Selector
+/// Tooltip        : Selects the feature User Set to load, save or configure.
+/// Description    : Selects the feature User Set to load, save or configure.
+/// SFNC Namespace : Standard
+/// Value          : Default
+
+/// Feature name   : UserSetLoad
+/// Display name   : User Set Load
+/// Tooltip        : Loads the User Set specified by UserSetSelector to the device and makes it active.
+/// Description    : Loads the User Set specified by UserSetSelector to the device and makes it active.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : UserSetSave
+/// Display name   : User Set Save
+/// Tooltip        : Save the User Set specified by UserSetSelector to the non-volatile memory of the device.
+/// Description    : Save the User Set specified by UserSetSelector to the non-volatile memory of the device.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : UserSetDefault
+/// Display name   : User Set Default
+/// Tooltip        : Selects the feature User Set to load and make active by default when the device is reset.
+/// Description    : Selects the feature User Set to load and make active by default when the device is reset.
+/// SFNC Namespace : Standard
+/// Value          : Default
+
+/// Feature name   : TestPendingAck
+/// Display name   : Test Pending Ack
+/// Tooltip        : Tests the device's pending acknowledge feature.
+/// Description    : Tests the device's pending acknowledge feature. When this feature is written, the device waits a time period corresponding to the value of TestPendingAck before acknowledging the write.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : TestEventGenerate
+/// Display name   : Test Event Generate
+/// Tooltip        : Generates a Test Event.
+/// Description    : Generates a Test Event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : PayloadSize
+/// Display name   : Payload Size
+/// Tooltip        : Provides the number of bytes transferred for each image or chunk on the stream channel.
+/// Description    : Provides the number of bytes transferred for each image or chunk on the stream channel. This includes any end-of-line, end-of-frame statistics or other stamp data. This is the total size of data payload for a data block.
+/// SFNC Namespace : Standard
+/// Value          : 5038848
+
+/// Feature name   : FileSelector
+/// Display name   : File Selector
+/// Tooltip        : Selects the target file in the device.
+/// Description    : Selects the target file in the device.
+/// SFNC Namespace : Standard
+/// Value          : UserData
+
+/// Feature name   : FileOperationSelector
+/// Display name   : File Operation Selector
+/// Tooltip        : Selects the target operation for the selected file in the device.
+/// Description    : Selects the target operation for the selected file in the device. This Operation is executed when the FileOperationExecute feature is called.
+/// SFNC Namespace : Standard
+/// Value          : Open
+
+/// Feature name   : FileOperationExecute
+/// Display name   : File Operation Execute
+/// Tooltip        : Executes the operation selected by FileOperationSelector on the selected file.
+/// Description    : Executes the operation selected by FileOperationSelector on the selected file.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : FileOpenMode
+/// Display name   : File Open Mode
+/// Tooltip        : Selects the access mode in which a file is opened in the device.
+/// Description    : Selects the access mode in which a file is opened in the device.
+/// SFNC Namespace : Standard
+/// Value          : Read
+
+/// Feature name   : FileAccessBuffer
+/// Display name   : File Access Buffer
+/// Tooltip        : Defines the intermediate access buffer that allows the exchange of data between the device file storage and the application.
+/// Description    : Defines the intermediate access buffer that allows the exchange of data between the device file storage and the application.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : FileAccessOffset
+/// Display name   : File Access Offset
+/// Tooltip        : Controls the Offset of the mapping between the device file storage and the FileAccessBuffer.
+/// Description    : Controls the Offset of the mapping between the device file storage and the FileAccessBuffer.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : FileAccessLength
+/// Display name   : File Access Length
+/// Tooltip        : Controls the Length of the mapping between the device file storage and the FileAccessBuffer.
+/// Description    : Controls the Length of the mapping between the device file storage and the FileAccessBuffer.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : FileOperationStatus
+/// Display name   : File Operation Status
+/// Tooltip        : Represents the file operation execution status.
+/// Description    : Represents the file operation execution status.
+/// SFNC Namespace : Standard
+/// Value          : Success
+
+/// Feature name   : FileProcessStatus
+/// Display name   : File Process Status
+/// Tooltip        : Represents an additional process status.
+/// Description    : Represents an additional process status.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : FileOperationResult
+/// Display name   : File Operation Result
+/// Tooltip        : Represents the file operation result.
+/// Description    : Represents the file operation result. For Read or Write operations, the number of successfully read/written bytes is returned.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : FileSize
+/// Display name   : File Size
+/// Tooltip        : Represents the size of the selected file in bytes.
+/// Description    : Represents the size of the selected file in bytes.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : FileStatus
+/// Display name   : File Status
+/// Tooltip        : Represents the status of the selected file.
+/// Description    : Represents the status of the selected file. Allied Vision feature.
+/// SFNC Namespace : Custom
+/// Value          : Closed
+
+/// Feature name   : TransferSelector
+/// Display name   : Transfer Selector
+/// Tooltip        : Selects which stream transfers are currently controlled by the selected Transfer features.
+/// Description    : Selects which stream transfers are currently controlled by the selected Transfer features.
+/// SFNC Namespace : Standard
+/// Value          : Stream0
+
+/// Feature name   : TransferControlMode
+/// Display name   : Transfer Control Mode
+/// Tooltip        : Selects the control method for the transfers.
+/// Description    : Selects the control method for the transfers.
+/// SFNC Namespace : Standard
+/// Value          : Basic
+
+/// Feature name   : TransferQueueMaxBlockCount
+/// Display name   : Transfer Queue Max Block Count
+/// Tooltip        : Controls the maximum number of data blocks that can be stored in the block queue of the selected stream.
+/// Description    : Controls the maximum number of data blocks that can be stored in the block queue of the selected stream.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : TransferQueueCurrentBlockCount
+/// Display name   : Transfer Queue Current Block Count
+/// Tooltip        : Returns the number of Block(s) currently in the transfer queue.
+/// Description    : Returns the number of Block(s) currently in the transfer queue.
+/// SFNC Namespace : Standard
+/// Value          : 0
+
+/// Feature name   : CorrectionSelector
+/// Display name   : Correction Selector
+/// Tooltip        : Selects the type of Correction to configure.
+/// Description    : Selects the type of Correction to configure.
+/// SFNC Namespace : Custom
+/// Value          : DefectPixelCorrection
+
+/// Feature name   : CorrectionMode
+/// Display name   : Correction Mode
+/// Tooltip        : Controls if the selected type of Correction is active.
+/// Description    : Controls if the selected type of Correction is active.
+/// SFNC Namespace : Custom
+/// Value          : On
+
+/// Feature name   : CorrectionSet
+/// Display name   : Correction Set
+/// Tooltip        : Defines the Correction Set to be used currently.
+/// Description    : Defines the Correction Set to be used currently.
+/// SFNC Namespace : Custom
+/// Value          : Preset
+
+/// Feature name   : CorrectionSetDefault
+/// Display name   : Correction Set Default
+/// Tooltip        : Defines the default Correction Set used when the device is reset.
+/// Description    : Defines the default Correction Set used when the device is reset.
+/// SFNC Namespace : Custom
+/// Value          : Preset
+
+/// Feature name   : CorrectionDataSize
+/// Display name   : Correction Data Size
+/// Tooltip        : Defines the current size of the correction data that is stored inside the camera.
+/// Description    : Defines the current size of the correction data that is stored inside the camera.
+/// SFNC Namespace : Custom
+/// Value          : 10368
+
+/// Feature name   : CorrectionEntryType
+/// Display name   : Correction Entry Type
+/// Tooltip        : Defines the Entry Type (Correction Type specific variant).
+/// Description    : Defines the Entry Type (Correction Type specific variant).
+/// SFNC Namespace : Custom
+/// Value          : 1
+
+/// Feature name   : ColorInterpolation
+/// Display name   : Color Interpolation
+/// Tooltip        : Defines the ColorInterpolation filter .
+/// Description    : Defines the ColorInterpolation filter.
+/// SFNC Namespace : Custom
+/// Value          : HighQualityLinear5X5
+
+/// Feature name   : ConvolutionMode
+/// Display name   : Convolution Mode
+/// Tooltip        : Selects the use of a convolution filter to manipulate the image. The used filter might be based on a N x N (typically 3x3 or 5x5) kernel, or 1 x N kernel.
+/// Description    : Selects the use of a convolution filter to manipulate the image. The used filter might be based on a N x N (typically 3x3 or 5x5) kernel, or 1 x N kernel.
+/// SFNC Namespace : Custom
+/// Value          : Off
+
+/// Feature name   : Sharpness
+/// Display name   : Sharpness
+/// Tooltip        : Specifies sharpness value which is used to calculate 5x5 convolution filter coefficients.
+/// Description    : Sharpness feature uses a 5x5 convolution filter. A value of 0 has no effect on the image. Positive values increase sharpness, negative values blur the image.
+/// SFNC Namespace : Custom
+/// Value          : 0
+
+/// Feature name   : CustomConvolutionValueSelector
+/// Display name   : Custom Convolution Value Selector
+/// Tooltip        : Defines the position to read or write with CustomConvolutionValue in the CustomConvolution kernel.
+/// Description    : Defines the position to read or write with CustomConvolutionValue in the CustomConvolution kernel.
+/// SFNC Namespace : Custom
+/// Value          : Coefficient00
+
+/// Feature name   : CustomConvolutionValue
+/// Display name   : Custom Convolution Value
+/// Tooltip        : Sets the value of the currently selected position in the CustomConvolution kernel, selected by CustomConvolutionValueSelector.
+/// Description    : Sets the value of the currently selected position in the CustomConvolution kernel, selected by CustomConvolutionValueSelector.
+/// SFNC Namespace : Custom
+/// Value          : 0
+
+/// Feature name   : AdaptiveNoiseSuppressionFactor
+/// Display name   : Adaptive Noise Suppression Factor
+/// Tooltip        : Determines the standard deviation of the Gauss filter kernel used.
+/// Description    : Determines the standard deviation of the Gauss filter kernel used.
+/// SFNC Namespace : Custom
+/// Value          : 1.0
+
+/// Feature name   : ChunkSelector
+/// Display name   : Chunk Selector
+/// Tooltip        : Selects which Chunk to enable or control.
+/// Description    : Selects which Chunk to enable or control.
+/// SFNC Namespace : Standard
+/// Value          : ExposureTime
+
+/// Feature name   : ChunkModeActive
+/// Display name   : Chunk Mode Active
+/// Tooltip        : Activates the inclusion of Chunk data in the transmitted payload.
+/// Description    : Activates the inclusion of Chunk data in the transmitted payload.
+/// SFNC Namespace : Standard
+/// Value          : False
+
+/// Feature name   : ChunkEnable
+/// Display name   : Chunk Enable
+/// Tooltip        : Enables the inclusion of the selected Chunk data in the payload of the image.
+/// Description    : Enables the inclusion of the selected Chunk data in the payload of the image.
+/// SFNC Namespace : Standard
+/// Value          : False
+
+/// Feature name   : ChunkLineStatusAll
+/// Display name   : Chunk Line Status All
+/// Tooltip        : Returns the status of all the I/O lines at the time of the FrameStart internal event.
+/// Description    : Returns the status of all the I/O lines at the time of the FrameStart internal event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : ChunkTimestamp
+/// Display name   : Chunk Timestamp
+/// Tooltip        : Returns the Timestamp of the image included in the payload at the time of the FrameStart internal event.
+/// Description    : Returns the Timestamp of the image included in the payload at the time of the FrameStart internal event.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : ChunkExposureTime
+/// Display name   : Chunk Exposure Time
+/// Tooltip        : Returns the exposure time used to capture the image.
+/// Description    : Returns the exposure time used to capture the image.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : ChunkBalanceRatioBlue
+/// Display name   : Chunk Balance Ratio Blue
+/// Tooltip        : Returns the blue color gain of the image included in the payload.
+/// Description    : Returns the blue color gain of the image included in the payload.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : ChunkBalanceRatioRed
+/// Display name   : Chunk Balance Ratio Red
+/// Tooltip        : Returns the red color gain of the image included in the payload.
+/// Description    : Returns the red color gain of the image included in the payload.
+/// SFNC Namespace : Custom
+/// Value          : None
+
+/// Feature name   : ChunkGain
+/// Display name   : Chunk Gain
+/// Tooltip        : Returns the gain used to capture the image.
+/// Description    : Returns the gain used to capture the image.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : ChunkHeight
+/// Display name   : Chunk Height
+/// Tooltip        : Returns the Height of the image included in the payload.
+/// Description    : Returns the Height of the image included in the payload.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : ChunkWidth
+/// Display name   : Chunk Width
+/// Tooltip        : Returns the Width of the image included in the payload.
+/// Description    : Returns the Width of the image included in the payload.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : ChunkOffsetX
+/// Display name   : Chunk Offset X
+/// Tooltip        : Returns the OffsetX of the image included in the payload.
+/// Description    : Returns the OffsetX of the image included in the payload.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : ChunkOffsetY
+/// Display name   : Chunk Offset Y
+/// Tooltip        : Returns the OffsetY of the image included in the payload.
+/// Description    : Returns the OffsetY of the image included in the payload.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : ChunkSequencerSetActive
+/// Display name   : Chunk Sequencer Set Active
+/// Tooltip        : Return the index of the active set of the running sequencer included in the payload.
+/// Description    : Return the index of the active set of the running sequencer included in the payload.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : SoftwareSignalSelector
+/// Display name   : Software Signal Selector
+/// Tooltip        : Selects which Software Signal features to control.
+/// Description    : Selects which Software Signal features to control.
+/// SFNC Namespace : Standard
+/// Value          : SoftwareSignal0
+
+/// Feature name   : SoftwareSignalPulse
+/// Display name   : Software Signal Pulse
+/// Tooltip        : Generates a pulse signal that can be used as a software trigger.
+/// Description    : Generates a pulse signal that can be used as a software trigger. This command can be used to trigger other modules that accept a SoftwareSignal as trigger source.
+/// SFNC Namespace : Standard
+/// Value          : None
+
+/// Feature name   : ContrastEnable
+/// Display name   : Contrast Enable
+/// Tooltip        : Enable Contrast Enhancement feature
+/// Description    : Enable Contrast Enhancement feature.
+/// SFNC Namespace : Custom
+/// Value          : False
+
+/// Feature name   : ContrastDarkLimit
+/// Display name   : Contrast Dark Limit
+/// Tooltip        : Contrast Dark Limit
+/// Description    : ContrastDarkLimit.
+/// SFNC Namespace : Custom
+/// Value          : 0
+
+/// Feature name   : ContrastBrightLimit
+/// Display name   : Contrast Bright Limit
+/// Tooltip        : Contrast Bright Limit
+/// Description    : ContrastBrightLimit.
+/// SFNC Namespace : Custom
+/// Value          : 255
+
+/// Feature name   : ContrastShape
+/// Display name   : Contrast Shape
+/// Tooltip        : Contrast Shape
+/// Description    : ContrastShape.
+/// SFNC Namespace : Custom
+/// Value          : 4
+

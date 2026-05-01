@@ -23,6 +23,7 @@ vmbpy = "^1.1.0"
 gitpython = "^3.1.44"
 numpy = "^2.3.1"
 scipy = "^1.16.0"
+telnetlib3 = "^2.0.8"
 
 # [tool.poetry.group.gui.dependencies]
 shiboken6 = "6.8.1"
@@ -40,6 +41,7 @@ coverage = {extras = ["toml"], version = "^7.6.1"}
 pytest-qt = "^4.4.0"
 memray = "^1.17.2"
 snakeviz = "^2.2.2"
+av = "^17.0.1"
 
 
 [[tool.poetry.source]]

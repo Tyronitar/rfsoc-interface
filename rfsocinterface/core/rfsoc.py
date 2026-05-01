@@ -381,7 +381,10 @@ class RFSOCWrapper:
             _logger.info(f'Loading parameters from "params_filename" into {self.name}')
             tone_list = fh.root.baseband_freqs[:]
             tone_powers = fh.root.tone_powers[:]
-            lo_freq = fh.root.lo_freq[()]
+            if 'lo_freq' in fh.root:
+                lo_freq = fh.root.lo_freq[()]
+            else:
+                lo_freq = fh.root._v_attrs['lo_freq']
             chanmask = fh.root.chanmask[:]
             ntones = fh.root._v_attrs.n_tones
             tile_name = fh.root._v_attrs.tile_name
