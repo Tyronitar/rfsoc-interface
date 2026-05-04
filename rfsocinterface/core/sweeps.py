@@ -92,30 +92,20 @@ def create_resonator_mini_plot(
     ax.set_xlim(freq.min(), freq.max())
 
     # Add a label showing the resonator number
+    ax.legend(
+        [f'{idx:d}'],
+        fontsize=8,
+        loc=3,
+        frameon=False,
+        framealpha=0,
+        handlelength=0,
+        alignment='center',
+        edgecolor='black',
+    )    # Add a label showing the resonator number
     if onres:
-        ax.legend(
-            [f'{idx:d}'],
-            fontsize=8,
-            loc=3,
-            frameon=False,
-            framealpha=0,
-            handlelength=0,
-            alignment='center',
-            edgecolor='black',
-        )
         if flagged:
             ax.set_facecolor('yellow')
     else:
-        ax.legend(
-            [f'{idx:d}, dS21={np.ptp(s21):4.1f}'],
-            fontsize=8,
-            loc=3,
-            frameon=False,
-            framealpha=0,
-            handlelength=0,
-            alignment='center',
-            edgecolor='black',
-            )
         ax.set_facecolor('orange')
 
 
@@ -179,31 +169,20 @@ class ResonatorData:
 
         ax.set_xlim(self.freq.min(), self.freq.max())
 
-        # Add a label showing the resonator number
+        ax.legend(
+            [f'{self.idx:d}'],
+            fontsize=6,
+            loc=3,
+            frameon=False,
+            framealpha=0,
+            handlelength=0,
+            alignment='center',
+            edgecolor='black',
+        )    # Add a label showing the resonator number
         if self.is_onres:
-            ax.legend(
-                [f'{self.idx:d}'],
-                fontsize=6,
-                loc=3,
-                frameon=False,
-                framealpha=0,
-                handlelength=0,
-                alignment='center',
-                edgecolor='black',
-            )
             if self.flagged:
                 ax.set_facecolor('yellow')
         else:
-            ax.legend(
-                [f'{self.idx:d}, dS21={np.ptp(self.s21):4.1f}'],
-                fontsize=6,
-                loc=3,
-                frameon=False,
-                framealpha=0,
-                handlelength=0,
-                alignment='center',
-                edgecolor='black',
-            )
             ax.set_facecolor('orange')
 
         return fig
