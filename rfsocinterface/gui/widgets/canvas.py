@@ -266,6 +266,7 @@ class ToolbarCanvas(QWidget):
             self,
             parent=None,
             fig: Figure | None=None,
+            scrollable: bool=False,
             add_edit: bool=False,
             edit_description: str=EditTool.description,
             coordinates: bool=True,
@@ -282,8 +283,11 @@ class ToolbarCanvas(QWidget):
         super().__init__(parent)
         if fig is None:
             fig = Figure(figsize=(8, 5))
-        self.scrollable_canvas = ScrollableCanvas(self)
-        self.scrollable_canvas.set_figure(fig)
+        if scrollable:
+            self.canvas = ScrollableCanvas(self)
+            self.canvas.set_figure(fig)
+        else:
+            self.canvas = FigureCanvas(fig)
         self.nav = EditToolBar(
             self.figure_canvas,
             parent,
@@ -304,7 +308,7 @@ class ToolbarCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
         layout.addWidget(self.nav)
-        layout.addWidget(self.scrollable_canvas)
+        layout.addWidget(self.canvas)
     
     @property
     def editing(self) -> bool:
@@ -312,29 +316,35 @@ class ToolbarCanvas(QWidget):
 
     @property
     def figure(self) -> Figure:
-        return self.scrollable_canvas.figure
+        return self.canvas.figure
 
     @property
     def figure_canvas(self) -> FigureCanvas:
-        return self.scrollable_canvas.canvas
-    
+        if isinstance(self.canvas, ScrollableCanvas):
+            return self.canvas.canvas
+        return self.canvas
+        
     def update_figure(self):
         """Update the figure of this widget."""
         self.update()
 
     def set_figure(self, fig: Figure | None):
         """Set the figure of this widget."""
-        self.scrollable_canvas.set_figure(fig)
+        self.canvas.set_figure(fig)
         layout = self.layout()
 
         old_nav = self.nav
-        self.manager = FigureManagerQT(self.scrollable_canvas, 1)
-        self.scrollable_canvas.manager = self.manager
+        self.manager = FigureManagerQT(self.canvas, 1)
+        self.canvas.manager = self.manager
         self.nav = self.manager.toolbar
         layout.replaceWidget(old_nav, self.nav)
     
     def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
-        self.scrollable_canvas.replot_figure(plotting_function, *args, **kwargs)
+        if isinstance(self.canvas, ScrollableCanvas):
+            self.canvas.replot_figure(plotting_function, *args, **kwargs)
+        else:
+            self.figure.clf()
+            plotting_function(*args, fig=self.figure, **kwargs)
         self.nav.update()
 
 

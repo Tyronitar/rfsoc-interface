@@ -145,7 +145,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     @property
     def _editing(self) -> bool:
         """Return whether the plot is in editing mode."""
-        return self.canvas.manager.toolmanager.active_toggle['default'] == 'edit'
+        return self.canvas.canvas.editing
 
     def accept_changes(self):
         """Handle accepting changes."""
@@ -255,7 +255,6 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         if self.dragging:
             # Stop dragging and update the line's position
             self.dragging = False
-            self.figure_canvas.set
             self.setCursor(Qt.CursorShape.OpenHandCursor)
             self.move_line(event.xdata)
 
@@ -654,7 +653,7 @@ class BlindSweepDialog(QDialog):
         self.canvas.set_figure(fig)
 
         self.ax = fig.axes[0]
-        self.figure_canvas = self.canvas.scrollable_canvas
+        self.figure_canvas = self.canvas.canvas
 
         self.ax = fig.axes[0]
         
