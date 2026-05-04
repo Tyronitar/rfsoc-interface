@@ -25,7 +25,17 @@ from scipy.optimize import curve_fit
 import h5py
 
 from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import ensure_path, PERMISSIONS_USR_RW, parallel_plot, mHz_formatter, get_sweep_filename
+from rfsocinterface.core.utils import (
+    ensure_path,
+    PERMISSIONS_USR_RW,
+    parallel_plot,
+    mHz_formatter,
+    get_sweep_filename,
+    ON_RESONANCE_COLOR,
+    OFF_RESONANCE_COLOR,
+    BAD_RESONANCE_COLOR,
+    FLAGGED_RESONANCE_COLOR,
+)
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.params import initialize_params_file, update_params_file
@@ -83,7 +93,7 @@ def create_resonator_mini_plot(
         flagged: bool,
 ):
     ax.set_box_aspect(1.0)
-    ax.set_facecolor('white')
+    ax.set_facecolor(ON_RESONANCE_COLOR)
     ax.set_yticks([])
     ax.set_xticks([])
     ax.plot(freq, s21)
@@ -104,11 +114,11 @@ def create_resonator_mini_plot(
     )    # Add a label showing the resonator number
     if chanmask == 1:
         if flagged:
-            ax.set_facecolor('yellow')
+            ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
     elif chanmask == 0:
-        ax.set_facecolor('orange')
+        ax.set_facecolor(OFF_RESONANCE_COLOR)
     else:
-        ax.set_facecolor('gray')
+        ax.set_facecolor(BAD_RESONANCE_COLOR)
 
 
 
@@ -184,11 +194,11 @@ class ResonatorData:
         )    # Add a label showing the resonator number
         if self.chanmask == 1:
             if self.flagged:
-                ax.set_facecolor('yellow')
+                ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
         elif self.chanmask == 0:
-            ax.set_facecolor('orange')
+            ax.set_facecolor(OFF_RESONANCE_COLOR)
         else:
-            ax.set_facecolor('gray')
+            ax.set_facecolor(BAD_RESONANCE_COLOR)
 
         return fig
 

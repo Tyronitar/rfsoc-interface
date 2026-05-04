@@ -38,6 +38,12 @@ from PySide6.QtWidgets import (
 
 from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS
 from rfsocinterface.core.params import update_params_file, initialize_params_file
+from rfsocinterface.core.utils import (
+    ON_RESONANCE_COLOR,
+    OFF_RESONANCE_COLOR,
+    FLAGGED_RESONANCE_COLOR,
+    BAD_RESONANCE_COLOR,
+)
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
@@ -242,15 +248,15 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             case self.onres_radioButton:
                 self.current_chanmask = 1
                 if self.resonator.flagged:
-                    self.ax.set_facecolor('yellow')
+                    self.ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
                 else:
-                    self.ax.set_facecolor('white')
+                    self.ax.set_facecolor(ON_RESONANCE_COLOR)
             case self.offres_radioButton:
                 self.current_chanmask = 0
-                self.ax.set_facecolor('orange')
+                self.ax.set_facecolor(OFF_RESONANCE_COLOR)
             case self.bad_res_radioButton:
                 self.current_chanmask = -1
-                self.ax.set_facecolor('gray')
+                self.ax.set_facecolor(BAD_RESONANCE_COLOR)
         self.figure_canvas.draw_idle()
 
     def set_figure(self, fig: Figure):
@@ -350,6 +356,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.save_plots_pushButton.clicked.connect(self.save_plots_as)
 
         self.edited = False
+        self.redrawn_axes = set()
 
     def set_window_name(self, name: str):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
@@ -425,12 +432,15 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         if axes is None or event.button == MouseButton(3):
             self.canvas.select_axis(None)  # Deselect the currently selected plot
         elif event.button == MouseButton(1):
+            idx = self.canvas.canvas.figure.axes.index(axes)
+            resonator = self.sweep_data.resonator_data[idx]
+            if idx not in self.redrawn_axes:
+                self.redraw_axes(resonator, axes)
+                self.redrawn_axes.add(idx)
             self.canvas.select_axis(axes)  # Select the clicked axes
 
             # If double clicking, open a new resonator window
             if event.dblclick:
-                idx = self.canvas.canvas.figure.axes.index(axes)
-                resonator = self.sweep_data.resonator_data[idx]
                 self.make_resonator_window(resonator, axes)
 
     def redraw_axes(self, resonator: ResonatorData, ax: plt.Axes):
@@ -465,6 +475,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         ax = self.get_ax_by_index(resonator.idx)
         if result == QDialog.DialogCode.Accepted:
             self.set_edited()
+            self.canvas.set_edited(resonator.idx)
         self.redraw_axes(resonator, ax)
 
     def make_resonator_window(self, resonator: ResonatorData, ax: plt.Axes):

@@ -75,6 +75,14 @@ PERMISSIONS_ALL_FULL = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH | PERMISSIONS_
 
 DEFAULT_CHUNK_SIZE = 100
 
+AMBER_HEX = '#ffbf00'
+ON_RESONANCE_COLOR = 'white'
+OFF_RESONANCE_COLOR = 'sandybrown'
+BAD_RESONANCE_COLOR = 'lightgray'
+FLAGGED_RESONANCE_COLOR = 'yellow'
+SELECTED_RESONANCE_COLOR = 'dodgerblue'
+EDITED_RESONANCE_COLOR = 'limegreen'
+
 class TabName(StrEnum):
     """Possible tab names for the GUI."""
     INITIALIZATION = 'initialization'
