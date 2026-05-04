@@ -510,9 +510,6 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         #     # self.set_figure(res)
             return res
     
-    def make_plot(self, fig_width=15, pd: QThreadJobProgressDialog | None=None) -> tuple[Figure, Future]:
-        return self.sweep_data.plot(ncols=fig_width, pd=pd)
-
     def toggle_unflagged(self):
         """Toggle whether the unflagged resonator plots are shown."""
         self.canvas.set_flagged(self.sweep_data.flagged)
