@@ -371,10 +371,9 @@ class LoSweepData:
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
         with h5py.File(path, 'w') as fh:
-            fh.root._v_attrs.lo_freq = self.f_center
             fh.attrs['f_center'] = self.f_center
             fh.attrs['tile_name'] = self.tile_name
-            fh.create_dataset('/global_data/lo_sweep', data=self.data, dtype=np.float64)
+            fh.create_dataset('/global_data/lo_sweep', data=self.data, dtype=np.complex128)
             fh.create_dataset('/global_data/baseband_freqs', data=np.real(self.detector_f - self.f_center), dtype=np.float64)
             fh.create_dataset('/global_data/chanmask', data=self.chanmask, dtype=np.int8)
             fh.create_dataset('/global_data/fit_f0', data=self.fit_f0, dtype=np.float64)
@@ -978,7 +977,7 @@ class CompositeSweep:
             else:
                 self.save_sweeps(data)
         except Exception:
-            _logger.error('Exception encountered during sweep. Cancelling...')
+            _logger.exception('Exception encountered during sweep. Cancelling...')
             self._data = None
             self.cancel()
             return
@@ -1254,7 +1253,7 @@ class PowerSweep(CompositeSweep):
     
     def save_sweeps(self, data: list[LoSweepData]):
         self._data = PowerSweepData(
-            self.tone_list,
+            self.bb_freqs,
             self.f_center,
             data,
             self.power_levels,
@@ -1262,7 +1261,6 @@ class PowerSweep(CompositeSweep):
             self.starting_rfout,
         )
         self._data.saveh5(self.savefile)
-        return super().save_sweeps(data)
     
 
 

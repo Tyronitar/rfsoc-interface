@@ -96,6 +96,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         self.filename_buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
         self.sweep_type_buttonGroup.buttonClicked.connect(self.select_sweep_type)
+        self.select_sweep_type(self.lo_sweep_radioButton)
         self.highres_sweep_checkBox.clicked.connect(self.check_highres_sweep)
         self.show_diagnostics_checkBox.clicked.connect(self.check_diagnostics)
         self.only_highres_checkBox.clicked.connect(self.check_only_highres)
@@ -205,6 +206,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 if not sweep_succesful:
                     _logger.info('Cancelling after first sweep...')
                     return
+                
+                # TODO: Use Blind sweep dialog
 
             case self.power_sweep_radioButton:
                 _logger.info('Beginning power sweep...')
@@ -250,7 +253,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             pd.canceled.connect(sweep.cancel)
             sweep_threads.append(Thread(target=sweep.run_sweep, args=(increment_progress,)))
 
-        pd.setLabelText(f'Running {"Blind" if blind_sweep else "LO"} Sweep{"s" if len(sweep_threads) > 1 else ""}...')
+        pd.setLabelText(f'Running{" High Resolution" if high_res_sweep else ""} {"Blind" if blind_sweep else "LO"} Sweep{"s" if len(sweep_threads) > 1 else ""}...')
         for sweep_thread in sweep_threads:
             sweep_thread.start()
 
@@ -316,7 +319,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 case _:
                     pass
             if high_res_sweep:
-                suffix += f'_high_res'
+                suffix = '_'.join(filter(None, (suffix, 'high_res')))
             savefile = get_sweep_filename(
                 sweep_type='lo',
                 chan_name=chan_name,
@@ -522,7 +525,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             sweep_thread.start()
 
         # Wait for all sweeps to finish or cancel
-        while not all ((sweep._processed or sweep._cancel) for sweep in sweeps):
+        while not all ((sweep._processed or sweep._cancelled) for sweep in sweeps):
             QApplication.processEvents()
             time.sleep(0.1)
         
@@ -564,11 +567,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             sweeps.append(PowerSweep(
                 rfsoc,
                 chan,
-                savefile,
-                power_levels,
                 tone_shift,
                 freq_step,
                 full_span,
+                power_levels,
+                savefile=savefile,
             ))
             
         return sweeps

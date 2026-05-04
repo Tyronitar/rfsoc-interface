@@ -285,7 +285,7 @@ def get_filename(
 
 @ensure_path('data_dir')
 def get_sweep_filename(
-    data_dir: Path=DEFAULT_DATA_DIRECTORY,
+    data_dir: Path=Path(DEFAULT_DATA_DIRECTORY),
     sweep_type='lo',
     chan_name='',
     suffix: str='',
