@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QAbstractButton,
     QVBoxLayout,
+    QRadioButton,
 )
 
 from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS
@@ -102,6 +103,14 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         # Fill in the necessary values in the UI
         self.old_freq_value_label.setText(f'{self.resonator.tone * 1e-6:.5f}')
         self.depth_value_label.setText('N/A')  # TODO: Resonance depth
+        self.current_chanmask = self.resonator.chanmask
+        match self.current_chanmask:
+            case 1:
+                self.onres_radioButton.click()
+            case 0:
+                self.offres_radioButton.click()
+            case _:
+                self.bad_res_radioButton.click()
 
         # Temporary values for saving / undoing changes
         self.temp_fit_f0 = resonator.fit_f0
@@ -152,6 +161,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.resonator.fit_f0 = self.temp_fit_f0
         self.resonator.fit_qc = self.temp_fit_qc
         self.resonator.fit_qi = self.temp_fit_qi
+        self.resonator.chanmask = self.current_chanmask
         plt.close(self.figure)
         self.accept()
 
@@ -223,6 +233,25 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.figure_canvas.mpl_connect('button_press_event', self.mouse_press)
         self.figure_canvas.mpl_connect('button_release_event', self.mouse_release)
         self.figure_canvas.mpl_connect('motion_notify_event', self.mouse_move)
+
+        self.resonance_buttonGroup.buttonClicked.connect(self.swap_chanmask)
+    
+    @Slot(QRadioButton)
+    def swap_chanmask(self, button: QRadioButton):
+        match button:
+            case self.onres_radioButton:
+                self.current_chanmask = 1
+                if self.resonator.flagged:
+                    self.ax.set_facecolor('yellow')
+                else:
+                    self.ax.set_facecolor('white')
+            case self.offres_radioButton:
+                self.current_chanmask = 0
+                self.ax.set_facecolor('orange')
+            case self.bad_res_radioButton:
+                self.current_chanmask = -1
+                self.ax.set_facecolor('gray')
+        self.figure_canvas.draw_idle()
 
     def set_figure(self, fig: Figure):
         """Change the figure in the canvas."""

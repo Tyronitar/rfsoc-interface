@@ -79,7 +79,7 @@ def create_resonator_mini_plot(
         freq: npt.NDArray,
         s21: npt.NDArray,
         fit_f0: float,
-        onres: bool,
+        chanmask: int,
         flagged: bool,
 ):
     ax.set_box_aspect(1.0)
@@ -102,11 +102,14 @@ def create_resonator_mini_plot(
         alignment='center',
         edgecolor='black',
     )    # Add a label showing the resonator number
-    if onres:
+    if chanmask == 1:
         if flagged:
             ax.set_facecolor('yellow')
-    else:
+    elif chanmask == 0:
         ax.set_facecolor('orange')
+    else:
+        ax.set_facecolor('gray')
+
 
 
 
@@ -150,7 +153,7 @@ class ResonatorData:
                 self.freq,
                 self.s21,
                 self.fit_f0,
-                self.is_onres,
+                self.chanmask,
                 self.flagged,
             )
             return
@@ -179,11 +182,13 @@ class ResonatorData:
             alignment='center',
             edgecolor='black',
         )    # Add a label showing the resonator number
-        if self.is_onres:
+        if self.chanmask == 1:
             if self.flagged:
                 ax.set_facecolor('yellow')
-        else:
+        elif self.chanmask == 0:
             ax.set_facecolor('orange')
+        else:
+            ax.set_facecolor('gray')
 
         return fig
 
@@ -221,6 +226,15 @@ class ResonatorData:
     def freq_ratio(self) -> float:
         """float: The ratio of the original tone and the maximum tone in the sweep."""
         return self.tone / self.data.detector_f.max()
+
+    @property
+    def chanmask(self) -> int:
+        """The chanmask value for this resonator"""
+        return self.data.chanmask[self.idx]
+    
+    @chanmask.setter
+    def chanmask(self, val: int):
+        self.data.chanmask[self.idx] = val
 
     @property
     def fit_f0(self) -> float:
@@ -521,7 +535,7 @@ class LoSweepData:
                 self.freq[:self.n_tones],
                 self.s21[:self.n_tones],
                 self.fit_f0[:self.n_tones],
-                np.isin(np.arange(self.n_tones), self.onres_ind[:self.n_tones]),
+                self.chanmask,
                 np.isin(np.arange(self.n_tones), self.flagged[:self.n_tones]),
                 callback=callback_wrapper,
             )
