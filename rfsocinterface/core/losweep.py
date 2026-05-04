@@ -86,11 +86,17 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
             else:
                 center_ind = lo_ind + min_ind
 
-   
-   
-    f0 = freq[center_ind]
+    peaks = find_peaks(-s21, height=0.1)
+    if len(peaks[0]) != 0:
+        prominances = peaks[1]['heights']
+        highest_prom_index = np.argmax(prominances)
+        #print(freq[peaks[0][highest_prom_index]])
+        f0 = freq[peaks[0][highest_prom_index]]
+    else:
+        f0 = freq[center_ind]
     
     return f0
+   
 
 
 def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
@@ -916,7 +922,6 @@ class LoSweep:
             _logger.debug(f'Tone shift != 0. Computing new tones...')
             self.f_center = rfsoc.get_frequency(chan)  # Hz
             curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
-            pdb.set_trace()
             new_tones = np.ndarray.tolist(
                 curr_tone_list
                 + float(tone_shift)

@@ -18,7 +18,7 @@ settings = Settings()
 settings.load_settings()
 rfsoc = RFSOCWrapper(settings['rfsocs'][0])
 chan = 1
-chan_name='Be260114BL_1000_tones_2'
+chan_name='Be260114BL_1000_tones_1'
 tone_file = get_filename(file_type='tonelist', chan_name=chan_name)
 rfsoc.load_params_file(1,'/data/params/params_tile_' + chan_name  + ".h5")
 
@@ -40,14 +40,14 @@ def start_streaming(rfsoc, duration:int = 100, save_location:Path = None, chan: 
     setnum = int(save_location.stem[-4:])
     #_logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
     capture(rfchans, time.sleep, duration)
-def run_Lo_sweep(rfsoc, chan_name, step = 5e3, span = 200e3):
+def run_Lo_sweep(rfsoc, chan_name, step = 5e3, span = 200e3, tone_shift = 0):
     print(step,span)
     sweep_file = get_filename(file_type='lo', chan_name=chan_name, mkdir=True).with_suffix('.h5')
     sweep = LoSweep(
         rfsoc,
         1,
         sweep_file,
-        tone_shift=0,
+        tone_shift=tone_shift,
         freq_step=step,
         full_span=span,
     )
