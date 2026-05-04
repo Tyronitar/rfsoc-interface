@@ -398,12 +398,12 @@ class LoSweepData:
                 f_center = f['global_data/lo_freq'][()]
                 tile_name = ''
             else:
-                tone_list = f['baseband_freqs'][:]
-                data = f['lo_sweep'][:]
-                chanmask = f['chanmask'][:]
-                fit_f0 = f['fit_f0'][:]
-                fit_qi = f['fit_qi'][:]
-                fit_qc = f['fit_qc'][:]
+                tone_list = f['global_data/baseband_freqs'][:]
+                data = f['global_data/lo_sweep'][:]
+                chanmask = f['global_data/chanmask'][:]
+                fit_f0 = f['global_data/fit_f0'][:]
+                fit_qi = f['global_data/fit_qi'][:]
+                fit_qc = f['global_data/fit_qc'][:]
                 f_center = f.attrs['f_center']
                 tile_name = f.attrs['tile_name']
 
@@ -1025,6 +1025,10 @@ class CompositeSweepData:
     @property
     def tile_names(self) -> list[str]:
         return [sweep.tile_name for sweep in self.sweeps]
+    
+    @property
+    def detector_f(self) -> npt.NDArray:
+        return self.bb_freqs + self.f_center
     
     def get_fit_f0(self) -> npt.NDArray:
         fit_f0 = np.stack([sweep.fit_f0 for sweep in self.sweeps], axis=0)
