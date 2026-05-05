@@ -87,8 +87,6 @@ def generate_full_array_plots(file_list:list):
         axes2[i_p-1].hist(df_at_fp_temp, bins = 20)
         axes2[i_p-1].set(xlabel="Δf/f₀", ylabel="Count", title=f"Δf/f₀ distribution at {fp_temps[i_p]}")
 
-        #pdb.set_trace()
-
     fig1.tight_layout()
     fig2.tight_layout()
     plt.show()
@@ -238,7 +236,7 @@ class TempSweepDataAnalyzer:
         figs      = []
         onres_ind = np.where(self.chanmask == 1)[0]
 
-        for i_res in onres_ind[:-1]:
+        for i_res in onres_ind:
             initial_f0s = self._get_initial_f0s(i_res, prev_results)
             fig, f0s    = self._plot_resonator_sweeps(i_res, stitched_dataset, initial_f0s)
             figs.append(fig)
@@ -248,8 +246,7 @@ class TempSweepDataAnalyzer:
                 tone_idx = np.argmin(
                     np.abs((self.sweeps[i_p].tone_list) - f0)
                 )
-                fit_result          = self._fit_single_resonator(tone_idx, i_p, freq_window=3e6)
-                f0_data[i_p, i_res] = fit_result['f0'][0]
+                fit_result          = self._fit_single_resonator(tone_idx, i_p, f0_guess=f0, freq_window=3e6)
                 q_i_data[i_p, i_res] = fit_result['qi'][0]
                 q_c_data[i_p, i_res] = fit_result['qc'][0]
                 res_objs[i_p][i_res] = fit_result['fitted_res']
@@ -266,11 +263,11 @@ class TempSweepDataAnalyzer:
         figs.append(fig1)
         figs.append(fig2)
         pdb.set_trace()
-        output_plot_filename = self.sweeps[i_p].tile_name + output_plot_filename
+        output_plot_filename = self.sweeps[0].tile_name + output_plot_filename
         with PdfPages(output_plot_filename) as pdf:
             for fig in figs:
                 pdf.savefig(fig)
-        self._save_fit_results(f0_data, q_i_data, q_c_data, onres_ind, filename=self.sweeps[i_p].tile_name + "_fit_results.h5")
+        self._save_fit_results(f0_data, q_i_data, q_c_data, onres_ind, filename=self.sweeps[0].tile_name + "_fit_results.h5")
 
 
     def _get_initial_f0s(self, i_res: int, prev_results: dict | None) -> npt.NDArray:
@@ -331,14 +328,14 @@ class TempSweepDataAnalyzer:
             }
 
     def _fit_single_resonator(
-    self,
-    i_res: int,
-    i_p: int,
-    f0_guess: float | None = None,
-    let_vary: bool = True,
-    plot: bool = False,
-    freq_window: float | None = 2e6,
-    decimate: int = 1,
+        self,
+        i_res: int,
+        i_p: int,
+        f0_guess: float | None = None,
+        let_vary: bool = False,
+        plot: bool = False,
+        freq_window: float | None = 2e6,
+        decimate: int = 1,
     ) -> dict:
         sweep     = self.sweeps[i_p]
         resonator = sweep.resonator_data[i_res]
@@ -367,13 +364,14 @@ class TempSweepDataAnalyzer:
         tone = resonator.tone
 
         if f0_guess is not None:
+            print(f0_guess)
             res_obj = get_scraps_fit(
                 I, Q, freq, tone, s21,
                 initial_guesses={"f0": {
                     "value": f0_guess,
                     "vary":  let_vary,
-                    "min":   f0_guess * 0.98,
-                    "max":   f0_guess * 1.02,
+                    "min":   f0_guess  - f0_guess*1e-5,
+                    "max":   f0_guess + f0_guess*1e-5,
                 }},
             )
         else:
@@ -432,20 +430,25 @@ class TempSweepDataAnalyzer:
         colors    = plt.cm.Spectral(np.linspace(0, 1, len(results["temps"])))
         f0_values = list(initial_f0s)
         active    = {"idx": None}
+        # internal clipboard: stores the last x value clicked on the plot
+        clipboard = {"x": None}
 
         vlines     = self._draw_resonator_data(ax_mag, ax_phase, i_res, colors, f0_values, results)
         text_boxes = self._add_f0_textboxes(fig, f0_values, vlines, colors, results, active)
 
-        self._add_axes_click(fig, ax_mag, ax_phase, f0_values, vlines, text_boxes, active)
+        self._add_axes_click(fig, ax_mag, ax_phase, f0_values, vlines, text_boxes, active, clipboard)
+        self._add_key_handler(fig, f0_values, vlines, text_boxes, active, clipboard)
         self._add_overlay_controls(fig, ax_mag, ax_phase, i_res, results)
 
-        fig.text(0.5, 0.395, "Edit f₀ values below — press Enter to update the marker",
-                 ha="center", fontsize=9, color="gray")
-
+        fig.text(
+            0.5, 0.395,
+            "Click plot → copies x  |  Click textbox to select  |  Ctrl+V pastes x into selected textbox",
+            ha="center", fontsize=9, color="gray",
+        )
 
         fig._resonator_textboxes = text_boxes
         fig._resonator_f0_values = f0_values
-        plt.show()
+        #plt.show()
         plt.close()
         return fig, f0_values
 
@@ -458,8 +461,8 @@ class TempSweepDataAnalyzer:
             s21   = results["s21"][i_p][i_res]
             phase = np.angle(I + 1j * Q, deg=True)
 
-            ax_mag.plot(freq, s21-np.mean(s21, keepdims=True),   color=colors[i_p], label=f"T={temp:.3g}")
-            ax_phase.plot(freq, phase-phase[0], color=colors[i_p])
+            ax_mag.plot(freq, s21 - np.mean(s21, keepdims=True), color=colors[i_p], label=f"T={temp:.3g}")
+            #ax_phase.plot(freq, phase - phase[0], color=colors[i_p])
             vl1 = ax_mag.axvline(f0_values[i_p],   color=colors[i_p], alpha=0.9, lw=2.5)
             vl2 = ax_phase.axvline(f0_values[i_p], color=colors[i_p], alpha=0.9, lw=2.5)
             vlines.append((vl1, vl2))
@@ -470,9 +473,9 @@ class TempSweepDataAnalyzer:
         return vlines
 
     def _add_f0_textboxes(self, fig, f0_values, vlines, colors, results, active):
-        temps     = results["temps"]
-        n         = len(temps)
-        box_width = 0.8 / n
+        temps      = results["temps"]
+        n          = len(temps)
+        box_width  = 0.8 / n
         text_boxes = []
 
         for i_p, (f0, color) in enumerate(zip(f0_values, colors)):
@@ -519,25 +522,42 @@ class TempSweepDataAnalyzer:
                 pass
         return on_submit
 
-    def _add_axes_click(self, fig, ax_mag, ax_phase, f0_values, vlines, text_boxes, active):
+    def _add_axes_click(self, fig, ax_mag, ax_phase, f0_values, vlines, text_boxes, active, clipboard):
         def on_axes_click(event):
-            if event.inaxes not in (ax_mag, ax_phase):
+            if event.inaxes not in (ax_mag, ax_phase) or event.xdata is None:
+                return
+
+            # store x in our internal clipboard
+            clipboard["x"] = event.xdata
+       
+
+        fig._axes_click_cid    = fig.canvas.mpl_connect("button_press_event", on_axes_click)
+
+    def _add_key_handler(self, fig, f0_values, vlines, text_boxes, active, clipboard):
+        """
+        Ctrl+V: paste clipboard["x"] into the currently active textbox,
+        updating the vline and f0_values entry immediately.
+        """
+        def on_key_press(event):
+            # matplotlib reports Ctrl+V as 'ctrl+v'
+            if event.key not in ('ctrl+v', 'control+v'):
                 return
             if active["idx"] is None:
                 return
-            idx = active["idx"]
-            val = event.xdata
+            if clipboard["x"] is None:
+                return
+
+            idx            = active["idx"]
+            val            = clipboard["x"]
             f0_values[idx] = val
-            vl1, vl2 = vlines[idx]
+            vl1, vl2       = vlines[idx]
             vl1.set_xdata([val, val])
             vl2.set_xdata([val, val])
             text_boxes[idx].set_val(f"{val:.6g}")
-            active["idx"] = None
-            for tb in text_boxes:
-                tb.ax.spines[:].set_linewidth(2)
+            # keep the textbox selected so the user can paste into the next one
             fig.canvas.draw_idle()
 
-        fig._axes_click_cid = fig.canvas.mpl_connect("button_press_event", on_axes_click)
+        fig._key_press_cid = fig.canvas.mpl_connect("key_press_event", on_key_press)
 
     def _add_overlay_controls(self, fig, ax_mag, ax_phase, i_res, results):
         freqs   = results["freqs"]
@@ -574,7 +594,8 @@ class TempSweepDataAnalyzer:
             for i_p in range(len(temps)):
                 phase = np.angle(I_data[i_p][res_idx] + 1j * Q_data[i_p][res_idx], deg=True)
                 l1, = ax_mag.plot(
-                    freqs[i_p][res_idx], s21[i_p][res_idx]-np.mean(s21[i_p][i_res], keepdims=True),
+                    freqs[i_p][res_idx],
+                    s21[i_p][res_idx] - np.mean(s21[i_p][i_res], keepdims=True),
                     color=line_colors[i_p], lw=1, ls="--", alpha=0.7,
                     label=f"res {res_idx}" if i_p == 0 else "_",
                 )
@@ -659,12 +680,15 @@ class TempSweepDataAnalyzer:
 
         btn_next_rem.on_clicked(on_next_rem)
 
+     
+
         # keep refs alive
         fig._overlay_btn_prev_add = btn_prev_add
         fig._overlay_btn_prev_rem = btn_prev_rem
         fig._overlay_btn_next_add = btn_next_add
         fig._overlay_btn_next_rem = btn_next_rem
         fig._overlay_state        = overlay_state
+
     def _plot_temperature_dependence(self, i_res, f0, qi, qc, res_objs=None, stitched_dataset=None):
         temps = self.fp_temps
         df    = (f0 - f0[0]) / f0[0]
@@ -685,32 +709,28 @@ class TempSweepDataAnalyzer:
         fig.tight_layout()
         plt.close()
         return fig
-    
-    def _generate_summary_plots(self,fp_temps, f0_data, qi_data, qc_data):
+
+    def _generate_summary_plots(self, fp_temps, f0_data, qi_data, qc_data):
         fig1, axes = plt.subplots(3, 1, figsize=(8, 12))
         onres_ind = np.where(self.chanmask == 1)[0]
         for i_res in onres_ind:
-            df_res = (f0_data[:, i_res]-f0_data[0,i_res])/f0_data[0,i_res]
+            df_res = (f0_data[:, i_res] - f0_data[0, i_res]) / f0_data[0, i_res]
             axes[0].plot(fp_temps, df_res)
             axes[0].set(xlabel="Temperature (mK)", ylabel="Δf/f₀")
-
             axes[1].plot(fp_temps, qi_data[:, i_res])
             axes[1].set(xlabel="Temperature (mK)", ylabel="Qi")
             axes[2].plot(fp_temps, qc_data[:, i_res])
-
             axes[2].set(xlabel="Temperature (mK)", ylabel="Qc")
             fig1.tight_layout()
 
-        fig2, axes = plt.subplots(len(fp_temps),1, figsize=(8, 12))
+        fig2, axes2 = plt.subplots(len(fp_temps), 1, figsize=(8, 12))
         for i_p, temp in enumerate(fp_temps[0:-1]):
-            axes[i_p].hist((f0_data[i_p, onres_ind]-f0_data[0,onres_ind])/f0_data[0,onres_ind])
-            axes[i_p].set( title = f"Δf/f₀ at {temp}")
+            axes2[i_p].hist((f0_data[i_p, onres_ind] - f0_data[0, onres_ind]) / f0_data[0, onres_ind])
+            axes2[i_p].set(title=f"Δf/f₀ at {temp}")
 
+        fig2.tight_layout()
         plt.show()
         return fig1, fig2
-
-
-        
 
     def stitch_full_dataset(self) -> dict:
         fp_temps        = self.fp_temps[:]
@@ -811,15 +831,18 @@ class TempSweepDataAnalyzer:
 
         return figs
 
+
 if __name__ == '__main__':
     data_analyzer = TempSweepDataAnalyzer.from_h5(
-        '/data/20260501/20260501_Be260114BL_1000_tones_1_Power_Sweep_hour19p8286.h5'
+        '/data/20260505/20260505_Be260114Tr_1000_tones_1_Power_Sweep_hour10p3767.h5'
     )
     clean_dataset = data_analyzer.stitch_full_dataset()
     data_analyzer.process_temperature_sweep(
         clean_dataset,
-        fit_results_h5='B_fit_results.h5',   # omit if no previous results
+        fit_results_h5=None,
     )
-    #generate_full_array_plots(['/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set1_fit_results.h5', 
-    #                           '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set2_fit_results.h5',
-    #                           '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set3_fit_results.h5'])
+    # generate_full_array_plots([
+    #     '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set1_fit_results.h5',
+    #     '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set2_fit_results.h5',
+    #     '/home/rf_soc_user/Desktop/20260423Meeting/TempSweepBe260114TR-set3_fit_results.h5',
+    # ])
