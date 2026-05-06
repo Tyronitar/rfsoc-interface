@@ -60,7 +60,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             or 'elevation'.
         tone_path (Path): The path to the selected tone list file.
     """
-    name = TabName.LOSWEEP
+    tab_name = TabName.LOSWEEP
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
@@ -161,8 +161,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.gui_state['elevationFilenameSuffix'] = self.filename_elevation_lineEdit.text()
     
     def load_gui_state_from_settings(self):
-        defaults = self.settings['defaults'][self.name]
-        saved_gui_state = dict_get_by_path(self.settings, ('app', self.name), {})
+        defaults = self.settings['defaults'][self.tab_name]
+        saved_gui_state = dict_get_by_path(self.settings, ('app', self.tab_name), {})
 
         items = [
             ('sweepType', 'lo'),
@@ -237,7 +237,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 self.blind_sweep_radioButton.click()
         
     def restore_defaults(self):
-        defaults = self.settings['defaults'][self.name]
+        defaults = self.settings['defaults'][self.tab_name]
         self.gui_state.update(defaults)
         self._update_gui_to_match_settings()
         self.channel_comboBox.deselect_all()

@@ -7,6 +7,7 @@ import time
 import logging
 from itertools import chain, batched
 import typing
+from typing import Literal
 
 # import tables
 import h5py
@@ -21,13 +22,14 @@ from scipy import signal
 
 from rfsocinterface.core.utils import (
     build_interp_map,
+    argclosest,
 )
 
 _logger = logging.getLogger(__name__)
 
-OPTCAM_OFFSET_AZ_PIX = 57
-OPTCAM_OFFSET_ZA_PIX = 49
 OPTCAM_PIX_SIZE_DEGREES = 0.0104
+OPTCAM_OFFSET_AZ_PIX = 74
+OPTCAM_OFFSET_ZA_PIX = 49
 DEFAULT_MAP_DPIX = 0.03
 OPTCAM_HEIGHT_PIXELS = 1944
 OPTCAM_WIDTH_PIXELS = 2592 
@@ -39,7 +41,9 @@ DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
-RFSOC_TIME_OFFSET = -0.012  # -12 ms, empirically determined
+# RFSOC_TIME_OFFSET_AZ = -12e-3 # -12 ms, empirically determined
+RFSOC_TIME_OFFSET_AZ = 0 # -12 ms, empirically determined
+RFSOC_TIME_OFFSET_ZA = -3e-3 # -3 ms, empirically determined
 
 
 TONES_TABLE_DTYPE = [
@@ -389,6 +393,48 @@ def interpolate_missing_data(
         output_dset[..., this_interpolated_indices] = new_data
 
 
+def get_detector_positions_no_interp(
+    az_tel: npt.NDArray,
+    za_tel: npt.NDArray,
+    output_detector_az: h5py.Dataset,
+    output_detector_za: h5py.Dataset,
+    dx: npt.NDArray,
+    dy: npt.NDArray,
+    elevation_angle: float
+) -> npt.NDArray:
+    chunk_size = output_detector_az.chunks[-1]
+    n_samples = az_tel.size
+
+    for start in range(0, n_samples, chunk_size):
+
+        stop = min(start + chunk_size, n_samples)
+
+        # telescope interpolation
+        az = az_tel[start:stop]
+        za = za_tel[start:stop]
+
+
+        # rotation angle
+        ang = np.deg2rad(elevation_angle - za)
+
+        cos_ang = np.cos(ang)
+        sin_ang = np.sin(ang)
+
+        output_detector_az[:, start:stop] = (
+            np.outer(dx[:], cos_ang)
+            - np.outer(dy[:], sin_ang)
+            + az
+        )
+        output_detector_za[:, start:stop] = (
+            np.outer(dy[:], cos_ang)
+            + np.outer(dx[:], sin_ang)
+            + za
+        )
+
+
+
+
+# TODO: Update this to the new data processing scheme
 def get_detector_positions(
     timestamp: h5py.Dataset,
     tel_timestamp: h5py.Dataset,
@@ -440,3 +486,83 @@ def get_detector_positions(
             + za
         )
 
+
+def interpolate_telescope_position(
+    data_timestamp: npt.NDArray,
+    telescope_timestamp: npt.NDArray,
+    tel_position: npt.NDArray,
+    pps_position: npt.NDArray,
+    data_pps: npt.NDArray,
+    search_radius: int=100,
+    direction: Literal['az', 'za']='az',
+) -> npt.NDArray:
+
+    # Find the telescope positions and timestamps corresponding to the PPS pulses
+    pps_tel_idx = np.where(np.diff(pps_position) != 0)[0] + 1  # Indices where the pps changes
+    pps_tel_pos = pps_position[pps_tel_idx]
+    pps_times_tel = telescope_timestamp[pps_tel_idx]
+
+    if pps_tel_idx.size == 0:
+        # The telescoep never mvoed in this direction, so aligning the times doesn't
+        # matter. Just upsample the positions.
+        _logger.info(f'Doing simple interpolation for detector positions in {direction.upper()} direction.')
+        return np.interp(data_timestamp, telescope_timestamp, tel_position)
+    _logger.info(f'Using PPS for detector positions in {direction.upper()} direction.')
+
+    # Upsample the telescope positions ignoring the positions when the pulse is receivd,
+    # since the extra commands slow the loop 
+    interpolated_tel_pos = np.interp(
+        data_timestamp,
+        np.delete(telescope_timestamp, pps_tel_idx),
+        np.delete(tel_position, pps_tel_idx),
+    )
+
+    # Now shift the upsampled positions so that the PPS is synced between the
+    # raw data and the telescope data.
+
+    pps_samples_tel = np.zeros(pps_tel_idx.shape, dtype=int)
+
+    # Find timestamps in the raw data corresponding to the PPS pulses
+    pps_samples_data = np.where(data_pps == 1)[0]
+    pps_times_data = data_timestamp[pps_samples_data]
+
+    # Correlate the two timestamps to find which samples in the interpolated telescope
+    # positions correspond to each pulse
+    for i in range(len(pps_tel_idx)):
+        closest_index = argclosest(pps_times_data, pps_times_tel[i])
+        sample = pps_samples_data[closest_index]
+        pps_samples_tel[i] = argclosest(interpolated_tel_pos[sample-search_radius:sample+search_radius+1], pps_tel_pos[i]) + sample - search_radius
+
+
+    # The first pps pulse that was receied in both the raw data and the telescope data 
+    start_idx = argclosest(pps_samples_data, pps_samples_tel[0])
+
+    # Find the median offset between the two sets of PPS samples, and shift the 
+    # interpolated telescope positions by this amount to sync them up.
+    pps_offset = np.zeros(pps_samples_tel.shape, dtype=int)
+    for i, pps_tel_sample in enumerate(pps_samples_tel):
+        closest_data_sample = argclosest(pps_samples_data, pps_tel_sample)
+        pps_offset[i] = pps_tel_sample - pps_samples_data[closest_data_sample]
+    # pps_offset = pps_samples_tel - pps_samples_data[start_idx:start_idx+len(pps_samples_tel)]
+    # Shift by empirically determined offset
+    sample_rate = 1 / (data_timestamp[1] - data_timestamp[0])
+    if direction == 'az':
+        additional_offset = RFSOC_TIME_OFFSET_AZ * sample_rate
+    else:
+        additional_offset = RFSOC_TIME_OFFSET_ZA * sample_rate
+    median_offset = np.round(np.median(pps_offset.astype(float) + additional_offset)).astype(int)
+
+    # If the median offset is positive, that means the telescope data is lagging behind 
+    # the RFSoC, so we shift to the left. If it's negative, the telescope data is ahead 
+    # of the RFSoC, so we shift to the right. Hence the negative sign. 
+    fixed_positions = np.roll(interpolated_tel_pos, -median_offset)
+    
+    # Fill the array with nans where we shifted away from
+    if median_offset < 0:
+        fixed_positions[:-median_offset] = np.nan
+    else:
+        fixed_positions[-median_offset:] = np.nan
+    
+    print(f'Shifting telescope positions by {-median_offset} samples')
+
+    return fixed_positions

@@ -1286,37 +1286,20 @@ if __name__ == '__main__':
     # Lab Testing
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
     # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
-
-    tile_name = 'Device_aSi1_Channel2'
-    old_params = h5py.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
-    
-    # lo_sweep_files = [
-    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_-3.h5',
-    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_0.h5',
-    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_3.h5',
-    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_6.h5',
-    #     '/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464_9.h5',
-    # ]
-    # sweeps = [LoSweepData.from_h5(filename) for filename in lo_sweep_files]
-    # sweep_data = PowerSweepData(sweeps[0].tone_list, sweeps[0].f_center, sweeps, np.array([-3, 0, 3, 6, 9]), 17, 13)
-
-    sweep_data = PowerSweepData.load('/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464.h5')
-    sweep_data.fit()
-    sweep_data.find_optimal_readout_power()
-    sweep_data.saveh5('/data/20260203/20260203_Device_aSi1_Channel2_Power_Sweep_hour15p5464.h5')
-
-    pdb.set_trace()
-
-    # tile_name = 'Device_aSi2_Channel3'
-    # old_params = None
-
-    data = LoSweepData.load(f'/data/20260203/20260203_{tile_name}_blind_LO_Sweep_hour14p2056.h5')
-    data.generate_new_params_file(tile_name, old_params, plot=False)
-    exit()
-    pdb.set_trace()
+    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p1558.h5')
+    data = [
+        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p1581.h5'),
+        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p1750.h5'),
+        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p1906.h5'),
+        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p2503.h5'),
+    ]
+    for sweep in data:
+        plt.plot(sweep.freq[0, :], sweep.s21[0, :])
+    plt.show()
     # data = LoSweepData.from_h5('/data/20251204/20251204_100_tone_uniform_202050829_LO_Sweep_hour16p4036.h5')
     # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
     # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
+    pdb.set_trace()
 
     # """  """class Incrementer:
     #     def __init__(self):

@@ -1,10 +1,13 @@
 from pathlib import Path
 import yaml
 from multiprocessing import Queue, Process, Pipe
+from multiprocessing import Array , Lock
 import logging
 
 from multiprocessing.connection import Connection
 from threading import Thread
+import numpy as np
+import numpy.typing as npt
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QSizePolicy, QVBoxLayout, QGridLayout, QTabWidget
 from PySide6.QtCore import Qt, QCoreApplication, Signal, Slot
@@ -13,6 +16,7 @@ import PySide6.QtGui as QtGui
 
 # from kidpy3 import RFSOC
 from rfsocinterface.core.settings import Settings, SettingsError, convert_to_kidy_format
+from rfsocinterface.core.camera import MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
 from rfsocinterface.gui.uic.full_ui_ui import Ui_MainWindow
 from rfsocinterface.gui.initialization import InitializationWidget
 from rfsocinterface.gui.loconfig import LoConfigWidget
@@ -26,12 +30,14 @@ import json
 
 _logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
+_camera_logger = logging.getLogger('rfsocinterface.cameraControl')
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     """The Main program window."""
     channelNamesUpdated = Signal()
     telescopeUpdate = Signal(str, tuple)
+    cameraUpdate = Signal(str, tuple)
     closeWindow = Signal()
 
     @ensure_path(1)
@@ -41,8 +47,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings = Settings()
         self.settings.load_settings()
 
-        self.telescope_conn: Connection = None
+        self.telescope_queue: Queue = None
+        self.telescope_parent_conn: Connection = None
+        self.telescope_child_conn: Connection = None
         self.telescope_controller_process: Process = None
+
+        self.camera_queue: Queue = None
+        self.camera_parent_conn: Connection = None
+        self.camera_child_conn: Connection = None
+        self.camera_controller_process: Process = None
+        self.shared_camera_array = Array('B', MAX_FRAME_HEIGHT * MAX_FRAME_WIDTH * 3)
+        self.shared_timestamp_array = Array('d', 1)
+        self.camera_array = np.frombuffer(self.shared_camera_array.get_obj(), dtype=np.uint8).reshape(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)
+        self.timestamp_array = np.frombuffer(self.shared_timestamp_array.get_obj(), dtype=np.float64).reshape(1)
+        self.camera_array_lock = Lock()
+        self.timestamp_array_lock = Lock()
+
         
         self.tabs: dict[TabName, MainWidget] = {}
         self.rfsocs: list[RFSOCWrapper] = []
@@ -51,6 +71,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self._additional_ui_setup()
         self.closeWindow.connect(self.close)
+    
+    def get_current_image(self) -> tuple[npt.NDArray, float]:
+        with self.camera_array_lock:
+            with self.timestamp_array_lock:
+                return self.camera_array[:], self.timestamp_array[:]
     
     def _make_telescope_controller(self):
         from rfsocinterface.core.telescope import make_controller
@@ -61,14 +86,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.telescope_controller_process = Process(target=make_controller, args=(self.telescope_child_conn,))
         self.telescope_controller_process.start()
 
-        # self._client_id = 'MAIN'
-        # self.telescope_queue.put([self._client_id, 'add_connection', self.telescope_child_conn])
-        # self.wait_for_telescope_command(
-        #     'add_connection_succesful',
-        #     err_msg=f'Error received from telescope controller when adding connection {self._client_id}',
-        # )
-        self._listener_thread = Thread(target=self._listener_loop)
-        self._listener_thread.start()
+        self._telescope_listener_thread = Thread(target=self._telescope_listener_loop)
+        self._telescope_listener_thread.start()
+
+    
+    def _make_camera_controller(self):
+        from rfsocinterface.core.camera import make_controller 
+        # If it already exists, we're good
+        if self.camera_controller_process is not None:
+            return
+        self.camera_parent_conn, self.camera_child_conn = Pipe(duplex=True)
+        self.camera_controller_process = Process(target=make_controller, args=(self.camera_child_conn, self.shared_camera_array, self.shared_timestamp_array, self.camera_array_lock, self.timestamp_array_lock))
+        self.camera_controller_process.start()
+
+        self._camera_listener_thread = Thread(target=self._camera_listener_loop)
+        self._camera_listener_thread.start()
 
     def _make_initialization_tab(self):
         self.initialization_tab = QWidget()
@@ -108,6 +140,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _make_telescope_tab(self):
         from rfsocinterface.gui.telescope import TelescopeControlWidget
         self._make_telescope_controller()
+        self._make_camera_controller()
         self.telescope_tab = QWidget()
         self.telescope_tab.setObjectName(u"telescope_tab")
         self.gridLayout = QGridLayout(self.telescope_tab)
@@ -123,6 +156,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _make_imaging_tab(self):
         from rfsocinterface.gui.imaging import ImagingWidget
         self._make_telescope_controller()
+        self._make_camera_controller()
         self.imaging_tab = QWidget()
         self.imaging_tab.setObjectName(u"imaging_tab")
         self.tabWidget.addTab(self.imaging_tab, "")
@@ -183,13 +217,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # self.resize(self.minimumSizeHint())
         # self.adjustSize()
     
-    def _listener_loop(self):
+    def _telescope_listener_loop(self):
+        _logger.debug(f'Started telescope listener loop')
         try:
             while True:
                 if not self.telescope_parent_conn.poll(1e-4):
                     continue
                 response, *data = self.telescope_parent_conn.recv()
-                _tele_logger.debug(f'MAIN got response: "{response}", data: {data}')
+                _tele_logger.debug(f'MAIN got response from TELESCOPE: "{response}", data: {data}')
                 match response.lower():
                     case 'err':
                         criticality = data[0]
@@ -199,10 +234,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         break 
                     case _:
                         self.telescopeUpdate.emit(response, data)
-        except RuntimeError:
+        except RuntimeError as e:
             self.closeWindow.emit()
-                
+            raise RuntimeError from e
 
+    def _camera_listener_loop(self):
+        _logger.debug(f'Started camera listener loop')
+        try:
+            while True:
+                if not self.camera_parent_conn.poll(1e-4):
+                    continue
+                response, *data = self.camera_parent_conn.recv()
+                _camera_logger.debug(f'MAIN got response from CAMERA: "{response}", data: {data}')
+                match response.lower():
+                    case 'err':
+                        criticality = data[0]
+                        if criticality == 'CRITICAL':
+                            raise RuntimeError(f'Critical error from camera controller: {data[1]}')
+                    case 'done':
+                        break 
+                    case _:
+                        self.cameraUpdate.emit(response, data)
+        except RuntimeError as e:
+            self.closeWindow.emit()
+            raise RuntimeError from e
+                
     @Slot(int)
     def update_active_tab(self, index: int):
         """Update the active tab in the settings."""
@@ -214,6 +270,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if tab in self.tabs:
             _logger.debug(f'Setting active tab to {tab}')
             self.tabWidget.setCurrentIndex(self.index(tab))
+    
+    def get_active_tab(self) -> TabName:
+        return self.settings['app']['activeTab']
 
     def closeEvent(self, event):
         self.hide()
@@ -222,8 +281,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         if self.telescope_controller_process is not None:
             self.telescope_parent_conn.send(['terminate'])
-            self._listener_thread.join()
+            self._telescope_listener_thread.join()
             self.telescope_controller_process.join()
+        
+        if self.camera_controller_process is not None:
+            self.camera_parent_conn.send(['terminate'])
+            self._camera_listener_thread.join()
+            self.camera_controller_process.join()
         
         self.settings.save_settings()
         return super().closeEvent(event)

@@ -271,7 +271,7 @@ def get_filename(
                     strings = [yymmdd, chan_name, 'tone_list', hour_str]
                 case 'power':
                     strings = [yymmdd, chan_name, 'Power_Sweep', hour_str]
-        case 'tod' | 'azel' | 'optcam':
+        case 'tod' | 'azel' | 'optcam' | 'optcam_video':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:
                 setnum = 1001
@@ -281,8 +281,8 @@ def get_filename(
                 setnums = [f.name[-7:-3] for f in this_dir_files]
                 setnums.sort()
                 setnum = int(setnums[-1]) + offset
-            if file_type.lower() == 'optcam':
-                strings = [yymmdd, 'optcam', f'set{setnum}']
+            if file_type.lower() == 'optcam' or file_type.lower() == 'optcam_video':
+                strings = [yymmdd, file_type.lower(), f'set{setnum}']
             else:
                 strings = [yymmdd, chan_name, file_type.upper(), f'set{setnum}']
         case 'attenuator':
@@ -1294,10 +1294,59 @@ def closest(x: npt.NDArray, y: float) -> float:
     """Find the closest value in x to y."""
     return x[np.argmin(np.abs(x - y))]
 
+
 def argclosest(x: npt.NDArray, y: float) -> int:
     """Find the index of the closest value in x to y."""
     return np.argmin(np.abs(x - y))
 
+
+def sigma_to_fwhm(sigma: float) -> float:
+    return 2 * np.sqrt(2 * np.log(2)) * sigma
+
+
+def dict_get_by_path(d: dict, keys: Sequence[str], default: Any=None) -> Any:
+    root = d
+    try:
+        for key in keys[:-1]:
+            root = root[key]
+        return root[keys[-1]]
+    except (KeyError, IndexError):
+        return default
+
+
+def dict_set_by_path(d: dict, keys: Sequence[str], val: Any):
+    root = d
+    for key in keys[:-1]:
+        root = root.setdefault(key, {})
+    root[keys[-1]] = val
+
+
+def dict_del_by_path(d: dict, keys: Sequence[str], val: Any):
+    root = d
+    for key in keys[:-1]:
+        root = root[key]
+    del root[keys[-1]]
+
+
+def dict_get_by_path_with_default(keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+    return dict_get_by_path(d1, keys, 
+            default=dict_get_by_path(defaults, keys, default=fallback_value))
+
+
+def dict_get_with_default(key: str, d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+    return d1.get(key, defaults.get(key, fallback_value))
+
+
+def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any]]) -> dict:
+    out_dict = {}
+    for key, fallback in items:
+        if isinstance(key, tuple):
+            val = dict_get_by_path_with_default(key, d1, d2, fallback_value=fallback)
+            dict_set_by_path(out_dict, key, val)
+        else:
+            val = dict_get_with_default(key, d1, d2, fallback_value=fallback)
+            out_dict[key] = val
+    return out_dict
 
 def dict_get_by_path(d: dict, keys: Sequence[str], default: Any=None) -> Any:
     root = d

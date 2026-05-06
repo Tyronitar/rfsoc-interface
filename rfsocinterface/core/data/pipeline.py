@@ -20,9 +20,17 @@ class Pipeline:
     def __init__(self, routines: list[DataRoutine]=[]):
         self.routines = routines
     
-    def from_tod(self, date: str, setnum: int, downsampling_factor: int=1) -> ProcessedData:
+    def from_tod(self, date: str, setnum: int, downsampling_factor: int=1, use_pps: bool=True) -> ProcessedData:
         _logger.info(f'Pipeline: Running pipeline on TOD {date}_set{setnum}')
-        cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=downsampling_factor)
+        cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=downsampling_factor, use_pps=use_pps)
+        _logger.info('Pipeline: Creating processed data...')
+        pd = cd.create_processed_data()
+        self.run(pd)
+        return pd
+
+    def from_consolidated_data(self, date: str, setnum: int) -> ProcessedData:
+        _logger.info(f'Pipeline: Running pipeline from ConsolidatedData {date}_set{setnum}')
+        cd = ConsolidatedData.load(date, setnum)
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
         self.run(pd)
