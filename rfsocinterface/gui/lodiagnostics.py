@@ -656,13 +656,13 @@ class BlindSweepDialog(QDialog):
         # The first n_tones lines should be the S21 traces for each tone
         return self.ax.lines[self.n_tones:]
     
-    def plot(self, **kwargs):
+    def plot(self, callback: Callable=None, **kwargs):
         f0, depths = self.data.find_resonances(**kwargs)
         self.f0 = f0
         self.depths = depths
         
         self.data.plot_new_resonances('blind_sweep', f0)
-        self.replot_figure(self.data.plot_blind_sweep, f0)
+        self.replot_figure(self.data.plot_blind_sweep, f0, callback=callback)
         # fig = self.data.plot_blind_sweep(f0)
         # self.set_figure(fig)
     

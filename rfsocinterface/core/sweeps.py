@@ -601,11 +601,13 @@ class LoSweepData:
         
         return fig
     
-    def plot_blind_sweep(self, f0: npt.NDArray, fig: Figure=None) -> Figure:
+    def plot_blind_sweep(self, f0: npt.NDArray, fig: Figure=None, callback: Callable=None) -> Figure:
         self.plot_full_trace(fig=fig)
         ax = fig.axes[0]
         for resonance in f0:
             ax.axvline(resonance, linestyle='-', color='red')
+            if callback is not None:
+                callback()
 
         custom_lines = [
             Line2D([0], [0], color='blue', linestyle='-'),
