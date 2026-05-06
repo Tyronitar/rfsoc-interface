@@ -19,13 +19,14 @@ from multiprocessing.connection import Connection
 import stat
 import subprocess
 import git
-from typing import Iterator
+from typing import Iterator, Sequence
 import warnings
 
 import io
 from copy import deepcopy
 from PIL import Image
-from functools import partial
+from functools import partial, reduce
+import operator
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.figure import Figure
@@ -1298,6 +1299,50 @@ def argclosest(x: npt.NDArray, y: float) -> int:
     return np.argmin(np.abs(x - y))
 
 
+def dict_get_by_path(d: dict, keys: Sequence[str], default: Any=None) -> Any:
+    root = d
+    try:
+        for key in keys[:-1]:
+            root = root[key]
+        return root[keys[-1]]
+    except (KeyError, IndexError):
+        return default
+
+
+def dict_set_by_path(d: dict, keys: Sequence[str], val: Any):
+    root = d
+    for key in keys[:-1]:
+        root = root.setdefault(key, {})
+    root[keys[-1]] = val
+
+
+def dict_del_by_path(d: dict, keys: Sequence[str], val: Any):
+    root = d
+    for key in keys[:-1]:
+        root = root[key]
+    del root[keys[-1]]
+
+
+def dict_get_by_path_with_default(keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+    return dict_get_by_path(d1, keys, 
+            default=dict_get_by_path(defaults, keys, default=fallback_value))
+
+
+def dict_get_with_default(key: str, d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+    return d1.get(key, defaults.get(key, fallback_value))
+
+
+def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any]]) -> dict:
+    out_dict = {}
+    for key, fallback in items:
+        if isinstance(key, tuple):
+            val = dict_get_by_path_with_default(key, d1, d2, fallback_value=fallback)
+            dict_set_by_path(out_dict, key, val)
+        else:
+            val = dict_get_with_default(key, d1, d2, fallback_value=fallback)
+            out_dict[key] = val
+    return out_dict
+
 
 if __name__ == '__main__':
     def plot_function(fig, ax, x, y):
@@ -1327,6 +1372,7 @@ if __name__ == '__main__':
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
     y = np.zeros(n // q)
+
 
     # decimate_in_chunks(x, q, out=y)
 

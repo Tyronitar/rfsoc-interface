@@ -9,7 +9,7 @@ import pdb
 import matplotlib.pyplot as plt
 from matplotlib .figure import Figure
 from PySide6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog, QProgressDialog
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Signal, Slot, Qt
 from kidpy3.measure import ResonatorFinder
 
 from rfsocinterface.core.settings import SettingsError
@@ -24,7 +24,17 @@ from rfsocinterface.gui.widgets import (
     ERROR_ICON_CODE
 )
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import ensure_path, get_filename, TabName, get_sweep_filename
+from rfsocinterface.core.utils import (
+    ensure_path,
+    get_filename,
+    TabName,
+    get_sweep_filename,
+    dict_get_by_path,
+    dict_set_by_path,
+    dict_get_by_path_with_default,
+    dict_get_with_default,
+    load_dict_or_defaults,
+)
 from rfsocinterface.gui.main_widget import MainWidget
 
 import time
@@ -50,6 +60,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             or 'elevation'.
         tone_path (Path): The path to the selected tone list file.
     """
+    name = TabName.LOSWEEP
+
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None=None) -> None:
         """Initialize the LO configuration window."""
         super().__init__(main_window, rfsocs, settings, parent=parent)
@@ -60,7 +72,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         self.channel_comboBox.set_default_title('Select Channels...')
 
-        self.set_defaults()
+        self.load_gui_state_from_settings()
         self.make_error_labels()    
         self.update_channel_choices(self.channel_comboBox)
         main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
@@ -108,23 +120,126 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         )
         
         self.run_pushButton.clicked.connect(self.perform_sweep)
-        self.restore_defaults_pushButton.clicked.connect(self.set_defaults)
+        self.restore_defaults_pushButton.clicked.connect(self.restore_defaults)
         self.channel_toolButton.clicked.connect(self.open_channels_in_initialization_tab)    
     
-    def set_defaults(self):
-        defaults = self.settings['defaults']['loSweep']
-        self.global_shift_lineEdit.setText(str(defaults['globalShift']))
-        self.df_lineEdit.setText(str(defaults['df']))
-        self.deltaf_lineEdit.setText(str(defaults['deltaf']))
-        self.flagging_lineEdit.setText(str(defaults['flaggingThreshold']))
+    def get_current_gui_state(self):
+        # Sweep type
+        match self.sweep_type_buttonGroup.checkedButton():
+            case self.lo_sweep_radioButton:
+                self.gui_state['sweepType'] = 'lo'
+            case self.power_sweep_radioButton:
+                self.gui_state['sweepType'] = 'power'
+            case self.blind_sweep_radioButton:
+                self.gui_state['sweepType'] = 'blind'
+            case _:
+                pass
+        
+        # LO Parameters
+        self.gui_state['globalShift'] = get_num_value(self.global_shift_lineEdit)
+        self.gui_state['df'] = get_num_value(self.df_lineEdit)
+        self.gui_state['deltaf'] = get_num_value(self.deltaf_lineEdit)
+        self.gui_state['flaggingThreshold'] = get_num_value(self.flagging_lineEdit)
+        self.gui_state['showDiagnostics'] = self.show_diagnostics_checkBox.isChecked()
+        self.gui_state['uploadTones'] = self.upload_checkBox.isChecked()
+        self.gui_state['savePlots'] = self.save_plots_CheckBox.isChecked()
+        self.gui_state['onlyShowFlagged'] = self.only_flag_checkBox.isChecked()
+        self.gui_state['reviewTones'] = self.review_tones_checkbox.isChecked()
 
-        file_suffix = defaults.get('file_suffix', 'none')
-        if  file_suffix not in FILE_SUFFIXES:
-            raise SettingsError(f'Invalid value for defaults.losweep.file_suffix: "{file_suffix}; valid values are: {FILE_SUFFIXES}')
-        self.active_suffix: Literal['none', 'temperature', 'elevation'] = file_suffix
+        # Highres Parameters
+        self.gui_state['onlyHighres'] = self.only_highres_checkBox.isChecked()
+        self.gui_state['doHighres'] = self.highres_sweep_checkBox.isChecked()
+        dict_set_by_path(self.gui_state, ('highres', 'df'), get_num_value(self.highres_sweep_df_lineEdit))
+        dict_set_by_path(self.gui_state, ('highres', 'savePlots'), self.highres_sweep_save_plots_checkBox.isChecked())
 
-        self.highres_sweep_df_lineEdit.setText(str(defaults['secondSweep']['df']))
+        # Power Sweep Parameters
+        self.gui_state['powerLevels'] = self.get_power_levels()
 
+        # Filename Suffix
+        self.gui_state['filenameSuffixMode'] = self.active_suffix
+        self.gui_state['temperatureFilenameSuffix'] = self.filename_temperature_lineEdit.text()
+        self.gui_state['elevationFilenameSuffix'] = self.filename_elevation_lineEdit.text()
+    
+    def load_gui_state_from_settings(self):
+        defaults = self.settings['defaults'][self.name]
+        saved_gui_state = dict_get_by_path(self.settings, ('app', self.name), {})
+
+        items = [
+            ('sweepType', 'lo'),
+            # LO Parameters
+            ('globalShift', 0.0),
+            ('df', 1.0),
+            ('deltaf', 100.0),
+            ('flaggingThreshold', 3.0),
+            ('showDiagnostics', True),
+            ('uploadTones', False),
+            ('savePlots', False),
+            ('onlyShowFlagged', False),
+            ('reviewTones', True),
+            # Filename Suffix
+            ('filenameSuffixMode', 'none'),
+            ('temperatureFilenameSuffix', ''),
+            ('elevationFilenameSuffix', ''),
+            # Highres Parameters
+            ('onlyHighres', False),
+            ('doHighres', False),
+            (('highres', 'df'), 1.0),
+            (('highres', 'savePlots'), False),
+            # Power Sweep Parameters
+            ('powerLevels', []),
+        ]
+
+        self.gui_state = load_dict_or_defaults(saved_gui_state, defaults, items)
+        self._update_gui_to_match_settings()
+    
+    def _update_gui_to_match_settings(self):
+
+        
+        # LO Parameters
+        self.global_shift_lineEdit.setText(str(self.gui_state['globalShift']))
+        self.df_lineEdit.setText(str(self.gui_state['df']))
+        self.deltaf_lineEdit.setText(str(self.gui_state['deltaf']))
+        self.flagging_lineEdit.setText(str(self.gui_state['flaggingThreshold']))
+        self.show_diagnostics_checkBox.setChecked(self.gui_state['showDiagnostics'])
+        self.upload_checkBox.setChecked(self.gui_state['uploadTones'])
+        self.save_plots_CheckBox.setChecked(self.gui_state['savePlots'])
+        self.only_flag_checkBox.setChecked(self.gui_state['onlyShowFlagged'])
+        self.review_tones_checkbox.setChecked(self.gui_state['reviewTones'])
+
+        # Filename Suffix
+        match self.gui_state['filenameSuffixMode']:
+            case 'none':
+                self.filename_none_radioButton.click()
+            case 'temperature':
+                self.filename_temperature_radioButton.click()
+            case 'elevation':
+                self.filename_elevation_radioButton.click()
+        self.filename_temperature_lineEdit.setText(self.gui_state['temperatureFilenameSuffix'])
+        self.filename_elevation_lineEdit.setText(self.gui_state['elevationFilenameSuffix'])
+        self.active_suffix = self.gui_state['filenameSuffixMode']
+
+        # Highres Parameters
+        self.highres_sweep_save_plots_checkBox.setChecked(self.gui_state['highres']['savePlots'])
+        self.highres_sweep_df_lineEdit.setText(str(self.gui_state['highres']['df']))
+        self.highres_sweep_checkBox.setChecked(self.gui_state['doHighres'])
+        self.only_highres_checkBox.setChecked(self.gui_state['onlyHighres'])
+
+        # Power Sweep Parameters
+        self.power_levels_Label.setText(','.join(self.gui_state['powerLevels']))
+
+        # Sweep Type
+        match self.gui_state['sweepType']:
+            case 'lo':
+                self.lo_sweep_radioButton.click()
+            case 'power':
+                self.power_sweep_radioButton.click()
+            case 'blind':
+                self.blind_sweep_radioButton.click()
+        
+    def restore_defaults(self):
+        defaults = self.settings['defaults'][self.name]
+        self.gui_state.update(defaults)
+        self._update_gui_to_match_settings()
         self.channel_comboBox.deselect_all()
 
     def make_error_labels(self):
@@ -542,12 +657,15 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         return True
     
+    def get_power_levels(self) -> list[float]:
+        return [float(x.strip()) for x in filter(None, self.power_levels_lineEdit.text().split(','))]
+    
     def setup_power_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]]) -> list[PowerSweep]:
         # Get values from GUI, converting KHz to Hz
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
         freq_step = get_num_value(self.df_lineEdit)  * 1e3
         full_span = get_num_value(self.deltaf_lineEdit)  * 1e3
-        power_levels = [float(x.strip()) for x in self.power_levels_lineEdit.text().split(',')]
+        power_levels = self.get_power_levels()
         
         sweeps = []
         for rfsoc, chan in selected_channels:
@@ -690,37 +808,42 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     
     def check_diagnostics(self):
         """Callback for when the "show diagnostics" box is clicked."""
-        if self.show_diagnostics_checkBox.isChecked():
-            self.only_flag_checkBox.show()
-            self.review_tones_checkbox.show()
-            self.save_plots_CheckBox.show()
-        else:
-            self.only_flag_checkBox.hide()
-            self.review_tones_checkbox.hide()
-            self.save_plots_CheckBox.hide()
+        self._diagnostics_visibility()
+        self.gui_state['showDiagnostics'] = self.show_diagnostics_checkBox.isChecked()
+    
+    def _diagnostics_visibility(self):
+        is_checked = self.show_diagnostics_checkBox.isChecked()
+        self.only_flag_checkBox.setVisible(is_checked)
+        self.review_tones_checkbox.setVisible(is_checked)
+        self.save_plots_CheckBox.setVisible(is_checked)
 
     def check_highres_sweep(self):
         """Callback for when the "perform highres sweep" box is clicked."""
-        if self.highres_sweep_checkBox.isChecked():
-            self.highres_sweep_df_label.show()
-            self.highres_sweep_df_lineEdit.show()
-            self.highres_sweep_save_plots_checkBox.show()
-        else:
-            self.highres_sweep_df_label.hide()
-            self.highres_sweep_df_lineEdit.hide()
-            self.highres_sweep_save_plots_checkBox.hide()
+        self._highres_visibility()
+        self.gui_state['doHighres'] = self.highres_sweep_checkBox.isChecked()
+    
+    def _highres_visibility(self):
+        show = self.highres_sweep_checkBox.isChecked() and not self.only_highres_checkBox.isChecked()
+        self.highres_sweep_df_label.setVisible(show)
+        self.highres_sweep_df_lineEdit.setVisible(show)
+        self.highres_sweep_save_plots_checkBox.setVisible(show)
     
     def check_only_highres(self):
         """Callback for when the "ONLY perform highres sweep" box is clicked."""
-        self.only_flag_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
-        self.review_tones_checkbox.setVisible(not self.only_highres_checkBox.isChecked())
-        self.save_plots_CheckBox.setVisible(not self.only_highres_checkBox.isChecked())
-        self.show_diagnostics_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
-        self.highres_sweep_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
-        self.highres_sweep_df_label.setVisible(not self.only_highres_checkBox.isChecked())
-        self.highres_sweep_df_lineEdit.setVisible(not self.only_highres_checkBox.isChecked())
-        self.highres_sweep_save_plots_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
-        self.upload_checkBox.setVisible(not self.only_highres_checkBox.isChecked())
+        self.gui_state['onlyHighres'] = self.only_highres_checkBox.isChecked()
+        self._only_highres_visibility()
+    
+    def _only_highres_visibility(self):
+        is_checked = self.only_highres_checkBox.isChecked()
+        self._diagnostics_visibility()
+        self._highres_visibility()
+
+        self.only_flag_checkBox.setVisible(not is_checked)
+        self.review_tones_checkbox.setVisible(not is_checked)
+        self.save_plots_CheckBox.setVisible(not is_checked)
+        self.show_diagnostics_checkBox.setVisible(not is_checked)
+        self.highres_sweep_checkBox.setVisible(not is_checked)
+        self.upload_checkBox.setVisible(not is_checked)
 
     def swap_filename_suffix(self, button: QRadioButton):
         """Callback for when the filename suffix is changed."""
@@ -741,6 +864,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 self.filename_temperature_lineEdit.setEnabled(False)
                 self.filename_elevation_lineEdit.setEnabled(True)
 
+        self.gui_state['filenameSuffixMode'] = self.active_suffix
+
         self.update_filename_example()
     
     def select_sweep_type(self, button: QRadioButton):
@@ -753,9 +878,10 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                     widget.hide()
                 for widget in self.lo_sweep_widgets + self.highres_sweep_widgets:
                     widget.show()
-                self.check_diagnostics()
-                self.check_highres_sweep()
-                self.check_only_highres()
+                self._diagnostics_visibility()
+                # self._highres_visibility()
+                self._only_highres_visibility()
+                self.gui_state['sweepType'] = 'lo'
             case self.power_sweep_radioButton:
                 for widget in self.lo_sweep_widgets + self.highres_sweep_widgets:
                     widget.hide()
@@ -763,6 +889,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                     widget.hide()
                 for widget in self.power_sweep_widgets:
                     widget.show()
+                self.gui_state['sweepType'] = 'power'
             case self.blind_sweep_radioButton:
                 for widget in self.lo_sweep_widgets + self.highres_sweep_widgets:
                     widget.hide()
@@ -770,6 +897,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                     widget.hide()
                 for widget in self.blind_sweep_widgets:
                     widget.show()
+                self.gui_state['sweepType'] = 'blind'
             case _:
                 raise ValueError(f'Unexpected button {button} received.')
 
@@ -782,14 +910,21 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 self.filename_example_lineEdit.setText(
                     f'{DEFAULT_FILENAME}_temp{self.filename_temperature_lineEdit.text()}'
                 )
+                self.gui_state['temperatureFilenameSuffix'] = self.filename_temperature_lineEdit.text()
             case 'elevation':
                 self.filename_example_lineEdit.setText(
                     f'{DEFAULT_FILENAME}_elev{self.filename_elevation_lineEdit.text()}'
                 )
+                self.gui_state['elevationFilenameSuffix'] = self.filename_elevation_lineEdit.text()
             case _:
                 raise RuntimeError(
                     f'Invalid `active_suffix` encountered: {self.active_suffix}'
                 )
+    
+    def closeEvent(self, event):
+        # Save current state of GUI
+        self.get_current_gui_state()
+        return super().closeEvent(event)
 
 if __name__ == '__main__':
     from PySide6.QtWidgets import QApplication, QMainWindow

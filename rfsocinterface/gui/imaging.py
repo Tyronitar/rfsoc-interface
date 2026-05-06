@@ -15,7 +15,7 @@ from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.main_widget import TelescopeMainWidget, DataCollectionMainWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW
+from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW, TabName
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
 from rfsocinterface.gui.widgets import FunctionWidget, ArgumentType
 from rfsocinterface.core.camera import SKPR_Camera_Control
@@ -50,6 +50,8 @@ class DitherPatternWidget(FunctionWidget):
         self.fn(self.command, file, *values)
 
 class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWidget):
+    name = TabName.IMAGING
+
     startMapping = Signal()
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None) -> None:

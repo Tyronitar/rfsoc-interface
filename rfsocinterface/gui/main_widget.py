@@ -10,12 +10,13 @@ from kidpy3.data_handler import Rfchan
 
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.settings import SettingsError
-from rfsocinterface.core.utils import wait_for_telescope_command, PERMISSIONS_USR_RW
+from rfsocinterface.core.utils import wait_for_telescope_command, PERMISSIONS_USR_RW, TabName
 from rfsocinterface.gui.widgets import CheckableComboBox, SaveLocationWidget
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
 class MainWidget(QWidget):
+    name: TabName
 
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None = None):
@@ -23,12 +24,8 @@ class MainWidget(QWidget):
         self.main_window = main_window
         self.rfsocs = rfsocs
         self.settings = settings
+        self.gui_state = {}
     
-    @property
-    def _telescope_queue(self) -> Queue:
-        """Return the telescope queue for communication with the telescope controller."""
-        return self.main_window.telescope_queue
-
     def update_channel_choices(self, combo_box: CheckableComboBox):
         total = 0
         combo_box.clear()
@@ -46,8 +43,16 @@ class MainWidget(QWidget):
         if not checked_text:
             raise SettingsError('No channel selected')
         return list(map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text))
+
+    def _save_state(self):
+        """Save current GUI state of the tab.
+        
+        To be implemented by subclasses.
+        """
+        self.settings['app'][self.name] = self.gui_state
     
     def closeEvent(self, event):
+        self._save_state()
         return super().closeEvent(event)
 
 class TelescopeMainWidget(MainWidget):

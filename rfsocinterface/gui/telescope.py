@@ -12,7 +12,7 @@ from rfsocinterface.gui.uic.telescope_control_ui import Ui_TelescopeControlWidge
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from rfsocinterface.core.camera import SKPR_Camera_Control
-from rfsocinterface.core.utils import P, R
+from rfsocinterface.core.utils import P, R, TabName
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.gui.widgets import get_num_value
@@ -40,6 +40,8 @@ _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
+    name = TabName.TELESCOPE
+
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None):
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)

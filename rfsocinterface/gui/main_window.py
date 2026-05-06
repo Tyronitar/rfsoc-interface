@@ -41,7 +41,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings = Settings()
         self.settings.load_settings()
 
-        self.telescope_queue: Queue = None
         self.telescope_conn: Connection = None
         self.telescope_controller_process: Process = None
         
