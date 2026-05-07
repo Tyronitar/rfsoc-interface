@@ -582,7 +582,7 @@ class LoSweepData:
             _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
         return rotation_angle, adc_units_to_hz
     
-    def plot_full_trace(self, fig: Figure=None) -> Figure | None:
+    def plot_full_trace(self, fig: Figure=None, callback: Callable=None) -> Figure | None:
         # Only return if we're creating a new figure
         if fig is None:
             fig, ax = plt.subplots(figsize=(10, 6))
@@ -597,17 +597,28 @@ class LoSweepData:
         ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
 
         for i_tone in range(self.n_tones):
+            if self._plot_cancelled:
+                return
             ax.plot(self.freq[i_tone], self.s21[i_tone], color='blue')
+            if callback is not None:
+                callback()
         
         return fig
     
+    def reset_stop_signals(self):
+        self._fit_cancelled = False
+        self._fitted = False
+        self._plot_cancelled = False
+        self._plotted = False
+    
     def plot_blind_sweep(self, f0: npt.NDArray, fig: Figure=None, callback: Callable=None) -> Figure:
-        self.plot_full_trace(fig=fig)
+        self.reset_stop_signals()
+        self.plot_full_trace(fig=fig, callback=callback)
+        if self._plot_cancelled:
+            return
         ax = fig.axes[0]
         for resonance in f0:
             ax.axvline(resonance, linestyle='-', color='red')
-            if callback is not None:
-                callback()
 
         custom_lines = [
             Line2D([0], [0], color='blue', linestyle='-'),
@@ -625,6 +636,7 @@ class LoSweepData:
         )
         fig.tight_layout(rect=[0, 0.05, 1, 1])
         
+        self._plotted = True
         return fig
     
     def find_resonances(
@@ -655,6 +667,7 @@ class LoSweepData:
         savefile: str=None,
         callback: Callable=None
     ):
+        self.reset_stop_signals()
         if savefile is None:
             savefile = f'{tile_name}_new_tones.pdf'
         with PdfPages(savefile) as pdf:
@@ -672,6 +685,9 @@ class LoSweepData:
             for start_idx, end_idx in zip(group_starts, group_starts[1:]):
                 fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
                 for i, i_tone in enumerate(range(start_idx, min(end_idx, stop))):
+                    if self._plot_cancelled:
+                        plt.close(fig)
+                        return
                     ax = np.ravel(axes)[i]
                     ax.set_title(f'Tone {i_tone + 1}')
                     this_freq = self.freq[i_tone]
@@ -701,6 +717,7 @@ class LoSweepData:
                 # plt.show()
                 plt.close(fig)
                 # pdb.set_trace()
+        self._plotted = True
 
     def generate_new_params_file(self, tile_name: str, old_params: h5py.File | None=None, plot: bool=False):
         f0, depths = self.find_resonances()

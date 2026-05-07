@@ -664,6 +664,12 @@ class BlindSweepDialog(QDialog):
         self.dragging = False
         self.action_stack: list[tuple[str, Any]]= []
         self.stack_pointer = -1
+        self._cancelled = False
+    
+    def cancel(self):
+        self._cancelled = True
+        self.data.cancel_fit()
+        self.data.cancel_plot()
     
     def setupUi(self):
         layout = QGridLayout(parent=self)
@@ -770,6 +776,10 @@ class BlindSweepDialog(QDialog):
         self.depths = depths
         if callback is not None:
             callback()
+    
+    def find_resonances_and_plot(self, callback: Callable=None, **kwargs):
+        self.find_resonances(**kwargs)
+        self.plot(callback=callback)
     
     def plot(self, callback: Callable=None):
         self.replot_figure(self.data.plot_blind_sweep, self.f0, callback=callback)

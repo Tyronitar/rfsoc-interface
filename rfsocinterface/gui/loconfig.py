@@ -72,11 +72,6 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         self.channel_comboBox.set_default_title('Select Channels...')
 
-        self.load_gui_state_from_settings()
-        self.make_error_labels()    
-        self.update_channel_choices(self.channel_comboBox)
-        main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
-
         self.lo_sweep_widgets = [
             self.show_diagnostics_checkBox,
             self.upload_checkBox,
@@ -104,11 +99,25 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         ]
         self.blind_sweep_widgets = [
             self.show_diagnostics_checkBox,
+            self.blind_groupBox,
         ]
 
+        self.blind_sweep_lineEdits = [
+            self.blind_res_depth_lineEdit,
+            self.blind_spacing_lineEdit,
+            self.blind_samples_lineEdit,
+            self.blind_noise_fluc_lineEdit,
+            self.blind_baseline_lineEdit,
+        ]
+
+        # This signal needs to be connected before loading the GUI state
+        self.sweep_type_buttonGroup.buttonClicked.connect(self.select_sweep_type)  
+        self.load_gui_state_from_settings()
+
+        self.make_error_labels()    
+        self.update_channel_choices(self.channel_comboBox)
+        main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
         self.filename_buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
-        self.sweep_type_buttonGroup.buttonClicked.connect(self.select_sweep_type)
-        self.select_sweep_type(self.lo_sweep_radioButton)
         self.highres_sweep_checkBox.clicked.connect(self.check_highres_sweep)
         self.show_diagnostics_checkBox.clicked.connect(self.check_diagnostics)
         self.only_highres_checkBox.clicked.connect(self.check_only_highres)
@@ -155,6 +164,25 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         # Power Sweep Parameters
         self.gui_state['powerLevels'] = self.get_power_levels()
 
+        # Blind Sweep Parameters
+        blind_keys = [
+            ('blindSweep', 'minResonanceDepth'),
+            ('blindSweep', 'spacingThreshold'),
+            ('blindSweep', 'minSamplesPerResonance'),
+            ('blindSweep', 'maxNoiseFluctuation'),
+            ('blindSweep', 'baselinePercentile'),
+        ]
+        blind_types = [float, float, int, float, int]
+        for key, lineEdit, num_type in zip(blind_keys, self.blind_sweep_lineEdits, blind_types):
+            try:
+                dict_set_by_path(
+                    self.gui_state,
+                    key,
+                    get_num_value(lineEdit, num_type=num_type),
+                )
+            except ValueError:
+                continue
+
         # Filename Suffix
         self.gui_state['filenameSuffixMode'] = self.active_suffix
         self.gui_state['temperatureFilenameSuffix'] = self.filename_temperature_lineEdit.text()
@@ -187,6 +215,12 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             (('highres', 'savePlots'), False),
             # Power Sweep Parameters
             ('powerLevels', []),
+            # Blind Sweep Parameters
+            (('blindSweep', 'minResonanceDepth'), 0.2),
+            (('blindSweep', 'spacingThreshold'), 3000),
+            (('blindSweep', 'minSamplesPerResonance'), 2),
+            (('blindSweep', 'maxNoiseFluctuation'), 0.05),
+            (('blindSweep', 'baselinePercentile'), 50),
         ]
 
         self.gui_state = load_dict_or_defaults(saved_gui_state, defaults, items)
@@ -225,7 +259,18 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.only_highres_checkBox.setChecked(self.gui_state['onlyHighres'])
 
         # Power Sweep Parameters
-        self.power_levels_Label.setText(','.join(self.gui_state['powerLevels']))
+        self.power_levels_lineEdit.setText(','.join(str(x) for x in self.gui_state['powerLevels']))
+
+        # Blind Sweep Parameters
+        blind_keys = [
+            ('blindSweep', 'minResonanceDepth'),
+            ('blindSweep', 'spacingThreshold'),
+            ('blindSweep', 'minSamplesPerResonance'),
+            ('blindSweep', 'maxNoiseFluctuation'),
+            ('blindSweep', 'baselinePercentile'),
+        ]
+        for key, lineEdit in zip(blind_keys, self.blind_sweep_lineEdits):
+            lineEdit.setText(str(dict_get_by_path(self.gui_state, key, default='')))
 
         # Sweep Type
         match self.gui_state['sweepType']:
@@ -404,8 +449,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 plot_complete = self.plot_blind_sweeps(selected_channels, sweeps)
             else:
                 plot_complete = self.plot_sweeps(selected_channels, sweeps)
-                if not plot_complete:
-                    return False
+            if not plot_complete:
+                return False
 
         # Upload new tone lists as needed
         # If a highres sweep is going to happen (i.e `upload_all_new_tone_lists` = True),
@@ -592,12 +637,12 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     def plot_blind_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]], sweeps: list[LoSweep]) -> bool:
         # Setup progress dialog 
-        total_steps = sum(sweep.data.n_tones for sweep in sweeps)
+        total_tones = sum(sweep.data.n_tones for sweep in sweeps)
         pd = IncrementalProgressDialog(
             f'Setting up plotting for Blind sweep{"s" if len(sweeps) > 1 else ""}...',
             'Cancel',
             0,
-            total_steps,
+            total_tones,
             parent=self,
         )
         pd.setAutoClose(True)
@@ -607,31 +652,40 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         QApplication.processEvents()
         increment_progress = make_progress_dialog_incrementer(pd)
 
+        # Get values from GUI
+        min_res_depth = get_num_value(self.blind_res_depth_lineEdit, use_placeholder_text=True)
+        spacing_threshold = get_num_value(self.blind_spacing_lineEdit, use_placeholder_text=True)
+        min_samples = get_num_value(self.blind_samples_lineEdit, num_type=int, use_placeholder_text=True)
+        max_noise = get_num_value(self.blind_noise_fluc_lineEdit, use_placeholder_text=True)
+        baseline = get_num_value(self.blind_baseline_lineEdit, num_type=int, use_placeholder_text=True)
+
         plotting_threads = []
         dialogs: list[BlindSweepDialog] = []
-        figs: list[Figure] = []
         for (rfsoc, chan), sweep in zip(selected_channels, sweeps):
             sweep_data = sweep.data
+            sweep_data.reset_stop_signals()
 
             # Make blind sweep window and setup connections
             dw = BlindSweepDialog(sweep_data, parent=self)
             dw.set_window_name(rfsoc.get_channel(chan).tile_name)
-            # dw.finished.connect(lambda result: self._finish_sweep(result, sweep.savefile, sweep_data, rfsoc, chan, dw, False))
             dw.finished.connect(self.handle_diagnostic_window_finished)
-            dw.upload_pushButton.clicked.connect(lambda: self._write_new_tones(sweep_data, rfsoc, chan))
             dialogs.append(dw)
 
             QApplication.processEvents()
 
-            ncols = DEFAULT_NCOLS
-            nrows = int(np.ceil(sweep_data.n_tones / ncols))
-            fig = plt.figure(figsize=(ncols, nrows), dpi=100)
-            for i in range(1, sweep_data.n_tones + 1):
-                fig.add_subplot(nrows, ncols, i, aspect='equal', xticks=[], yticks=[])
-            figs.append(fig)
-            thread = Thread(target=dw.plot, kwargs={'fig': fig, 'callback': increment_progress})
+            thread = Thread(
+                target=dw.find_resonances_and_plot,
+                kwargs={
+                    'callback': increment_progress,
+                    'min_resonance_depth_dB': min_res_depth,
+                    'spacing_threshold_Hz': spacing_threshold,
+                    'min_samples_per_resonance': min_samples,
+                    'max_noise_fluctuation_dB': max_noise,
+                    'baseline_percentile': baseline,
+                },
+            )
             plotting_threads.append(thread)
-            pd.canceled.connect(sweep_data.cancel_plot)
+            pd.canceled.connect(dw.cancel)
         
         pd.setLabelText(f'Plotting LO sweep{"s" if len(sweeps) > 1 else ""}...')
         QApplication.processEvents()
@@ -652,14 +706,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         
         if pd.wasCanceled():
             # TODO: Handle cancel (i.e. destroy the plots and the dialogs)
-            _logger.info('LO Sweep Plotting Cancelled')
+            _logger.info('Blind Sweep Plotting Cancelled')
             return False
         pd.close()
 
-        for dw, fig in zip(dialogs, figs):
-            dw.set_figure(fig)
-            QApplication.processEvents()
-            # fig.tight_layout()
+        for dw in dialogs:
             dw.show()
         
         self._wait_for_sweep_dialogs(dialogs)
@@ -672,14 +723,14 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self._sweep_dialog_results[index] = result
     
     def _wait_for_sweep_dialogs(self, dialogs: list[DiagnosticsDialog]):
-        _logger.debug('Wiating for LO diagnostics dialogs to finish...')
+        _logger.debug('Waiting for LO dialogs to finish...')
         self._dialogs = dialogs
         n_sweeps = len(dialogs)
         self._sweep_dialog_results = [None for _ in range(n_sweeps)]
         while self._sweep_dialog_results.count(None) > 0:
             QApplication.processEvents()
             time.sleep(0.1)
-        _logger.debug('All LO diagnostics dialogs finished')
+        _logger.debug('All LO dialogs finished')
 
     def run_power_sweeps(
             self,
@@ -736,7 +787,10 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return True
     
     def get_power_levels(self) -> list[float]:
-        return [float(x.strip()) for x in filter(None, self.power_levels_lineEdit.text().split(','))]
+        levels = [float(x.strip()) for x in filter(None, self.power_levels_lineEdit.text().split(','))]
+        if len(levels) == 0:
+            levels = [0]
+        return levels
     
     def setup_power_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]]) -> list[PowerSweep]:
         # Get values from GUI, converting KHz to Hz
