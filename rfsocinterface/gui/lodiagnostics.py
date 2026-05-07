@@ -10,6 +10,7 @@ from concurrent.futures import Future
 import logging
 import pdb
 from matplotlib.artist import Artist
+import re
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,10 +35,12 @@ from PySide6.QtWidgets import (
     QAbstractButton,
     QVBoxLayout,
     QRadioButton,
+    QLineEdit,
+    QGridLayout,
 )
 
 from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS
-from rfsocinterface.core.params import update_params_file, initialize_params_file
+from rfsocinterface.core.params import update_params_file, initialize_params_file, DEFAULT_PARAMS_DIRECTORY, get_params_file_template
 from rfsocinterface.core.utils import (
     ON_RESONANCE_COLOR,
     OFF_RESONANCE_COLOR,
@@ -564,6 +567,85 @@ def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON
     res = np.allclose(line.get_xdata()[0], event.xdata, atol=epsilon), {}
     return res
 
+
+class SaveParamsDialog(QDialog):
+
+    def __init__(self, parent: QWidget | None=None):
+        super().__init__(parent=parent)
+        self.setupUi()
+    
+    def setupUi(self):
+        layout = QGridLayout(parent=self)
+
+        self.setWindowTitle('Save New Parameters File')
+
+        self.label = QLabel('Enter New Tile Name:', parent=self)
+        self.lineEdit = QLineEdit(parent=self)
+        font_metrics = self.lineEdit.fontMetrics()
+        # Calculate width for 30 'x' characters plus some padding
+        width = font_metrics.horizontalAdvance('x' * 30) + 10
+        self.lineEdit.setMinimumWidth(width)
+
+        self.pushButton = QPushButton('Choose From File...', parent=self) 
+        self.pushButton.clicked.connect(self.choose_from_file)
+        self.buttonBox = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+
+        layout.addWidget(self.label, 0, 0)
+        layout.addWidget(self.lineEdit, 0, 1)
+        layout.addWidget(self.pushButton, 0, 2)
+        layout.addWidget(self.buttonBox, 1, 0, 1, -1)
+        self.setLayout(layout)
+    
+    def choose_from_file(self):
+        fname, _ = QFileDialog.getOpenFileName(
+            parent=self,
+            caption='Select Parameters File',
+            dir=DEFAULT_PARAMS_DIRECTORY,
+            filter='HDF5 (*.h5);;All Files (*)'
+        )
+        if fname:
+            path = Path(fname).with_suffix('.h5')
+            if re.match(r'^params_tile_', path.stem):
+                tile_name = path.stem[12:]
+                self.lineEdit.setText(tile_name)
+    
+    def get_current_tile_name(self) -> str:
+        return self.lineEdit.text()
+    
+    def check_overwrite(self, path: Path) -> bool:
+        msg = QMessageBox(
+            QMessageBox.Icon.Warning,
+            f'Overwriting "{path.name}"',
+            f'"{path.name}" already exists. Save anyway and overwrite the existing file?',
+            parent=self
+        )
+        msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        ret = msg.exec()
+        match ret:
+            case QMessageBox.StandardButton.Save:
+                
+                return True
+            case QMessageBox.StandardButton.Cancel:
+                return False  # Don't close
+            case _:
+                raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
+    
+    def accept(self):
+        tile_name = self.get_current_tile_name()
+        if tile_name:
+            path = Path(DEFAULT_PARAMS_DIRECTORY) / f'params_tile_{tile_name}.h5'
+            if path.exists():
+                overwrite = self.check_overwrite(path)
+                if not overwrite:
+                    return
+            return super().accept()
+
 class BlindSweepDialog(QDialog):
     def __init__(self, data: LoSweepData, parent: QWidget | None=None):
         super().__init__(parent)
@@ -577,13 +659,14 @@ class BlindSweepDialog(QDialog):
         self.setup_connections()
 
         self.data = data
+        self.f0 = data.detector_f
         self.selected_line = None
         self.dragging = False
         self.action_stack: list[tuple[str, Any]]= []
         self.stack_pointer = -1
     
     def setupUi(self):
-        layout = QVBoxLayout(self)
+        layout = QGridLayout(parent=self)
 
         self.canvas = ToolbarCanvas(
             parent=self,
@@ -599,36 +682,61 @@ class BlindSweepDialog(QDialog):
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
+        button_box.accepted.connect(self.save_tones)
+        button_box.rejected.connect(self.close_without_saving)
 
-        layout.addWidget(self.canvas)
-        layout.addWidget(button_box)
+        pdf_button = QPushButton('Generate PDF', parent=self)
+        pdf_button.clicked.connect(self.generate_pdf)
+
+        layout.addWidget(self.canvas, 0, 0, 1, -1)
+        layout.addWidget(pdf_button, 1, 1)
+        layout.addWidget(button_box, 2, 0, 1, -1)
         self.setLayout(layout)
-
 
     def set_window_name(self, name: str):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'Fitted Resonance Adjustment - {name}', None))
     
-    def accept(self):
-        fname, _ = QFileDialog.getSaveFileName(
-            parent=self,
-            caption='Save Tones to Parameters File',
-            dir='/data/params',
-            filter='HDF5 (*.h5);;All Files (*)'
-        )
-        if fname:
+    def _handle_save_params_finished(self, result: int):
+        dialog: SaveParamsDialog = self.sender()
+        if result == QDialog.DialogCode.Accepted:
+            tile_name = dialog.get_current_tile_name()
             f0 = np.real(np.array([line.get_xdata()[0] for line in self.get_vlines()]))
             bb_freqs = f0 - self.data.f_center
             bb_freqs = np.sort(bb_freqs)
-            path = Path(fname).with_suffix('.h5')
+            path = Path(get_params_file_template(tile_name, params_dir=DEFAULT_PARAMS_DIRECTORY))
             if not path.exists():
-                # TODO: Get the actual tile name
-                tile_name = path.stem[12:]
                 initialize_params_file(tile_name, bb_freqs, self.data.f_center)
             else:
-                update_params_file(path, baseband_freqs=bb_freqs)
-            return super().accept()
+                update_params_file(tile_name, baseband_freqs=bb_freqs)
+            self.accept()
+    
+    def save_tones(self):
+        self.tile_name_dialog = SaveParamsDialog(parent=self)
+        self.tile_name_dialog.finished.connect(self._handle_save_params_finished)
+        self.tile_name_dialog.open()
+
+    def close_without_saving(self):
+        msg = QMessageBox(
+            QMessageBox.Icon.Warning,
+            f'Close without saving?',
+            'Your changes will be lost if you don\'t save them',
+            parent=self
+        )
+        msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        ret = msg.exec()
+        match ret:
+            case QMessageBox.StandardButton.Save:
+                self.save_tones()
+            case QMessageBox.StandardButton.Cancel:
+                pass
+            case QMessageBox.StandardButton.Discard:
+                super().reject()
+            case _:
+                raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
+    
+    def reject(self):
+        self.close_without_saving()
 
     @property
     def figure_canvas(self) -> FigureCanvas:
@@ -656,15 +764,38 @@ class BlindSweepDialog(QDialog):
         # The first n_tones lines should be the S21 traces for each tone
         return self.ax.lines[self.n_tones:]
     
-    def plot(self, callback: Callable=None, **kwargs):
+    def find_resonances(self, callback: Callable=None, **kwargs):
         f0, depths = self.data.find_resonances(**kwargs)
         self.f0 = f0
         self.depths = depths
-        
-        self.data.plot_new_resonances('blind_sweep', f0)
-        self.replot_figure(self.data.plot_blind_sweep, f0, callback=callback)
+        if callback is not None:
+            callback()
+    
+    def plot(self, callback: Callable=None):
+        self.replot_figure(self.data.plot_blind_sweep, self.f0, callback=callback)
         # fig = self.data.plot_blind_sweep(f0)
         # self.set_figure(fig)
+    
+    def generate_pdf(self):
+        # Get the savefile
+        filename, _ = QFileDialog.getSaveFileName(
+            parent=self,
+            caption='Save PDF',
+            dir='blind_sweep.pdf',  # TODO: Get the directory the sweep is saved to (or today's date)
+            filter='PDF (*.pdf);;All Files (*)'
+        )
+        if filename:
+            pd = IncrementalProgressDialog(
+                'Generating PDF of new resonances...',
+                'Cancel',
+                0,
+                self.data.n_tones,
+                parent=self,
+            )
+            pd.setValue(0)
+            pd.show()
+            increment_progress = make_progress_dialog_incrementer(pd)
+            self.data.plot_new_resonances(self.f0, savefile=filename, callback=increment_progress)
     
     def closest_vline(self, x: float) -> tuple[int, plt.Line2D]:
         lines = self.get_vlines()
@@ -925,12 +1056,13 @@ if __name__ == '__main__':
     # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
     data = LoSweepData.load('/data/20260420/20260420_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour14p7439.h5')
     win = BlindSweepDialog(data)
-    win.plot(
+    win.find_resonances(
         min_resonance_depth_dB=0.3,
         spacing_threshold_Hz=3e3,
         min_samples_per_resonance=4,
         max_noise_fluctuation_dB=0.05,
     )
+    win.plot()
     win.show()
 
     # dw.show()

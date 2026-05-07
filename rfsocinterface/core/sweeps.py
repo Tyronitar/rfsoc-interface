@@ -645,8 +645,19 @@ class LoSweepData:
         )
         return res_freq , res_depth
     
-    def plot_new_resonances(self, tile_name: str, f0: npt.NDArray, old_f0: npt.NDArray | None=None, nrows: int=4, ncols: int=3):
-        with PdfPages(f'{tile_name}_new_tones.pdf') as pdf:
+    def plot_new_resonances(
+        self,
+        f0: npt.NDArray,
+        old_f0: npt.NDArray | None=None,
+        nrows: int=4,
+        ncols: int=3,
+        tile_name: str='blind_sweep',
+        savefile: str=None,
+        callback: Callable=None
+    ):
+        if savefile is None:
+            savefile = f'{tile_name}_new_tones.pdf'
+        with PdfPages(savefile) as pdf:
             custom_lines = [
                 Line2D([0], [0], color='blue', linestyle='-'),
                 Line2D([0], [0], color='red', linestyle='-'),
@@ -675,6 +686,8 @@ class LoSweepData:
                     ax.set_xlabel('Frequency (MHz)')
                     ax.set_ylabel(r'$|S_{21}|$')
                     ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
+                    if callback is not None:
+                        callback()
                 fig.legend(
                     custom_lines,
                     custom_labels,
@@ -695,7 +708,7 @@ class LoSweepData:
             old_f0 = None
             if old_params is not None:
                 old_f0 = old_params['baseband_freqs'][:] + old_params['lo_freq'][()]
-            self.plot_new_resonances(tile_name, f0, old_f0)
+            self.plot_new_resonances(f0, old_f0, tile_name=tile_name)
             
         initialize_params_file(
             tile_name,
@@ -1280,7 +1293,7 @@ if __name__ == '__main__':
     freq, depth = sweep_data.find_resonances()
     # sweep_data.plot_blind_sweep(freq)
     # plt.show()
-    sweep_data.plot_new_resonances('ONR_Blind_180_to_620MHz_1000_tones', freq)
+    sweep_data.plot_new_resonances(freq, tile_name='ONR_Blind_180_to_620MHz_1000_tones')
     pdb.set_trace()
 
     # Lab Testing
