@@ -1,4 +1,3 @@
-
 """Loading spinner for indeterminate-length loading screens.
 
 
@@ -40,6 +39,7 @@ SOFTWARE.
 import math
 import sys
 from random import random
+import numpy as np
 
 from PySide6 import QtGui
 from PySide6.QtCore import Slot as pyqtSlot
@@ -58,6 +58,19 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QWidget,
 )
+
+
+STANDARD_STICKY_SPINNER_SETTINGS = {
+    'roundness': 100,
+    'opacity': 100.0,
+    'fade': 80,
+    'radius': 15,
+    'lines': 50,
+    'line_length': 10,
+    'line_width': 10,
+    'speed': 0.7,
+    'color': (233, 84, 32),  # Ubuntu orange
+}
 
 
 # pylint: disable=too-many-instance-attributes,too-many-arguments
@@ -339,6 +352,81 @@ class WaitingSpinner(QWidget):
         return color
 
 
+
+class StickyWaitingSpinner(WaitingSpinner):
+    def __init__(self, parent, center_on_parent = True, disable_parent_when_spinning = False, modality = Qt.WindowModality.NonModal, roundness = 100, fade = 80, lines = 20, line_length = 10, line_width = 2, radius = 10, speed = math.pi / 2, color = QColor(0, 0, 0)):
+        self._primary_angle = 0
+        super().__init__(parent, center_on_parent, disable_parent_when_spinning, modality, roundness, fade, lines, line_length, line_width, radius, speed, color)
+
+
+    def paintEvent(self, _: QPaintEvent) -> None:  # pylint: disable=invalid-name
+        """Paint the WaitingSpinner."""
+        self._update_position()
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        if self._current_counter >= self._number_of_lines:
+            self._current_counter = 0
+        
+        # primary_angle = 360 * self._current_counter / self._number_of_lines
+        # self._current_angle = primary_angle
+        dist = (self._primary_angle - 270 + 180) % 360 - 180
+        alpha = 10
+        sigma = 30
+        normalization_factor = 20
+        # normalization_factor = 1
+        normalization_factor =  self._revolutions_per_second / 60  * 1100
+        current_angle = self._primary_angle
+        self._primary_angle += 1 / (1 + alpha * np.exp(-(dist**2 / (2 * sigma**2)))) * normalization_factor
+        self._primary_angle %= 360
+        
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        for i in range(self._number_of_lines):
+            painter.save()
+            painter.translate(
+                self._inner_radius + self._line_length,
+                self._inner_radius + self._line_length,
+            )
+            dist = (current_angle - 270 + 180) % 360 - 180
+            rotate_angle = 1 / (1 + alpha * np.exp(-(dist**2 / (2 * sigma**2)))) * normalization_factor / 2
+            current_angle = (current_angle - rotate_angle) % 360
+            # rotate_angle = 360 * i / self._number_of_lines
+            painter.rotate(current_angle)
+            painter.translate(self._inner_radius, 0)
+            # distance = current_angle - self._primary_angle
+            # distance = self._line_count_distance_from_primary(
+            #     i, self._current_counter, self._number_of_lines
+            # )
+            color = self._current_line_color(
+                i,
+                self._number_of_lines,
+                self._trail_fade_percentage,
+                self._minimum_trail_opacity,
+                self._color,
+            )
+            painter.setBrush(color)
+            painter.drawRoundedRect(
+                QRect(
+                    0,
+                    -self._line_width // 2,
+                    self._line_length,
+                    self._line_width,
+                ),
+                self._roundness,
+                self._roundness,
+                Qt.SizeMode.RelativeSize,
+            )
+            painter.restore()
+
+    def _update_timer(self) -> None:
+        """Update the spinning speed of the WaitingSpinner."""
+        self._timer.setInterval(
+            int(1000 / 60)
+        )
+
+
 # Code for determining the parameters I want:
 
 
@@ -360,8 +448,9 @@ class SpinnerConfigurator(QWidget):
 
     spinner = None
 
-    def __init__(self) -> None:
+    def __init__(self, sticky: bool=False) -> None:
         super().__init__()
+        self.sticky = sticky
         self.init_ui()
 
     def init_ui(self) -> None:
@@ -377,7 +466,10 @@ class SpinnerConfigurator(QWidget):
         self.setWindowFlags(Qt.WindowType.Dialog)
 
         # SPINNER
-        self.spinner = WaitingSpinner(self)
+        if self.sticky:
+            self.spinner = StickyWaitingSpinner(self)
+        else:
+            self.spinner = WaitingSpinner(self)
 
         # Spinboxes
         self.sb_roundness = QDoubleSpinBox()
@@ -549,10 +641,10 @@ def set_palette(my_app):
     my_app.setPalette(dark_palette)
     my_app.setStyleSheet(
         "QToolTip { color: #ffffff; background-color: rgb(187, 134, 252); border: 0px solid white; }")
-
+    
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     set_palette(app)
-    configurator = SpinnerConfigurator()  # noqa
+    configurator = SpinnerConfigurator(True)  # noqa
     sys.exit(app.exec())
