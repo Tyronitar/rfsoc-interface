@@ -69,7 +69,7 @@ STANDARD_STICKY_SPINNER_SETTINGS = {
     'line_length': 10,
     'line_width': 10,
     'speed': 0.7,
-    'color': (233, 84, 32),  # Ubuntu orange
+    'color': QColor(233, 84, 32),  # Ubuntu orange
 }
 
 
@@ -79,11 +79,12 @@ class WaitingSpinner(QWidget):
 
     def __init__(
         self,
-        parent: QWidget,
+        parent: QWidget=None,
         center_on_parent: bool = True,
         disable_parent_when_spinning: bool = False,
         modality: Qt.WindowModality = Qt.WindowModality.NonModal,
         roundness: float = 100.0,
+        opacity: float=3.0,
         fade: float = 80.0,
         lines: int = 20,
         line_length: int = 10,
@@ -92,14 +93,14 @@ class WaitingSpinner(QWidget):
         speed: float = math.pi / 2,
         color: QColor = QColor(0, 0, 0),
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent=parent)
 
         self._center_on_parent: bool = center_on_parent
         self._disable_parent_when_spinning: bool = disable_parent_when_spinning
 
         self._color: QColor = color
         self._roundness: float = roundness
-        self._minimum_trail_opacity: float = math.pi
+        self._minimum_trail_opacity: float = opacity
         self._trail_fade_percentage: float = fade
         self._revolutions_per_second: float = speed
         self._number_of_lines: int = lines
@@ -309,10 +310,7 @@ class WaitingSpinner(QWidget):
     def _update_position(self) -> None:
         """Center WaitingSpinner on parent widget."""
         if self.parentWidget() and self._center_on_parent:
-            self.move(
-                (self.parentWidget().width() - self.width()) // 2,
-                (self.parentWidget().height() - self.height()) // 2,
-            )
+            self.move(self.parent().rect().center() - self.rect().center())
 
     @staticmethod
     def _line_count_distance_from_primary(
@@ -354,9 +352,38 @@ class WaitingSpinner(QWidget):
 
 
 class StickyWaitingSpinner(WaitingSpinner):
-    def __init__(self, parent, center_on_parent = True, disable_parent_when_spinning = False, modality = Qt.WindowModality.NonModal, roundness = 100, fade = 80, lines = 20, line_length = 10, line_width = 2, radius = 10, speed = math.pi / 2, color = QColor(0, 0, 0)):
+    def __init__(
+        self,
+        parent: QWidget=None,
+        center_on_parent: bool = True,
+        disable_parent_when_spinning: bool = False,
+        modality: Qt.WindowModality = Qt.WindowModality.NonModal,
+        roundness: float = 100.0,
+        opacity: float=3,
+        fade: float = 80.0,
+        lines: int = 20,
+        line_length: int = 10,
+        line_width: int = 2,
+        radius: int = 10,
+        speed: float = math.pi / 2,
+        color: QColor = QColor(0, 0, 0),
+    ) -> None:
         self._primary_angle = 0
-        super().__init__(parent, center_on_parent, disable_parent_when_spinning, modality, roundness, fade, lines, line_length, line_width, radius, speed, color)
+        super().__init__(
+            parent=parent,
+            center_on_parent=center_on_parent,
+            disable_parent_when_spinning=disable_parent_when_spinning,
+            modality=modality,
+            roundness=roundness,
+            opacity=opacity,
+            fade=fade,
+            lines=lines,
+            line_length=line_length,
+            line_width=line_width,
+            radius=radius,
+            speed=speed,
+            color=color
+        )
 
 
     def paintEvent(self, _: QPaintEvent) -> None:  # pylint: disable=invalid-name
