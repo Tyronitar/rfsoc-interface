@@ -287,7 +287,7 @@ class TempSweepDataAnalyzer:
         with PdfPages(output_plot_filename) as pdf:
             for fig in figs:
                 pdf.savefig(fig)
-        self._save_fit_results(f0_data, q_i_data, q_c_data, onres_ind, filename=self.sweeps[0].tile_name + "_fit_results.h5")
+        self._save_fit_results(f0_data, q_i_data, q_c_data, onres_ind,redchi_data=redchi_data, stderr_f0=stderr_f0, stderr_qi=stderr_qi, stderr_qc=stderr_qc, filename=self.sweeps[0].tile_name + "_fit_results.h5")
 
 
     def _get_initial_f0s(self, i_res: int, prev_results: dict | None) -> npt.NDArray:
@@ -538,7 +538,7 @@ class TempSweepDataAnalyzer:
 
         fig._resonator_textboxes = text_boxes
         fig._resonator_f0_values = f0_values
-        plt.show()
+        #plt.show()
         plt.close()
         return fig, f0_values
 
@@ -907,7 +907,7 @@ class TempSweepDataAnalyzer:
 
 if __name__ == '__main__':
     data_analyzer = TempSweepDataAnalyzer.from_h5(
-        '/data/20260506/20260506_Be231102p2_1000_tones_Power_Sweep_hour22p7161.h5'
+        '/data/20260507/20260507_Be231102p2_1000_tones_Power_Sweep_hour17p5044.h5'
     )
     clean_dataset = data_analyzer.stitch_full_dataset()
     data_analyzer.process_temperature_sweep(
