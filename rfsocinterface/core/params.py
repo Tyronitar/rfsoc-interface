@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 import pdb
 
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import h5py
@@ -167,6 +168,79 @@ def update_params_file(
             fh[k][:] = v
 
 
+def flag_collided_resonances(
+    params_file: Path,
+    new_tile_name: str,
+    collision_threshold: float=1/5000,
+):
+    """Find and flag collided resonances.
+    
+    Arguments:
+        collision_threshold (float): Maximum fractional separation between collided 
+            resonances. Defaults to 1/2000.
+    """
+    with h5py.File(params_file, 'r') as params_file:
+        baseband_freqs = params_file['baseband_freqs'][:]
+        chanmask = params_file['chanmask'][:]
+        if 'lo_freq' not in params_file.attrs:
+            lo_freq = params_file['lo_freq'][()]
+        else:
+            lo_freq = params_file.attrs['lo_freq']
+        tone_powers = params_file['tone_powers'][:]
+        detdx = params_file['detector_delta_x'][:]
+        detdy = params_file['detector_delta_y'][:]
+        det_beam_ampl = params_file['detector_beam_ampl'][:]
+        detector_pol = params_file['detector_pol'][:]
+        dfoverf_per_mK = params_file['dfoverf_per_mK'][:]
+
+    new_chanmask = chanmask[:]
+
+    # Find collided resonances
+    shift1 = np.abs(baseband_freqs - np.roll(baseband_freqs, 1))
+    shift2 = np.abs(np.roll(baseband_freqs, -1) - baseband_freqs)
+    nearest_res = np.abs(np.minimum(shift1, shift2) / (baseband_freqs + lo_freq))
+    collided_ind = np.argwhere(nearest_res < collision_threshold)
+    new_chanmask[collided_ind] = -1
+
+    print(f'Found {collided_ind.size} collided resonances')
+
+    detector_f = baseband_freqs + lo_freq
+
+    plt.figure()
+    onres_ind = np.argwhere(new_chanmask == 1).flatten()
+    offres_ind = np.argwhere(new_chanmask == 0).flatten()
+    plt.stem(detector_f[onres_ind], tone_powers[onres_ind], linefmt='b', markerfmt='none', basefmt='none',label='On-resonance tones')
+    if offres_ind.size > 0:
+        plt.stem(detector_f[offres_ind], tone_powers[offres_ind] + 1, linefmt='orange', markerfmt='none', basefmt='none', label='Off-resonance tones')
+    if collided_ind.size > 0:
+        plt.stem(detector_f[collided_ind], tone_powers[collided_ind], linefmt='r', markerfmt='none', basefmt='none',label='Collided Resonances')
+    plt.xlabel('Baseband Frequency (MHz)')
+    plt.ylabel('Tone Power')
+    plt.gca().xaxis.set_major_formatter(mHz_formatter)
+    plt.title('Collided-resonances')
+    plt.legend()
+    plt.show()
+
+    pdb.set_trace()
+
+    initialize_params_file(
+        new_tile_name,
+        baseband_freqs,
+        lo_freq,
+    )
+    update_params_file(
+        new_tile_name,
+        chanmask=new_chanmask,
+        tone_powers=tone_powers,
+        detector_delta_x=detdx,
+        detector_delta_y=detdy,
+        detector_beam_ampl=det_beam_ampl,
+        detector_pol=detector_pol,
+        dfoverf_per_mK=dfoverf_per_mK,
+    )
+
+
+
 @ensure_path(0)
 def add_off_resonance_tones(
     params_file: Path,
@@ -192,8 +266,6 @@ def add_off_resonance_tones(
             from on-resonance tones. Defaults to 1/1000.
         delta_offres_min (float, optional): Minimum spacing (Hz) between offres tones at
             the LO frequency. Defaults to 1e5.
-        collision_threshold (float): Maximum fractional separation between collided 
-            resonances. Defaults to 1/2000.
     """
     with h5py.File(params_file, 'r') as params_file:
         baseband_freqs = params_file['baseband_freqs'][:]
@@ -209,14 +281,6 @@ def add_off_resonance_tones(
         detector_pol = params_file['detector_pol'][:]
         dfoverf_per_mK = params_file['dfoverf_per_mK'][:]
 
-    # Find collided resonances
-    # shift1 = np.abs(baseband_freqs - np.roll(baseband_freqs, 1))
-    # shift2 = np.abs(np.roll(baseband_freqs, -1) - baseband_freqs)
-    # nearest_res = np.abs(np.minimum(shift1, shift2) / (baseband_freqs + lo_freq))
-    # collided_ind = np.argwhere(nearest_res < collision_threshold)
-    # chanmask[collided_ind] = -1
-    collided_ind = []
-
     offres_tones = []
     tones_left = n_offres
     freqs_in_range = baseband_freqs[
@@ -228,7 +292,6 @@ def add_off_resonance_tones(
     gaps = np.diff(freqs_in_range)
     sorted_gap_ind = np.argsort(gaps)[::-1]
     # for f0, f1 in zip(freqs_in_range[:-1], freqs_in_range[1:]):
-    import matplotlib.pyplot as plt
     for i_gap in sorted_gap_ind:
         f0 = freqs_in_range[i_gap]
         f1 = freqs_in_range[i_gap + 1]
@@ -291,8 +354,6 @@ def add_off_resonance_tones(
     if tones_added > 0:
         offres_ind = np.argwhere(new_chanmask == 0).flatten()
         plt.stem(new_baseband_freqs[offres_ind], new_tone_powers[offres_ind] + 1, linefmt='orange', markerfmt='none', basefmt='none', label='Off-resonance tones')
-    if collided_ind.size > 0:
-        plt.stem(new_baseband_freqs[collided_ind], new_tone_powers[collided_ind], linefmt='r', markerfmt='none', basefmt='none',label='Collided Resonances')
     plt.axvline(f_min - lo_freq, color='black', linestyle='--')
     plt.axvline(f_max - lo_freq, color='black', linestyle='--')
     plt.xlabel('Baseband Frequency (MHz)')
@@ -400,23 +461,29 @@ if __name__ == "__main__":
     #     393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
 
     # params_file = '/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260325.h5'
-    params_file = '/data/params/params_tile_Device_aSi2_Channel3_telescope_275mK_20260511.h5'
-    new_tile_name = 'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres'
+    old_tile_name = 'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
+    params_file = f'/data/params/params_tile_{old_tile_name}.h5'
+    new_tile_name = old_tile_name + 'and_collided'
     # with h5py.File(params_file, 'a') as params_fh:
         # params_fh.attrs['lo_freq'] = params_fh['lo_freq'][()]
         # del params_fh['lo_freq']
         # pdb.set_trace()
         # params_fh['baseband_freqs'][:] = np.sort(params_fh['baseband_freqs'][:])
         # params_fh['baseband_freqs'][:] = params_fh['baseband_freqs'] - params_fh.attrs['lo_freq']
-    add_off_resonance_tones(
+    flag_collided_resonances(
         params_file,
         new_tile_name,
-        100,
-        180e6,
-        620e6,
-        q=1/100,
-        delta_offres_min=1e6,
+        collision_threshold=1/10000,
     )
+    # add_off_resonance_tones(
+    #     params_file,
+    #     new_tile_name,
+    #     100,
+    #     180e6,
+    #     620e6,
+    #     q=1/100,
+    #     delta_offres_min=1e6,
+    # )
     exit()
 
     # Be231102p2_LO_freq = 300e6
