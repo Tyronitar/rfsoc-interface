@@ -49,7 +49,7 @@ _logger = logging.getLogger(__name__)
 
 DEFAULT_NCOLS = 10
 POWER_SWEEP_FRACTIONAL_FREQ_SHIFT = 1e-5
-POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB = 5
+POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB = 0
 
 NEW_LO_SWEEP_FORMAT_DATE = '20260213'  # For backwards compatibility
 
@@ -1173,6 +1173,9 @@ class PowerSweepData(CompositeSweepData):
 
     def find_optimal_readout_power(
         self,
+        baseline_percentage: float=0.33,
+        bad_power_cutoff_percentile: float=0.75,
+        max_power_deviation_from_median_dB: float=5,
         pdf_filename: str=None,
         nrows: int=4,
         ncols: int=3,
@@ -1199,6 +1202,7 @@ class PowerSweepData(CompositeSweepData):
         power_levels = power_levels[sorted_data_ind]
         f0_data = f0_data[sorted_data_ind, :]
         power_level_non_linear = np.zeros(self.n_tones)
+        non_linear_slope = np.zeros(self.n_tones)
 
         for i_res in self.onres_ind:
             if pdf and i >= page_size:
@@ -1222,19 +1226,23 @@ class PowerSweepData(CompositeSweepData):
 
             # First let's remove f0 values that are invalid at high power
             this_power_level = power_levels[:]
-            this_df = (f0_data[:, i_res] - f0_data[0,i_res]) / f0_data[0, i_res]
+            this_df = (f0_data[:, i_res] - f0_data[0, i_res]) / f0_data[0, i_res]
+            median_baseline = np.median(this_df[:int(self.n_sweeps * baseline_percentage)])
+            this_df -= median_baseline
             this_deriv = np.diff(this_df)
             
             # Only look at the f0 values at the highest 25% of powers
             bad_power_indices = np.argwhere(this_deriv > 0).flatten()
-            valid_bad = np.argwhere(bad_power_indices >= 0.75 * self.n_sweeps).flatten()
+            valid_bad = np.argwhere(bad_power_indices >= bad_power_cutoff_percentile * self.n_sweeps).flatten()
             bad_power_indices = bad_power_indices[valid_bad]
 
             if np.size(bad_power_indices) > 0:
                 stop_index = np.min(bad_power_indices)
                 this_power_level = this_power_level[:stop_index]
                 this_df = this_df[:stop_index]
-
+            
+            nominal_non_linear_db = np.median(this_power_level)
+            
             try:
                 popt = curve_fit(
                     power_sweep_fit_function,
@@ -1242,13 +1250,15 @@ class PowerSweepData(CompositeSweepData):
                     this_df,
                     p0=(
                         POWER_SWEEP_FRACTIONAL_FREQ_SHIFT,
-                        POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB,
+                        nominal_non_linear_db,
                     ),
                 )
+                non_linear_slope[i_res] = popt[0][0]
                 power_level_non_linear[i_res] = popt[0][1]
             except RuntimeError as e:
                 print(f'Encountered exception during fit; using default value for resonator {i_res}')
                 print(e)
+                non_linear_slope[i_res] = POWER_SWEEP_FRACTIONAL_FREQ_SHIFT
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
 
             if pdf:
@@ -1278,13 +1288,17 @@ class PowerSweepData(CompositeSweepData):
 
         med = np.median(power_level_non_linear)
         std = np.std(power_level_non_linear)
-        bad_ind = np.argwhere(np.abs(power_level_non_linear - med) / std > 2.5).flatten()
+        bad_ind = np.argwhere(np.abs(power_level_non_linear - med) > max_power_deviation_from_median_dB).flatten()
         power_level_non_linear[bad_ind] = med
+
+        power_level_non_linear[self.offres_ind] = med  # Set off-resonance to median
+        negative_ind = np.argwhere(non_linear_slope < 0).flatten()
+        power_level_non_linear[negative_ind] = med
+
         max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
-        max_readout_power[self.offres_ind] = 0  # Set off-resonance to 0
         self.max_readout_power = max_readout_power
 
-        counts, bins = np.histogram(power_level_non_linear, bins=60, range=(-10, 10))
+        counts, bins = np.histogram(max_readout_power, bins=60, range=(-10, 10))
         plt.stairs(counts, bins, fill=True)
         plt.show()
         pdb.set_trace()
@@ -1373,11 +1387,21 @@ class PowerSweep(CompositeSweep):
 
 if __name__ == '__main__':
     import pdb
+    from rfsocinterface.core.params import initialize_params_file, update_params_file
 
     sweep_file = '/data/20260511/20260511_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_Power_Sweep_hour13p5103.h5'
+    tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power'
+    # sweep_file = '/data/20260511/20260511_Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_Power_Sweep_hour15p2897.h5'
+    # tile_name = 'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
 
     sweep = PowerSweepData.load(sweep_file)
-    sweep.fit()
-    sweep.find_optimal_readout_power()
+    # sweep.fit()
+    # sweep.saveh5(sweep_file)
+    sweep.find_optimal_readout_power(bad_power_cutoff_percentile=0.5, pdf_filename='max_power_Device_aSi1_Channel2.pdf')
     sweep.saveh5(sweep_file)
+
     pdb.set_trace()
+    initialize_params_file(tile_name, sweep.bb_freqs, lo_freq=sweep.f_center)
+    update_params_file(tile_name, tone_powers=sweep.max_readout_power)
+
+
