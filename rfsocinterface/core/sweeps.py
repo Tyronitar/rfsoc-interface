@@ -339,7 +339,6 @@ class LoSweepData:
         self.fit_f0 = self.detector_f.copy()
         self.fit_qi = np.zeros(self.n_tones)
         self.fit_qc = np.zeros(self.n_tones)
-        self.fit_f0[self.offres_ind] = self.detector_f[self.offres_ind]
         self.set_diff_to_flag(val=diff_to_flag)
         self._fitted = False
         self._plotted = False
@@ -1042,6 +1041,15 @@ class CompositeSweepData:
         return self.sweeps[0].chanmask
     
     @property
+    def onres_ind(self) -> npt.NDArray:
+        return np.argwhere(self.chanmask == 1).flatten()
+
+    @property
+    def offres_ind(self) -> npt.NDArray:
+        return np.argwhere(self.chanmask == 0).flatten()
+    
+    
+    @property
     def combined_sweep_array(self) -> npt.NDArray:
         """The LO sweep data from each LO sweep as one array.
 
@@ -1163,20 +1171,54 @@ class PowerSweepData(CompositeSweepData):
 
         return power_sweep
 
-    def find_optimal_readout_power(self):
+    def find_optimal_readout_power(
+        self,
+        pdf_filename: str=None,
+        nrows: int=4,
+        ncols: int=3,
+    ):
+        i = 0
+        if pdf_filename is not None:
+            pdf = PdfPages(pdf_filename)
+            page_size = nrows * ncols
+            fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
+            custom_lines = [
+                Line2D([0], [0], color='orange', linestyle='-'),
+                Line2D([0], [0], color='blue', linestyle='-'),
+                Line2D([0], [0], color='red', linestyle='-'),
+            ]
+            custom_labels = ['df', 'Fit', 'Max Readout Power']
+        else:
+            pdf = None
+        
 
         f0_data = self.fit_f0[:]
         power_levels = self.power_levels[:]
-        print('test')
-        pdb.set_trace()
 
         sorted_data_ind = np.argsort(power_levels)
         power_levels = power_levels[sorted_data_ind]
         f0_data = f0_data[sorted_data_ind, :]
         power_level_non_linear = np.zeros(self.n_tones)
-        pdb.set_trace()
 
-        for i_res in range(self.n_tones):
+        for i_res in self.onres_ind:
+            if pdf and i >= page_size:
+                # Save the current figure 
+                fig.legend(
+                    custom_lines,
+                    custom_labels,
+                    loc='lower center',
+                    bbox_to_anchor=(0.5, 0.0),
+                    bbox_transform=fig.transFigure,
+                    ncol=3,
+                )
+                fig.tight_layout(rect=[0, 0.05, 1, 1])
+                pdf.savefig(fig)
+                plt.close(fig)
+
+                # Start a new figure
+                fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
+                i = 0
+
 
             # First let's remove f0 values that are invalid at high power
             this_power_level = power_levels[:]
@@ -1204,22 +1246,48 @@ class PowerSweepData(CompositeSweepData):
                     ),
                 )
                 power_level_non_linear[i_res] = popt[0][1]
-            except RuntimeError:
+            except RuntimeError as e:
+                print(f'Encountered exception during fit; using default value for resonator {i_res}')
+                print(e)
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
 
-            # plt.plot(this_power_level, this_df, 'o')
-            # plt.plot(this_power_level, power_sweep_fit_function(this_power_level, popt[0][0], popt[0][1]))
-            # plt.xlabel('Power Level (dB)')
-            # plt.ylabel('df0 / f0')
-            # plt.show()
-            # pdb.set_trace()
+            if pdf:
+                ax = np.ravel(axes)[i]
+                ax.set_title(f'Tone {i_res}')
+                ax.scatter(this_power_level, this_df, c='orange', marker='x')
+                ax.plot(this_power_level, power_sweep_fit_function(this_power_level, popt[0][0], popt[0][1]), color='blue')
+                ax.axvline(power_level_non_linear[i_res], color='red')
+                ax.set_xlabel('Power Level (dB)')
+                ax.set_ylabel('df0 / f0')
+            i += 1
+        
+        if pdf:
+            # Save the last figure 
+            fig.legend(
+                custom_lines,
+                custom_labels,
+                loc='lower center',
+                bbox_to_anchor=(0.5, 0.0),
+                bbox_transform=fig.transFigure,
+                ncol=3,
+            )
+            fig.tight_layout(rect=[0, 0.05, 1, 1])
+            pdf.savefig(fig)
+            plt.close(fig)
+            pdf.close()
 
         med = np.median(power_level_non_linear)
         std = np.std(power_level_non_linear)
         bad_ind = np.argwhere(np.abs(power_level_non_linear - med) / std > 2.5).flatten()
         power_level_non_linear[bad_ind] = med
         max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
+        max_readout_power[self.offres_ind] = 0  # Set off-resonance to 0
         self.max_readout_power = max_readout_power
+
+        counts, bins = np.histogram(power_level_non_linear, bins=60, range=(-10, 10))
+        plt.stairs(counts, bins, fill=True)
+        plt.show()
+        pdb.set_trace()
 
         return max_readout_power
 
@@ -1306,92 +1374,10 @@ class PowerSweep(CompositeSweep):
 if __name__ == '__main__':
     import pdb
 
-    sweep_data = LoSweepData.load('/data/20260420/20260420_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour14p7439.h5')
-    freq, depth = sweep_data.find_resonances()
-    # sweep_data.plot_blind_sweep(freq)
-    # plt.show()
-    sweep_data.plot_new_resonances(freq, tile_name='ONR_Blind_180_to_620MHz_1000_tones')
+    sweep_file = '/data/20260511/20260511_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_Power_Sweep_hour13p5103.h5'
+
+    sweep = PowerSweepData.load(sweep_file)
+    sweep.fit()
+    sweep.find_optimal_readout_power()
+    sweep.saveh5(sweep_file)
     pdb.set_trace()
-
-    # Lab Testing
-    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p0742.h5')
-    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p4989.h5')
-    # data = LoSweepData.from_h5('/data/20251204/20251204_Be231102p2_LO_Sweep_hour17p1558.h5')
-    data = [
-        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p1581.h5'),
-        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p1750.h5'),
-        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p1906.h5'),
-        LoSweepData.from_h5('/data/20260223/20260223_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour15p2503.h5'),
-    ]
-    for sweep in data:
-        plt.plot(sweep.freq[0, :], sweep.s21[0, :])
-    plt.show()
-    # data = LoSweepData.from_h5('/data/20251204/20251204_100_tone_uniform_202050829_LO_Sweep_hour16p4036.h5')
-    # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
-    # data = LoSweepData.from_h5('/data/20250814/20250814_thousand_tone_uniform_300MHz_LO_Sweep_hour15p7650.h5')
-    pdb.set_trace()
-
-    # """  """class Incrementer:
-    #     def __init__(self):
-    #         self.val = 0
-    #         self.lock = Lock()
-
-    #     def __call__(self):
-    #         self.val += 1
-    #         # print(f'LO Sweep progress: {self.val}', flush=True)
-    # inc = Incrementer()
-    # def callback():
-    #     with inc.lock:
-    #         inc()
-    # # import timeit
-    # fit = data.fit(callback=callback)
-    # # time = timeit.timeit('fit = data.fit(callback=callback)', globals=globals(), number=10)
-    # # print(time)
-    # # print([f for f in fit])
-    # pdb.set_trace()
-    i_res = 10
-    plt.figure()
-    plt.title('IQ Circle')
-    plt.plot(data.data_I[i_res], data.data_Q[i_res])
-    plt.xlabel('Data I')
-    plt.ylabel('Data Q')
-    plt.figure()
-    plt.title('S21')
-    plt.plot(data.freq[i_res], data.s21[i_res])
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('S21')
-    plt.show()
-    pdb.set_trace()
-
-    # Telescope Testing
-    # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel2_blind_LO_Sweep_hour13p4400_blind.h5')
-    # # data = LoSweepData.from_h5('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p2292_blind.h5')
-    data = LoSweepData.load('/data/20251208/20251208_Device_aSi1_Channel3_blind_LO_Sweep_hour14p5956_blind.h5')
-    data.fit(callback=callback)
-    fig = data.plot(callback=callback)
-    # plt.tight_layout()
-    plt.show()
-    # pdb.set_trace()
-    # sfreq, z = data.data
-
-    # # NOTE: This is reversed for channel 2 only
-    # sfreq = sfreq[::-1]
-
-    # s21_sqrd = z.real ** 2 + z.imag ** 2
-    # s21_pow = 10 * np.log10(s21_sqrd)
-    # for i in range(data.nchan):
-    #     plt.plot(sfreq[i] / 1e6, s21_pow[i])
-    # plt.xticks(fontsize=16)
-    # plt.yticks(fontsize=16)
-    # plt.xlabel("Frequency (MHz)", fontsize=18)
-    # plt.ylabel("dB", fontsize=18)
-    # plt.legend(["S21 of resonator sweep"], fontsize=18)
-    # plt.show()
-
-    # finder = ResonatorFinder(
-    #     (sfreq, z),
-    #     data.f_center,
-    #     1e3,
-    # )
-    # freqs = finder.find_resonators()
-    # pdb.set_trace()

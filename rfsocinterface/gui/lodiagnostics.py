@@ -564,7 +564,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
 
 def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON):
-    res = np.allclose(line.get_xdata()[0], event.xdata, atol=epsilon), {}
+    res = np.allclose(np.real(line.get_xdata()[0]), event.xdata, atol=epsilon), {}
     return res
 
 
@@ -1035,12 +1035,12 @@ if __name__ == '__main__':
     from matplotlib.backends.backend_qt import FigureManagerQT
     from matplotlib.backend_tools import ToolToggleBase
     from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
-    def plot_fn(fig: Figure, size: int=10):
-        if len(fig.axes) == 0:
-            ax = fig.add_subplot()
-        else:
-            ax = fig.axes[0]
-        ax.plot(np.arange(size), np.random.random(size))
+    # def plot_fn(fig: Figure, size: int=10):
+    #     if len(fig.axes) == 0:
+    #         ax = fig.add_subplot()
+    #     else:
+    #         ax = fig.axes[0]
+    #     ax.plot(np.arange(size), np.random.random(size))
 
     # class MainWindow(QDialog):
     #     def __init__(self, parent=None):
@@ -1064,7 +1064,7 @@ if __name__ == '__main__':
     # win.show()
     # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
     # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    data = LoSweepData.load('/data/20260420/20260420_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour14p7439.h5')
+    data = LoSweepData.load('/data/20260511/20260511_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour13p6353.h5')
     win = BlindSweepDialog(data)
     win.find_resonances(
         min_resonance_depth_dB=0.3,

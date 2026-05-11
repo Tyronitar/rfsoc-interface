@@ -328,13 +328,13 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     def set_attenuation(self, attenuation: str):
         match attenuation:
             case 'in':
-                addr = 2 if self.channel == 1 else 4
                 lineEdit = self.rfin_lineEdit
                 error_label = self.rfin_error_label
+                func = self.rfsoc.set_rfin
             case 'out':
-                addr = 1 if self.channel == 1 else 3
                 lineEdit = self.rfout_lineEdit
                 error_label = self.rfout_error_label
+                func = self.rfsoc.set_rfout
             case _:
                 raise ValueError(f'Function `set_attenuation` called with illegal argument "{attenuation}"; must be in ["in", "out"]')
         
@@ -346,7 +346,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             try:
                 att = get_num_value(lineEdit)
                 _logger.debug(f'ChannelSettingsWidget setting attenuation of rf{attenuation} for RFSoC {self.rfsoc.name} channel {self.channel} to {att:.2f} dB')
-                self.rfsoc.set_atten(addr, att)
+                func(self.channel, att)
             finally:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
     

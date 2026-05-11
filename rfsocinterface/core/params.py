@@ -400,8 +400,8 @@ if __name__ == "__main__":
     #     393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
 
     # params_file = '/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260325.h5'
-    params_file = '/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260420.h5'
-    new_tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260420_with_offres'
+    params_file = '/data/params/params_tile_Device_aSi2_Channel3_telescope_275mK_20260511.h5'
+    new_tile_name = 'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres'
     # with h5py.File(params_file, 'a') as params_fh:
         # params_fh.attrs['lo_freq'] = params_fh['lo_freq'][()]
         # del params_fh['lo_freq']
@@ -414,8 +414,8 @@ if __name__ == "__main__":
         100,
         180e6,
         620e6,
-        # q=1/100,
-        # delta_offres_min=1e7,
+        q=1/100,
+        delta_offres_min=1e6,
     )
     exit()
 
