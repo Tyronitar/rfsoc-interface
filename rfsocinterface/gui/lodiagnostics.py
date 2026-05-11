@@ -575,7 +575,7 @@ class SaveParamsDialog(QDialog):
         self.setupUi()
     
     def setupUi(self):
-        layout = QGridLayout(parent=self)
+        layout = QGridLayout()
 
         self.setWindowTitle('Save New Parameters File')
 
@@ -672,7 +672,7 @@ class BlindSweepDialog(QDialog):
         self.data.cancel_plot()
     
     def setupUi(self):
-        layout = QGridLayout(parent=self)
+        layout = QGridLayout()
 
         self.canvas = ToolbarCanvas(
             parent=self,

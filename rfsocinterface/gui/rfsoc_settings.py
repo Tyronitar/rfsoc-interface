@@ -52,7 +52,7 @@ class RFSOCSettingsWidget(QWidget):
         self.channel2_section.setTitle(self.rfsoc.get_channel_name(2))
     
     def setupUi(self):
-        layout = QVBoxLayout(self)
+        layout = QVBoxLayout()
 
         channel1_layout = QVBoxLayout()
         self.channel1_widget = ChannelSettingsWidget(self.rfsoc, 1, parent=self)
@@ -83,6 +83,8 @@ class RFSOCSettingsWidget(QWidget):
         self.advanced_section.setTitle('Advanced')
         self.advanced_section.setContentLayout(advanced_layout)
         layout.addWidget(self.advanced_section)
+
+        self.setLayout(layout)
 
 class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
     def __init__(self, rfsoc: RFSOCWrapper, parent: QWidget | None = None):

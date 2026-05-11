@@ -76,7 +76,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
         self.patterns: list[FunctionWidget] = []
 
-        self.stacked_layout = QStackedLayout(parent=self)
+        self.stacked_layout = QStackedLayout()
         self.dither_groupBox.layout().addLayout(self.stacked_layout, 2, 0, 1, 2)
         self.startMapping.connect(self.make_map)
 
