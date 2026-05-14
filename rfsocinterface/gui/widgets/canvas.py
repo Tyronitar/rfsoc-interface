@@ -152,22 +152,22 @@ class EditToolBar(NavigationToolbar2QT):
     toolitems = NavigationToolbar2QT.toolitems
 
     def __init__(
-            self,
-            canvas,
-            parent=None,
-            coordinates=True,
-            add_group: bool=False,
-            add_edit_button: bool=False,
-            edit_description: str=EditTool.description,
-            add_function: Callable=None,
-            add_description: str=AddTool.description,
-            remove_function: Callable=None,
-            remove_description: str=RemoveTool.description,
-            undo_function: Callable=None,
-            undo_description: str=UndoTool.description,
-            redo_function: Callable=None,
-            redo_description: str=RedoTool.description,
-            ):
+        self,
+        canvas,
+        parent=None,
+        coordinates=True,
+        add_group: bool=False,
+        add_edit_button: bool=False,
+        edit_description: str=EditTool.description,
+        add_function: Callable=None,
+        add_description: str=AddTool.description,
+        remove_function: Callable=None,
+        remove_description: str=RemoveTool.description,
+        undo_function: Callable=None,
+        undo_description: str=UndoTool.description,
+        redo_function: Callable=None,
+        redo_description: str=RedoTool.description,
+    ):
         self.add_function = add_function
         self.remove_function = remove_function
         self.undo_function = undo_function
@@ -264,22 +264,22 @@ class ToolbarCanvas(QWidget):
     """Widget canvas that contains the navbar."""
 
     def __init__(
-            self,
-            parent=None,
-            fig: Figure | None=None,
-            scrollable: bool=False,
-            add_edit: bool=False,
-            edit_description: str=EditTool.description,
-            coordinates: bool=True,
-            add_function: Callable=None,
-            add_description: str=AddTool.description,
-            remove_function: Callable=None,
-            remove_description: str=RemoveTool.description,
-            undo_function: Callable=None,
-            undo_description: str=UndoTool.description,
-            redo_function: Callable=None,
-            redo_description: str=RedoTool.description,
-            ):
+        self,
+        parent=None,
+        fig: Figure | None=None,
+        scrollable: bool=False,
+        add_edit: bool=False,
+        edit_description: str=EditTool.description,
+        coordinates: bool=True,
+        add_function: Callable=None,
+        add_description: str=AddTool.description,
+        remove_function: Callable=None,
+        remove_description: str=RemoveTool.description,
+        undo_function: Callable=None,
+        undo_description: str=UndoTool.description,
+        redo_function: Callable=None,
+        redo_description: str=RedoTool.description,
+    ):
         """Initialize a ResonatorCanvas."""
         super().__init__(parent)
         if fig is None:
