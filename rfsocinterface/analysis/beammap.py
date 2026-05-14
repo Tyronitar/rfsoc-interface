@@ -1,6 +1,7 @@
 """Functions for analyzing beam maps."""
 
 import pdb
+import logging
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -12,6 +13,9 @@ import tables
 from scipy.optimize import curve_fit
 
 from rfsocinterface.core.data import MapData
+from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine, get_extent
+
+_logger = logging.getLogger(__name__)
 
 
 def Gauss_2d(
@@ -28,6 +32,223 @@ def Gauss_2d(
   sigma_x = fwhm_x / (2 * np.sqrt(2 * np.log(2)))
   sigma_y = fwhm_y / (2 * np.sqrt(2 * np.log(2)))
   return offset + amp * np.exp(-(x-x0)**2/(2.*sigma_x**2) - (y-y0)**2/(2.*sigma_y**2))
+
+
+@register_routine
+class AnalyzeBeamMap(DataRoutine):
+    """Analyze a beam map.
+    
+    Creates the following items in the HDF5 file:
+    - /beammap: group containing the beammap datasets.
+    """
+    name = 'AnalyzeBeamMap'
+    version = '1.0.0'
+
+    requires = {
+        '/map/hits_map',
+        '/map/sum_map',
+        '/map/map_az',
+        '/map/map_za',
+
+    }
+
+    produces = {
+        '/beammap/az_center',
+        '/beammap/za_center',
+        '/beammap/amplitude',
+        '/beammap/snr',
+        '/beammap/chisq',
+        '/beammap/fwhm_az',
+        '/beammap/fwhm_za',
+    }
+
+    def __init__(
+        self,
+        nrows: int=10,
+        ncols: int=10,
+        show_all: bool=False,
+    ):
+        """Initialize the AnalyzeBeamMap routine.
+
+        Arguments:
+            nrows (int, optional): The number of rows for plots in one page. Defaults to 10.
+            ncols (int, optional): The number of columns for plots in one page. Defaults to 10.
+            show_all (bool, optional): Whether to include all resonances in the pdf.
+                If False, will only who on-resonance tones. Defaults to False.
+        """
+        super().__init__(
+            nrows=nrows,
+            ncols=ncols,
+            show_all=show_all,
+        )
+    
+    def inputs(self, pdata):
+        return list(self.requires)
+    
+    def _initialize_datasets(self, pdata: ProcessedData):
+        if pdata.has('beammap', exact_match=True):
+            _logger.warning(f'{self.name}: Beam Map group already exists in the file; overwriting datasets.')
+            del pdata['beammap']
+        beammap_group = pdata.create_group('beammap')
+        beammap_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
+
+    
+    def run(self, pdata: ProcessedData, inputs: list[str]=None):
+        self._initialize_datasets(pdata)
+
+        az = pdata['map/map_az'][:]
+        za = pdata['map/map_za'][:]
+        map_val = pdata['map/sum_map'][:] / pdata['map/hits_map'][:]
+        dpix = pdata['map'].attrs['dpix']
+        extent = get_extent(az, za, dpix=dpix)
+
+        chanmask = pdata.chanmask
+
+        az_center = pdata['beammap/az_center']
+        za_center = pdata['beammap/za_center']
+        amplitude = pdata['beammap/amplitude']
+        snr = pdata['beammap/snr']
+        chisq = pdata['beammap/chisq']
+        fwhm_az = pdata['beammap/fwhm_az']
+        fwhm_za = pdata['beammap/fwhm_za']
+
+        for i_res in pdata.onres_ind:
+            this_val = np.ndarray.flatten(map_val[i_res])
+            this_val[np.isnan(this_val)] = 0
+
+            max_index = np.argwhere(this_val == np.max(this_val))
+            az_idx, za_idx = np.unravel_index(max_index[0], map_val[i_res].shape)
+            az_max = az[az_idx]
+            za_max = za[za_idx]
+            separation = np.sqrt((az - az_max[0])**2 + (za - za_max[0])**2)
+            index = np.argwhere(separation < 0.1)
+            flat_index = np.ravel_multi_index((index[:, 0], index[:, 1]), map_val[i_res].shape)
+
+            az_center[i_res] = np.sum(az[index[:, 0]].squeeze()*this_val[flat_index]) / np.sum(this_val[flat_index])
+            za_center[i_res] = np.sum(za[:, index[:, 1]].squeeze()*this_val[flat_index]) / np.sum(this_val[flat_index])
+            amplitude[i_res] = np.max(this_val[index])
+
+            this_az = np.ndarray.flatten(az[index[:, 0], :])
+            this_za = np.ndarray.flatten(za[:, index[:, 1]])
+            this_val = this_val[flat_index]
+            sigma_z = np.full(int(np.size(this_val)), (np.percentile(this_val, 84) - np.percentile(this_val, 16)) * 0.5)
+            start_params = (
+                np.max(this_val),
+                az_center[i_res],
+                za_center[i_res],
+                0.1,
+                0.1,
+                np.median(this_val)
+            )  
+            bounds = (
+                (0., az_center[i_res] - 0.2, za_center[i_res] - 0.2, 0.01, 0.01, -np.max(np.abs(this_val))),
+                (10. * np.max(this_val), az_center[i_res] + 0.2, za_center[i_res] + 0.2, 1., 1., np.max(np.abs(this_val)))
+            )
+            try:
+                popt, pcov = curve_fit(
+                    Gauss_2d,
+                    (this_az, this_za),
+                    this_val,
+                    p0=start_params,
+                    sigma=sigma_z,
+                    absolute_sigma=True,
+                    maxfev=10000,
+                    bounds=bounds
+                )
+            except RuntimeError:
+                popt = np.zeros(6)
+                pcov = np.zeros((6, 6))
+                continue
+
+            az_center[i_res] = popt[1]
+            za_center[i_res] = popt[2]
+            amplitude[i_res] = popt[0]
+            fwhm_az[i_res] = np.abs(popt[3])
+            fwhm_za[i_res] = np.abs(popt[4])
+            snr[i_res] = popt[0] / np.sqrt(pcov[0, 0])
+            chisq[i_res] = np.sum(
+                ((this_val - Gauss_2d(
+                    (this_az, this_za),
+                    popt[0], popt[1], popt[2], popt[3], popt[4], popt[5]
+                    )) ** 2 / sigma_z ** 2) / (np.size(this_val) - 5.)
+            )
+
+        return list(self.produces)
+
+
+class PlotBeamMap(DataRoutine):
+    """Analyze a beam map.
+    
+    Creates the following items in the HDF5 file:
+    - /beammap: group containing the beammap datasets.
+    """
+    name = 'AnalyzeBeamMap'
+    version = '1.0.0'
+
+    requires = {
+        '/map/hits_map',
+        '/map/sum_map',
+        '/map/map_az',
+        '/map/map_za',
+        '/beammap/az_center',
+        '/beammap/za_center',
+        '/beammap/amplitude',
+        '/beammap/snr',
+        '/beammap/chisq',
+        '/beammap/fwhm_az',
+        '/beammap/fwhm_za',
+    }
+
+    produces = {
+
+    }
+
+    def __init__(
+        self,
+        nrows: int=10,
+        ncols: int=10,
+        show_all: bool=False,
+    ):
+        """Initialize the AnalyzeBeamMap routine.
+
+        Arguments:
+            nrows (int, optional): The number of rows for plots in one page. Defaults to 10.
+            ncols (int, optional): The number of columns for plots in one page. Defaults to 10.
+            show_all (bool, optional): Whether to include all resonances in the pdf.
+                If False, will only who on-resonance tones. Defaults to False.
+        """
+        super().__init__(
+            nrows=nrows,
+            ncols=ncols,
+            show_all=show_all,
+        )
+    
+    def inputs(self, pdata):
+        return list(self.requires)
+    
+    def _initialize_datasets(self, pdata: ProcessedData):
+        if pdata.has('beammap', exact_match=True):
+            _logger.warning(f'{self.name}: Beam Map group already exists in the file; overwriting datasets.')
+            del pdata['beammap']
+        beammap_group = pdata.create_group('beammap')
+        beammap_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
+
+    
+    def run(self, pdata: ProcessedData, inputs: list[str]=None):
+        self._initialize_datasets(pdata)
+
 
 
 def analyze_beammap(

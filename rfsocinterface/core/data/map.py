@@ -291,7 +291,7 @@ class BinTODIntoMap(DataRoutine):
             dpix,
             beam_map_mode=beam_map_mode,
         )
-        n_maps = N_POLARIZATION if not beam_map_mode else self.n_tones
+        n_maps = N_POLARIZATION if not beam_map_mode else pdata.n_tones
         self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za

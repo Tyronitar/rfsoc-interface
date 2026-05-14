@@ -274,6 +274,7 @@ class ProcessedData(NewDataStorage):
                 channel_group.attrs['lo_freq'],
                 channel_group['lo_sweep'][:],
                 tones_table['chanmask'],
+                channel_group.attrs['tile_name'],
             )
             IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle

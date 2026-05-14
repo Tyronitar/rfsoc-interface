@@ -985,21 +985,8 @@ class TelescopeMotorController:
 
         stop_time = time.time()
         _logger.info(f'Dither Pattern: Finished {n_repeats} repeats in {stop_time - start_time:.3f}s')
-
-        # self._run is only changed if the telescope was stopped mid scan
-        # Don't save the telescope data in that case
-        if not self._run:
-            _tele_logger.info("Dither Pattern canceled before completion.")
-            if primary_az:
-                self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
-            if position_return:
-                _tele_logger.info('Canceling Dither Pattern\nResetting telescope position...')
-                self.send('dither_pattern_label', 'Resetting telescope position')
-                self._set_az_pos(initial_az, stop_run=False)
-                self._set_ze_pos(initial_ze, stop_run=False)
-            self.send('dither_pattern_complete', 1)
-            return
         
+        # Save pointing information
         path = Path(file)
         with h5py.File(path, 'w') as f:
             f.create_dataset("az_tel", data=position_data[0::5])
@@ -1009,6 +996,8 @@ class TelescopeMotorController:
             f.create_dataset('za_pps', data=position_data[4::5])
             f.create_dataset("optical_visibility", data=['****'])
         path.chmod(PERMISSIONS_USR_RW)
+        
+        # Reset telescope
         if primary_az:
             self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         if position_return:
@@ -1016,6 +1005,12 @@ class TelescopeMotorController:
             self.send('dither_pattern_label', 'Running Dither Pattern\nResetting telescope position')
             self._set_az_pos(initial_az, stop_run=False)
             self._set_ze_pos(initial_ze, stop_run=False)
+
+        # self._run is only changed if the telescope was stopped mid scan
+        if not self._run:
+            _tele_logger.info("Dither Pattern canceled before completion.")
+            self.send('dither_pattern_complete', 1)
+            return
 
         self._run = False
         _tele_logger.info("Scan Complete")

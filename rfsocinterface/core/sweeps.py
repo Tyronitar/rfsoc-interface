@@ -1298,7 +1298,7 @@ class PowerSweepData(CompositeSweepData):
         max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
         self.max_readout_power = max_readout_power
 
-        counts, bins = np.histogram(max_readout_power, bins=60, range=(-10, 10))
+        counts, bins = np.histogram(power_level_non_linear, bins=60, range=(-10, 10))
         plt.stairs(counts, bins, fill=True)
         plt.show()
         pdb.set_trace()
@@ -1389,18 +1389,19 @@ if __name__ == '__main__':
     import pdb
     from rfsocinterface.core.params import initialize_params_file, update_params_file
 
-    sweep_file = '/data/20260511/20260511_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_Power_Sweep_hour13p5103.h5'
-    tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power'
+    sweep_file = '/data/20260513/20260513_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_Power_Sweep_hour15p0019.h5'
+    tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260513_with_offres_and_max_power'
     # sweep_file = '/data/20260511/20260511_Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_Power_Sweep_hour15p2897.h5'
     # tile_name = 'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
 
     sweep = PowerSweepData.load(sweep_file)
-    # sweep.fit()
+    # sweep.fit()  # Fit resonances if they haven't yet
     # sweep.saveh5(sweep_file)
-    sweep.find_optimal_readout_power(bad_power_cutoff_percentile=0.5, pdf_filename='max_power_Device_aSi1_Channel2.pdf')
+    sweep.find_optimal_readout_power(bad_power_cutoff_percentile=0.5, pdf_filename=f'max_power_{tile_name}.pdf')
     sweep.saveh5(sweep_file)
 
     pdb.set_trace()
+    # NOTE: This will overwrite everything that isn't tone_powers with defaults
     initialize_params_file(tile_name, sweep.bb_freqs, lo_freq=sweep.f_center)
     update_params_file(tile_name, tone_powers=sweep.max_readout_power)
 
