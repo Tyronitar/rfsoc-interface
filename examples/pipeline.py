@@ -82,8 +82,8 @@ if __name__ == '__main__':
         # plotter,
         # make_video,
         # find_fwhm,
-        analyze_beammap,
-        plot_beammap,
+        # analyze_beammap,
+        # plot_beammap,
     ])
 
     # date = '20260319'
@@ -91,14 +91,14 @@ if __name__ == '__main__':
     # date = '20260309'
     # setnum = 1010
     date = '20260515'
-    setnum = 1003
+    setnum = 1007
     # date = '20260325'
     # setnum = 1002
     # date = '20260223'
     # setnum = 1010  # 1009 - 1015
 
 
-    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # i_res = 282
     # total_map = pdata['map/sum_map'][i_res] / pdata['map/hits_map'][i_res]
     # plot_map(
@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
     # pdb.set_trace()
 
-    pdata = ProcessedData.load(date, setnum, mode='a')
+    # pdata = ProcessedData.load(date, setnum, mode='a')
     pdb.set_trace()
     map_val = pdata['map/map_val'][:]
     map_az = pdata['map/map_az'][:]

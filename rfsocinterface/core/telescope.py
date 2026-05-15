@@ -764,7 +764,7 @@ class TelescopeMotorController:
                 break
             except ValueError:
                 _tele_logger.error("caught an exception regarding Float conversion")
-                break
+                continue
             finally:
                 # This code always executes after leaving the try statement
                 pass

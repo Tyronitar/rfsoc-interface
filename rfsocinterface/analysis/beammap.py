@@ -11,8 +11,9 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
-from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, get_beammap_pdf_template, OFF_RESONANCE_COLOR, BAD_RESONANCE_COLOR
+from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, get_beammap_pdf_template, OFF_RESONANCE_COLOR, BAD_RESONANCE_COLOR, get_detector_pos_pdf_template
 from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine, get_extent
+from rfsocinterface.core.params import copy_and_update_params_file
 
 
 _logger = logging.getLogger(__name__)
@@ -476,3 +477,96 @@ class PlotBeamMap(DataRoutine):
 
         pdf.close()
         return []
+
+
+def combine_polarized_beammaps(
+    pol1_data: ProcessedData,
+    pol2_data: ProcessedData,
+    new_tile_name: str,
+    amplitude_normalization_percentile: float=75,
+    pdf_filename: str=None,
+):
+    """Determines various tile parameters from two beam maps of opposite polarizations.
+    
+        Creates a new params_file with detector_delta_x, detector_delta_y, detector_beam_ampl,
+    and detector_pol.
+    
+    """
+    onres_ind = pol1_data.onres_ind
+    old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']
+    chanmask = pol1_data.chanmask
+
+    az_center_pol1 = pol1_data['beammap/az_center'][:]
+    za_center_pol1 = pol1_data['beammap/za_center'][:]
+    amplitude_pol1 = pol1_data['beammap/amplitude'][:]
+    chisq_pol1 = pol1_data['beammap/chisq'][:]
+    fwhm_az_pol1 = pol1_data['beammap/fwhm_az'][:]
+    fwhm_za_pol1 = pol1_data['beammap/fwhm_za'][:]
+
+    az_center_pol2 = pol2_data['beammap/az_center'][:]
+    za_center_pol2 = pol2_data['beammap/za_center'][:]
+    amplitude_pol2 = pol2_data['beammap/amplitude'][:]
+    chisq_pol2 = pol2_data['beammap/chisq'][:]
+    fwhm_az_pol2 = pol2_data['beammap/fwhm_az'][:]
+    fwhm_za_pol2 = pol2_data['beammap/fwhm_za'][:]
+
+    # Normalize amplitudes
+    sorted_amp_pol1 = np.argsort(amplitude_pol1)
+    sorted_amp_pol2 = np.argsort(amplitude_pol2)
+    amplitude_pol1 /= np.percentile(amplitude_pol1[onres_ind], amplitude_normalization_percentile)
+    amplitude_pol2 /= np.percentile(amplitude_pol2[onres_ind], amplitude_normalization_percentile)
+
+    # Correct for shifts in source position
+    az_center = np.zeros(chanmask.size)
+    za_center = np.zeros(chanmask.size)
+    detector_pol = np.zeros(chanmask.size, dtype=np.int8)
+    beam_ampl = np.zeros(chanmask.size)
+
+    for i_res in onres_ind:
+        # if amplitude_pol1[i_res] > amplitude_pol2[i_res]:
+        if sorted_amp_pol1[i_res] > sorted_amp_pol2[i_res]:
+            detector_pol[i_res] = 1
+            az_center[i_res] = az_center_pol1[i_res]
+            za_center[i_res] = za_center_pol1[i_res]
+            beam_ampl[i_res] = amplitude_pol1[i_res]
+        else:
+            detector_pol[i_res] = 2
+            az_center[i_res] = az_center_pol2[i_res]
+            za_center[i_res] = za_center_pol2[i_res]
+            beam_ampl[i_res] = amplitude_pol2[i_res]
+
+    # TODO: Update params file
+
+    # # Get positions relative to boresight of the telescope
+    # delta_dx = az_center - np.median(az_center[onres_ind])
+    # delta_dy = za_center - np.median(za_center[onres_ind])
+    
+    # # Save to a new parameters file 
+    # copy_and_update_params_file(
+    #     old_tile_name,
+    #     new_tile_name,
+    #     detector_delta_x=az_center,
+    #     detector_delta_y=za_center,
+    #     detector_beam_ampl=beam_ampl,
+    #     detector_pol=detector_pol
+    # )
+
+    # Plot centers
+    if pdf_filename is None:
+        pdf_filename = get_detector_pos_pdf_template(pol1_data.date, new_tile_name)
+    pol1 = np.argwhere(detector_pol == 1).flatten()
+    pol2 = np.argwhere(detector_pol == 2).flatten()
+    with PdfPages(pdf_filename) as pdf:
+        plt.scatter(az_center[pol2], za_center[pol2], marker='x', color='blue', label=f'Polarization 2 (N = {pol2.size})')
+        for i_pol in pol2:
+           plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='blue', fontsize=20.)
+        plt.scatter(az_center[pol1], za_center[pol1], marker='+', color='red', label=f'Polarization 1 (N = {pol1.size})')
+        for i_pol in pol1:
+           plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='red', fontsize=20.)
+        plt.xlabel('AZ Position (deg)')
+        plt.ylabel('ZA Position (deg)')
+        # plt.legend()
+        pdf.savefig()
+        plt.show()
+    
+    pdb.set_trace()
