@@ -181,29 +181,35 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
         amplitudes = np.array(amplitudes)
         fwhms = np.array(fwhms)
 
-        fig = plt.figure()
-        plt.title('FWHM Histogram')
-        counts, bins = np.histogram(fwhms, bins='fd')
-        mean = mean_histogram(bins[:-1], counts)
-        std = std_histogram(bins[:-1], counts)
-        plt.ylabel('Frequency')
-        plt.xlabel('FWHM (Degrees)')
-        plt.stairs(counts, bins, fill=True, label=rf'$\mu$ = {mean:.3f} deg; $\sigma$ = {std:.3f} deg')
-        plt.legend()
-        pdf.savefig(fig)
-        plt.close(fig)
+        try:
+            fig = plt.figure()
+            plt.title('FWHM Histogram')
+            counts, bins = np.histogram(fwhms, bins='fd')
+            mean = mean_histogram(bins[:-1], counts)
+            std = std_histogram(bins[:-1], counts)
+            plt.ylabel('Frequency')
+            plt.xlabel('FWHM (Degrees)')
+            plt.stairs(counts, bins, fill=True, label=rf'$\mu$ = {mean:.3f} deg; $\sigma$ = {std:.3f} deg')
+            plt.legend()
+            pdf.savefig(fig)
+            plt.close(fig)
+        except Exception:
+            pass
 
-        fig = plt.figure()
-        plt.title('Amplitude Histogram')
-        counts, bins = np.histogram(amplitudes, bins='fd')
-        mean = mean_histogram(bins[:-1], counts)
-        std = std_histogram(bins[:-1], counts)
-        plt.ylabel('Frequency')
-        plt.xlabel('Amplitude (mK)')
-        plt.stairs(counts, bins, fill=True, label=rf'$\mu$ = {mean:.3f} mK; $\sigma$ = {std:.3f} mK')
-        plt.legend()
-        pdf.savefig(fig)
-        plt.close(fig)
+        try:
+            fig = plt.figure()
+            plt.title('Amplitude Histogram')
+            counts, bins = np.histogram(amplitudes, bins='fd')
+            mean = mean_histogram(bins[:-1], counts)
+            std = std_histogram(bins[:-1], counts)
+            plt.ylabel('Frequency')
+            plt.xlabel('Amplitude (mK)')
+            plt.stairs(counts, bins, fill=True, label=rf'$\mu$ = {mean:.3f} mK; $\sigma$ = {std:.3f} mK')
+            plt.legend()
+            pdf.savefig(fig)
+            plt.close(fig)
+        except Exception:
+            pass
 
     return amplitudes, fwhms
 

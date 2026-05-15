@@ -1,6 +1,7 @@
 """Beam map analysis routines."""
 
 import logging
+import pdb
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -11,7 +12,6 @@ import numpy.typing as npt
 from scipy.optimize import curve_fit
 
 from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, get_beammap_pdf_template, OFF_RESONANCE_COLOR, BAD_RESONANCE_COLOR
-from rfsocinterface.core.data import MapData
 from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine, get_extent
 
 
@@ -127,8 +127,8 @@ class AnalyzeBeamMap(DataRoutine):
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
         self._initialize_datasets(pdata)
 
-        az = pdata['map/map_az'][:]
-        za = pdata['map/map_za'][:]
+        az = pdata['map/map_az'][:][:, np.newaxis]
+        za = pdata['map/map_za'][:][np.newaxis, :]
         map_val = pdata['map/map_val'][:]
 
         az_center = pdata['beammap/az_center']
@@ -157,8 +157,8 @@ class AnalyzeBeamMap(DataRoutine):
 
             max_index = np.argwhere(this_val == np.max(this_val))
             az_idx, za_idx = np.unravel_index(max_index[0], map_val[i_res].shape)
-            az_max = az[az_idx]
-            za_max = za[za_idx]
+            az_max = az[az_idx, :]
+            za_max = za[:, za_idx]
             separation = np.sqrt((az - az_max[0])**2 + (za - za_max[0])**2)
             index = np.argwhere(separation < 0.1)
             flat_index = np.ravel_multi_index((index[:, 0], index[:, 1]), map_val[i_res].shape)
@@ -236,7 +236,7 @@ class AnalyzeBeamMap(DataRoutine):
 class PlotBeamMap(DataRoutine):
     """Plot a beam map, post-analysis."""
 
-    name = 'AnalyzeBeamMap'
+    name = 'PlotBeamMap'
     version = '1.0.0'
 
     requires = {
@@ -313,7 +313,7 @@ class PlotBeamMap(DataRoutine):
         detector_f = pdata.detector_f()
 
         # Which tones to use
-        tones_to_plot = np.arange(pdata.n_tones) if self.params['show_all'] else pdata.onres_ind
+        tones_to_plot = np.arange(pdata.n_tones, dtype=int) if self.params['show_all'] else pdata.onres_ind
 
         # Initialize PDF
         savefile = self.params['savefile']

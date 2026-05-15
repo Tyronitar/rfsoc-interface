@@ -279,7 +279,7 @@ class BinTODIntoMap(DataRoutine):
         map_group.create_dataset('sum_map', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
         map_group.create_dataset('hits_map', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
         map_group.create_dataset('map_val', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
-        map_group.create_dataset('total_map', shape=(n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
+        map_group.create_dataset('total_map', shape=(n_pix_x, n_pix_y), chunks=(n_pix_x, n_pix_y), dtype=np.float64)
         map_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
         map_group.attrs['dpix'] = dpix
         good_samples = map_group.create_dataset('good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32))
@@ -329,19 +329,20 @@ class BinTODIntoMap(DataRoutine):
         _logger.info(f'{self.name}: Done computing netd')
 
         # Get rid of tones with bad weights
-        med_netd_cut_threshold = self.params['med_netd_cut_threshold']
-        good_idx = np.argwhere(chanmask == 1).flatten()
-        good_netd = netd[good_idx]
-        chanmask[good_idx] = np.where(good_netd > med_netd_cut_threshold * np.nanmedian(good_netd), -1, chanmask[good_idx])
+        if not beam_map_mode:
+            med_netd_cut_threshold = self.params['med_netd_cut_threshold']
+            good_idx = np.argwhere(chanmask == 1).flatten()
+            good_netd = netd[good_idx]
+            chanmask[good_idx] = np.where(good_netd > med_netd_cut_threshold * np.nanmedian(good_netd), -1, chanmask[good_idx])
 
-        good_idx = np.argwhere(chanmask == 1).flatten()
-        good_netd = netd[good_idx]
-        netd_med = np.median(np.log10(good_netd))
-        netd_std = np.std(np.log10(good_netd))
-        chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, chanmask[good_idx])
-        chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx])
+            good_idx = np.argwhere(chanmask == 1).flatten()
+            good_netd = netd[good_idx]
+            netd_med = np.median(np.log10(good_netd))
+            netd_std = np.std(np.log10(good_netd))
+            chanmask[good_idx] = np.where(good_netd > 10 ** (netd_med + netd_std * 2), -1, chanmask[good_idx])
+            chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx])
 
-        netd[chanmask != 1] = 0
+            netd[chanmask != 1] = 0
 
         if beam_map_mode:
             tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
@@ -393,7 +394,8 @@ class BinTODIntoMap(DataRoutine):
             sum_map[map_idx] = signal.convolve2d(sum_map[map_idx], kernel, mode='same')
             hits_map[map_idx] = signal.convolve2d(hits_map[map_idx], kernel, mode='same')
 
-        pdata.set_chanmask(chanmask)
+        if not beam_map_mode:
+            pdata.set_chanmask(chanmask)
         pdata['map/hits_map'][:] = hits_map
         pdata['map/sum_map'][:] = sum_map
         with np.errstate(divide='ignore', invalid='ignore'):

@@ -31,6 +31,7 @@ from rfsocinterface.core.utils import (
     parallel_plot,
     mHz_formatter,
     get_sweep_filename,
+    get_params_file_template,
     ON_RESONANCE_COLOR,
     OFF_RESONANCE_COLOR,
     BAD_RESONANCE_COLOR,
@@ -1389,20 +1390,25 @@ if __name__ == '__main__':
     import pdb
     from rfsocinterface.core.params import initialize_params_file, update_params_file
 
-    sweep_file = '/data/20260513/20260513_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_Power_Sweep_hour15p0019.h5'
-    tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260513_with_offres_and_max_power'
-    # sweep_file = '/data/20260511/20260511_Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_Power_Sweep_hour15p2897.h5'
-    # tile_name = 'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
+    # sweep_file = '/data/20260513/20260513_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_Power_Sweep_hour15p0019.h5'
+    # tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260513_with_offres_and_max_power'
+    sweep_file = '/data/20260515/20260515_Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power_Power_Sweep_hour11p7350.h5'
+    tile_name = 'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
 
     sweep = PowerSweepData.load(sweep_file)
-    # sweep.fit()  # Fit resonances if they haven't yet
-    # sweep.saveh5(sweep_file)
+    sweep.fit()  # Fit resonances if they haven't yet
+    sweep.saveh5(sweep_file)
     sweep.find_optimal_readout_power(bad_power_cutoff_percentile=0.5, pdf_filename=f'max_power_{tile_name}.pdf')
     sweep.saveh5(sweep_file)
 
     pdb.set_trace()
     # NOTE: This will overwrite everything that isn't tone_powers with defaults
-    initialize_params_file(tile_name, sweep.bb_freqs, lo_freq=sweep.f_center)
-    update_params_file(tile_name, tone_powers=sweep.max_readout_power)
+    # TODO: Create a "copy_params_file" function
+    params_file = get_params_file_template(tile_name)
+    if Path(params_file).exists():
+        update_params_file(params_file, tone_powers=sweep.max_readout_power)
+    else:
+        initialize_params_file(tile_name, sweep.bb_freqs, lo_freq=sweep.f_center)
+        update_params_file(tile_name, tone_powers=sweep.max_readout_power)
 
 
