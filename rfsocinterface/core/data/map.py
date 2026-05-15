@@ -168,17 +168,23 @@ class BinTODIntoMap(DataRoutine):
         of the data values for each pixel.
     - /map/hits_map: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing the 
         number of hits for each pixel.
+    - /map/map_val: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing 
+        the binned map values (i.e. sum_map / hits_map).
+    - /map/total_map: 2D array of shape (n_pix_x, n_pix_y) containing 
+        the total map values (sum over all maps).
     - /map/good_samples: 2D variable length array of length n_chan containing the 
         indices of the good samples for each channel.
 
     """
     name = 'BinTODIntoMap'
-    version = '1.1.0'
+    version = '2.0.0'
 
     produces = {
         '/map/netd',
         '/map/hits_map',
         '/map/sum_map',
+        '/map/map_val',
+        '/map/total_map',
         '/map/map_az',
         '/map/map_za',
         '/map/good_samples',
@@ -272,9 +278,10 @@ class BinTODIntoMap(DataRoutine):
         map_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
         map_group.create_dataset('sum_map', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
         map_group.create_dataset('hits_map', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
+        map_group.create_dataset('map_val', shape=(n_maps, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
+        map_group.create_dataset('total_map', shape=(n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
         map_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
         map_group.attrs['dpix'] = dpix
-        # TODO: fix this last part
         good_samples = map_group.create_dataset('good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32))
         for i_chan in range(pdata.n_chan):
             interpolated_samples = pdata.get_from_channel(i_chan, 'time_ordered_data/interpolated_samples')
@@ -342,7 +349,7 @@ class BinTODIntoMap(DataRoutine):
             tones_to_map = np.argwhere(chanmask == 1).flatten()
 
         # Create map
-        _logger.info('BinTODIntoMap: Creating map...')
+        _logger.info(f'{self.name}: Creating map...')
         for n_loop, i_tone in enumerate(tones_to_map):
             if n_loop == np.size(tones_to_map) // 2:
                 _logger.info(f'{self.name}: Halfway done creating map...')
@@ -389,6 +396,9 @@ class BinTODIntoMap(DataRoutine):
         pdata.set_chanmask(chanmask)
         pdata['map/hits_map'][:] = hits_map
         pdata['map/sum_map'][:] = sum_map
+        with np.errstate(divide='ignore', invalid='ignore'):
+            pdata['map/map_val'][:] = sum_map / hits_map
+            pdata['map/total_map'][:] = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
         pdata['map/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating map.')
 
@@ -400,34 +410,29 @@ class PlotMap(DataRoutine):
     """Plot the map created by BinTODIntoMap.
 
     Creates the following items in the HDF5 file:
-    - /plotting: group containing the plotting datasets.
-    - /plotting/map: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing 
-        the binned map values (i.e. sum_map / hits_map).
-    - /plotting/total_map: 2D array of shape (n_pix_x, n_pix_y) containing 
-        the total map values (sum over all maps).
-    - /plotting/flagged_map_1: 2D array of shape (n_pix_x, n_pix_y) containing
+    - /map/plotting: group containing the plotting datasets.
+    - /map/plotting/flagged_map_1: 2D array of shape (n_pix_x, n_pix_y) containing
         the flagged pixels based on the first map (e.g. polarization 1).
-    - /plotting/flagged_map_2: 2D array of shape (n_pix_x, n_pix_y) containing 
+    - /map/plotting/flagged_map_2: 2D array of shape (n_pix_x, n_pix_y) containing 
         the flagged pixels based on the second map (e.g. polarization 2).
-    - /plotting/flagged_total_map: 2D array of shape (n_pix_x, n_pix_y) 
+    - /map/plotting/flagged_total_map: 2D array of shape (n_pix_x, n_pix_y) 
         containing the flagged pixels based on the total map
-    - /plotting/contour_levels: 1D array containing the contour levels used for 
+    - /map/plotting/contour_levels: 1D array containing the contour levels used for 
         plotting the flagged pixels.
     """
     name = 'PlotMap'
-    version = '1.0.0'
+    version = '2.0.0'
 
     requires = {
         '/map/map_az',
         '/map/map_za',
         '/map/netd',
-        '/map/sum_map',
         '/map/hits_map',
+        '/map/map_val',
+        '/map/total_map',
     }
 
     produces = {
-        '/map/plotting/map',
-        '/map/plotting/total_map',
         '/map/plotting/flagged_map_1',
         '/map/plotting/flagged_map_2',
         '/map/plotting/flagged_total_map',
@@ -513,30 +518,16 @@ class PlotMap(DataRoutine):
                 return False
             _logger.info('Plotting group already exists in the file; overwriting datasets.')
             del pdata['map/plotting']
-        sum_map = pdata['map/sum_map']
-        hits_map = pdata['map/hits_map']
-        mapp = pdata.create_dataset(
-            '/map/plotting/map',
-            shape=sum_map.shape,
-            dtype=np.float64,
-        )
-        total_map = pdata.create_dataset(
-            '/map/plotting/total_map',
-            shape=sum_map.shape[1:],
-            dtype=np.float64,
-        )
-        with np.errstate(divide='ignore', invalid='ignore'):
-            mapp[:] = sum_map[:] / hits_map[:]
-            total_map[:] = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
+        pdata['map'].create_group('plotting')
         return True
 
     def _get_combined_map(self, pdata: ProcessedData) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         """Get the combined map of flagged pixels based on individual maps and the total map."""
         sigma = self.params['gaussian_sigma']
-        map = pdata['map/plotting/map']
-        total_map = pdata['map/plotting/total_map']
-        flagged_map_1 = gaussian_filter(map[0], sigma)
-        flagged_map_2 = gaussian_filter(map[1], sigma)
+        map_val = pdata['map/map_val']
+        total_map = pdata['map/total_map']
+        flagged_map_1 = gaussian_filter(map_val[0], sigma)
+        flagged_map_2 = gaussian_filter(map_val[1], sigma)
         flagged_map_3 = gaussian_filter(total_map, sigma)
 
         # Convert all nans to boolean True
@@ -586,8 +577,8 @@ class PlotMap(DataRoutine):
         image.
         """
         hits_map = pdata['map/hits_map']
-        mapp = pdata['map/plotting/map'][:]
-        total_map = pdata['map/plotting/total_map'][:]
+        map_val = pdata['map/map_val'][:]
+        total_map = pdata['map/total_map'][:]
         flagged_map_1_filt = pdata['map/plotting/flagged_map_1'][:]
         flagged_map_2_filt = pdata['map/plotting/flagged_map_2'][:]
         flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
@@ -601,11 +592,11 @@ class PlotMap(DataRoutine):
         valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
         map_goodcov_1 = np.zeros(np.size(valid_cov_1[:,0]))
         for i_cov in np.arange(np.size(valid_cov_1[:,0])):
-            map_goodcov_1[i_cov] = mapp[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
+            map_goodcov_1[i_cov] = map_val[0, valid_cov_1[i_cov,0],valid_cov_1[i_cov,1]]
         valid_cov_2 = np.argwhere(hits_map[1] > 0.5 * np.median(hits_map[1]))
         map_goodcov_2 = np.zeros(np.size(valid_cov_2[:,0]))
         for i_cov in np.arange(np.size(valid_cov_2[:,0])):
-            map_goodcov_2[i_cov] = mapp[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
+            map_goodcov_2[i_cov] = map_val[1, valid_cov_2[i_cov,0],valid_cov_2[i_cov,1]]
 
         netd = pdata['map/netd']
         netd_1 = netd[pdata.detector_pol == 1]
@@ -640,7 +631,7 @@ class PlotMap(DataRoutine):
 
         # Vertical polarization
         im = axes[0].imshow(
-            np.flip(np.transpose(mapp[0][::-1]), 1),
+            np.flip(np.transpose(map_val[0][::-1]), 1),
             extent=extent,
             aspect='equal',
             vmin=-max_abs,
@@ -658,7 +649,7 @@ class PlotMap(DataRoutine):
 
         # Horizontal polarization
         im = axes[1].imshow(
-            np.flip(np.transpose(mapp[1][::-1]), 1),
+            np.flip(np.transpose(map_val[1][::-1]), 1),
             extent=extent,
             aspect='equal',
             vmin=-max_abs,
@@ -796,6 +787,10 @@ class MakeVideo(DataRoutine):
         the sum of the data values for each pixel, for each time block.
     - /video/hits_map: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing 
         the number of hitsfor each pixel, for each time block.
+    - /video/map_val: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing 
+        the binned map values (i.e. sum_map / hits_map).
+    - /video/total_map: 3D array of shape (n_blocks, n_pix_x, n_pix_y) containing 
+        the total map values (sum over all maps).
     - /video/good_samples: 2D variable length array of length n_chan containing the 
         indices of the good samples for each channel
     - /video/cropped_optical_video: 4D array of shape (n_blocks, height, width, 3) 
@@ -808,6 +803,8 @@ class MakeVideo(DataRoutine):
         '/video/netd',
         '/video/hits_map',
         '/video/sum_map',
+        '/video/map_val',
+        '/video/total_map',
         '/video/map_az',
         '/video/map_za',
         '/video/cropped_optical_video',
@@ -930,6 +927,8 @@ class MakeVideo(DataRoutine):
         video_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
         video_group.create_dataset('sum_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), chunks=(1, 1, n_pix_x, n_pix_y), dtype=np.float64)
         video_group.create_dataset('hits_map', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), chunks=(1, 1, n_pix_x, n_pix_y), dtype=np.float64)
+        video_group.create_dataset('map_val', shape=(n_blocks, n_maps, n_pix_x, n_pix_y), chunks=(1, 1, n_pix_x, n_pix_y), dtype=np.float64)
+        video_group.create_dataset('total_map', shape=(n_blocks, n_pix_x, n_pix_y), chunks=(1, n_pix_x, n_pix_y), dtype=np.float64)
         video_group.create_dataset('cropped_optical_video', shape=(n_blocks, *optical_video_shape), chunks=(1, *optical_video_shape), dtype=np.uint8)
         video_group.attrs['dpix'] = dpix
         video_group.attrs['block_size_s'] = block_size_s
@@ -1076,6 +1075,10 @@ class MakeVideo(DataRoutine):
             pdata.set_chanmask(chanmask)
             pdata['video/hits_map'][:] = hits_map
             pdata['video/sum_map'][:] = sum_map
+            with np.errstate(divide='ignore', invalid='ignore'):
+                pdata['video/map_val'] = sum_map / hits_map 
+                total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
+            pdata['video/total_map'] = total_map
             pdata['video/netd'][:] = netd
             _logger.info(f'{self.name}: Done creating maps.')
 
@@ -1103,14 +1106,11 @@ class MakeVideo(DataRoutine):
             map_za = pdata['video/map_za'][:]
             optical_video = pdata['video/cropped_optical_video'][:]
 
-            sum_map = pdata['video/sum_map'][:]
-            hits_map = pdata['video/hits_map'][:]
+            total_map = pdata['video/total_map'][:]
             block_size_s = pdata['video'].attrs['block_size_s']
             dpix = pdata['video'].attrs['dpix']
 
         # Animation
-        with np.errstate(divide='ignore', invalid='ignore'):
-            total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
         if self.params['plot']:
             _logger.info(f'{self.name}: Creating animation...')
             if self.params['savefile'] is None:

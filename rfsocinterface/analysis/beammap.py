@@ -1,6 +1,5 @@
-"""Functions for analyzing beam maps."""
+"""Beam map analysis routines."""
 
-import pdb
 import logging
 
 import matplotlib.pyplot as plt
@@ -9,11 +8,12 @@ from matplotlib.offsetbox import AnchoredText
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import numpy.typing as npt
-import tables
 from scipy.optimize import curve_fit
 
+from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, get_beammap_pdf_template, OFF_RESONANCE_COLOR, BAD_RESONANCE_COLOR
 from rfsocinterface.core.data import MapData
 from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine, get_extent
+
 
 _logger = logging.getLogger(__name__)
 
@@ -27,29 +27,41 @@ def Gauss_2d(
     fwhm_y: float,
     offset: float,
 ) -> npt.NDArray:
-#  return offset + amp * np.exp(-((x-x0)**2 + (y-y0)**2)/ (2. * sigma**2))
-  (x,y) = xy_coords
-  sigma_x = fwhm_x / (2 * np.sqrt(2 * np.log(2)))
-  sigma_y = fwhm_y / (2 * np.sqrt(2 * np.log(2)))
-  return offset + amp * np.exp(-(x-x0)**2/(2.*sigma_x**2) - (y-y0)**2/(2.*sigma_y**2))
+    (x,y) = xy_coords
+    sigma_x = fwhm_x / (2 * np.sqrt(2 * np.log(2)))
+    sigma_y = fwhm_y / (2 * np.sqrt(2 * np.log(2)))
+    return offset + amp * np.exp(-(x-x0)**2/(2.*sigma_x**2) - (y-y0)**2/(2.*sigma_y**2))
 
 
 @register_routine
 class AnalyzeBeamMap(DataRoutine):
     """Analyze a beam map.
+
+        Fits a 2D gaussian to the map for each reasonator to characterize the
+    angular response.
     
     Creates the following items in the HDF5 file:
     - /beammap: group containing the beammap datasets.
+    - /beammap/az_center: 1D array of length n_tones containing the center of the
+        fitted gaussian in azimuth.
+    - /beammap/za_center: 1D array of length n_tones containing the center of the
+        fitted gaussian in zenith angle.
+    - /beammap/amplitude: 1D array of length n_tones containing the amplitude of the
+        fitted gaussian.
+    - /beammap/chisq: 1D array of length n_tones containing the chi squared of the
+        fitted gaussian.
+    - /beammap/fwhm_az: 1D array of length n_tones containing the FWHM of the fitted 
+        gaussian in azimuth.
+    - /beammap/fwhm_za: 1D array of length n_tones containing the FWHM of the fitted 
+        gaussian in zenith angle.
     """
     name = 'AnalyzeBeamMap'
     version = '1.0.0'
 
     requires = {
-        '/map/hits_map',
-        '/map/sum_map',
+        '/map/map_val',
         '/map/map_az',
         '/map/map_za',
-
     }
 
     produces = {
@@ -64,22 +76,35 @@ class AnalyzeBeamMap(DataRoutine):
 
     def __init__(
         self,
-        nrows: int=10,
-        ncols: int=10,
-        show_all: bool=False,
+        initial_fwhm: float=0.1,
+        min_fwhm: float=0.01,
+        max_fwhm: float=1.0,
+        az_bounds_offset: float=0.2,
+        za_bounds_offset: float=0.2,
+        maxfev: int=10000,
     ):
         """Initialize the AnalyzeBeamMap routine.
 
         Arguments:
-            nrows (int, optional): The number of rows for plots in one page. Defaults to 10.
-            ncols (int, optional): The number of columns for plots in one page. Defaults to 10.
-            show_all (bool, optional): Whether to include all resonances in the pdf.
-                If False, will only who on-resonance tones. Defaults to False.
+            initial_fwhm (float, optional): The initial guess for FWHM for the fit.
+                Defaults to 0.1.
+            min_fwhm (float, optional): The minimum FWHM for the fit. Defaults to 0.01.
+            max_fwhm (float, optional): The maximum FWHM for the fit. Defaults to 1.
+            az_bounds_offset (float, optional): Relative offset to use when determining
+                the bounds of the center of the Gaussian in azimuth. Defaults to 0.2.
+            za_bounds_offset (float, optional): Relative offset to use when determining
+                the bounds of the center of the Gaussian in zenith angle. Defaults to
+                0.2.
+            maxfev (int, optional): Maximum function evaluations to try before 
+                abandoning the fit. Defaults to 10000.
         """
         super().__init__(
-            nrows=nrows,
-            ncols=ncols,
-            show_all=show_all,
+            initial_fwhm=initial_fwhm,
+            min_fwhm=min_fwhm,
+            max_fwhm=max_fwhm,
+            az_bounds_offset=abs(az_bounds_offset),
+            za_bounds_offset=abs(za_bounds_offset),
+            maxfev=maxfev,
         )
     
     def inputs(self, pdata):
@@ -104,11 +129,7 @@ class AnalyzeBeamMap(DataRoutine):
 
         az = pdata['map/map_az'][:]
         za = pdata['map/map_za'][:]
-        map_val = pdata['map/sum_map'][:] / pdata['map/hits_map'][:]
-        dpix = pdata['map'].attrs['dpix']
-        extent = get_extent(az, za, dpix=dpix)
-
-        chanmask = pdata.chanmask
+        map_val = pdata['map/map_val'][:]
 
         az_center = pdata['beammap/az_center']
         za_center = pdata['beammap/za_center']
@@ -118,7 +139,19 @@ class AnalyzeBeamMap(DataRoutine):
         fwhm_az = pdata['beammap/fwhm_az']
         fwhm_za = pdata['beammap/fwhm_za']
 
-        for i_res in pdata.onres_ind:
+
+        initial_fwhm = self.params['initial_fwhm']
+        min_fwhm = self.params['min_fwhm']
+        max_fwhm = self.params['max_fwhm']
+        az_bounds_offset = self.params['az_bounds_offset']
+        za_bounds_offset = self.params['za_bounds_offset']
+        maxfev = self.params['maxfev']
+
+        n_tones = pdata.onres_ind.size
+        _logger.info(f'{self.name}: Analyzing beam map...')
+        for i, i_res in enumerate(pdata.onres_ind):
+            if i == n_tones // 2:
+                _logger.info(f'{self.name}: Halfway done analyzing beam map...')
             this_val = np.ndarray.flatten(map_val[i_res])
             this_val[np.isnan(this_val)] = 0
 
@@ -142,13 +175,29 @@ class AnalyzeBeamMap(DataRoutine):
                 np.max(this_val),
                 az_center[i_res],
                 za_center[i_res],
-                0.1,
-                0.1,
+                initial_fwhm,
+                initial_fwhm,
                 np.median(this_val)
             )  
             bounds = (
-                (0., az_center[i_res] - 0.2, za_center[i_res] - 0.2, 0.01, 0.01, -np.max(np.abs(this_val))),
-                (10. * np.max(this_val), az_center[i_res] + 0.2, za_center[i_res] + 0.2, 1., 1., np.max(np.abs(this_val)))
+                # Lower bounds
+                (
+                    0.,
+                    az_center[i_res] - az_bounds_offset,
+                    za_center[i_res] - za_bounds_offset,
+                    min_fwhm,
+                    min_fwhm,
+                    -np.max(np.abs(this_val)),
+                ),
+                # Uppwer bounds
+                (
+                    10. * np.max(this_val),
+                    az_center[i_res] + az_bounds_offset,
+                    za_center[i_res] + za_bounds_offset,
+                    max_fwhm,
+                    max_fwhm,
+                    np.max(np.abs(this_val)),
+                ),
             )
             try:
                 popt, pcov = curve_fit(
@@ -158,10 +207,11 @@ class AnalyzeBeamMap(DataRoutine):
                     p0=start_params,
                     sigma=sigma_z,
                     absolute_sigma=True,
-                    maxfev=10000,
+                    maxfev=maxfev,
                     bounds=bounds
                 )
             except RuntimeError:
+                _logger.warning(f'{self.name}: Fit for tone {i_res} failed. Setting all values to zero.') 
                 popt = np.zeros(6)
                 pcov = np.zeros((6, 6))
                 continue
@@ -182,18 +232,15 @@ class AnalyzeBeamMap(DataRoutine):
         return list(self.produces)
 
 
+@register_routine
 class PlotBeamMap(DataRoutine):
-    """Analyze a beam map.
-    
-    Creates the following items in the HDF5 file:
-    - /beammap: group containing the beammap datasets.
-    """
+    """Plot a beam map, post-analysis."""
+
     name = 'AnalyzeBeamMap'
     version = '1.0.0'
 
     requires = {
-        '/map/hits_map',
-        '/map/sum_map',
+        '/map/map_val',
         '/map/map_az',
         '/map/map_za',
         '/beammap/az_center',
@@ -205,150 +252,91 @@ class PlotBeamMap(DataRoutine):
         '/beammap/fwhm_za',
     }
 
-    produces = {
-
-    }
-
     def __init__(
         self,
+        high_snr_percentile: float=55,
+        fom_cutoff: float=50,
         nrows: int=10,
         ncols: int=10,
-        show_all: bool=False,
+        show_all: bool=True,
+        savefile: str=None,
+        save_dir: str=DEFAULT_DATA_DIRECTORY,
+        dpi: float=300,
     ):
-        """Initialize the AnalyzeBeamMap routine.
+        """Initialize the PlotBeamMap routine.
 
         Arguments:
+            high_snr_percentile (float, optional): The percentile for determining a high
+                SNR. Defaults to 55.
+            fom_cutoff (float, optional): The minimum FOM value to consider for high
+                SNR. Defaults to 50.
             nrows (int, optional): The number of rows for plots in one page. Defaults to 10.
             ncols (int, optional): The number of columns for plots in one page. Defaults to 10.
             show_all (bool, optional): Whether to include all resonances in the pdf.
                 If False, will only who on-resonance tones. Defaults to False.
+            savefile (str, optional): Where to save the pdf. If `None` is provided, will
+                auto-generate a file name using `get_beammap_pdf_template`. Defaults to 
+                `None`.
+            save_dir (str, optional): The directory to save the savefile to. Passed as 
+                an argument to `get_beammap_pdf_template`, and as such is only used if
+                `savefile` is `None`. Defaults to `DEFAULT_DATA_DIRECTORY`.
+            dpi (float, optional): Dots per inch to use in the figures. Defaults to 300.
         """
         super().__init__(
+            high_snr_percentile=high_snr_percentile,
+            fom_cutoff=fom_cutoff,
             nrows=nrows,
             ncols=ncols,
             show_all=show_all,
+            savefile=savefile,
+            save_dir=save_dir,
+            dpi=dpi,
         )
     
-    def inputs(self, pdata):
+    def inputs(self, pdata: ProcessedData):
         return list(self.requires)
     
-    def _initialize_datasets(self, pdata: ProcessedData):
-        if pdata.has('beammap', exact_match=True):
-            _logger.warning(f'{self.name}: Beam Map group already exists in the file; overwriting datasets.')
-            del pdata['beammap']
-        beammap_group = pdata.create_group('beammap')
-        beammap_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
-
-    
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
-        self._initialize_datasets(pdata)
 
+        # Load necessary datasets
+        az_center = pdata['beammap/az_center'][:]
+        za_center = pdata['beammap/za_center'][:]
+        amplitude = pdata['beammap/amplitude'][:]
+        snr = pdata['beammap/snr'][:]
+        chisq = pdata['beammap/chisq'][:]
+        fwhm_az = pdata['beammap/fwhm_az'][:]
+        fwhm_za = pdata['beammap/fwhm_za'][:]
+        map_val = pdata['map/map_val']
+        dpix = pdata['map'].attrs['dpix']
+        extent = get_extent(pdata['map/map_az'][:], pdata['map/map_za'][:], dpix=dpix)
+        chanmask = pdata.chanmask
+        detector_f = pdata.detector_f()
 
+        # Which tones to use
+        tones_to_plot = np.arange(pdata.n_tones) if self.params['show_all'] else pdata.onres_ind
 
-def analyze_beammap(
-    map_data: MapData,
-    nrows: int=10,
-    ncols: int=10,
-    show_all: bool=False,
-):
-    az = map_data.map_az[:][:, np.newaxis]
-    za = map_data.map_za[:][np.newaxis, :]
-    map_val = map_data.map  # N_resonator x X x Y
+        # Initialize PDF
+        savefile = self.params['savefile']
+        if savefile is None:
+            savefile = get_beammap_pdf_template(pdata.date, pdata.setnum, data_dir=self.params['save_dir'])
+        pdf = PdfPages(savefile)
 
-    extent = map_data.extent()
+        nrows = self.params['nrows']
+        ncols = self.params['ncols']
+        page_size = nrows * ncols
+        dpi = self.params['dpi']
+        fom_cutoff = self.params['fom_cutoff']
+        high_snr_percentile = self.params['high_snr_percentile']
 
-    filename = map_data.beammap_file_template
+        fom = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
+        high_snr_ind = np.argwhere(
+            np.bitwise_and(
+                amplitude > np.percentile(amplitude, high_snr_percentile),
+                fom > fom_cutoff)
+        ).flatten()
 
-    # if show_all:
-    #     chanmask = np.ones(map_data.n_tones)
-    # else:
-    chanmask = map_data.chanmask[:]
-    # chanmask = chanmask[:100]
-
-    beammap_file = tables.File(filename, 'w')
-    az_center = beammap_file.create_array('/', 'az_center', shape=np.shape(chanmask), atom=tables.Float64Atom())
-    za_center =beammap_file.create_array('/', 'za_center', shape=np.shape(chanmask), atom=tables.Float64Atom())
-    amplitude  = beammap_file.create_array('/', 'amplitude', shape=np.shape(chanmask), atom=tables.Float64Atom())
-    snr = beammap_file.create_array('/', 'snr', shape=np.shape(chanmask), atom=tables.Float64Atom())
-    chisq = beammap_file.create_array('/', 'chisq', shape=np.shape(chanmask), atom=tables.Float64Atom())
-    fwhm_az = beammap_file.create_array('/', 'fwhm_az', shape=np.shape(chanmask), atom=tables.Float64Atom())
-    fwhm_za = beammap_file.create_array('/', 'fwhm_za', shape=np.shape(chanmask), atom=tables.Float64Atom())
-
-    for idx in np.flatnonzero(chanmask == 1):
-        this_val = np.ndarray.flatten(map_val[idx,:])
-        this_val[np.isnan(this_val)] = 0
-
-        max_index = np.argwhere(this_val == np.max(this_val))
-        az_idx, za_idx = np.unravel_index(max_index[0], map_val[idx].shape)
-        az_max = az[az_idx, :]
-        za_max = za[:, za_idx]
-        separation = np.sqrt((az - az_max[0])**2 + (za - za_max[0])**2)
-        index = np.argwhere(separation < 0.1)
-        flat_index = np.ravel_multi_index((index[:, 0], index[:, 1]), map_val[idx].shape)
-
-        az_center[idx] = np.sum(az[index[:, 0]].squeeze()*this_val[flat_index]) / np.sum(this_val[flat_index])
-        za_center[idx] = np.sum(za[:, index[:, 1]].squeeze()*this_val[flat_index]) / np.sum(this_val[flat_index])
-        amplitude[idx] = np.max(this_val[index])
-
-        this_az = np.ndarray.flatten(az[index[:, 0], :])
-        this_za = np.ndarray.flatten(za[:, index[:, 1]])
-        this_val = this_val[flat_index]
-        sigma_z = np.full(int(np.size(this_val)), (np.percentile(this_val, 84) - np.percentile(this_val, 16)) * 0.5)
-        start_params = (
-            np.max(this_val),
-            az_center[idx],
-            za_center[idx],
-            0.1,
-            0.1,
-            np.median(this_val)
-        )  
-        bounds = (
-            (0., az_center[idx] - 0.2, za_center[idx] - 0.2, 0.01, 0.01, -np.max(np.abs(this_val))),
-            (10. * np.max(this_val), az_center[idx] + 0.2, za_center[idx] + 0.2, 1., 1., np.max(np.abs(this_val)))
-        )
-        try:
-            popt, pcov = curve_fit(
-                Gauss_2d,
-                (this_az, this_za),
-                this_val,
-                p0=start_params,
-                sigma=sigma_z,
-                absolute_sigma=True,
-                maxfev=10000,
-                bounds=bounds
-            )
-        except RuntimeError:
-            popt = np.zeros(6)
-            pcov = np.zeros((6, 6))
-            continue
-        az_center[idx] = popt[1]
-        za_center[idx] = popt[2]
-        amplitude[idx] = popt[0]
-        fwhm_az[idx] = np.abs(popt[3])
-        fwhm_za[idx] = np.abs(popt[4])
-        snr[idx] = popt[0] / np.sqrt(pcov[0, 0])
-        #if idx == 14:
-        #pdb.set_trace()  # Debugging breakpoint for channel 14
-        chisq[idx] = np.sum(
-            ((this_val - Gauss_2d(
-                (this_az, this_za),
-                popt[0], popt[1], popt[2], popt[3], popt[4], popt[5]
-                )) ** 2 / sigma_z ** 2) / (np.size(this_val) - 5.)
-        )
-
-
-    # TODO: file name
-    pdf_file_name = str(map_data.folder / map_data.file_stub) + '_beammap.pdf'
-
-    with PdfPages(pdf_file_name) as pdf:
-        FOM = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
-        high_snr_ind = np.argwhere(np.bitwise_and(amplitude > np.percentile(amplitude,55), FOM > 50)).flatten()
+        # Create scatter plot of beam centers
+        _logger.info(f'{self.name}: Creating beam center scatter plot...')
         plt.scatter(az_center[high_snr_ind], za_center[high_snr_ind], marker='+')
         plt.axis('equal')
         plt.xlim(extent[0],extent[1])
@@ -357,64 +345,70 @@ def analyze_beammap(
         plt.ylabel('Y Position (deg)')
         pdf.savefig()
         plt.close()
-        
-        counter = 1
-        for idx in range(map_data.n_tones):
-        # for idx in np.argwhere(chanmask == 1).flatten():
-            if not show_all and chanmask[idx] != 1:
-                continue
 
-            if counter == 1:
-                fig, axes = plt.subplots(nrows, ncols)
-                fig.set_dpi(300)  # Sharper plots
-                for ax in axes.flatten():
-                    ax.set_axis_off()
-            ax = axes.flatten()[counter - 1]
-            ax.imshow(np.flip(np.transpose(map_val[idx, ::-1]), 1), extent=extent, aspect='equal', cmap='jet', interpolation='bilinear')
-
-
+        # Create the big group plots
+        _logger.info(f'{self.name}: Creating grid pages...')
+        fig, axes = plt.subplots(nrows, ncols)
+        fig.set_dpi(dpi)  # Sharper plots
+        for ax in axes.flatten():
+            ax.set_axis_off()
+        i_subplot = 1
+        for i_loop, i_res in enumerate(tones_to_plot):
+            if i_loop == tones_to_plot.size // 2:
+                _logger.info(f'{self.name}: Halfway done creating grid pages...')
+            ax = axes.flatten()[i_subplot - 1]
+            plot_data = np.flip(np.transpose(map_val[i_res][::-1]), 1)
+            ax.imshow(
+                plot_data,
+                extent=extent,
+                aspect='equal',
+                cmap='jet',
+                interpolation='bilinear',
+            )
             
-            # Draw a rectangle around the subplot indicating off resonance
-            if show_all and chanmask[idx] == 0:
-            # if show_all and idx == 1:
+            # Draw a rectangle around the subplot indicating off-resonance / bad tones
+            if chanmask[i_res] != 1:
+                line_color = OFF_RESONANCE_COLOR if chanmask[i_res] == 0 else BAD_RESONANCE_COLOR
                 auto_axis = ax.axis()
-                # bbox = ax.get_window_extent().bounds
                 rec = plt.Rectangle(
-                    # bbox[:2],
-                    # bbox[2],
-                    # bbox[3],
                     (auto_axis[0], auto_axis[2]),
                     auto_axis[1] - auto_axis[0],
                     auto_axis[3] - auto_axis[2],
                     fill=False,
                     lw=2,
-                    edgecolor='orange',
+                    edgecolor=line_color,
                 )
                 rec = ax.add_patch(rec)
-                # fig.patches.append(rec)
                 rec.set_clip_on(False)
-                # ax.set_facecolor('orange')
 
-            if counter == nrows*ncols:
+            if i_subplot == page_size:
                 pdf.savefig(fig)
                 plt.close()
-                counter = 0
-            counter +=1
+                fig, axes = plt.subplots(nrows, ncols)
+                fig.set_dpi(dpi)  # Sharper plots
+                for ax in axes.flatten():
+                    ax.set_axis_off()
+                i_subplot = 0
+            i_subplot +=1
         
-        if counter > 1:
+        if i_subplot > 1:
             pdf.savefig(fig)
-        # plt.show()
         plt.close()
 
-        for idx in range(map_data.n_tones):
-        # for idx in np.argwhere(chanmask == 1).flatten():
-            if not show_all and chanmask[idx] != 1:
-                continue
+        # Create individul plots for each tone
+        _logger.info(f'{self.name}: Creating individual resonance plots...')
+        for i_loop, i_res in enumerate(tones_to_plot):
+            if i_loop == tones_to_plot.size // 2:
+                _logger.info(f'{self.name}: Halfway done creating individual plots...')
+
             fig, ax = plt.subplots()
-            data_to_plot = np.flip(np.transpose(map_val[idx, ::-1]), 1)
+
+            data_to_plot = np.flip(np.transpose(map_val[i_res][::-1]), 1)
             data_to_plot -= np.nanmedian(data_to_plot)
             data_to_plot /= np.nanmax(data_to_plot)
             # data_to_plot = 10 * np.log10(np.abs(data_to_plot))
+
+            # All map data
             im = ax.imshow(
                 data_to_plot,
                 # vmin=-10,
@@ -424,29 +418,30 @@ def analyze_beammap(
                 cmap='jet',
                 # interpolation='bilinear',
             )
+
+            # Color bar
             divider = make_axes_locatable(ax)
             cax = divider.append_axes('right', size='5%', pad=0.05)
             fig.colorbar(im, cax=cax)
-            ax.set_xlabel('X Position (deg)')
-            ax.set_ylabel('Y Position (deg)')
-            ax.set_xlim(extent[1],extent[0])
-            ax.set_ylim(extent[2],extent[3])
-            title = f'Resonator {idx}'
-            
-            # Indicate in plot title if off-resonance
-            if show_all and chanmask[idx] == 0:
-            # if show_all and idx == 1:
-                title += ' (Off-resonance)'
-            ax.set_title(title)
-            ax.plot(az_center[idx],za_center[idx],marker='+',color='white', markersize=10, mew=2)
 
+            # Center of bright source
+            ax.plot(
+                az_center[i_res],
+                za_center[i_res],
+                marker='+',
+                color='white',
+                markersize=10,
+                mew=2,
+            )
+
+            # Stats
             bbox_pad = 0.3
             t = AnchoredText(
-                f'Amplitude = {amplitude[idx]}\n'
-                f'SNR = {snr[idx]}\n'
-                f'chisq = {chisq[idx]}\n'
-                f'fwhm_az = {fwhm_az[idx]}\n'
-                f'fwhm_za = {fwhm_za[idx]}',
+                f'Amplitude = {amplitude[i_res]}\n'
+                f'SNR = {snr[i_res]}\n'
+                f'chisq = {chisq[i_res]}\n'
+                f'fwhm_az = {fwhm_az[i_res]}\n'
+                f'fwhm_za = {fwhm_za[i_res]}',
                 loc='upper left',
                 pad=bbox_pad,
                 borderpad=0,
@@ -457,34 +452,27 @@ def analyze_beammap(
             t.patch.set_alpha(0.25)
             t.patch.set_color('black')
             ax.add_artist(t)
-            fig.set_dpi(300)
-            # fig.tight_layout()
 
-            # Set face color to orange to indicate off-resonance
-            if show_all and map_data.chanmask[idx] == 0:
-            # if show_all and idx == 1:
-                fig.set_facecolor('orange')
+            title = rf'Tone {i_res} ($f_0$={detector_f[i_res] * 1e-6:.3f} MHz)'
 
+            # Indicate in plot title and face color if off-resonance / bad tone
+            if chanmask[i_res] != 1:
+                if chanmask[i_res] == 0:
+                    title += ' (Off-resonance)'
+                    facecolor = OFF_RESONANCE_COLOR
+                else:
+                    title += ' (Bad Resonance)'
+                    facecolor = BAD_RESONANCE_COLOR
+                fig.set_facecolor(facecolor)
+
+            ax.set_xlabel('X Position (deg)')
+            ax.set_ylabel('Y Position (deg)')
+            ax.set_xlim(extent[1],extent[0])
+            ax.set_ylim(extent[2],extent[3])
+            ax.set_title(title)
+            fig.set_dpi(dpi)
             pdf.savefig(fig)
-            # if idx == 1:
-            #     plt.show()
-                # fig.show()
             plt.close()
-    beammap_file.close()
 
-
-if __name__ == '__main__':
-    # date = '20250729'
-    # setnum = 1012
-    date = '20251212'
-
-    setnum = 1003
-
-    # md = MapData.from_file(date, setnum, 'r')
-    md = MapData.from_file(date, setnum)
-    # for i in range(240, 250):
-    #     md.plot_individual(i)
-    #     plt.show(block=False)
-    # pdb.set_trace()
-    analyze_beammap(md, show_all=True)
-    md.close()
+        pdf.close()
+        return []
