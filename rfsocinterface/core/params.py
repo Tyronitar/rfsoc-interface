@@ -45,6 +45,7 @@ def initialize_params_file(
         params_fh.attrs['chan_number'] = 0
         params_fh.attrs['ifslice_number'] = 0
         params_fh.attrs['lo_freq'] = lo_freq
+        params_fh.create_dataset('lo_freq', data=lo_freq)
         params_fh.create_dataset(
             'chanmask',
             shape=(n_tones,),
@@ -166,6 +167,55 @@ def update_params_file(
                         f'{k} size {np.size(v)} does not match n_tones {fh.attrs["n_tones"]}'
                     )
             fh[k][:] = v
+    
+def copy_and_update_params_file(
+    target: str,
+    new_tile_name: str,
+    params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    baseband_freqs: npt.NDArray=None,
+    lo_freq: float=None,
+    detector_delta_x: npt.NDArray=None,
+    detector_delta_y: npt.NDArray=None,
+    detector_beam_ampl: npt.NDArray=None,
+    detector_pol: npt.NDArray=None,
+    dfoverf_per_mK: npt.NDArray=None,
+    chanmask: npt.NDArray=None,
+    chanmask_non_collided: npt.NDArray=None,
+    chanmask_isolated: npt.NDArray=None,
+    tone_powers: npt.NDArray=None,
+):
+    """Create a copy of a parameters file while changing the specified dsets."""
+    if Path(target).exists():
+        # the first argument was the path to the file
+        params_tile_file = Path(target)
+    else:
+        # the first argument was the name of the tile
+        params_tile_file = Path(get_params_file_template(target, params_dir=params_dir))
+        if not params_tile_file.exists():
+            raise FileExistsError(f'Params file {params_tile_file} does not exist')
+    with h5py.File(params_tile_file) as fh:
+        baseband_freqs = baseband_freqs if baseband_freqs is not None else fh['baseband_freqs'][:]
+        lo_freq = lo_freq if lo_freq is not None else fh.attrs['lo_freq']
+        detdx = detector_delta_x if detector_delta_x is not None else fh['detector_delta_x'][:]
+        detdy = detector_delta_y if detector_delta_y is not None else fh['detector_delta_y'][:]
+        detamp = detector_beam_ampl if detector_beam_ampl is not None else fh['detector_beam_ampl'][:]
+        detpol = detector_pol if detector_pol is not None else fh['detector_pol'][:]
+        dfoverf = dfoverf_per_mK if dfoverf_per_mK is not None else fh['dfoverf_per_mK'][:]
+        chanmask = chanmask if chanmask is not None else fh['chanmask'][:]
+        tone_powers = tone_powers if tone_powers is not None else fh['tone_powers'][:]
+    initialize_params_file(new_tile_name, baseband_freqs, lo_freq, params_dir=params_dir)
+    update_params_file(
+        new_tile_name,
+        params_dir=params_dir,
+        baseband_freqs=baseband_freqs,
+        detector_delta_x=detdx,
+        detector_delta_y=detdy,
+        detector_beam_ampl=detamp,
+        detector_pol=detpol,
+        dfoverf_per_mK=dfoverf,
+        chanmask=chanmask,
+        tone_powers=tone_powers,
+        )
 
 
 def flag_collided_resonances(
