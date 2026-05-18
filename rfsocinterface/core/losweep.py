@@ -124,13 +124,22 @@ def get_scraps_fit(
         'pwr': power,
         'temp': temp
     }
+    N = len(freq)
+    df = freq[1]-freq[0]
 
-    res_obj = scr.makeResFromData(data_dict)
-
-    # Load default hanger parameters
-    res_obj.load_params(scr.hanger_params)
+    resObj = scr.makeResFromData(data_dict)                                
+    resObj.load_params(scr.cmplxIQ_params, fit_quadratic_phase = True, hardware = 'VNA')
+    dfres = resObj.params['f0'].value * (1/resObj.params['qi'].value + 1/resObj.params['qi'].value)
+    fres_arg = np.argmin(abs(freq - resObj.params['f0'].value))    
+    df_arg = min([max([int(20*dfres/df), int(20e3/df)]), fres_arg, N-fres_arg])
+    f_start_arg = fres_arg - df_arg
+    f_stop_arg = fres_arg + df_arg
+    for key in ['I', 'Q', 'freq']:
+        data_dict[key] = data_dict[key][f_start_arg:f_stop_arg]
+    resObj = scr.makeResFromData(data_dict)                                
+    resObj.load_params(scr.cmplxIQ_params, fit_quadratic_phase = True, hardware = 'VNA')
     if initial_guesses is not None:
-        params = res_obj.params
+        params = resObj.params
 
         for key, val in initial_guesses.items():
             if key in params:
@@ -147,9 +156,9 @@ def get_scraps_fit(
                     # simple value override
                     params[key].set(value=val)
 
-    res_obj.do_lmfit(scr.hanger_fit)
+    resObj.do_lmfit(scr.hanger_fit)
 
-    return res_obj
+    return resObj
 
 
 def create_resonator_mini_plot(
@@ -1529,7 +1538,7 @@ class TempSweepData:
 if __name__ == '__main__':
     import pdb
 
-    data = LoSweepData.from_h5('/data/20260427/20260427_Be260114BL_1000_tones_2_LO_Sweep_hour17p9839.h5')
+    data = LoSweepData.from_h5('/data/20260514/20260514_Uniform_test_1000_tones_260303_LO_Sweep_hour17p3139.h5')
     freq, depth = data.find_resonances()
     data.plot_new_resonances("resonances", freq)
     #pdb.set_trace()

@@ -237,13 +237,15 @@ class TempSweepDataAnalyzer:
         stderr_qc      = np.zeros_like(f0_data)
 
         # load previous results if supplied
-        prev_results = self._load_fit_results_h5(fit_results_h5) if fit_results_h5 else None
 
         figs      = []
         onres_ind = np.where(self.chanmask == 1)[0]
 
+        self.onres_ind = onres_ind
+        prev_results = self._load_fit_results_h5(fit_results_h5) if fit_results_h5 else None
+
         for i_res in onres_ind:
-            initial_f0s = self._get_initial_f0s(i_res, prev_results)
+            initial_f0s = self._get_initial_f0s(i_res, stitched_dataset,prev_results, fit_prev_datasets=12)
             fig, f0s    = self._plot_resonator_sweeps(i_res, stitched_dataset, initial_f0s)
             figs.append(fig)
             f0_data[:, i_res] = f0s
@@ -290,7 +292,7 @@ class TempSweepDataAnalyzer:
         self._save_fit_results(f0_data, q_i_data, q_c_data, onres_ind,redchi_data=redchi_data, stderr_f0=stderr_f0, stderr_qi=stderr_qi, stderr_qc=stderr_qc, filename=self.sweeps[0].tile_name + "_fit_results.h5")
 
 
-    def _get_initial_f0s(self, i_res: int, prev_results: dict | None) -> npt.NDArray:
+    def _get_initial_f0s(self, i_res: int, stitched_dataset: dict,   prev_results: dict | None, fit_prev_datasets:int = 1,) -> npt.NDArray:
         """
         Return initial f0 guesses for resonator i_res.
         Uses previous h5 results when available, otherwise runs a quick fit.
@@ -300,13 +302,23 @@ class TempSweepDataAnalyzer:
             print(f0s)
             if np.any(f0s != 0):
                 return f0s
+        f0s = np.zeros_like(self.fp_temps)
+        for i_p,temp in enumerate(self.fp_temps):
+            freq = stitched_dataset["freqs"][i_p][i_res]
+            s21  = stitched_dataset["s21"][i_p][i_res]
+            
+            if fit_prev_datasets > 0:
+                
+                res_indices = range(
+                    max(0, i_res - fit_prev_datasets), i_res
+                )
+                for r in res_indices:
+                    freq = np.append( stitched_dataset["freqs"][i_p][r],freq)
+                    s21 = np.append( stitched_dataset["s21"][i_p][r],s21)
 
-        # fallback: quick per-temperature fit
-        initial_f0s = np.zeros_like(self.fp_temps)
-        for i_p in range(len(self.fp_temps)):
-            result          = self._fit_single_resonator(i_res, i_p, let_vary=True, freq_window=None)
-            initial_f0s[i_p] = result['f0'][0]
-        return initial_f0s
+            center = freq[np.argmin(s21)]
+            f0s[i_p] = center
+        return f0s
 
     def _save_fit_results(
         self,
@@ -395,35 +407,16 @@ class TempSweepDataAnalyzer:
                 "qc":        qc,
             }
 
-    def _get_initial_f0s(self, i_res: int, prev_results: dict | None) -> npt.NDArray:
-        """
-        Return initial f0 guesses for resonator i_res.
-        Uses previous loaded results when available, otherwise runs a quick fit.
-        """
-        if prev_results is not None:
-            if "f0" in prev_results and i_res < prev_results["f0"].shape[1]:
-                f0s = prev_results["f0"][:, i_res]
-                print(f0s)
-                if np.any(f0s != 0):
-                    return f0s
-
-        # fallback: quick per-temperature fit
-        initial_f0s = np.zeros_like(self.fp_temps)
-        for i_p in range(len(self.fp_temps)):
-            result = self._fit_single_resonator(i_res, i_p, let_vary=True, freq_window=None)
-            initial_f0s[i_p] = result['f0'][0]
-
-        return initial_f0s
-
     def _fit_single_resonator(
-        self,
-        i_res: int,
-        i_p: int,
-        f0_guess: float | None = None,
-        let_vary: bool = True,
-        plot: bool = False,
-        freq_window: float | None = 2e6,
-        decimate: int = 1,
+    self,
+    i_res: int,
+    i_p: int,
+    f0_guess: float | None = None,
+    let_vary: bool = True,
+    plot: bool = False,
+    freq_window: float = 0.5e6,
+    decimate: int = 1,
+    fit_previous_resonators: int = 0,
     ) -> dict:
         sweep     = self.sweeps[i_p]
         resonator = sweep.resonator_data[i_res]
@@ -448,23 +441,17 @@ class TempSweepDataAnalyzer:
             Q    = Q[::decimate]
             s21  = s21[::decimate]
 
-        if f0_guess is not None:
-            res_obj = get_scraps_fit(
-                I, Q, freq, tone, s21,
-                initial_guesses={"f0": {
-                    "value": f0_guess,
-                    "vary":  let_vary,
-                    "min":   f0_guess*(1-1e-4),
-                    "max":   f0_guess*(1+1e-4),
-                }},
-            )
-            print("Difference in f0", res_obj.lmfit_result['default']['result'].params['f0'].value - f0_guess)
-
-        else:
-            res_obj = get_scraps_fit(
-                I, Q, freq, tone, s21,
-                initial_guesses={"f0": {"value": None}},
-            )
+       
+        res_obj = get_scraps_fit(
+            I, Q, freq, tone, s21,
+            initial_guesses={"f0": {
+                "value": f0_guess,
+                "vary":  let_vary,
+                "min":   f0_guess*(1-1e-4),
+                "max":   f0_guess*(1+1e-4),
+            }},
+        )
+        print("Difference in f0", res_obj.lmfit_result['default']['result'].params['f0'].value - f0_guess)
 
         result = res_obj.lmfit_result['default']['result']
         params = result.params
@@ -544,20 +531,19 @@ class TempSweepDataAnalyzer:
 
     def _draw_resonator_data(self, ax_mag, ax_phase, i_res, colors, f0_values, results):
         vlines = []
-        for i_p, temp in enumerate(results["temps"]):
+        for i_p, temp in enumerate(f0_values):
             freq  = results["freqs"][i_p][i_res]
             I     = results["I"][i_p][i_res]
             Q     = results["Q"][i_p][i_res]
             s21   = results["s21"][i_p][i_res]
             phase = np.angle(I + 1j * Q, deg=True)
 
-            ax_mag.plot(freq, s21 - np.mean(s21, keepdims=True), color=colors[i_p], label=f"T={temp:.3g}")
+            ax_mag.plot(freq, s21 - np.mean(s21, keepdims=True), color=colors[i_p])
             vl1 = ax_mag.axvline(f0_values[i_p],   color=colors[i_p], alpha=0.9, lw=2.5)
             vl2 = ax_phase.axvline(f0_values[i_p], color=colors[i_p], alpha=0.9, lw=2.5)
             vlines.append((vl1, vl2))
 
         ax_mag.set(title=f"Resonator {i_res}", ylabel="|S21|")
-        ax_mag.legend(fontsize=7, loc="upper right")
         ax_phase.set(xlabel="Frequency (Hz)", ylabel="Phase (deg)")
         return vlines
 
@@ -683,12 +669,12 @@ class TempSweepDataAnalyzer:
                     label=f"res {res_idx}" if i_p == 0 else "_",
                 )
                 l2, = ax_phase.plot(
-                    freqs[i_p][res_idx], phase,
+                    freqs[i_p][res_idx][0], phase[0],
                     color=line_colors[i_p], lw=1, ls="--", alpha=0.7,
                 )
                 artists.extend([l1, l2])
             overlay_state[res_idx] = artists
-            ax_mag.legend(fontsize=7, loc="upper right")
+            #ax_mag.legend(fontsize=7, loc="upper right")
             refresh_label()
 
         def remove_overlay(res_idx):
@@ -907,10 +893,11 @@ class TempSweepDataAnalyzer:
 
 if __name__ == '__main__':
     data_analyzer = TempSweepDataAnalyzer.from_h5(
-        '/data/20260507/20260507_Be231102p2_1000_tones_Power_Sweep_hour17p5044.h5'
+        '/data/20260514/20260514_Be260114Tr_1000_tones_3_Power_Sweep_hour17p9050.h5'
     )
     clean_dataset = data_analyzer.stitch_full_dataset()
+    pdb.set_trace()
     data_analyzer.process_temperature_sweep(
         clean_dataset,
-        fit_results_h5=None
+        fit_results_h5='Be260114Tr_1000_tones_2_fit_results.h5'
     )
