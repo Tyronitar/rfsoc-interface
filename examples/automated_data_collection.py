@@ -18,7 +18,7 @@ settings = Settings()
 settings.load_settings()
 rfsoc = RFSOCWrapper(settings['rfsocs'][0])
 chan = 1
-chan_name='Be231102p2_1000_tones'
+chan_name='Be260114BL_1000_tones_3'
 tone_file = get_filename(file_type='tonelist', chan_name=chan_name)
 rfsoc.load_params_file(1,'/data/params/params_tile_' + chan_name  + ".h5")
 
@@ -94,3 +94,5 @@ def save_temp_sweeps(LoSweepDataPath:list[str], fp_temps:np.ndarray):
     temp_sweep.saveh5(save_location)
 
     return savefile
+if __name__ == '__main__':
+    save_temp_sweeps(['/data/20260514/20260514_Uniform_test_1000_tones_260303_LO_Sweep_hour17p3139.h5'], [242])

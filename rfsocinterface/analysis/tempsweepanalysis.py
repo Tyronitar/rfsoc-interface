@@ -893,7 +893,7 @@ class TempSweepDataAnalyzer:
 
 if __name__ == '__main__':
     data_analyzer = TempSweepDataAnalyzer.from_h5(
-        '/data/20260514/20260514_Be260114Tr_1000_tones_3_Power_Sweep_hour17p9050.h5'
+        '/data/20260515/20260515_Be260114BL_1000_tones_3_Power_Sweep_hour17p1672.h5'
     )
     clean_dataset = data_analyzer.stitch_full_dataset()
     pdb.set_trace()

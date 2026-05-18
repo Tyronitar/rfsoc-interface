@@ -232,13 +232,11 @@ if __name__ == "__main__":
          328705367, 335793390, 340651152, 368175878, 373470266, 375799889,
          375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
          393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
-    #Be260114BL_tones_2 = np.array([713000000, 724904000,750589000,768588000, 
-    #801917000, 812570000,827076000,850913000, 876803000,881769000,941994000, 968787000,983666000,
-    #1057725000,1064569000, 1082299000,1099301000, 1115600000, 1119554000,1126957000,
-    #1131922000,1179435000,1197235000])
-
-
-    LO_freq = 300e6
+    Be260114BL_tones_3 = np.array([1.1700,1.179436, 1.19354, 1.196931, 1.1734,1.1985,1.20175,1.215965, 1.2540, 1.26819, 
+                                   1.2754, 1.3183, 1.32442, 1.33475, 1.385047, 1.396914,1.429034, 1.43044,1.439581, 1.44511
+                                   ,1.46721, 1.480558, 1.49648,1.50423,1.5227,1.56735, 1.5721, 1.6243, 1.64192, 1.65332, 1.69199])*1e9
+    pdb.set_trace()
+    LO_freq = 1420e6
     # lo_freq = 4e8
     #lo_freq = 4e8
     n_tones = 1
@@ -249,7 +247,7 @@ if __name__ == "__main__":
     # tile_name = f'{n_tones}_tone_uniform_202050829'
         # Add 58 more tones
     target_n_tones = 1000
-    new_tones = Be231102p2_tones.copy()
+    new_tones = Be260114BL_tones_3.copy()
     while len(new_tones) < target_n_tones:
         sorted_tones = np.sort(new_tones)
         gaps = np.diff(sorted_tones)
@@ -261,7 +259,7 @@ if __name__ == "__main__":
         new_tones = np.append(new_tones, new_tone)
     new_tones = np.sort(new_tones)
 
-    original_tone_indices = [i for i, t in enumerate(new_tones) if t in Be231102p2_tones]
+    original_tone_indices = [i for i, t in enumerate(new_tones) if t in Be260114BL_tones_3]
     print(f"Original tones in new list: {original_tone_indices}")
     baseband_freqs = np.array(new_tones) - LO_freq
 
@@ -271,7 +269,7 @@ if __name__ == "__main__":
     # baseband_freqs = baseband_freqs[sorted_indices] - lo_freq
     
     
-    tile_name = 'Be231102p2_1000_tones'
+    tile_name = 'Be260114BL_1000_tones_3'
     #tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
     # tile_name = 'Device_aSi1_Channel2_blind'
     # baseband_freqs = baseband_freqs - lo_freq
