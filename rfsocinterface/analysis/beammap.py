@@ -438,11 +438,11 @@ class PlotBeamMap(DataRoutine):
             # Stats
             bbox_pad = 0.3
             t = AnchoredText(
-                f'Amplitude = {amplitude[i_res]}\n'
-                f'SNR = {snr[i_res]}\n'
-                f'chisq = {chisq[i_res]}\n'
-                f'fwhm_az = {fwhm_az[i_res]}\n'
-                f'fwhm_za = {fwhm_za[i_res]}',
+                f'Amplitude = {amplitude[i_res] * 1e5:2f}\n'
+                f'az_center = {az_center[i_res]:.2f}\n'
+                f'za_center = {za_center[i_res]:.2f}\n'
+                f'fwhm_az = {fwhm_az[i_res]:.2f}\n'
+                f'fwhm_za = {fwhm_za[i_res]:.2f}',
                 loc='upper left',
                 pad=bbox_pad,
                 borderpad=0,
@@ -468,7 +468,7 @@ class PlotBeamMap(DataRoutine):
 
             ax.set_xlabel('X Position (deg)')
             ax.set_ylabel('Y Position (deg)')
-            ax.set_xlim(extent[1],extent[0])
+            ax.set_xlim(extent[0],extent[1])
             ax.set_ylim(extent[2],extent[3])
             ax.set_title(title)
             fig.set_dpi(dpi)
@@ -513,8 +513,8 @@ def combine_polarized_beammaps(
     # Normalize amplitudes
     sorted_amp_pol1 = np.argsort(amplitude_pol1)
     sorted_amp_pol2 = np.argsort(amplitude_pol2)
-    amplitude_pol1 /= np.percentile(amplitude_pol1[onres_ind], amplitude_normalization_percentile)
-    amplitude_pol2 /= np.percentile(amplitude_pol2[onres_ind], amplitude_normalization_percentile)
+    # amplitude_pol1 /= np.percentile(amplitude_pol1[onres_ind], amplitude_normalization_percentile)
+    # amplitude_pol2 /= np.percentile(amplitude_pol2[onres_ind], amplitude_normalization_percentile)
 
     # Correct for shifts in source position
     az_center = np.zeros(chanmask.size)
@@ -523,8 +523,7 @@ def combine_polarized_beammaps(
     beam_ampl = np.zeros(chanmask.size)
 
     for i_res in onres_ind:
-        # if amplitude_pol1[i_res] > amplitude_pol2[i_res]:
-        if sorted_amp_pol1[i_res] > sorted_amp_pol2[i_res]:
+        if amplitude_pol1[i_res] > amplitude_pol2[i_res]:
             detector_pol[i_res] = 1
             az_center[i_res] = az_center_pol1[i_res]
             za_center[i_res] = za_center_pol1[i_res]
@@ -565,6 +564,7 @@ def combine_polarized_beammaps(
            plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='red', fontsize=20.)
         plt.xlabel('AZ Position (deg)')
         plt.ylabel('ZA Position (deg)')
+        plt.gca().invert_yaxis()
         # plt.legend()
         pdf.savefig()
         plt.show()

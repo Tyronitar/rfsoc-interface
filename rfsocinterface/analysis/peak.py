@@ -169,7 +169,7 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
             handles.append(left_patch)
             handles = [handles[i] for i in [0, 3, 1, 2, 4, 5]]
             plt.legend(loc="lower center", bbox_transform=fig.transFigure, bbox_to_anchor=(0.5, 0.0), ncol=3, handles=handles, fontsize=8)
-            plt.xlim(telescope_pos[right_peak_idx - 50], telescope_pos[right_peak_idx + 50])
+            plt.xlim(telescope_pos[max(0, right_peak_idx - 50)], telescope_pos[min(right_peak_idx + 50, len(telescope_pos)-1)])
             plt.xlabel(f'{"Azimuth" if primary_direction.lower() == "az" else "Zenith Angle"} (degrees)')
             plt.ylabel('Detector Response (mK)')
             plt.tight_layout(rect=[0, 0.15, 1, 1])
