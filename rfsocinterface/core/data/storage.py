@@ -714,6 +714,7 @@ class ConsolidatedData(NewDataStorage):
         if azel_exists:
             # pdb.set_trace()
             az_tel = azel_file['az_tel']
+            telescope_params = json.loads(azel_file.attrs.get('params', '{}'))
             try:
                 za_tel = azel_file['za_tel']
             except:
@@ -757,6 +758,9 @@ class ConsolidatedData(NewDataStorage):
         # Initialize global data group
         global_data_group = cdata.create_group('global_data')
         global_data_group.attrs['n_samples'] = n_samples_ds
+
+        if azel_exists:
+            global_data_group.attrs['telescope_params'] = json.dumps(telescope_params)
 
         # Optical image
         if optcam_exists:

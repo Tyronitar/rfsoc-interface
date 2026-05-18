@@ -18,6 +18,7 @@ except ImportError:
     import _thread as thread
 from pathlib import Path
 
+import json
 import h5py
 import numpy as np
 import serial
@@ -26,7 +27,7 @@ import uldaq as ul
 # from Exscript.protocols.telnetlib import Telnet
 from telnetlib3.telnetlib import Telnet
 
-from rfsocinterface.core.utils import analog_to_digital, PERMISSIONS_USR_RW
+from rfsocinterface.core.utils import analog_to_digital, PERMISSIONS_USR_RW, PathJSONEncoder
 
 _logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
@@ -995,6 +996,20 @@ class TelescopeMotorController:
             f.create_dataset('az_pps', data=position_data[3::5])
             f.create_dataset('za_pps', data=position_data[4::5])
             f.create_dataset("optical_visibility", data=['****'])
+            f.attrs['params'] = json.dumps({
+                # Generic parameters
+                'initial_az': initial_az,
+                'initial_ze': initial_ze,
+                'completed': self._run,  # Self._run can only be False here if the dither was cancelled
+                # Arguments to this function
+                'primary_start': primary_start,
+                'primary_stop': primary_stop,
+                'n_repeats': n_repeats,
+                'secondary_dither': secondary_dither,
+                'position_return': position_return,
+                'large_map_mode': large_map_mode,
+                'primary_dither_direction': primary_dither_direction,
+            })
         path.chmod(PERMISSIONS_USR_RW)
         
         # Reset telescope
