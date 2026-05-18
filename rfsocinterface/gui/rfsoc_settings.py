@@ -123,11 +123,11 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
     
     @Slot(str)
     def upload_channel1_comport(self, comport: str):
-        self.rfsoc.set_lo_comport(0, comport)
+        self.rfsoc.set_lo_comport(1, comport)
     
     @Slot(str)
     def upload_channel2_comport(self, comport: str):
-        self.rfsoc.set_lo_comport(1, comport)
+        self.rfsoc.set_lo_comport(2, comport)
     
     def set_defaults(self):
         settings = self.rfsoc.settings
