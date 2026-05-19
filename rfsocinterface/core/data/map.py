@@ -177,7 +177,7 @@ class BinTODIntoMap(DataRoutine):
 
     """
     name = 'BinTODIntoMap'
-    version = '2.0.0'
+    version = '2.1.0'
 
     produces = {
         '/map/netd',
@@ -257,7 +257,6 @@ class BinTODIntoMap(DataRoutine):
             dsets.append(f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}')
         return dsets
 
-
     def _initialize_map_arrays(
         self,
         pdata: ProcessedData,
@@ -282,6 +281,7 @@ class BinTODIntoMap(DataRoutine):
         map_group.create_dataset('total_map', shape=(n_pix_x, n_pix_y), chunks=(n_pix_x, n_pix_y), dtype=np.float64)
         map_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
         map_group.attrs['dpix'] = dpix
+        map_group.attrs['units'] = 'mK' if self.params['dataset'] == 'data_mK' else 'df/f'
         good_samples = map_group.create_dataset('good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32))
         for i_chan in range(pdata.n_chan):
             interpolated_samples = pdata.get_from_channel(i_chan, 'time_ordered_data/interpolated_samples')
@@ -308,8 +308,8 @@ class BinTODIntoMap(DataRoutine):
         match self.params['dataset']:
             case 'data_mK':
                 data = pdata.data_mK[:]
-            case 'data_freq':
-                data = pdata.data_freq_diss[0]
+            case 'data_freq':  # df / f
+                data = pdata.data_freq_diss[0] / pdata.detector_f()[:, np.newaxis]
 
         sum_map = pdata['map/sum_map'][:]
         hits_map = pdata['map/hits_map'][:]
@@ -423,7 +423,7 @@ class PlotMap(DataRoutine):
         plotting the flagged pixels.
     """
     name = 'PlotMap'
-    version = '2.0.0'
+    version = '2.1.0'
 
     requires = {
         '/map/map_az',
@@ -586,6 +586,7 @@ class PlotMap(DataRoutine):
         flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
         contour_levels = pdata['map/plotting/contour_levels']
         dpix = pdata['map'].attrs['dpix']
+        units = pdata['map'].attrs.get('units', 'mK')
 
         map_az = pdata['map/map_az']
         map_za = pdata['map/map_za']
@@ -624,7 +625,7 @@ class PlotMap(DataRoutine):
         fig, axes = plt.subplots(4, 1, figsize=(15, 7.5), sharex=True)
         fig.suptitle(
             f'{pdata.file_stub}\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
-            f'NETD V-Pol (30Hz) = {med_netd_1:.1f} mK, NETD H-Pol (30Hz) = {med_netd_2:.1f} mK'
+            f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units}, NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
         )
         for ax in axes:
             ax.set_ylabel('ZA (degrees)')
@@ -641,7 +642,7 @@ class PlotMap(DataRoutine):
             cmap='Blues_r',
         )
         cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[0])
-        cb.set_label('V-Pol Signal (mK)', rotation=270, labelpad=15)
+        cb.set_label(f'V-Pol Signal ({units})', rotation=270, labelpad=15)
         axes[0].contour(
             np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -659,7 +660,7 @@ class PlotMap(DataRoutine):
             cmap='Reds_r'
         )
         cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[1])
-        cb.set_label('H-Pol Signal (mK)', rotation=270, labelpad=15)
+        cb.set_label(f'H-Pol Signal ({units})', rotation=270, labelpad=15)
         axes[1].contour(
             np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -677,7 +678,7 @@ class PlotMap(DataRoutine):
             cmap='Greys_r'
         )
         cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[2])
-        cb.set_label('Total Signal (mK)', rotation=270, labelpad=15)
+        cb.set_label(f'Total Signal ({units})', rotation=270, labelpad=15)
         axes[2].contour(
             np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,

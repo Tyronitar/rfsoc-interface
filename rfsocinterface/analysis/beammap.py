@@ -238,7 +238,7 @@ class PlotBeamMap(DataRoutine):
     """Plot a beam map, post-analysis."""
 
     name = 'PlotBeamMap'
-    version = '1.0.0'
+    version = '1.1.0'
 
     requires = {
         '/map/map_val',
@@ -309,6 +309,7 @@ class PlotBeamMap(DataRoutine):
         fwhm_za = pdata['beammap/fwhm_za'][:]
         map_val = pdata['map/map_val']
         dpix = pdata['map'].attrs['dpix']
+        units = pdata['map'].attrs.get('units', 'mK')
         extent = get_extent(pdata['map/map_az'][:], pdata['map/map_za'][:], dpix=dpix)
         chanmask = pdata.chanmask
         detector_f = pdata.detector_f()
@@ -423,7 +424,8 @@ class PlotBeamMap(DataRoutine):
             # Color bar
             divider = make_axes_locatable(ax)
             cax = divider.append_axes('right', size='5%', pad=0.05)
-            fig.colorbar(im, cax=cax)
+            cb = fig.colorbar(im, cax=cax)
+            cb.set_label(f'Normalized signal ({units})', rotation=270, labelpad=15)
 
             # Center of bright source
             ax.plot(
@@ -436,23 +438,29 @@ class PlotBeamMap(DataRoutine):
             )
 
             # Stats
-            bbox_pad = 0.3
-            t = AnchoredText(
-                f'Amplitude = {amplitude[i_res] * 1e5:2f}\n'
-                f'az_center = {az_center[i_res]:.2f}\n'
-                f'za_center = {za_center[i_res]:.2f}\n'
-                f'fwhm_az = {fwhm_az[i_res]:.2f}\n'
-                f'fwhm_za = {fwhm_za[i_res]:.2f}',
-                loc='upper left',
-                pad=bbox_pad,
-                borderpad=0,
-                prop=dict(
-                    color='white',
-                ),
-            )
-            t.patch.set_alpha(0.25)
-            t.patch.set_color('black')
-            ax.add_artist(t)
+            if chanmask[i_res] != 0:
+                bbox_pad = 0.3
+                t = AnchoredText(
+                    f'Amplitude = {amplitude[i_res] * 1e5:2f}    '
+                    f'chisq = {chisq[i_res]:.3f}    '
+                    f'snr = {snr[i_res]:.3f}\n'
+                    f'fwhm_az = {fwhm_az[i_res]:.2f}    '
+                    f'fwhm_za = {fwhm_za[i_res]:.2f}\n'
+                    f'az_center = {az_center[i_res]:.2f}    '
+                    f'za_center = {za_center[i_res]:.2f}\n',
+                    loc='upper center',
+                    bbox_to_anchor=(0.5, 0.15),
+                    bbox_transform=fig.transFigure,
+                    pad=bbox_pad,
+                    borderpad=0,
+                    prop=dict(
+                        # color='white',
+                        horizontalalignment='center',
+                    ),
+                )
+            # t.patch.set_alpha(0.25)
+            # t.patch.set_color('black')
+                ax.add_artist(t)
 
             title = rf'Tone {i_res} ($f_0$={detector_f[i_res] * 1e-6:.3f} MHz)'
 
@@ -472,6 +480,12 @@ class PlotBeamMap(DataRoutine):
             ax.set_ylim(extent[2],extent[3])
             ax.set_title(title)
             fig.set_dpi(dpi)
+
+            plt.subplots_adjust(bottom=0.18)
+            # if chanmask[i_res] != 0:
+            #     plt.tight_layout(rect=[0, 0.10, 1, 1])
+            # else:
+            plt.tight_layout()
             pdf.savefig(fig)
             plt.close()
 
