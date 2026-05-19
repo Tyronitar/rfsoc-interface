@@ -1081,8 +1081,8 @@ class CompositeSweepData:
     
     def fit(self, callback: Callable=None):
         """Fit each sweep in this sweep."""
-        for sweep in self.sweeps:
-            sweep.fit(callback=callback)
+        with ProcessPoolExecutor() as executor:
+            executor.map(LoSweepData.fit, self.sweeps, [callback] * len(self.sweeps))
         self.get_fit_f0()
 
     @ensure_path(1)
@@ -1177,12 +1177,13 @@ class PowerSweepData(CompositeSweepData):
         baseline_percentage: float=0.33,
         bad_power_cutoff_percentile: float=0.75,
         max_power_deviation_from_median_dB: float=5,
+        plot: bool=False,
         pdf_filename: str=None,
         nrows: int=4,
         ncols: int=3,
     ):
         i = 0
-        if pdf_filename is not None:
+        if plot and pdf_filename is not None:
             pdf = PdfPages(pdf_filename)
             page_size = nrows * ncols
             fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
@@ -1206,7 +1207,7 @@ class PowerSweepData(CompositeSweepData):
         non_linear_slope = np.zeros(self.n_tones)
 
         for i_res in self.onres_ind:
-            if pdf and i >= page_size:
+            if plot and pdf and i >= page_size:
                 # Save the current figure 
                 fig.legend(
                     custom_lines,
@@ -1262,7 +1263,7 @@ class PowerSweepData(CompositeSweepData):
                 non_linear_slope[i_res] = POWER_SWEEP_FRACTIONAL_FREQ_SHIFT
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
 
-            if pdf:
+            if plot and pdf:
                 ax = np.ravel(axes)[i]
                 ax.set_title(f'Tone {i_res}')
                 ax.scatter(this_power_level, this_df, c='orange', marker='x')
@@ -1272,7 +1273,7 @@ class PowerSweepData(CompositeSweepData):
                 ax.set_ylabel('df0 / f0')
             i += 1
         
-        if pdf:
+        if plot and pdf:
             # Save the last figure 
             fig.legend(
                 custom_lines,
@@ -1285,7 +1286,6 @@ class PowerSweepData(CompositeSweepData):
             fig.tight_layout(rect=[0, 0.05, 1, 1])
             pdf.savefig(fig)
             plt.close(fig)
-            pdf.close()
 
         med = np.median(power_level_non_linear)
         std = np.std(power_level_non_linear)
@@ -1299,10 +1299,16 @@ class PowerSweepData(CompositeSweepData):
         max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
         self.max_readout_power = max_readout_power
 
-        counts, bins = np.histogram(power_level_non_linear, bins=60, range=(-10, 10))
-        plt.stairs(counts, bins, fill=True)
-        plt.show()
-        pdb.set_trace()
+        if plot and pdf:
+            counts, bins = np.histogram(power_level_non_linear, bins=60, range=(-10, 10))
+            plt.figure()
+            plt.title('Optimal Readout Power Distribution')
+            plt.xlabel(f'Optimal Readout Power (dB relative to nominal RFIN/RFOUT of {self.rfin:.2f}/{self.rfout:.2f} dB)')
+            plt.ylabel('Frequency')
+            plt.stairs(counts, bins, fill=True)
+            pdf.savefig()
+            plt.close()
+            pdf.close()
 
         return max_readout_power
 
