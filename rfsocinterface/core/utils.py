@@ -1198,6 +1198,13 @@ def get_file_stub(date: str, setnum: int) -> str:
 def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
     return f'{params_dir}/params_tile_{tile_name}.h5'
 
+
+def get_beammap_pdf_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+    return str(Path(data_dir) / f'{date}/{date}_set{setnum}_beammap.pdf')
+
+def get_detector_pos_pdf_template(date: str, tile_name: str, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+    return str(Path(data_dir) / f'{date}/{tile_name}_detector_pos.pdf')
+
 #
 # Parallelized Plotting
 #
