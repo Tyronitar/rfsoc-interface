@@ -91,7 +91,7 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
                 loss_function,
                 x0,
                 args=(telescope_pos[right_fit_ind], data_segment[right_fit_ind]),
-                bounds=([-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))], [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))]),
+                bounds=([-1, 0, -15, 0.05 / (2 * np.sqrt(2 * np.log(2)))], [1, 1, 15, 0.2 / (2 * np.sqrt(2 * np.log(2)))]),
             )
 
             amplitude_right = res_right.x[1]
@@ -103,7 +103,7 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
                 loss_function,
                 x0,
                 args=(telescope_pos[left_fit_ind], data_segment[left_fit_ind]),
-                bounds=([-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))], [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))]),
+                bounds=([-1, 0, -15, 0.05 / (2 * np.sqrt(2 * np.log(2)))], [1, 1, 15, 0.2 / (2 * np.sqrt(2 * np.log(2)))]),
             )
 
             amplitude_left = res_left.x[1]
@@ -150,8 +150,8 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
             plt.plot(telescope_pos[left_fit_ind], left_gaussian, linestyle='--', color='green')
             left_patch = mpatches.Patch(color='green', label=f'Amplitude = {amplitude_left:.3e} {units}, FWHM = {fwhm_left:.3f} deg')
 
-            scan_rate = (telescope_pos[right_peak_idx + 10] - telescope_pos[right_peak_idx - 10]) \
-                / (time[right_peak_idx + 10] - time[right_peak_idx - 10])
+            scan_rate = (telescope_pos[min(right_peak_idx + 10, len(telescope_pos) - 1)] - telescope_pos[max(right_peak_idx - 10, 0)]) \
+                / (time[min(right_peak_idx + 10, len(telescope_pos) - 1)] - time[max(right_peak_idx - 10, 0)])
             time_delay = (left_az_0 - right_az_0) / scan_rate / 2  # Amount RFSoC is behind the telescope
             plt.plot([], [], label=f'Time Delay = {time_delay:.3f}s')
             plt.legend(loc="lower center", bbox_transform=fig.transFigure, bbox_to_anchor=(0.5, 0.0), ncol=3)
