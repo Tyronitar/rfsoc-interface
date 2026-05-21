@@ -1049,7 +1049,6 @@ class CompositeSweepData:
     def offres_ind(self) -> npt.NDArray:
         return np.argwhere(self.chanmask == 0).flatten()
     
-    
     @property
     def combined_sweep_array(self) -> npt.NDArray:
         """The LO sweep data from each LO sweep as one array.
@@ -1130,6 +1129,11 @@ class PowerSweepData(CompositeSweepData):
         self.rfin = rfin
         self.rfout = rfout
         self.max_readout_power = np.zeros(self.n_tones)
+        self.fitted = False
+        self.plotted = False
+        self._onres_power_levels = None
+        self._onres_df = None
+        self._onres_popt = None
 
     @ensure_path(1)
     def saveh5(self, fname: Path):
@@ -1177,25 +1181,10 @@ class PowerSweepData(CompositeSweepData):
         baseline_percentage: float=0.33,
         bad_power_cutoff_percentile: float=0.75,
         max_power_deviation_from_median_dB: float=5,
-        plot: bool=False,
-        pdf_filename: str=None,
-        nrows: int=4,
-        ncols: int=3,
     ):
-        i = 0
-        if plot and pdf_filename is not None:
-            pdf = PdfPages(pdf_filename)
-            page_size = nrows * ncols
-            fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
-            custom_lines = [
-                Line2D([0], [0], color='orange', linestyle='-'),
-                Line2D([0], [0], color='blue', linestyle='-'),
-                Line2D([0], [0], color='red', linestyle='-'),
-            ]
-            custom_labels = ['df', 'Fit', 'Max Readout Power']
-        else:
-            pdf = None
-        
+        onres_power_levels = []
+        onres_df = []
+        onres_popt = np.zeros((len(self.onres_ind), 2))
 
         f0_data = self.fit_f0[:]
         power_levels = self.power_levels[:]
@@ -1206,25 +1195,7 @@ class PowerSweepData(CompositeSweepData):
         power_level_non_linear = np.zeros(self.n_tones)
         non_linear_slope = np.zeros(self.n_tones)
 
-        for i_res in self.onres_ind:
-            if plot and pdf and i >= page_size:
-                # Save the current figure 
-                fig.legend(
-                    custom_lines,
-                    custom_labels,
-                    loc='lower center',
-                    bbox_to_anchor=(0.5, 0.0),
-                    bbox_transform=fig.transFigure,
-                    ncol=3,
-                )
-                fig.tight_layout(rect=[0, 0.05, 1, 1])
-                pdf.savefig(fig)
-                plt.close(fig)
-
-                # Start a new figure
-                fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
-                i = 0
-
+        for i_onres, i_res in enumerate(self.onres_ind):
 
             # First let's remove f0 values that are invalid at high power
             this_power_level = power_levels[:]
@@ -1246,7 +1217,7 @@ class PowerSweepData(CompositeSweepData):
             nominal_non_linear_db = np.median(this_power_level)
             
             try:
-                popt = curve_fit(
+                popt, _ = curve_fit(
                     power_sweep_fit_function,
                     this_power_level,
                     this_df,
@@ -1255,40 +1226,19 @@ class PowerSweepData(CompositeSweepData):
                         nominal_non_linear_db,
                     ),
                 )
-                non_linear_slope[i_res] = popt[0][0]
-                power_level_non_linear[i_res] = popt[0][1]
+                non_linear_slope[i_res] = popt[0]
+                power_level_non_linear[i_res] = popt[1]
             except RuntimeError as e:
                 print(f'Encountered exception during fit; using default value for resonator {i_res}')
                 print(e)
                 non_linear_slope[i_res] = POWER_SWEEP_FRACTIONAL_FREQ_SHIFT
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
-
-            if plot and pdf:
-                ax = np.ravel(axes)[i]
-                ax.set_title(f'Tone {i_res}')
-                ax.scatter(this_power_level, this_df, c='orange', marker='x')
-                ax.plot(this_power_level, power_sweep_fit_function(this_power_level, popt[0][0], popt[0][1]), color='blue')
-                ax.axvline(power_level_non_linear[i_res], color='red')
-                ax.set_xlabel('Power Level (dB)')
-                ax.set_ylabel('df0 / f0')
-            i += 1
-        
-        if plot and pdf:
-            # Save the last figure 
-            fig.legend(
-                custom_lines,
-                custom_labels,
-                loc='lower center',
-                bbox_to_anchor=(0.5, 0.0),
-                bbox_transform=fig.transFigure,
-                ncol=3,
-            )
-            fig.tight_layout(rect=[0, 0.05, 1, 1])
-            pdf.savefig(fig)
-            plt.close(fig)
+            
+            onres_power_levels.append(this_power_level)
+            onres_df.append(this_df)
+            onres_popt[i_onres] = popt
 
         med = np.median(power_level_non_linear)
-        std = np.std(power_level_non_linear)
         bad_ind = np.argwhere(np.abs(power_level_non_linear - med) > max_power_deviation_from_median_dB).flatten()
         power_level_non_linear[bad_ind] = med
 
@@ -1297,21 +1247,96 @@ class PowerSweepData(CompositeSweepData):
         power_level_non_linear[negative_ind] = med
 
         max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
-        self.max_readout_power = max_readout_power
 
-        if plot and pdf:
-            counts, bins = np.histogram(power_level_non_linear, bins=60, range=(-10, 10))
-            plt.figure()
-            plt.title('Optimal Readout Power Distribution')
-            plt.xlabel(f'Optimal Readout Power (dB relative to nominal RFIN/RFOUT of {self.rfin:.2f}/{self.rfout:.2f} dB)')
-            plt.ylabel('Frequency')
-            plt.stairs(counts, bins, fill=True)
-            pdf.savefig()
-            plt.close()
-            pdf.close()
+        self.max_readout_power = max_readout_power
+        self._onres_power_levels = np.array(onres_power_levels, dtype=object)
+        self._onres_df = np.array(onres_df, dtype=object)
+        self._onres_popt = onres_popt
+        self.fitted = True
+        self.plotted = False  # Need to replot now that values have been computed
 
         return max_readout_power
+    
+    def plot_optimal_readout_powers(
+        self, 
+        pdf_filename: str=None,
+        nrows: int=4,
+        ncols: int=3,
+    ):
+        if pdf_filename is None:
+            pdf_filename = f'{self.tile_names[0]}_optimal_readout_powers.pdf'
 
+        pdf = PdfPages(pdf_filename)
+        page_size = nrows * ncols
+        fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
+        custom_lines = [
+            Line2D([0], [0], color='orange', linestyle='-'),
+            Line2D([0], [0], color='blue', linestyle='-'),
+            Line2D([0], [0], color='red', linestyle='-'),
+        ]
+        custom_labels = ['df', 'Fit', 'Max Readout Power']
+
+        i_plot = 0
+
+        for i_onres, i_res in enumerate(self.onres_ind):
+            # Start a new page if needed
+            if i_plot >= page_size:
+                # Save the current figure 
+                fig.legend(
+                    custom_lines,
+                    custom_labels,
+                    loc='lower center',
+                    bbox_to_anchor=(0.5, 0.0),
+                    bbox_transform=fig.transFigure,
+                    ncol=3,
+                )
+                fig.tight_layout(rect=[0, 0.05, 1, 1])
+                pdf.savefig(fig)
+                plt.close(fig)
+
+                # Start a new figure
+                fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
+                i_plot = 0
+            
+            this_power_level = self._onres_power_levels[i_onres]
+            this_df = self._onres_df[i_onres]
+            popt = self._onres_popt[i_onres]
+            max_power_level = self.max_readout_power[i_res]
+
+            ax = np.ravel(axes)[i_plot]
+            ax.set_title(rf'Tone {i_res} ($f_0$ = {self.detector_f[i_res]})')
+            ax.scatter(this_power_level, this_df, c='orange', marker='x')
+            ax.plot(this_power_level, power_sweep_fit_function(this_power_level, popt[0], popt[1]), color='blue')
+            ax.axvline(max_power_level, color='red')
+            ax.set_xlabel('Power Level (dB)')
+            ax.set_ylabel('df0 / f0')
+            i_plot += 1
+
+        # Save the last page 
+        fig.legend(
+            custom_lines,
+            custom_labels,
+            loc='lower center',
+            bbox_to_anchor=(0.5, 0.0),
+            bbox_transform=fig.transFigure,
+            ncol=3,
+        )
+        fig.tight_layout(rect=[0, 0.05, 1, 1])
+        pdf.savefig(fig)
+        plt.close(fig)
+
+        # Histogram
+        counts, bins = np.histogram(self.max_readout_power, bins=60, range=(-10, 10))
+        plt.figure()
+        plt.title('Optimal Readout Power Distribution')
+        plt.xlabel(f'Optimal Readout Power (dB relative to nominal RFIN/RFOUT of {self.rfin:.2f}/{self.rfout:.2f} dB)')
+        plt.ylabel('Frequency')
+        plt.stairs(counts, bins, fill=True)
+        pdf.savefig()
+        plt.close()
+        pdf.close()
+
+        self.plotted = True
 
 class PowerSweep(CompositeSweep):
     sweep_type = 'Power'
