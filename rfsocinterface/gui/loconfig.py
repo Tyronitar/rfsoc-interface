@@ -342,17 +342,20 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                     )
 
                     if not sweep_succesful:
-                        _logger.info('Cancelling after first sweep...')
+                        _logger.info('Canceled after first sweep.')
                         return
 
                 if self.only_highres_checkBox.isChecked() or do_highres_sweep:
                     _logger.info('Beginning High Resolution LO sweep...')
-                    self.run_sweeps(
+                    highres_sweep_succesful = self.run_sweeps(
                         selected_channels,
                         show_diagnostics=False,
                         upload_all_new_tone_lists=False,
                         high_res_sweep=True,
                     )
+                    if not highres_sweep_succesful:
+                        _logger.info('Canceled high resolution sweep.')
+                        return
             case self.blind_sweep_radioButton:
                 _logger.info('Beginning blind sweep...')
                 sweep_succesful = self.run_sweeps(
@@ -364,7 +367,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 )
 
                 if not sweep_succesful:
-                    _logger.info('Cancelling after first sweep...')
+                    _logger.info('Blind sweep canceled.')
                     return
                 
                 # TODO: Use Blind sweep dialog
@@ -373,7 +376,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 _logger.info('Beginning power sweep...')
                 sweep_succesful = self.run_power_sweeps(selected_channels)
                 if not sweep_succesful:
-                    _logger.info('Power sweep cancelled...')
+                    _logger.info('Power sweep canceled.')
                 
     def run_sweeps(
             self,
@@ -398,7 +401,6 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         QApplication.processEvents()
         increment_progress = make_progress_dialog_incrementer(pd)
 
-
         # Setup sweeps for each selected channel
         sweeps = self.setup_sweeps(selected_channels, high_res_sweep=high_res_sweep)
 
@@ -418,7 +420,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             sweep_thread.start()
 
         # Wait for all sweeps to finish or cancel
-        while not all ((sweep._processed or sweep._cancelled) for sweep in sweeps):
+        while not all ((sweep._processed or sweep._canceled) for sweep in sweeps):
             QApplication.processEvents()
             time.sleep(0.1)
         
@@ -427,8 +429,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        if pd.wasCanceled():
-            _logger.info('LO Sweep Cancelled')
+        if pd.wasCanceled() or any(sweep._canceled for sweep in sweeps):
+            # _logger.info('LO Sweep Canceled')
             return False
         
         pd.close()
@@ -503,7 +505,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     def fit_sweeps(self, sweeps: list[LoSweep]) -> bool:
         # Setup progress dialog 
-        total_steps = sum(sweep.data.n_good_tones for sweep in sweeps)
+        total_steps = sum(sweep.data.n_fits for sweep in sweeps)
         pd = IncrementalProgressDialog(
             f'Fitting LO Sweep{"s" if len(sweeps) > 1 else ""}...',
             'Cancel',
@@ -527,7 +529,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             thread.start()
 
         # Wait for all fits to finish or cancel
-        while not all ((sweep.data._fitted or sweep.data._fit_cancelled) for sweep in sweeps):
+        while not all ((sweep.data._fitted or sweep.data._fit_canceled) for sweep in sweeps):
             QApplication.processEvents()
             time.sleep(0.1)
         
@@ -536,8 +538,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        if pd.wasCanceled():
-            _logger.info('LO Sweep Cancelled')
+        if pd.wasCanceled() or any(sweep.data._fit_canceled for sweep in sweeps):
+            # _logger.info('LO Sweep Canceled')
             return False
 
         pd.close()
@@ -562,7 +564,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
 
         # Setup progress dialog 
-        total_steps = sum(sweep.data.n_tones for sweep in sweeps)
+        total_steps = sum(sweep.data.n_plots for sweep in sweeps)
         pd = IncrementalProgressDialog(
             f'Setting up plotting for LO sweep{"s" if len(sweeps) > 1 else ""}...',
             'Cancel',
@@ -610,7 +612,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             thread.start()
 
         # Wait for all fits to finish or cancel
-        while not all ((sweep.data._plotted or sweep.data._plot_cancelled) for sweep in sweeps):
+        while not all ((sweep.data._plotted or sweep.data._plot_canceled) for sweep in sweeps):
             pd.show()
             QApplication.processEvents()
             time.sleep(0.1)
@@ -620,9 +622,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
         
-        if pd.wasCanceled():
+        if pd.wasCanceled() or any(sweep.data._plot_canceled for sweep in sweeps):
             # TODO: Handle cancel (i.e. destroy the plots and the dialogs)
-            _logger.info('LO Sweep Plotting Cancelled')
+            # _logger.info('LO Sweep Plotting Canceled')
             return False
         pd.close()
 
@@ -694,7 +696,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             thread.start()
 
         # Wait for all fits to finish or cancel
-        while not all ((sweep.data._plotted or sweep.data._plot_cancelled) for sweep in sweeps):
+        while not all ((sweep.data._plotted or sweep.data._plot_canceled) for sweep in sweeps):
             pd.show()
             QApplication.processEvents()
             time.sleep(0.1)
@@ -704,9 +706,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
         
-        if pd.wasCanceled():
+        if pd.wasCanceled() or any(sweep.data._plot_canceled for sweep in sweeps):
             # TODO: Handle cancel (i.e. destroy the plots and the dialogs)
-            _logger.info('Blind Sweep Plotting Cancelled')
+            # _logger.info('Blind Sweep Plotting Canceled')
             return False
         pd.close()
 
@@ -749,7 +751,6 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         QApplication.processEvents()
         increment_progress = make_progress_dialog_incrementer(pd)
 
-
         # Setup sweeps for each selected channel
         sweeps = self.setup_power_sweeps(selected_channels)
 
@@ -769,7 +770,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             sweep_thread.start()
 
         # Wait for all sweeps to finish or cancel
-        while not all ((sweep._processed or sweep._cancelled) for sweep in sweeps):
+        while not all ((sweep._processed or sweep._canceled) for sweep in sweeps):
             QApplication.processEvents()
             time.sleep(0.1)
         
@@ -778,19 +779,16 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        if pd.wasCanceled():
-            _logger.info('Power Sweep Cancelled')
+        if pd.wasCanceled() or any(sweep._canceled for sweep in sweeps):
+            # _logger.info('Power Sweep Canceled')
             return False
         
         pd.close()
 
-        return True
-    
-    def get_power_levels(self) -> list[float]:
-        levels = [float(x.strip()) for x in filter(None, self.power_levels_lineEdit.text().split(','))]
-        if len(levels) == 0:
-            levels = [0]
-        return levels
+        if not self.fit_power_sweeps(sweeps):
+            return False
+
+        return self.plot_power_sweeps(sweeps)
     
     def setup_power_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]]) -> list[PowerSweep]:
         # Get values from GUI, converting KHz to Hz
@@ -825,6 +823,102 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             ))
             
         return sweeps
+
+    def fit_power_sweeps(self, sweeps: list[PowerSweep]) -> bool:
+        # Setup progress dialog 
+        total_steps = sum(sweep.data.n_fits for sweep in sweeps)
+        pd = IncrementalProgressDialog(
+            f'Fitting Power Sweep{"s" if len(sweeps) > 1 else ""}...',
+            'Cancel',
+            0,
+            total_steps,
+            parent=self,
+        )
+        pd.setAutoClose(True)
+        pd.setValue(0)
+        pd.show()
+        increment_progress = make_progress_dialog_incrementer(pd)
+
+        fitting_threads = []
+        for sweep in sweeps:
+            sweep_data = sweep.data
+            thread = Thread(target=sweep_data.fit, kwargs={'callback': increment_progress})
+            fitting_threads.append(thread)
+            pd.canceled.connect(sweep_data.cancel_fit)
+
+        for thread in fitting_threads:
+            thread.start()
+
+        # Wait for all fits to finish or cancel
+        while not all ((sweep.data._fitted or sweep.data._fit_canceled) for sweep in sweeps):
+            QApplication.processEvents()
+            time.sleep(0.1)
+        
+        for thread in fitting_threads:
+            thread.join()
+
+        QApplication.processEvents()
+
+        if pd.wasCanceled() or any(sweep.data._fit_canceled for sweep in sweeps):
+            # _logger.info('Power Sweep Canceled')
+            return False
+
+        pd.close()
+
+        # Save over sweeps now that fitting is completed
+        for sweep in sweeps:
+            sweep.data.save(sweep.savefile)
+        
+        return True
+
+    def plot_power_sweeps(self, sweeps: list[PowerSweep]) -> bool:
+        # Setup progress dialog 
+        total_steps = sum(sweep.data.n_plots for sweep in sweeps)
+        pd = IncrementalProgressDialog(
+            f'Plotting Power Sweep{"s" if len(sweeps) > 1 else ""}...',
+            'Cancel',
+            0,
+            total_steps,
+            parent=self,
+        )
+        pd.setAutoClose(True)
+        pd.setValue(0)
+        pd.show()
+        increment_progress = make_progress_dialog_incrementer(pd)
+
+        plotting_threads = []
+        for sweep in sweeps:
+            sweep_data = sweep.data
+            thread = Thread(target=sweep_data.plot_optimal_readout_powers, kwargs={'callback': increment_progress})
+            plotting_threads.append(thread)
+            pd.canceled.connect(sweep_data.cancel_fit)
+
+        for thread in plotting_threads:
+            thread.start()
+
+        # Wait for all plotting to finish or cancel
+        while not all ((sweep.data._plotted or sweep.data._plot_canceled) for sweep in sweeps):
+            QApplication.processEvents()
+            time.sleep(0.1)
+        
+        for thread in plotting_threads:
+            thread.join()
+
+        QApplication.processEvents()
+
+        if pd.wasCanceled() or any(sweep.data._plot_canceled for sweep in sweeps):
+            # _logger.info('Power Sweep Canceled')
+            return False
+
+        pd.close()
+        
+        return True
+    
+    def get_power_levels(self) -> list[float]:
+        levels = [float(x.strip()) for x in filter(None, self.power_levels_lineEdit.text().split(','))]
+        if len(levels) == 0:
+            levels = [0]
+        return levels
 
     def _write_new_tones(self, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int):
         """Write the new tones from fitting an LO Sweep to the RFSoC"""

@@ -4,7 +4,7 @@ import pdb
 import datetime
 
 from concurrent.futures import Future
-from typing import Callable
+from typing import Callable, Generic, TypeVar
 from multiprocessing import Lock
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
 
@@ -53,6 +53,8 @@ POWER_SWEEP_FRACTIONAL_FREQ_SHIFT = 1e-5
 POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB = 0
 
 NEW_LO_SWEEP_FORMAT_DATE = '20260213'  # For backwards compatibility
+
+CompositeSweepDataType = TypeVar('CompositeSweepDataType', bound='CompositeSweepData')
 
 
 def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
@@ -343,8 +345,8 @@ class LoSweepData:
         self.set_diff_to_flag(val=diff_to_flag)
         self._fitted = False
         self._plotted = False
-        self._fit_cancelled = False
-        self._plot_cancelled = False
+        self._fit_canceled = False
+        self._plot_canceled = False
     
     def set_diff_to_flag(self, val: float=3e3):
         """Set the flagging threshold.
@@ -436,6 +438,16 @@ class LoSweepData:
     def n_good_tones(self) -> int:
         """The number of good resonators."""
         return np.size(self.onres_ind)
+    
+    @property
+    def n_fits(self) -> int:
+        """The number of fits to perform."""
+        return self.n_good_tones
+
+    @property
+    def n_plots(self) -> int:
+        """The number of plots to generate."""
+        return self.n_tones
 
     @property
     def df(self) -> float:
@@ -478,15 +490,15 @@ class LoSweepData:
         return self.detector_f - self.f_center
     
     def cancel_fit(self):
-        self._fit_cancelled = True
+        self._fit_canceled = True
 
     def cancel_plot(self):
-        self._plot_cancelled = True
+        self._plot_canceled = True
 
     def fit(self, callback: Callable | None=None, max_workers: int=4):
         """Perform a fit to determine the resoncance frequencies of each resonator."""
         self._fitted = False
-        self._fit_cancelled = False
+        self._fit_canceled = False
         _logger.debug('Fitting LO sweep results...')
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             res = executor.map(
@@ -497,7 +509,7 @@ class LoSweepData:
                 self.s21[self.onres_ind, :],
             )
             for i, f0 in enumerate(res):
-                if self._fit_cancelled:
+                if self._fit_canceled:
                     return
                 i_res = self.onres_ind[i]
                 self.fit_f0[i_res] = f0
@@ -519,7 +531,7 @@ class LoSweepData:
             (Figure): The generated figure showing the plot for each resonator.
         """
         self._plotted = False
-        self._plot_cancelled = False
+        self._plot_canceled = False
 
         # Setup for plots
         if fig is None:
@@ -531,8 +543,8 @@ class LoSweepData:
 
         # Make this wrapper so `parallel_plot` can be canceled
         def callback_wrapper():
-            if self._plot_cancelled:
-                raise InterruptedError('Plotting Cancelled')
+            if self._plot_canceled:
+                raise InterruptedError('Plotting Canceled')
             if callback is not None:
                 callback()
 
@@ -597,7 +609,7 @@ class LoSweepData:
         ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
 
         for i_tone in range(self.n_tones):
-            if self._plot_cancelled:
+            if self._plot_canceled:
                 return
             ax.plot(self.freq[i_tone], self.s21[i_tone], color='blue')
             if callback is not None:
@@ -606,15 +618,15 @@ class LoSweepData:
         return fig
     
     def reset_stop_signals(self):
-        self._fit_cancelled = False
+        self._fit_canceled = False
         self._fitted = False
-        self._plot_cancelled = False
+        self._plot_canceled = False
         self._plotted = False
     
     def plot_blind_sweep(self, f0: npt.NDArray, fig: Figure=None, callback: Callable=None) -> Figure:
         self.reset_stop_signals()
         self.plot_full_trace(fig=fig, callback=callback)
-        if self._plot_cancelled:
+        if self._plot_canceled:
             return
         ax = fig.axes[0]
         for resonance in f0:
@@ -685,7 +697,7 @@ class LoSweepData:
             for start_idx, end_idx in zip(group_starts, group_starts[1:]):
                 fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
                 for i, i_tone in enumerate(range(start_idx, min(end_idx, stop))):
-                    if self._plot_cancelled:
+                    if self._plot_canceled:
                         plt.close(fig)
                         return
                     ax = np.ravel(axes)[i]
@@ -780,9 +792,18 @@ class LoSweep:
 
         self.tone_list = rfsoc.get_tone_list(chan)[0]
 
+        # Set up LO frequencies for sweep
+        n_steps = self.full_span // self.freq_step + 1
+        flo_step = self.freq_step
+
+        flo_start = self.f_center - flo_step * n_steps / 2.0
+        flo_stop = self.f_center  + flo_step * n_steps / 2.0
+
+        self.flos = np.arange(flo_start, flo_stop + flo_step, flo_step)
+
 
         self._processed = False
-        self._cancelled = False
+        self._canceled = False
     
     @property
     def tile_name(self) -> str:
@@ -791,11 +812,11 @@ class LoSweep:
     @property
     def n_steps(self) -> int:
         """Number of steps in the LO sweep."""
-        return self.full_span // self.freq_step + 1
+        return self.flos.size
     
     def cancel(self):
         """Cancel the LO sweep."""
-        self._cancelled = True
+        self._canceled = True
     
     @property
     def data(self) -> LoSweepData:
@@ -864,19 +885,16 @@ class LoSweep:
             chanmask = np.ones(np.size(self.tone_list), dtype=int)
 
         self._processed = False
-        flo_step = self.freq_step
 
-        flo_start = self.f_center - flo_step * self.n_steps / 2.0
-        flo_stop = self.f_center  + flo_step * self.n_steps / 2.0
-
-        self.flos = np.arange(flo_start, flo_stop + flo_step, flo_step)
+        flo_start = self.flos[0]
+        flo_stop = self.flos[-1]
 
         # Perform LO Sweep
         _logger.info('Starting LO sweep...')
         _logger.debug(f'Starting LO sweep from {flo_start:.6f} MHz to {flo_stop:.6f} MHz in {self.n_steps} steps')
         z = np.zeros((np.size(self.flos), np.size(self.tone_list)), dtype=complex)
         for i, flo in enumerate(self.flos):
-            if self._cancelled:
+            if self._canceled:
                 z = None
                 break
             z[i, :] = self._get_data_at(flo)
@@ -885,7 +903,7 @@ class LoSweep:
 
         # Process LO sweep
         if z is None:
-            _logger.info('Sweep cancelled. Exiting...')
+            _logger.info('Sweep canceled. Exiting...')
             data = None
         else:
             _logger.info('Processing sweep results')
@@ -909,7 +927,7 @@ class LoSweep:
         return data
 
 
-class CompositeSweep:
+class CompositeSweep(Generic[CompositeSweepDataType]):
     """Class for a sweep consisting of multiple LO sweeps."""
     sweep_type = ''
 
@@ -948,7 +966,7 @@ class CompositeSweep:
         self._data = []
         self._sweeps = []
         self._processed = False
-        self._cancelled = False
+        self._canceled = False
 
     @property
     def tile_name(self) -> str:
@@ -959,10 +977,11 @@ class CompositeSweep:
         return self.rfsoc.get_channel(self.chan)
 
     @property
-    def data(self) -> npt.NDArray:
+    def data(self) -> CompositeSweepDataType:
         if self._data is None:
             raise RuntimeWarning(f'Attempting to access nonexistant data of a {self.sweep_type} sweep. Has the sweep been run yet?')
-    
+        return self._data
+
     @property
     def n_sweeps(self) -> int:
         """Number of sweeps this sweep is comprised of."""
@@ -971,11 +990,11 @@ class CompositeSweep:
     @property
     def n_steps(self) -> int:
         """Total number of steps in the sweep."""
-        return (self.full_span // self.freq_step + 1) * self.n_sweeps
+        return sum(sweep.n_steps for sweep in self._sweeps)
 
     def cancel(self):
         """Cancel the sweep."""
-        self._cancelled = True
+        self._canceled = True
         for sweep in self._sweeps:
             sweep.cancel()
     
@@ -995,24 +1014,24 @@ class CompositeSweep:
         data = []
         try:
             for i_sweep, sweep in enumerate(self._sweeps):
-                if self._cancelled:
+                if self._canceled:
                     data = None
                     break
                 self._between_sweep_callback(i_sweep, sweep)
 
                 this_sweep_data = sweep.run_sweep(callback=callback, save=False)
-                if self._cancelled:
+                if self._canceled:
                     data = None
                     break
                 data.append(this_sweep_data)
 
             if data is None:
-                _logger.info('Sweep cancelled. Exiting...')
+                _logger.info('Sweep canceled. Exiting...')
                 self._data = None
             else:
                 self.save_sweeps(data)
         except Exception:
-            _logger.exception('Exception encountered during sweep. Cancelling...')
+            _logger.exception('Exception encountered during sweep. Canceling...')
             self._data = None
             self.cancel()
             return
@@ -1034,8 +1053,21 @@ class CompositeSweepData:
         self.f_center = f_center
         self.bb_freqs = bb_freqs
         self.sweeps = sweeps
-        self.fit_f0 = np.zeros(self.n_tones)
+        self._fit_f0 = np.zeros(self.n_tones)
+
+        # Signals for fitting and plotting 
+        self._fitted = False
+        self._plotted = False
+        self._fit_canceled = False
+        self._plot_canceled = False
+
+    def reset_stop_signals(self):
+        self._fit_canceled = False
+        self._fitted = False
+        self._plot_canceled = False
+        self._plotted = False
     
+
     @property
     def chanmask(self) -> npt.NDArray:
         """The chanmask used during the sweep."""
@@ -1073,19 +1105,49 @@ class CompositeSweepData:
     def detector_f(self) -> npt.NDArray:
         return self.bb_freqs + self.f_center
     
-    def get_fit_f0(self) -> npt.NDArray:
-        fit_f0 = np.stack([sweep.fit_f0 for sweep in self.sweeps], axis=0)
-        self.fit_f0 = fit_f0
-        return fit_f0
-    
-    def fit(self, callback: Callable=None):
-        """Fit each sweep in this sweep."""
-        with ProcessPoolExecutor() as executor:
+    def fit_f0(self, callback: Callable=None):
+        """Fit f0 for each sweep in this sweep."""
+        with ThreadPoolExecutor() as executor:
             executor.map(LoSweepData.fit, self.sweeps, [callback] * len(self.sweeps))
         self.get_fit_f0()
 
+    def get_fit_f0(self) -> npt.NDArray:
+        fit_f0 = np.stack([sweep.fit_f0 for sweep in self.sweeps], axis=0)
+        self._fit_f0 = fit_f0
+        return fit_f0
+
+    @property
+    def n_fits(self) -> int:
+        """The number of fits to perform for each sweep."""
+        return sum(sweep.n_fits for sweep in self.sweeps)
+
+    def fit(self, callback: Callable=None):
+        """Fit each sweep in this sweep."""
+        raise NotImplementedError
+
+    def cancel_fit(self):
+        """Cancel the fit for each sweep in this sweep."""
+        for sweep in self.sweeps:
+            sweep.cancel_fit()
+        self._fit_canceled = True
+    
+    @property
+    def n_plots(self) -> int:
+        """The number of plots to generate."""
+        raise NotImplementedError
+
+    def plot(self, callback: Callable=None):
+        """Plot the results of the sweep."""
+        raise NotImplementedError
+    
+    def cancel_plot(self):
+        """Cancel the plotting for each sweep in this sweep."""
+        for sweep in self.sweeps:
+            sweep.cancel_plot()
+        self._plot_canceled = True
+
     @ensure_path(1)
-    def saveh5(self, fname: Path):
+    def save(self, fname: Path):
         """Save the sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
@@ -1095,7 +1157,7 @@ class CompositeSweepData:
             fh.create_dataset('sweeps', data=self.combined_sweep_array, dtype=np.complex128)
             fh.create_dataset('baseband_freqs', data=self.bb_freqs, dtype=np.float64)
             fh.create_dataset('chanmask', data=self.chanmask, dtype=np.int8)
-            fh.create_dataset('fit_f0', data=self.fit_f0, dtype=np.float64)
+            fh.create_dataset('fit_f0', data=self._fit_f0, dtype=np.float64)
 
     @classmethod
     @ensure_path(1)
@@ -1129,17 +1191,15 @@ class PowerSweepData(CompositeSweepData):
         self.rfin = rfin
         self.rfout = rfout
         self.max_readout_power = np.zeros(self.n_tones)
-        self.fitted = False
-        self.plotted = False
         self._onres_power_levels = None
         self._onres_df = None
         self._onres_popt = None
 
     @ensure_path(1)
-    def saveh5(self, fname: Path):
+    def save(self, fname: Path):
         """Save the power sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
-        super().saveh5(path)
+        super().save(path)
         with h5py.File(path, 'a') as fh:
             fh.attrs['rfin'] = self.rfin
             fh.attrs['rfout'] = self.rfout
@@ -1176,17 +1236,31 @@ class PowerSweepData(CompositeSweepData):
 
         return power_sweep
 
+    @property
+    def n_fits(self) -> int:
+        """The number of fits to perform for the power sweep."""
+        return super().n_fits + self.onres_ind.size
+    
+    def fit(self, callback: Callable=None):
+        """Fit the power sweep data to determine the optimal readout power for each resonator."""
+        super().fit_f0(callback=callback)  # Must find f0 first
+        self.find_optimal_readout_power(callback=callback)
+
     def find_optimal_readout_power(
         self,
         baseline_percentage: float=0.33,
         bad_power_cutoff_percentile: float=0.75,
         max_power_deviation_from_median_dB: float=5,
+        callback: Callable=None,
     ):
+        self._fitted = False
+        self._fit_canceled = False
+
         onres_power_levels = []
         onres_df = []
         onres_popt = np.zeros((len(self.onres_ind), 2))
 
-        f0_data = self.fit_f0[:]
+        f0_data = self._fit_f0[:]
         power_levels = self.power_levels[:]
 
         sorted_data_ind = np.argsort(power_levels)
@@ -1196,6 +1270,8 @@ class PowerSweepData(CompositeSweepData):
         non_linear_slope = np.zeros(self.n_tones)
 
         for i_onres, i_res in enumerate(self.onres_ind):
+            if self._fit_canceled:
+                return
 
             # First let's remove f0 values that are invalid at high power
             this_power_level = power_levels[:]
@@ -1238,6 +1314,9 @@ class PowerSweepData(CompositeSweepData):
             onres_df.append(this_df)
             onres_popt[i_onres] = popt
 
+            if callback is not None:
+                callback()
+
         med = np.median(power_level_non_linear)
         bad_ind = np.argwhere(np.abs(power_level_non_linear - med) > max_power_deviation_from_median_dB).flatten()
         power_level_non_linear[bad_ind] = med
@@ -1253,16 +1332,30 @@ class PowerSweepData(CompositeSweepData):
         self._onres_df = np.array(onres_df, dtype=object)
         self._onres_popt = onres_popt
         self.fitted = True
-        self.plotted = False  # Need to replot now that values have been computed
 
         return max_readout_power
+
+    @property
+    def n_plots(self) -> int:
+        """The number of plots to make for the power sweep.
+        
+        Number of on-resonance tones + 1 for the summary histogram.
+        """
+        return self.onres_ind.size + 1
+
+    def plot(self, callback: Callable=None):
+        """Plot the power sweep data."""
+        self.plot_optimal_readout_powers(callback=callback)
     
     def plot_optimal_readout_powers(
         self, 
         pdf_filename: str=None,
         nrows: int=4,
         ncols: int=3,
+        callback: Callable=None,
     ):
+        self._plotted = False
+        self._plot_canceled = False
         if pdf_filename is None:
             pdf_filename = f'{self.tile_names[0]}_optimal_readout_powers.pdf'
 
@@ -1279,6 +1372,10 @@ class PowerSweepData(CompositeSweepData):
         i_plot = 0
 
         for i_onres, i_res in enumerate(self.onres_ind):
+            if self._plot_canceled:
+                plt.close(fig)
+                pdf.close()
+                return
             # Start a new page if needed
             if i_plot >= page_size:
                 # Save the current figure 
@@ -1312,6 +1409,9 @@ class PowerSweepData(CompositeSweepData):
             ax.set_ylabel('df0 / f0')
             i_plot += 1
 
+            if callback is not None:
+                callback()
+
         # Save the last page 
         fig.legend(
             custom_lines,
@@ -1325,6 +1425,11 @@ class PowerSweepData(CompositeSweepData):
         pdf.savefig(fig)
         plt.close(fig)
 
+        if self._plot_canceled:
+            plt.close(fig)
+            pdf.close()
+            return
+
         # Histogram
         counts, bins = np.histogram(self.max_readout_power, bins=60, range=(-10, 10))
         plt.figure()
@@ -1336,9 +1441,12 @@ class PowerSweepData(CompositeSweepData):
         plt.close()
         pdf.close()
 
-        self.plotted = True
+        if callback is not None:
+            callback()
 
-class PowerSweep(CompositeSweep):
+        self._plotted = True
+
+class PowerSweep(CompositeSweep[PowerSweepData]):
     sweep_type = 'Power'
 
     def __init__(
@@ -1413,7 +1521,7 @@ class PowerSweep(CompositeSweep):
             self.starting_rfin,
             self.starting_rfout,
         )
-        self._data.saveh5(self.savefile)
+        self._data.save(self.savefile)
     
 
 
@@ -1428,9 +1536,9 @@ if __name__ == '__main__':
 
     sweep = PowerSweepData.load(sweep_file)
     sweep.fit()  # Fit resonances if they haven't yet
-    sweep.saveh5(sweep_file)
+    sweep.save(sweep_file)
     sweep.find_optimal_readout_power(bad_power_cutoff_percentile=0.5, pdf_filename=f'max_power_{tile_name}.pdf')
-    sweep.saveh5(sweep_file)
+    sweep.save(sweep_file)
 
     pdb.set_trace()
     # NOTE: This will overwrite everything that isn't tone_powers with defaults
