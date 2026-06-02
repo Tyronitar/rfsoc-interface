@@ -3,13 +3,14 @@
 import inspect
 import logging
 from pathlib import Path
+import pdb
 
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import pdb
-import tables
+import h5py
 
-from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, PERMISSIONS_ALL_FULL, get_params_file_template, pad_to_length
+from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, PERMISSIONS_ALL_FULL, get_params_file_template, pad_to_length, ensure_path, mHz_formatter
 
 
 _logger = logging.getLogger(__name__)
@@ -37,81 +38,80 @@ def initialize_params_file(
     if not params_tile_file.exists():
         params_tile_file.touch(PERMISSIONS_ALL_FULL)
     n_tones = np.size(baseband_freqs)
-    with tables.open_file(params_tile_file, 'w') as params_fh:
-        params_fh.root._v_attrs.n_tones = n_tones
-        params_fh.root._v_attrs.tile_name = tile_name
-        params_fh.root._v_attrs.tile_number = 0
-        params_fh.root._v_attrs.chan_number = 0
-        params_fh.root._v_attrs.ifslice_number = 0
-        chanmask = params_fh.create_array(
-            '/',
+    with h5py.File(params_tile_file, 'w') as params_fh:
+        params_fh.attrs['n_tones'] = n_tones
+        params_fh.attrs['tile_name'] = tile_name
+        params_fh.attrs['tile_number'] = 0
+        params_fh.attrs['chan_number'] = 0
+        params_fh.attrs['ifslice_number'] = 0
+        params_fh.attrs['lo_freq'] = lo_freq
+        params_fh.create_dataset('lo_freq', data=lo_freq)
+        params_fh.create_dataset(
             'chanmask',
-            atom=tables.Int8Atom(),
             shape=(n_tones,),
+            maxshape=(1024,),
+            dtype=np.int8,
+            fillvalue=1,
         )
-        chanmask[:] = 1
-        chanmask_non_collided = params_fh.create_array(
-            '/',
+        params_fh.create_dataset(
             'chanmask_non_collided',
-            atom=tables.Int8Atom(),
             shape=(n_tones,),
+            maxshape=(1024,),
+            dtype=np.int8,
+            fillvalue=1,
         )
-        chanmask_non_collided[:] = 1
-        chanmask_isolated = params_fh.create_array(
-            '/',
+        params_fh.create_dataset(
             'chanmask_isolated',
-            atom=tables.Int8Atom(),
             shape=(n_tones,),
+            maxshape=(1024,),
+            dtype=np.int8,
+            fillvalue=1,
         )
-        chanmask_isolated[:] = 1
-        params_fh.create_array(
-            '/',
+        params_fh.create_dataset(
             'baseband_freqs',
-            obj=baseband_freqs,
+            data=np.real(baseband_freqs),
+            maxshape=(1024,),
+            dtype=np.float64,
         )
-        params_fh.create_array(
-            '/',
+        params_fh.create_dataset(
             'tone_powers',
-            obj=np.ones(n_tones, dtype=np.float32),
+            data=np.ones(n_tones, dtype=np.float64),
+            maxshape=(1024,),
+            dtype=np.float64,
         )
-        params_fh.create_array(
-            '/',
-            'lo_freq',
-            obj=lo_freq,
-        )
-        params_fh.create_array(
-            '/',
+        params_fh.create_dataset(
             'detector_delta_x',
-            atom=tables.Float32Atom(),
             shape=(n_tones,),
+            dtype=np.float64,
+            maxshape=(1024,),
         )
-        params_fh.create_array(
-            '/',
+        params_fh.create_dataset(
             'detector_delta_y',
-            atom=tables.Float32Atom(),
             shape=(n_tones,),
+            dtype=np.float64,
+            maxshape=(1024,),
         )
-        det_beam_ampl = params_fh.create_array(
-            '/',
+        params_fh.create_dataset(
             'detector_beam_ampl',
-            atom=tables.Float32Atom(),
             shape=(n_tones,),
+            dtype=np.float64,
+            maxshape=(1024,),
+            fillvalue=1,
         )
-        det_beam_ampl[:] = 1
-        det_pol = params_fh.create_array(
-            '/',
+        params_fh.create_dataset(
             'detector_pol',
-            atom=tables.Int8Atom(),
             shape=(n_tones,),
+            dtype=np.int8,
+            maxshape=(1024,),
+            fillvalue=1,
         )
-        det_pol[:] = 1
-        dfoveref_per_mK = params_fh.create_array(
-            '/',
+        params_fh.create_dataset(
             'dfoverf_per_mK',
-            atom=tables.Float64Atom(),
             shape=(n_tones,),
+            dtype=np.float64,
+            maxshape=(1024,),
+            fillvalue=1,
         )
-        dfoveref_per_mK[:] = 1
     _logger.info(f'Initialized params file {params_tile_file}')
 
 def update_params_file(
@@ -129,9 +129,14 @@ def update_params_file(
     chanmask_isolated: npt.NDArray=None,
     tone_powers: npt.NDArray=None,
 ):
-    params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
-    if not params_tile_file.exists():
-        raise FileExistsError(f'Params file {params_tile_file} does not exist')
+    if Path(target).exists():
+        # the first argument was the path to the file
+        params_tile_file = Path(target)
+    else:
+        # the first argument was the name of the tile
+        params_tile_file = Path(get_params_file_template(target, params_dir=params_dir))
+        if not params_tile_file.exists():
+            raise FileExistsError(f'Params file {params_tile_file} does not exist')
 
     signature = inspect.signature(update_params_file)
     keyword_args = {
@@ -140,20 +145,28 @@ def update_params_file(
         if param.default is not inspect.Parameter.empty
     }
 
-    with tables.open_file(params_tile_file, 'a') as fh:
+    with h5py.File(params_tile_file, 'a') as fh:
+        if baseband_freqs is not None:
+            fh.attrs['n_tones'] = len(baseband_freqs)
+            # TODO: need to extend existing arrays to match the new number of tones
+
         for k in keyword_args:  # Check all of the keyword arguments
             if k == 'params_dir':
                 continue  # We only care about the parameters
+            if k == 'lo_freq' and lo_freq is not None:
+                fh.attrs['lo_freq'] = lo_freq
+                continue
             v = locals()[k]
             if v is None:
                 continue  # The value is not being updated, so skip it
             # Check the array is the correct size if needed
             if k in PARAM_FILE_N_TONE_ATTRIBUTES:
-                if np.size(v) != fh.root._v_attrs.n_tones:
+                if np.size(v) != fh.attrs['n_tones']:
                     raise ValueError(
                         f'{k} size {np.size(v)} does not match n_tones {fh.root._v_attrs.n_tones}'
                     )
             fh.get_node('/', k)[:] = v
+
 
 def create_params_file_from_VNA_sweep(
     tile_name: str,
@@ -225,24 +238,49 @@ def create_params_file_from_VNA_sweep(
 
 
 if __name__ == "__main__":
-    Be231102p2_tones = np.array([200000000, 213078506, 214801178, 247405640, 255826241, 256855576, 260115494,
-         263857108, 265547813, 269670205, 270298250, 272671603, 274710449,
-         276383775, 278960930, 308519951, 312882861, 313150099, 314004392,
-         314391462, 318555194, 322412444, 323717312, 326364689, 328323325,
-         328705367, 335793390, 340651152, 368175878, 373470266, 375799889,
-         375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
-         393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
-    Be260114BL_tones_3 = np.array([1.1700,1.179436, 1.19354, 1.196931, 1.1734,1.1985,1.20175,1.215965, 1.2540, 1.26819, 
-                                   1.2754, 1.3183, 1.32442, 1.33475, 1.385047, 1.396914,1.429034, 1.43044,1.439581, 1.44511
-                                   ,1.46721, 1.480558, 1.49648,1.50423,1.5227,1.56735, 1.5721, 1.6243, 1.64192, 1.65332, 1.69199])*1e9
-    pdb.set_trace()
-    LO_freq = 1420e6
+    # Be231102p2_tones = np.array([213078506, 214801178, 247405640, 255826241, 256855576, 260115494,
+    #     263857108, 265547813, 269670205, 270298250, 272671603, 274710449,
+    #     276383775, 278960930, 308519951, 312882861, 313150099, 314004392,
+    #     314391462, 318555194, 322412444, 323717312, 326364689, 328323325,
+    #     328705367, 335793390, 340651152, 368175878, 373470266, 375799889,
+    #     375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
+    #     393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
+
+    # params_file = '/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260325.h5'
+    old_tile_name = 'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
+    params_file = f'/data/params/params_tile_{old_tile_name}.h5'
+    new_tile_name = old_tile_name + 'and_collided'
+    # with h5py.File(params_file, 'a') as params_fh:
+        # params_fh.attrs['lo_freq'] = params_fh['lo_freq'][()]
+        # del params_fh['lo_freq']
+        # pdb.set_trace()
+        # params_fh['baseband_freqs'][:] = np.sort(params_fh['baseband_freqs'][:])
+        # params_fh['baseband_freqs'][:] = params_fh['baseband_freqs'] - params_fh.attrs['lo_freq']
+    flag_collided_resonances(
+        params_file,
+        new_tile_name,
+        collision_threshold=1/10000,
+    )
+    # add_off_resonance_tones(
+    #     params_file,
+    #     new_tile_name,
+    #     100,
+    #     180e6,
+    #     620e6,
+    #     q=1/100,
+    #     delta_offres_min=1e6,
+    # )
+    exit()
+
+    # Be231102p2_LO_freq = 300e6
     # lo_freq = 4e8
-    #lo_freq = 4e8
-    n_tones = 1
+    lo_freq = 4e8
+    n_tones = 1000
+    baseband_freqs = np.linspace(-200e6, 200e6, n_tones)
     # baseband_freqs = np.concatenate([np.linspace(-246e6, -11e6, n_tones // 2), np.linspace(10e6, 245e6, n_tones // 2)])
-    #baseband_freqs = np.arange(-200e6, 200e6 + 1, 400e3)
-    #n_tones = np.size(baseband_freqs)
+    # baseband_freqs = np.linspace(-220, 220, n_tones) * 1e6
+    # n_tones = np.size(baseband_freqs)
+    tile_name = 'ONR_Blind_180_to_620MHz_1000_tones'
     # baseband_freqs = [450e6 - lo_freq]
     # tile_name = f'{n_tones}_tone_uniform_202050829'
         # Add 58 more tones
@@ -269,8 +307,38 @@ if __name__ == "__main__":
     # baseband_freqs = baseband_freqs[sorted_indices] - lo_freq
     
     
-    tile_name = 'Be260114BL_1000_tones_3'
-    #tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
+    # tile_name = 'Be231102p2_100_tones'
+    # tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
+    tile_name = f'{n_tones}_tones_equally_spaced'
+    # tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260304'
+    # bad_tones = [
+    #     1, 3, 223, 278, 299,
+    #     303, 10, 69, 192, 820,
+    #     263, 483, 172, 574, 426,
+    #     569, 297, 167, 15, 717,
+    #     487, 842, 453, 13, 719,
+    #     92, 571, 630, 84, 220,
+    #     364, 516, 74, 726, 292,
+    #     519, 812, 302, 683, 537,
+    #     294, 534, 256, 661, 529,
+    #     737, 54, 782, 567, 103,
+    #     330, 133, 809, 460, 589,
+    #     387, 538, 213, 120, 79,
+    #     783, 612, 121, 117, 749
+    # ]
+    # old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
+    # chanmask = old_params.root.chanmask[:]
+    # chanmask[bad_tones] = -1
+    # lo_freq = old_params.root.lo_freq[()]
+    # detdx = old_params.root.detector_delta_x[:]
+    # detdy = old_params.root.detector_delta_y[:]
+    # det_beam_ampl = old_params.root.detector_beam_ampl[:]
+    # det_pol = old_params.root.detector_pol[:]
+    # tone_powers = old_params.root.tone_powers[:]
+    # df_overf_per_mK = old_params.root.dfoverf_per_mK[:]
+    # # tone_list = np.load('/data/20260304/20260304_Device_aSi1_Channel2_telescope_275mK_tone_list_hour16p6706.npy')
+    # baseband_freqs = old_params.root.baseband_freqs[:]
+    # old_params.close()
     # tile_name = 'Device_aSi1_Channel2_blind'
     # baseband_freqs = baseband_freqs - lo_freq
     # baseband_freqs =  np.load('/home/onrkids/readout/host/params/Default_tone_list.npy')

@@ -18,5 +18,6 @@
     <file>plus.svg</file>
     <file>undo.svg</file>
     <file>redo.svg</file>
+    <file alias='close.svg'>icons8-close.svg</file>
   </qresource>
 </RCC>

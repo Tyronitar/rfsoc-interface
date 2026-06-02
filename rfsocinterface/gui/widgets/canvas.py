@@ -24,10 +24,11 @@ from matplotlib.backends.backend_qt import FigureManagerQT, NavigationToolbar2QT
 from matplotlib.backend_bases import _Mode
 from matplotlib.backend_tools import ToolToggleBase, Cursors, ToolBase, ConfigureSubplotsBase
 from matplotlib.figure import Figure
+from matplotlib.patches import Rectangle
 
 from rfsocinterface.gui.blit_manager import BlitManager
 from rfsocinterface.gui.widgets.utils import layout_widgets
-from rfsocinterface.core.utils import P
+from rfsocinterface.core.utils import P, EDITED_RESONANCE_COLOR, SELECTED_RESONANCE_COLOR
 from rfsocinterface.gui.uic import icons_rc
 
 
@@ -151,22 +152,22 @@ class EditToolBar(NavigationToolbar2QT):
     toolitems = NavigationToolbar2QT.toolitems
 
     def __init__(
-            self,
-            canvas,
-            parent=None,
-            coordinates=True,
-            add_group: bool=False,
-            add_edit_button: bool=False,
-            edit_description: str=EditTool.description,
-            add_function: Callable=None,
-            add_description: str=AddTool.description,
-            remove_function: Callable=None,
-            remove_description: str=RemoveTool.description,
-            undo_function: Callable=None,
-            undo_description: str=UndoTool.description,
-            redo_function: Callable=None,
-            redo_description: str=RedoTool.description,
-            ):
+        self,
+        canvas,
+        parent=None,
+        coordinates=True,
+        add_group: bool=False,
+        add_edit_button: bool=False,
+        edit_description: str=EditTool.description,
+        add_function: Callable=None,
+        add_description: str=AddTool.description,
+        remove_function: Callable=None,
+        remove_description: str=RemoveTool.description,
+        undo_function: Callable=None,
+        undo_description: str=UndoTool.description,
+        redo_function: Callable=None,
+        redo_description: str=RedoTool.description,
+    ):
         self.add_function = add_function
         self.remove_function = remove_function
         self.undo_function = undo_function
@@ -263,27 +264,31 @@ class ToolbarCanvas(QWidget):
     """Widget canvas that contains the navbar."""
 
     def __init__(
-            self,
-            parent=None,
-            fig: Figure | None=None,
-            add_edit: bool=False,
-            edit_description: str=EditTool.description,
-            coordinates: bool=True,
-            add_function: Callable=None,
-            add_description: str=AddTool.description,
-            remove_function: Callable=None,
-            remove_description: str=RemoveTool.description,
-            undo_function: Callable=None,
-            undo_description: str=UndoTool.description,
-            redo_function: Callable=None,
-            redo_description: str=RedoTool.description,
-            ):
+        self,
+        parent=None,
+        fig: Figure | None=None,
+        scrollable: bool=False,
+        add_edit: bool=False,
+        edit_description: str=EditTool.description,
+        coordinates: bool=True,
+        add_function: Callable=None,
+        add_description: str=AddTool.description,
+        remove_function: Callable=None,
+        remove_description: str=RemoveTool.description,
+        undo_function: Callable=None,
+        undo_description: str=UndoTool.description,
+        redo_function: Callable=None,
+        redo_description: str=RedoTool.description,
+    ):
         """Initialize a ResonatorCanvas."""
         super().__init__(parent)
         if fig is None:
             fig = Figure(figsize=(8, 5))
-        self.scrollable_canvas = ScrollableCanvas(self)
-        self.scrollable_canvas.set_figure(fig)
+        if scrollable:
+            self.canvas = ScrollableCanvas(self)
+            self.canvas.set_figure(fig)
+        else:
+            self.canvas = FigureCanvas(fig)
         self.nav = EditToolBar(
             self.figure_canvas,
             parent,
@@ -304,7 +309,7 @@ class ToolbarCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
         layout.addWidget(self.nav)
-        layout.addWidget(self.scrollable_canvas)
+        layout.addWidget(self.canvas)
     
     @property
     def editing(self) -> bool:
@@ -312,29 +317,35 @@ class ToolbarCanvas(QWidget):
 
     @property
     def figure(self) -> Figure:
-        return self.scrollable_canvas.figure
+        return self.canvas.figure
 
     @property
     def figure_canvas(self) -> FigureCanvas:
-        return self.scrollable_canvas.canvas
-    
+        if isinstance(self.canvas, ScrollableCanvas):
+            return self.canvas.canvas
+        return self.canvas
+        
     def update_figure(self):
         """Update the figure of this widget."""
         self.update()
 
     def set_figure(self, fig: Figure | None):
         """Set the figure of this widget."""
-        self.scrollable_canvas.set_figure(fig)
+        self.canvas.set_figure(fig)
         layout = self.layout()
 
         old_nav = self.nav
-        self.manager = FigureManagerQT(self.scrollable_canvas, 1)
-        self.scrollable_canvas.manager = self.manager
+        self.manager = FigureManagerQT(self.canvas, 1)
+        self.canvas.manager = self.manager
         self.nav = self.manager.toolbar
         layout.replaceWidget(old_nav, self.nav)
     
     def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
-        self.scrollable_canvas.replot_figure(plotting_function, *args, **kwargs)
+        if isinstance(self.canvas, ScrollableCanvas):
+            self.canvas.replot_figure(plotting_function, *args, **kwargs)
+        else:
+            self.figure.clf()
+            plotting_function(*args, fig=self.figure, **kwargs)
         self.nav.update()
 
 
@@ -395,6 +406,7 @@ class DiagnosticsCanvas(ScrollableCanvas):
         """Initialize a DiagnosticsCanvas."""
         super().__init__(parent)
         self.selected_axes: plt.Axes | None = None
+        self.edited_axes = set()
 
     def set_figure(self, fig: Figure):
         """Set the figure of this canvas."""
@@ -425,17 +437,23 @@ class DiagnosticsCanvas(ScrollableCanvas):
             ax.patch.set_visible(False)
         self.bm.update()
 
+    def get_ax_by_index(self, idx: int) -> plt.Axes:
+        return self.figure.get_axes()[idx]
+    
+    def is_edited(self, ax: plt.axes) -> bool:
+        return self.figure.get_axes().index(ax) in self.edited_axes
+
     def select_axis(self, axes: plt.Axes | None):
         """Select the provided axes.
 
-        Draws a blue highlight around the axes and deselects the previous axes if there
+        Draws a highlight around the axes and deselects the previous axes if there
         was one.
         """
         fig = self.canvas.figure
         # Deselect previous axes
         if self.selected_axes is not None:
             ax = self.selected_axes
-            # Clear the blue outline by drawing a white outline over it
+            # Clear the outline by drawing a white outline over it
             ax.patch.set_linewidth(6)
             ax.patch.set_edgecolor('w')
             fig.draw_artist(ax.patch)
@@ -445,10 +463,13 @@ class DiagnosticsCanvas(ScrollableCanvas):
                 (ax.patch, ax.patch.get_tightbbox()),
                 (ax, ax.bbox),
             ])
+
+            if self.is_edited(ax):
+                self.add_edited_marker(ax)
         # Select new axes
         if axes is not None:
             axes.patch.set_linewidth(5)
-            axes.patch.set_edgecolor('cornflowerblue')
+            axes.patch.set_edgecolor(SELECTED_RESONANCE_COLOR)
             self.bm.update_artists([
                 (axes.patch, axes.patch.get_clip_box()),
                 (axes, axes.bbox),
@@ -456,6 +477,22 @@ class DiagnosticsCanvas(ScrollableCanvas):
         self.selected_axes = axes
         self.canvas.blit()
         self.canvas.flush_events()
+    
+    def add_edited_marker(self, ax: plt.Axes):
+        """Draw a rectangle around an axes indicating it has been edited."""
+        ax.patch.set_linewidth(5)
+        ax.patch.set_edgecolor(EDITED_RESONANCE_COLOR)
+
+        self.bm.update_artists([
+            (ax.patch, ax.patch.get_tightbbox()),
+            (ax, ax.bbox),
+        ])
+    
+    def set_edited(self, idx: int):
+        self.edited_axes.add(idx)
+        ax = self.get_ax_by_index(idx)
+        if ax != self.selected_axes:
+            self.add_edited_marker(ax)
 
 
 if __name__ == '__main__':

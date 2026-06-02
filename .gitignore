@@ -189,9 +189,15 @@ data/
 # Plots
 *.pdf
 *.png
+*.gif
+*.mp4
 
 # Configuration Files
 *.yml
 *.yaml
 *.json
 !*example*.json
+
+
+# Extra UI files
+ui_resources/*.py
