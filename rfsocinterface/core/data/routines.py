@@ -8,9 +8,11 @@ import functools
 
 import pdb
 
+import h5py
 import numpy as np
 import numpy.typing as npt
 from numpy.polynomial import Polynomial
+from numpy.polynomial import polynomial as poly
 from scipy import signal
 import time
 import datetime
@@ -23,7 +25,7 @@ mpl.use('QtAgg')
 import matplotlib.pyplot as plt
 
 
-from rfsocinterface.core.data.utils import _logger, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX
+from rfsocinterface.core.data.utils import _logger, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX, get_fft_csd_psd
 from rfsocinterface.core.data.utils import DECIMATE_ORDER
 from rfsocinterface.core.utils import BUTTER_ORDER, axis_index, get_git_hash, axis_slice
 
@@ -356,6 +358,76 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     return templates
 
 
+
+def compute_templates_fspace(
+        data: npt.NDArray,
+        fs:float,
+        lp_filt_freq:int = 1,
+        max_modes: int=30,
+        plot_eigenvalues: bool=False,
+) -> npt.NDArray:
+
+    deproj = data - np.mean(data, axis=-1, keepdims=True)
+    n_tones = data.shape[1]
+    n_dir = data.shape[0]
+    n_modes = 2
+    good_pixels = np.arange(n_tones)
+
+    sigma = np.std(deproj, axis = -1, keepdims=True)
+    whitened_noise = deproj/sigma
+    _, _, csd, freqs = get_fft_csd_psd(whitened_noise, fs)
+
+    lp_bound_idx = np.searchsorted(freqs, lp_filt_freq)
+    correlation_matrices = np.mean(csd[:, :, :, 0:lp_bound_idx], axis = -1)
+    
+    eigen_values, v = np.linalg.eigh(correlation_matrices)
+    sorted_indices = np.argsort(eigen_values, axis=1)[:, ::-1]
+    sorted_eigen_values = np.take_along_axis(eigen_values, sorted_indices, axis=1)
+
+    sorted_v = np.take_along_axis(v, sorted_indices[:, np.newaxis, :], axis=-1)
+
+    if plot_eigenvalues:
+        plt.figure()
+        plt.loglog(sorted_eigen_values[0],'-o')
+        plt.xlabel('Eigenvalue Index')
+        plt.ylabel('Eigenvalue')
+        plt.title('Eigenvalues of Correlation Matrix')
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.show()
+        
+    if n_tones < 25:
+        sigma_mult = 1.5
+    elif n_tones < 50:
+        sigma_mult = 2.0
+    else:
+        sigma_mult = 2.5
+
+    n_modes = 2
+    new_modes = -1
+
+    while new_modes != 0 and n_modes <= max_modes:
+        log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
+        mu = np.mean(log_eigen_values, axis=1)
+        sigma = np.std(log_eigen_values, axis=1)
+        large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis])
+        i_count = large_eigen_values[0].size - np.sum(large_eigen_values[0])
+        q_count = large_eigen_values[0].size - i_count
+        new_modes = max(i_count, q_count)
+        n_modes += new_modes
+    # pdb.set_trace()
+    n_modes = min(n_modes, max_modes)
+    _logger.debug(f'RemoveElectronincsNoise: Using {n_modes} eigen modes')
+
+    # create templates based on the N_mode largest eigenmodes of each
+    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs[0], output='sos', analog=False)
+    data_lp = signal.sosfiltfilt(filt_sos, whitened_noise)
+    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], whitened_noise)
+
+    # subtract the mean again to be sure
+    templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
+    return templates
+
+
 def decode_tone_indices(pdata: ProcessedData, selection_indices: npt.NDArray | str, i_chan: int=None) -> npt.NDArray:
     """Helper method for decoding the selected indices for routines.
 
@@ -403,6 +475,7 @@ class RemoveElectronicsNoise(DataRoutine):
         max_modes: int=30,
         lp_filt_freq: float=0,
         template_selection_indices: npt.NDArray | str='all',
+        fspace: bool=False,
         eigenmodes: list[int]=None,
     ):
         """Initialize the RemoveElectronicsNoise routine.
@@ -416,6 +489,7 @@ class RemoveElectronicsNoise(DataRoutine):
             template_selection_indices (npt.NDArray | str, optional): Indices of tones 
                 to use for computing the templates. Can be any value supported by 
                 `decode_tone_indices`. Defaults to `all`.
+            fspace (bool, optional): Whether to operate in frequency space.
             eigenmodes (list[int], optional): The actual number of modes used for each
                 channel. If None, will be computed and stored in the params after running.
                 This is mostly for logging purposes since the number of modes used can
@@ -425,6 +499,7 @@ class RemoveElectronicsNoise(DataRoutine):
             max_modes=max_modes,
             lp_filt_freq=lp_filt_freq,
             template_selection_indices=template_selection_indices,
+            fspace=fspace,
             eigenmodes=eigenmodes,
         )
     
@@ -470,7 +545,12 @@ class RemoveElectronicsNoise(DataRoutine):
                 data_lp = signal.sosfiltfilt(filt_sos, clean_gain_phase)
             else:
                 data_lp = clean_gain_phase[:]
-            templates = compute_templates(data_lp[:, selection_indices], max_modes=max_modes)  # 2 x N_modes x N_samples
+
+            if self.params['fspace']:
+                # compute in fspace
+                compute_templates_fspace(data_lp[:, selection_indices], pdata.fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
+            else:   
+                templates = compute_templates(data_lp[:, selection_indices], max_modes=max_modes)  # 2 x N_modes x N_samples
 
             n_modes = templates.shape[1]
             eigenmodes.append(n_modes)
@@ -507,6 +587,119 @@ class RemoveElectronicsNoise(DataRoutine):
             )
 
         self.params['eigenmodes'] = eigenmodes
+        return inputs
+
+#
+# Cosmic Ray Removal
+#
+
+def get_z_arrays(
+        data: npt.NDArray,
+        num_processing_blocks: int,
+) -> npt.NDArray:
+    time_stream_size = data.shape[-1]
+
+
+    block_indices = np.linspace(
+        0, time_stream_size, num_processing_blocks + 1, dtype=int
+    )
+    
+    z_I = np.zeros_like(data[0, :, :])
+    z_Q = np.zeros_like(data[0, :, :])
+    
+
+    for i in range(num_processing_blocks):
+        start, end = block_indices[i], block_indices[i + 1]
+        I = data[0, :, start:end]
+        Q = data[1, :, start:end]
+
+        mean_I = np.mean(I, axis=1)
+        mean_Q = np.mean(Q, axis=1)
+        std_I  = np.std(I, axis=1)
+        std_Q  = np.std(Q, axis=1)
+
+        std_I[std_I == 0] = np.nan
+        std_Q[std_Q == 0] = np.nan
+        z_I[:, start:end]= np.abs(I - mean_I[:, None]) / std_I[:, None]
+        z_Q[:, start:end] = np.abs(Q[:] - mean_Q[:, None]) / std_Q[:, None]
+
+    return z_I, z_Q
+
+
+def interpolate_CR_packets(data_IQ: h5py.Dataset, glitch_mask_I: npt.NDArray, glitch_mask_Q: npt.NDArray, window: int = 10):
+    timestream_packets = data_IQ.shape[2]
+    tone_list = np.arange(data_IQ.shape[1])
+    timestream = np.arange(timestream_packets)
+    for t in range(timestream_packets):
+        start = int(max(0, t-window))
+        end = int(min(timestream_packets, t + window))
+        
+
+        glitchy_tones_I = tone_list[glitch_mask_I[:,t].T]
+        glitchy_tones_Q = tone_list[glitch_mask_Q[:,t].T]
+        glitchy_tones = list(set(glitchy_tones_I)|set(glitchy_tones_Q))
+        if len(glitchy_tones) != 0:
+
+            times = np.concatenate((
+                timestream[start:t],
+                timestream[t+1:end]
+            ))
+
+            data = np.concatenate((
+                data_IQ[:, glitchy_tones, start:t],
+                data_IQ[:, glitchy_tones, t+1:end]
+            ), axis=2)
+
+            # Center time axis
+            x = times - timestream[t]
+
+            # Fit along time axis
+            fit_I = poly.polyfit(x, data[0].T, deg=4)
+            fit_Q = poly.polyfit(x, data[1].T, deg=4)
+
+            # Evaluate polynomial at x = 0
+            interpolated_I_val = poly.polyval(0, fit_I)
+            interpolated_Q_val = poly.polyval(0, fit_Q)
+
+            #print(interpolated_I_val-data_IQ[0,glitchy_tones, t])
+            #print(interpolated_Q_val-data_IQ[1,glitchy_tones, t])
+            data_IQ[0,glitchy_tones,t] = interpolated_I_val
+            data_IQ[1,glitchy_tones,t] = interpolated_Q_val
+
+
+
+# TODO: Expand docstrings
+@register_routine
+class RemoveCosmicRays(DataRoutine):
+    """Routine for removing cosmic rays."""
+    name = 'RemoveCosmicRays'
+    version = '1.0.0'
+
+
+    def __init__(
+        self,
+        std_threshold: float=5,
+        num_processing_blocks: int=1,
+    ):
+        super().__init__(
+            std_threshold=std_threshold,
+            num_processing_blocks=num_processing_blocks,
+        )
+    
+    def inputs(self, pdata: ProcessedData):
+        return ['/vdsets/data_IQ']
+    
+    def run(self, pdata: ProcessedData, inputs: list=None):
+
+        threshold = self.params['std_threshold']
+        n_blocks = self.params['num_processing_blocks']
+        data_IQ = pdata.data_IQ
+
+        z_I, z_Q = get_z_arrays(data_IQ[:], n_blocks)
+        glitch_mask_I = np.array(z_I) > threshold
+        glitch_mask_Q = np.array(z_Q) > threshold
+        interpolate_CR_packets(data_IQ, glitch_mask_I, glitch_mask_Q)
+
         return inputs
 
 
