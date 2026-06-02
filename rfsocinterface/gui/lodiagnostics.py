@@ -38,8 +38,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QGridLayout,
 )
+from PySide6.QtPdfWidgets import QPdfView
+from PySide6.QtPdf import QPdfDocument
 
-from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS
+from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS, PowerSweepData
 from rfsocinterface.core.params import update_params_file, initialize_params_file, DEFAULT_PARAMS_DIRECTORY, get_params_file_template
 from rfsocinterface.core.utils import (
     ON_RESONANCE_COLOR,
@@ -1029,6 +1031,27 @@ class BlindSweepDialog(QDialog):
         else:
             # Moving while holding left mouse and dragging, so update the line's position
             self.move_selected_line(event.xdata)
+
+
+# TODO: Finish this
+class PowerSweepDialog(QDialog):
+    def __init__(self, data: PowerSweepData, parent: QWidget | None=None):
+        super().__init__(parent)
+        self.setupUi()
+
+        self.filename = data.filename.with_suffix('.pdf')
+        self._additional_gui_setup()
+        self.setSizeGripEnabled(True)
+
+    def _additional_gui_setup(self):
+        vlayout = QVBoxLayout()
+
+        self.document = QPdfDocument(parent=self)
+        self.document.load(str(self.filename))
+        self.pdf_view = QPdfView(parent=self, document=self.document)
+
+        vlayout.addWidget(self.pdf_view)
+
 
 
 
