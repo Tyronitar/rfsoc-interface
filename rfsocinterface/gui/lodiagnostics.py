@@ -1035,22 +1035,37 @@ class BlindSweepDialog(QDialog):
 
 # TODO: Finish this
 class PowerSweepDialog(QDialog):
-    def __init__(self, data: PowerSweepData, parent: QWidget | None=None):
+    def __init__(self, sweep: PowerSweepData, parent: QWidget | None=None):
         super().__init__(parent)
-        self.setupUi()
 
-        self.filename = data.filename.with_suffix('.pdf')
-        self._additional_gui_setup()
+        self.sweep = sweep
+        self.filename = sweep.filename.with_suffix('.pdf')
+        self.setupUi()
         self.setSizeGripEnabled(True)
 
-    def _additional_gui_setup(self):
+    def setupUi(self):
         vlayout = QVBoxLayout()
 
         self.document = QPdfDocument(parent=self)
         self.document.load(str(self.filename))
-        self.pdf_view = QPdfView(parent=self, document=self.document)
-
+        self.pdf_view = QPdfView(
+            parent=self,
+            document=self.document,
+            pageMode=QPdfView.PageMode.MultiPage,
+            zoomMode=QPdfView.ZoomMode.FitToWidth,
+        )
         vlayout.addWidget(self.pdf_view)
+
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self
+        )
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        vlayout.addWidget(self.button_box)
+
+        self.setLayout(vlayout)
+        self.setMinimumSize(600, 600)
 
 
 
@@ -1061,6 +1076,16 @@ if __name__ == '__main__':
     import pdb
 
     app = QApplication()
+
+    f = '/data/20260601/20260601_Simon_Be231102p2_100_tones_Power_Sweep_hour16p1119.h5'
+    sweep = PowerSweepData.load(f)
+    # sweep.fit()
+    # sweep.plot_optimal_readout_powers()
+    dial = PowerSweepDialog(sweep)
+    dial.show()
+
+    app.exec()
+
 
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
     from matplotlib.backends.backend_qt import FigureManagerQT
@@ -1095,16 +1120,16 @@ if __name__ == '__main__':
     # win.show()
     # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
     # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    data = LoSweepData.load('/data/20260511/20260511_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour13p6353.h5')
-    win = BlindSweepDialog(data)
-    win.find_resonances(
-        min_resonance_depth_dB=0.3,
-        spacing_threshold_Hz=3e3,
-        min_samples_per_resonance=4,
-        max_noise_fluctuation_dB=0.05,
-    )
-    win.plot()
-    win.show()
+    # data = LoSweepData.load('/data/20260511/20260511_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour13p6353.h5')
+    # win = BlindSweepDialog(data)
+    # win.find_resonances(
+    #     min_resonance_depth_dB=0.3,
+    #     spacing_threshold_Hz=3e3,
+    #     min_samples_per_resonance=4,
+    #     max_noise_fluctuation_dB=0.05,
+    # )
+    # win.plot()
+    # win.show()
 
-    # dw.show()
-    app.exec()
+    # # dw.show()
+    # app.exec()

@@ -1325,7 +1325,7 @@ class PowerSweepData(CompositeSweepData):
                 )
                 non_linear_slope[i_res] = popt[0]
                 power_level_non_linear[i_res] = popt[1]
-            except RuntimeError as e:
+            except (RuntimeError, ValueError) as e:
                 print(f'Encountered exception during fit; using default value for resonator {i_res}')
                 print(e)
                 non_linear_slope[i_res] = POWER_SWEEP_FRACTIONAL_FREQ_SHIFT
@@ -1333,7 +1333,7 @@ class PowerSweepData(CompositeSweepData):
             
             onres_power_levels.append(this_power_level)
             onres_df.append(this_df)
-            onres_popt[i_onres] = popt
+            onres_popt[i_onres] = [POWER_SWEEP_FRACTIONAL_FREQ_SHIFT, POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB]
 
             if callback is not None:
                 callback()
@@ -1378,7 +1378,10 @@ class PowerSweepData(CompositeSweepData):
         self._plotted = False
         self._plot_canceled = False
         if pdf_filename is None:
-            pdf_filename = f'{self.tile_names[0]}_optimal_readout_powers.pdf'
+            if self.filename is not None:
+                pdf_filename = self.filename.with_suffix('.pdf')
+            else:
+                pdf_filename = f'{self.tile_names[0]}_optimal_readout_powers.pdf'
 
         pdf = PdfPages(pdf_filename)
         page_size = nrows * ncols
