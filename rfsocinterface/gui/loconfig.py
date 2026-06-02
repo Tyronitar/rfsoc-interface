@@ -396,6 +396,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             100,
             parent=self,
         )
+        pd.setWindowTitle('Running Sweep')
         pd.setAutoClose(True)
         pd.show()
         QApplication.processEvents()
@@ -513,6 +514,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             total_steps,
             parent=self,
         )
+        pd.setWindowTitle('Running Sweep')
         pd.setAutoClose(True)
         pd.setValue(0)
         pd.show()
@@ -546,7 +548,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # Save over sweeps now that fitting is completed
         for sweep in sweeps:
-            sweep.data.save(sweep.savefile)
+            sweep.data.save()
         
         return True
     
@@ -572,6 +574,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             total_steps,
             parent=self,
         )
+        pd.setWindowTitle('Running Sweep')
         pd.setAutoClose(True)
         pd.setValue(0)
         pd.show()
@@ -586,7 +589,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             sweep_data = sweep.data
 
             # Make diagnostics window and setup connections
-            dw = DiagnosticsDialog(sweep_data, sweep.savefile, parent=self)
+            dw = DiagnosticsDialog(sweep_data, parent=self)
             dw.set_window_name(rfsoc.get_channel(chan).tile_name)
             # dw.finished.connect(lambda result: self._finish_sweep(result, sweep.savefile, sweep_data, rfsoc, chan, dw, False))
             dw.finished.connect(self.handle_diagnostic_window_finished)
@@ -647,6 +650,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             total_tones,
             parent=self,
         )
+        pd.setWindowTitle('Running Sweep')
         pd.setAutoClose(True)
         pd.setValue(0)
         pd.show()
@@ -746,6 +750,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             100,
             parent=self,
         )
+        pd.setWindowTitle('Running Sweep')
         pd.setAutoClose(True)
         pd.show()
         QApplication.processEvents()
@@ -834,6 +839,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             total_steps,
             parent=self,
         )
+        pd.setWindowTitle('Running Sweep')
         pd.setAutoClose(True)
         pd.setValue(0)
         pd.show()
@@ -867,7 +873,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # Save over sweeps now that fitting is completed
         for sweep in sweeps:
-            sweep.data.save(sweep.savefile)
+            sweep.data.save()
         
         return True
 
@@ -881,6 +887,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             total_steps,
             parent=self,
         )
+        pd.setWindowTitle('Running Sweep')
         pd.setAutoClose(True)
         pd.setValue(0)
         pd.show()
@@ -930,7 +937,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     @ensure_path(1)
     def save_sweep(self, savefile: Path, sweep_data: LoSweepData):
-        sweep_data.save(savefile)
+        sweep_data.save_as(savefile)
         sweep_data.savenp(savefile)
         _logger.info(f'Saved LO sweep data to {savefile}')
     

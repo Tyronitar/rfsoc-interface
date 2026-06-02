@@ -27,6 +27,7 @@ import h5py
 from PySide6.QtWidgets import QApplication
 from rfsocinterface.core.utils import (
     ensure_path,
+    convert_path,
     PERMISSIONS_USR_RW,
     parallel_plot,
     mHz_formatter,
@@ -328,6 +329,7 @@ class LoSweepData:
         chanmask: npt.NDArray, 
         tile_name: str,
         diff_to_flag: float=3e3,
+        filename: str=None,
     ) -> None:
         """Initialize a LoSweepData object."""
         self.data = sweep_data
@@ -338,6 +340,7 @@ class LoSweepData:
         self.chanmask = chanmask
         self.resonator_data = [ResonatorData(self, i) for i in range(self.n_tones)]
         self.tile_name = tile_name
+        self.filename = convert_path(filename)
 
         self.fit_f0 = self.detector_f.copy()
         self.fit_qi = np.zeros(self.n_tones)
@@ -370,8 +373,14 @@ class LoSweepData:
         np.save(fname, self.new_baseband_freqs)
         _logger.debug(f'LoSweepData saved new tone list to {str(fname)}')
 
+    def save(self):
+        """Save the LO Sweep to the current HDF5 file."""
+        if self.filename is None:
+            raise RuntimeWarning('No filename specified for this sweep. Use `save_as` to specify a filename.')
+        self.save_as(self.filename)
+
     @ensure_path(1)
-    def save(self, fname: Path):
+    def save_as(self, fname: Path):
         """Save the LO Sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
@@ -412,7 +421,7 @@ class LoSweepData:
                 f_center = f.attrs['f_center']
                 tile_name = f.attrs['tile_name']
 
-        sweep = cls(tone_list, f_center, data, chanmask, tile_name)
+        sweep = cls(tone_list, f_center, data, chanmask, tile_name, filename=path)
         sweep.fit_f0 = fit_f0
         sweep.fit_qi = fit_qi
         sweep.fit_qc = fit_qc
@@ -914,16 +923,17 @@ class LoSweep:
             sweep_data = np.array((f, z.T))
             _logger.debug(f'Shape of LO sweep data: {sweep_data.shape}')
 
-            data = LoSweepData(self.tone_list, self.f_center, sweep_data, chanmask, self.rfsoc.get_channel_name(self.chan), diff_to_flag=self.diff_to_flag)
+            data = LoSweepData(self.tone_list, self.f_center, sweep_data, chanmask, self.rfsoc.get_channel_name(self.chan), diff_to_flag=self.diff_to_flag, filename=self.savefile)
             if save:
-                data.save(self.savefile)
+                data.save()
 
         # Set the LO back to the original frequency
         self.rfsoc.set_frequency(self.chan, self.f_center)
         self._data = data
 
-        self._processed = True
-        _logger.info('Finished processing sweep results')
+        if z is not None:
+            self._processed = True
+            _logger.info('Finished processing sweep results')
         return data
 
 
@@ -1049,7 +1059,10 @@ class CompositeSweepData:
         bb_freqs: npt.NDArray,
         f_center: float,
         sweeps: list[LoSweepData],
+        filename: Path | None = None,
     ):
+        self.filename = convert_path(filename)
+
         self.f_center = f_center
         self.bb_freqs = bb_freqs
         self.sweeps = sweeps
@@ -1145,9 +1158,15 @@ class CompositeSweepData:
         for sweep in self.sweeps:
             sweep.cancel_plot()
         self._plot_canceled = True
+    
+    def save(self):
+        """Save the sweep to the current HDF5 file."""
+        if self.filename is None:
+            raise RuntimeWarning('No filename specified for this sweep. Use `save_as` to specify a filename.')
+        self.save_as(self.savefile)
 
     @ensure_path(1)
-    def save(self, fname: Path):
+    def save_as(self, fname: Path):
         """Save the sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
         path.touch(PERMISSIONS_USR_RW)
@@ -1181,11 +1200,13 @@ class PowerSweepData(CompositeSweepData):
         power_levels: npt.NDArray,
         rfin: float,
         rfout: float,
+        filename: Path | None = None,
     ):
         super().__init__(
             bb_freqs=bb_freqs,
             f_center=f_center,
             sweeps=sweeps,
+            filename=filename,
         )
         self.power_levels = np.array(power_levels)
         self.rfin = rfin
@@ -1196,10 +1217,10 @@ class PowerSweepData(CompositeSweepData):
         self._onres_popt = None
 
     @ensure_path(1)
-    def save(self, fname: Path):
+    def save_as(self, fname: Path):
         """Save the power sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
-        super().save(path)
+        super().save_as(path)
         with h5py.File(path, 'a') as fh:
             fh.attrs['rfin'] = self.rfin
             fh.attrs['rfout'] = self.rfout
@@ -1230,7 +1251,7 @@ class PowerSweepData(CompositeSweepData):
             sweep.fit_f0[:] = this_fit_f0
             sweeps.append(sweep)
 
-        power_sweep = cls(bb_freqs, f_center, sweeps, power_levels, rfin, rfout)
+        power_sweep = cls(bb_freqs, f_center, sweeps, power_levels, rfin, rfout, filename=fname)
         power_sweep.get_fit_f0()
         power_sweep.max_readout_power = max_readout_power
 
@@ -1521,7 +1542,7 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
             self.starting_rfin,
             self.starting_rfout,
         )
-        self._data.save(self.savefile)
+        self._data.save_as(self.savefile)
     
 
 
@@ -1536,9 +1557,9 @@ if __name__ == '__main__':
 
     sweep = PowerSweepData.load(sweep_file)
     sweep.fit()  # Fit resonances if they haven't yet
-    sweep.save(sweep_file)
+    sweep.save_as(sweep_file)
     sweep.find_optimal_readout_power(bad_power_cutoff_percentile=0.5, pdf_filename=f'max_power_{tile_name}.pdf')
-    sweep.save(sweep_file)
+    sweep.save_as(sweep_file)
 
     pdb.set_trace()
     # NOTE: This will overwrite everything that isn't tone_powers with defaults

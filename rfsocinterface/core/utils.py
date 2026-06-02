@@ -114,7 +114,7 @@ def mHz_formatter(x: float, pos: int) -> str:
     return f'{x * 1e-6:.1f}'
 
 
-def convert_path(path: PathLike) -> Path | None:
+def convert_path(path: PathLike | None) -> Path | None:
     """Ensure that a Path is a Path object."""
     if path is None:
         return path
@@ -126,7 +126,7 @@ def convert_path(path: PathLike) -> Path | None:
         return Path(path)
 
     # Input was not a PathLike
-    raise ValueError(f'Argument must be PathLike, got {type(path)}')
+    raise ValueError(f'Argument must be PathLike or None, got {type(path)}')
 
 
 def ensure_path(

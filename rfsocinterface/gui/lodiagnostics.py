@@ -46,6 +46,7 @@ from rfsocinterface.core.utils import (
     OFF_RESONANCE_COLOR,
     FLAGGED_RESONANCE_COLOR,
     BAD_RESONANCE_COLOR,
+    convert_path,
 )
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
@@ -347,13 +348,13 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         sweep (LoSweepData): The relevant LO sweep data.
     """
 
-    def __init__(self, sweep_data: LoSweepData, savefile: PathLike, parent: QWidget | None = None):
+    def __init__(self, sweep_data: LoSweepData, parent: QWidget | None = None):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
         self.setSizeGripEnabled(True)
         self.set_sweep(sweep_data)
-        self.savefile = Path(savefile)
+        self.savefile = convert_path(sweep_data.filename)
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
         self.buttonBox.clicked.connect(self.click_button_box)
         self.save_plots_pushButton.clicked.connect(self.save_plots_as)
@@ -394,6 +395,11 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
                     pdf.savefig(fig)
             else:
                 fig.savefig(fname)
+    
+    def accept(self):
+        if self.edited:
+            self.sweep_data.save()
+        super().accept()
     
     def closeEvent(self, event: QCloseEvent):
         if self.edited:
@@ -541,7 +547,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def from_h5(cls, filepath: Path, parent: QWidget | None = None) -> DiagnosticsDialog:
         """Create a DiagnosticsDialog from an HDF5 file."""
         sweep_data = LoSweepData.load(filepath)
-        dialog = cls(sweep_data, savefile=filepath, parent=parent)
+        dialog = cls(sweep_data, parent=parent)
 
         pd = IncrementalProgressDialog(
             f'Plotting LO sweep...',
@@ -550,6 +556,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
             sweep_data.n_tones,
             parent=parent,
         )
+        pd.setWindowTitle('Opening Lo Sweep Diagnostics')
         pd.setAutoClose(True)
         pd.setValue(0)
         pd.show()
@@ -802,6 +809,7 @@ class BlindSweepDialog(QDialog):
                 self.data.n_tones,
                 parent=self,
             )
+            pd.setWindowTitle('Generating PDF')
             pd.setValue(0)
             pd.show()
             increment_progress = make_progress_dialog_incrementer(pd)
