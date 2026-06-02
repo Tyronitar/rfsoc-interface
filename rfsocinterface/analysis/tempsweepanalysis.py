@@ -266,6 +266,7 @@ class TempSweepDataAnalyzer:
                     stderr_qi[i_p, i_res]   = fit_result['qi_stderr'][0]
                     stderr_qc[i_p, i_res]   = fit_result['qc_stderr'][0]
                     res_objs[i_p][i_res]    = fit_result['fitted_res']
+                    
                 except Exception as e:
                     _logger.warning(
                         f"Fit failed for resonator {i_res}, temp index {i_p} "
@@ -273,6 +274,7 @@ class TempSweepDataAnalyzer:
                     )
                     continue
                 print(tone_idx)
+               
             if plot:
                 figs.append(self._plot_temperature_dependence(
                     i_res,
@@ -280,17 +282,60 @@ class TempSweepDataAnalyzer:
                     q_i_data[:, i_res],
                     q_c_data[:, i_res],
                 ))
-
+             
         fig1,fig2 = self._generate_summary_plots(self.fp_temps, f0_data, q_i_data, q_c_data)
         figs.append(fig1)
         figs.append(fig2)
-        pdb.set_trace()
         output_plot_filename = self.sweeps[0].tile_name + output_plot_filename
         with PdfPages(output_plot_filename) as pdf:
             for fig in figs:
                 pdf.savefig(fig)
         self._save_fit_results(f0_data, q_i_data, q_c_data, onres_ind,redchi_data=redchi_data, stderr_f0=stderr_f0, stderr_qi=stderr_qi, stderr_qc=stderr_qc, filename=self.sweeps[0].tile_name + "_fit_results.h5")
+        self.save_fit_figures_per_temperature(res_objs, onres_ind, output_dir=self.sweeps[0].tile_name + "_fit_figures")
+  
+  
+    def save_fit_figures_per_temperature(
+        self,
+        res_objs: list[list],
+        onres_ind: npt.NDArray,
+        output_dir: str = ".",
+        n_fit_points: int = 1000,
+    ):
+        """
+        For each temperature, save a PDF containing a 4-panel fit figure
+        for every resonator. One PDF per temperature, one page per resonator.
 
+        Parameters
+        ----------
+        res_objs    : 2-D list [n_temps][n_tones] of scraps Resonator objects
+                    (None for failed fits)
+        onres_ind   : array of on-resonance tone indices
+        output_dir  : directory in which to write the per-temperature PDFs
+        n_fit_points: number of points in the dense fit curve
+        """
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        tile = self.sweeps[0].tile_name
+
+        for i_p, temp in enumerate(self.fp_temps):
+            fname = Path(output_dir) / f"{tile}_T{temp:.3g}mK_fits.pdf"
+            with PdfPages(fname) as pdf:
+                for i_res in onres_ind:
+                    tone_idx = np.argmin(
+                        np.abs(self.sweeps[i_p].tone_list - res_objs[i_p][i_res].lmfit_result['default']['result'].params['f0'].value)
+                    ) if res_objs[i_p][i_res] is not None else None
+
+                    if res_objs[i_p][i_res] is None or tone_idx is None:
+                        _logger.warning(f"No fit for res {i_res} at T={temp:.3g} mK, skipping.")
+                        continue
+
+                    fig, _ = self._plot_single_fit(
+                        tone_idx, i_p, None, res_objs[i_p][i_res],
+                        n_fit_points=n_fit_points,
+                    )
+                    pdf.savefig(fig)
+                    plt.close(fig)
+
+            _logger.info(f"Saved fit figures for T={temp:.3g} mK → {fname}")
 
     def _get_initial_f0s(self, i_res: int, stitched_dataset: dict,   prev_results: dict | None, fit_prev_datasets:int = 1,) -> npt.NDArray:
         """
@@ -412,7 +457,7 @@ class TempSweepDataAnalyzer:
     i_res: int,
     i_p: int,
     f0_guess: float | None = None,
-    let_vary: bool = True,
+    let_vary: bool = False,
     plot: bool = False,
     freq_window: float = 0.5e6,
     decimate: int = 1,
@@ -447,8 +492,8 @@ class TempSweepDataAnalyzer:
             initial_guesses={"f0": {
                 "value": f0_guess,
                 "vary":  let_vary,
-                "min":   f0_guess*(1-1e-4),
-                "max":   f0_guess*(1+1e-4),
+                "min":   f0_guess*(1-1e-6),
+                "max":   f0_guess*(1+1e-6),
             }},
         )
         print("Difference in f0", res_obj.lmfit_result['default']['result'].params['f0'].value - f0_guess)
@@ -462,8 +507,7 @@ class TempSweepDataAnalyzer:
         qi_stderr = params['qi'].stderr
         qc     = params['qc'].value
         qc_stderr = params['qc'].stderr
-        if plot:
-            self._plot_single_fit(i_res, i_p, resonator, I, Q, res_obj, f0, qi, qc, redchi)
+     
 
         return {
             "f0":         np.array([f0]),
@@ -477,30 +521,68 @@ class TempSweepDataAnalyzer:
             "fitted_res": res_obj,
         }
 
-    def _plot_single_fit(self, i_res, i_p, resonator, I, Q, res_obj, f0, qi, qc, redchi):
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-        mag_db = 20 * np.log10(res_obj.resultMag)
+    def _plot_single_fit(self, i_res, i_p, resonator, res_obj, n_fit_points=1000, input_fig = None, input_axes = None):
 
-        axes[0].plot(resonator.freq, resonator.s21, label="data")
-        axes[0].plot(resonator.freq, mag_db, ls="--", label=f"fit  χ²={redchi:.2f}")
-        axes[0].axvline(f0, color="gray", alpha=0.6, lw=1, label=f"f0={f0:.6g}")
-        axes[0].set(title=f"Res {i_res}, T={self.fp_temps[i_p]:.3g}  |S21|",
-                    xlabel="Frequency", ylabel="|S21|")
-        axes[0].legend(fontsize=8)
+        resonator = self.sweeps[i_p].resonator_data[i_res]
+        I = self.sweeps[i_p].data_I[i_res]
+        Q = self.sweeps[i_p].data_Q[i_res]
+        f0 = res_obj.lmfit_result['default']['result'].params['f0'].value
+        qi = res_obj.lmfit_result['default']['result'].params['qi'].value
+        qc = res_obj.lmfit_result['default']['result'].params['qc'].value
+        redchi = res_obj.lmfit_result['default']['result'].redchi
+        plot_mask = np.where((resonator.freq < res_obj.freq.max()) & (resonator.freq > res_obj.freq.min()))
+        dense_freq = np.linspace(res_obj.freq.min(), res_obj.freq.max(), n_fit_points)
+        fit_params = res_obj.lmfit_result['default']['result'].params
 
-        axes[1].plot(I, Q, label="data")
-        axes[1].plot(res_obj.resultI, res_obj.resultQ, ls="--", label="fit")
-        axes[1].set(title="IQ", xlabel="I", ylabel="Q")
-        axes[1].set_aspect("equal")
-        axes[1].legend(fontsize=8)
+        dense_iq   = scr.hanger_fit(fit_params, res_obj, residual=False, freqs=dense_freq)
+        n_dense    = len(dense_freq)
+        dense_I    = dense_iq[:n_dense]
+        dense_Q    = dense_iq[n_dense:]
+        dense_mag  = np.abs(dense_I + 1j * dense_Q)
+        dense_mag_db = 10 * np.log10(dense_mag)
 
+        # Values at resonance (f0) for the star markers
+        f0_idx      = np.argmin(np.abs(dense_freq - f0))
+        f0_mag_db   = dense_mag_db[f0_idx]
+        f0_I        = dense_I[f0_idx]
+        f0_Q        = dense_Q[f0_idx]
+
+       
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
         fig.suptitle(
-            f"Resonator {i_res} | Qi={qi:.3g}  Qc={qc:.3g}  Q_tot={1/(1/qi+1/qc):.3g}",
-            fontsize=10,
+        f"Resonator {i_res} | Qi={qi:.3g}  Qc={qc:.3g}  Q_tot={1/(1/qi+1/qc):.3g}",
+        fontsize=10,
         )
         fig.tight_layout()
-        plt.show()
+        
+        axes[0, 0].plot(resonator.freq[plot_mask], resonator.s21[plot_mask], label="data")
+        axes[0, 0].plot(dense_freq, dense_mag_db, ls="--", label=f"fit  χ²={redchi:.2f}")
+        axes[0, 0].plot(f0, f0_mag_db, marker="*", ms=12, color="red", label=f"f0={f0:.6g}")
+        axes[0, 0].set(title=f"Res {i_res}, T={self.fp_temps[i_p]:.3g}  |S21|",
+                    xlabel="Frequency", ylabel="|S21|")
+        axes[0, 0].legend(fontsize=8)
 
+        axes[1, 0].scatter(I[plot_mask], Q[plot_mask], label="data")
+        axes[1, 0].plot(dense_I, dense_Q, ls="--", color="tab:orange", label="fit")
+        axes[1, 0].plot(f0_I, f0_Q, marker="*", ms=12, color="red", label="f0")
+        axes[1, 0].set(title="IQ", xlabel="I", ylabel="Q")
+        axes[1, 0].set_aspect("equal")
+        axes[1, 0].legend(fontsize=8)
+
+        axes[0, 1].plot(resonator.freq[plot_mask], I[plot_mask], label="data")
+        axes[0, 1].plot(dense_freq, dense_I, ls="--", label="fit")
+        axes[0, 1].plot(f0, f0_I, marker="*", ms=12, color="red", label="f0")
+        axes[0, 1].set(title="Re(S21) vs Frequency", xlabel="Frequency", ylabel="Re(S21)")
+        axes[0, 1].legend(fontsize=8)
+
+        axes[1, 1].plot(resonator.freq[plot_mask], Q[plot_mask], label="data")
+        axes[1, 1].plot(dense_freq, dense_Q, ls="--", label="fit")
+        axes[1, 1].plot(f0, f0_Q, marker="*", ms=12, color="red", label="f0")
+        axes[1, 1].set(title="Im(S21) vs Frequency", xlabel="Frequency", ylabel="Im(S21)")
+        axes[1, 1].legend(fontsize=8)
+
+      
+        return fig, axes
     def _plot_resonator_sweeps(self, i_res, results, initial_f0s):
         fig, (ax_mag, ax_phase) = plt.subplots(2, 1, figsize=(8, 8), sharex=True)
         fig.subplots_adjust(left=0.10, right=0.97, top=0.92, bottom=0.42)
@@ -525,7 +607,7 @@ class TempSweepDataAnalyzer:
 
         fig._resonator_textboxes = text_boxes
         fig._resonator_f0_values = f0_values
-        #plt.show()
+        plt.show()
         plt.close()
         return fig, f0_values
 
@@ -893,11 +975,10 @@ class TempSweepDataAnalyzer:
 
 if __name__ == '__main__':
     data_analyzer = TempSweepDataAnalyzer.from_h5(
-        '/data/20260515/20260515_Be260114BL_1000_tones_3_Power_Sweep_hour17p1672.h5'
+        '/home/rf_soc_user/Desktop/TRFitResults/20260513_Be260114Tr_1000_tones_1_Power_Sweep_hour20p6892.h5'
     )
     clean_dataset = data_analyzer.stitch_full_dataset()
-    pdb.set_trace()
     data_analyzer.process_temperature_sweep(
         clean_dataset,
-        fit_results_h5='Be260114Tr_1000_tones_2_fit_results.h5'
+        fit_results_h5='/home/rf_soc_user/Desktop/TRFitResults/Be260114Tr_1000_tones_1_fit_results.h5'
     )
