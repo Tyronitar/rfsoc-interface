@@ -18,6 +18,7 @@ except ImportError:
     import _thread as thread
 from pathlib import Path
 
+import json
 import h5py
 import numpy as np
 import serial
@@ -26,7 +27,7 @@ import uldaq as ul
 # from Exscript.protocols.telnetlib import Telnet
 from telnetlib3.telnetlib import Telnet
 
-from rfsocinterface.core.utils import analog_to_digital, PERMISSIONS_USR_RW
+from rfsocinterface.core.utils import analog_to_digital, PERMISSIONS_USR_RW, PathJSONEncoder
 
 _logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
@@ -764,7 +765,7 @@ class TelescopeMotorController:
                 break
             except ValueError:
                 _tele_logger.error("caught an exception regarding Float conversion")
-                break
+                continue
             finally:
                 # This code always executes after leaving the try statement
                 pass
@@ -985,21 +986,8 @@ class TelescopeMotorController:
 
         stop_time = time.time()
         _logger.info(f'Dither Pattern: Finished {n_repeats} repeats in {stop_time - start_time:.3f}s')
-
-        # self._run is only changed if the telescope was stopped mid scan
-        # Don't save the telescope data in that case
-        if not self._run:
-            _tele_logger.info("Dither Pattern canceled before completion.")
-            if primary_az:
-                self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
-            if position_return:
-                _tele_logger.info('Canceling Dither Pattern\nResetting telescope position...')
-                self.send('dither_pattern_label', 'Resetting telescope position')
-                self._set_az_pos(initial_az, stop_run=False)
-                self._set_ze_pos(initial_ze, stop_run=False)
-            self.send('dither_pattern_complete', 1)
-            return
         
+        # Save pointing information
         path = Path(file)
         with h5py.File(path, 'w') as f:
             f.create_dataset("az_tel", data=position_data[0::5])
@@ -1008,7 +996,23 @@ class TelescopeMotorController:
             f.create_dataset('az_pps', data=position_data[3::5])
             f.create_dataset('za_pps', data=position_data[4::5])
             f.create_dataset("optical_visibility", data=['****'])
+            f.attrs['params'] = json.dumps({
+                # Generic parameters
+                'initial_az': initial_az,
+                'initial_ze': initial_ze,
+                'completed': self._run,  # Self._run can only be False here if the dither was cancelled
+                # Arguments to this function
+                'primary_start': primary_start,
+                'primary_stop': primary_stop,
+                'n_repeats': n_repeats,
+                'secondary_dither': secondary_dither,
+                'position_return': position_return,
+                'large_map_mode': large_map_mode,
+                'primary_dither_direction': primary_dither_direction,
+            })
         path.chmod(PERMISSIONS_USR_RW)
+        
+        # Reset telescope
         if primary_az:
             self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
         if position_return:
@@ -1016,6 +1020,12 @@ class TelescopeMotorController:
             self.send('dither_pattern_label', 'Running Dither Pattern\nResetting telescope position')
             self._set_az_pos(initial_az, stop_run=False)
             self._set_ze_pos(initial_ze, stop_run=False)
+
+        # self._run is only changed if the telescope was stopped mid scan
+        if not self._run:
+            _tele_logger.info("Dither Pattern canceled before completion.")
+            self.send('dither_pattern_complete', 1)
+            return
 
         self._run = False
         _tele_logger.info("Scan Complete")

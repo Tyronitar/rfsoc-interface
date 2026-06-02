@@ -32,7 +32,7 @@ from rfsocinterface.core.data.utils import (
     interpolate_telescope_position,
     rotate_basis,
 )
-from rfsocinterface.core.losweep import LoSweepData
+from rfsocinterface.core.sweeps import LoSweepData
 from rfsocinterface.core.utils import (
     DEFAULT_DATA_DIRECTORY,
     PERMISSIONS_ALL_FULL,
@@ -274,6 +274,7 @@ class ProcessedData(NewDataStorage):
                 channel_group.attrs['lo_freq'],
                 channel_group['lo_sweep'][:],
                 tones_table['chanmask'],
+                channel_group.attrs['tile_name'],
             )
             IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
@@ -713,6 +714,7 @@ class ConsolidatedData(NewDataStorage):
         if azel_exists:
             # pdb.set_trace()
             az_tel = azel_file['az_tel']
+            telescope_params = json.loads(azel_file.attrs.get('params', '{}'))
             try:
                 za_tel = azel_file['za_tel']
             except:
@@ -756,6 +758,9 @@ class ConsolidatedData(NewDataStorage):
         # Initialize global data group
         global_data_group = cdata.create_group('global_data')
         global_data_group.attrs['n_samples'] = n_samples_ds
+
+        if azel_exists:
+            global_data_group.attrs['telescope_params'] = json.dumps(telescope_params)
 
         # Optical image
         if optcam_exists:

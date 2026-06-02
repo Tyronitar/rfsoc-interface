@@ -11,6 +11,7 @@ from rfsocinterface.gui.widgets import get_num_value
 from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.gui.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.utils import TabName
 from rfsocinterface.gui.main_widget import MainWidget
 from rfsocinterface.core.utils import TabName
 

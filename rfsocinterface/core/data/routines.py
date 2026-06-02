@@ -546,7 +546,7 @@ class CleanTOD(DataRoutine):
                 template = np.nansum(data[array_slice], axis=0)
             elif data.ndim == 3:
                 array_slice = (0, good_tones, slice(None))
-                template = np.nansum(data[array_slice], axis=1)
+                template = np.nansum(data[array_slice], axis=0)
             else:
                 msg = f'{self.name}: Unexpected data shape: {data.shape}; Expected 2D or 3D dataset.'
                 _logger.exception(msg)

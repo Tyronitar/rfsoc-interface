@@ -3,6 +3,7 @@
 import logging
 import logging.config
 import os
+from pathlib import Path
 
 
 from argparse import ArgumentParser
@@ -17,7 +18,8 @@ def move_to_center(win: QMainWindow, screen: QScreen):
 
 if __name__ == '__main__':
 
-    logging.config.fileConfig('rfsocinterface/logging.conf')
+    logconf_file = Path(__file__).parent / 'logging.conf'
+    logging.config.fileConfig(logconf_file)
     _logger = logging.getLogger('rfsocinterface')
 
     parser = ArgumentParser(

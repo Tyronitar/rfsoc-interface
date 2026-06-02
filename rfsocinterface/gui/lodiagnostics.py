@@ -4,14 +4,18 @@ import matplotlib as mpl
 
 mpl.use('QtAgg')
 
-from typing import Callable
+from typing import Callable, Concatenate, Any
 from pathlib import Path
 from concurrent.futures import Future
 import logging
+import pdb
+from matplotlib.artist import Artist
+import re
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.backend_bases import MouseButton, MouseEvent
+from matplotlib.backend_bases import MouseButton, MouseEvent, PickEvent
+from matplotlib.backend_tools import Cursors
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, SignalInstance, Slot, QCoreApplication
@@ -28,21 +32,39 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizeGrip,
     QFileDialog,
-    QAbstractButton
+    QAbstractButton,
+    QVBoxLayout,
+    QRadioButton,
+    QLineEdit,
+    QGridLayout,
 )
+from PySide6.QtPdfWidgets import QPdfView
+from PySide6.QtPdf import QPdfDocument
 
-from rfsocinterface.core.losweep import LoSweepData, ResonatorData, get_tone_list, LoSweep, DEFAULT_NCOLS
+from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS, PowerSweepData
+from rfsocinterface.core.params import update_params_file, initialize_params_file, DEFAULT_PARAMS_DIRECTORY, get_params_file_template
+from rfsocinterface.core.utils import (
+    ON_RESONANCE_COLOR,
+    OFF_RESONANCE_COLOR,
+    FLAGGED_RESONANCE_COLOR,
+    BAD_RESONANCE_COLOR,
+    convert_path,
+)
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
-from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes
+from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P, PERMISSIONS_USR_RW
 from rfsocinterface.gui.widgets.progress_bar import make_progress_dialog_incrementer
+from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
+from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
 
 _logger = logging.getLogger(__name__)
 
 DPI = 100
 
-EPSILON = 1e-6  # Max x difference in Hz to count as the mouse being close to the line
+# Max x difference in Hz to count as the mouse being close to the line
+RTOL_EPSILON = 1e-6  
+ATOL_EPSILON = 50e3  # 50 KHz
 
 
 class ResonatorDialog(QDialog, Ui_ResonatorDialog):
@@ -66,6 +88,8 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.setupUi(self)
         self.layout().addWidget(QSizeGrip(self))
         self.layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self.setSizeGripEnabled(True)
+
         self.resonator = resonator
         self.dragging = False
         self.error_label = None
@@ -73,8 +97,10 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         self.setWindowTitle(f'Resonator {self.resonator.idx}')
 
         # Setup the plot
-        fig = self.resonator.plot()
-        self.set_figure(fig)
+        self.setup_connections()
+        self.replot_figure(self.resonator.plot)
+        # fig = self.resonator.plot()
+        # self.set_figure(fig)
         self.canvas.line.set_label('New Frequency')
         self.ax.axvline(
             self.resonator.tone,
@@ -89,6 +115,14 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         # Fill in the necessary values in the UI
         self.old_freq_value_label.setText(f'{self.resonator.tone * 1e-6:.5f}')
         self.depth_value_label.setText('N/A')  # TODO: Resonance depth
+        self.current_chanmask = self.resonator.chanmask
+        match self.current_chanmask:
+            case 1:
+                self.onres_radioButton.click()
+            case 0:
+                self.offres_radioButton.click()
+            case _:
+                self.bad_res_radioButton.click()
 
         # Temporary values for saving / undoing changes
         self.temp_fit_f0 = resonator.fit_f0
@@ -116,31 +150,43 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
 
         # This line will call change_freq since the signal has been connected
         self.move_line(self.resonator.fit_f0)
+    
+    @property
+    def figure_canvas(self) -> FigureCanvas:
+        return self.canvas.figure_canvas
 
+    @property
+    def figure(self) -> Figure:
+        return self.canvas.figure
+    
+    @property
+    def ax(self) -> plt.Axes:
+        return self.figure.axes[0]
     
     @property
     def _editing(self) -> bool:
         """Return whether the plot is in editing mode."""
-        return self.canvas.manager.toolmanager.active_toggle['default'] == 'edit'
+        return self.canvas.canvas.editing
 
     def accept_changes(self):
         """Handle accepting changes."""
         self.resonator.fit_f0 = self.temp_fit_f0
         self.resonator.fit_qc = self.temp_fit_qc
         self.resonator.fit_qi = self.temp_fit_qi
-        plt.close(self.canvas.canvas.figure)
+        self.resonator.chanmask = self.current_chanmask
+        plt.close(self.figure)
         self.accept()
 
     def reject_changes(self):
         """Handle rejecting changes."""
-        plt.close(self.canvas.canvas.figure)
+        plt.close(self.figure)
         self.reject()
     
     def move_line(self, x: float, update_line_edit: bool=True):
         """Move the line to the specified x value."""
         self.temp_fit_f0 = x
         self.canvas.line.set_xdata([x, x])
-        self.figcanvas.draw_idle()
+        self.figure_canvas.draw_idle()
         self.delta_value_label.setText(
             f'{(x - self.resonator.tone) * 1e-3:.3f}'
         )
@@ -193,22 +239,48 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             # Update the line's position
             new_freq = float(new_freq) * 1e6  # Convert MHz to Hz
             self.move_line(new_freq, update_line_edit=False)
+    
+    def setup_connections(self):
+        # Setup the event handling logic to click and drag the line
+        self.figure_canvas.mpl_connect('button_press_event', self.mouse_press)
+        self.figure_canvas.mpl_connect('button_release_event', self.mouse_release)
+        self.figure_canvas.mpl_connect('motion_notify_event', self.mouse_move)
+
+        self.resonance_buttonGroup.buttonClicked.connect(self.swap_chanmask)
+    
+    @Slot(QRadioButton)
+    def swap_chanmask(self, button: QRadioButton):
+        match button:
+            case self.onres_radioButton:
+                self.current_chanmask = 1
+                if self.resonator.flagged:
+                    self.ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
+                else:
+                    self.ax.set_facecolor(ON_RESONANCE_COLOR)
+            case self.offres_radioButton:
+                self.current_chanmask = 0
+                self.ax.set_facecolor(OFF_RESONANCE_COLOR)
+            case self.bad_res_radioButton:
+                self.current_chanmask = -1
+                self.ax.set_facecolor(BAD_RESONANCE_COLOR)
+        self.figure_canvas.draw_idle()
 
     def set_figure(self, fig: Figure):
         """Change the figure in the canvas."""
         self.canvas.set_figure(fig)
 
         self.ax = fig.axes[0]
-        self.figcanvas = self.canvas.canvas
+        # self.figcanvas = self.canvas.canvas
 
-        # Setup the event handling logic to click and drag the line
-        self.figcanvas.mpl_connect('button_press_event', self.mouse_press)
-        self.figcanvas.mpl_connect('button_release_event', self.mouse_release)
-        self.figcanvas.mpl_connect('motion_notify_event', self.mouse_move)
+        self.setup_connections()
+
 
         self.adjustSize()
 
-    def close_to_line(self, xdata: float, epsilon: float = EPSILON) -> bool:
+    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+        self.canvas.replot_figure(plotting_function, *args, **kwargs)
+
+    def close_to_line(self, xdata: float, epsilon: float = RTOL_EPSILON) -> bool:
         """Return whether a value is close to the line."""
         return np.allclose(self.canvas.line.get_xdata()[0], xdata, rtol=epsilon)
     
@@ -254,7 +326,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             self.canvas.line.set_linewidth('1.5')
             self.setCursor(Qt.CursorShape.ArrowCursor)
             self.dragging = False
-            self.figcanvas.draw_idle()
+            self.figure_canvas.draw_idle()
             return
         if not self.dragging:
             # Check if the mouse is close to the line and highlight it if so
@@ -264,7 +336,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             else:
                 self.canvas.line.set_linewidth('1.5')
                 self.setCursor(Qt.CursorShape.ArrowCursor)
-            self.figcanvas.draw_idle()
+            self.figure_canvas.draw_idle()
             return
 
         # Moving while holding left mouse and dragging, so update the line's position
@@ -278,18 +350,19 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         sweep (LoSweepData): The relevant LO sweep data.
     """
 
-    def __init__(self, sweep_data: LoSweepData, savefile: PathLike, parent: QWidget | None = None):
+    def __init__(self, sweep_data: LoSweepData, parent: QWidget | None = None):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
         self.setSizeGripEnabled(True)
         self.set_sweep(sweep_data)
-        self.savefile = Path(savefile)
+        self.savefile = convert_path(sweep_data.filename)
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
         self.buttonBox.clicked.connect(self.click_button_box)
         self.save_plots_pushButton.clicked.connect(self.save_plots_as)
 
         self.edited = False
+        self.redrawn_axes = set()
 
     def set_window_name(self, name: str):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
@@ -324,6 +397,11 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
                     pdf.savefig(fig)
             else:
                 fig.savefig(fname)
+    
+    def accept(self):
+        if self.edited:
+            self.sweep_data.save()
+        super().accept()
     
     def closeEvent(self, event: QCloseEvent):
         if self.edited:
@@ -365,18 +443,21 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         if axes is None or event.button == MouseButton(3):
             self.canvas.select_axis(None)  # Deselect the currently selected plot
         elif event.button == MouseButton(1):
+            idx = self.canvas.canvas.figure.axes.index(axes)
+            resonator = self.sweep_data.resonator_data[idx]
+            if idx not in self.redrawn_axes:
+                self.redraw_axes(resonator, axes)
+                self.redrawn_axes.add(idx)
             self.canvas.select_axis(axes)  # Select the clicked axes
 
             # If double clicking, open a new resonator window
             if event.dblclick:
-                idx = self.canvas.canvas.figure.axes.index(axes)
-                resonator = self.sweep_data.resonator_data[idx]
                 self.make_resonator_window(resonator, axes)
 
     def redraw_axes(self, resonator: ResonatorData, ax: plt.Axes):
         """Redraw the specified axes."""
         reset_axes(ax)
-        resonator.plot(ax)
+        resonator.plot(ax=ax)
         # ax.set_box_aspect(1.0)
 
         fig = self.get_figure()
@@ -405,6 +486,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         ax = self.get_ax_by_index(resonator.idx)
         if result == QDialog.DialogCode.Accepted:
             self.set_edited()
+            self.canvas.set_edited(resonator.idx)
         self.redraw_axes(resonator, ax)
 
     def make_resonator_window(self, resonator: ResonatorData, ax: plt.Axes):
@@ -436,9 +518,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
             ncols = DEFAULT_NCOLS
 
         if fig is None:
-            nrows = int(np.ceil(self.sweep_data.nchan / ncols))
+            nrows = int(np.ceil(self.sweep_data.n_tones / ncols))
             fig = plt.figure(figsize=(ncols, nrows))
-            for i in range(1, self.sweep_data.nchan + 1):
+            for i in range(1, self.sweep_data.n_tones + 1):
                 ax = fig.add_subplot(nrows, ncols, i, xticks=[], yticks=[])
                 # ax.set_aspect('equal', adjustable='box')
                 ax.set_box_aspect(1.0)
@@ -450,9 +532,6 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         #     # self.set_figure(res)
             return res
     
-    def make_plot(self, fig_width=15, pd: QThreadJobProgressDialog | None=None) -> tuple[Figure, Future]:
-        return self.sweep_data.plot(ncols=fig_width, pd=pd)
-
     def toggle_unflagged(self):
         """Toggle whether the unflagged resonator plots are shown."""
         self.canvas.set_flagged(self.sweep_data.flagged)
@@ -469,16 +548,17 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     @ensure_path(1)
     def from_h5(cls, filepath: Path, parent: QWidget | None = None) -> DiagnosticsDialog:
         """Create a DiagnosticsDialog from an HDF5 file."""
-        sweep_data = LoSweepData.from_h5(filepath)
-        dialog = cls(sweep_data, savefile=filepath, parent=parent)
+        sweep_data = LoSweepData.load(filepath)
+        dialog = cls(sweep_data, parent=parent)
 
         pd = IncrementalProgressDialog(
             f'Plotting LO sweep...',
             'Cancel',
             0,
-            sweep_data.nchan,
+            sweep_data.n_tones,
             parent=parent,
         )
+        pd.setWindowTitle('Opening Lo Sweep Diagnostics')
         pd.setAutoClose(True)
         pd.setValue(0)
         pd.show()
@@ -492,12 +572,539 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         return dialog
 
 
+def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON):
+    res = np.allclose(np.real(line.get_xdata()[0]), event.xdata, atol=epsilon), {}
+    return res
+
+
+class SaveParamsDialog(QDialog):
+
+    def __init__(self, parent: QWidget | None=None):
+        super().__init__(parent=parent)
+        self.setupUi()
+    
+    def setupUi(self):
+        layout = QGridLayout()
+
+        self.setWindowTitle('Save New Parameters File')
+
+        self.label = QLabel('Enter New Tile Name:', parent=self)
+        self.lineEdit = QLineEdit(parent=self)
+        font_metrics = self.lineEdit.fontMetrics()
+        # Calculate width for 30 'x' characters plus some padding
+        width = font_metrics.horizontalAdvance('x' * 30) + 10
+        self.lineEdit.setMinimumWidth(width)
+
+        self.pushButton = QPushButton('Choose From File...', parent=self) 
+        self.pushButton.clicked.connect(self.choose_from_file)
+        self.buttonBox = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+
+        layout.addWidget(self.label, 0, 0)
+        layout.addWidget(self.lineEdit, 0, 1)
+        layout.addWidget(self.pushButton, 0, 2)
+        layout.addWidget(self.buttonBox, 1, 0, 1, -1)
+        self.setLayout(layout)
+    
+    def choose_from_file(self):
+        fname, _ = QFileDialog.getOpenFileName(
+            parent=self,
+            caption='Select Parameters File',
+            dir=DEFAULT_PARAMS_DIRECTORY,
+            filter='HDF5 (*.h5);;All Files (*)'
+        )
+        if fname:
+            path = Path(fname).with_suffix('.h5')
+            if re.match(r'^params_tile_', path.stem):
+                tile_name = path.stem[12:]
+                self.lineEdit.setText(tile_name)
+    
+    def get_current_tile_name(self) -> str:
+        return self.lineEdit.text()
+    
+    def check_overwrite(self, path: Path) -> bool:
+        msg = QMessageBox(
+            QMessageBox.Icon.Warning,
+            f'Overwriting "{path.name}"',
+            f'"{path.name}" already exists. Save anyway and overwrite the existing file?',
+            parent=self
+        )
+        msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        ret = msg.exec()
+        match ret:
+            case QMessageBox.StandardButton.Save:
+                
+                return True
+            case QMessageBox.StandardButton.Cancel:
+                return False  # Don't close
+            case _:
+                raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
+    
+    def accept(self):
+        tile_name = self.get_current_tile_name()
+        if tile_name:
+            path = Path(DEFAULT_PARAMS_DIRECTORY) / f'params_tile_{tile_name}.h5'
+            if path.exists():
+                overwrite = self.check_overwrite(path)
+                if not overwrite:
+                    return
+            return super().accept()
+
+class BlindSweepDialog(QDialog):
+    def __init__(self, data: LoSweepData, parent: QWidget | None=None):
+        super().__init__(parent)
+        self.setupUi()
+        self.setSizeGripEnabled(True)
+        # self.canvas.add_edit_button()
+        # self.canvas.add_add_button(self.add_line)
+        # self.canvas.add_remove_button(self.remove_line)
+        # self.canvas.add_undo_button(self.undo)
+        # self.canvas.add_redo_button(self.redo)
+        self.setup_connections()
+
+        self.data = data
+        self.f0 = data.detector_f
+        self.selected_line = None
+        self.dragging = False
+        self.action_stack: list[tuple[str, Any]]= []
+        self.stack_pointer = -1
+        self._cancelled = False
+    
+    def cancel(self):
+        self._cancelled = True
+        self.data.cancel_fit()
+        self.data.cancel_plot()
+    
+    def setupUi(self):
+        layout = QGridLayout()
+
+        self.canvas = ToolbarCanvas(
+            parent=self,
+            add_edit=True,
+            add_function=self.add_line,
+            add_description='Add a vertical line to the plot.',
+            remove_function=self.remove_line,
+            remove_description='Remove the currently selected line from the plot.',
+            undo_function=self.undo,
+            redo_function=self.redo
+        )
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        button_box.accepted.connect(self.save_tones)
+        button_box.rejected.connect(self.close_without_saving)
+
+        pdf_button = QPushButton('Generate PDF', parent=self)
+        pdf_button.clicked.connect(self.generate_pdf)
+
+        layout.addWidget(self.canvas, 0, 0, 1, -1)
+        layout.addWidget(pdf_button, 1, 1)
+        layout.addWidget(button_box, 2, 0, 1, -1)
+        self.setLayout(layout)
+
+    def set_window_name(self, name: str):
+        self.setWindowTitle(QCoreApplication.translate("Dialog", f'Fitted Resonance Adjustment - {name}', None))
+    
+    def _handle_save_params_finished(self, result: int):
+        dialog: SaveParamsDialog = self.sender()
+        if result == QDialog.DialogCode.Accepted:
+            tile_name = dialog.get_current_tile_name()
+            f0 = np.real(np.array([line.get_xdata()[0] for line in self.get_vlines()]))
+            bb_freqs = f0 - self.data.f_center
+            bb_freqs = np.sort(bb_freqs)
+            path = Path(get_params_file_template(tile_name, params_dir=DEFAULT_PARAMS_DIRECTORY))
+            if not path.exists():
+                initialize_params_file(tile_name, bb_freqs, self.data.f_center)
+            else:
+                update_params_file(tile_name, baseband_freqs=bb_freqs)
+            self.accept()
+    
+    def save_tones(self):
+        self.tile_name_dialog = SaveParamsDialog(parent=self)
+        self.tile_name_dialog.finished.connect(self._handle_save_params_finished)
+        self.tile_name_dialog.open()
+
+    def close_without_saving(self):
+        msg = QMessageBox(
+            QMessageBox.Icon.Warning,
+            f'Close without saving?',
+            'Your changes will be lost if you don\'t save them',
+            parent=self
+        )
+        msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+        msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        ret = msg.exec()
+        match ret:
+            case QMessageBox.StandardButton.Save:
+                self.save_tones()
+            case QMessageBox.StandardButton.Cancel:
+                pass
+            case QMessageBox.StandardButton.Discard:
+                super().reject()
+            case _:
+                raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
+    
+    def reject(self):
+        self.close_without_saving()
+
+    @property
+    def figure_canvas(self) -> FigureCanvas:
+        return self.canvas.figure_canvas
+
+    @property
+    def figure(self) -> Figure:
+        return self.canvas.figure
+    
+    @property
+    def ax(self) -> plt.Axes:
+        return self.figure.axes[0]
+    
+    @property
+    def _editing(self) -> bool:
+        """Return whether the plot is in editing mode."""
+        return self.canvas.editing
+    
+    @property
+    def n_tones(self) -> int:
+        return self.data.n_tones
+
+    def get_vlines(self) -> list[plt.Line2D]:
+        """Get the vertical lines in the plot."""
+        # The first n_tones lines should be the S21 traces for each tone
+        return self.ax.lines[self.n_tones:]
+    
+    def find_resonances(self, callback: Callable=None, **kwargs):
+        f0, depths = self.data.find_resonances(**kwargs)
+        self.f0 = f0
+        self.depths = depths
+        if callback is not None:
+            callback()
+    
+    def find_resonances_and_plot(self, callback: Callable=None, **kwargs):
+        self.find_resonances(**kwargs)
+        self.plot(callback=callback)
+    
+    def plot(self, callback: Callable=None):
+        self.replot_figure(self.data.plot_blind_sweep, self.f0, callback=callback)
+        # fig = self.data.plot_blind_sweep(f0)
+        # self.set_figure(fig)
+    
+    def generate_pdf(self):
+        # Get the savefile
+        filename, _ = QFileDialog.getSaveFileName(
+            parent=self,
+            caption='Save PDF',
+            dir='blind_sweep.pdf',  # TODO: Get the directory the sweep is saved to (or today's date)
+            filter='PDF (*.pdf);;All Files (*)'
+        )
+        if filename:
+            pd = IncrementalProgressDialog(
+                'Generating PDF of new resonances...',
+                'Cancel',
+                0,
+                self.data.n_tones,
+                parent=self,
+            )
+            pd.setWindowTitle('Generating PDF')
+            pd.setValue(0)
+            pd.show()
+            increment_progress = make_progress_dialog_incrementer(pd)
+            self.data.plot_new_resonances(self.f0, savefile=filename, callback=increment_progress)
+    
+    def closest_vline(self, x: float) -> tuple[int, plt.Line2D]:
+        lines = self.get_vlines()
+        x_pos = [line.get_xdata()[0] for line in lines]
+        closest_idx = np.argmin(np.abs(np.subtract(x_pos, x)))
+        return closest_idx, lines[closest_idx]
+
+    def setup_connections(self):
+        # Setup the event handling logic to click and drag the line
+        self.figure_canvas.mpl_connect('button_press_event', self.mouse_press)
+        self.figure_canvas.mpl_connect('button_release_event', self.mouse_release)
+        self.figure_canvas.mpl_connect('motion_notify_event', self.mouse_move)
+        self.figure_canvas.mpl_connect('pick_event', self.pick_line)
+
+    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+        self.canvas.replot_figure(plotting_function, *args, **kwargs)
+        for l in self.get_vlines():
+            l.set_picker(line_picker)
+            l.set_pickradius(10)
+
+    def set_figure(self, fig: Figure):
+        """Change the figure in the canvas."""
+        self.canvas.set_figure(fig)
+
+        self.ax = fig.axes[0]
+        self.figure_canvas = self.canvas.canvas
+
+        self.ax = fig.axes[0]
+        
+        self.setup_connections()
+
+        self.adjustSize()
+
+    def move_selected_line(self, x: float, add_to_stack: bool=False):
+        """Move the currentyl selected line to the specified x value."""
+        if add_to_stack:
+            self.push_to_stack('move_line', self.selected_line, self.selected_line_start, x)
+
+        self.selected_line.set_xdata([x, x])
+        self.ax.draw_artist(self.selected_line)
+        self.figure_canvas.draw_idle()
+        
+
+    def close_to_line(self, line: plt.Line2D, xdata: float, epsilon: float=ATOL_EPSILON) -> bool:
+        """Return whether a value is close to a line."""
+        return np.allclose(line.get_xdata()[0], xdata, atol=epsilon)
+    
+    def add_line(self):
+        if not self._editing:
+            return
+        xlims = self.ax.get_xlim()
+        x = (xlims[0] + xlims[1]) / 2
+        l = self.ax.axvline(x, color='red')
+        self.figure_canvas.draw_idle()
+        l.set_picker(line_picker)
+        l.set_pickradius(10)
+
+        self.push_to_stack('add_line', l, x)
+    
+    def push_to_stack(self, action: str, *data):
+        self.stack_pointer += 1
+        self.action_stack = self.action_stack[:self.stack_pointer]
+        self.action_stack.append((action, *data))
+        # print(f'Pushed action "{action}" to stack with data {data}')
+    
+    def undo(self):
+        # print(f'Called UNDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
+        # If nothing to undo return
+        if len(self.action_stack[:self.stack_pointer + 1]) == 0:
+            return
+        action, *data = self.action_stack[self.stack_pointer]
+        # print(f'UNDO: action={action} with data {data}')
+        match action:
+            case 'move_line':
+                line, old_x, new_x = data
+                line.set_xdata([old_x, old_x])
+            case 'add_line':
+                line, x, = data
+                line.remove()
+            case 'remove_line':
+                line, x = data
+                self.ax.add_artist(line)
+                # line.set_picker(line_picker)
+                # line.set_pickradius(10)
+            case _:
+                raise NotImplementedError(f'Undoing action "{action}" is not yet supported.')
+        
+        self.figure_canvas.draw_idle()
+        self.stack_pointer -= 1
+
+    def redo(self):
+        # print(f'Called REDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
+        # If nothing to redo return
+        if self.stack_pointer + 2 > len(self.action_stack):
+            return
+        action, *data = self.action_stack[self.stack_pointer + 1]
+        # print(f'REDO: action={action} with data {data}')
+        match action:
+            case 'move_line':
+                line, old_x, new_x = data
+                line.set_xdata([new_x, new_x])
+            case 'add_line':
+                line, x = data
+                self.ax.add_artist(line)
+                # line.set_picker(line_picker)
+                # line.set_pickradius(10)
+                # line.set_xdata([old_x, old_x])
+            case 'remove_line':
+                line, x = data
+                line.remove()
+            case _:
+                raise NotImplementedError(f'Redoing action "{action}" is not yet supported.')
+        
+        self.figure_canvas.draw_idle()
+        self.stack_pointer += 1
+
+    def set_selected_line(self, line: plt.Line2D):
+        # Reset previously selected line
+        if self.selected_line is not None:
+            self.selected_line.set_linewidth('1.5')
+            self.selected_line.set_linestyle('-')
+
+        self.selected_line = line
+
+        if line is not None:
+            self.selected_line_start = self.selected_line.get_xdata()[0]
+            self.selected_line.set_linewidth('3')
+            self.selected_line.set_linestyle('--')
+    
+    def remove_line(self):
+        if not self._editing:
+            return
+        if self.selected_line is not None:
+            self.push_to_stack('remove_line', self.selected_line, self.selected_line.get_xdata()[0])
+            self.selected_line.remove()
+            self.selected_line = None
+    
+    def pick_line(self, event: PickEvent):
+        if not self._editing:
+            return
+        
+        self.set_selected_line(event.artist)
+        # self.dragging = True
+        QApplication.restoreOverrideCursor()
+
+    def mouse_release(self, event: MouseEvent):
+        """Handle releasing a mouse button."""
+        if not self._editing:
+            return 
+        if event.button != 1:
+            return  # Not left click
+        if event.inaxes != self.ax:
+            return  # Not inside the plot
+
+        if self.dragging:
+            # Stop dragging and update the line's position
+            self.dragging = False
+            # self.figure_canvas.set_cursor(Cursors.HAND)
+            QApplication.restoreOverrideCursor()
+            # QApplication.setOverrideCursor(Qt.CursorShape.OpenHandCursor)
+            self.move_selected_line(event.xdata, add_to_stack=True)
+    
+    def mouse_press(self, event: MouseEvent):
+        if not self._editing:
+            return 
+        if event.button != 1:
+            return  # Not left click
+        if event.inaxes != self.ax:
+            return  # Not inside the plot
+
+        # clicking far away from lines deselects the current line
+        i, closest_line = self.closest_vline(event.xdata)
+        if not self.close_to_line(closest_line, event.xdata):
+            self.set_selected_line(None)
+            closest_line.set_linewidth('1.5')
+
+
+    def mouse_move(self, event: MouseEvent):
+        """Handle mouse movement."""
+        if not self._editing:
+            return 
+        # If mouse moves out of plot, unhighlight the line and stop dragging
+        if event.inaxes != self.ax:
+            # if self.selected_line is not None:
+            #     self.selected_line.set_linewidth('1.5')
+            # self.setCursor(Qt.CursorShape.ArrowCursor)
+            # QApplication.restoreOverrideCursor()
+            self.dragging = False
+            self.figure_canvas.draw_idle()
+            return
+        if event.button == MouseButton.LEFT and self.selected_line is not None:
+            self.dragging = True
+            QApplication.setOverrideCursor(Qt.CursorShape.ClosedHandCursor)
+        if not self.dragging:
+            # Check if the mouse is close to a line and highlight it if so
+            i, closest_line = self.closest_vline(event.xdata)
+            if self.close_to_line(closest_line, event.xdata):
+                closest_line.set_linewidth('3')
+                QApplication.setOverrideCursor(Qt.CursorShape.OpenHandCursor)
+            else:
+                # TODO: The highlighting isn't quite right but ah well
+
+                # Not close to any lines, so unhighlight all lines and reset the cursor
+                # for line in self.get_vlines():
+                #     if line != self.selected_line:
+                #         line.set_linewidth('1.5')
+                # if self.selected_line is not None:
+                #     self.selected_line.set_linewidth('1.5')
+                if closest_line != self.selected_line:
+                    closest_line.set_linewidth('1.5')
+                QApplication.restoreOverrideCursor()
+            self.figure_canvas.draw_idle()
+        else:
+            # Moving while holding left mouse and dragging, so update the line's position
+            self.move_selected_line(event.xdata)
+
+
+# TODO: Finish this
+class PowerSweepDialog(QDialog):
+    def __init__(self, data: PowerSweepData, parent: QWidget | None=None):
+        super().__init__(parent)
+        self.setupUi()
+
+        self.filename = data.filename.with_suffix('.pdf')
+        self._additional_gui_setup()
+        self.setSizeGripEnabled(True)
+
+    def _additional_gui_setup(self):
+        vlayout = QVBoxLayout()
+
+        self.document = QPdfDocument(parent=self)
+        self.document.load(str(self.filename))
+        self.pdf_view = QPdfView(parent=self, document=self.document)
+
+        vlayout.addWidget(self.pdf_view)
+
+
+
+
 if __name__ == '__main__':
+
     from concurrent.futures import wait
     import pdb
 
     app = QApplication()
 
-    dw = DiagnosticsDialog.from_h5('/data/20260127/20260127_Device_aSi1_Channel3_blind_LO_Sweep_hour13p6814.h5')
-    dw.show()
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.backends.backend_qt import FigureManagerQT
+    from matplotlib.backend_tools import ToolToggleBase
+    from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
+    # def plot_fn(fig: Figure, size: int=10):
+    #     if len(fig.axes) == 0:
+    #         ax = fig.add_subplot()
+    #     else:
+    #         ax = fig.axes[0]
+    #     ax.plot(np.arange(size), np.random.random(size))
+
+    # class MainWindow(QDialog):
+    #     def __init__(self, parent=None):
+    #         super().__init__(parent)
+
+    #         self.canvas = ToolbarCanvas(self)
+    #         self.canvas.add_edit_button()
+    #         self.canvas.replot_figure(plot_fn)
+    #         # self.canvas = FigureCanvas(fig)
+    #         # self.manager = FigureManagerQT(self.canvas, 1)
+    #         # self.canvas.manager = self.manager
+    #         # self.nav = self.manager.toolbar
+
+    #         layout = QVBoxLayout(self)
+    #         layout.setContentsMargins(0, 0, 0, 0)
+    #         self.setLayout(layout)
+    #         # layout.addWidget(self.nav)
+    #         layout.addWidget(self.canvas)
+
+    # win = MainWindow()
+    # win.show()
+    # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
+    # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
+    data = LoSweepData.load('/data/20260511/20260511_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour13p6353.h5')
+    win = BlindSweepDialog(data)
+    win.find_resonances(
+        min_resonance_depth_dB=0.3,
+        spacing_threshold_Hz=3e3,
+        min_samples_per_resonance=4,
+        max_noise_fluctuation_dB=0.05,
+    )
+    win.plot()
+    win.show()
+
+    # dw.show()
     app.exec()

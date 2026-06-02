@@ -15,10 +15,10 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QFont, QFontDatabase, QGradient, QIcon,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDialogButtonBox,
-    QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QSizePolicy, QSpacerItem, QVBoxLayout,
-    QWidget)
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QDialog,
+    QDialogButtonBox, QGridLayout, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QRadioButton, QSizePolicy,
+    QSpacerItem, QVBoxLayout, QWidget)
 
 from rfsocinterface.gui.widgets.canvas import ResonatorCanvas
 from . import icons_rc
@@ -47,22 +47,62 @@ class Ui_Dialog(object):
 
         self.verticalLayout_2.addWidget(self.canvas)
 
-        self.formLayout = QFormLayout()
-        self.formLayout.setObjectName(u"formLayout")
-        self.old_freq_label = QLabel(Dialog)
-        self.old_freq_label.setObjectName(u"old_freq_label")
-
-        self.formLayout.setWidget(0, QFormLayout.LabelRole, self.old_freq_label)
-
+        self.gridLayout = QGridLayout()
+        self.gridLayout.setObjectName(u"gridLayout")
         self.old_freq_value_label = QLabel(Dialog)
         self.old_freq_value_label.setObjectName(u"old_freq_value_label")
 
-        self.formLayout.setWidget(0, QFormLayout.FieldRole, self.old_freq_value_label)
+        self.gridLayout.addWidget(self.old_freq_value_label, 0, 1, 1, 1)
+
+        self.old_freq_label = QLabel(Dialog)
+        self.old_freq_label.setObjectName(u"old_freq_label")
+
+        self.gridLayout.addWidget(self.old_freq_label, 0, 0, 1, 1)
+
+        self.delta_label = QLabel(Dialog)
+        self.delta_label.setObjectName(u"delta_label")
+
+        self.gridLayout.addWidget(self.delta_label, 2, 0, 1, 1)
+
+        self.delta_value_label = QLabel(Dialog)
+        self.delta_value_label.setObjectName(u"delta_value_label")
+
+        self.gridLayout.addWidget(self.delta_value_label, 2, 1, 1, 1)
 
         self.new_freq_label = QLabel(Dialog)
         self.new_freq_label.setObjectName(u"new_freq_label")
 
-        self.formLayout.setWidget(1, QFormLayout.LabelRole, self.new_freq_label)
+        self.gridLayout.addWidget(self.new_freq_label, 1, 0, 1, 1)
+
+        self.depth_value_label = QLabel(Dialog)
+        self.depth_value_label.setObjectName(u"depth_value_label")
+
+        self.gridLayout.addWidget(self.depth_value_label, 3, 1, 1, 1)
+
+        self.offres_radioButton = QRadioButton(Dialog)
+        self.resonance_buttonGroup = QButtonGroup(Dialog)
+        self.resonance_buttonGroup.setObjectName(u"resonance_buttonGroup")
+        self.resonance_buttonGroup.addButton(self.offres_radioButton)
+        self.offres_radioButton.setObjectName(u"offres_radioButton")
+
+        self.gridLayout.addWidget(self.offres_radioButton, 4, 1, 1, 1)
+
+        self.depth_label = QLabel(Dialog)
+        self.depth_label.setObjectName(u"depth_label")
+
+        self.gridLayout.addWidget(self.depth_label, 3, 0, 1, 1)
+
+        self.onres_radioButton = QRadioButton(Dialog)
+        self.resonance_buttonGroup.addButton(self.onres_radioButton)
+        self.onres_radioButton.setObjectName(u"onres_radioButton")
+
+        self.gridLayout.addWidget(self.onres_radioButton, 4, 0, 1, 1)
+
+        self.bad_res_radioButton = QRadioButton(Dialog)
+        self.resonance_buttonGroup.addButton(self.bad_res_radioButton)
+        self.bad_res_radioButton.setObjectName(u"bad_res_radioButton")
+
+        self.gridLayout.addWidget(self.bad_res_radioButton, 4, 2, 1, 1)
 
         self.horizontalLayout_2 = QHBoxLayout()
         self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
@@ -82,30 +122,10 @@ class Ui_Dialog(object):
         self.horizontalLayout_2.addItem(self.horizontalSpacer)
 
 
-        self.formLayout.setLayout(1, QFormLayout.FieldRole, self.horizontalLayout_2)
-
-        self.delta_label = QLabel(Dialog)
-        self.delta_label.setObjectName(u"delta_label")
-
-        self.formLayout.setWidget(2, QFormLayout.LabelRole, self.delta_label)
-
-        self.delta_value_label = QLabel(Dialog)
-        self.delta_value_label.setObjectName(u"delta_value_label")
-
-        self.formLayout.setWidget(2, QFormLayout.FieldRole, self.delta_value_label)
-
-        self.depth_label = QLabel(Dialog)
-        self.depth_label.setObjectName(u"depth_label")
-
-        self.formLayout.setWidget(3, QFormLayout.LabelRole, self.depth_label)
-
-        self.depth_value_label = QLabel(Dialog)
-        self.depth_value_label.setObjectName(u"depth_value_label")
-
-        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.depth_value_label)
+        self.gridLayout.addLayout(self.horizontalLayout_2, 1, 1, 1, 2)
 
 
-        self.verticalLayout_2.addLayout(self.formLayout)
+        self.verticalLayout_2.addLayout(self.gridLayout)
 
         self.buttonBox = QDialogButtonBox(Dialog)
         self.buttonBox.setObjectName(u"buttonBox")
@@ -127,13 +147,16 @@ class Ui_Dialog(object):
 
     def retranslateUi(self, Dialog):
         Dialog.setWindowTitle(QCoreApplication.translate("Dialog", u"Resonator", None))
-        self.old_freq_label.setText(QCoreApplication.translate("Dialog", u"Old Frequency (MHz):", None))
         self.old_freq_value_label.setText("")
-        self.new_freq_label.setText(QCoreApplication.translate("Dialog", u"New Frequency (MHz):", None))
-        self.refit_pushButton.setText(QCoreApplication.translate("Dialog", u"Refit", None))
+        self.old_freq_label.setText(QCoreApplication.translate("Dialog", u"Old Frequency (MHz):", None))
         self.delta_label.setText(QCoreApplication.translate("Dialog", u"\u0394f (KHz):", None))
         self.delta_value_label.setText("")
-        self.depth_label.setText(QCoreApplication.translate("Dialog", u"Resonance Depth:", None))
+        self.new_freq_label.setText(QCoreApplication.translate("Dialog", u"New Frequency (MHz):", None))
         self.depth_value_label.setText("")
+        self.offres_radioButton.setText(QCoreApplication.translate("Dialog", u"Off Resonance", None))
+        self.depth_label.setText(QCoreApplication.translate("Dialog", u"Resonance Depth:", None))
+        self.onres_radioButton.setText(QCoreApplication.translate("Dialog", u"On Resonance", None))
+        self.bad_res_radioButton.setText(QCoreApplication.translate("Dialog", u"Bad Resonance", None))
+        self.refit_pushButton.setText(QCoreApplication.translate("Dialog", u"Refit", None))
     # retranslateUi
 
