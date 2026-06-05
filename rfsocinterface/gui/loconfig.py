@@ -15,7 +15,7 @@ from kidpy3.measure import ResonatorFinder
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.core.sweeps import LoSweepData, LoSweep, DEFAULT_NCOLS, PowerSweep
-from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog, BlindSweepDialog
+from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog, BlindSweepDialog, PowerSweepDialog
 from rfsocinterface.gui.widgets import (
     get_num_value,
     IncrementalProgressDialog,
@@ -587,6 +587,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         figs: list[Figure] = []
         for (rfsoc, chan), sweep in zip(selected_channels, sweeps):
             sweep_data = sweep.data
+            sweep_data.reset_stop_signals()
 
             # Make diagnostics window and setup connections
             dw = DiagnosticsDialog(sweep_data, parent=self)
@@ -693,7 +694,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             plotting_threads.append(thread)
             pd.canceled.connect(dw.cancel)
         
-        pd.setLabelText(f'Plotting LO sweep{"s" if len(sweeps) > 1 else ""}...')
+        pd.setLabelText(f'Plotting Blind sweep{"s" if len(sweeps) > 1 else ""}...')
         QApplication.processEvents()
 
         for thread in plotting_threads:
@@ -793,7 +794,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         if not self.fit_power_sweeps(sweeps):
             return False
 
-        return self.plot_power_sweeps(sweeps)
+        plot_complete = self.plot_power_sweeps(selected_channels, sweeps)
+        return plot_complete
     
     def setup_power_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]]) -> list[PowerSweep]:
         # Get values from GUI, converting KHz to Hz
@@ -865,6 +867,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
+        _logger.debug('All power sweep fitting threads finished.')
+
         if pd.wasCanceled() or any(sweep.data._fit_canceled for sweep in sweeps):
             # _logger.info('Power Sweep Canceled')
             return False
@@ -877,7 +881,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         
         return True
 
-    def plot_power_sweeps(self, sweeps: list[PowerSweep]) -> bool:
+    def plot_power_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]], sweeps: list[PowerSweep]) -> bool:
         # Setup progress dialog 
         total_steps = sum(sweep.data.n_plots for sweep in sweeps)
         pd = IncrementalProgressDialog(
@@ -891,33 +895,75 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         pd.setAutoClose(True)
         pd.setValue(0)
         pd.show()
+
+        QApplication.processEvents()
         increment_progress = make_progress_dialog_incrementer(pd)
 
-        plotting_threads = []
-        for sweep in sweeps:
+        # plotting_threads = []
+        _logger.debug('Initializing PowerSweepDialogs...')
+        dialogs: list[PowerSweepDialog] = []
+        for (rfsoc, chan), sweep in zip(selected_channels, sweeps):
             sweep_data = sweep.data
-            thread = Thread(target=sweep_data.plot_optimal_readout_powers, kwargs={'callback': increment_progress})
-            plotting_threads.append(thread)
-            pd.canceled.connect(sweep_data.cancel_fit)
+            sweep_data.reset_stop_signals()
 
-        for thread in plotting_threads:
-            thread.start()
+            dialog = PowerSweepDialog(sweep_data, parent=None)
+            # Make the sweep dialog a true top-level window and non-modal so
+            # its initialization (PDF viewer, web engine, etc.) cannot
+            # propagate events that cancel the progress dialog.
+            dialog.setWindowFlag(Qt.Window, True)
+            dialog.setWindowModality(Qt.NonModal)
+            dialog.set_window_name(rfsoc.get_channel(chan).tile_name)
+            dialog.finished.connect(self.handle_diagnostic_window_finished)
+            dialogs.append(dialog)
+
+            QApplication.processEvents()
+
+            # thread = Thread(target=sweep_data.plot, kwargs={'callback': increment_progress})
+            # plotting_threads.append(thread)
+            pd.canceled.connect(sweep_data.cancel_plot)
+
+        QApplication.processEvents()
+
+        # for thread in plotting_threads:
+        #     thread.start()
 
         # Wait for all plotting to finish or cancel
-        while not all ((sweep.data._plotted or sweep.data._plot_canceled) for sweep in sweeps):
-            QApplication.processEvents()
-            time.sleep(0.1)
+        # while not all ((sweep.data._plotted or sweep.data._plot_canceled) for sweep in sweeps):
+        #     QApplication.processEvents()
+        #     time.sleep(0.1)
         
-        for thread in plotting_threads:
-            thread.join()
+        # for thread in plotting_threads:
+        #     thread.join()
+        
+        # TODO: Parallelize this better
+        # Plot in the main thread, since matplotlib gets mad otherwise
+        _logger.debug('Starting power sweep plotting...')
+        for i, sweep in enumerate(sweeps):
+            sweep_data = sweep.data
+            if sweep_data._plot_canceled:
+                _logger.debug(f'Power sweep plotting canceled before sweep {i + 1}/{len(sweeps)}.')
+                break
+            pd.show()
+            QApplication.processEvents()
+
+            _logger.debug(f'Plotting power sweep {i + 1}/{len(sweeps)}...')
+            sweep_data.plot(callback=increment_progress)
 
         QApplication.processEvents()
 
         if pd.wasCanceled() or any(sweep.data._plot_canceled for sweep in sweeps):
-            # _logger.info('Power Sweep Canceled')
+            _logger.debug('Power Sweep plotting Canceled')
             return False
 
         pd.close()
+
+        for dialog in dialogs:
+            dialog.try_load_pdf()
+            dialog.show()
+            QApplication.processEvents()
+        
+        self._wait_for_sweep_dialogs(dialogs)
+        _logger.debug('Power Sweep plotting finished properly')
         
         return True
     

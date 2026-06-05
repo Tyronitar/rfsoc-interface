@@ -509,7 +509,7 @@ class LoSweepData:
         self._fitted = False
         self._fit_canceled = False
         _logger.debug('Fitting LO sweep results...')
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             res = executor.map(
                 simple_derivative_fits,
                 (self.df for _ in range(self.n_good_tones)),
@@ -1163,7 +1163,7 @@ class CompositeSweepData:
         """Save the sweep to the current HDF5 file."""
         if self.filename is None:
             raise RuntimeWarning('No filename specified for this sweep. Use `save_as` to specify a filename.')
-        self.save_as(self.savefile)
+        self.save_as(self.filename)
 
     @ensure_path(1)
     def save_as(self, fname: Path):
@@ -1177,6 +1177,7 @@ class CompositeSweepData:
             fh.create_dataset('baseband_freqs', data=self.bb_freqs, dtype=np.float64)
             fh.create_dataset('chanmask', data=self.chanmask, dtype=np.int8)
             fh.create_dataset('fit_f0', data=self._fit_f0, dtype=np.float64)
+        self.filename = path
 
     @classmethod
     @ensure_path(1)
@@ -1264,8 +1265,10 @@ class PowerSweepData(CompositeSweepData):
     
     def fit(self, callback: Callable=None):
         """Fit the power sweep data to determine the optimal readout power for each resonator."""
+        _logger.debug('Fitting PowerSweepData...')
         super().fit_f0(callback=callback)  # Must find f0 first
         self.find_optimal_readout_power(callback=callback)
+        self._fitted = True
 
     def find_optimal_readout_power(
         self,
@@ -1274,6 +1277,7 @@ class PowerSweepData(CompositeSweepData):
         max_power_deviation_from_median_dB: float=5,
         callback: Callable=None,
     ):
+        _logger.debug('Finding optimal readout power...')
         self._fitted = False
         self._fit_canceled = False
 
@@ -1290,6 +1294,7 @@ class PowerSweepData(CompositeSweepData):
         power_level_non_linear = np.zeros(self.n_tones)
         non_linear_slope = np.zeros(self.n_tones)
 
+        defaults = []  # resonators that needed to use default values
         for i_onres, i_res in enumerate(self.onres_ind):
             if self._fit_canceled:
                 return
@@ -1325,35 +1330,39 @@ class PowerSweepData(CompositeSweepData):
                 )
                 non_linear_slope[i_res] = popt[0]
                 power_level_non_linear[i_res] = popt[1]
+                onres_popt[i_onres] = popt
             except (RuntimeError, ValueError) as e:
-                print(f'Encountered exception during fit; using default value for resonator {i_res}')
-                print(e)
+                defaults.append(int(i_res))
                 non_linear_slope[i_res] = POWER_SWEEP_FRACTIONAL_FREQ_SHIFT
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
+                onres_popt[i_onres] = [POWER_SWEEP_FRACTIONAL_FREQ_SHIFT, POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB]
             
             onres_power_levels.append(this_power_level)
             onres_df.append(this_df)
-            onres_popt[i_onres] = [POWER_SWEEP_FRACTIONAL_FREQ_SHIFT, POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB]
 
             if callback is not None:
                 callback()
 
-        med = np.median(power_level_non_linear)
-        bad_ind = np.argwhere(np.abs(power_level_non_linear - med) > max_power_deviation_from_median_dB).flatten()
-        power_level_non_linear[bad_ind] = med
+        if len(defaults) > 0:
+            _logger.warning(f'The following tones were unable to fit properly, and have default values: {defaults}')
 
-        power_level_non_linear[self.offres_ind] = med  # Set off-resonance to median
-        negative_ind = np.argwhere(non_linear_slope < 0).flatten()
-        power_level_non_linear[negative_ind] = med
+        with np.errstate(divide='ignore', invalid='ignore'):
+            med = np.median(power_level_non_linear)
+            bad_ind = np.argwhere(np.abs(power_level_non_linear - med) > max_power_deviation_from_median_dB).flatten()
+            power_level_non_linear[bad_ind] = med
 
-        max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
+            power_level_non_linear[self.offres_ind] = med  # Set off-resonance to median
+            negative_ind = np.argwhere(non_linear_slope < 0).flatten()
+            power_level_non_linear[negative_ind] = med
+
+            max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
 
         self.max_readout_power = max_readout_power
         self._onres_power_levels = np.array(onres_power_levels, dtype=object)
         self._onres_df = np.array(onres_df, dtype=object)
         self._onres_popt = onres_popt
-        self.fitted = True
 
+        _logger.debug(f'Finished finding optimal readout powers.')
         return max_readout_power
 
     @property
@@ -1375,6 +1384,7 @@ class PowerSweepData(CompositeSweepData):
         ncols: int=3,
         callback: Callable=None,
     ):
+        _logger.info('Generating optimal readout power plots...')
         self._plotted = False
         self._plot_canceled = False
         if pdf_filename is None:
@@ -1397,8 +1407,10 @@ class PowerSweepData(CompositeSweepData):
 
         for i_onres, i_res in enumerate(self.onres_ind):
             if self._plot_canceled:
+                pdf.savefig(fig)
                 plt.close(fig)
                 pdf.close()
+                _logger.debug(f'Canceled before finishing plotting optimal readut powers.')
                 return
             # Start a new page if needed
             if i_plot >= page_size:
@@ -1450,6 +1462,8 @@ class PowerSweepData(CompositeSweepData):
         plt.close(fig)
 
         if self._plot_canceled:
+            _logger.debug(f'Canceled before finishing plotting optimal readut powers.')
+            pdf.savefig(fig)
             plt.close(fig)
             pdf.close()
             return
@@ -1467,6 +1481,8 @@ class PowerSweepData(CompositeSweepData):
 
         if callback is not None:
             callback()
+        
+        _logger.debug(f'Finished plotting optimal readut powers.')
 
         self._plotted = True
 
@@ -1544,6 +1560,7 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
             self.power_levels,
             self.starting_rfin,
             self.starting_rfout,
+            filename=self.savefile,
         )
         self._data.save_as(self.savefile)
     

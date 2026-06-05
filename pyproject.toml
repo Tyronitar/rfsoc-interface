@@ -43,6 +43,7 @@ memray = "^1.17.2"
 snakeviz = "^2.2.2"
 pyside6-addons = "^6.8.1"
 av = "^17.0.1"
+pdfjs-viewer-pyside6 = "^1.2.1.1"
 
 
 [[tool.poetry.source]]

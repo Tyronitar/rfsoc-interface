@@ -9,6 +9,7 @@ from pathlib import Path
 from concurrent.futures import Future
 import logging
 import pdb
+import warnings
 from matplotlib.artist import Artist
 import re
 
@@ -40,6 +41,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtPdfWidgets import QPdfView
 from PySide6.QtPdf import QPdfDocument
+from pdfjs_viewer import PDFViewerWidget
 
 from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS, PowerSweepData
 from rfsocinterface.core.params import update_params_file, initialize_params_file, DEFAULT_PARAMS_DIRECTORY, get_params_file_template
@@ -1046,15 +1048,19 @@ class PowerSweepDialog(QDialog):
     def setupUi(self):
         vlayout = QVBoxLayout()
 
-        self.document = QPdfDocument(parent=self)
-        self.document.load(str(self.filename))
-        self.pdf_view = QPdfView(
-            parent=self,
-            document=self.document,
-            pageMode=QPdfView.PageMode.MultiPage,
-            zoomMode=QPdfView.ZoomMode.FitToWidth,
-        )
-        vlayout.addWidget(self.pdf_view)
+        # self.document = QPdfDocument(parent=self)
+        # self.document.load(str(self.filename))
+        # self.pdf_view = QPdfView(
+        #     parent=self,
+        #     document=self.document,
+        #     pageMode=QPdfView.PageMode.MultiPage,
+        #     zoomMode=QPdfView.ZoomMode.FitToWidth,
+        # )
+        # vlayout.addWidget(self.pdf_view)
+
+        self.pdf_viewer = PDFViewerWidget(parent=self, preset='simple')
+        self.try_load_pdf()
+        vlayout.addWidget(self.pdf_viewer)
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
@@ -1066,16 +1072,69 @@ class PowerSweepDialog(QDialog):
 
         self.setLayout(vlayout)
         self.setMinimumSize(600, 600)
+    
+    def try_load_pdf(self):
+        if self.filename.exists():
+            self.pdf_viewer.load_pdf(self.filename)
+        else:
+            _logger.debug(f'"{self.filename}" does not exist. Showing blank page.')
+            self.pdf_viewer.show_blank_page()
 
+    def set_window_name(self, name: str):
+        self.setWindowTitle(QCoreApplication.translate("Dialog", f'Power Sweep Results - {name}', None))
 
+    def _cleanup_pdf_viewer(self):
+        """Ensure the PDF viewer backend is cleaned up before the dialog is destroyed."""
+        try:
+            if hasattr(self, 'pdf_viewer') and self.pdf_viewer is not None:
+                try:
+                    # Call the backend cleanup which deletes page before profile.
+                    # Suppress RuntimeWarning from PySide6 disconnect() during
+                    # cleanup by catching warnings here instead of modifying
+                    # the installed pdfjs_viewer package.
+                    if hasattr(self.pdf_viewer, 'backend'):
+                        with warnings.catch_warnings():
+                            warnings.simplefilter('ignore', RuntimeWarning)
+                            self.pdf_viewer.backend.cleanup()
+                except Exception:
+                    pass
+                try:
+                    self.pdf_viewer.deleteLater()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def closeEvent(self, event):
+        # Clean up PDF viewer (page/profile) before closing to avoid Qt warning
+        self._cleanup_pdf_viewer()
+        super().closeEvent(event)
+
+    def accept(self) -> None:
+        self._cleanup_pdf_viewer()
+        super().accept()
+
+    def reject(self) -> None:
+        self._cleanup_pdf_viewer()
+        super().reject()
 
 
 if __name__ == '__main__':
 
     from concurrent.futures import wait
     import pdb
+    import sys 
 
-    app = QApplication()
+    from pdfjs_viewer.stability import configure_global_stability
+
+    configure_global_stability(
+        disable_gpu=True,
+        disable_webgl=True,
+        disable_gpu_compositing=True,
+        disable_unnecessary_features=True,
+    )
+
+    app = QApplication(sys.argv)
 
     f = '/data/20260601/20260601_Simon_Be231102p2_100_tones_Power_Sweep_hour16p1119.h5'
     sweep = PowerSweepData.load(f)
