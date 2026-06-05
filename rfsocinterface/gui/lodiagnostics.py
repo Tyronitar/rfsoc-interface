@@ -38,6 +38,8 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QLineEdit,
     QGridLayout,
+    QSpacerItem,
+    QSizePolicy,
 )
 from PySide6.QtPdfWidgets import QPdfView
 from PySide6.QtPdf import QPdfDocument
@@ -52,13 +54,16 @@ from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     convert_path,
 )
+from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P, PERMISSIONS_USR_RW
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
-from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
-from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P, PERMISSIONS_USR_RW
-from rfsocinterface.gui.widgets.progress_bar import make_progress_dialog_incrementer
 from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
-from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
+from rfsocinterface.gui.widgets import (
+    IncrementalProgressDialog,
+    ToolbarCanvas,
+    Section,
+    make_progress_dialog_incrementer,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -1059,8 +1064,32 @@ class PowerSweepDialog(QDialog):
         # vlayout.addWidget(self.pdf_view)
 
         self.pdf_viewer = PDFViewerWidget(parent=self, preset='simple')
+        self.pdf_viewer.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         self.try_load_pdf()
         vlayout.addWidget(self.pdf_viewer)
+
+        self.section = Section(parent=self, animationDuration=0)
+        section_layout = QGridLayout()
+        self.percentile_label = QLabel('Baseline Percentage', parent=self)
+        self.percentile_lineEdit = QLineEdit('33', parent=self)
+        section_layout.addWidget(self.percentile_label, 0, 0)
+        section_layout.addWidget(self.percentile_lineEdit, 0, 2)
+        self.bad_power_cutoff_label = QLabel('Power Cutoff Percentage', parent=self)
+        self.bad_power_cutoff_lineEdit = QLineEdit('75', parent=self)
+        section_layout.addWidget(self.bad_power_cutoff_label, 1, 0)
+        section_layout.addWidget(self.bad_power_cutoff_lineEdit, 1, 2)
+        self.max_deviation_label = QLabel('Max Deviation from Median (dB)', parent=self)
+        self.max_deviation_lineEdit = QLineEdit('5.0', parent=self)
+        section_layout.addWidget(self.max_deviation_label, 2, 0)
+        section_layout.addWidget(self.max_deviation_lineEdit, 2, 2)
+        self.refit_button = QPushButton('Refit', parent=self)
+        section_layout.addWidget(self.refit_button, 3, 1)
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        section_layout.addItem(self.horizontalSpacer, 0, 1)
+
+        self.section.setContentLayout(section_layout)
+        self.section.setTitle('Refit Optimal Power Levels')
+        vlayout.addWidget(self.section)#, alignment=Qt.AlignmentFlag.AlignBottom)
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
