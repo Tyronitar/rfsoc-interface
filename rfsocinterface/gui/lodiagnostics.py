@@ -7,11 +7,13 @@ mpl.use('QtAgg')
 from typing import Callable, Concatenate, Any
 from pathlib import Path
 from concurrent.futures import Future
+from threading import Thread
 import logging
 import pdb
 import warnings
 from matplotlib.artist import Artist
 import re
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -53,8 +55,12 @@ from rfsocinterface.core.utils import (
     FLAGGED_RESONANCE_COLOR,
     BAD_RESONANCE_COLOR,
     convert_path,
+    ensure_path,
+    PathLike,
+    reset_axes,
+    P,
+    PERMISSIONS_USR_RW,
 )
-from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P, PERMISSIONS_USR_RW
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
@@ -63,6 +69,7 @@ from rfsocinterface.gui.widgets import (
     ToolbarCanvas,
     Section,
     make_progress_dialog_incrementer,
+    get_num_value
 )
 
 _logger = logging.getLogger(__name__)
@@ -1042,11 +1049,11 @@ class BlindSweepDialog(QDialog):
 
 # TODO: Finish this
 class PowerSweepDialog(QDialog):
-    def __init__(self, sweep: PowerSweepData, parent: QWidget | None=None):
+    def __init__(self, sweep_data: PowerSweepData, parent: QWidget | None=None):
         super().__init__(parent)
 
-        self.sweep = sweep
-        self.filename = sweep.filename.with_suffix('.pdf')
+        self.sweep_data = sweep_data
+        self.filename = sweep_data.filename.with_suffix('.pdf')
         self.setupUi()
         self.setSizeGripEnabled(True)
 
@@ -1072,14 +1079,17 @@ class PowerSweepDialog(QDialog):
         section_layout = QGridLayout()
         self.percentile_label = QLabel('Baseline Percentage', parent=self)
         self.percentile_lineEdit = QLineEdit('33', parent=self)
+        self.percentile_lineEdit.setPlaceholderText('33')
         section_layout.addWidget(self.percentile_label, 0, 0)
         section_layout.addWidget(self.percentile_lineEdit, 0, 2)
         self.bad_power_cutoff_label = QLabel('Power Cutoff Percentage', parent=self)
         self.bad_power_cutoff_lineEdit = QLineEdit('75', parent=self)
+        self.bad_power_cutoff_lineEdit.setPlaceholderText('75')
         section_layout.addWidget(self.bad_power_cutoff_label, 1, 0)
         section_layout.addWidget(self.bad_power_cutoff_lineEdit, 1, 2)
         self.max_deviation_label = QLabel('Max Deviation from Median (dB)', parent=self)
-        self.max_deviation_lineEdit = QLineEdit('5.0', parent=self)
+        self.max_deviation_lineEdit = QLineEdit('5', parent=self)
+        self.max_deviation_lineEdit.setPlaceholderText('5')
         section_layout.addWidget(self.max_deviation_label, 2, 0)
         section_layout.addWidget(self.max_deviation_lineEdit, 2, 2)
         self.refit_button = QPushButton('Refit', parent=self)
@@ -1103,11 +1113,17 @@ class PowerSweepDialog(QDialog):
         self.setMinimumSize(600, 600)
     
     def try_load_pdf(self):
-        if self.filename.exists():
+        try:
             self.pdf_viewer.load_pdf(self.filename)
-        else:
+        except (FileExistsError, ValueError):
             _logger.debug(f'"{self.filename}" does not exist. Showing blank page.')
             self.pdf_viewer.show_blank_page()
+            return False
+        except PermissionError:
+            _logger.debug(f'Missing required permissions to view "{self.filename}". Showing blank page.')
+            self.pdf_viewer.show_blank_page()
+            return False
+        return True
 
     def set_window_name(self, name: str):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'Power Sweep Results - {name}', None))
@@ -1133,6 +1149,98 @@ class PowerSweepDialog(QDialog):
                     pass
         except Exception:
             pass
+    
+    def refit_and_plot(self):
+        fit_successful = self.refit()
+        if fit_successful:
+            self.replot()
+    
+    def refit(self):
+        """Refit the power sweep."""
+        # Get parameters from the GUI
+        try:
+            baseline_percentage = get_num_value(self.percentile_lineEdit, use_placeholder_text=True) / 100
+            cutoff_percentile = get_num_value(self.bad_power_cutoff_lineEdit, use_placeholder_text=True) / 100
+            max_deviation = get_num_value(self.max_deviation_lineEdit, use_placeholder_text=True)
+        except ValueError:
+            # Handle case when a line edit doesn't have a valid value
+            return False
+
+        # Find optimnal power levels again using new parameters
+        pd = IncrementalProgressDialog(
+            f'Refitting Power Sweep...',
+            'Cancel',
+            0,
+            self.sweep_data.onres_ind.size,
+            parent=self,
+        )
+        pd.setWindowTitle('Running Sweep')
+        pd.setAutoClose(True)
+        pd.setValue(0)
+        pd.show()
+        increment_progress = make_progress_dialog_incrementer(pd)
+
+        thread = Thread(
+            target=self.sweep_data.find_optimal_readout_power,
+            kwargs={
+                'baseline_percentage': baseline_percentage,
+                'bad_power_cutoff_percentile': cutoff_percentile,
+                'max_power_deviation_from_median_dB': max_deviation,
+                'callback': increment_progress,
+            },
+        )
+        pd.canceled.connect(self.sweep_data.cancel_fit)
+
+        self.sweep_data.reset_stop_signals()
+
+        thread.start()
+
+        while not (self.sweep_data._fitted or self.sweep_data._fit_canceled):
+            QApplication.processEvents()
+            time.sleep(0.1)
+        
+        thread.join()
+
+        if pd.wasCanceled() or self.sweep_data._fit_canceled:
+            return False
+        pd.close()
+
+        self.sweep_data.save()
+        return True
+    
+    def replot(self):
+        """Replot the optimal readout powers."""
+        # Close PDF while editing
+        self.pdf_viewer.show_blank_page()
+        QApplication.processEvents()
+
+        # Regenerate PDF
+        pd = IncrementalProgressDialog(
+            f'Replotting Power Sweep...',
+            'Cancel',
+            0,
+            self.sweep_data.n_plots,
+            parent=self,
+        )
+        pd.setWindowTitle('Running Sweep')
+        pd.setAutoClose(True)
+        pd.setValue(0)
+        pd.show()
+        increment_progress = make_progress_dialog_incrementer(pd)
+        pd.canceled.connect(self.sweep_data.cancel_plot)
+
+        self.sweep_data.plot(callback=increment_progress)
+        QApplication.processEvents()
+
+        if pd.wasCanceled() or self.sweep_data._plot_canceled:
+            return False
+        pd.close()
+
+        # Load PDF after regenerating
+        self.try_load_pdf()
+
+        return True
+
 
     def closeEvent(self, event):
         # Clean up PDF viewer (page/profile) before closing to avoid Qt warning
