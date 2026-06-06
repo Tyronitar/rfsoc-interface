@@ -1,4 +1,5 @@
 """Handle RFSoC Parameter Files"""
+from __future__ import annotations
 
 import inspect
 import logging
@@ -27,6 +28,250 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
     'chanmask',
 ]
 
+class RFSoCParameters:
+    """Class wrapping around RFSoC parameters files."""
+
+    @ensure_path(1)
+    def __init__(self, file: Path, mode: str='a'):
+        self._file = h5py.File(file, mode=mode)
+
+    @classmethod
+    def new_file(
+        cls,
+        tile_name: str,
+        n_tones: int,
+        params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    ) -> RFSoCParameters:
+        filename = Path(get_params_file_template(tile_name, params_dir=params_dir))
+        if not filename.exists():
+            filename.touch(PERMISSIONS_ALL_FULL)
+        with h5py.File(filename, 'w') as fh:
+            # Attributes
+            fh.attrs['tile_name'] = tile_name
+            fh.attrs['n_tones'] = n_tones
+            fh.attrs['f_center'] = 400e6
+            fh.attrs['rfin'] = 0.0
+            fh.attrs['rfout'] = 0.0
+            fh.attrs['tile_number'] = 0
+            fh.attrs['chan_number'] = 0
+            fh.attrs['ifslice_number'] = 0
+
+            # Datasets
+            fh.create_dataset(
+                'chanmask',
+                shape=(n_tones,),
+                maxshape=(1024,),
+                dtype=np.int8,
+                fillvalue=1,
+            )
+            fh.create_dataset(
+                'baseband_freqs',
+                shape=(n_tones,),
+                maxshape=(1024,),
+                dtype=np.float64,
+            )
+            fh.create_dataset(
+                'tone_powers',
+                data=np.ones(n_tones, dtype=np.float64),
+                maxshape=(1024,),
+                dtype=np.float64,
+            )
+            fh.create_dataset(
+                'detector_delta_x',
+                shape=(n_tones,),
+                dtype=np.float64,
+                maxshape=(1024,),
+            )
+            fh.create_dataset(
+                'detector_delta_y',
+                shape=(n_tones,),
+                dtype=np.float64,
+                maxshape=(1024,),
+            )
+            fh.create_dataset(
+                'detector_beam_ampl',
+                shape=(n_tones,),
+                dtype=np.float64,
+                maxshape=(1024,),
+                fillvalue=1,
+            )
+            fh.create_dataset(
+                'detector_pol',
+                shape=(n_tones,),
+                dtype=np.int8,
+                maxshape=(1024,),
+                fillvalue=1,
+            )
+            fh.create_dataset(
+                'dfoverf_per_mK',
+                shape=(n_tones,),
+                dtype=np.float64,
+                maxshape=(1024,),
+                fillvalue=1,
+            )
+        _logger.info(f'Initialized params file {filename}')
+        return cls(filename)
+    
+    @classmethod
+    def copy_and_update(
+        self,
+        new_tile_name: str,
+        f_center: float=None,
+        rfin: float=None,
+        rfout: float=None,
+        tile_number: int=None,
+        chan_number: int=None,
+        ifslice_number: int=None,
+        chanmask: npt.NDArray=None,
+        baseband_freqs: npt.NDArray=None,
+        tone_powers: npt.NDArray=None,
+        detector_delta_x: npt.NDArray=None,
+        detector_delta_y: npt.NDArray=None,
+        detector_beam_ampl: npt.NDArray=None,
+        detector_pol: npt.NDArray=None,
+        dfoverf_per_mK: npt.NDArray=None,
+        params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    ) -> RFSoCParameters:
+        """Create a copy of a parameters file while changing the specified dsets."""
+
+        f_center = f_center if f_center is not None else self.f_center
+        rfin = rfin if rfin is not None else self.rfin
+        rfout = rfout if rfout is not None else self.rfout
+        tile_number = tile_number if chan_number is not None else self.chan_number
+        chan_number = chan_number if chan_number is not None else self.chan_number
+        ifslice_number = ifslice_number if ifslice_number is not None else self.ifslice_number
+
+        chanmask = chanmask if chanmask is not None else self.chanmask[:]
+        baseband_freqs = baseband_freqs if baseband_freqs is not None else self.baseband_freqs[:]
+        tone_powers = tone_powers if tone_powers is not None else self.tone_powers[:]
+        detdx = detector_delta_x if detector_delta_x is not None else self.detector_delta_x[:]
+        detdy = detector_delta_y if detector_delta_y is not None else self.detector_delta_y[:]
+        detamp = detector_beam_ampl if detector_beam_ampl is not None else self.detector_beam_ampl[:]
+        detpol = detector_pol if detector_pol is not None else self.detector_pol[:]
+        dfoverf = dfoverf_per_mK if dfoverf_per_mK is not None else self.dfoverf_per_mK[:]
+
+        new_params = RFSoCParameters.new_file(new_tile_name, baseband_freqs.size, params_dir=params_dir)
+
+        new_params.f_center = f_center
+        new_params.rfin = rfin
+        new_params.rfout = rfout
+        new_params.tile_number = tile_number
+        new_params.chan_number = chan_number
+        new_params.ifslice_number = ifslice_number
+        new_params.chanmask[:] = chanmask
+        new_params.baseband_freqs[:] = baseband_freqs 
+        new_params.tone_powers[:] = tone_powers
+        new_params.detector_delta_x[:] = detdx
+        new_params.detector_delta_y[:] = detdy
+        new_params.detector_beam_ampl[:] = detamp
+        new_params.detector_pol[:] = detpol
+        new_params.dfoverf_per_mK[:] = dfoverf
+
+        return new_params
+        
+    
+    # Attributes
+    @property
+    def n_tones(self) -> int:
+        return self._file.attrs['n_tones']
+    
+    @n_tones.setter
+    def n_tones(self, n: int):
+        self._file.attrs['n_tones'] = n
+    
+    @property
+    def tile_name(self) -> str:
+        return self._file.attrs['tile_name']
+    
+    @tile_name.setter
+    def tile_name(self, name: str):
+        self._file.attrs['tile_name'] = name
+    
+    @property
+    def tile_number(self) -> int:
+        return self._file.attrs['tile_number']
+    
+    @tile_number.setter
+    def tile_number(self, n: int):
+        self._file.attrs['tile_number'] = n
+
+    @property
+    def chan_number(self) -> int:
+        return self._file.attrs['chan_number']
+    
+    @chan_number.setter
+    def chan_number(self, n: int):
+        self._file.attrs['chan_number'] = n
+
+    @property
+    def ifslice_number(self) -> int:
+        return self._file.attrs['ifslice_number']
+    
+    @ifslice_number.setter
+    def ifslice_number(self, n: int):
+        self._file.attrs['ifslice_number'] = n
+    
+    @property
+    def f_center(self) -> float:
+        return self._file.attrs['f_center']
+    
+    @f_center.setter
+    def f_center(self, freq: float):
+        self._file.attrs['f_center'] = freq
+
+    @property
+    def rfin(self) -> int:
+        return self._file.attrs['rfin']
+    
+    @rfin.setter
+    def rfin(self, x: int):
+        self._file.attrs['rfin'] = x
+
+    @property
+    def rfout(self) -> int:
+        return self._file.attrs['rfout']
+    
+    @rfout.setter
+    def rfout(self, x: int):
+        self._file.attrs['rfout'] = x
+    
+    # Datasets
+    @property
+    def chanmask(self) -> h5py.Dataset:
+        return self._file['chanmask']
+
+    @property
+    def baseband_freqs(self) -> h5py.Dataset:
+        return self._file['baseband_freqs']
+
+    @property
+    def detector_f(self) -> npt.NDArray:
+        return self.baseband_freqs[:] + self.f_center
+
+    @property
+    def tone_powers(self) -> h5py.Dataset:
+        return self._file['tone_powers']
+
+    @property
+    def detector_delta_x(self) -> h5py.Dataset:
+        return self._file['detector_delta_x']
+
+    @property
+    def detector_delta_y(self) -> h5py.Dataset:
+        return self._file['detector_delta_y']
+
+    @property
+    def detector_beam_ampl(self) -> h5py.Dataset:
+        return self._file['detector_beam_ampl']
+
+    @property
+    def detector_pol(self) -> h5py.Dataset:
+        return self._file['detector_pol']
+    
+    @property
+    def dfoverf_per_mK(self) -> h5py.Dataset:
+        return self._file['dfoverf_per_mK']
+    
 
 def initialize_params_file(
     tile_name: str,
