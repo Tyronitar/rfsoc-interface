@@ -101,7 +101,7 @@ class MetaEnum(EnumMeta):
         return True
 
 
-def mHz_formatter(x: float, pos: int) -> str:
+def mHz_axis_formatter(x: float, pos: int) -> str:
     """Format the x-axis labels for the resonator plot, converting to MHz.
 
     Arguments:
@@ -112,6 +112,11 @@ def mHz_formatter(x: float, pos: int) -> str:
         str: The formatted string for the x-axis label.
     """
     return f'{x * 1e-6:.1f}'
+
+
+def mHz_coordinate_formatter(x: float, y: float) -> str:
+    """Format the actual coordinates in the axes to MHz, with higher precision."""
+    return f'x={x * 1e-6:.5f}, y={y}'
 
 
 def convert_path(path: PathLike | None) -> Path | None:

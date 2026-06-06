@@ -30,7 +30,8 @@ from rfsocinterface.core.utils import (
     convert_path,
     PERMISSIONS_USR_RW,
     parallel_plot,
-    mHz_formatter,
+    mHz_axis_formatter,
+    mHz_coordinate_formatter,
     get_sweep_filename,
     get_params_file_template,
     ON_RESONANCE_COLOR,
@@ -179,7 +180,8 @@ class ResonatorData:
         ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
         ax.set_xlabel('Frequency (MHz)')
         ax.set_ylabel(r'$|S_{21}|$')
-        ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
+        ax.xaxis.set_major_formatter(FuncFormatter(mHz_axis_formatter))
+        ax.format_coord = mHz_coordinate_formatter
 
         ax.plot(self.freq, self.s21)
         ax.axvline(x=self.fit_f0, color='r', animated=animated)
@@ -615,7 +617,8 @@ class LoSweepData:
 
         ax.set_xlabel('Frequency (MHz)')
         ax.set_ylabel(r'$|S_{21}|$')
-        ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
+        ax.xaxis.set_major_formatter(FuncFormatter(mHz_axis_formatter))
+        ax.format_coord = mHz_coordinate_formatter
 
         for i_tone in range(self.n_tones):
             if self._plot_canceled:
@@ -722,7 +725,8 @@ class LoSweepData:
                             ax.axvline(resonance, linestyle='--', color='green')
                     ax.set_xlabel('Frequency (MHz)')
                     ax.set_ylabel(r'$|S_{21}|$')
-                    ax.xaxis.set_major_formatter(FuncFormatter(mHz_formatter))
+                    ax.xaxis.set_major_formatter(FuncFormatter(mHz_axis_formatter))
+                    ax.format_coord = mHz_coordinate_formatter
                     if callback is not None:
                         callback()
                 fig.legend(
