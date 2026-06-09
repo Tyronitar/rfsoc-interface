@@ -18,6 +18,7 @@ from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, P, R, PathLike
 from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
 from rfsocinterface.core.utils import convert_path, recursive_update, ensure_path
 from rfsocinterface.core.params import RFSoCParameters
+from rfsocinterface.core.sweeps import LoSweepData
 
 _logger = logging.getLogger(__name__)   
 
@@ -374,11 +375,11 @@ class RFSOCWrapper:
             case _:
                 raise ValueError(f'Invalid channel {channel}. Must be 1 or 2.')
     
-    def get_channel_name(self, channel: int) -> str:
+    def get_tile_name(self, channel: int) -> str:
         rfchan = self.get_channel(channel)
         return str(rfchan.tile_name)
     
-    def set_channel_name(self, channel: int, tile_name: str):
+    def set_tile_name(self, channel: int, tile_name: str):
         rfchan = self.get_channel(channel)
         rfchan.tile_name = tile_name
         self.channel_settings(channel)['tile_name'] = tile_name
@@ -387,9 +388,9 @@ class RFSOCWrapper:
     def get_channel_from_name(self, tile_name: str) -> int:
         """Get the channel number from the tile name."""
         for i in [1, 2]:
-            if tile_name == self.get_channel_name(i):
+            if tile_name == self.get_tile_name(i):
                 return i
-        raise SettingsError(f'Could not find channel with tile name {tile_name} in RFSoC {self.name}. Valid names are {[self.get_channel_name(i) for i in [1, 2]]}')
+        raise SettingsError(f'Could not find channel with tile name {tile_name} in RFSoC {self.name}. Valid names are {[self.get_tile_name(i) for i in [1, 2]]}')
         
     @ensure_path(2)
     def load_params_file(self, channel: int, params_filename: Path, upload_tones: bool=True):
@@ -408,7 +409,7 @@ class RFSOCWrapper:
             rfin = params.rfin
             rfout = params.rfout
 
-        self.set_channel_name(channel, tile_name)
+        self.set_tile_name(channel, tile_name)
         self.set_ntones(channel, ntones)
         self.set_frequency(channel, lo_freq)
         self.set_rfin(channel, rfin)
@@ -443,6 +444,19 @@ class RFSOCWrapper:
         """Capture data from this RFSoC."""
         rfchans = self.setup_capture(file, channels)
         return capture(rfchans, fn, *args, **kwargs)
+    
+    @ensure_path(2)
+    def append_global_data(self, channel: int, file: Path):
+        """Append global data and the most recent LO sweep for a tile to a TOD file."""
+        with RFSoCParameters(self.channel_settings(channel)['paramsFile'], 'r') as params:
+            params.append_to_TOD(file)
+        tile_name = self.get_tile_name(channel)
+        sweep = LoSweepData.load_most_recent(tile_name)
+        if sweep is not None:
+            sweep.append_to_TOD(file)
+
+        _logger.debug(f'Appended global data from tile "{tile_name}" to {str(file)}')
+
     
     def capture_packets(self, channel: int, n_packets: int) -> npt.NDArray:
         """Capture the specified number of packets from the specified channel.

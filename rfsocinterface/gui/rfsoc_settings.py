@@ -48,8 +48,8 @@ class RFSOCSettingsWidget(QWidget):
     
     def update_channel_names(self):
         """Update the channel names in the sections."""
-        self.channel1_section.setTitle(self.rfsoc.get_channel_name(1))
-        self.channel2_section.setTitle(self.rfsoc.get_channel_name(2))
+        self.channel1_section.setTitle(self.rfsoc.get_tile_name(1))
+        self.channel2_section.setTitle(self.rfsoc.get_tile_name(2))
     
     def setupUi(self):
         layout = QVBoxLayout()
@@ -58,7 +58,7 @@ class RFSOCSettingsWidget(QWidget):
         self.channel1_widget = ChannelSettingsWidget(self.rfsoc, 1, parent=self)
         channel1_layout.addWidget(self.channel1_widget)
         self.channel1_section = Section(self)
-        self.channel1_section.setTitle(self.rfsoc.get_channel_name(1))
+        self.channel1_section.setTitle(self.rfsoc.get_tile_name(1))
         self.channel1_section.setContentLayout(channel1_layout)
         layout.addWidget(self.channel1_section)
         # for label in self.channel1_widget.error_labels:
@@ -70,7 +70,7 @@ class RFSOCSettingsWidget(QWidget):
         self.channel2_widget = ChannelSettingsWidget(self.rfsoc, 2, parent=self)
         channel2_layout.addWidget(self.channel2_widget)
         self.channel2_section = Section(self)
-        self.channel2_section.setTitle(self.rfsoc.get_channel_name(2))
+        self.channel2_section.setTitle(self.rfsoc.get_tile_name(2))
         self.channel2_section.setContentLayout(channel2_layout)
         layout.addWidget(self.channel2_section)
         self.channel2_widget.height_updated.connect(self.channel2_section.height_changed)

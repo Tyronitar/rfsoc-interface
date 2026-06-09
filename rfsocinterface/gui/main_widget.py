@@ -141,14 +141,23 @@ class DataCollectionMainWidget(MainWidget):
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent=None):
         super().__init__(main_window, rfsocs, settings, parent=parent)
     
-    def setup_data_collection(self) -> tuple[list[Rfchan], str, int]:
+    def setup_data_collection(self) -> tuple[list[RFSOCWrapper], list[int], list[Rfchan], str, int]:
         chans = self.get_selected_channels(self.channel_comboBox)
+        rfsocs = []
+        channels = []
         rfchans = []
         for rfsoc, chan in chans:
+            rfsocs.append(rfsoc)
+            channels.append[chan]
             rfchan = rfsoc.get_channel(chan)
             save_location = self.save_location_widget.get_chosen_save_location(chan_name=rfchan.tile_name, touch_file=True, mode=PERMISSIONS_USR_RW, mkdir=True)
             rfchan.raw_filename = str(save_location)
             rfchans.extend(rfsoc.setup_capture(save_location, [chan]))
         date = save_location.stem[:8]
         setnum = int(save_location.stem[-4:])
-        return rfchans, date, setnum
+        return rfsocs, channels, rfchans, date, setnum
+    
+    def append_global_data(self, rfsocs: list[RFSOCWrapper], channels: list[int], rfchans: list[Rfchan]):
+        """Append global data for each selected channel."""
+        for rfsoc, channel, rfchan in zip(rfsocs, channels, rfchans):
+            rfsoc.append_global_data(channel, rfchan.raw_filename)

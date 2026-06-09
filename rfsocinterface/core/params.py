@@ -12,6 +12,7 @@ from matplotlib.figure import Figure
 import numpy as np
 import numpy.typing as npt
 import h5py
+from kidpy3 import RawDataFile
 
 from rfsocinterface.core.utils import (
     DEFAULT_PARAMS_DIRECTORY,
@@ -556,6 +557,19 @@ class RFSoCParameters:
             plt.show()
 
         return fig
+    
+    @ensure_path(1)
+    def append_to_TOD(self, file: Path):
+        """Append global data from this parameters file to a TOD file."""
+        rdf = RawDataFile(file, 'a')
+
+        rdf.detector_delta_x[:] = self.detector_delta_x[:]
+        rdf.detector_delta_y[:] = self.detector_delta_y[:]
+        rdf.detector_beam_ampl[:] = self.detector_beam_ampl[:]
+        rdf.detector_pol[:] = self.detector_pol[:]
+        rdf.dfoverf_per_mK[:] = self.dfoverf_per_mK[:]
+
+        rdf.close()
 
 
 def update_params_file_format(*filenames: PathLike):

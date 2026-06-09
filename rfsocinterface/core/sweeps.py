@@ -38,11 +38,13 @@ from rfsocinterface.core.utils import (
     OFF_RESONANCE_COLOR,
     BAD_RESONANCE_COLOR,
     FLAGGED_RESONANCE_COLOR,
+    DEFAULT_DATA_DIRECTORY,
+    get_yymmdd,
 )
 from rfsocinterface.core.pool import QThreadJobPool
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.params import initialize_params_file, update_params_file
-from kidpy3 import capture_packets
+from kidpy3 import RawDataFile
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
 from kidpy3.measure import ResonatorFinder
@@ -757,7 +759,50 @@ class LoSweepData:
             f0 - self.f_center,
             self.f_center,
         )
-
+    
+    @ensure_path(1)
+    def append_to_TOD(self, file: Path):
+        """Append this LO sweep to a TOD file."""
+        rdf = RawDataFile(file, 'a')
+        rdf.fh.create_dataset('/global_data/lo_sweep', data=self.data)
+        rdf.fh.attrs['has_lo_sweep'] = True
+        rdf.close()
+    
+    @classmethod
+    def load_most_recent(
+        cls,
+        tile_name: str,
+        high_res: bool=True,
+        date: str='today',
+        data_dir: str=DEFAULT_DATA_DIRECTORY,
+    ) -> LoSweepData | None:
+        """Load the most recent LO sweep for the specified tile.
+        
+        Arguments:
+            tile_name (str): The name of the tile to find sweep files for.
+            high_res (bool, optional): Whether to look for high-resolution sweeps only.
+                Defaults to True.
+            date (str, optional): The date to search for the sweep. Should be in YYMMDD
+                format, or 'today' to search using the current date. Defaults to 
+                'today'.
+            data_dir (str, optional): The directory data is being stored in. Defaults to
+                '/data'.
+        
+        Returns:
+            (LoSweepData | None): The most recent LO sweep. `None` if no files matching
+                the search critera were found.
+        """
+        if date == 'today':
+            yymmdd = get_yymmdd()
+        else:
+            yymmdd = date
+        date_folder = Path(data_dir) / yymmdd
+        search_string = f'/data/{yymmdd}/{yymmdd}*{tile_name}_LO_Sweep_*{"_high_res*" if high_res else ""}'
+        if date_folder.exists():
+            sweeps = sorted(date_folder.glob(search_string))
+            if len(sweeps) > 0:
+                last_sweep = sweeps[-1]
+                return cls.load(last_sweep)
 
 class LoSweep:
     """Class for performing an LO Sweep"""
@@ -773,7 +818,7 @@ class LoSweep:
             diff_to_flag: float=3e3,
     ):
         """Initialize an LoSweep"""
-        _logger.info(f'Initializing LO Sweep with {rfsoc.get_channel_name(chan)}...')
+        _logger.info(f'Initializing LO Sweep with {rfsoc.get_tile_name(chan)}...')
 
         self.rfsoc = rfsoc
         self.chan = chan
@@ -820,7 +865,7 @@ class LoSweep:
     
     @property
     def tile_name(self) -> str:
-        return self.rfsoc.get_channel_name(self.chan)
+        return self.rfsoc.get_tile_name(self.chan)
 
     @property
     def n_steps(self) -> int:
@@ -927,7 +972,7 @@ class LoSweep:
             sweep_data = np.array((f, z.T))
             _logger.debug(f'Shape of LO sweep data: {sweep_data.shape}')
 
-            data = LoSweepData(self.tone_list, self.f_center, sweep_data, chanmask, self.rfsoc.get_channel_name(self.chan), diff_to_flag=self.diff_to_flag, filename=self.savefile)
+            data = LoSweepData(self.tone_list, self.f_center, sweep_data, chanmask, self.rfsoc.get_tile_name(self.chan), diff_to_flag=self.diff_to_flag, filename=self.savefile)
             if save:
                 data.save()
 
@@ -984,7 +1029,7 @@ class CompositeSweep(Generic[CompositeSweepDataType]):
 
     @property
     def tile_name(self) -> str:
-        return self.rfsoc.get_channel_name(self.chan)
+        return self.rfsoc.get_tile_name(self.chan)
     
     @property
     def rfchan(self) -> Rfchan:

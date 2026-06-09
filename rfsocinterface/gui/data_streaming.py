@@ -69,13 +69,14 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         # _logger.info('Processing data')
     
     def start_streaming(self):
-        rfchans, date, setnum = self.setup_data_collection()
+        rfsocs, channels, rfchans, date, setnum = self.setup_data_collection()
         duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)
 
         _logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
         capture(rfchans, self.wait_for_TOD, duration)
         _logger.info('Completed data streaming')
         # TODO: Add a check to see if the data collection was canceled
+        self.append_global_data(rfsocs, channels, rfchans)
         self.process_data(date, setnum)
     
     def stop_streaming(self):
