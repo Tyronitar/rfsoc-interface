@@ -17,6 +17,7 @@ import tables
 from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, P, R, PathLike
 from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
 from rfsocinterface.core.utils import convert_path, recursive_update, ensure_path
+from rfsocinterface.core.params import RFSoCParameters
 
 _logger = logging.getLogger(__name__)   
 
@@ -390,35 +391,43 @@ class RFSOCWrapper:
                 return i
         raise SettingsError(f'Could not find channel with tile name {tile_name} in RFSoC {self.name}. Valid names are {[self.get_channel_name(i) for i in [1, 2]]}')
         
-
     @ensure_path(2)
     def load_params_file(self, channel: int, params_filename: Path, upload_tones: bool=True):
 
         if not params_filename.exists():
             raise SettingsError(f'Params file {params_filename} does not exist.')
-        
-        with tables.File(params_filename, 'r') as fh:
+
+        with RFSoCParameters(params_filename, mode='r') as params:
             _logger.info(f'Loading parameters from "params_filename" into {self.name}')
-            tone_list = fh.root.baseband_freqs[:]
-            tone_powers = fh.root.tone_powers[:]
-            if 'lo_freq' in fh.root:
-                lo_freq = fh.root.lo_freq[()]
-            else:
-                lo_freq = fh.root._v_attrs['lo_freq']
-            chanmask = fh.root.chanmask[:]
-            ntones = fh.root._v_attrs.n_tones
-            tile_name = fh.root._v_attrs.tile_name
+            tone_list = params.baseband_freqs[:]
+            tone_powers = params.tone_powers[:]
+            lo_freq = params.f_center
+            chanmask = params.chanmask[:]
+            ntones = params.n_tones
+            tile_name = params.tile_name
+            rfin = params.rfin
+            rfout = params.rfout
 
         self.set_channel_name(channel, tile_name)
         self.set_ntones(channel, ntones)
         self.set_frequency(channel, lo_freq)
+        self.set_rfin(channel, rfin)
+        self.set_rfout(channel, rfout)
         if upload_tones:
             self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
         self.set_chanmask(channel, chanmask)
         self.channel_settings(channel)['paramsFile'] = params_filename
 
-        
         _logger.info(f'RFSoC {self.name} loaded parameters from {params_filename} for channel {channel}')
+    
+    # TODO: Expand this
+    def save_changes_to_params_file(self, channel: int):
+        """Save the current state of the RFSoC to the parameters file.
+        
+        Currently, only updates the chanmask.
+        """
+        with RFSoCParameters(self.channel_settings(channel)['paramsFile'], 'a') as params:
+            params.chanmask[:] = self.get_chanmask(channel)
     
     @ensure_path(1)
     def setup_capture(self, file: Path, channels: list[int]) -> list[Rfchan]:

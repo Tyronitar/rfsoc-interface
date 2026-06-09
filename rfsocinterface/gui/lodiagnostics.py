@@ -50,6 +50,7 @@ from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     convert_path,
 )
+from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
 from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
@@ -115,14 +116,9 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         # Fill in the necessary values in the UI
         self.old_freq_value_label.setText(f'{self.resonator.tone * 1e-6:.5f}')
         self.depth_value_label.setText('N/A')  # TODO: Resonance depth
+        self.initial_chanmask = self.resonator.chanmask
         self.current_chanmask = self.resonator.chanmask
-        match self.current_chanmask:
-            case 1:
-                self.onres_radioButton.click()
-            case 0:
-                self.offres_radioButton.click()
-            case _:
-                self.bad_res_radioButton.click()
+        self.set_chanmask(self.current_chanmask)
 
         # Temporary values for saving / undoing changes
         self.temp_fit_f0 = resonator.fit_f0
@@ -141,6 +137,9 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         # self.buttonBox.rejected.connect(self.reject)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(
             self.reset_freq
+        )
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(
+            self.reset_chanmask
         )
         self.buttonBox.button(QDialogButtonBox.StandardButton.Cancel).clicked.connect(
             self.reject_changes
@@ -192,6 +191,16 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         )
         if update_line_edit:
             self.new_freq_lineEdit.setText(f'{x * 1e-6:.9f}')
+    
+    def set_chanmask(self, val: int):
+        """Set the chanmask to the specified value."""
+        match val:
+            case 1:
+                self.onres_radioButton.click()
+            case 0:
+                self.offres_radioButton.click()
+            case _:
+                self.bad_res_radioButton.click()
 
     def refit(self):
         """Refit the resonator."""
@@ -206,6 +215,10 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     def reset_freq(self):
         """Reset the line to the initial frequency."""
         self.move_line(self.resonator.fit_f0)
+    
+    def reset_chanmask(self):
+        """Reset the chanmask value to its initial value."""
+        self.set_chanmask(self.initial_chanmask)
 
     def change_freq(self):
         """Handle changes to the frequency in the lineEdit."""
@@ -350,7 +363,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         sweep (LoSweepData): The relevant LO sweep data.
     """
 
-    def __init__(self, sweep_data: LoSweepData, parent: QWidget | None = None):
+    def __init__(self, sweep_data: LoSweepData, rfsoc: RFSOCWrapper | None=None, channel: int |None=None, parent: QWidget | None = None):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
@@ -363,6 +376,11 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
         self.edited = False
         self.redrawn_axes = set()
+        self.rfsoc = rfsoc
+        self.channel = channel
+        if rfsoc is not None:
+            if channel is None:
+                raise ValueError('Must specify a channel when `rfsoc` is set.')
 
     def set_window_name(self, name: str):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
@@ -401,6 +419,11 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def accept(self):
         if self.edited:
             self.sweep_data.save()
+            if self.rfsoc is not None:
+                # Update chanmask if it was edited
+                self.rfsoc.set_chanmask(self.channel, self.sweep_data.chanmask)
+                self.rfsoc.save_changes_to_params_file(self.channel)
+
         super().accept()
     
     def closeEvent(self, event: QCloseEvent):
