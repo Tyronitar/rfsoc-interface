@@ -151,7 +151,7 @@ class RFSoCParameters:
         f_center = f_center if f_center is not None else self.f_center
         rfin = rfin if rfin is not None else self.rfin
         rfout = rfout if rfout is not None else self.rfout
-        tile_number = tile_number if chan_number is not None else self.chan_number
+        tile_number = tile_number if tile_number is not None else self.chan_number
         chan_number = chan_number if chan_number is not None else self.chan_number
         ifslice_number = ifslice_number if ifslice_number is not None \
             else self.ifslice_number
