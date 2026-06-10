@@ -4,7 +4,7 @@ import pdb
 import datetime
 
 from concurrent.futures import Future
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar, TYPE_CHECKING
 from multiprocessing import Lock
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
 
@@ -42,12 +42,14 @@ from rfsocinterface.core.utils import (
     get_yymmdd,
 )
 from rfsocinterface.core.pool import QThreadJobPool
-from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.params import initialize_params_file, update_params_file
+from rfsocinterface.core.params import RFSoCParameters
 from kidpy3 import RawDataFile
 from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
 from kidpy3.measure import ResonatorFinder
+
+if TYPE_CHECKING:
+    from rfsocinterface.core.rfsoc import RFSOCWrapper
 
 
 _logger = logging.getLogger(__name__)
@@ -746,19 +748,17 @@ class LoSweepData:
                 # pdb.set_trace()
         self._plotted = True
 
-    def generate_new_params_file(self, tile_name: str, old_params: h5py.File | None=None, plot: bool=False):
+    def generate_new_params_file(self, tile_name: str, old_params: RFSoCParameters | None=None, plot: bool=False):
         f0, depths = self.find_resonances()
         if plot:
             old_f0 = None
             if old_params is not None:
-                old_f0 = old_params['baseband_freqs'][:] + old_params['lo_freq'][()]
+                old_f0 = old_params.detector_f[:]
             self.plot_new_resonances(f0, old_f0, tile_name=tile_name)
             
-        initialize_params_file(
-            tile_name,
-            f0 - self.f_center,
-            self.f_center,
-        )
+        with RFSoCParameters.new_file(tile_name, f0.size) as params:
+            params.baseband_freqs[:] = f0 - self.f_center
+            params.f_center = self.f_center
     
     @ensure_path(1)
     def append_to_TOD(self, file: Path):
@@ -1160,8 +1160,8 @@ class CompositeSweepData:
         return len(self.sweeps)
     
     @property
-    def tile_names(self) -> list[str]:
-        return [sweep.tile_name for sweep in self.sweeps]
+    def tile_name(self) -> str:
+        return self.sweeps[0].tile_name
     
     @property
     def detector_f(self) -> npt.NDArray:
@@ -1221,7 +1221,7 @@ class CompositeSweepData:
         path.touch(PERMISSIONS_USR_RW)
         with h5py.File(path, 'w') as fh:
             fh.attrs['f_center'] = self.f_center
-            fh.attrs['tile_names'] = self.tile_names
+            fh.attrs['tile_name'] = self.tile_name
             fh.create_dataset('sweeps', data=self.combined_sweep_array, dtype=np.complex128)
             fh.create_dataset('baseband_freqs', data=self.bb_freqs, dtype=np.float64)
             fh.create_dataset('chanmask', data=self.chanmask, dtype=np.int8)
@@ -1282,7 +1282,7 @@ class PowerSweepData(CompositeSweepData):
     def load(cls, fname: Path) -> PowerSweepData:
         with h5py.File(fname, 'r') as fh:
             f_center = fh.attrs['f_center']
-            tile_names = fh.attrs['tile_names']
+            tile_name = fh.attrs['tile_name']
             sweep_data = fh['sweeps'][:]
             bb_freqs = fh['baseband_freqs'][:]
             chanmask = fh['chanmask'][:]
@@ -1295,7 +1295,7 @@ class PowerSweepData(CompositeSweepData):
             max_readout_power = fh['max_readout_power'][:]
 
         sweeps = []
-        for this_fit_f0, arr, tile_name in zip(fit_f0, sweep_data, tile_names):
+        for this_fit_f0, arr in zip(fit_f0, sweep_data):
             sweep = LoSweepData(bb_freqs, f_center, arr, chanmask, tile_name)
             sweep.fit_f0[:] = this_fit_f0
             sweeps.append(sweep)
@@ -1427,7 +1427,7 @@ class PowerSweepData(CompositeSweepData):
         self._plotted = False
         self._plot_canceled = False
         if pdf_filename is None:
-            pdf_filename = f'{self.tile_names[0]}_optimal_readout_powers.pdf'
+            pdf_filename = f'{self.tile_name}_optimal_readout_powers.pdf'
 
         pdf = PdfPages(pdf_filename)
         page_size = nrows * ncols
@@ -1515,6 +1515,25 @@ class PowerSweepData(CompositeSweepData):
             callback()
 
         self._plotted = True
+    
+    def save_to_params_file(self, target_tile_name: str) -> RFSoCParameters:
+        """Save the tone powers to a params file for the specified tile."""
+        params = RFSoCParameters.from_tile_name(target_tile_name, 'a')
+        if params is not None:
+            # Either self.tile_name == target_tile_name, or we're updating an existing file
+            # for a diffent tile
+            _logger.debug(f'Updating params file for tile "{target_tile_name}"')
+            params.tone_powers[:] = self.max_readout_power
+        else:
+            # The new tile doesn't exist yet. Populate values with current tile params
+            _logger.debug(f'Creating new params file for tile "{target_tile_name}"')
+            old_params = RFSoCParameters.from_tile_name(self.tile_name)
+            assert old_params is not None
+            params = old_params.copy_and_update(
+                target_tile_name,
+                tone_powers=self.max_readout_power,
+            )
+        return params
 
 class PowerSweep(CompositeSweep[PowerSweepData]):
     sweep_type = 'Power'
@@ -1593,31 +1612,3 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
         )
         self._data.save_as(self.savefile)
     
-
-
-if __name__ == '__main__':
-    import pdb
-    from rfsocinterface.core.params import initialize_params_file, update_params_file
-
-    # sweep_file = '/data/20260513/20260513_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_Power_Sweep_hour15p0019.h5'
-    # tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260513_with_offres_and_max_power'
-    sweep_file = '/data/20260515/20260515_Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power_Power_Sweep_hour11p7350.h5'
-    tile_name = 'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
-
-    sweep = PowerSweepData.load(sweep_file)
-    sweep.fit()  # Fit resonances if they haven't yet
-    sweep.save_as(sweep_file)
-    sweep.find_optimal_readout_power(bad_power_cutoff_percentile=0.5, pdf_filename=f'max_power_{tile_name}.pdf')
-    sweep.save_as(sweep_file)
-
-    pdb.set_trace()
-    # NOTE: This will overwrite everything that isn't tone_powers with defaults
-    # TODO: Create a "copy_params_file" function
-    params_file = get_params_file_template(tile_name)
-    if Path(params_file).exists():
-        update_params_file(params_file, tone_powers=sweep.max_readout_power)
-    else:
-        initialize_params_file(tile_name, sweep.bb_freqs, lo_freq=sweep.f_center)
-        update_params_file(tile_name, tone_powers=sweep.max_readout_power)
-
-

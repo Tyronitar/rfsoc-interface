@@ -46,7 +46,7 @@ class RFSoCParameters:
     VERSION = '1.0.0'
 
     @ensure_path(1)
-    def __init__(self, file: Path, mode: str='a'):
+    def __init__(self, file: Path, mode: str='r'):
         self._file = h5py.File(file, mode=mode)
 
     @classmethod
@@ -54,6 +54,7 @@ class RFSoCParameters:
         cls,
         tile_name: str,
         n_tones: int,
+        mode: str='a',
         params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
     ) -> RFSoCParameters:
         filename = Path(get_params_file_template(tile_name, params_dir=params_dir))
@@ -125,7 +126,7 @@ class RFSoCParameters:
                 fillvalue=1,
             )
         _logger.info(f'Initialized params file {filename}')
-        return cls(filename)
+        return cls(filename, mode=mode)
     
     def copy_and_update(
         self,
@@ -194,6 +195,18 @@ class RFSoCParameters:
         new_params.dfoverf_per_mK[:] = dfoverf
 
         return new_params
+    
+    @staticmethod
+    def exists(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> tuple[bool, str]:
+        """Whether there is a params file for the specified tile."""
+        file_name = get_params_file_template(tile_name, params_dir=params_dir)
+        return Path(file_name).is_file(), file_name
+
+    @classmethod
+    def from_tile_name(cls, tile_name: str, mode: str='r', params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> RFSoCParameters | None:
+        
+        if (result := RFSoCParameters.exists(tile_name, params_dir=params_dir)) and result[0]:
+            return RFSoCParameters(result[1], mode=mode)
     
     def __enter__(self):
         return self
