@@ -5,7 +5,7 @@ import inspect
 import logging
 from pathlib import Path
 import pdb
-from packaging.version import parse
+from packaging.version import Version, parse
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
@@ -43,11 +43,27 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
 
 class RFSoCParameters:
     """Class wrapping around RFSoC parameters files."""
-    VERSION = '1.0.0'
+    VERSION = Version('1.0.0')
 
     @ensure_path(1)
     def __init__(self, file: Path, mode: str='r'):
         self._file = h5py.File(file, mode=mode)
+        self._test_format()
+    
+    def _test_format(self):
+        """Test that the params file is compatible with current format."""
+        fail = False
+        if 'params_version' not in self._file.attrs:
+            fail = True  # Made before the version parameter
+        elif self.version.release[0] != RFSoCParameters.VERSION.release[0]:
+            # Major version differs (incompatible)
+            fail = True  # Outdated format
+        
+        if fail:
+            raise ValueError(
+                f'File "{self._file.filename}" is not an appropriate format. '
+                'Use `update_params_file_format` to update the file and try again.'
+            )
 
     @classmethod
     def new_file(
@@ -70,7 +86,7 @@ class RFSoCParameters:
             fh.attrs['tile_number'] = 0
             fh.attrs['chan_number'] = 0
             fh.attrs['ifslice_number'] = 0
-            fh.attrs['params_version'] = RFSoCParameters.VERSION
+            fh.attrs['params_version'] = str(RFSoCParameters.VERSION)
 
             # Datasets
             fh.create_dataset(
@@ -219,12 +235,12 @@ class RFSoCParameters:
     
     # Attributes
     @property
-    def version(self) -> str:
-        return self._file.attrs['params_version']
+    def version(self) -> Version:
+        return Version(self._file.attrs['params_version'])
 
     @version.setter
-    def version(self, version: str):
-        self._file.attrs['version'] = version
+    def version(self, version: str | Version):
+        self._file.attrs['version'] = str(version)
 
     @property
     def n_tones(self) -> int:
@@ -600,7 +616,7 @@ def update_params_file_format(*filenames: PathLike):
             continue
 
         if 'params_version' in fh.attrs:
-            if parse(fh.attrs['params_version']) > parse(RFSoCParameters.VERSION):
+            if Version(fh.attrs['params_version']) >= RFSoCParameters.VERSION:
                 _logger.info(f'Skipping "{filename}"; Already up to date.')
                 continue
         
@@ -630,10 +646,10 @@ def update_params_file_format(*filenames: PathLike):
             del fh['chanmask_isolated']
 
         # Finally, update version
-        fh.attrs['params_version'] = RFSoCParameters.VERSION
+        fh.attrs['params_version'] = str(RFSoCParameters.VERSION)
 
         fh.close()
-        _logger.info(f'Updated "{filename}".')
+        _logger.info(f'Updated "{filename}" to version {RFSoCParameters.VERSION}.')
         
 
 if __name__ == "__main__":

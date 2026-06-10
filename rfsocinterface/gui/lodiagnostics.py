@@ -42,12 +42,14 @@ from PySide6.QtPdfWidgets import QPdfView
 from PySide6.QtPdf import QPdfDocument
 
 from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS, PowerSweepData
-from rfsocinterface.core.params import update_params_file, initialize_params_file, DEFAULT_PARAMS_DIRECTORY, get_params_file_template
+from rfsocinterface.core.params import RFSoCParameters
 from rfsocinterface.core.utils import (
     ON_RESONANCE_COLOR,
     OFF_RESONANCE_COLOR,
     FLAGGED_RESONANCE_COLOR,
     BAD_RESONANCE_COLOR,
+    DEFAULT_PARAMS_DIRECTORY,
+    get_params_file_template,
     convert_path,
 )
 from rfsocinterface.core.rfsoc import RFSOCWrapper
@@ -741,11 +743,11 @@ class BlindSweepDialog(QDialog):
             f0 = np.real(np.array([line.get_xdata()[0] for line in self.get_vlines()]))
             bb_freqs = f0 - self.data.f_center
             bb_freqs = np.sort(bb_freqs)
-            path = Path(get_params_file_template(tile_name, params_dir=DEFAULT_PARAMS_DIRECTORY))
-            if not path.exists():
-                initialize_params_file(tile_name, bb_freqs, self.data.f_center)
-            else:
-                update_params_file(tile_name, baseband_freqs=bb_freqs)
+            params = RFSoCParameters.from_tile_name(tile_name, 'a')
+            if params is None:
+                params = RFSoCParameters.new_file(tile_name, bb_freqs.size)
+                params.f_center = self.data.f_center
+            params.baseband_freqs[:] = bb_freqs
             self.accept()
     
     def save_tones(self):

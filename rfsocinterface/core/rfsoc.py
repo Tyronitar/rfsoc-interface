@@ -157,9 +157,11 @@ class RFSOCWrapper:
         self.rfsoc.rf1.chan_number = 1
         self.rfsoc.rf2.chan_number = 2
     
-    def get_last_tones(self):
+    def get_last_tones(self) -> tuple[tuple[npt.NDArray, npt.NDArray], tuple[npt.NDArray, npt.NDArray]]:
+        res = [None, None]
         for chan in [1, 2]:
             tones_and_pow = self.get_tone_list(chan)
+            res[chan - 1] = tones_and_pow
             if tones_and_pow is not None:
                 rfchan = self.get_channel(chan)
                 tones, powers = tones_and_pow
@@ -169,10 +171,13 @@ class RFSOCWrapper:
                 rfchan.n_tones = ntones
                 chanmask = np.ones(ntones, dtype=int)
                 rfchan.chanmask = chanmask
+        return tuple(res)
     
-    def get_last_lo_freqs(self):
+    def get_last_lo_freqs(self) -> tuple[float, float]:
+        res = [0.0, 0.0]
         for chan in [1, 2]:
-            self.get_frequency(chan)
+            res[chan - 1] = self.get_frequency(chan)
+        return tuple(res)
 
 
     def make_kidpy_rfsoc(self) -> RFSOC:
@@ -190,9 +195,9 @@ class RFSOCWrapper:
         self.set_channel_number()
         self.get_last_attenuations()
         if 'paramsFile' in self.channel_settings(1):
-            self.load_params_file(1, self.channel_settings(1)['paramsFile'], upload_tones=False)
+            self.load_params_file(1, self.channel_settings(1)['paramsFile'], upload_tones=False, set_freq=False, set_atten=False)
         if 'paramsFile' in self.channel_settings(2):
-            self.load_params_file(2, self.channel_settings(2)['paramsFile'], upload_tones=False)
+            self.load_params_file(2, self.channel_settings(2)['paramsFile'], upload_tones=False, set_freq=False, set_atten=False)
         _logger.debug(f'RFSoC {self.name} initialized kidpy RFSOC object')
     
     def channel_settings(self, channel: int) -> dict:
@@ -247,14 +252,22 @@ class RFSOCWrapper:
         with np.printoptions(threshold=20):
             _logger.debug(f'RFSoC {self.name} sucessfully set tone list for channel {chan}: {tonelist} with powers {amplitudes}')
     
-    def get_last_attenuations(self):
-        """Get the last attenuations for all addresses from the settings file."""
+    def get_last_attenuations(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Get the last attenuations for all addresses from the settings file.
+        
+        Returns:
+            (tuple[tuple[float, float], tuple[float, float]]: The (rfin, rfout) for both
+                channels.
+        """
+        res = [[0, 0], [0, 0]]
         for addr in range(1, 5):
             channel = 1 if addr < 3 else 2
             attenuator = 'rfin' if addr % 2 == 0 else 'rfout'
             value = self.channel_settings(channel)[attenuator]
+            res[channel - 1][addr % 2] = value
             _logger.info(f'RFSoC {self.name} got last value for "{attenuator}" for channel {channel}: {value:.2f} dB')
             self.set_atten(addr, value)
+        return tuple(tuple(r) for r in res)
     
     def get_atten(self, addr: int) -> float:
         """Get the attenuation for the specified address."""
@@ -393,13 +406,20 @@ class RFSOCWrapper:
         raise SettingsError(f'Could not find channel with tile name {tile_name} in RFSoC {self.name}. Valid names are {[self.get_tile_name(i) for i in [1, 2]]}')
         
     @ensure_path(2)
-    def load_params_file(self, channel: int, params_filename: Path, upload_tones: bool=True):
+    def load_params_file(
+        self,
+        channel: int,
+        params_filename: Path,
+        upload_tones: bool=True,
+        set_freq: bool=True,
+        set_atten: bool=True,
+    ):
 
         if not params_filename.exists():
             raise SettingsError(f'Params file {params_filename} does not exist.')
 
         with RFSoCParameters(params_filename, mode='r') as params:
-            _logger.info(f'Loading parameters from "params_filename" into {self.name}')
+            _logger.info(f'Loading parameters from "{params_filename}" into {self.name} channel {channel}')
             tone_list = params.baseband_freqs[:]
             tone_powers = params.tone_powers[:]
             lo_freq = params.f_center
@@ -411,9 +431,11 @@ class RFSOCWrapper:
 
         self.set_tile_name(channel, tile_name)
         self.set_ntones(channel, ntones)
-        self.set_frequency(channel, lo_freq)
-        self.set_rfin(channel, rfin)
-        self.set_rfout(channel, rfout)
+        if set_freq:
+            self.set_frequency(channel, lo_freq)
+        if set_atten:
+            self.set_rfin(channel, rfin)
+            self.set_rfout(channel, rfout)
         if upload_tones:
             self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
         self.set_chanmask(channel, chanmask)
