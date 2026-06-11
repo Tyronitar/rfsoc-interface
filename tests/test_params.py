@@ -70,7 +70,11 @@ def test_copy_and_update(tmpdir, field: str, dtype: np.dtype, size, low, high):
 
     params_copy = params.copy_and_update('test_name_copy', **kwargs)
 
-    # Make sure the original array was preserved
-    assert_close(getattr(params, field), original_val)
+    try:
+        # Make sure the original array was preserved
+        assert_close(getattr(params, field), original_val)
 
-    assert_close(getattr(params_copy, field), new_val)
+        assert_close(getattr(params_copy, field), new_val)
+    finally:
+        # Ensure file is closed or future tests that reference it will faill
+        params_copy.close()
