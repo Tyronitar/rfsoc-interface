@@ -1374,9 +1374,8 @@ class PowerSweepData(CompositeSweepData):
                 )
                 non_linear_slope[i_res] = popt[0]
                 power_level_non_linear[i_res] = popt[1]
-            except RuntimeError as e:
-                print(f'Encountered exception during fit; using default value for resonator {i_res}')
-                print(e)
+            except (RuntimeError, ValueError) as e:
+                _logger.warning(f'Encountered exception during fit; using default value for resonator {i_res}')
                 non_linear_slope[i_res] = POWER_SWEEP_FRACTIONAL_FREQ_SHIFT
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
             
