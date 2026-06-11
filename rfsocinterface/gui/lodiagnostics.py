@@ -1140,7 +1140,7 @@ class PowerSweepDialog(QDialog):
     def try_load_pdf(self):
         try:
             self.pdf_viewer.load_pdf(self.filename)
-        except (FileExistsError, ValueError):
+        except (FileNotFoundError, FileExistsError, ValueError):
             _logger.debug(f'"{self.filename}" does not exist. Showing blank page.')
             self.pdf_viewer.show_blank_page()
             return False
@@ -1298,7 +1298,7 @@ if __name__ == '__main__':
 
     app = QApplication(sys.argv)
 
-    f = '/data/20260601/20260601_Simon_Be231102p2_100_tones_Power_Sweep_hour16p1119.h5'
+    f = '/data/20260611/20260611_test_100_tones_20260610_Power_Sweep_hour16p3000.h5'
     sweep = PowerSweepData.load(f)
     # sweep.fit()
     # sweep.plot_optimal_readout_powers()
