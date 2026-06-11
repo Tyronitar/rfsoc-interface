@@ -51,6 +51,8 @@ class MainWidget(QWidget):
         checked_ids = combo_box.checked_indices()
         checked_text = [combo_box.itemText(i) for i in checked_ids]
         if not checked_text:
+            msg = f'{self.tab_name}: No channel selected.'
+            _logger.error(msg)
             raise SettingsError('No channel selected')
         return list(map(partial(get_channel_from_text, rfsocs=self.rfsocs), checked_text))
 
@@ -199,5 +201,7 @@ class DataCollectionMainWidget(MainWidget):
                     case QMessageBox.StandardButton.YesToAll:
                         return True
                     case _:
-                        raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
+                        msg = f'Unexpected option returned from QMessageBox: {ret}'
+                        _logger.error(msg)
+                        raise RuntimeError(msg)
         return True
