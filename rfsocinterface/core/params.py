@@ -291,20 +291,20 @@ class RFSoCParameters:
         self._file.attrs['f_center'] = freq
 
     @property
-    def rfin(self) -> int:
-        return self._file.attrs['rfin']
+    def rfin(self) -> float:
+        return float(self._file.attrs['rfin'])
     
     @rfin.setter
-    def rfin(self, x: int):
-        self._file.attrs['rfin'] = x
+    def rfin(self, x: float):
+        self._file.attrs['rfin'] = float(x)
 
     @property
-    def rfout(self) -> int:
-        return self._file.attrs['rfout']
+    def rfout(self) -> float:
+        return float(self._file.attrs['rfout'])
     
     @rfout.setter
-    def rfout(self, x: int):
-        self._file.attrs['rfout'] = x
+    def rfout(self, x: float):
+        self._file.attrs['rfout'] = float(x)
     
     # Datasets
     @property

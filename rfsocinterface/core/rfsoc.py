@@ -22,7 +22,7 @@ from rfsocinterface.core.sweeps import LoSweepData
 
 _logger = logging.getLogger(__name__)   
 
-PATH_SETTINGS = ['toneList', 'tonePowers', 'chanmask', 'loComport', 'attenComport', 'bitstream']
+PATH_SETTINGS = ['loComport', 'attenComport', 'bitstream']
 
 
 class RFSOCWrapper:
@@ -434,8 +434,8 @@ class RFSOCWrapper:
         if set_freq:
             self.set_frequency(channel, lo_freq)
         if set_atten:
-            self.set_rfin(channel, rfin)
             self.set_rfout(channel, rfout)
+            self.set_rfin(channel, rfin)
         if upload_tones:
             self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
         self.set_chanmask(channel, chanmask)

@@ -4,14 +4,16 @@ from multiprocessing import Queue, Pipe
 import time
 from abc import ABC, abstractmethod
 import logging
+from pathlib import Path
 
 import numpy.typing as npt
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget, QMessageBox
 from PySide6.QtCore import Qt, Signal, QCoreApplication
 from kidpy3.data_handler import Rfchan
 
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.settings import SettingsError
+from rfsocinterface.core.sweeps import LoSweepData
 from rfsocinterface.core.utils import wait_for_telescope_command, PERMISSIONS_USR_RW, TabName
 from rfsocinterface.core.utils import wait_for_telescope_command, PERMISSIONS_USR_RW, TabName
 from rfsocinterface.gui.widgets import CheckableComboBox, SaveLocationWidget
@@ -148,7 +150,7 @@ class DataCollectionMainWidget(MainWidget):
         rfchans = []
         for rfsoc, chan in chans:
             rfsocs.append(rfsoc)
-            channels.append[chan]
+            channels.append(chan)
             rfchan = rfsoc.get_channel(chan)
             save_location = self.save_location_widget.get_chosen_save_location(chan_name=rfchan.tile_name, touch_file=True, mode=PERMISSIONS_USR_RW, mkdir=True)
             rfchan.raw_filename = str(save_location)
@@ -161,3 +163,41 @@ class DataCollectionMainWidget(MainWidget):
         """Append global data for each selected channel."""
         for rfsoc, channel, rfchan in zip(rfsocs, channels, rfchans):
             rfsoc.append_global_data(channel, rfchan.raw_filename)
+    
+    def remove_TOD_files(self, rfchans: list[Rfchan]):
+        """Remove TOD files in case of collection cancellation after setup."""
+        for rfchan in rfchans:
+            path = Path(rfchan.raw_filename)
+            path.unlink(missing_ok=True)
+    
+    def check_for_lo_sweep(self, rfsocs: list[RFSOCWrapper], channels: list[int]) -> bool:
+        for rfsoc, channel in zip(rfsocs, channels):
+            tile_name = rfsoc.get_tile_name(channel)
+            sweep = LoSweepData.load_most_recent(tile_name)
+            if sweep is None:
+                msg = QMessageBox(
+                    QMessageBox.Icon.Warning,
+                    'Confirm Data Collection',
+                    f'No high-res LO Sweeps have been performed today for "{tile_name}". '
+                    'Do you want to proceed with data collection anyway? '
+                    '(A missing LO sweep may cause issues for data procssing later)',
+                    parent=self,
+                )
+                msg.setStandardButtons(
+                    QMessageBox.StandardButton.Yes | \
+                    QMessageBox.StandardButton.YesToAll | \
+                    QMessageBox.StandardButton.No | \
+                    QMessageBox.StandardButton.Cancel
+                )
+                msg.setDefaultButton(QMessageBox.StandardButton.No)
+                ret = msg.exec()
+                match ret:
+                    case QMessageBox.StandardButton.Yes:
+                        continue
+                    case QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.No:
+                        return False
+                    case QMessageBox.StandardButton.YesToAll:
+                        return True
+                    case _:
+                        raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
+        return True

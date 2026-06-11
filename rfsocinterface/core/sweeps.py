@@ -797,7 +797,7 @@ class LoSweepData:
         else:
             yymmdd = date
         date_folder = Path(data_dir) / yymmdd
-        search_string = f'/data/{yymmdd}/{yymmdd}*{tile_name}_LO_Sweep_*{"_high_res*" if high_res else ""}'
+        search_string = f'{yymmdd}*{tile_name}_LO_Sweep_*{"_high_res*" if high_res else ""}'
         if date_folder.exists():
             sweeps = sorted(date_folder.glob(search_string))
             if len(sweeps) > 0:

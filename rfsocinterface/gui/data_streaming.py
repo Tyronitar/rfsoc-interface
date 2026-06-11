@@ -70,6 +70,11 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
     
     def start_streaming(self):
         rfsocs, channels, rfchans, date, setnum = self.setup_data_collection()
+        if not self.check_for_lo_sweep(rfsocs, channels):
+            _logger.info(f'Missing 1 or more LO sweeps, cancelling data collection.')
+            self.remove_TOD_files(rfchans)
+            return
+
         duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)
 
         _logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
