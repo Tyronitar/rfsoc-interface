@@ -473,7 +473,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         
         sweeps = []
         for rfsoc, chan in selected_channels:
-            chan_name = rfsoc.get_channel_name(chan)
+            tile_name = rfsoc.get_tile_name(chan)
 
 
             suffix = ''
@@ -488,7 +488,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 suffix = '_'.join(filter(None, (suffix, 'high_res')))
             savefile = get_sweep_filename(
                 sweep_type='lo',
-                chan_name=chan_name,
+                tile_name=tile_name,
                 suffix=suffix,
                 mkdir=True,
             )
@@ -589,7 +589,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             sweep_data = sweep.data
 
             # Make diagnostics window and setup connections
-            dw = DiagnosticsDialog(sweep_data, parent=self)
+            dw = DiagnosticsDialog(sweep_data, rfsoc=rfsoc, channel=chan, parent=self)
             dw.set_window_name(rfsoc.get_channel(chan).tile_name)
             # dw.finished.connect(lambda result: self._finish_sweep(result, sweep.savefile, sweep_data, rfsoc, chan, dw, False))
             dw.finished.connect(self.handle_diagnostic_window_finished)
@@ -804,11 +804,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         
         sweeps = []
         for rfsoc, chan in selected_channels:
-            chan_name = rfsoc.get_channel_name(chan)
+            tile_name = rfsoc.get_tile_name(chan)
 
 
             savefile = get_filename(
-                file_type="power", chan_name=chan_name, mkdir=True
+                file_type="power", tile_name=tile_name, mkdir=True
             )
             match self.filename_buttonGroup.checkedButton():
                 case self.filename_elevation_radioButton:
@@ -929,7 +929,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     def _write_new_tones(self, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int):
         """Write the new tones from fitting an LO Sweep to the RFSoC"""
-        tone_file = get_filename(file_type='tonelist', chan_name=rfsoc.get_channel_name(chan))
+        tone_file = get_filename(file_type='tonelist', tile_name=rfsoc.get_tile_name(chan))
         sweep_data.save_new_tone_list(tone_file)
         _, curr_amp_list = rfsoc.get_tone_list(chan)  # Keep current amplitudes
         rfsoc.set_tone_list(chan, sweep_data.new_baseband_freqs, amplitudes=curr_amp_list)
