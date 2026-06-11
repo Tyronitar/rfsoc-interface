@@ -335,8 +335,8 @@ class RFSOCWrapper:
         with np.printoptions(threshold=20):
             _logger.debug(f'RFSoC {self.name} set `chanmask` for channel {chan} to {chanmask}')
 
-    def get_chanmask(self, chan: int) -> npt.ArrayLike:
-        return self.get_channel(chan).chanmask 
+    def get_chanmask(self, chan: int) -> npt.NDArray:
+        return self.get_channel(chan).chanmask
 
     def set_ntones(self, chan: int, ntones: int):
         self.get_channel(chan).n_tones = ntones

@@ -937,7 +937,7 @@ class LoSweep:
         """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file"""
         _logger.info('Performing final setup before LO sweep...')
         # Final setup before sweep
-        chanmask = self.rfsoc.get_chanmask(self.chan)
+        chanmask = self.rfsoc.get_chanmask(self.chan).copy()
 
         if np.size(chanmask) == 0:  # Chanmask hasn't been set, so use all ones
             chanmask = np.ones(np.size(self.tone_list), dtype=int)

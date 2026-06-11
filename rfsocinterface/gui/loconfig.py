@@ -589,7 +589,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             sweep_data = sweep.data
 
             # Make diagnostics window and setup connections
-            dw = DiagnosticsDialog(sweep_data, parent=self)
+            dw = DiagnosticsDialog(sweep_data, rfsoc=rfsoc, channel=chan, parent=self)
             dw.set_window_name(rfsoc.get_channel(chan).tile_name)
             # dw.finished.connect(lambda result: self._finish_sweep(result, sweep.savefile, sweep_data, rfsoc, chan, dw, False))
             dw.finished.connect(self.handle_diagnostic_window_finished)
