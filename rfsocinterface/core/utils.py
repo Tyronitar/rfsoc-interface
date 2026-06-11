@@ -19,13 +19,14 @@ from multiprocessing.connection import Connection
 import stat
 import subprocess
 import git
-from typing import Iterator
+from typing import Iterator, Sequence
 import warnings
 
 import io
 from copy import deepcopy
 from PIL import Image
-from functools import partial
+from functools import partial, reduce
+import operator
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.figure import Figure
@@ -75,6 +76,14 @@ PERMISSIONS_ALL_FULL = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH | PERMISSIONS_
 
 DEFAULT_CHUNK_SIZE = 100
 
+AMBER_HEX = '#ffbf00'
+ON_RESONANCE_COLOR = 'white'
+OFF_RESONANCE_COLOR = 'sandybrown'
+BAD_RESONANCE_COLOR = 'lightgray'
+FLAGGED_RESONANCE_COLOR = 'yellow'
+SELECTED_RESONANCE_COLOR = 'dodgerblue'
+EDITED_RESONANCE_COLOR = 'limegreen'
+
 class TabName(StrEnum):
     """Possible tab names for the GUI."""
     INITIALIZATION = 'initialization'
@@ -92,7 +101,25 @@ class MetaEnum(EnumMeta):
         return True
 
 
-def convert_path(path: PathLike) -> Path | None:
+def mHz_axis_formatter(x: float, pos: int) -> str:
+    """Format the x-axis labels for the resonator plot, converting to MHz.
+
+    Arguments:
+        x (float): The x value to format.
+        pos (int): The position of the tick.
+
+    Returns:
+        str: The formatted string for the x-axis label.
+    """
+    return f'{x * 1e-6:.1f}'
+
+
+def mHz_coordinate_formatter(x: float, y: float) -> str:
+    """Format the actual coordinates in the axes to MHz, with higher precision."""
+    return f'x={x * 1e-6:.5f}, y={y}'
+
+
+def convert_path(path: PathLike | None) -> Path | None:
     """Ensure that a Path is a Path object."""
     if path is None:
         return path
@@ -104,7 +131,7 @@ def convert_path(path: PathLike) -> Path | None:
         return Path(path)
 
     # Input was not a PathLike
-    raise ValueError(f'Argument must be PathLike, got {type(path)}')
+    raise ValueError(f'Argument must be PathLike or None, got {type(path)}')
 
 
 def ensure_path(
@@ -222,7 +249,13 @@ def get_chanmask(chanmask_file=''):
     return chanmask
 
 
-def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', attenuation=0., mkdir: bool=False):
+def get_filename(
+    base_dir: Path=Path('/data/'),
+    file_type='lo',
+    tile_name='',
+    attenuation=0.,
+    mkdir: bool=False,
+):
     #see if we already have the parent folder for today's date
     yymmdd = get_yymmdd()
     date_folder = base_dir / yymmdd
@@ -231,16 +264,18 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
 
     #provide the name of the file
     match file_type.lower():
-        case 'lo' | 'tonelist':
+        case 'lo' | 'tonelist' | 'power':
             hour = float(datetime.now().strftime('%H')) \
                 + float(datetime.now().strftime('%M'))/60. \
                 + float(datetime.now().strftime('%S'))/3600.
             hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
             match file_type.lower():
                 case 'lo':
-                    strings = [yymmdd, chan_name, 'LO_Sweep', hour_str]
+                    strings = [yymmdd, tile_name, 'LO_Sweep', hour_str]
                 case 'tonelist':
-                    strings = [yymmdd, chan_name, 'tone_list', hour_str]
+                    strings = [yymmdd, tile_name, 'tone_list', hour_str]
+                case 'power':
+                    strings = [yymmdd, tile_name, 'Power_Sweep', hour_str]
         case 'tod' | 'azel' | 'optcam' | 'optcam_video':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:
@@ -254,11 +289,45 @@ def get_filename(base_dir: Path=Path('/data/'), file_type='lo', chan_name='', at
             if file_type.lower() == 'optcam' or file_type.lower() == 'optcam_video':
                 strings = [yymmdd, file_type.lower(), f'set{setnum}']
             else:
-                strings = [yymmdd, chan_name, file_type.upper(), f'set{setnum}']
+                strings = [yymmdd, tile_name, file_type.upper(), f'set{setnum}']
         case 'attenuator':
-            strings = [yymmdd, chan_name, f'attenuator{attenuation:02d}']
+            strings = [yymmdd, tile_name, f'attenuator{attenuation:02d}']
         case _:
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
+    return date_folder / '_'.join(filter(None, strings))
+
+
+@ensure_path('data_dir')
+def get_sweep_filename(
+    data_dir: Path=Path(DEFAULT_DATA_DIRECTORY),
+    sweep_type='lo',
+    tile_name='',
+    suffix: str='',
+    mkdir: bool=False,
+):
+    # See if we already have the parent folder for today's date
+    yymmdd = get_yymmdd()
+    date_folder = data_dir / yymmdd
+    if mkdir:
+        date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
+
+    #provide the name of the file
+    hour = float(datetime.now().strftime('%H')) \
+        + float(datetime.now().strftime('%M'))/60. \
+        + float(datetime.now().strftime('%S'))/3600.
+    hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
+    match sweep_type.lower():
+        case 'lo':
+            sweep_name = 'LO_Sweep'
+        case 'power':
+            sweep_name = 'Power_Sweep'
+        case 'temperature':
+            sweep_name = 'Temperature_Sweep'
+        case 'blind':
+            sweep_name = 'Blind_Sweep'
+        case _:
+            raise ValueError(f'Invalid file type: "{sweep_type.lower()}"; must be one of {FileType}')
+    strings = [yymmdd, tile_name, sweep_name, hour_str, suffix]
     return date_folder / '_'.join(filter(None, strings))
 
 def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
@@ -1134,6 +1203,13 @@ def get_file_stub(date: str, setnum: int) -> str:
 def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
     return f'{params_dir}/params_tile_{tile_name}.h5'
 
+
+def get_beammap_pdf_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+    return str(Path(data_dir) / f'{date}/{date}_set{setnum}_beammap.pdf')
+
+def get_detector_pos_pdf_template(date: str, tile_name: str, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+    return str(Path(data_dir) / f'{date}/{tile_name}_detector_pos.pdf')
+
 #
 # Parallelized Plotting
 #
@@ -1230,13 +1306,103 @@ def closest(x: npt.NDArray, y: float) -> float:
     """Find the closest value in x to y."""
     return x[np.argmin(np.abs(x - y))]
 
+
 def argclosest(x: npt.NDArray, y: float) -> int:
     """Find the index of the closest value in x to y."""
     return np.argmin(np.abs(x - y))
 
+
 def sigma_to_fwhm(sigma: float) -> float:
     return 2 * np.sqrt(2 * np.log(2)) * sigma
 
+
+def dict_get_by_path(d: dict, keys: Sequence[str], default: Any=None) -> Any:
+    root = d
+    try:
+        for key in keys[:-1]:
+            root = root[key]
+        return root[keys[-1]]
+    except (KeyError, IndexError):
+        return default
+
+
+def dict_set_by_path(d: dict, keys: Sequence[str], val: Any):
+    root = d
+    for key in keys[:-1]:
+        root = root.setdefault(key, {})
+    root[keys[-1]] = val
+
+
+def dict_del_by_path(d: dict, keys: Sequence[str], val: Any):
+    root = d
+    for key in keys[:-1]:
+        root = root[key]
+    del root[keys[-1]]
+
+
+def dict_get_by_path_with_default(keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+    return dict_get_by_path(d1, keys, 
+            default=dict_get_by_path(defaults, keys, default=fallback_value))
+
+
+def dict_get_with_default(key: str, d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+    return d1.get(key, defaults.get(key, fallback_value))
+
+
+def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any]]) -> dict:
+    out_dict = {}
+    for key, fallback in items:
+        if isinstance(key, tuple):
+            val = dict_get_by_path_with_default(key, d1, d2, fallback_value=fallback)
+            dict_set_by_path(out_dict, key, val)
+        else:
+            val = dict_get_with_default(key, d1, d2, fallback_value=fallback)
+            out_dict[key] = val
+    return out_dict
+
+def dict_get_by_path(d: dict, keys: Sequence[str], default: Any=None) -> Any:
+    root = d
+    try:
+        for key in keys[:-1]:
+            root = root[key]
+        return root[keys[-1]]
+    except (KeyError, IndexError):
+        return default
+
+
+def dict_set_by_path(d: dict, keys: Sequence[str], val: Any):
+    root = d
+    for key in keys[:-1]:
+        root = root.setdefault(key, {})
+    root[keys[-1]] = val
+
+
+def dict_del_by_path(d: dict, keys: Sequence[str], val: Any):
+    root = d
+    for key in keys[:-1]:
+        root = root[key]
+    del root[keys[-1]]
+
+
+def dict_get_by_path_with_default(keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+    return dict_get_by_path(d1, keys, 
+            default=dict_get_by_path(defaults, keys, default=fallback_value))
+
+
+def dict_get_with_default(key: str, d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+    return d1.get(key, defaults.get(key, fallback_value))
+
+
+def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any]]) -> dict:
+    out_dict = {}
+    for key, fallback in items:
+        if isinstance(key, tuple):
+            val = dict_get_by_path_with_default(key, d1, d2, fallback_value=fallback)
+            dict_set_by_path(out_dict, key, val)
+        else:
+            val = dict_get_with_default(key, d1, d2, fallback_value=fallback)
+            out_dict[key] = val
+    return out_dict
 
 
 if __name__ == '__main__':
@@ -1267,6 +1433,8 @@ if __name__ == '__main__':
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
     y = np.zeros(n // q)
+
+
     # decimate_in_chunks(x, q, out=y)
 
     # n_repeats = 20

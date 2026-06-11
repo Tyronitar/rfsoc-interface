@@ -16,6 +16,7 @@ from rfsocinterface.core.utils import P, R, TabName
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.gui.widgets import get_num_value
+from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
 from typing import Callable, Concatenate, Any, TYPE_CHECKING
 import functools
 
@@ -42,7 +43,6 @@ _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
-
     tab_name = TabName.TELESCOPE
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None):
@@ -71,12 +71,15 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.connect_to_telescope_command('ze_pos_comm', self.update_ze_cmd)
 
         # Set up Optical Camera
-        self.live_footage_canvas.hide()
-        self.live_footage_fig, self.live_footage_ax = plt.subplots(figsize=(4,3))
+        self.live_footage_fig, self.live_footage_ax = plt.subplots(figsize=(12,9))
         self.live_footage_im = self.live_footage_ax.imshow(np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)))
         self.live_footage_fig.tight_layout()
-        self.live_footage_canvas.set_figure(self.live_footage_fig)
         self.live_footage_ax.set_axis_off()
+
+        self.live_footage_canvas = ToolbarCanvas(parent=self, fig=self.live_footage_fig)
+        self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0)
+        self.live_footage_canvas.hide()
+
         self.live_footage_thread = None
         self.optical_pushButton.clicked.connect(self.toggle_live_footage)
         self.frame_rate = 5 # FPS

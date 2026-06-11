@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
     # Set the location to save the TOD file (will go to /data/YYYYMMDD/YYYYMMDD_<tile_name>_TOD_set<setnum>.h5 by default)
     rfchan = rfsoc.get_channel(1)
-    save_location = get_filename(file_type='tod', chan_name=rfchan.tile_name)
+    save_location = get_filename(file_type='tod', tile_name=rfchan.tile_name)
     save_location.touch(PERMISSIONS_USR_RW, exist_ok=True)
     rfchan.raw_filename = str(save_location)
 

@@ -1,14 +1,30 @@
 """Handle RFSoC Parameter Files"""
+from __future__ import annotations
 
 import inspect
 import logging
 from pathlib import Path
+import pdb
+from packaging.version import Version, parse
 
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import numpy as np
 import numpy.typing as npt
-import tables
+import h5py
+from kidpy3 import RawDataFile
 
-from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, PERMISSIONS_ALL_FULL, get_params_file_template
+from rfsocinterface.core.utils import (
+    DEFAULT_PARAMS_DIRECTORY,
+    PERMISSIONS_ALL_FULL,
+    PathLike,
+    get_params_file_template,
+    pad_to_length,
+    ensure_path,
+    convert_path,
+    mHz_axis_formatter,
+    mHz_coordinate_formatter,
+)
 
 
 _logger = logging.getLogger(__name__)
@@ -25,296 +41,621 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
     'chanmask',
 ]
 
+class RFSoCParameters:
+    """Class wrapping around RFSoC parameters files."""
+    VERSION = Version('1.0.0')
 
-def initialize_params_file(
-    tile_name: str,
-    baseband_freqs: npt.NDArray,
-    lo_freq: float,
-    params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
-):
-    params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
-    if not params_tile_file.exists():
-        params_tile_file.touch(PERMISSIONS_ALL_FULL)
-    n_tones = np.size(baseband_freqs)
-    with tables.open_file(params_tile_file, 'w') as params_fh:
-        params_fh.root._v_attrs.n_tones = n_tones
-        params_fh.root._v_attrs.tile_name = tile_name
-        params_fh.root._v_attrs.tile_number = 0
-        params_fh.root._v_attrs.chan_number = 0
-        params_fh.root._v_attrs.ifslice_number = 0
-        chanmask = params_fh.create_array(
-            '/',
-            'chanmask',
-            atom=tables.Int8Atom(),
-            shape=(n_tones,),
+    @ensure_path(1)
+    def __init__(self, file: Path, mode: str='r'):
+        self._file = h5py.File(file, mode=mode)
+        self._test_format()
+    
+    def _test_format(self):
+        """Test that the params file is compatible with current format."""
+        fail = False
+        if 'params_version' not in self._file.attrs:
+            fail = True  # Made before the version parameter
+        elif self.version.release[0] != RFSoCParameters.VERSION.release[0]:
+            # Major version differs (incompatible)
+            fail = True  # Outdated format
+        
+        if fail:
+            raise ValueError(
+                f'File "{self._file.filename}" is not an appropriate format. '
+                'Use `update_params_file_format` to update the file and try again.'
+            )
+
+    @classmethod
+    def new_file(
+        cls,
+        tile_name: str,
+        n_tones: int,
+        mode: str='a',
+        params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    ) -> RFSoCParameters:
+        filename = Path(get_params_file_template(tile_name, params_dir=params_dir))
+        if not filename.exists():
+            filename.touch(PERMISSIONS_ALL_FULL)
+        with h5py.File(filename, 'w') as fh:
+            # Attributes
+            fh.attrs['tile_name'] = tile_name
+            fh.attrs['n_tones'] = n_tones
+            fh.attrs['f_center'] = 400e6
+            fh.attrs['rfin'] = 0.0
+            fh.attrs['rfout'] = 0.0
+            fh.attrs['tile_number'] = 0
+            fh.attrs['chan_number'] = 0
+            fh.attrs['ifslice_number'] = 0
+            fh.attrs['params_version'] = str(RFSoCParameters.VERSION)
+
+            # Datasets
+            fh.create_dataset(
+                'chanmask',
+                shape=(n_tones,),
+                maxshape=(1024,),
+                dtype=np.int8,
+                fillvalue=1,
+            )
+            fh.create_dataset(
+                'baseband_freqs',
+                shape=(n_tones,),
+                maxshape=(1024,),
+                dtype=np.float64,
+            )
+            fh.create_dataset(
+                'tone_powers',
+                data=np.ones(n_tones, dtype=np.float64),
+                maxshape=(1024,),
+                dtype=np.float64,
+            )
+            fh.create_dataset(
+                'detector_delta_x',
+                shape=(n_tones,),
+                dtype=np.float64,
+                maxshape=(1024,),
+            )
+            fh.create_dataset(
+                'detector_delta_y',
+                shape=(n_tones,),
+                dtype=np.float64,
+                maxshape=(1024,),
+            )
+            fh.create_dataset(
+                'detector_beam_ampl',
+                shape=(n_tones,),
+                dtype=np.float64,
+                maxshape=(1024,),
+                fillvalue=1,
+            )
+            fh.create_dataset(
+                'detector_pol',
+                shape=(n_tones,),
+                dtype=np.int8,
+                maxshape=(1024,),
+                fillvalue=1,
+            )
+            fh.create_dataset(
+                'dfoverf_per_mK',
+                shape=(n_tones,),
+                dtype=np.float64,
+                maxshape=(1024,),
+                fillvalue=1,
+            )
+        _logger.info(f'Initialized params file {filename}')
+        return cls(filename, mode=mode)
+    
+    def copy_and_update(
+        self,
+        new_tile_name: str,
+        f_center: float=None,
+        rfin: float=None,
+        rfout: float=None,
+        tile_number: int=None,
+        chan_number: int=None,
+        ifslice_number: int=None,
+        chanmask: npt.NDArray=None,
+        baseband_freqs: npt.NDArray=None,
+        tone_powers: npt.NDArray=None,
+        detector_delta_x: npt.NDArray=None,
+        detector_delta_y: npt.NDArray=None,
+        detector_beam_ampl: npt.NDArray=None,
+        detector_pol: npt.NDArray=None,
+        dfoverf_per_mK: npt.NDArray=None,
+        params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    ) -> RFSoCParameters:
+        """Create a copy of a parameters file while changing the specified dsets."""
+
+        f_center = f_center if f_center is not None else self.f_center
+        rfin = rfin if rfin is not None else self.rfin
+        rfout = rfout if rfout is not None else self.rfout
+        tile_number = tile_number if tile_number is not None else self.chan_number
+        chan_number = chan_number if chan_number is not None else self.chan_number
+        ifslice_number = ifslice_number if ifslice_number is not None \
+            else self.ifslice_number
+
+        chanmask = chanmask if chanmask is not None else self.chanmask[:]
+        baseband_freqs = baseband_freqs if baseband_freqs is not None \
+            else self.baseband_freqs[:]
+        tone_powers = tone_powers if tone_powers is not None \
+            else self.tone_powers[:]
+        detdx = detector_delta_x if detector_delta_x is not None \
+            else self.detector_delta_x[:]
+        detdy = detector_delta_y if detector_delta_y is not None \
+            else self.detector_delta_y[:]
+        detamp = detector_beam_ampl if detector_beam_ampl is not None \
+            else self.detector_beam_ampl[:]
+        detpol = detector_pol if detector_pol is not None \
+            else self.detector_pol[:]
+        dfoverf = dfoverf_per_mK if dfoverf_per_mK is not None \
+            else self.dfoverf_per_mK[:]
+
+        new_params = RFSoCParameters.new_file(
+            new_tile_name,
+            baseband_freqs.size,
+            params_dir=params_dir,
         )
-        chanmask[:] = 1
-        chanmask_non_collided = params_fh.create_array(
-            '/',
-            'chanmask_non_collided',
-            atom=tables.Int8Atom(),
-            shape=(n_tones,),
+
+        new_params.f_center = f_center
+        new_params.rfin = rfin
+        new_params.rfout = rfout
+        new_params.tile_number = tile_number
+        new_params.chan_number = chan_number
+        new_params.ifslice_number = ifslice_number
+        new_params.chanmask[:] = chanmask
+        new_params.baseband_freqs[:] = baseband_freqs 
+        new_params.tone_powers[:] = tone_powers
+        new_params.detector_delta_x[:] = detdx
+        new_params.detector_delta_y[:] = detdy
+        new_params.detector_beam_ampl[:] = detamp
+        new_params.detector_pol[:] = detpol
+        new_params.dfoverf_per_mK[:] = dfoverf
+
+        return new_params
+    
+    @staticmethod
+    def exists(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> tuple[bool, str]:
+        """Whether there is a params file for the specified tile."""
+        file_name = get_params_file_template(tile_name, params_dir=params_dir)
+        return Path(file_name).is_file(), file_name
+
+    @classmethod
+    def from_tile_name(cls, tile_name: str, mode: str='r', params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> RFSoCParameters | None:
+        
+        if (result := RFSoCParameters.exists(tile_name, params_dir=params_dir)) and result[0]:
+            return RFSoCParameters(result[1], mode=mode)
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+    
+    def close(self):
+        self._file.close()
+    
+    # Attributes
+    @property
+    def version(self) -> Version:
+        return Version(self._file.attrs['params_version'])
+
+    @version.setter
+    def version(self, version: str | Version):
+        self._file.attrs['version'] = str(version)
+
+    @property
+    def n_tones(self) -> int:
+        return self._file.attrs['n_tones']
+    
+    @n_tones.setter
+    def n_tones(self, n: int):
+        self._file.attrs['n_tones'] = n
+    
+    @property
+    def tile_name(self) -> str:
+        return self._file.attrs['tile_name']
+    
+    @tile_name.setter
+    def tile_name(self, name: str):
+        self._file.attrs['tile_name'] = name
+    
+    @property
+    def tile_number(self) -> int:
+        return self._file.attrs['tile_number']
+    
+    @tile_number.setter
+    def tile_number(self, n: int):
+        self._file.attrs['tile_number'] = n
+
+    @property
+    def chan_number(self) -> int:
+        return self._file.attrs['chan_number']
+    
+    @chan_number.setter
+    def chan_number(self, n: int):
+        self._file.attrs['chan_number'] = n
+
+    @property
+    def ifslice_number(self) -> int:
+        return self._file.attrs['ifslice_number']
+    
+    @ifslice_number.setter
+    def ifslice_number(self, n: int):
+        self._file.attrs['ifslice_number'] = n
+    
+    @property
+    def f_center(self) -> float:
+        return self._file.attrs['f_center']
+    
+    @f_center.setter
+    def f_center(self, freq: float):
+        self._file.attrs['f_center'] = freq
+
+    @property
+    def rfin(self) -> float:
+        return float(self._file.attrs['rfin'])
+    
+    @rfin.setter
+    def rfin(self, x: float):
+        self._file.attrs['rfin'] = float(x)
+
+    @property
+    def rfout(self) -> float:
+        return float(self._file.attrs['rfout'])
+    
+    @rfout.setter
+    def rfout(self, x: float):
+        self._file.attrs['rfout'] = float(x)
+    
+    # Datasets
+    @property
+    def chanmask(self) -> h5py.Dataset:
+        return self._file['chanmask']
+    
+    @property
+    def onres_ind(self) -> npt.NDArray:
+        """Indices of on-resonance tones."""
+        return np.argwhere(self.chanmask[:] == 1).flatten()
+
+    @property
+    def offres_ind(self) -> npt.NDArray:
+        """Indices of off-resonance tones."""
+        return np.argwhere(self.chanmask[:] == 0).flatten()
+
+    @property
+    def bad_ind(self) -> npt.NDArray:
+        """Indices of bad resonances."""
+        return np.argwhere(self.chanmask[:] == -1).flatten()
+
+    @property
+    def baseband_freqs(self) -> h5py.Dataset:
+        return self._file['baseband_freqs']
+
+    @property
+    def detector_f(self) -> npt.NDArray:
+        return self.baseband_freqs[:] + self.f_center
+
+    @property
+    def tone_powers(self) -> h5py.Dataset:
+        return self._file['tone_powers']
+
+    @property
+    def detector_delta_x(self) -> h5py.Dataset:
+        return self._file['detector_delta_x']
+
+    @property
+    def detector_delta_y(self) -> h5py.Dataset:
+        return self._file['detector_delta_y']
+
+    @property
+    def detector_beam_ampl(self) -> h5py.Dataset:
+        return self._file['detector_beam_ampl']
+
+    @property
+    def detector_pol(self) -> h5py.Dataset:
+        return self._file['detector_pol']
+    
+    @property
+    def dfoverf_per_mK(self) -> h5py.Dataset:
+        return self._file['dfoverf_per_mK']
+    
+    def flag_collided_resonances(
+        self,
+        collision_threshold: float=1/5000,
+        make_new_file: bool=False,
+        new_tile_name: str=None,
+        params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    ) -> RFSoCParameters | None:
+        """Find and flag collided resonances.
+        
+        Arguments:
+            collision_threshold (float, optional): Maximum fractional separation between
+                collided resonances. Defaults to 1/2000.
+            make_new_file (bool, optional): Whether to create a new parameters file, or 
+                update this one. Defaults to True.
+            new_tile_name (str, optional): The new tile name to use when creating the
+                new parameters file. Only used if `make_new_file` is True. Defaults to
+                None.
+            params_dir (Path, optional): The directory to create the new parameters
+                file in. Defaults to '/data/params'.
+
+        Raises:
+            ValueError: If `new_tile_name` is unset (i.e. equal to None) and 
+                `make_new_file is True.
+        
+        Returns:
+            (RFSoCParameters | None): The new parameters object, if a new file was
+                created.
+        """
+        if make_new_file:
+            if new_tile_name is None:
+                raise ValueError(
+                    '`new_tile_name` must be set when creating a new parameters'
+                    ' file'
+                )
+        new_chanmask = self.chanmask[:]
+
+        # Find collided resonances
+        bb_freqs = self.baseband_freqs[:]
+        shift1 = np.abs(bb_freqs - np.roll(bb_freqs, 1))
+        shift2 = np.abs(np.roll(bb_freqs, -1) - bb_freqs)
+        nearest_res = np.abs(np.minimum(shift1, shift2) / self.detector_f)
+        collided_ind = np.argwhere(
+            (nearest_res < collision_threshold) & \
+            (self.chanmask[:] == 1)  # Only care about on-resonance tones for collisions
         )
-        chanmask_non_collided[:] = 1
-        chanmask_isolated = params_fh.create_array(
-            '/',
-            'chanmask_isolated',
-            atom=tables.Int8Atom(),
-            shape=(n_tones,),
+        new_chanmask[collided_ind] = -1
+
+        _logger.info(f'Found {collided_ind.size} collided resonances')
+
+        if make_new_file:
+            new_file = self.copy_and_update(
+                new_tile_name,
+                chanmask=new_chanmask,
+                params_dir=params_dir,
+            )
+            return new_file
+        
+        self.chanmask[:] = collided_ind
+    
+    def add_off_resonance_tones(
+        self,
+        new_tile_name: str,
+        n_offres: int,
+        f_min: float,
+        f_max: float,
+        q: float=1/1000.,
+        delta_offres_min: float=1e6,
+        params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    ) -> RFSoCParameters:
+        """Add off-resonance tones using this parameters file as the base.
+        
+        Off-resonance tones are added in the gaps between on-resonance tones, with more 
+        spacing between tones at higher frequencies.
+
+        Arguments:
+            new_tile_name (str): The new tile name to use when creating the
+                new parameters file. 
+            n_offres (int): Maximum number of offres tones to add.
+            f_min (float): Minimum frequency (Hz) of tones to add.
+            f_max (float): Maximum frequency (Hz) of tones to add.
+            q (float, optional): Fractional frequency spacing to consider a tone far
+                enough from on-resonance tones. Defaults to 1/1000.
+            delta_offres_min (float, optional): Minimum spacing (Hz) between offres
+                tones at the LO frequency. Defaults to 1e5.
+            params_dir (Path, optional): The directory to create the new parameters
+                file in. Defaults to '/data/params'.
+
+        Returns:
+            RFSoCParameters: The parameters object corresponding to the new file.
+        """
+        baseband_freqs = self.baseband_freqs[:]
+        tone_powers = self.tone_powers[:]
+        detector_f = self.detector_f
+        chanmask = self.chanmask[:]
+        f_center = self.f_center
+        detdx = self.detector_delta_x[:]
+        detdy = self.detector_delta_y[:]
+        det_beam_ampl = self.detector_beam_ampl[:]
+        detector_pol = self.detector_pol[:]
+        dfoverf_per_mK = self.dfoverf_per_mK[:]
+
+        offres_tones = []
+        tones_left = n_offres
+        freqs_in_range = baseband_freqs[
+            (detector_f >= f_min) &
+            (detector_f <= f_max)
+        ]
+
+        freqs_in_range = np.concatenate(
+            ([f_min - f_center], freqs_in_range, [f_max - f_center])
         )
-        chanmask_isolated[:] = 1
-        params_fh.create_array(
-            '/',
-            'baseband_freqs',
-            obj=baseband_freqs,
+        gaps = np.diff(freqs_in_range)
+        sorted_gap_ind = np.argsort(gaps)[::-1]
+        for i_gap in sorted_gap_ind:
+            f0 = freqs_in_range[i_gap]
+            f1 = freqs_in_range[i_gap + 1]
+            if tones_left == 0:
+                break
+            search_range = (f0 + np.abs(f0 * q), f1 - np.abs(f1 * q))
+            # Insert as many off-resonance tones that will fit in the gap
+            # Tones should be further apart as the frequency increases
+            offres = []
+            this_f = search_range[0]
+            while this_f <= search_range[1]:
+                offres.append(this_f)
+                diff = delta_offres_min * np.abs((this_f + f_center) / f_center)
+                this_f += diff
+            this_offres_tones = np.array(offres)
+            offres_tones.extend(this_offres_tones[:tones_left])
+            tones_left -= len(this_offres_tones[:tones_left])
+
+        # Restrict off-resonance tones to be within f_min and f_max
+        offres_tones = np.array(offres_tones)
+        offres_tones = offres_tones[
+            (offres_tones + f_center >= f_min) &
+            (offres_tones + f_center <= f_max)
+        ]
+        # Create new arrays with offres tones added in the correct locations
+        tones_added = len(offres_tones)
+        _logger.info(f'Added {tones_added} / {n_offres} new off-resonance tones.')
+        all_tones = np.concatenate((baseband_freqs, offres_tones))
+        sorted_ind = np.argsort(all_tones)
+        collided_ind = np.isin(sorted_ind, collided_ind).nonzero()[0]
+
+        new_baseband_freqs = all_tones[sorted_ind]
+        new_chanmask = np.concatenate(
+            (chanmask, np.zeros(tones_added, dtype=np.int8))
+        )[sorted_ind]
+
+        new_tone_powers = np.concatenate(
+            (tone_powers, np.zeros(tones_added, dtype=np.float32))
+        )[sorted_ind]
+        new_detdx = np.concatenate(
+            (detdx, np.zeros(tones_added, dtype=np.float32))
+        )[sorted_ind]
+        new_detdy = np.concatenate(
+            (detdy, np.zeros(tones_added, dtype=np.float32))
+        )[sorted_ind]
+        new_det_beam_ampl = np.concatenate(
+            (det_beam_ampl, np.ones(tones_added, dtype=np.float32))
+        )[sorted_ind]
+        new_detector_pol = np.concatenate(
+            (detector_pol, np.ones(tones_added, dtype=np.int8))
+        )[sorted_ind]
+        new_dfoverf_per_mK = np.concatenate(
+            (dfoverf_per_mK, np.ones(tones_added, dtype=np.float64))
+        )[sorted_ind]
+
+        new_params = RFSoCParameters.new_file(new_tile_name, len(all_tones))
+        new_params.f_center = f_center
+        new_params.rfin = self.rfin
+        new_params = self.copy_and_update(
+            new_tile_name,
+            chanmask=new_chanmask,
+            baseband_freqs=new_baseband_freqs,
+            tone_powers=new_tone_powers,
+            detector_delta_x=new_detdx,
+            detector_delta_y=new_detdy,
+            detector_beam_ampl=new_det_beam_ampl,
+            detector_pol=new_detector_pol,
+            dfoverf_per_mK=new_dfoverf_per_mK,
+            params_dir=params_dir,
         )
-        params_fh.create_array(
-            '/',
-            'tone_powers',
-            obj=np.ones(n_tones, dtype=np.float32),
+
+    def plot_tones(
+        self,
+        show: bool=True,
+    )-> Figure:
+        """Create a stem plot showing all tones, chanmask values, and power levels."""
+        detector_f = self.detector_f[:]
+        tone_powers = self.tone_powers[:]
+        bad_ind = self.bad_ind
+        onres_ind = self.onres_ind
+        offres_ind = self.offres_ind
+
+        fig = plt.figure()
+        plt.stem(
+            detector_f[onres_ind], tone_powers[onres_ind],
+            linefmt='b', markerfmt='none', basefmt='none',
+            label='On-resonance Tones',
         )
-        params_fh.create_array(
-            '/',
-            'lo_freq',
-            obj=lo_freq,
-        )
-        params_fh.create_array(
-            '/',
-            'detector_delta_x',
-            atom=tables.Float32Atom(),
-            shape=(n_tones,),
-        )
-        params_fh.create_array(
-            '/',
-            'detector_delta_y',
-            atom=tables.Float32Atom(),
-            shape=(n_tones,),
-        )
-        det_beam_ampl = params_fh.create_array(
-            '/',
-            'detector_beam_ampl',
-            atom=tables.Float32Atom(),
-            shape=(n_tones,),
-        )
-        det_beam_ampl[:] = 1
-        det_pol = params_fh.create_array(
-            '/',
-            'detector_pol',
-            atom=tables.Int8Atom(),
-            shape=(n_tones,),
-        )
-        det_pol[:] = 1
-        dfoveref_per_mK = params_fh.create_array(
-            '/',
-            'dfoverf_per_mK',
-            atom=tables.Float64Atom(),
-            shape=(n_tones,),
-        )
-        dfoveref_per_mK[:] = 1
-    _logger.info(f'Initialized params file {params_tile_file}')
+        if offres_ind.size > 0:
+            # Increase 0 off-res tone powers so they're visible in the plot
+            off_res_powers = tone_powers[offres_ind]
+            off_res_powers[off_res_powers == 0] = 0.25
+            plt.stem(
+                detector_f[offres_ind], tone_powers[offres_ind],
+                linefmt='orange', markerfmt='none', basefmt='none',
+                label='Off-resonance Tones',
+            )
+        if bad_ind.size > 0:
+            plt.stem(
+                detector_f[bad_ind], tone_powers[bad_ind],
+                linefmt='red', markerfmt='none', basefmt='none',
+                label='Bad Resonances',
+            )
+        plt.xlabel('Frequency (MHz)')
+        plt.ylabel('Tone Power')
+        ax = plt.gca()
+        ax.xaxis.set_major_formatter(mHz_axis_formatter)
+        ax.format_coord = mHz_coordinate_formatter
+        plt.title(f'{self.tile_name} - Tone List')
+        plt.legend()
+
+        if show:
+            plt.show()
+
+        return fig
+    
+    @ensure_path(1)
+    def append_to_TOD(self, file: Path):
+        """Append global data from this parameters file to a TOD file."""
+        rdf = RawDataFile(file, 'a')
+
+        rdf.detector_delta_x[:] = self.detector_delta_x[:]
+        rdf.detector_delta_y[:] = self.detector_delta_y[:]
+        rdf.detector_beam_ampl[:] = self.detector_beam_ampl[:]
+        rdf.detector_pol[:] = self.detector_pol[:]
+        rdf.dfoverf_per_mK[:] = self.dfoverf_per_mK[:]
+
+        rdf.close()
 
 
-def update_params_file(
-    tile_name: str,
-    params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
-    baseband_freqs: npt.NDArray=None,
-    lo_freq: float=None,
-    detector_delta_x: npt.NDArray=None,
-    detector_delta_y: npt.NDArray=None,
-    detector_beam_ampl: npt.NDArray=None,
-    detector_pol: npt.NDArray=None,
-    dfoverf_per_mK: npt.NDArray=None,
-    chanmask: npt.NDArray=None,
-    chanmask_non_collided: npt.NDArray=None,
-    chanmask_isolated: npt.NDArray=None,
-    tone_powers: npt.NDArray=None,
-):
-    params_tile_file = Path(get_params_file_template(tile_name, params_dir=params_dir))
-    if not params_tile_file.exists():
-        raise FileExistsError(f'Params file {params_tile_file} does not exist')
-
-    signature = inspect.signature(update_params_file)
-    keyword_args = {
-        param.name: param.default
-        for param in signature.parameters.values()
-        if param.default is not inspect.Parameter.empty
-    }
-
-    with tables.open_file(params_tile_file, 'a') as fh:
-        for k in keyword_args:  # Check all of the keyword arguments
-            if k == 'params_dir':
-                continue  # We only care about the parameters
-            v = locals()[k]
-            if v is None:
-                continue  # The value is not being updated, so skip it
-            # Check the array is the correct size if needed
-            if k in PARAM_FILE_N_TONE_ATTRIBUTES:
-                if np.size(v) != fh.root._v_attrs.n_tones:
-                    raise ValueError(
-                        f'{k} size {np.size(v)} does not match n_tones {fh.root._v_attrs.n_tones}'
-                    )
-            fh.get_node('/', k)[:] = v
-
-
-def create_params_file_from_VNA_sweep(
-    tile_name: str,
-    min_resonance_frequency: float,
-    max_resonance_frequency: float,
-    min_distance_from_lo: float,
-    res_freq: npt.NDArray,
-    f_center: float,
-    n_offres: int = 20,
-    collision_threshold: float=1 / 2000.,
-    isolated_resonance_threshold: float=1 / 1000.,
-):
-    """Create a tone list form a VNA sweep
-
-    Arguments:
-        res_freq (npt.NDArray): List of resonance frequencies identifed from the VNA.
-        n_offres (int): Number of off-resonance tones to add. Defaults to 20.
-        collision_threshold (float): Maximum fractional separation between collided resonances. Defaults to 
-            1/2000.
-        isolated_resonance_threshold (float): Minumum fractional for truly isolated 
-            resonances. Defaults to 1/1000.
-
+def update_params_file_format(*filenames: PathLike):
+    """Update all parameters files in a directory to match the new format.
+    
+    Written for RFSoCParameters Version 1.0.0.
+    
     """
+    for filename in filenames:
+        path = convert_path(filename)
+        try:
+            fh = h5py.File(path, 'a')
+        except Exception:
+            _logger.info(f'Skipping "{filename}"; Failed to open as an HDF5 file.')
+            continue
 
-    # Add offres tones to the list
-    bb_freqs = res_freq[:] - f_center
-    shift1 = bb_freqs - np.roll(bb_freqs,1)
-    sort_gap = np.argsort(shift1[1:])
-    offres_tones = 0.5 * (bb_freqs[sort_gap[-n_offres:]+1] + bb_freqs[sort_gap[-n_offres:]])
-    chanmask = np.hstack((np.ones(np.size(bb_freqs)),np.zeros(np.size(offres_tones))))
-    bb_freqs = np.hstack((bb_freqs,offres_tones))
-    sort_ind = np.argsort(bb_freqs)
-    chanmask = chanmask[sort_ind]
-    bb_freqs = bb_freqs[sort_ind]
+        if 'params_version' in fh.attrs:
+            if Version(fh.attrs['params_version']) >= RFSoCParameters.VERSION:
+                _logger.info(f'Skipping "{filename}"; Already up to date.')
+                continue
+        
+        # Attenuation Settings
+        if 'rfin' not in fh.attrs:
+            fh.attrs['rfin'] = 0.0
+        if 'rfout' not in fh.attrs:
+            fh.attrs['rfout'] = 0.0
+        
+        # Standardize LO Frequency
+        if 'f_center' not in fh.attrs:
+            if 'lo_freq' in fh.attrs:
+                fh.attrs['f_center'] = fh.attrs['lo_freq']
+            elif 'lo_freq' in fh:
+                fh.attrs['f_center'] = fh['lo_freq'][()]
+            else:
+                fh.attrs['f_center'] = 400e6
+        if 'lo_freq' in fh.attrs:
+            del fh.attrs['lo_freq']
+        if 'lo_freq' in fh:
+            del fh['lo_freq']
+        
+        # Remove extra chanmasks
+        if 'chanmask_non_collided' in fh:
+            del fh['chanmask_non_collided']
+        if 'chanmask_isolated' in fh:
+            del fh['chanmask_isolated']
 
-    #figure out which resonators are collided
-    shift1 = bb_freqs - np.roll(bb_freqs,1)
-    shift2 = np.roll(bb_freqs,-1) - bb_freqs
-    nearest_res = np.minimum(abs(shift1), abs(shift2)) / bb_freqs
-    collided_ind = np.argwhere(nearest_res < collision_threshold)
-    non_isolated_ind = np.argwhere(nearest_res < isolated_resonance_threshold)
+        # Finally, update version
+        fh.attrs['params_version'] = str(RFSoCParameters.VERSION)
 
-    #figure out which freqs are in the "approved" range
-    valid_freqs = np.argwhere(
-        min_resonance_frequency <= res_freq &
-        max_resonance_frequency >= res_freq &
-        min_distance_from_lo <= np.abs(res_freq - f_center)
-    ).flatten()
-    bb_valid = np.ndarray.flatten(bb_freqs[valid_freqs])
-
-    chanmask = chanmask[valid_freqs]
-
-    chanmask_non_collided = chanmask[:]
-    chanmask_non_collided[collided_ind] = -1
-    chanmask_isolated = chanmask[:]
-    chanmask_isolated[non_isolated_ind] = -1
-
-    initialize_params_file(
-        tile_name,
-        bb_valid,
-        f_center
-    )
-    update_params_file(
-        tile_name,
-        chanmask=chanmask,
-        chanmask_isolated=chanmask_isolated,
-        chanmask_non_collided=chanmask_non_collided
-    )
-
+        fh.close()
+        _logger.info(f'Updated "{filename}" to version {RFSoCParameters.VERSION}.')
+        
 
 if __name__ == "__main__":
-    # Be231102p2_tones = np.array([213078506, 214801178, 247405640, 255826241, 256855576, 260115494,
-    #     263857108, 265547813, 269670205, 270298250, 272671603, 274710449,
-    #     276383775, 278960930, 308519951, 312882861, 313150099, 314004392,
-    #     314391462, 318555194, 322412444, 323717312, 326364689, 328323325,
-    #     328705367, 335793390, 340651152, 368175878, 373470266, 375799889,
-    #     375951626, 377837022, 384075676, 386531740, 386868808, 387216094,
-    #     393636830, 397181500, 401249603, 404139304, 409101781, 417625771])
-
-    # Be231102p2_LO_freq = 300e6
-    # lo_freq = 4e8
-    lo_freq = 4e8
-    n_tones = 1000
-    baseband_freqs = np.linspace(-200e6, 200e6, n_tones)
-    # baseband_freqs = np.concatenate([np.linspace(-246e6, -11e6, n_tones // 2), np.linspace(10e6, 245e6, n_tones // 2)])
-    # baseband_freqs = np.arange(-200e6, 200e6 + 1, 400e3)
-    # n_tones = np.size(baseband_freqs)
-    # baseband_freqs = [450e6 - lo_freq]
-    # tile_name = f'{n_tones}_tone_uniform_202050829'
-
-    # Add 58 more tones
-    # baseband_freqs = np.concatenate([
-    #     Be231102p2_tones,
-    #     np.linspace(218, 244, 27) * 1e6,
-    #     np.linspace(344, 365, 22) * 1e6,
-    #     np.linspace(284, 302, 9) * 1e6,
-    # ])
-    # sorted_indices = baseband_freqs.argsort()
-
-    # baseband_freqs = baseband_freqs[sorted_indices] - lo_freq
-
-    
-    # tile_name = 'Be231102p2_100_tones'
-    # tile_name = f'Device_aSi2_Channel3_{n_tones}_tones'
-    tile_name = f'{n_tones}_tones_equally_spaced'
-    # tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260304'
-    # bad_tones = [
-    #     1, 3, 223, 278, 299,
-    #     303, 10, 69, 192, 820,
-    #     263, 483, 172, 574, 426,
-    #     569, 297, 167, 15, 717,
-    #     487, 842, 453, 13, 719,
-    #     92, 571, 630, 84, 220,
-    #     364, 516, 74, 726, 292,
-    #     519, 812, 302, 683, 537,
-    #     294, 534, 256, 661, 529,
-    #     737, 54, 782, 567, 103,
-    #     330, 133, 809, 460, 589,
-    #     387, 538, 213, 120, 79,
-    #     783, 612, 121, 117, 749
-    # ]
-    # old_params = tables.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK.h5', 'r')
-    # chanmask = old_params.root.chanmask[:]
-    # chanmask[bad_tones] = -1
-    # lo_freq = old_params.root.lo_freq[()]
-    # detdx = old_params.root.detector_delta_x[:]
-    # detdy = old_params.root.detector_delta_y[:]
-    # det_beam_ampl = old_params.root.detector_beam_ampl[:]
-    # det_pol = old_params.root.detector_pol[:]
-    # tone_powers = old_params.root.tone_powers[:]
-    # df_overf_per_mK = old_params.root.dfoverf_per_mK[:]
-    # # tone_list = np.load('/data/20260304/20260304_Device_aSi1_Channel2_telescope_275mK_tone_list_hour16p6706.npy')
-    # baseband_freqs = old_params.root.baseband_freqs[:]
-    # old_params.close()
-    # tile_name = 'Device_aSi1_Channel2_blind'
-    # baseband_freqs = baseband_freqs - lo_freq
-    # baseband_freqs =  np.load('/home/onrkids/readout/host/params/Default_tone_list.npy')
-
-    #needs to be the same length as baseband
-    # detdx = np.load('/home/onrkids/readout/host/params/detector_delta_x_tile2.npy')
-    # detdy = np.load('/home/onrkids/readout/host/params/detector_delta_y_tile2.npy')
-    # chanmask = np.load('/home/onrkids/onrkidpy/params/chanmask.npy')  #needs to be the same length as baseband_freqs, with 1 for the tones we keep and 0 the tones we remove
-    # det_beam_ampl = np.load('/home/onrkids/readout/host/params/detector_beam_ampl_tile2.npy')
-    # det_pol = np.load('/home/onrkids/readout/host/params/detector_pol_tile2.npy')
-    # tone_powers = np.load('/home/onrkids/onrkidpy/params/Device_aSi1_Channel2_max_readout_power_dB.npy')
-    # df_overf_per_mK = np.load('/home/onrkids/readout/host/params/dfoverf_per_mK_tile2.npy')
-    detdx = detdy = chanmask = det_beam_ampl = det_pol = tone_powers = df_overf_per_mK = None
-    # chanmask = np.zeros_like(baseband_freqs)
-    # chanmask[np.where(sorted_indices < len(Be231102p2_tones))[0]] = 1
-
-
-    initialize_params_file(tile_name, baseband_freqs, lo_freq, DEFAULT_PARAMS_DIRECTORY)
-    update_params_file(
-        tile_name,
-        params_dir=DEFAULT_PARAMS_DIRECTORY,
-        detector_delta_x=detdx,
-        detector_delta_y=detdy,
-        chanmask=chanmask,
-        detector_beam_ampl=det_beam_ampl,
-        detector_pol=det_pol,
-        tone_powers=tone_powers,
-        dfoverf_per_mK=df_overf_per_mK
-    )
+    filenames = [
+        'params_tile_Be260114Tr_100_tones.h5',
+    ]
+    # update_params_file_format(*filenames)
+    params = RFSoCParameters(filenames[0])
+    pdb.set_trace()

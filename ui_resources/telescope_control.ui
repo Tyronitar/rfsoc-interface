@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1021</width>
+    <width>1041</width>
     <height>397</height>
    </rect>
   </property>
@@ -425,9 +425,6 @@
      </item>
     </layout>
    </item>
-   <item row="2" column="0">
-    <widget class="ScrollableCanvas" name="live_footage_canvas" native="true"/>
-   </item>
   </layout>
  </widget>
  <customwidgets>
@@ -435,12 +432,6 @@
    <class>Controller</class>
    <extends>QWidget</extends>
    <header>rfsocinterface.gui.widgets.controller</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>ScrollableCanvas</class>
-   <extends>QWidget</extends>
-   <header>rfsocinterface.gui.widgets.canvas</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
