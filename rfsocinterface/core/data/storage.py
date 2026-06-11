@@ -672,6 +672,10 @@ class ConsolidatedData(NewDataStorage):
         tone_counts = []
         for file in todlist:
             raw_data = RawDataFile(file, 'r')
+            if raw_data.lo_sweep is None:
+                msg = f'File "{file}" does not have an LO sweep. Cannot process data.'
+                _logger.error(msg)
+                raise KeyError(msg)
             tone_counts.append(raw_data.n_tones[0])
 
             # TODO: Make kidpy store the tile name in the file

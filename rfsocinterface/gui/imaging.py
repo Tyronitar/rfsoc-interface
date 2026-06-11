@@ -311,7 +311,13 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
     def run(self):
         # Update the current save file
         self.update_current_file()
-        rfchans, _, _ = self.setup_data_collection()
+        self.save_location_widget.update_timer.stop()
+        rfsocs, channels, rfchans, _, _ = self.setup_data_collection()
+        if not self.check_for_lo_sweep(rfsocs, channels):
+            _logger.info(f'Missing 1 or more LO sweeps, cancelling data collection.')
+            self.remove_TOD_files(rfchans)
+            self.save_location_widget.update_timer.start()
+            return
 
         # Take optical image
         if self.buttonGroup.checkedButton() == self.video_radioButton:
@@ -323,6 +329,9 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         _logger.info('Beginning data capture')
         capture(rfchans, self.active_pattern.call_function)
         _logger.info('Data capture complete')
+        self.save_location_widget.update_default_save_location()
+        self.save_location_widget.update_timer.start()
+        self.append_global_data(rfsocs, channels, rfchans)
         if self.buttonGroup.checkedButton() == self.video_radioButton:
             self.stop_recording_video()
 

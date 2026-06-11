@@ -101,7 +101,7 @@ class MetaEnum(EnumMeta):
         return True
 
 
-def mHz_formatter(x: float, pos: int) -> str:
+def mHz_axis_formatter(x: float, pos: int) -> str:
     """Format the x-axis labels for the resonator plot, converting to MHz.
 
     Arguments:
@@ -112,6 +112,11 @@ def mHz_formatter(x: float, pos: int) -> str:
         str: The formatted string for the x-axis label.
     """
     return f'{x * 1e-6:.1f}'
+
+
+def mHz_coordinate_formatter(x: float, y: float) -> str:
+    """Format the actual coordinates in the axes to MHz, with higher precision."""
+    return f'x={x * 1e-6:.5f}, y={y}'
 
 
 def convert_path(path: PathLike | None) -> Path | None:
@@ -247,7 +252,7 @@ def get_chanmask(chanmask_file=''):
 def get_filename(
     base_dir: Path=Path('/data/'),
     file_type='lo',
-    chan_name='',
+    tile_name='',
     attenuation=0.,
     mkdir: bool=False,
 ):
@@ -266,11 +271,11 @@ def get_filename(
             hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
             match file_type.lower():
                 case 'lo':
-                    strings = [yymmdd, chan_name, 'LO_Sweep', hour_str]
+                    strings = [yymmdd, tile_name, 'LO_Sweep', hour_str]
                 case 'tonelist':
-                    strings = [yymmdd, chan_name, 'tone_list', hour_str]
+                    strings = [yymmdd, tile_name, 'tone_list', hour_str]
                 case 'power':
-                    strings = [yymmdd, chan_name, 'Power_Sweep', hour_str]
+                    strings = [yymmdd, tile_name, 'Power_Sweep', hour_str]
         case 'tod' | 'azel' | 'optcam' | 'optcam_video':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:
@@ -284,9 +289,9 @@ def get_filename(
             if file_type.lower() == 'optcam' or file_type.lower() == 'optcam_video':
                 strings = [yymmdd, file_type.lower(), f'set{setnum}']
             else:
-                strings = [yymmdd, chan_name, file_type.upper(), f'set{setnum}']
+                strings = [yymmdd, tile_name, file_type.upper(), f'set{setnum}']
         case 'attenuator':
-            strings = [yymmdd, chan_name, f'attenuator{attenuation:02d}']
+            strings = [yymmdd, tile_name, f'attenuator{attenuation:02d}']
         case _:
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
     return date_folder / '_'.join(filter(None, strings))
@@ -296,7 +301,7 @@ def get_filename(
 def get_sweep_filename(
     data_dir: Path=Path(DEFAULT_DATA_DIRECTORY),
     sweep_type='lo',
-    chan_name='',
+    tile_name='',
     suffix: str='',
     mkdir: bool=False,
 ):
@@ -322,7 +327,7 @@ def get_sweep_filename(
             sweep_name = 'Blind_Sweep'
         case _:
             raise ValueError(f'Invalid file type: "{sweep_type.lower()}"; must be one of {FileType}')
-    strings = [yymmdd, chan_name, sweep_name, hour_str, suffix]
+    strings = [yymmdd, tile_name, sweep_name, hour_str, suffix]
     return date_folder / '_'.join(filter(None, strings))
 
 def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
