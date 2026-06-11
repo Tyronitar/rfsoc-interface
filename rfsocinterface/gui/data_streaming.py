@@ -69,10 +69,12 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         # _logger.info('Processing data')
     
     def start_streaming(self):
+        self.save_location_widget.update_timer.stop()
         rfsocs, channels, rfchans, date, setnum = self.setup_data_collection()
         if not self.check_for_lo_sweep(rfsocs, channels):
             _logger.info(f'Missing 1 or more LO sweeps, cancelling data collection.')
             self.remove_TOD_files(rfchans)
+            self.save_location_widget.update_timer.start()
             return
 
         duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)
@@ -80,6 +82,8 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         _logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
         capture(rfchans, self.wait_for_TOD, duration)
         _logger.info('Completed data streaming')
+        self.save_location_widget.update_default_save_location()
+        self.save_location_widget.update_timer.start()
         # TODO: Add a check to see if the data collection was canceled
         self.append_global_data(rfsocs, channels, rfchans)
         self.process_data(date, setnum)

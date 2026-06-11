@@ -59,7 +59,7 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
     
     @Slot()
     def update_default_save_location(self):
-        self._default_path = get_filename(file_type=self.file_type).with_suffix('.h5')
+        self._default_path = get_filename(file_type=self.file_type, tile_name='<TILE>').with_suffix('.h5')
         if self.checkBox.isChecked():
             self.save_locale_label.setText(f'Saving to "{self._default_path}"')
 
