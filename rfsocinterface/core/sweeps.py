@@ -379,7 +379,7 @@ class LoSweepData:
         path = fname.with_suffix('.npy')
         path.touch(PERMISSIONS_USR_RW, exist_ok=True)
         np.save(fname, self.new_baseband_freqs)
-        _logger.debug(f'LoSweepData saved new tone list to {str(fname)}')
+        _logger.debug(f'LoSweepData saved new tone list to {str(path)}')
 
     def save(self):
         """Save the LO Sweep to the current HDF5 file."""
@@ -405,7 +405,7 @@ class LoSweepData:
             fh.create_dataset('/global_data/fit_f0', data=self.fit_f0, dtype=np.float64)
             fh.create_dataset('/global_data/fit_qi', data=self.fit_qi, dtype=np.float64)
             fh.create_dataset('/global_data/fit_qc', data=self.fit_qc, dtype=np.float64)
-        _logger.info(f'LoSweepData saved to {str(fname)}')
+        _logger.info(f'LoSweepData saved to {str(path)}')
     
     @classmethod
     @ensure_path(1)
@@ -1011,7 +1011,7 @@ class LoSweep:
                 self.rfsoc.get_tile_name(self.chan),
                 diff_to_flag=self.diff_to_flag,
                 filename=self.savefile,
-                date=self.date
+                date=self.date,
                 hour=self.hour,
             )
             if save:
@@ -1341,7 +1341,7 @@ class PowerSweepData(CompositeSweepData):
             fh.attrs['rfout'] = self.rfout
             fh.create_dataset('power_levels', data=self.power_levels, dtype=np.float64)
             fh.create_dataset('max_readout_power', data=self.max_readout_power, dtype=np.float64)
-        _logger.info(f'PowerSweepData saved to {str(fname)}')
+        _logger.info(f'PowerSweepData saved to {str(path)}')
     
     @classmethod
     @ensure_path(1)
