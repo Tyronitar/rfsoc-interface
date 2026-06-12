@@ -2,6 +2,8 @@ from __future__ import annotations
 import logging
 import pdb
 import datetime
+from typing import Literal
+
 
 from concurrent.futures import Future
 from typing import Callable, Generic, TypeVar, TYPE_CHECKING
@@ -32,6 +34,7 @@ from rfsocinterface.core.utils import (
     parallel_plot,
     mHz_axis_formatter,
     mHz_coordinate_formatter,
+    get_current_LO_sweep_hour_string,
     get_sweep_filename,
     get_params_file_template,
     ON_RESONANCE_COLOR,
@@ -336,8 +339,14 @@ class LoSweepData:
         tile_name: str,
         diff_to_flag: float=3e3,
         filename: str=None,
+        date: str=None,
+        hour: str=None,
     ) -> None:
         """Initialize a LoSweepData object."""
+        self.filename = convert_path(filename)
+        self.date = date
+        self.hour = hour
+
         self.data = sweep_data
         self.f_center = f_center  # Center frequency of the sweep in Hz
         self.detector_f = baseband_freqs[:] + f_center  # Frequencies in Hz
@@ -346,7 +355,6 @@ class LoSweepData:
         self.chanmask = chanmask
         self.resonator_data = [ResonatorData(self, i) for i in range(self.n_tones)]
         self.tile_name = tile_name
-        self.filename = convert_path(filename)
 
         self.fit_f0 = self.detector_f.copy()
         self.fit_qi = np.zeros(self.n_tones)
@@ -366,12 +374,6 @@ class LoSweepData:
         # self.diff_to_flag = (val * 1e3 / 2e8) * self.tone_list
         self.diff_to_flag = np.abs(val / self.f_center * self.detector_f)
 
-    @ensure_path(1)
-    def savenp(self, fname: Path):
-        path = fname.with_suffix('.npy')
-        path.touch(PERMISSIONS_USR_RW, exist_ok=True)
-        np.save(path, self.data)
-    
     @ensure_path(1)
     def save_new_tone_list(self, fname: Path):
         path = fname.with_suffix('.npy')
@@ -393,6 +395,10 @@ class LoSweepData:
         with h5py.File(path, 'w') as fh:
             fh.attrs['f_center'] = self.f_center
             fh.attrs['tile_name'] = self.tile_name
+            if self.date is not None:
+                fh.attrs['date'] = self.date
+            if self.hour is not None:
+                fh.attrs['hour'] = self.hour
             fh.create_dataset('/global_data/lo_sweep', data=self.data, dtype=np.complex128)
             fh.create_dataset('/global_data/baseband_freqs', data=np.real(self.detector_f - self.f_center), dtype=np.float64)
             fh.create_dataset('/global_data/chanmask', data=self.chanmask, dtype=np.int8)
@@ -426,8 +432,11 @@ class LoSweepData:
                 fit_qc = f['global_data/fit_qc'][:]
                 f_center = f.attrs['f_center']
                 tile_name = f.attrs['tile_name']
+                
+                date = f.attrs['date'] if 'date' in f.attrs else None
+                hour = f.attrs['hour'] if 'hour' in f.attrs else None
 
-        sweep = cls(tone_list, f_center, data, chanmask, tile_name, filename=path)
+        sweep = cls(tone_list, f_center, data, chanmask, tile_name, filename=path, date=date, hour=hour) 
         sweep.fit_f0 = fit_f0
         sweep.fit_qi = fit_qi
         sweep.fit_qc = fit_qc
@@ -808,14 +817,19 @@ class LoSweep:
     """Class for performing an LO Sweep"""
 
     def __init__(
-            self,
-            rfsoc: RFSOCWrapper,
-            chan: int,
-            savefile: Path,
-            tone_shift: float,
-            freq_step: float,
-            full_span: float,
-            diff_to_flag: float=3e3,
+        self,
+        rfsoc: RFSOCWrapper,
+        chan: int,
+        tone_shift: float,
+        freq_step: float,
+        full_span: float,
+        diff_to_flag: float=3e3,
+        savefile: Path=None,
+        sweep_type: Literal['lo', 'power', 'temperature', 'blind']='lo',
+        filename_suffix: str='',
+        date: str=None,
+        hour: str=None,
+        mkdir: bool=False,
     ):
         """Initialize an LoSweep"""
         _logger.info(f'Initializing LO Sweep with {rfsoc.get_tile_name(chan)}...')
@@ -823,13 +837,31 @@ class LoSweep:
         self.rfsoc = rfsoc
         self.chan = chan
         self.valon = rfsoc.get_valon(chan)
-        self.savefile = savefile
         self.tone_shift = tone_shift
         self.freq_step = freq_step
         self.full_span = full_span
         self.f_center = rfsoc.get_channel(chan).lo_freq
         self.diff_to_flag = diff_to_flag
         self._data = None
+
+        if date is None:
+            date = get_yymmdd()
+        self.date = date
+
+        if hour is None:
+            hour = get_current_LO_sweep_hour_string()
+        self.hour = hour
+
+        if savefile is None:
+            savefile = get_sweep_filename(
+                sweep_type=sweep_type,
+                tile_name=self.tile_name,
+                suffix=filename_suffix,
+                date=self.date,
+                hour=self.hour,
+                mkdir=mkdir,
+            )
+        self.savefile = savefile
 
         rfsoc.set_frequency(chan, self.f_center)
         if tone_shift != 0:
@@ -932,7 +964,6 @@ class LoSweep:
 
         return Z
 
-
     def run_sweep(self, callback: Callable | None=None, save: bool=True) -> LoSweepData | None:
         """Perform a stepped frequency sweep centered at f_center and save result as s21.npy file"""
         _logger.info('Performing final setup before LO sweep...')
@@ -972,7 +1003,17 @@ class LoSweep:
             sweep_data = np.array((f, z.T))
             _logger.debug(f'Shape of LO sweep data: {sweep_data.shape}')
 
-            data = LoSweepData(self.tone_list, self.f_center, sweep_data, chanmask, self.rfsoc.get_tile_name(self.chan), diff_to_flag=self.diff_to_flag, filename=self.savefile)
+            data = LoSweepData(
+                self.tone_list,
+                self.f_center,
+                sweep_data,
+                chanmask,
+                self.rfsoc.get_tile_name(self.chan),
+                diff_to_flag=self.diff_to_flag,
+                filename=self.savefile,
+                date=self.date
+                hour=self.hour,
+            )
             if save:
                 data.save()
 
@@ -999,16 +1040,29 @@ class CompositeSweep(Generic[CompositeSweepDataType]):
         full_span: float,
         savefile: Path=None,
         filename_suffix: str='',
+        date: str=None,
+        hour: str=None,
         mkdir: bool=False,
         **kwargs,
     ):
         self.rfsoc = rfsoc
         self.chan = chan
+
+        if date is None:
+            date = get_yymmdd()
+        self.date = date
+
+        if hour is None:
+            hour = get_current_LO_sweep_hour_string()
+        self.hour = hour
+
         if savefile is None:
             savefile = get_sweep_filename(
                 sweep_type=self.sweep_type,
-                chan_name=self.tile_name,
+                tile_name=self.tile_name,
                 suffix=filename_suffix,
+                date=self.date,
+                hour=self.hour,
                 mkdir=mkdir,
             )
         self.savefile = savefile
@@ -1109,8 +1163,12 @@ class CompositeSweepData:
         f_center: float,
         sweeps: list[LoSweepData],
         filename: Path | None = None,
+        date: str=None,
+        hour: str=None,
     ):
         self.filename = convert_path(filename)
+        self.date = date
+        self.hour = hour
 
         self.f_center = f_center
         self.bb_freqs = bb_freqs
@@ -1128,7 +1186,6 @@ class CompositeSweepData:
         self._fitted = False
         self._plot_canceled = False
         self._plotted = False
-    
 
     @property
     def chanmask(self) -> npt.NDArray:
@@ -1222,6 +1279,10 @@ class CompositeSweepData:
         with h5py.File(path, 'w') as fh:
             fh.attrs['f_center'] = self.f_center
             fh.attrs['tile_name'] = self.tile_name
+            if self.date is not None:
+                fh.attrs['date'] = self.date
+            if self.hour is not None:
+                fh.attrs['hour'] = self.hour
             fh.create_dataset('sweeps', data=self.combined_sweep_array, dtype=np.complex128)
             fh.create_dataset('baseband_freqs', data=self.bb_freqs, dtype=np.float64)
             fh.create_dataset('chanmask', data=self.chanmask, dtype=np.int8)
@@ -1251,12 +1312,16 @@ class PowerSweepData(CompositeSweepData):
         rfin: float,
         rfout: float,
         filename: Path | None = None,
+        date: str=None,
+        hour: str=None,
     ):
         super().__init__(
             bb_freqs=bb_freqs,
             f_center=f_center,
             sweeps=sweeps,
             filename=filename,
+            date=date,
+            hour=hour,
         )
         self.power_levels = np.array(power_levels)
         self.rfin = rfin
@@ -1294,6 +1359,8 @@ class PowerSweepData(CompositeSweepData):
             rfout = fh.attrs['rfout']
             power_levels = fh['power_levels'][:]
             max_readout_power = fh['max_readout_power'][:]
+            date = fh.attrs['date'] if 'date' in fh.attrs else None
+            hour = fh.attrs['hour'] if 'hour' in fh.attrs else None
 
         sweeps = []
         for this_fit_f0, arr in zip(fit_f0, sweep_data):
@@ -1301,7 +1368,17 @@ class PowerSweepData(CompositeSweepData):
             sweep.fit_f0[:] = this_fit_f0
             sweeps.append(sweep)
 
-        power_sweep = cls(bb_freqs, f_center, sweeps, power_levels, rfin, rfout, filename=fname)
+        power_sweep = cls(
+            bb_freqs,
+            f_center,
+            sweeps,
+            power_levels,
+            rfin,
+            rfout,
+            filename=fname,
+            date=date,
+            hour=hour,
+        )
         power_sweep.get_fit_f0()
         power_sweep.max_readout_power = max_readout_power
 
@@ -1557,7 +1634,7 @@ class PowerSweepData(CompositeSweepData):
         return params
 
 class PowerSweep(CompositeSweep[PowerSweepData]):
-    sweep_type = 'Power'
+    sweep_type = 'power'
 
     def __init__(
         self,
@@ -1569,6 +1646,8 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
         power_levels: npt.NDArray,
         savefile: Path=None,
         filename_suffix: str='',
+        date: str=None,
+        hour: str=None,
         mkdir: bool=False,
         **kwargs,
     ):
@@ -1586,6 +1665,8 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
             full_span,
             savefile=savefile,
             filename_suffix=filename_suffix,
+            date=date,
+            hour=hour,
             mkdir=mkdir,
         )
 
@@ -1607,8 +1688,14 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
             self.rfouts.append(this_rfout)
             this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{power_level:+f}dB'.replace('.', '_'))
             sweep = LoSweep(
-                self.rfsoc, self.chan, this_savefile, self.tone_shift,
-                self.freq_step, self.full_span,
+                self.rfsoc,
+                self.chan,
+                self.tone_shift,
+                self.freq_step,
+                self.full_span,
+                savefile=this_savefile,
+                date=self.date,
+                hour=self.hour,
             )
             self._sweeps.append(sweep)
     
@@ -1631,6 +1718,8 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
             self.starting_rfin,
             self.starting_rfout,
             filename=self.savefile,
+            date=self.date,
+            hour=self.hour,
         )
         self._data.save_as(self.savefile)
     

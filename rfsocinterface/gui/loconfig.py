@@ -27,8 +27,10 @@ from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import (
     ensure_path,
     get_filename,
-    TabName,
     get_sweep_filename,
+    TabName,
+    get_current_LO_sweep_hour_string,
+    get_yymmdd,
     dict_get_by_path,
     dict_set_by_path,
     dict_get_by_path_with_default,
@@ -403,7 +405,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         increment_progress = make_progress_dialog_incrementer(pd)
 
         # Setup sweeps for each selected channel
-        sweeps = self.setup_sweeps(selected_channels, high_res_sweep=high_res_sweep)
+        sweeps = self.setup_sweeps(
+            selected_channels,
+            sweep_type=sweep_type,
+            high_res_sweep=high_res_sweep,
+        )
 
         # Update progress dialog values
         pd.setValue(0)
@@ -464,43 +470,46 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         return True
     
-    def setup_sweeps(self, selected_channels: list[tuple[RFSOCWrapper, int]], high_res_sweep: bool=False) -> list[LoSweep]:
+    def setup_sweeps(
+        self,
+        selected_channels: list[tuple[RFSOCWrapper, int]],
+        sweep_type: Literal['lo', 'blind']='lo',
+        high_res_sweep: bool=False,
+    ) -> list[LoSweep]:
         # Get values from GUI, converting KHz to Hz
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
         diff_to_flag = get_num_value(self.flagging_lineEdit, float) * 1e3
         freq_step = get_num_value(self.df_lineEdit)  * 1e3
         full_span = get_num_value(self.deltaf_lineEdit)  * 1e3
         
+        date = get_yymmdd()
+        hour = get_current_LO_sweep_hour_string()
+        suffix = []
+        match self.filename_buttonGroup.checkedButton():
+            case self.filename_elevation_radioButton:
+                suffix.append(f'elev_{self.filename_elevation_lineEdit.text()}')
+            case self.filename_temperature_radioButton:
+                suffix.append(f'temp_{self.filename_temperature_lineEdit.text()}')
+            case _:
+                pass
+        if high_res_sweep:
+            suffix.append('high_res')
+        suffix = '_'.join(suffix)
+
         sweeps = []
         for rfsoc, chan in selected_channels:
-            tile_name = rfsoc.get_tile_name(chan)
-
-
-            suffix = ''
-            match self.filename_buttonGroup.checkedButton():
-                case self.filename_elevation_radioButton:
-                    suffix += f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}'
-                case self.filename_temperature_radioButton:
-                    suffix += f'{savefile.stem}_temp_{self.filename_temperature_lineEdit.text()}'
-                case _:
-                    pass
-            if high_res_sweep:
-                suffix = '_'.join(filter(None, (suffix, 'high_res')))
-            savefile = get_sweep_filename(
-                sweep_type='lo',
-                tile_name=tile_name,
-                suffix=suffix,
-                mkdir=True,
-            )
-            
             sweeps.append(LoSweep(
                 rfsoc,
                 chan,
-                savefile,
                 tone_shift,
                 freq_step,
                 full_span / 5 if high_res_sweep else full_span,
                 diff_to_flag=diff_to_flag,
+                sweep_type=sweep_type,
+                filename_suffix=suffix,
+                date=date,
+                hour=hour,
+                mkdir=True,
             ))
         return sweeps
 
@@ -804,21 +813,20 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         full_span = get_num_value(self.deltaf_lineEdit)  * 1e3
         power_levels = self.get_power_levels()
         
+        date = get_yymmdd()
+        hour = get_current_LO_sweep_hour_string()
+        suffix = []
+        match self.filename_buttonGroup.checkedButton():
+            case self.filename_elevation_radioButton:
+                suffix.append(f'elev_{self.filename_elevation_lineEdit.text()}')
+            case self.filename_temperature_radioButton:
+                suffix.append(f'temp_{self.filename_temperature_lineEdit.text()}')
+            case _:
+                pass
+        suffix = '_'.join(suffix)
+
         sweeps = []
         for rfsoc, chan in selected_channels:
-            tile_name = rfsoc.get_tile_name(chan)
-
-
-            savefile = get_filename(
-                file_type="power", tile_name=tile_name, mkdir=True
-            )
-            match self.filename_buttonGroup.checkedButton():
-                case self.filename_elevation_radioButton:
-                    savefile = savefile.with_stem(f'{savefile.stem}_elev_{self.filename_elevation_lineEdit.text()}')
-                case self.filename_temperature_radioButton:
-                    savefile = savefile.with_stem(f'{savefile.stem}_temp_{self.filename_temperature_lineEdit.text()}')
-                case _:
-                    pass
             sweeps.append(PowerSweep(
                 rfsoc,
                 chan,
@@ -826,7 +834,10 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 freq_step,
                 full_span,
                 power_levels,
-                savefile=savefile,
+                filename_suffix=suffix,
+                date=date,
+                hour=hour,
+                mkdir=True,
             ))
             
         return sweeps
@@ -984,7 +995,6 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     @ensure_path(1)
     def save_sweep(self, savefile: Path, sweep_data: LoSweepData):
         sweep_data.save_as(savefile)
-        sweep_data.savenp(savefile)
         _logger.info(f'Saved LO sweep data to {savefile}')
     
     def check_diagnostics(self):

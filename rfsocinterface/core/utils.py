@@ -296,26 +296,36 @@ def get_filename(
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
     return date_folder / '_'.join(filter(None, strings))
 
+def get_current_LO_sweep_hour_string() -> str:
+    """Return the current time in the LO sweep filename format.
+    
+    The format is `hourHHpMMSS`
+    """
+    hour = float(datetime.now().strftime('%H')) \
+        + float(datetime.now().strftime('%M'))/60. \
+        + float(datetime.now().strftime('%S'))/3600.
+    return f'hour{hour:04.4f}'.replace('.', 'p')
 
 @ensure_path('data_dir')
 def get_sweep_filename(
     data_dir: Path=Path(DEFAULT_DATA_DIRECTORY),
-    sweep_type='lo',
+    sweep_type: Literal['lo', 'power', 'temperature', 'blind']='lo',
     tile_name='',
     suffix: str='',
+    date: str=None,
+    hour: str=None,
     mkdir: bool=False,
 ):
     # See if we already have the parent folder for today's date
-    yymmdd = get_yymmdd()
-    date_folder = data_dir / yymmdd
+    if date is None:
+        date = get_yymmdd()
+    date_folder = data_dir / date
     if mkdir:
         date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
 
     #provide the name of the file
-    hour = float(datetime.now().strftime('%H')) \
-        + float(datetime.now().strftime('%M'))/60. \
-        + float(datetime.now().strftime('%S'))/3600.
-    hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
+    if hour is None:
+        hour = get_current_LO_sweep_hour_string()
     match sweep_type.lower():
         case 'lo':
             sweep_name = 'LO_Sweep'
@@ -327,7 +337,7 @@ def get_sweep_filename(
             sweep_name = 'Blind_Sweep'
         case _:
             raise ValueError(f'Invalid file type: "{sweep_type.lower()}"; must be one of {FileType}')
-    strings = [yymmdd, tile_name, sweep_name, hour_str, suffix]
+    strings = [date, tile_name, sweep_name, hour, suffix]
     return date_folder / '_'.join(filter(None, strings))
 
 def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
