@@ -6,18 +6,16 @@ mpl.use('QtAgg')
 
 from typing import Callable, Concatenate, Any
 from pathlib import Path
-from concurrent.futures import Future
 from threading import Thread
 import logging
-import pdb
 import warnings
-from matplotlib.artist import Artist
 import re
 import time
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backend_bases import MouseButton, MouseEvent, PickEvent
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backend_tools import Cursors
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
@@ -27,7 +25,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
     QLabel,
-    QMainWindow,
     QWidget,
     QDialog,
     QMessageBox,
@@ -43,11 +40,9 @@ from PySide6.QtWidgets import (
     QSpacerItem,
     QSizePolicy,
 )
-from PySide6.QtPdfWidgets import QPdfView
-from PySide6.QtPdf import QPdfDocument
 from pdfjs_viewer import PDFViewerWidget
 
-from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS, PowerSweepData
+from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, DEFAULT_NCOLS, PowerSweepData
 from rfsocinterface.core.params import RFSoCParameters
 from rfsocinterface.core.utils import (
     ON_RESONANCE_COLOR,
@@ -55,18 +50,14 @@ from rfsocinterface.core.utils import (
     FLAGGED_RESONANCE_COLOR,
     BAD_RESONANCE_COLOR,
     DEFAULT_PARAMS_DIRECTORY,
-    get_params_file_template,
     convert_path,
     ensure_path,
-    PathLike,
     reset_axes,
     P,
-    PERMISSIONS_USR_RW,
 )
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
-from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
 from rfsocinterface.gui.widgets import (
     IncrementalProgressDialog,
     ToolbarCanvas,
@@ -1284,83 +1275,3 @@ class PowerSweepDialog(QDialog):
     def reject(self) -> None:
         self._cleanup_pdf_viewer()
         super().reject()
-
-
-if __name__ == '__main__':
-
-    from concurrent.futures import wait
-    import pdb
-    import sys 
-    import logging.config
-
-    from pdfjs_viewer.stability import configure_global_stability
-
-    logging.config.fileConfig('rfsocinterface/logging.conf')
-    _logger = logging.getLogger('rfsocinterface')
-    _logger.handlers[0].setLevel(logging.DEBUG)
-
-    configure_global_stability(
-        disable_gpu=True,
-        disable_webgl=True,
-        disable_gpu_compositing=True,
-        disable_unnecessary_features=True,
-    )
-
-    app = QApplication(sys.argv)
-
-    f = '/data/20260611/20260611_test_100_tones_20260610_Power_Sweep_hour16p6844.h5'
-    sweep = PowerSweepData.load(f)
-    # sweep.fit()
-    # sweep.plot_optimal_readout_powers()
-    dial = PowerSweepDialog(sweep)
-    dial.show()
-
-    app.exec()
-
-
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-    from matplotlib.backends.backend_qt import FigureManagerQT
-    from matplotlib.backend_tools import ToolToggleBase
-    from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
-    # def plot_fn(fig: Figure, size: int=10):
-    #     if len(fig.axes) == 0:
-    #         ax = fig.add_subplot()
-    #     else:
-    #         ax = fig.axes[0]
-    #     ax.plot(np.arange(size), np.random.random(size))
-
-    # class MainWindow(QDialog):
-    #     def __init__(self, parent=None):
-    #         super().__init__(parent)
-
-    #         self.canvas = ToolbarCanvas(self)
-    #         self.canvas.add_edit_button()
-    #         self.canvas.replot_figure(plot_fn)
-    #         # self.canvas = FigureCanvas(fig)
-    #         # self.manager = FigureManagerQT(self.canvas, 1)
-    #         # self.canvas.manager = self.manager
-    #         # self.nav = self.manager.toolbar
-
-    #         layout = QVBoxLayout(self)
-    #         layout.setContentsMargins(0, 0, 0, 0)
-    #         self.setLayout(layout)
-    #         # layout.addWidget(self.nav)
-    #         layout.addWidget(self.canvas)
-
-    # win = MainWindow()
-    # win.show()
-    # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
-    # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    # data = LoSweepData.load('/data/20260511/20260511_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour13p6353.h5')
-    # win = BlindSweepDialog(data)
-    # win.find_resonances(
-    #     min_resonance_depth_dB=0.3,
-    #     spacing_threshold_Hz=3e3,
-    #     min_samples_per_resonance=4,
-    #     max_noise_fluctuation_dB=0.05,
-    # )
-    # win.plot()
-    # win.show()
-
-    # # dw.show()
-    # app.exec()
