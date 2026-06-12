@@ -60,82 +60,13 @@ CALIBRATION_TABLE_DTYPE = [
 ]
 
 def get_channel_group_name(idx: int) -> str:
-    """Return the properly formatted group name for the channel with index `idx`"""
+    """Return the properly formatted group name for the channel with index `idx`."""
     return f'channel_{idx:03d}'
 
 
 def get_step_group_name(idx: int, name: str) -> str:
-    """Return the properly formatted group name for a step in the processing history or checkpoints."""
+    """Return the properly formatted group name for a step in the processing history."""
     return f'{idx:04d}_{name}'
-
-
-#
-# Outlier Removal and Flagging
-#
-
-def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None | int | tuple[int, ...]=None):
-    """Repeatedly perform outlier rejection until there are no more outliers.
-
-    Args:
-        data (npt.ArrayLike): Input data (expected to be 1 dimensional)
-        sigma (float, optional): The standard deviation cutoff for outliers. Defaults
-            to 2.
-        axis (None or int or tuple of ints, optional): The axis or axes to perform the
-            outlier rejection along. Deafults to None.
-
-    Returns:
-        (npt.NDArray, npt.NDArray, npt.NDArray): `data` with the outliers removed,
-        indices in `data` of the inliers, and indices in `data` of the outliers .
-    """
-    ind = np.arange(np.size(data))
-    # ind = np.ones_like(data, dtype=int)
-    # ind = get_all_indices(data)
-    if np.ndim(data) != 1:
-        data = np.flatten(data)
-    while True:
-        good_data, good_ind = reject_outliers(data[ind], sigma=sigma, axis=axis)
-        if np.size(ind) == np.size(good_ind):
-            break
-        ind = ind[good_ind]
-    return data[ind], ind, np.setdiff1d(np.arange(np.size(data)), ind)
-
-
-def flag(data: npt.NDArray, fs: float, sigma: float=2):
-    """Flag data outliers."""
-    first_dimension, n_chan, _ = data.shape
-    n_flag = np.zeros((first_dimension, n_chan))
-
-    filt_cut = 1. / (0.5 * fs)
-    b, a = signal.butter(5, filt_cut, btype='high', analog=False)
-    hpf_data = signal.filtfilt(b, a, data)
-    for i_complex in range(first_dimension):
-        for i_res in range(n_chan):
-            inliers, _, _ = iteratively_reject_outliers(hpf_data[i_complex, i_res, :], sigma=sigma)
-            n_flag[i_complex, i_res] = hpf_data.shape[-1] - np.size(inliers)
-    return n_flag, np.std(hpf_data, axis=-1)
-
-
-def flag_outliers(data: npt.NDArray, fs: float, chanmask: npt.NDArray, sigma: float=2) -> npt.NDArray:
-    good_channels = np.where(chanmask == 1)[0]
-    n_flag, timestream_rms = flag(data[:, good_channels], fs, sigma=sigma)
-    med_flag = np.median(n_flag)
-    chanmask[np.where(np.any(n_flag > 2. * med_flag, axis=0))] = -1
-    _, _, bad_indices_0 = iteratively_reject_outliers(timestream_rms[0], sigma=sigma)
-    if np.ndim(timestream_rms) == 3:
-        _, _, bad_indices_1 = iteratively_reject_outliers(timestream_rms[1], sigma=sigma)
-        bad_indices = np.union1d(bad_indices_0, bad_indices_1)
-    else:
-        bad_indices = bad_indices_0
-    chanmask[bad_indices] = -1
-    return chanmask
-
-
-def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[int, ...]=None):
-    """Return the data without outliers and the rejected indices."""
-    d = np.abs(data - np.median(data, axis=axis))
-    std = np.std(data, axis=axis)
-    ind = np.where(d < sigma * std)
-    return data[ind], ind
 
 #
 # Data Processing
