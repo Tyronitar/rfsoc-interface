@@ -1080,6 +1080,7 @@ class PowerSweepDialog(QDialog):
         self.sweep_data = sweep_data
         self.filename = sweep_data.filename.with_suffix('.pdf')
         self.setupUi()
+        self._setup_connections()
         self.setSizeGripEnabled(True)
 
     def setupUi(self):
@@ -1103,17 +1104,17 @@ class PowerSweepDialog(QDialog):
         self.section = Section(parent=self, animationDuration=0)
         section_layout = QGridLayout()
         self.percentile_label = QLabel('Baseline Percentage', parent=self)
-        self.percentile_lineEdit = QLineEdit('33', parent=self)
+        self.percentile_lineEdit = QLineEdit(parent=self)
         self.percentile_lineEdit.setPlaceholderText('33')
         section_layout.addWidget(self.percentile_label, 0, 0)
         section_layout.addWidget(self.percentile_lineEdit, 0, 2)
         self.bad_power_cutoff_label = QLabel('Power Cutoff Percentage', parent=self)
-        self.bad_power_cutoff_lineEdit = QLineEdit('75', parent=self)
+        self.bad_power_cutoff_lineEdit = QLineEdit(parent=self)
         self.bad_power_cutoff_lineEdit.setPlaceholderText('75')
         section_layout.addWidget(self.bad_power_cutoff_label, 1, 0)
         section_layout.addWidget(self.bad_power_cutoff_lineEdit, 1, 2)
         self.max_deviation_label = QLabel('Max Deviation from Median (dB)', parent=self)
-        self.max_deviation_lineEdit = QLineEdit('5', parent=self)
+        self.max_deviation_lineEdit = QLineEdit(parent=self)
         self.max_deviation_lineEdit.setPlaceholderText('5')
         section_layout.addWidget(self.max_deviation_label, 2, 0)
         section_layout.addWidget(self.max_deviation_lineEdit, 2, 2)
@@ -1130,12 +1131,15 @@ class PowerSweepDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self
         )
-        self.button_box.accepted.connect(self.accept)
-        self.button_box.rejected.connect(self.reject)
         vlayout.addWidget(self.button_box)
 
         self.setLayout(vlayout)
         self.setMinimumSize(600, 600)
+    
+    def _setup_connections(self):
+        self.refit_button.clicked.connect(self.refit_and_plot)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
     
     def try_load_pdf(self):
         try:
@@ -1180,7 +1184,7 @@ class PowerSweepDialog(QDialog):
         if fit_successful:
             self.replot()
     
-    def refit(self):
+    def refit(self) -> bool:
         """Refit the power sweep."""
         # Get parameters from the GUI
         try:
@@ -1189,6 +1193,7 @@ class PowerSweepDialog(QDialog):
             max_deviation = get_num_value(self.max_deviation_lineEdit, use_placeholder_text=True)
         except ValueError:
             # Handle case when a line edit doesn't have a valid value
+            _logger.warning('Unable to get fit parameters properly from PowerSweepDialog. Cancelling refit.')
             return False
 
         # Find optimnal power levels again using new parameters
@@ -1286,8 +1291,13 @@ if __name__ == '__main__':
     from concurrent.futures import wait
     import pdb
     import sys 
+    import logging.config
 
     from pdfjs_viewer.stability import configure_global_stability
+
+    logging.config.fileConfig('rfsocinterface/logging.conf')
+    _logger = logging.getLogger('rfsocinterface')
+    _logger.handlers[0].setLevel(logging.DEBUG)
 
     configure_global_stability(
         disable_gpu=True,
@@ -1298,7 +1308,7 @@ if __name__ == '__main__':
 
     app = QApplication(sys.argv)
 
-    f = '/data/20260611/20260611_test_100_tones_20260610_Power_Sweep_hour16p3000.h5'
+    f = '/data/20260611/20260611_test_100_tones_20260610_Power_Sweep_hour16p6844.h5'
     sweep = PowerSweepData.load(f)
     # sweep.fit()
     # sweep.plot_optimal_readout_powers()

@@ -1381,7 +1381,6 @@ class PowerSweepData(CompositeSweepData):
                 power_level_non_linear[i_res] = popt[1]
                 onres_popt[i_onres] = popt
             except (RuntimeError, ValueError) as e:
-                _logger.warning(f'Encountered exception during fit; using default value for resonator {i_res}')
                 defaults.append(int(i_res))
                 non_linear_slope[i_res] = POWER_SWEEP_FRACTIONAL_FREQ_SHIFT
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
@@ -1406,6 +1405,7 @@ class PowerSweepData(CompositeSweepData):
             power_level_non_linear[negative_ind] = med
 
             max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
+        
 
         self.max_readout_power = max_readout_power
         self._onres_power_levels = np.array(onres_power_levels, dtype=object)
@@ -1413,6 +1413,7 @@ class PowerSweepData(CompositeSweepData):
         self._onres_popt = onres_popt
 
         _logger.debug(f'Finished finding optimal readout powers.')
+        self._fitted = True
         return max_readout_power
 
     @property
@@ -1533,8 +1534,8 @@ class PowerSweepData(CompositeSweepData):
             callback()
         
         _logger.debug(f'Finished plotting optimal readut powers.')
-
         self._plotted = True
+
     
     def save_to_params_file(self, target_tile_name: str) -> RFSoCParameters:
         """Save the tone powers to a params file for the specified tile."""
