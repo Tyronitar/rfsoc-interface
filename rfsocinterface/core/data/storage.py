@@ -271,7 +271,7 @@ class ProcessedData(NewDataStorage):
             # Collect calibration information
             sweep = LoSweepData(
                 tones_table['baseband_freq'],
-                channel_group.attrs['lo_freq'],
+                channel_group.attrs['f_center'],
                 channel_group['lo_sweep'][:],
                 tones_table['chanmask'],
                 channel_group.attrs['tile_name'],
@@ -280,7 +280,7 @@ class ProcessedData(NewDataStorage):
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
             calibration_info['adc_units_to_hz'] = adc_units_to_hz
 
-            detector_f = tones_table['baseband_freq'] + channel_group.attrs['lo_freq']
+            detector_f = tones_table['baseband_freq'] + channel_group.attrs['f_center']
             df_per_mK = compute_df_per_mK(
                 tones_table['polarization'],
                 tones_table['beam_amplitude'],
@@ -507,15 +507,15 @@ class ProcessedData(NewDataStorage):
     def set_baseband_freqs(self, new_freqs: npt.NDArray):
         self._set_table_field('tones', 'baseband_freq', new_freqs)
 
-    def get_lo_freq(self, i_chan: int) -> float:
-        return  self.get_channel_group(i_chan).attrs['lo_freq']
+    def get_f_center(self, i_chan: int) -> float:
+        return  self.get_channel_group(i_chan).attrs['f_center']
 
     def detector_f(self) -> npt.NDArray:
         f = self.baseband_freqs
         i_tone = 0
         for channel_group in self.channels():
             n_tones = channel_group.attrs['n_tones']
-            f[i_tone:i_tone+n_tones] += channel_group.attrs['lo_freq']
+            f[i_tone:i_tone+n_tones] += channel_group.attrs['f_center']
             i_tone += n_tones
         return f
 
@@ -847,7 +847,7 @@ class ConsolidatedData(NewDataStorage):
             # Create the HDF5 group for this channel
             this_channel_group = all_channels_group.create_group(get_channel_group_name(i_chan))
             this_channel_group.attrs['tile_name'] = tile_names[i_chan]
-            this_channel_group.attrs['lo_freq'] = raw_data.lo_freq[0]
+            this_channel_group.attrs['f_center'] = raw_data.lo_freq[0]
             this_channel_group.attrs['detector_dx_dy_elevation_angle'] = raw_data.detector_dx_dy_elevation_angle[:]
             this_channel_group.attrs['attenuator_settings'] = raw_data.attenuator_settings[:]
             n_tones = raw_data.n_tones[0]

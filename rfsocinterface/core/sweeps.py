@@ -61,7 +61,7 @@ DEFAULT_NCOLS = 10
 POWER_SWEEP_FRACTIONAL_FREQ_SHIFT = 1e-5
 POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB = 0
 
-NEW_LO_SWEEP_FORMAT_DATE = '20260213'  # For backwards compatibility
+NEW_LO_SWEEP_FORMAT_DATE = '20260612'  # For backwards compatibility
 
 CompositeSweepDataType = TypeVar('CompositeSweepDataType', bound='CompositeSweepData')
 
@@ -399,12 +399,12 @@ class LoSweepData:
                 fh.attrs['date'] = self.date
             if self.hour is not None:
                 fh.attrs['hour'] = self.hour
-            fh.create_dataset('/global_data/lo_sweep', data=self.data, dtype=np.complex128)
-            fh.create_dataset('/global_data/baseband_freqs', data=np.real(self.detector_f - self.f_center), dtype=np.float64)
-            fh.create_dataset('/global_data/chanmask', data=self.chanmask, dtype=np.int8)
-            fh.create_dataset('/global_data/fit_f0', data=self.fit_f0, dtype=np.float64)
-            fh.create_dataset('/global_data/fit_qi', data=self.fit_qi, dtype=np.float64)
-            fh.create_dataset('/global_data/fit_qc', data=self.fit_qc, dtype=np.float64)
+            fh.create_dataset('lo_sweep', data=self.data, dtype=np.complex128)
+            fh.create_dataset('baseband_freqs', data=np.real(self.detector_f - self.f_center), dtype=np.float64)
+            fh.create_dataset('chanmask', data=self.chanmask, dtype=np.int8)
+            fh.create_dataset('fit_f0', data=self.fit_f0, dtype=np.float64)
+            fh.create_dataset('fit_qi', data=self.fit_qi, dtype=np.float64)
+            fh.create_dataset('fit_qc', data=self.fit_qc, dtype=np.float64)
         _logger.info(f'LoSweepData saved to {str(path)}')
     
     @classmethod
@@ -424,12 +424,12 @@ class LoSweepData:
                 f_center = f['global_data/lo_freq'][()]
                 tile_name = ''
             else:
-                tone_list = f['global_data/baseband_freqs'][:]
-                data = f['global_data/lo_sweep'][:]
-                chanmask = f['global_data/chanmask'][:]
-                fit_f0 = f['global_data/fit_f0'][:]
-                fit_qi = f['global_data/fit_qi'][:]
-                fit_qc = f['global_data/fit_qc'][:]
+                tone_list = f['baseband_freqs'][:]
+                data = f['lo_sweep'][:]
+                chanmask = f['chanmask'][:]
+                fit_f0 = f['fit_f0'][:]
+                fit_qi = f['fit_qi'][:]
+                fit_qc = f['fit_qc'][:]
                 f_center = f.attrs['f_center']
                 tile_name = f.attrs['tile_name']
                 
