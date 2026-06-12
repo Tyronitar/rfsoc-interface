@@ -57,12 +57,13 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 include = [
-    "rfsocinterface/*",
-    "tests/*",
+    "pyproject.toml",
+    "rfsocinterface/*.py",
+    "tests/*.py",
 ]
-exclude = [
-    "rfsocinterface/ui/*_ui.py",
-    "rfsocinterface/ui/*_rc.py",
+extend-exclude = [
+    "rfsocinterface/gui/uic/*",
+    "old_kidpy",
 ]
 fix = true
 show-fixes = true
