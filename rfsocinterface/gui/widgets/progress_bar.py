@@ -1,7 +1,8 @@
 from typing import Callable
 
-from PySide6.QtWidgets import QProgressDialog
 from PySide6.QtCore import QCoreApplication, Signal, Slot
+from PySide6.QtWidgets import QProgressDialog
+
 
 class IncrementalProgressDialog(QProgressDialog):
     incremented = Signal()

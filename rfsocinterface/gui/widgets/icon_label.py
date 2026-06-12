@@ -1,6 +1,6 @@
-from PySide6.QtCore import QSize, Qt, Signal, QCoreApplication
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QLineEdit, QSizePolicy
 import qtawesome as qta
+from PySide6.QtCore import QCoreApplication, QSize, Qt
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QWidget
 
 ERROR_ICON_CODE = 'fa5s.exclamation-circle'
 
@@ -34,13 +34,13 @@ class IconLabel(QWidget):
 
         if final_stretch:
             layout.addStretch()
-    
+
     def setIcon(self, icon_id: str, color: str='black'):
         self.icon.setPixmap(qta.icon(icon_id, color=color).pixmap(self.IconSize))
-    
+
     def setColor(self, color:str):
         self.label.setStyleSheet(f'color: {color};')
-    
+
     def setText(self, text: str):
         self.label.setText(text)
 
@@ -64,21 +64,21 @@ def verify_lineEdit(
         for widget in toggle_enabled:
             widget.setEnabled(False)
 
-        # Show the error_label 
+        # Show the error_label
         if error_label is not None:
             toggled = error_label.isHidden()
             error_label.setVisible(True)
         QCoreApplication.processEvents()
         return False, toggled
-    else:  # Value is valid
-        # Remove the error label since the value is valid
-        if error_label is not None:
-            toggled = error_label.isVisible()
-            error_label.setVisible(False)
-        QCoreApplication.processEvents()
+    # Value is valid
+    # Remove the error label since the value is valid
+    if error_label is not None:
+        toggled = error_label.isVisible()
+        error_label.setVisible(False)
+    QCoreApplication.processEvents()
 
-        source.setStyleSheet('')
-        for widget in toggle_enabled:
-            widget.setEnabled(True)
-        
-        return True, toggled
+    source.setStyleSheet('')
+    for widget in toggle_enabled:
+        widget.setEnabled(True)
+
+    return True, toggled

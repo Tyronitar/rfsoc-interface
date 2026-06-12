@@ -1,17 +1,16 @@
 import pdb
 from typing import Literal
 
-from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-from numpy.polynomial import Polynomial
-
+from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import least_squares
 
 from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine
 from rfsocinterface.core.utils import sigma_to_fwhm
+
 
 def gaussian_profile(parameters: npt.NDArray, x_vals: npt.NDArray) -> npt.NDArray:
     a0, a1, mu, sigma = parameters
@@ -62,7 +61,7 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
             relative_pos = np.abs(telescope_pos - telescope_pos[first_good_sample])
             samples_0 = np.argmax((relative_pos >= 0.5) & ~np.isnan(telescope_pos))
             relative_pos = np.abs(telescope_pos - telescope_pos[last_good_sample])
-            samples_1 = np.where(((relative_pos >= 0.5) & ~np.isnan(telescope_pos)))[0][-1]
+            samples_1 = np.where((relative_pos >= 0.5) & ~np.isnan(telescope_pos))[0][-1]
             samples = slice(samples_0, samples_1)
             telescope_pos = telescope_pos[samples]
 
@@ -82,7 +81,7 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
             right_fit_ind = right_fit_ind[np.isclose(right_fit_ind, right_peak_idx, atol=100)]
             left_fit_ind = np.argwhere(np.isclose(telescope_pos, telescope_pos[left_peak_idx], atol=0.5)).flatten()
             left_fit_ind = left_fit_ind[np.isclose(left_fit_ind, left_peak_idx, atol=100)]
-            
+
             # plt.plot(telescope_pos)
 
             amplitude_guess = np.max(data[i_res])
@@ -120,7 +119,7 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
                 good_resonators.append(i_res)
 
                 # TODO: Plotting
-        
+
             # plt.plot(telescope_pos[right_slice], data_segment[right_slice], label='Actual Data')
             # plt.plot(telescope_pos[right_slice], gaussian_profile(res_right.x, telescope_pos[right_slice]), label='Gaussian Fit')
             # plt.legend()
@@ -139,7 +138,7 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
             time = pdata.timestamp[:] - pdata.timestamp[0]
             fig = plt.figure(figsize=(8,5))
             plt.title(f'Detector {i_res} Peak Finding (Polarization {pdata.detector_pol[i_res]})')
-            plt.plot(telescope_pos[:], data_segment, label=f'Full Trace', color='b')
+            plt.plot(telescope_pos[:], data_segment, label='Full Trace', color='b')
             plt.plot(telescope_pos[right_fit_ind], data_segment[right_fit_ind], label=f'Right (${{{primary_direction.upper()}}}_0$ = {right_az_0:.3f})', color='orange')
             right_gaussian = gaussian_profile(res_right.x, telescope_pos[right_fit_ind])
             plt.plot(telescope_pos[right_fit_ind], right_gaussian, linestyle='--', color='orange')
@@ -154,12 +153,12 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
                 / (time[right_peak_idx + 10] - time[right_peak_idx - 10])
             time_delay = (left_az_0 - right_az_0) / scan_rate / 2  # Amount RFSoC is behind the telescope
             plt.plot([], [], label=f'Time Delay = {time_delay:.3f}s')
-            plt.legend(loc="lower center", bbox_transform=fig.transFigure, bbox_to_anchor=(0.5, 0.0), ncol=3)
+            plt.legend(loc='lower center', bbox_transform=fig.transFigure, bbox_to_anchor=(0.5, 0.0), ncol=3)
             handles = plt.gca().get_legend_handles_labels()[0]
             handles.append(right_patch)
             handles.append(left_patch)
             handles = [handles[i] for i in [0, 3, 1, 2, 4, 5]]
-            plt.legend(loc="lower center", bbox_transform=fig.transFigure, bbox_to_anchor=(0.5, 0.0), ncol=3, handles=handles, fontsize=8)
+            plt.legend(loc='lower center', bbox_transform=fig.transFigure, bbox_to_anchor=(0.5, 0.0), ncol=3, handles=handles, fontsize=8)
             plt.xlim(telescope_pos[max(0, right_peak_idx - 50)], telescope_pos[min(right_peak_idx + 50, len(telescope_pos)-1)])
             plt.xlabel(f'{"Azimuth" if primary_direction.lower() == "az" else "Zenith Angle"} (degrees)')
             plt.ylabel(f'Detector Response ({units})')
@@ -189,7 +188,6 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
                 plt.close(fig)
             except Exception as e:
                 print(e)
-                pass
 
         for i_pol in [1, 2]:
             try:
@@ -210,7 +208,6 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
                 plt.close(fig)
             except Exception as e:
                 print(e)
-                pass
 
     return amplitudes, fwhms
 
@@ -237,7 +234,7 @@ class FindFWHM(DataRoutine):
             fit_radius_sec=fit_radius_sec,
             fractional_difference_threshold=fractional_difference_threshold,
         )
-    
+
     def inputs(self, pdata: ProcessedData):
         return ['/vdsets/detector_az', '/vdsets/detector_za', '/vdsets/data_mK', '/global_data/timestamp']
 
@@ -265,7 +262,7 @@ class FindFWHM(DataRoutine):
             # Look at region around the peak, within specified degrees, but make sure the
             # sample index is close (in case the telescope crossed that point multiple times).
             fit_region = np.argwhere(
-                (peak_pos - fit_radius_deg <= telescope_pos) & 
+                (peak_pos - fit_radius_deg <= telescope_pos) &
                 (telescope_pos <= peak_pos + fit_radius_deg) &
                 (peak_idx - fit_radius_samples <= sample_indices) &
                 (sample_indices <= peak_idx + fit_radius_samples)
@@ -284,7 +281,7 @@ class FindFWHM(DataRoutine):
             plt.plot(telescope_pos[fit_region], gaussian_profile(res.x, telescope_pos[fit_region]), label=f'Gaussian Fit (FWHM = {fwhm:.2f}')
             plt.legend()
             plt.show()
-        
+
         amplitudes = np.array(amplitudes)
         fwhms = np.array(fwhms)
         pdb.set_trace()

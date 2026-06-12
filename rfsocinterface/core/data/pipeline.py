@@ -2,16 +2,13 @@ from __future__ import annotations
 
 import logging
 
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
-import pdb
 
-from rfsocinterface.core.data.storage import ProcessedData
-from rfsocinterface.core.data.routines import DataRoutine, ROUTINE_REGISTRY
-from rfsocinterface.core.data.storage import ConsolidatedData
+from rfsocinterface.core.data.routines import ROUTINE_REGISTRY, DataRoutine
+from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
 
 _logger = logging.getLogger(__name__)
 
@@ -19,7 +16,7 @@ class Pipeline:
 
     def __init__(self, routines: list[DataRoutine]=[]):
         self.routines = routines
-    
+
     def from_tod(self, date: str, setnum: int, downsampling_factor: int=1, use_pps: bool=True) -> ProcessedData:
         _logger.info(f'Pipeline: Running pipeline on TOD {date}_set{setnum}')
         cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=downsampling_factor, use_pps=use_pps)
@@ -35,13 +32,13 @@ class Pipeline:
         pd = cd.create_processed_data()
         self.run(pd)
         return pd
-    
+
     def add_routine(self, name: str, **params):
         routine_cls = ROUTINE_REGISTRY[name]
         routine = routine_cls(**params)
         self.routines.append(routine)
         _logger.debug(f'Pipeline: Added routine {name} with params {params} to pipeline.')
-    
+
     def load_config(self, config: dict):
         """Loads a pipeline configuration from a dictionary.
         

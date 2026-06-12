@@ -3,16 +3,12 @@
 import functools
 import time
 from collections.abc import Callable
+from numbers import Number
 from typing import Any
 
-from numbers import Number
-
-import numpy as np
 import h5py
+import numpy as np
 import pytest
-
-
-
 
 __all__ = [
     'assert_equal',

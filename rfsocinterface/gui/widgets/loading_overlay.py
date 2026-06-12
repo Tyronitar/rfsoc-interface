@@ -1,13 +1,16 @@
 """Code for a loading overlay."""
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QPainter, QColor, QFont, QIcon
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter
 from PySide6.QtWidgets import (
-    QWidget,
     QLabel,
     QVBoxLayout,
+    QWidget,
 )
 
-from rfsocinterface.gui.widgets.spinner import StickyWaitingSpinner, STANDARD_STICKY_SPINNER_SETTINGS
+from rfsocinterface.gui.widgets.spinner import (
+    STANDARD_STICKY_SPINNER_SETTINGS,
+    StickyWaitingSpinner,
+)
 from rfsocinterface.gui.widgets.tool_buttons import RoundedToolButton
 
 
@@ -46,17 +49,17 @@ class LoadingOverlay(QWidget):
 
         self.setLayout(layout)
         self.hide()
-    
+
     def text(self) -> str:
         return self.label.text()
-    
+
     def setText(self, text: str):
         self.label.setText(text)
-    
+
     def _update_position(self):
         self.resize(self.parent().size())
         self.move(0, 0)
-    
+
     def cancel(self):
         self._cancelled = True
         self.stop()
@@ -66,12 +69,12 @@ class LoadingOverlay(QWidget):
             self._update_position()
             self.spinner.start()
             self.show()
-    
+
     def stop(self):
         self.spinner.stop()
         self.hide()
         self.finished.emit()
-    
+
     def paintEvent(self, event):
         self._update_position()
         painter = QPainter(self)
@@ -83,13 +86,13 @@ class LoadingOverlay(QWidget):
 
 if __name__ == '__main__':
     from PySide6.QtWidgets import (
-        QWidget,
-        QMainWindow,
         QApplication,
         QGridLayout,
         QLabel,
         QLineEdit,
+        QMainWindow,
         QPushButton,
+        QWidget,
     )
 
     class MainWindow(QMainWindow):
@@ -103,7 +106,7 @@ if __name__ == '__main__':
             self.push_button = QPushButton('Click me to load', parent=self.container)
 
             self.loading_overlay = LoadingOverlay(self)
-            
+
             self.push_button.clicked.connect(self.loading_overlay.start)
 
             layout.addWidget(self.label, 0, 0)
@@ -112,10 +115,10 @@ if __name__ == '__main__':
 
             self.container.setLayout(layout)
             self.setCentralWidget(self.container)
-        
+
         def toggle_loading_screen(self):
             self.loading_overlay.show()
-    
+
     app = QApplication()
     win = MainWindow()
     win.show()

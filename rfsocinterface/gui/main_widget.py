@@ -1,22 +1,20 @@
-from typing import TYPE_CHECKING, Iterator, Callable, Protocol
-from functools import partial
-from multiprocessing import Queue, Pipe
-import time
-from abc import ABC, abstractmethod
 import logging
+import time
+from functools import partial
 from pathlib import Path
+from typing import TYPE_CHECKING, Callable
 
 import numpy.typing as npt
-from PySide6.QtWidgets import QWidget, QMessageBox
-from PySide6.QtCore import Qt, Signal, QCoreApplication
 from kidpy3.data_handler import Rfchan
+from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtWidgets import QMessageBox, QWidget
 
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.core.sweeps import LoSweepData
-from rfsocinterface.core.utils import wait_for_telescope_command, PERMISSIONS_USR_RW, TabName
-from rfsocinterface.core.utils import wait_for_telescope_command, PERMISSIONS_USR_RW, TabName
+from rfsocinterface.core.utils import PERMISSIONS_USR_RW, TabName
 from rfsocinterface.gui.widgets import CheckableComboBox, SaveLocationWidget
+
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
@@ -31,7 +29,7 @@ class MainWidget(QWidget):
         self.rfsocs = rfsocs
         self.settings = settings
         self.gui_state = {}
-        
+
     @property
     def is_active_tab(self) -> bool:
         return self.main_window.get_active_tab() == self.tab_name
@@ -62,7 +60,7 @@ class MainWidget(QWidget):
         To be implemented by subclasses.
         """
         self.settings['app'][self.tab_name] = self.gui_state
-    
+
     def closeEvent(self, event):
         self._save_state()
         return super().closeEvent(event)
@@ -88,16 +86,16 @@ class TelescopeMainWidget(MainWidget):
         if command in self.camera_commands:
             for callback in self.camera_commands[command]:
                 callback(*args)
-    
+
     def get_current_image(self) -> tuple[npt.NDArray, float]:
         return self.main_window.get_current_image()
-    
+
     def connect_to_telescope_command(self, command: str, callback: Callable):
         self.telescope_commands.setdefault(command, []).append(callback)
 
     def disconnect_telescope_command(self, command: str, callback: Callable):
         self.telescope_commands[command].remove(callback)
-    
+
     def send_telescope_command(self, command: str, *data):
         self.main_window.telescope_parent_conn.send([command, *data])
 
@@ -121,7 +119,7 @@ class TelescopeMainWidget(MainWidget):
             time.sleep(1e-3)
             QCoreApplication.processEvents()
         self.disconnect_telescope_command(command, stop_waiting)
-    
+
     def wait_for_camera_command(self, command: str, err_msg: str=''):
         wait = True
         def stop_waiting(*data):
@@ -144,7 +142,7 @@ class DataCollectionMainWidget(MainWidget):
 
     def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent=None):
         super().__init__(main_window, rfsocs, settings, parent=parent)
-    
+
     def setup_data_collection(self) -> tuple[list[RFSOCWrapper], list[int], list[Rfchan], str, int]:
         chans = self.get_selected_channels(self.channel_comboBox)
         rfsocs = []
@@ -160,18 +158,18 @@ class DataCollectionMainWidget(MainWidget):
         date = save_location.stem[:8]
         setnum = int(save_location.stem[-4:])
         return rfsocs, channels, rfchans, date, setnum
-    
+
     def append_global_data(self, rfsocs: list[RFSOCWrapper], channels: list[int], rfchans: list[Rfchan]):
         """Append global data for each selected channel."""
         for rfsoc, channel, rfchan in zip(rfsocs, channels, rfchans):
             rfsoc.append_global_data(channel, rfchan.raw_filename)
-    
+
     def remove_TOD_files(self, rfchans: list[Rfchan]):
         """Remove TOD files in case of collection cancellation after setup."""
         for rfchan in rfchans:
             path = Path(rfchan.raw_filename)
             path.unlink(missing_ok=True)
-    
+
     def check_for_lo_sweep(self, rfsocs: list[RFSOCWrapper], channels: list[int]) -> bool:
         for rfsoc, channel in zip(rfsocs, channels):
             tile_name = rfsoc.get_tile_name(channel)

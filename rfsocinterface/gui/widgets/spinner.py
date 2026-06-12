@@ -1,6 +1,5 @@
 """Loading spinner for indeterminate-length loading screens.
 
-
 Code is from QtWaitingSpinner
 - GitHub: https://github.com/theycallmek/QtWaitingSpinner-PySide6
 - PyPi: https://pypi.org/project/pyqtspinner/
@@ -39,11 +38,11 @@ SOFTWARE.
 import math
 import sys
 from random import random
-import numpy as np
 
+import numpy as np
 from PySide6 import QtGui
+from PySide6.QtCore import QRect, Qt, QTimer
 from PySide6.QtCore import Slot as pyqtSlot
-from PySide6.QtCore import Qt, QRect, QTimer
 from PySide6.QtGui import QColor, QPainter, QPaintEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -58,7 +57,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QWidget,
 )
-
 
 STANDARD_STICKY_SPINNER_SETTINGS = {
     'roundness': 100,
@@ -395,7 +393,7 @@ class StickyWaitingSpinner(WaitingSpinner):
 
         if self._current_counter >= self._number_of_lines:
             self._current_counter = 0
-        
+
         # primary_angle = 360 * self._current_counter / self._number_of_lines
         # self._current_angle = primary_angle
         dist = (self._primary_angle - 270 + 180) % 360 - 180
@@ -407,7 +405,7 @@ class StickyWaitingSpinner(WaitingSpinner):
         current_angle = self._primary_angle
         self._primary_angle += 1 / (1 + alpha * np.exp(-(dist**2 / (2 * sigma**2)))) * normalization_factor
         self._primary_angle %= 360
-        
+
 
         painter.setPen(Qt.PenStyle.NoPen)
         for i in range(self._number_of_lines):
@@ -489,7 +487,7 @@ class SpinnerConfigurator(QWidget):
         groupbox2_layout = QGridLayout()
         button_hbox = QHBoxLayout()
         self.setLayout(grid)
-        self.setWindowTitle("QtWaitingSpinner Configurator")
+        self.setWindowTitle('QtWaitingSpinner Configurator')
         self.setWindowFlags(Qt.WindowType.Dialog)
 
         # SPINNER
@@ -527,36 +525,36 @@ class SpinnerConfigurator(QWidget):
         self.sb_rev_s.setRange(0.1, 9999)
 
         # Buttons
-        self.btn_start = QPushButton("Start")
-        self.btn_stop = QPushButton("Stop")
-        self.btn_pick_color = QPushButton("Pick Color")
-        self.btn_randomize = QPushButton("Randomize")
-        self.btn_show_init = QPushButton("Show init args")
+        self.btn_start = QPushButton('Start')
+        self.btn_stop = QPushButton('Stop')
+        self.btn_pick_color = QPushButton('Pick Color')
+        self.btn_randomize = QPushButton('Randomize')
+        self.btn_show_init = QPushButton('Show init args')
 
         # Connects
         self.sb_roundness.valueChanged.connect(
-            lambda x: setattr(self.spinner, "roundness", x)
+            lambda x: setattr(self.spinner, 'roundness', x)
         )
         self.sb_opacity.valueChanged.connect(
-            lambda x: setattr(self.spinner, "minimum_trail_opacity", x)
+            lambda x: setattr(self.spinner, 'minimum_trail_opacity', x)
         )
         self.sb_fadeperc.valueChanged.connect(
-            lambda x: setattr(self.spinner, "trail_fade_percentage", x)
+            lambda x: setattr(self.spinner, 'trail_fade_percentage', x)
         )
         self.sb_lines.valueChanged.connect(
-            lambda x: setattr(self.spinner, "number_of_lines", x)
+            lambda x: setattr(self.spinner, 'number_of_lines', x)
         )
         self.sb_line_length.valueChanged.connect(
-            lambda x: setattr(self.spinner, "line_length", x)
+            lambda x: setattr(self.spinner, 'line_length', x)
         )
         self.sb_line_width.valueChanged.connect(
-            lambda x: setattr(self.spinner, "line_width", x)
+            lambda x: setattr(self.spinner, 'line_width', x)
         )
         self.sb_inner_radius.valueChanged.connect(
-            lambda x: setattr(self.spinner, "inner_radius", x)
+            lambda x: setattr(self.spinner, 'inner_radius', x)
         )
         self.sb_rev_s.valueChanged.connect(
-            lambda x: setattr(self.spinner, "revolutions_per_second", x)
+            lambda x: setattr(self.spinner, 'revolutions_per_second', x)
         )
 
         self.btn_start.clicked.connect(self.spinner.start)
@@ -569,21 +567,21 @@ class SpinnerConfigurator(QWidget):
         groupbox1_layout.addWidget(self.spinner)
         groupbox1.setLayout(groupbox1_layout)
 
-        groupbox2_layout.addWidget(QLabel("Roundness:"), *(1, 1))
+        groupbox2_layout.addWidget(QLabel('Roundness:'), *(1, 1))
         groupbox2_layout.addWidget(self.sb_roundness, *(1, 2))
-        groupbox2_layout.addWidget(QLabel("Opacity:"), *(2, 1))
+        groupbox2_layout.addWidget(QLabel('Opacity:'), *(2, 1))
         groupbox2_layout.addWidget(self.sb_opacity, *(2, 2))
-        groupbox2_layout.addWidget(QLabel("Fade Perc:"), *(3, 1))
+        groupbox2_layout.addWidget(QLabel('Fade Perc:'), *(3, 1))
         groupbox2_layout.addWidget(self.sb_fadeperc, *(3, 2))
-        groupbox2_layout.addWidget(QLabel("Lines:"), *(4, 1))
+        groupbox2_layout.addWidget(QLabel('Lines:'), *(4, 1))
         groupbox2_layout.addWidget(self.sb_lines, *(4, 2))
-        groupbox2_layout.addWidget(QLabel("Line Length:"), *(5, 1))
+        groupbox2_layout.addWidget(QLabel('Line Length:'), *(5, 1))
         groupbox2_layout.addWidget(self.sb_line_length, *(5, 2))
-        groupbox2_layout.addWidget(QLabel("Line Width:"), *(6, 1))
+        groupbox2_layout.addWidget(QLabel('Line Width:'), *(6, 1))
         groupbox2_layout.addWidget(self.sb_line_width, *(6, 2))
-        groupbox2_layout.addWidget(QLabel("Inner Radius:"), *(7, 1))
+        groupbox2_layout.addWidget(QLabel('Inner Radius:'), *(7, 1))
         groupbox2_layout.addWidget(self.sb_inner_radius, *(7, 2))
-        groupbox2_layout.addWidget(QLabel("Rev/s:"), *(8, 1))
+        groupbox2_layout.addWidget(QLabel('Rev/s:'), *(8, 1))
         groupbox2_layout.addWidget(self.sb_rev_s, *(8, 2))
 
         groupbox2.setLayout(groupbox2_layout)
@@ -601,7 +599,7 @@ class SpinnerConfigurator(QWidget):
         self.spinner.start()
         self.show()
 
-    @pyqtSlot(name="randomize")
+    @pyqtSlot(name='randomize')
     def _randomize(self) -> None:
         self.sb_roundness.setValue(random() * 1000)
         self.sb_opacity.setValue(random() * 50)
@@ -612,31 +610,31 @@ class SpinnerConfigurator(QWidget):
         self.sb_inner_radius.setValue(math.floor(random() * 30))
         self.sb_rev_s.setValue(random())
 
-    @pyqtSlot(name="show_color_picker")
+    @pyqtSlot(name='show_color_picker')
     def show_color_picker(self) -> None:
         """Set the color for the spinner."""
         assert self.spinner
         self.spinner.color = QColorDialog.getColor()
 
-    @pyqtSlot(name="show_init_args")
+    @pyqtSlot(name='show_init_args')
     def show_init_args(self) -> None:
         """Display used arguments."""
         assert self.spinner
         text = (
-            f"WaitingSpinner(\n    parent,\n    "
-            f"roundness={self.spinner.roundness},\n    "
-            f"opacity={self.spinner.minimum_trail_opacity},\n    "
-            f"fade={self.spinner.trail_fade_percentage},\n    "
-            f"radius={self.spinner.inner_radius},\n    "
-            f"lines={self.spinner.number_of_lines},\n    "
-            f"line_length={self.spinner.line_length},\n    "
-            f"line_width={self.spinner.line_width},\n    "
-            f"speed={self.spinner.revolutions_per_second},\n    "
-            f"color={self.spinner.color.getRgb()[:3]}\n)\n"
+            f'WaitingSpinner(\n    parent,\n    '
+            f'roundness={self.spinner.roundness},\n    '
+            f'opacity={self.spinner.minimum_trail_opacity},\n    '
+            f'fade={self.spinner.trail_fade_percentage},\n    '
+            f'radius={self.spinner.inner_radius},\n    '
+            f'lines={self.spinner.number_of_lines},\n    '
+            f'line_length={self.spinner.line_length},\n    '
+            f'line_width={self.spinner.line_width},\n    '
+            f'speed={self.spinner.revolutions_per_second},\n    '
+            f'color={self.spinner.color.getRgb()[:3]}\n)\n'
         )
         msg_box = QMessageBox()
         msg_box.setText(text)
-        msg_box.setWindowTitle("Text was copied to clipboard")
+        msg_box.setWindowTitle('Text was copied to clipboard')
         clipboard = QApplication.clipboard()
         clipboard.clear()
         clipboard.setText(text)
@@ -644,7 +642,7 @@ class SpinnerConfigurator(QWidget):
         msg_box.exec_()
 
 def set_palette(my_app):
-    my_app.setStyle("Fusion")
+    my_app.setStyle('Fusion')
     dark_palette = QtGui.QPalette()
     dark_color = QtGui.QColor(45, 45, 45)
     disabled_color = QtGui.QColor(127, 127, 127)
@@ -667,11 +665,11 @@ def set_palette(my_app):
     dark_palette.setColor(QtGui.QPalette.Disabled, QtGui.QPalette.HighlightedText, disabled_color)
     my_app.setPalette(dark_palette)
     my_app.setStyleSheet(
-        "QToolTip { color: #ffffff; background-color: rgb(187, 134, 252); border: 0px solid white; }")
-    
+        'QToolTip { color: #ffffff; background-color: rgb(187, 134, 252); border: 0px solid white; }')
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     set_palette(app)
-    configurator = SpinnerConfigurator(True)  # noqa
+    configurator = SpinnerConfigurator(True)
     sys.exit(app.exec())

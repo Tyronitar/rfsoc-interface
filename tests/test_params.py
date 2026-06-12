@@ -1,11 +1,9 @@
 """Tests for RFSoC parameter files."""
-import pytest
-import h5py
 import numpy as np
+import pytest
 
 from rfsocinterface.core.params import RFSoCParameters
-
-from tests.utils import all_close, assert_close, assert_equal
+from tests.utils import assert_close
 
 
 def test_initialize_params(tmpdir):
@@ -15,7 +13,7 @@ def test_initialize_params(tmpdir):
 
     assert params.tile_name == tile_name
 
-    # Test default values 
+    # Test default values
     assert params.n_tones == n_tones
     assert_close(params.f_center, 4e8)
     assert_close(params.rfin, 0)

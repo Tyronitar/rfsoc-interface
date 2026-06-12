@@ -1,11 +1,10 @@
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal, Slot
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtWidgets import QWidget
 
+from rfsocinterface.core.utils import PERMISSIONS_ALL_FULL, get_filename
 from rfsocinterface.gui.uic.save_location_ui import Ui_SaveLocationWidget
-from rfsocinterface.core.utils import get_filename, PERMISSIONS_ALL_FULL
-from rfsocinterface.gui.widgets.utils import get_lineEdit_text
 
 
 class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
@@ -50,13 +49,13 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
         else:
             save_path = self.get_chosen_save_location()
             self.save_locale_label.setText(f'Saving to "{save_path}"')
-    
+
     @Slot(Qt.CheckState)
     def handle_click_default_box(self, state: Qt.CheckState):
         save_path = self.get_chosen_save_location()
         self.save_locale_label.setText(f'Saving to "{save_path}"')
         self.change_save_location_visibility(state == Qt.CheckState.Unchecked)
-    
+
     @Slot()
     def update_default_save_location(self):
         self._default_path = get_filename(file_type=self.file_type, tile_name='<TILE>').with_suffix('.h5')

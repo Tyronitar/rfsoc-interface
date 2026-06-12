@@ -1,55 +1,43 @@
 from __future__ import annotations
-import logging
-import pdb
+
 import datetime
-from typing import Literal
-
-
-from concurrent.futures import Future
-from typing import Callable, Generic, TypeVar, TYPE_CHECKING
-from multiprocessing import Lock
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
-
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from PySide6.QtWidgets import QProgressDialog
+from typing import TYPE_CHECKING, Callable, Generic, Literal, TypeVar
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-from numpy.polynomial import Polynomial
-from matplotlib.figure import Figure
-from matplotlib.ticker import FuncFormatter
-from matplotlib.gridspec import GridSpec
-from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.lines import Line2D
-from scipy.signal import savgol_filter
-from scipy.optimize import curve_fit
-import h5py
-
-from PySide6.QtWidgets import QApplication
-from rfsocinterface.core.utils import (
-    ensure_path,
-    convert_path,
-    PERMISSIONS_USR_RW,
-    parallel_plot,
-    mHz_axis_formatter,
-    mHz_coordinate_formatter,
-    get_current_LO_sweep_hour_string,
-    get_sweep_filename,
-    get_params_file_template,
-    ON_RESONANCE_COLOR,
-    OFF_RESONANCE_COLOR,
-    BAD_RESONANCE_COLOR,
-    FLAGGED_RESONANCE_COLOR,
-    DEFAULT_DATA_DIRECTORY,
-    get_yymmdd,
-)
-from rfsocinterface.core.pool import QThreadJobPool
-from rfsocinterface.core.params import RFSoCParameters
 from kidpy3 import RawDataFile
-from kidpy3.hardware.Valon5009 import Valon5009, SYNTH_B
 from kidpy3.data_handler import Rfchan
 from kidpy3.measure import ResonatorFinder
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
+from matplotlib.ticker import FuncFormatter
+from numpy.polynomial import Polynomial
+from scipy.optimize import curve_fit
+from scipy.signal import savgol_filter
+
+from rfsocinterface.core.params import RFSoCParameters
+from rfsocinterface.core.utils import (
+    BAD_RESONANCE_COLOR,
+    DEFAULT_DATA_DIRECTORY,
+    FLAGGED_RESONANCE_COLOR,
+    OFF_RESONANCE_COLOR,
+    ON_RESONANCE_COLOR,
+    PERMISSIONS_USR_RW,
+    convert_path,
+    ensure_path,
+    get_current_LO_sweep_hour_string,
+    get_sweep_filename,
+    get_yymmdd,
+    mHz_axis_formatter,
+    mHz_coordinate_formatter,
+    parallel_plot,
+)
 
 if TYPE_CHECKING:
     from rfsocinterface.core.rfsoc import RFSOCWrapper
@@ -178,7 +166,7 @@ class ResonatorData:
                 self.chanmask,
                 self.flagged,
             )
-            return
+            return None
 
         # If axes not provided, create a new figure
         if fig is None:
@@ -254,7 +242,7 @@ class ResonatorData:
     def chanmask(self) -> int:
         """The chanmask value for this resonator"""
         return self.data.chanmask[self.idx]
-    
+
     @chanmask.setter
     def chanmask(self, val: int):
         self.data.chanmask[self.idx] = val
@@ -267,7 +255,7 @@ class ResonatorData:
     @fit_f0.setter
     def fit_f0(self, val: float):
         self.data.fit_f0[self.idx] = val
-    
+
     @property
     def flagged(self) -> bool:
         return np.abs(self.difference) > self.data.diff_to_flag[self.idx]
@@ -335,7 +323,7 @@ class LoSweepData:
         baseband_freqs: npt.NDArray,
         f_center: float,
         sweep_data: npt.NDArray,
-        chanmask: npt.NDArray, 
+        chanmask: npt.NDArray,
         tile_name: str,
         diff_to_flag: float=3e3,
         filename: str=None,
@@ -364,7 +352,7 @@ class LoSweepData:
         self._plotted = False
         self._fit_canceled = False
         self._plot_canceled = False
-    
+
     def set_diff_to_flag(self, val: float=3e3):
         """Set the flagging threshold.
         
@@ -379,7 +367,7 @@ class LoSweepData:
         path = fname.with_suffix('.npy')
         path.touch(PERMISSIONS_USR_RW, exist_ok=True)
         np.save(fname, self.new_baseband_freqs)
-        _logger.debug(f'LoSweepData saved new tone list to {str(path)}')
+        _logger.debug(f'LoSweepData saved new tone list to {path!s}')
 
     def save(self):
         """Save the LO Sweep to the current HDF5 file."""
@@ -405,8 +393,8 @@ class LoSweepData:
             fh.create_dataset('fit_f0', data=self.fit_f0, dtype=np.float64)
             fh.create_dataset('fit_qi', data=self.fit_qi, dtype=np.float64)
             fh.create_dataset('fit_qc', data=self.fit_qc, dtype=np.float64)
-        _logger.info(f'LoSweepData saved to {str(path)}')
-    
+        _logger.info(f'LoSweepData saved to {path!s}')
+
     @classmethod
     @ensure_path(1)
     def load(cls, path: Path) -> LoSweepData:
@@ -414,7 +402,7 @@ class LoSweepData:
         path = path.with_suffix('.h5')
         with h5py.File(path, 'r') as f:
             if datetime.datetime.fromtimestamp(path.stat().st_mtime) < datetime.datetime.strptime(NEW_LO_SWEEP_FORMAT_DATE, '%Y%m%d'):
-                _logger.warning(f'LO sweep file {str(path)} is from before {NEW_LO_SWEEP_FORMAT_DATE}. Attempting to load with backwards compatibility.')
+                _logger.warning(f'LO sweep file {path!s} is from before {NEW_LO_SWEEP_FORMAT_DATE}. Attempting to load with backwards compatibility.')
                 tone_list = f['global_data/baseband_freqs'][:]
                 data = f['global_data/lo_sweep'][:]
                 chanmask = f['global_data/chanmask'][:]
@@ -432,15 +420,15 @@ class LoSweepData:
                 fit_qc = f['fit_qc'][:]
                 f_center = f.attrs['f_center']
                 tile_name = f.attrs['tile_name']
-                
+
                 date = f.attrs['date'] if 'date' in f.attrs else None
                 hour = f.attrs['hour'] if 'hour' in f.attrs else None
 
-        sweep = cls(tone_list, f_center, data, chanmask, tile_name, filename=path, date=date, hour=hour) 
+        sweep = cls(tone_list, f_center, data, chanmask, tile_name, filename=path, date=date, hour=hour)
         sweep.fit_f0 = fit_f0
         sweep.fit_qi = fit_qi
         sweep.fit_qc = fit_qc
-        _logger.debug(f'Loaded LO sweep data from {str(path)}')
+        _logger.debug(f'Loaded LO sweep data from {path!s}')
         return sweep
 
     @property
@@ -462,7 +450,7 @@ class LoSweepData:
     def n_good_tones(self) -> int:
         """The number of good resonators."""
         return np.size(self.onres_ind)
-    
+
     @property
     def n_fits(self) -> int:
         """The number of fits to perform."""
@@ -502,17 +490,17 @@ class LoSweepData:
     def flagged(self) -> npt.NDArray:
         """The indices of the resonators which are flagged."""
         return np.argwhere(np.abs(self.difference) > self.diff_to_flag)
-    
+
     @property
     def new_baseband_freqs(self) -> npt.NDArray:
         """The new base band frequencies, based on the fit"""
         return self.fit_f0 - self.f_center
-    
+
     @property
     def baseband_freqs(self) -> npt.NDArray:
         """The baseband frequencies used during the LO sweep."""
         return self.detector_f - self.f_center
-    
+
     def cancel_fit(self):
         self._fit_canceled = True
 
@@ -541,7 +529,7 @@ class LoSweepData:
                 self.fit_qi[i_res] = 0.0
                 if callback is not None:
                     callback()
-            
+
         self._fitted = True
 
     def plot(self, ncols: int=DEFAULT_NCOLS, callback: Callable | None=None, fig: Figure=None) -> Figure:
@@ -586,8 +574,8 @@ class LoSweepData:
                 callback=callback_wrapper,
             )
         except InterruptedError:
-            return
-        
+            return None
+
         self._plotted = True
         return fig
 
@@ -598,7 +586,7 @@ class LoSweepData:
         ind_val = np.arange(edge_indices[0], edge_indices[1])
         freq_val = self.freq[:, ind_val] - self.detector_f[:, np.newaxis]
 
-        for i_tone in range(0, self.n_tones):
+        for i_tone in range(self.n_tones):
             fit_I = Polynomial.fit(freq_val[i_tone], self.data_I[i_tone, edge_indices[0]:edge_indices[1]], fit_order)
             fit_I_deriv = fit_I.deriv()
             dIQ_df[0, i_tone] = fit_I_deriv(freq_val[i_tone, deriv_length])
@@ -611,13 +599,13 @@ class LoSweepData:
         # Negative because we're rotating the coordinate axes, not the point
         rotation_angle = -np.atan2(dIQ_df[1, :], dIQ_df[0, :])
 
-        # For a fixed readout tone, a positive shift in the resonance freq appears 
+        # For a fixed readout tone, a positive shift in the resonance freq appears
         # as a perceived positive shift in the I/Q data, which thus necessitates the positive sign
         adc_units_to_hz = np.sqrt((dIQ_df[0]) ** 2 + (dIQ_df[1]) ** 2)
         with np.printoptions(threshold=20):
             _logger.debug(f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\tadc_units_to_hz = {adc_units_to_hz}')
         return rotation_angle, adc_units_to_hz
-    
+
     def plot_full_trace(self, fig: Figure=None, callback: Callable=None) -> Figure | None:
         # Only return if we're creating a new figure
         if fig is None:
@@ -635,24 +623,24 @@ class LoSweepData:
 
         for i_tone in range(self.n_tones):
             if self._plot_canceled:
-                return
+                return None
             ax.plot(self.freq[i_tone], self.s21[i_tone], color='blue')
             if callback is not None:
                 callback()
-        
+
         return fig
-    
+
     def reset_stop_signals(self):
         self._fit_canceled = False
         self._fitted = False
         self._plot_canceled = False
         self._plotted = False
-    
+
     def plot_blind_sweep(self, f0: npt.NDArray, fig: Figure=None, callback: Callable=None) -> Figure:
         self.reset_stop_signals()
         self.plot_full_trace(fig=fig, callback=callback)
         if self._plot_canceled:
-            return
+            return None
         ax = fig.axes[0]
         for resonance in f0:
             ax.axvline(resonance, linestyle='-', color='red')
@@ -672,10 +660,10 @@ class LoSweepData:
             ncol=2,
         )
         fig.tight_layout(rect=[0, 0.05, 1, 1])
-        
+
         self._plotted = True
         return fig
-    
+
     def find_resonances(
         self,
         min_resonance_depth_dB: float=0.2,
@@ -693,7 +681,7 @@ class LoSweepData:
             baseline_percentile=baseline_percentile,
         )
         return res_freq , res_depth
-    
+
     def plot_new_resonances(
         self,
         f0: npt.NDArray,
@@ -764,11 +752,11 @@ class LoSweepData:
             if old_params is not None:
                 old_f0 = old_params.detector_f[:]
             self.plot_new_resonances(f0, old_f0, tile_name=tile_name)
-            
+
         with RFSoCParameters.new_file(tile_name, f0.size) as params:
             params.baseband_freqs[:] = f0 - self.f_center
             params.f_center = self.f_center
-    
+
     @ensure_path(1)
     def append_to_TOD(self, file: Path):
         """Append this LO sweep to a TOD file."""
@@ -776,7 +764,7 @@ class LoSweepData:
         rdf.fh.create_dataset('/global_data/lo_sweep', data=self.data)
         rdf.fh.attrs['has_lo_sweep'] = True
         rdf.close()
-    
+
     @classmethod
     def load_most_recent(
         cls,
@@ -865,7 +853,7 @@ class LoSweep:
 
         rfsoc.set_frequency(chan, self.f_center)
         if tone_shift != 0:
-            _logger.debug(f'Tone shift != 0. Computing new tones...')
+            _logger.debug('Tone shift != 0. Computing new tones...')
             self.f_center = rfsoc.get_frequency(chan)  # Hz
             curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
             new_tones = np.ndarray.tolist(
@@ -876,7 +864,7 @@ class LoSweep:
             )
             _logger.debug(f'LoConfigWidget calling `set_tone_list` for RFSoC {rfsoc.name} channel {chan}')
             _logger.info(
-                "Waiting for the RFSOC to finish writing the updated frequency list"
+                'Waiting for the RFSOC to finish writing the updated frequency list'
             )
             rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
 
@@ -894,7 +882,7 @@ class LoSweep:
 
         self._processed = False
         self._canceled = False
-    
+
     @property
     def tile_name(self) -> str:
         return self.rfsoc.get_tile_name(self.chan)
@@ -903,11 +891,11 @@ class LoSweep:
     def n_steps(self) -> int:
         """Number of steps in the LO sweep."""
         return self.flos.size
-    
+
     def cancel(self):
         """Cancel the LO sweep."""
         self._canceled = True
-    
+
     @property
     def data(self) -> LoSweepData:
         if self._data is None:
@@ -915,8 +903,7 @@ class LoSweep:
         return self._data
 
     def _get_data_at(self, lo_freq: float) -> npt.NDArray:
-        """
-        Actually perform an LO Sweep using valon 5009's and save the data
+        """Actually perform an LO Sweep using valon 5009's and save the data
 
         :param loSource:
             Valon 5009 Device Object instance
@@ -1084,7 +1071,7 @@ class CompositeSweep(Generic[CompositeSweepDataType]):
     @property
     def tile_name(self) -> str:
         return self.rfsoc.get_tile_name(self.chan)
-    
+
     @property
     def rfchan(self) -> Rfchan:
         return self.rfsoc.get_channel(self.chan)
@@ -1110,19 +1097,19 @@ class CompositeSweep(Generic[CompositeSweepDataType]):
         self._canceled = True
         for sweep in self._sweeps:
             sweep.cancel()
-    
+
     def _setup_sweeps(self):
         raise NotImplementedError
-    
+
     def _between_sweep_callback(self, i_sweep: int, sweep: LoSweep):
         raise NotImplementedError
-    
+
     def _end_sweeps_callback(self):
         raise NotImplementedError
-    
+
     def save_sweeps(self, data: list[LoSweepData]):
         raise NotImplementedError
-    
+
     def run_sweep(self, callback: Callable | None=None) -> ...:
         data = []
         try:
@@ -1151,7 +1138,7 @@ class CompositeSweep(Generic[CompositeSweepDataType]):
         finally:
             # Make sure the cleanup is always run afterwards
             self._end_sweeps_callback()
-        
+
         self._processed = True
 
 class CompositeSweepData:
@@ -1175,7 +1162,7 @@ class CompositeSweepData:
         self.sweeps = sweeps
         self._fit_f0 = np.zeros(self.n_tones)
 
-        # Signals for fitting and plotting 
+        # Signals for fitting and plotting
         self._fitted = False
         self._plotted = False
         self._fit_canceled = False
@@ -1191,7 +1178,7 @@ class CompositeSweepData:
     def chanmask(self) -> npt.NDArray:
         """The chanmask used during the sweep."""
         return self.sweeps[0].chanmask
-    
+
     @property
     def onres_ind(self) -> npt.NDArray:
         return np.argwhere(self.chanmask == 1).flatten()
@@ -1199,7 +1186,7 @@ class CompositeSweepData:
     @property
     def offres_ind(self) -> npt.NDArray:
         return np.argwhere(self.chanmask == 0).flatten()
-    
+
     @property
     def combined_sweep_array(self) -> npt.NDArray:
         """The LO sweep data from each LO sweep as one array.
@@ -1207,23 +1194,23 @@ class CompositeSweepData:
         Resulting array will have shape (N_sweeps, 2, N_tones, N_samples) 
         """
         return np.stack([sweep.data for sweep in self.sweeps], axis=0)
-    
+
     @property
     def n_tones(self) -> int:
         return self.sweeps[0].n_tones
-    
+
     @property
     def n_sweeps(self) -> int:
         return len(self.sweeps)
-    
+
     @property
     def tile_name(self) -> str:
         return self.sweeps[0].tile_name
-    
+
     @property
     def detector_f(self) -> npt.NDArray:
         return self.bb_freqs + self.f_center
-    
+
     def fit_f0(self, callback: Callable=None):
         """Fit f0 for each sweep in this sweep."""
         with ThreadPoolExecutor() as executor:
@@ -1249,7 +1236,7 @@ class CompositeSweepData:
         for sweep in self.sweeps:
             sweep.cancel_fit()
         self._fit_canceled = True
-    
+
     @property
     def n_plots(self) -> int:
         """The number of plots to generate."""
@@ -1258,13 +1245,13 @@ class CompositeSweepData:
     def plot(self, callback: Callable=None):
         """Plot the results of the sweep."""
         raise NotImplementedError
-    
+
     def cancel_plot(self):
         """Cancel the plotting for each sweep in this sweep."""
         for sweep in self.sweeps:
             sweep.cancel_plot()
         self._plot_canceled = True
-    
+
     def save(self):
         """Save the sweep to the current HDF5 file."""
         if self.filename is None:
@@ -1341,8 +1328,8 @@ class PowerSweepData(CompositeSweepData):
             fh.attrs['rfout'] = self.rfout
             fh.create_dataset('power_levels', data=self.power_levels, dtype=np.float64)
             fh.create_dataset('max_readout_power', data=self.max_readout_power, dtype=np.float64)
-        _logger.info(f'PowerSweepData saved to {str(path)}')
-    
+        _logger.info(f'PowerSweepData saved to {path!s}')
+
     @classmethod
     @ensure_path(1)
     def load(cls, fname: Path) -> PowerSweepData:
@@ -1388,7 +1375,7 @@ class PowerSweepData(CompositeSweepData):
     def n_fits(self) -> int:
         """The number of fits to perform for the power sweep."""
         return super().n_fits + self.onres_ind.size
-    
+
     def fit(self, callback: Callable=None):
         """Fit the power sweep data to determine the optimal readout power for each resonator."""
         _logger.debug('Fitting PowerSweepData...')
@@ -1423,7 +1410,7 @@ class PowerSweepData(CompositeSweepData):
         defaults = []  # resonators that needed to use default values
         for i_onres, i_res in enumerate(self.onres_ind):
             if self._fit_canceled:
-                return
+                return None
 
             # First let's remove f0 values that are invalid at high power
             this_power_level = power_levels[:]
@@ -1431,7 +1418,7 @@ class PowerSweepData(CompositeSweepData):
             median_baseline = np.median(this_df[:int(self.n_sweeps * baseline_percentage)])
             this_df -= median_baseline
             this_deriv = np.diff(this_df)
-            
+
             # Only look at the f0 values at the highest 25% of powers
             bad_power_indices = np.argwhere(this_deriv > 0).flatten()
             valid_bad = np.argwhere(bad_power_indices >= bad_power_cutoff_percentile * self.n_sweeps).flatten()
@@ -1441,9 +1428,9 @@ class PowerSweepData(CompositeSweepData):
                 stop_index = np.min(bad_power_indices)
                 this_power_level = this_power_level[:stop_index]
                 this_df = this_df[:stop_index]
-            
+
             nominal_non_linear_db = np.median(this_power_level)
-            
+
             try:
                 popt, _ = curve_fit(
                     power_sweep_fit_function,
@@ -1457,12 +1444,12 @@ class PowerSweepData(CompositeSweepData):
                 non_linear_slope[i_res] = popt[0]
                 power_level_non_linear[i_res] = popt[1]
                 onres_popt[i_onres] = popt
-            except (RuntimeError, ValueError) as e:
+            except (RuntimeError, ValueError):
                 defaults.append(int(i_res))
                 non_linear_slope[i_res] = POWER_SWEEP_FRACTIONAL_FREQ_SHIFT
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
                 onres_popt[i_onres] = [POWER_SWEEP_FRACTIONAL_FREQ_SHIFT, POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB]
-            
+
             onres_power_levels.append(this_power_level)
             onres_df.append(this_df)
 
@@ -1482,14 +1469,14 @@ class PowerSweepData(CompositeSweepData):
             power_level_non_linear[negative_ind] = med
 
             max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
-        
+
 
         self.max_readout_power = max_readout_power
         self._onres_power_levels = np.array(onres_power_levels, dtype=object)
         self._onres_df = np.array(onres_df, dtype=object)
         self._onres_popt = onres_popt
 
-        _logger.debug(f'Finished finding optimal readout powers.')
+        _logger.debug('Finished finding optimal readout powers.')
         self._fitted = True
         return max_readout_power
 
@@ -1504,9 +1491,9 @@ class PowerSweepData(CompositeSweepData):
     def plot(self, callback: Callable=None):
         """Plot the power sweep data."""
         self.plot_optimal_readout_powers(callback=callback)
-    
+
     def plot_optimal_readout_powers(
-        self, 
+        self,
         pdf_filename: str=None,
         nrows: int=4,
         ncols: int=3,
@@ -1538,11 +1525,11 @@ class PowerSweepData(CompositeSweepData):
                 pdf.savefig(fig)
                 plt.close(fig)
                 pdf.close()
-                _logger.debug(f'Canceled before finishing plotting optimal readut powers.')
+                _logger.debug('Canceled before finishing plotting optimal readut powers.')
                 return
             # Start a new page if needed
             if i_plot >= page_size:
-                # Save the current figure 
+                # Save the current figure
                 fig.legend(
                     custom_lines,
                     custom_labels,
@@ -1558,7 +1545,7 @@ class PowerSweepData(CompositeSweepData):
                 # Start a new figure
                 fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
                 i_plot = 0
-            
+
             this_power_level = self._onres_power_levels[i_onres]
             this_df = self._onres_df[i_onres]
             popt = self._onres_popt[i_onres]
@@ -1576,7 +1563,7 @@ class PowerSweepData(CompositeSweepData):
             if callback is not None:
                 callback()
 
-        # Save the last page 
+        # Save the last page
         fig.legend(
             custom_lines,
             custom_labels,
@@ -1590,7 +1577,7 @@ class PowerSweepData(CompositeSweepData):
         plt.close(fig)
 
         if self._plot_canceled:
-            _logger.debug(f'Canceled before finishing plotting optimal readut powers.')
+            _logger.debug('Canceled before finishing plotting optimal readut powers.')
             pdf.savefig(fig)
             plt.close(fig)
             pdf.close()
@@ -1609,11 +1596,11 @@ class PowerSweepData(CompositeSweepData):
 
         if callback is not None:
             callback()
-        
-        _logger.debug(f'Finished plotting optimal readut powers.')
+
+        _logger.debug('Finished plotting optimal readut powers.')
         self._plotted = True
 
-    
+
     def save_to_params_file(self, target_tile_name: str) -> RFSoCParameters:
         """Save the tone powers to a params file for the specified tile."""
         params = RFSoCParameters.from_tile_name(target_tile_name, 'a')
@@ -1653,7 +1640,7 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
     ):
         """Initialize a PowerSweep
         
-        Arguments: 
+        Arguments:
             power_levels (npt.NDArray): Power at the resonator relative to the nominal
                 rfout and rfin values, in dB.
         """
@@ -1675,7 +1662,7 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
         self.starting_rfout = self.rfsoc.get_rfout(self.chan)
 
         self._setup_sweeps()
-    
+
     def _setup_sweeps(self):
         self.rfins = []
         self.rfouts = []
@@ -1683,7 +1670,7 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
             this_rfout = self.starting_rfout - power_level
             this_rfin = self.starting_rfin + power_level
             if this_rfin < 0 or this_rfin > 31.75 or this_rfout < 0 or this_rfout > 31.75:
-                raise ValueError(f'All power levels must be in range [0, 31.75].')
+                raise ValueError('All power levels must be in range [0, 31.75].')
             self.rfins.append(this_rfin)
             self.rfouts.append(this_rfout)
             this_savefile = self.savefile.with_stem(f'{self.savefile.stem}_{power_level:+f}dB'.replace('.', '_'))
@@ -1698,17 +1685,17 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
                 hour=self.hour,
             )
             self._sweeps.append(sweep)
-    
+
     def _between_sweep_callback(self, i_sweep: int, sweep: LoSweep):
         # Set the appropriate power level for this sweep
         self.rfsoc.set_rfin(self.chan, self.rfins[i_sweep])
         self.rfsoc.set_rfout(self.chan, self.rfouts[i_sweep])
-    
+
     def _end_sweeps_callback(self):
         # Reset to original power level
         self.rfsoc.set_rfin(self.chan, self.starting_rfin)
         self.rfsoc.set_rfout(self.chan, self.starting_rfout)
-    
+
     def save_sweeps(self, data: list[LoSweepData]):
         self._data = PowerSweepData(
             self.bb_freqs,
@@ -1722,4 +1709,3 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
             hour=self.hour,
         )
         self._data.save_as(self.savefile)
-    

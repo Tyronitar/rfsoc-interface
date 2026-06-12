@@ -1,26 +1,22 @@
-import yaml
+import logging
 from pathlib import Path
-from re import match
-from typing import Any, Callable
+from typing import Callable
+
 import numpy as np
 import numpy.typing as npt
-import logging
+from kidpy3 import RFSOC, capture, capture_packets
+from kidpy3.data_handler import Rfchan
+from kidpy3.hardware import Transceiver320d, Valon5009
+from kidpy3.hardware.Valon5009 import SYNTH_B
+from kidpy3.rfsoc import RedisConnection
 from serial import SerialException
 
-from kidpy3 import RFSOC, capture, capture_packets
-from kidpy3.rfsoc import RedisConnection
-from kidpy3.data_handler import Rfchan
-from kidpy3.hardware import Valon5009, Transceiver320d
-from kidpy3.hardware.Valon5009 import SYNTH_B
-import tables
-
-from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, P, R, PathLike
-from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
-from rfsocinterface.core.utils import convert_path, recursive_update, ensure_path
 from rfsocinterface.core.params import RFSoCParameters
+from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.core.sweeps import LoSweepData
+from rfsocinterface.core.utils import P, PathLike, R, convert_path, ensure_path
 
-_logger = logging.getLogger(__name__)   
+_logger = logging.getLogger(__name__)
 
 PATH_SETTINGS = ['loComport', 'attenComport', 'bitstream']
 
@@ -60,7 +56,7 @@ class RFSOCWrapper:
         # self.atten_transceiver = None
         # self.valon_a = None
         # self.valon_b = None
-    
+
     @property
     def name(self) -> str:
         return self.settings['name']
@@ -68,19 +64,19 @@ class RFSOCWrapper:
     @name.setter
     def name(self, name: str):
         self.settings['name'] = name
-    
+
     def connect_to_comports(self):
         self.connect_to_atten_comport()
         self.connect_to_lo_comport(1)
         self.connect_to_lo_comport(2)
-    
+
     @ensure_path(1)
     def set_atten_comport(self, comport: Path):
         self.settings['attenComport'] = comport
         if self.atten_transceiver is not None:
             self.atten_transceiver.close()
         self.connect_to_atten_comport()
-    
+
     def connect_to_atten_comport(self):
         comport_name = str(self.settings['attenComport'])
         try:
@@ -95,12 +91,12 @@ class RFSOCWrapper:
                 exc_info=True,
             )
             raise FileNotFoundError(msg) from e
-    
+
     @ensure_path(2)
     def set_lo_comport(self, channel: int, comport: Path):
         self.channel_settings(channel)['loComport'] = comport
         self.connect_to_lo_comport(channel)
-    
+
     def connect_to_lo_comport(self, channel: int):
         match channel:
             case 1:
@@ -113,13 +109,13 @@ class RFSOCWrapper:
         try:
             setattr(self, valon, Valon5009(comport_name))
             _logger.debug(f'Succesfully opened serial connection to LO comport {comport_name}')
-        except SerialException as e:
+        except SerialException:
             _logger.critical(
                 f'Unable to open serial connection to LO comport {comport_name}.'
                 'Check the file exists, or check that the connection is secure.',
                 exc_info=True,
             )
-    
+
     def to_kidpy(self) -> dict:
         chan1_settings = self.channel_settings(1)
         chan2_settings = self.channel_settings(2)
@@ -139,7 +135,7 @@ class RFSOCWrapper:
             'port_b': chan2_settings['port'],
         }
         return {'rfsoc_config': kidpy_config}
-    
+
     def update_kidpy_rfsoc(self):
         data = self.to_kidpy()
         self.rfsoc.read_config(data)
@@ -148,7 +144,7 @@ class RFSOCWrapper:
             self.settings['redis']['port'],
         )
         _logger.debug(f'RFSoC {self.name} uccesfully updated kidpy RFSOC object.')
-    
+
     def set_tile_number(self, num: int):
         self.rfsoc.rf1.tile_number = num
         self.rfsoc.rf2.tile_number = num
@@ -156,7 +152,7 @@ class RFSOCWrapper:
     def set_channel_number(self):
         self.rfsoc.rf1.chan_number = 1
         self.rfsoc.rf2.chan_number = 2
-    
+
     def get_last_tones(self) -> tuple[tuple[npt.NDArray, npt.NDArray], tuple[npt.NDArray, npt.NDArray]]:
         res = [None, None]
         for chan in [1, 2]:
@@ -172,7 +168,7 @@ class RFSOCWrapper:
                 chanmask = np.ones(ntones, dtype=int)
                 rfchan.chanmask = chanmask
         return tuple(res)
-    
+
     def get_last_lo_freqs(self) -> tuple[float, float]:
         res = [0.0, 0.0]
         for chan in [1, 2]:
@@ -188,7 +184,7 @@ class RFSOCWrapper:
         rfsoc.rf1.tile_number = self.settings.get('tileNumber', 2)
         rfsoc.rf2.tile_number = self.settings.get('tileNumber', 2)
         self.rfsoc = rfsoc
-        
+
         # Update metadata stored in the Rfchan objects
         self.get_last_tones()
         self.get_last_lo_freqs()
@@ -199,7 +195,7 @@ class RFSOCWrapper:
         if 'paramsFile' in self.channel_settings(2):
             self.load_params_file(2, self.channel_settings(2)['paramsFile'], upload_tones=False, set_freq=False, set_atten=False)
         _logger.debug(f'RFSoC {self.name} initialized kidpy RFSOC object')
-    
+
     def channel_settings(self, channel: int) -> dict:
         """Get the settings for the specified channel."""
         if channel not in [1, 2]:
@@ -219,7 +215,7 @@ class RFSOCWrapper:
             path = ''
         self.rfsoc.upload_bitstream(str(path))
         _logger.info(f'RFSoC {self.name} succesfully uploaded bitstream "{path}"')
-    
+
     def set_frequency(self, channel: int, freq: float):
         """Set the frequency of the specified channel in Hz."""
         valon = self.get_valon(channel)
@@ -232,17 +228,17 @@ class RFSOCWrapper:
         """Get the current frequency of the specified channel in Hz."""
         valon = self.get_valon(channel)
         freq = valon.get_frequency(SYNTH_B) * 1e6
-        self.get_channel(channel).lo_freq = freq 
+        self.get_channel(channel).lo_freq = freq
         self.channel_settings(channel)['dsp']['loFreq'] = freq
         _logger.info(f'RFSoC {self.name} got last LO frequency for channel {channel}: {freq * 1e-6:.3f} MHz')
         return freq
-    
+
     def get_tone_list(self, chan: int) -> tuple[npt.NDArray, npt.NDArray]:
         res = self.rfsoc.get_tone_list(chan)
         with np.printoptions(threshold=20):
             _logger.debug(f'RFSoC {self.name} got last tones for channel {chan}: {res[0]} with powers {res[1]}')
         return res
-    
+
     def set_tone_list(self, chan: int, tonelist: npt.ArrayLike=[], amplitudes: npt.ArrayLike=[]):
         self.rfsoc.set_tone_list(chan=chan, tonelist=tonelist, amplitudes=amplitudes)
         rfchan = self.get_channel(chan)
@@ -251,7 +247,7 @@ class RFSOCWrapper:
         rfchan.n_tones = np.size(tonelist)
         with np.printoptions(threshold=20):
             _logger.debug(f'RFSoC {self.name} sucessfully set tone list for channel {chan}: {tonelist} with powers {amplitudes}')
-    
+
     def get_last_attenuations(self) -> tuple[tuple[float, float], tuple[float, float]]:
         """Get the last attenuations for all addresses from the settings file.
         
@@ -268,7 +264,7 @@ class RFSOCWrapper:
             _logger.info(f'RFSoC {self.name} got last value for "{attenuator}" for channel {channel}: {value:.2f} dB')
             self.set_atten(addr, value)
         return tuple(tuple(r) for r in res)
-    
+
     def get_atten(self, addr: int) -> float:
         """Get the attenuation for the specified address."""
         channel = 1 if addr < 3 else 2
@@ -286,7 +282,7 @@ class RFSOCWrapper:
         addr = 1 if channel == 1 else 3
         rfchan = self.get_channel(channel)
         return rfchan.attenuator_settings[1]
-    
+
     def set_atten(self, addr: int, value: float) -> bool:
         """Set the attenuation for the specified address."""
         attenuator = 'rfin' if addr % 2 == 0 else 'rfout'
@@ -295,7 +291,7 @@ class RFSOCWrapper:
         success = response[0]
         msg = response[1]
         if success:
-            
+
             # Update the RFChan object
             rfchan = self.get_channel(channel)
             old_atten = list(rfchan.attenuator_settings)
@@ -308,7 +304,7 @@ class RFSOCWrapper:
         else:
             _logger.error(f'RFSoC {self.name} failed to set attenuation for {attenuator} (address={addr}). Message: "{msg}"')
         return success
-    
+
     def set_rfin(self, channel: int, value: float) -> bool:
         addr = 2 if channel == 1 else 4
         return self.set_atten(addr, value)
@@ -323,13 +319,13 @@ class RFSOCWrapper:
             _logger.info(f'RFSoC {self.name} succesfully configured hardware')
         else:
             _logger.error(f'RFSoC {self.name} failed to configure hardware')
-    
+
     @ensure_path(1)
     def set_chanmask_file(self, fname: Path, chan: int):
         self.channel_settings(chan)['chanmask'] = fname
         # chanmask = np.load(fname)
         # self.set_chanmask(chanmask, chan)
-    
+
     def set_chanmask(self, chan: int, chanmask: npt.NDArray):
         self.get_channel(chan).chanmask = chanmask
         with np.printoptions(threshold=20):
@@ -344,7 +340,7 @@ class RFSOCWrapper:
 
     def get_ntones(self, chan: int) -> int:
         return self.get_channel(chan).n_tones
-    
+
     def get_min_resonance_frequency(self, chan: int) -> float:
         return self.channel_settings(chan)['minResonanceFrequency']
 
@@ -369,7 +365,7 @@ class RFSOCWrapper:
     def channel_as_text(self, channel: int) -> str:
         tile_name = self.get_channel(channel).tile_name
         return f'{self.settings["name"]} - {tile_name}'
-    
+
     def get_channel(self, channel: int) -> Rfchan:
         match channel:
             case 1:
@@ -387,24 +383,24 @@ class RFSOCWrapper:
                 return self.valon_b
             case _:
                 raise ValueError(f'Invalid channel {channel}. Must be 1 or 2.')
-    
+
     def get_tile_name(self, channel: int) -> str:
         rfchan = self.get_channel(channel)
         return str(rfchan.tile_name)
-    
+
     def set_tile_name(self, channel: int, tile_name: str):
         rfchan = self.get_channel(channel)
         rfchan.tile_name = tile_name
         self.channel_settings(channel)['tile_name'] = tile_name
         _logger.info(f'RFSoC {self.name} set channel {channel} tile name to {tile_name}')
-    
+
     def get_channel_from_name(self, tile_name: str) -> int:
         """Get the channel number from the tile name."""
         for i in [1, 2]:
             if tile_name == self.get_tile_name(i):
                 return i
         raise SettingsError(f'Could not find channel with tile name {tile_name} in RFSoC {self.name}. Valid names are {[self.get_tile_name(i) for i in [1, 2]]}')
-        
+
     @ensure_path(2)
     def load_params_file(
         self,
@@ -442,7 +438,7 @@ class RFSOCWrapper:
         self.channel_settings(channel)['paramsFile'] = params_filename
 
         _logger.info(f'RFSoC {self.name} loaded parameters from {params_filename} for channel {channel}')
-    
+
     # TODO: Expand this
     def save_changes_to_params_file(self, channel: int):
         """Save the current state of the RFSoC to the parameters file.
@@ -451,7 +447,7 @@ class RFSOCWrapper:
         """
         with RFSoCParameters(self.channel_settings(channel)['paramsFile'], 'a') as params:
             params.chanmask[:] = self.get_chanmask(channel)
-    
+
     @ensure_path(1)
     def setup_capture(self, file: Path, channels: list[int]) -> list[Rfchan]:
         """Setup data capture for the specified channels"""
@@ -461,12 +457,12 @@ class RFSOCWrapper:
             rfchan.raw_filename = str(file)
             rfchans.append(rfchan)
         return rfchans
-    
+
     def capture(self, channels: list[int], file: PathLike, fn: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
         """Capture data from this RFSoC."""
         rfchans = self.setup_capture(file, channels)
         return capture(rfchans, fn, *args, **kwargs)
-    
+
     @ensure_path(2)
     def append_global_data(self, channel: int, file: Path):
         """Append global data and the most recent LO sweep for a tile to a TOD file."""
@@ -477,9 +473,9 @@ class RFSOCWrapper:
         if sweep is not None:
             sweep.append_to_TOD(file)
 
-        _logger.debug(f'Appended global data from tile "{tile_name}" to {str(file)}')
+        _logger.debug(f'Appended global data from tile "{tile_name}" to {file!s}')
 
-    
+
     def capture_packets(self, channel: int, n_packets: int) -> npt.NDArray:
         """Capture the specified number of packets from the specified channel.
         

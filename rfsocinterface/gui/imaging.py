@@ -1,30 +1,37 @@
-import logging
-from typing import TYPE_CHECKING, Callable, Any, Concatenate
-from pathlib import Path
-from threading import Thread, Lock
-from multiprocessing import Pipe
-import h5py
 import copy
+import logging
 import time
+from pathlib import Path
+from threading import Lock
+from typing import TYPE_CHECKING, Any, Callable, Concatenate
 
+import h5py
 import numpy as np
-from PySide6.QtCore import Signal, Slot, QCoreApplication
-from PySide6.QtWidgets import QWidget, QCheckBox, QStackedLayout, QVBoxLayout, QProgressDialog
 from kidpy3 import capture
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QProgressDialog,
+    QStackedLayout,
+    QWidget,
+)
 
-from rfsocinterface.core.data.storage import ProcessedData
-from rfsocinterface.gui.pipeline import PipelineDialog
-from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
-from rfsocinterface.gui.main_widget import TelescopeMainWidget, DataCollectionMainWidget
-from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import PathLike, P, wait_for_telescope_command, PERMISSIONS_USR_RW, TabName, get_filename
-from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
-from rfsocinterface.gui.widgets import FunctionWidget, ArgumentType
 from rfsocinterface.core.camera import MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
 from rfsocinterface.core.data import (
     Pipeline,
-    DataRoutine,
 )
+from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.utils import (
+    PERMISSIONS_USR_RW,
+    P,
+    PathLike,
+    TabName,
+    get_filename,
+)
+from rfsocinterface.gui.main_widget import DataCollectionMainWidget, TelescopeMainWidget
+from rfsocinterface.gui.pipeline import PipelineDialog
+from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
+from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
+from rfsocinterface.gui.widgets import ArgumentType, FunctionWidget
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -46,7 +53,7 @@ class DitherPatternWidget(FunctionWidget):
         super().__init__(fn, args, parent)
         self.command = command
         self.file_func = file_func
-    
+
     def call_function(self):
         values = self.get_inputs()
         file = self.file_func()
@@ -129,7 +136,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.mapping_pushButton.clicked.connect(self.choose_mapping_routines)
         self.choose_pattern(1)
 
-    
+
     def _add_default_routines(self):
         default_routines = self.settings['defaults']['imaging']['mappingRoutines']
         for routine_dict in default_routines:
@@ -145,8 +152,8 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             # self.pipeline_dialog.drag_function_widget.add_item(*base_args)
         self.pipeline_dialog.accept()
         self.pipeline = self.pipeline_dialog.make_pipeline()
-    
-        
+
+
     def run_telescope_scan(self, command: str, *args) -> int:
         pd = QProgressDialog('Running...', 'Cancel and Stop Telescope', 0, 100, parent=self)
         pd.canceled.connect(lambda: self.send_telescope_command('stop_telescope'))
@@ -177,7 +184,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.disconnect_telescope_command(f'{command}_progress', pd.setValue)
         self.disconnect_telescope_command(f'{command}_label', pd.setLabelText)
         pd.close()
-    
+
     def make_map(self):
         print('Generating map...')
         # current_file = self.get_current_file().stem
@@ -185,23 +192,23 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         # setnum = int(current_file[-4:])
         # p = ProcessedData.from_tod(date, setnum)
 
-        # # TODO: Make Qt widget for mapping , so signals can be emitted after completing 
+        # # TODO: Make Qt widget for mapping , so signals can be emitted after completing
         # # each routine. Needed for showing progress
         # mapper = Mapper(self.routines)
         # map_data: MapData = mapper(p)
         # map_data.plot(self.show_checkBox.isChecked())
-    
+
     def update_current_file(self) -> Path:
         f = self.save_location_widget.get_chosen_save_location()
         self._file = f
         return f
-    
+
     def get_current_file(self) -> Path:
         return self._file
-    
+
     def get_azel_file(self) -> Path:
         return Path(str(self._file).replace('TOD', 'AZEL'))
-    
+
     def add_dither_pattern(self, label: str, command: str, args: list[tuple[str, ArgumentType]]):
         pattern = DitherPatternWidget(
             self.run_telescope_scan,
@@ -214,18 +221,18 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.patterns.append(pattern)
         self.dither_comboBox.addItem(label)
         self.stacked_layout.addWidget(pattern)
-    
+
     def choose_pattern(self, index: int):
         self.dither_comboBox.setCurrentIndex(index)
         self.stacked_layout.setCurrentIndex(index)
         self.active_pattern = self.patterns[index]
-    
+
     def choose_mapping_routines(self):
         if self.pipeline_dialog.exec():
             self.pipeline = self.pipeline_dialog.make_pipeline()
             # Get the selected routines, instantiate them, and store in the class
             # TODO: validate the inputs somehow...
-    
+
     def capture_image(self):
         savefile = get_filename(file_type='optcam').with_suffix('.h5')
         savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
@@ -240,7 +247,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         image, _ = self.get_current_image()
         optical_image_array[:] = image
         optcam_file.close()
-    
+
     def start_recording_video(self):
         optcam_savefile = get_filename(file_type='optcam').with_suffix('.h5')
         video_savefile = get_filename(file_type='optcam_video').with_suffix('.mp4')
@@ -264,7 +271,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.send_camera_command('start_recording', str(video_savefile), str(optcam_savefile))
         self.wait_for_camera_command('recording_started')
         _logger.info('Optical video recording started')
-    
+
     def video_loop(self):
         self._recording = True
         while self._recording:
@@ -273,7 +280,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             while time.time() < t0 + (1 / self.optical_frame_rate):
                 time.sleep(1e-3)
         _logger.debug('Video loop thread done')
-    
+
     def stop_recording_video(self):
         self.send_camera_command('stop_recording')
         self.wait_for_camera_command('recording_stopped')
@@ -292,7 +299,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         # _logger.debug('Joining optical video thread...')
         # self.video_thread.join()
         _logger.info('Optical video recording ended')
-    
+
     def append_video_frame(self):
         with self.video_file_lock:
             if self.video_file is not None:
@@ -307,14 +314,14 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
                 self.video_file['optical_video'][:, :, :, -1] = image
                 t1 = time.time()
                 _camera_logger.debug(f'Wrote frame to optcam file in {t1 - t0:.3f} seconds')
-    
+
     def run(self):
         # Update the current save file
         self.update_current_file()
         self.save_location_widget.update_timer.stop()
         rfsocs, channels, rfchans, _, _ = self.setup_data_collection()
         if not self.check_for_lo_sweep(rfsocs, channels):
-            _logger.info(f'Missing 1 or more LO sweeps, cancelling data collection.')
+            _logger.info('Missing 1 or more LO sweeps, cancelling data collection.')
             self.remove_TOD_files(rfchans)
             self.save_location_widget.update_timer.start()
             return

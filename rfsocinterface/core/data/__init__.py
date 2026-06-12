@@ -24,16 +24,15 @@ from rfsocinterface.core.data.routines import (
     register_routine,
 )
 from rfsocinterface.core.data.storage import (
-    NewDataStorage,
     ConsolidatedData,
+    NewDataStorage,
     ProcessedData,
 )
 from rfsocinterface.core.data.utils import (
     AZ_TRIM,
-    ZA_TRIM,
     CALIBRATION_TABLE_DTYPE,
-    DEFAULT_MAP_DPIX,
     DECIMATE_ORDER,
+    DEFAULT_MAP_DPIX,
     N_POLARIZATION,
     OPTCAM_OFFSET_AZ_PIX,
     OPTCAM_OFFSET_ZA_PIX,
@@ -41,10 +40,11 @@ from rfsocinterface.core.data.utils import (
     RFSOC_TIME_OFFSET_AZ,
     RFSOC_TIME_OFFSET_ZA,
     TONES_TABLE_DTYPE,
+    ZA_TRIM,
     flag_outliers,
+    generate_calibrated_data,
     get_channel_group_name,
     get_step_group_name,
-    generate_calibrated_data,
     rotate_basis,
 )
 

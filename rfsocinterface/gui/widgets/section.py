@@ -1,29 +1,26 @@
-'''
-    Elypson/qt-collapsible-section
-    (c) 2016 Michael A. Voelkel - michael.alexander.voelkel@gmail.com
-    This file is part of Elypson/qt-collapsible section.
-    Elypson/qt-collapsible-section is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Lesser General Public License as published by
-    the Free Software Foundation, version 3 of the License, or
-    (at your option) any later version.
-    Elypson/qt-collapsible-section is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Lesser General Public License for more details.
-    You should have received a copy of the GNU General Public License
-    along with Elypson/qt-collapsible-section. If not, see <http:#www.gnu.org/licenses/>.
-'''
+"""Elypson/qt-collapsible-section
+(c) 2016 Michael A. Voelkel - michael.alexander.voelkel@gmail.com
+This file is part of Elypson/qt-collapsible section.
+Elypson/qt-collapsible-section is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, version 3 of the License, or
+(at your option) any later version.
+Elypson/qt-collapsible-section is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Lesser General Public License for more details.
+You should have received a copy of the GNU General Public License
+along with Elypson/qt-collapsible-section. If not, see <http:#www.gnu.org/licenses/>.
+"""
 
 import sys
-import time
 
 import PySide6.QtCore as cr
-from PySide6.QtCore import Qt, QEvent, QChildEvent
 import PySide6.QtWidgets as wd
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QMouseEvent
 
 from rfsocinterface.gui.widgets.utils import layout_widgets
-from rfsocinterface.gui.widgets.utils import get_total_height
 
 TOGGLE_BUTTON_CSS = """
         QToolButton {
@@ -83,9 +80,9 @@ class Section(wd.QWidget):
         self.contentArea.setMinimumHeight(0)
 
         # let the entire widget grow and shrink with its content
-        self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self, b"minimumHeight"))
-        self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self, b"maximumHeight"))
-        self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self.contentArea, b"maximumHeight"))
+        self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self, b'minimumHeight'))
+        self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self, b'maximumHeight'))
+        self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self.contentArea, b'maximumHeight'))
 
         self.mainLayout.setVerticalSpacing(0)
         self.mainLayout.setContentsMargins(0, 0, 0, 0)
@@ -102,7 +99,7 @@ class Section(wd.QWidget):
         self.children_sections = []
         self.children_height = 0
         self.initialized = True
-    
+
     def set_active(self, value: str):
         self.toggleButton.setProperty('active', value)
         self.toggleButton.setStyleSheet(TOGGLE_BUTTON_CSS)
@@ -137,7 +134,7 @@ class Section(wd.QWidget):
 
     def setTitle(self,title):
         self.toggleButton.setText(title)
-    
+
     def setContentLayout(self, contentLayout: wd.QLayout):
         layout = self.contentArea.layout()
         del layout
@@ -150,7 +147,7 @@ class Section(wd.QWidget):
             child.parent_sections.append(self)
             # child.installEventFilter(self)
         self.install_event_filter_recursively(self.layout())
-        
+
         self.collapsedHeight = self.sizeHint().height() - self.contentArea.maximumHeight()
         self.contentHeight = self.contentArea.layout().sizeHint().height()
         self.update_size()
@@ -159,9 +156,9 @@ class Section(wd.QWidget):
         # self.collapsedHeight = self.sizeHint().height() - self.contentArea.maximumHeight()
         # # contentHeight = self.contentArea.maximumHeight()
         # self.contentHeight = contentLayout.sizeHint().height()  + find_section_height(contentLayout)
-    
+
     def update_animation(self):
-        for i in range(0, self.toggleAnimation.animationCount() - 1):
+        for i in range(self.toggleAnimation.animationCount() - 1):
             SectionAnimation = self.toggleAnimation.animationAt(i)
             SectionAnimation.setDuration(self.animationDuration)
             SectionAnimation.setStartValue(self.collapsedHeight)
@@ -170,23 +167,23 @@ class Section(wd.QWidget):
         contentAnimation.setDuration(self.animationDuration)
         contentAnimation.setStartValue(0)
         contentAnimation.setEndValue(self.contentHeight)
-    
+
     def resize_animation(self, duration):
         resize_animation = cr.QParallelAnimationGroup(self)
 
-        section_animation_min = cr.QPropertyAnimation(self, b"minimumHeight")
+        section_animation_min = cr.QPropertyAnimation(self, b'minimumHeight')
         section_animation_min.setDuration(duration)
         section_animation_min.setStartValue(self.height())
         section_animation_min.setEndValue(self.collapsedHeight + self.contentHeight)
-        section_animation = cr.QPropertyAnimation(self, b"maximumHeight")
+        section_animation = cr.QPropertyAnimation(self, b'maximumHeight')
         section_animation.setDuration(duration)
         section_animation.setStartValue(self.height())
         section_animation.setEndValue(self.collapsedHeight + self.contentHeight)
-        content_animation_min = cr.QPropertyAnimation(self.contentArea, b"minimumHeight")
+        content_animation_min = cr.QPropertyAnimation(self.contentArea, b'minimumHeight')
         content_animation_min.setDuration(duration)
         content_animation_min.setStartValue(self.contentArea.height())
         content_animation_min.setEndValue(self.contentHeight)
-        content_animation = cr.QPropertyAnimation(self.contentArea, b"maximumHeight")
+        content_animation = cr.QPropertyAnimation(self.contentArea, b'maximumHeight')
         content_animation.setDuration(duration)
         content_animation.setStartValue(self.contentArea.height())
         content_animation.setEndValue(self.contentHeight)
@@ -200,20 +197,20 @@ class Section(wd.QWidget):
         resize_animation.addAnimation(content_animation)
         # resize_animation.setDirection(direction)
         resize_animation.start()
-    
+
     def set_duration(self, duration: int):
-        for i in range(0, self.toggleAnimation.animationCount()):
+        for i in range(self.toggleAnimation.animationCount()):
             animation = self.toggleAnimation.animationAt(i)
             animation.setDuration(duration)
         self.animationDuration = duration
-    
+
     def update_size(self):
         contentLayout = self.contentArea.layout()
         self.contentHeight -= self.children_height
         self.children_height = self.find_children_height()
         self.contentHeight += self.children_height
         # self.contentHeight = contentLayout.sizeHint().height() + self.find_children_height()
-    
+
     def find_children_height(self) -> int:
         total = 0
         for child in self.children_sections:
@@ -233,7 +230,7 @@ class Section(wd.QWidget):
         self.toggleAnimation.start()
         # time.sleep(0.1)
         self.update_parent_sections(direction)
-    
+
     def update_parent_sections(self, direction):
         for parent in self.parent_sections:
             parent.update_size()
@@ -245,7 +242,7 @@ class Section(wd.QWidget):
             # resize_animation.setEndValue(parent.collapsedHeight + parent.contentHeight)
             # resize_animation.start()
             # parent.toggleAnimation.start()
-        
+
     def collapse(self, recursive: bool=False):
         if recursive:
             for child in self.children_sections:
@@ -253,7 +250,7 @@ class Section(wd.QWidget):
         self.set_duration(0)
         self.toggleButton.setChecked(False)
         self.set_duration(self.animationDuration)
-    
+
     def expand(self, recursive: bool=False):
         if recursive:
             for child in self.children_sections:
@@ -261,8 +258,8 @@ class Section(wd.QWidget):
         self.set_duration(0)
         self.toggleButton.setChecked(True)
         self.set_duration(self.animationDuration)
-        
-    
+
+
     def height_changed(self):
         source = self.sender()
         # self.contentArea.resize(self.contentArea.width(), self.contentArea.minimumSizeHint().height())
@@ -275,7 +272,7 @@ class Section(wd.QWidget):
         self.update_animation()
         self.resize_animation(self.animationDuration)
         self.update_parent_sections(None)
-    
+
     def update_self(self, visible: bool):
         # self.collapsedHeight = self.sizeHint().height() - self.contentArea.maximumHeight()
         source: wd.QWidget = self.sender()
@@ -290,7 +287,7 @@ class Section(wd.QWidget):
         self.update_animation()
         self.resize_animation(self.animationDuration)
         self.update_parent_sections(None)
-        
+
     # def childEvent(self, event: QChildEvent):
     #     if self.initialized:
     #         if event.child().isWidgetType():
@@ -323,7 +320,7 @@ def find_section_height(widget: wd.QWidget) -> int:
 def find_children_sections(widget: wd.QWidget) -> list[Section]:
     children = []
     if widget is None:
-        return children 
+        return children
     if isinstance(widget, Section):
         children.append(widget)
 
@@ -343,11 +340,11 @@ if __name__ == '__main__':
     class Window(wd.QMainWindow):
         def __init__(self, parent=None):
             super().__init__(parent)
-            section = Section("Section", 100, self)
+            section = Section('Section', 100, self)
 
             anyLayout = wd.QVBoxLayout()
-            anyLayout.addWidget(wd.QLabel("Some Text in Section", section))
-            anyLayout.addWidget(wd.QPushButton("Button in Section", section))
+            anyLayout.addWidget(wd.QLabel('Some Text in Section', section))
+            anyLayout.addWidget(wd.QPushButton('Button in Section', section))
 
             section.setContentLayout(anyLayout)
 

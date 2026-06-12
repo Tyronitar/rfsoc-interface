@@ -1,22 +1,38 @@
-from typing import Literal
-import time
 import logging
+import time
 from pathlib import Path
+from typing import Literal
 
+import av
 import h5py
-import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import av
+from matplotlib import animation
 from matplotlib.figure import Figure
 from scipy import signal
 from scipy.spatial.distance import cdist
 
 from rfsocinterface.core.data.routines import DataRoutine, register_routine
 from rfsocinterface.core.data.storage import ProcessedData
-from rfsocinterface.core.data.utils import DEFAULT_MAP_DPIX, N_POLARIZATION, OPTCAM_HEIGHT_PIXELS, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_WIDTH_PIXELS, get_channel_group_name
-from rfsocinterface.core.utils import GAUSSIAN_SIGMA, PERMISSIONS_ALL_FULL, add_colorbar_outside, argclosest, gaussian_filter, PathLike, convert_path, ensure_path
+from rfsocinterface.core.data.utils import (
+    DEFAULT_MAP_DPIX,
+    N_POLARIZATION,
+    OPTCAM_HEIGHT_PIXELS,
+    OPTCAM_OFFSET_AZ_PIX,
+    OPTCAM_OFFSET_ZA_PIX,
+    OPTCAM_PIX_SIZE_DEGREES,
+    OPTCAM_WIDTH_PIXELS,
+    get_channel_group_name,
+)
+from rfsocinterface.core.utils import (
+    GAUSSIAN_SIGMA,
+    PERMISSIONS_ALL_FULL,
+    add_colorbar_outside,
+    argclosest,
+    ensure_path,
+    gaussian_filter,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -114,7 +130,6 @@ def get_map_size(
     beam_map_mode: bool=False,
 ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
     """Determine map size based on detector positions and desired pixel size."""
-
     max_az = np.nanmax(detector_az) - az_trim
     min_az = np.nanmin(detector_az) + az_trim
     max_za = np.nanmax(detector_za) - za_trim
@@ -1079,7 +1094,7 @@ class MakeVideo(DataRoutine):
             pdata['video/hits_map'][:] = hits_map
             pdata['video/sum_map'][:] = sum_map
             with np.errstate(divide='ignore', invalid='ignore'):
-                pdata['video/map_val'] = sum_map / hits_map 
+                pdata['video/map_val'] = sum_map / hits_map
                 total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
             pdata['video/total_map'] = total_map
             pdata['video/netd'][:] = netd

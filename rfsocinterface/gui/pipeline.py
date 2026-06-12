@@ -1,21 +1,17 @@
 from typing import Type
-from itertools import chain
 
-
-from rfsocinterface.gui.uic.pipeline_ui import Ui_PipelineDialog
-from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
-
-
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout
 
-from rfsocinterface.gui.widgets.function import FunctionDragItem
 from rfsocinterface.core.data import (
+    ROUTINE_NAME_MAP,
+    DataRoutine,
     Pipeline,
     ProcessingStage,
-    DataRoutine,
-    ROUTINE_NAME_MAP,
 )
+from rfsocinterface.gui.uic.pipeline_ui import Ui_PipelineDialog
+from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
+from rfsocinterface.gui.widgets.function import FunctionDragItem
 
 
 class RoutineSelectionDialog(QDialog):
@@ -79,18 +75,18 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         self._new_items = [[]] * 4
         self._removed_items = [[]] * 4
         return super().exec()
-    
+
     # @Slot(list, list)
     # def update_order(self, items: list[list[FunctionDragItem]], data: list):
     #     self._current_items = items
     #     print('updated order')
-    
+
     def make_pipeline(self) -> Pipeline:
         new_pipeline = Pipeline()
         for item in self.drag_function_widget.items():
             new_pipeline.add_routine(item.func_widget.call_function())
         return new_pipeline
-    
+
 
     def reject(self):
         # Un-remove any items that were removed
@@ -165,8 +161,8 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
             item.hide()
             # ...but keep track of it in case changes are discarded
             self._removed_items[i_sec].append(item)
-    
-        
+
+
 if __name__ == '__main__':
     from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton
 

@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import glob
+import json
+import logging
+import pdb
+import shutil
 from importlib.metadata import version
 from pathlib import Path
-import logging
-import shutil
 from typing import Iterator, overload
 
-import pdb
-
 import h5py
-import json
-from kidpy3.data_handler import RawDataFile
 import numpy as np
 import numpy.typing as npt
+from kidpy3.data_handler import RawDataFile
 
 from rfsocinterface import __version__ as VERSION
 from rfsocinterface.core.data.utils import (
@@ -28,8 +27,8 @@ from rfsocinterface.core.data.utils import (
     get_detector_positions_no_interp,
     get_step_group_name,
     interpolate_missing_data,
-    interpolate_timestamp_streaming,
     interpolate_telescope_position,
+    interpolate_timestamp_streaming,
     rotate_basis,
 )
 from rfsocinterface.core.sweeps import LoSweepData
@@ -83,12 +82,11 @@ class NewDataStorage:
     def load(cls, *args, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> NewDataStorage:
         if len(args) == 1:
             return cls(args[0], mode=mode)
-        elif len(args) == 2:
+        if len(args) == 2:
             date, setnum = args
             filename = cls.get_template(date, setnum, data_dir=data_dir)
             return cls(filename, mode=mode)
-        else:
-            raise ValueError("Invalid number of arguments")
+        raise ValueError('Invalid number of arguments')
 
     def open(self, mode: str='r'):
         self.file = h5py.File(self.filename, mode=mode)
@@ -96,7 +94,7 @@ class NewDataStorage:
 
     def close(self):
         if self.file is None:
-            raise IOError(f'Attempting to close {self.filename} before opening file.')
+            raise OSError(f'Attempting to close {self.filename} before opening file.')
         self.file.close()
 
     def get(self, name: str) -> H5pyObject:
@@ -177,7 +175,7 @@ class NewDataStorage:
 
     @staticmethod
     def get_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
-        raise NotImplementedError("Must be implemented by subclass")
+        raise NotImplementedError('Must be implemented by subclass')
 
     @property
     def tod_template(self) -> str:
@@ -408,7 +406,7 @@ class ProcessedData(NewDataStorage):
         return np.argwhere(self.get_chanmask(i_chan) == 0).flatten()
 
     #
-    # Useful properties 
+    # Useful properties
     #
     @property
     def n_chan(self) -> int:
@@ -586,7 +584,7 @@ class ProcessedData(NewDataStorage):
         return np.mean(np.abs(z))
 
     #
-    # Calibration information 
+    # Calibration information
     #
     @property
     def calibration_info(self) -> h5py.Dataset:
@@ -662,7 +660,7 @@ class ConsolidatedData(NewDataStorage):
         todlist = glob.glob(todtemplate)
         nchan = len(todlist)
         if nchan == 0:
-            raise FileNotFoundError(f"No TOD files found for {date} set {setnum}")
+            raise FileNotFoundError(f'No TOD files found for {date} set {setnum}')
 
         # Get the n_tones and n_samples from all TOD files to determine array sizes
         sample_counts = []
@@ -897,7 +895,7 @@ class ConsolidatedData(NewDataStorage):
                 compression='lzf',
                 shuffle=True,
             )
-            # Create temporary datasets for the pre-downsampled data 
+            # Create temporary datasets for the pre-downsampled data
             temp_interpolated_samples = time_ordered_data_group.create_dataset(
                 'temp_interpolated_samples',
                 shape=(0,),

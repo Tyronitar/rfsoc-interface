@@ -1,19 +1,17 @@
 from typing import TYPE_CHECKING, Iterator
-from pathlib import Path
-from PySide6.QtCore import Qt, QCoreApplication
-from PySide6.QtGui import QDoubleValidator
-from rfsocinterface.gui.uic.initialization_ui import Ui_InitializationTabWidget
-from PySide6.QtWidgets import QWidget, QFileDialog, QLineEdit
-from PySide6.QtWidgets import (QApplication, QGridLayout, QScrollArea, QSizePolicy,
-    QVBoxLayout, QWidget)
 
-from rfsocinterface.gui.widgets import get_num_value
-from rfsocinterface.gui.widgets.section import Section
-from rfsocinterface.gui.rfsoc_settings import ChannelSettingsWidget, RFSOCSettingsWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QVBoxLayout,
+    QWidget,
+)
+
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.utils import TabName
 from rfsocinterface.gui.main_widget import MainWidget
-from rfsocinterface.core.utils import TabName
+from rfsocinterface.gui.rfsoc_settings import RFSOCSettingsWidget
+from rfsocinterface.gui.uic.initialization_ui import Ui_InitializationTabWidget
+from rfsocinterface.gui.widgets.section import Section
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -36,12 +34,12 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
         self.add_toolButton.clicked.connect(lambda: self.add_section(toggle=True))
         self.delete_toolButton.clicked.connect(self.remove_section)
         main_window.channelNamesUpdated.connect(self.update_channel_names)
-    
+
     def update_channel_names(self):
         """Update the channel names in the sections."""
         for widget in self.rfsoc_widgets:
             widget.update_channel_names()
-    
+
     def add_section(self, rfsoc: RFSOCWrapper, toggle: bool=False):
         # channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)
         section_id = len(self.items) + 1
@@ -65,30 +63,30 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
             section.toggleButton.toggle()
             section.set_duration(100)
         self._enable_delete()
-        
+
         self.set_active_section(section)
         section.clicked.connect(self.section_clicked)
-    
+
     @property
     def sections(self) -> Iterator[Section]:
         for section, _ in self.items:
-            yield section   
-    
+            yield section
+
     @property
     def rfsoc_widgets(self) -> Iterator[RFSOCSettingsWidget]:
         for _, widget in self.items:
             yield widget
-    
+
     def collapse_all(self, recursive: bool=False):
         for section in self.sections:
             section.collapse(recursive=recursive)
-    
+
     def _enable_delete(self):
         if len(self.items) > 1:
             self.delete_toolButton.setEnabled(True)
         else:
             self.delete_toolButton.setEnabled(False)
-    
+
     def set_active_section(self, rfsoc_section: Section):
         if self.active_section is not None:
             self.active_section.set_active('false')

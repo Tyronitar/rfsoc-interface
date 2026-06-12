@@ -1,16 +1,24 @@
-import warnings
-from typing import Callable, Concatenate
-from pathlib import Path
 from enum import Enum
+from typing import Callable, Concatenate
 
 import matplotlib as mpl
+
 mpl.use('QtAgg')
 mpl.rcParams['toolbar'] = 'toolbar2'
 
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+from matplotlib.backend_bases import _Mode
+from matplotlib.backend_tools import (
+    ToolBase,
+    ToolToggleBase,
+)
+from matplotlib.backends.backend_qt import FigureManagerQT, NavigationToolbar2QT
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtGui import QWheelEvent, QIcon, QPixmap, QAction
+from PySide6.QtGui import QIcon, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
@@ -18,18 +26,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt import FigureManagerQT, NavigationToolbar2QT
-from matplotlib.backend_bases import _Mode
-from matplotlib.backend_tools import ToolToggleBase, Cursors, ToolBase, ConfigureSubplotsBase
-from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle
-
+from rfsocinterface.core.utils import (
+    EDITED_RESONANCE_COLOR,
+    SELECTED_RESONANCE_COLOR,
+    P,
+)
 from rfsocinterface.gui.blit_manager import BlitManager
-from rfsocinterface.gui.widgets.utils import layout_widgets
-from rfsocinterface.core.utils import P, EDITED_RESONANCE_COLOR, SELECTED_RESONANCE_COLOR
-from rfsocinterface.gui.uic import icons_rc
 
 
 class EditTool(ToolToggleBase):
@@ -104,7 +106,7 @@ class ScrollableCanvas(QScrollArea):
         self.setLayout(layout)
         self.layout().addWidget(self.canvas)
         self.layout().installEventFilter(self)
-    
+
     @property
     def figure(self) -> Figure:
         return self.canvas.figure
@@ -141,7 +143,7 @@ class ScrollableCanvas(QScrollArea):
     def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
         self.figure.clf()
         plotting_function(*args, fig=self.figure, **kwargs)
-    
+
 class EditMode(str, Enum):
     EDIT = 'edit'
 
@@ -193,7 +195,7 @@ class EditToolBar(NavigationToolbar2QT):
 
         # Insert new group after 'customize'
         toolitems = [*NavigationToolbar2QT.toolitems]
-        i = [name for name, *_ in toolitems].index("Customize") + 1
+        i = [name for name, *_ in toolitems].index('Customize') + 1
         for item in new_group:
             toolitems.insert(i, item)
             i += 1
@@ -212,24 +214,24 @@ class EditToolBar(NavigationToolbar2QT):
             return QIcon(QPixmap(name))
 
         return super()._icon(name)
-    
+
     @property
     def editing(self) -> bool:
         return self.mode == EditMode.EDIT
-    
+
     def set_edit_actions_enabled(self, enabled: bool):
         for action in ['add', 'remove', 'undo', 'redo']:
             if action in self._actions:
                 self._actions[action].setVisible(enabled)
-    
+
     def pan(self, *args):
         super().pan(*args)
         self.set_edit_actions_enabled(False)
-    
+
     def zoom(self, *args):
         super().zoom(*args)
         self.set_edit_actions_enabled(False)
-    
+
     def toggle_edit(self):
         if self.mode in [_Mode.PAN, _Mode.ZOOM]:
             # Need to release the lock in order to draw on the canvas
@@ -242,16 +244,16 @@ class EditToolBar(NavigationToolbar2QT):
             self.mode = EditMode.EDIT
             self.set_edit_actions_enabled(True)
         self._update_buttons_checked()
-    
+
     def add(self):
         self.add_function()
-    
+
     def remove(self):
         self.remove_function()
-    
+
     def undo(self):
         self.undo_function()
-    
+
     def redo(self):
         self.redo_function()
 
@@ -310,7 +312,7 @@ class ToolbarCanvas(QWidget):
         self.setLayout(layout)
         layout.addWidget(self.nav)
         layout.addWidget(self.canvas)
-    
+
     @property
     def editing(self) -> bool:
         return self.nav.editing
@@ -324,7 +326,7 @@ class ToolbarCanvas(QWidget):
         if isinstance(self.canvas, ScrollableCanvas):
             return self.canvas.canvas
         return self.canvas
-        
+
     def update_figure(self):
         """Update the figure of this widget."""
         self.update()
@@ -339,7 +341,7 @@ class ToolbarCanvas(QWidget):
         self.canvas.manager = self.manager
         self.nav = self.manager.toolbar
         layout.replaceWidget(old_nav, self.nav)
-    
+
     def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
         if isinstance(self.canvas, ScrollableCanvas):
             self.canvas.replot_figure(plotting_function, *args, **kwargs)
@@ -365,11 +367,11 @@ class ResonatorCanvas(QWidget):
         self.setLayout(layout)
         layout.addWidget(self.nav)
         layout.addWidget(self.canvas)
-    
+
     @property
     def manager(self) -> FigureManagerQT:
         return self.canvas.manager
-    
+
     @property
     def nav(self) -> NavigationToolbar2QT:
         return self.canvas.nav
@@ -439,7 +441,7 @@ class DiagnosticsCanvas(ScrollableCanvas):
 
     def get_ax_by_index(self, idx: int) -> plt.Axes:
         return self.figure.get_axes()[idx]
-    
+
     def is_edited(self, ax: plt.axes) -> bool:
         return self.figure.get_axes().index(ax) in self.edited_axes
 
@@ -477,7 +479,7 @@ class DiagnosticsCanvas(ScrollableCanvas):
         self.selected_axes = axes
         self.canvas.blit()
         self.canvas.flush_events()
-    
+
     def add_edited_marker(self, ax: plt.Axes):
         """Draw a rectangle around an axes indicating it has been edited."""
         ax.patch.set_linewidth(5)
@@ -487,7 +489,7 @@ class DiagnosticsCanvas(ScrollableCanvas):
             (ax.patch, ax.patch.get_tightbbox()),
             (ax, ax.bbox),
         ])
-    
+
     def set_edited(self, idx: int):
         self.edited_axes.add(idx)
         ax = self.get_ax_by_index(idx)
@@ -496,8 +498,9 @@ class DiagnosticsCanvas(ScrollableCanvas):
 
 
 if __name__ == '__main__':
-    from PySide6.QtWidgets import QApplication, QMainWindow
     import sys
+
+    from PySide6.QtWidgets import QApplication, QMainWindow
 
     app = QApplication(sys.argv)
     fig = plt.figure()

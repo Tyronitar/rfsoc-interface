@@ -1,13 +1,26 @@
 from typing import Any, Callable, Concatenate, overload
 
 import numpy as np
-from PySide6.QtCore import Qt, Slot, Signal
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QFormLayout, QWidget, QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QStackedWidget, QScrollArea, QLabel
+from PySide6.QtWidgets import (
+    QApplication,
+    QFormLayout,
+    QHBoxLayout,
+    QMainWindow,
+    QScrollArea,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
-from rfsocinterface.core.utils import P, R, Q
+from rfsocinterface.core.utils import P, Q, R
+from rfsocinterface.gui.widgets.drag_and_drop import (
+    ClickableDragItem,
+    ClickableDragWidget,
+    ClickableMultiSectionDragWidget,
+)
 from rfsocinterface.gui.widgets.utils import ArgumentType
-from rfsocinterface.gui.widgets.drag_and_drop import ClickableDragWidget, ClickableDragItem, ClickableMultiSectionDragWidget
 
 
 class FunctionWidget(QWidget):
@@ -52,7 +65,7 @@ class FunctionWidget(QWidget):
         if isinstance(arg_types, ArgumentType):
             arg_types = (arg_types,)
         self.args.append((label, arg_types))
-        
+
         new_row = QHBoxLayout()
         for i, arg_type in enumerate(arg_types):
             widget = self.arg_to_widget(label, arg_type, *args, default_val=default_vals[i] if has_default else None, **kwargs)
@@ -61,7 +74,7 @@ class FunctionWidget(QWidget):
             self.form_layout.addRow(label + ':', new_row)
         else:
             self.form_layout.addRow(new_row)
-    
+
     def arg_to_widget(self, label: str, arg_type: ArgumentType, *args: Q.args, default_val=None, **kwargs: Q.kwargs) -> QWidget:
         match arg_type:
             case ArgumentType.BOOL:
@@ -71,7 +84,7 @@ class FunctionWidget(QWidget):
                 return widget
             case ArgumentType.ENUM:
                 # Get options to populate the combo box with
-                options = kwargs.pop('options')  
+                options = kwargs.pop('options')
                 widget = arg_type.widget(*args, parent=self, **kwargs)
                 widget.addItems(options)
                 if default_val is not None:
@@ -154,7 +167,7 @@ class DragFunctionWidget(QWidget):
     @overload
     def add_item(self, item: FunctionDragItem) -> FunctionDragItem:
         pass
-    
+
     @overload
     def add_item(self, label: str, fn: Callable, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]) -> FunctionDragItem:
         pass
@@ -170,27 +183,27 @@ class DragFunctionWidget(QWidget):
         item.clicked.connect(self.display_args)
         self.func_container.addWidget(item.func_widget)
         return item
-    
+
     def clear(self):
         for item in self.drag.items():
             self.drag.remove_item(item)
             self.func_container.removeWidget(item.func_widget)
         self.func_container.setCurrentIndex(0)
-    
+
     def remove_item(self, item: FunctionDragItem):
         self.drag.remove_item(item)
         self.func_container.removeWidget(item.func_widget)
         item.deleteLater()
         self.func_container.setCurrentIndex(0)
-    
+
     def items(self) -> list[FunctionDragItem]:
         return self.drag.items()
-    
+
     @Slot()
     def display_args(self):
         item: FunctionDragItem = self.sender()
         self.func_container.setCurrentIndex(self.func_container.indexOf(item.func_widget))
-    
+
     def mousePressEvent(self, event: QMouseEvent):
         child = self.childAt(event.position())
         # Clicking off of the list items or parameters should deselect
@@ -228,18 +241,18 @@ class MultiSectionDragFunctionWidget(QWidget):
 
         # self.setCentralWidget(drop_container)
         self.setLayout(hlayout)
-    
+
     @property
     def active_item(self) -> tuple[int, FunctionDragItem | None]:
         return self.drag.active_item
 
     def add_section(self, label: str):
         self.drag.add_section(label)
-    
+
     @overload
     def add_item(self, i_section: int, item: FunctionDragItem) -> FunctionDragItem:
         pass
-    
+
     @overload
     def add_item(self, i_section: int, label: str, fn: Callable, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]) -> FunctionDragItem:
         pass
@@ -255,14 +268,14 @@ class MultiSectionDragFunctionWidget(QWidget):
         item.clicked.connect(self.display_args)
         self.func_container.addWidget(item.func_widget)
         return item
-    
+
     def clear(self):
         for i_sec, sec in enumerate(self.drag.sections):
             for item in sec.items():
                 self.drag.remove_item(i_sec, item)
                 self.func_container.removeWidget(item.func_widget)
         self.func_container.setCurrentIndex(0)
-    
+
     def remove_item(self, i_section: int, item: FunctionDragItem):
         self.drag.remove_item(i_section, item)
         self.func_container.removeWidget(item.func_widget)
@@ -271,7 +284,7 @@ class MultiSectionDragFunctionWidget(QWidget):
 
     def items(self) -> list[FunctionDragItem]:
         return self.drag.items()
-    
+
     def items_separated(self) -> list[list[FunctionDragItem]]:
         return self.drag.items_separated()
 
@@ -282,7 +295,7 @@ class MultiSectionDragFunctionWidget(QWidget):
     def display_args(self):
         item: FunctionDragItem = self.sender()
         self.func_container.setCurrentIndex(self.func_container.indexOf(item.func_widget))
-    
+
     def mousePressEvent(self, event: QMouseEvent):
         child = self.childAt(event.position())
         # Clicking off of the list items or parameters should deselect

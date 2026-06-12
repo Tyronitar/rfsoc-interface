@@ -4,8 +4,16 @@ Implementation from https://www.pythonguis.com/faq/pyside6-drag-drop-widgets/
 """
 from itertools import chain
 
-from PySide6.QtCore import QMimeData, Qt, Signal, QPoint, Slot
-from PySide6.QtGui import QDrag, QPixmap, QMouseEvent, QDropEvent, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent
+from PySide6.QtCore import QMimeData, QPoint, Qt, Signal, Slot
+from PySide6.QtGui import (
+    QDrag,
+    QDragEnterEvent,
+    QDragLeaveEvent,
+    QDragMoveEvent,
+    QDropEvent,
+    QMouseEvent,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -15,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rfsocinterface.gui.widgets.divider import VLine, HLine
+from rfsocinterface.gui.widgets.divider import HLine, VLine
 
 DRAG_ITEM_CSS = """
         QLabel {
@@ -48,7 +56,7 @@ class DragTargetIndicator(QLabel):
         super().__init__(parent)
         self.setContentsMargins(25, 5, 25, 5)
         self.setStyleSheet(
-            "QLabel { background-color: #ccc; border: 1px solid black; }"
+            'QLabel { background-color: #ccc; border: 1px solid black; }'
         )
 
 
@@ -57,7 +65,7 @@ class DragItem(QLabel):
         super().__init__(*args, **kwargs)
         self.setContentsMargins(25, 5, 25, 5)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("border: 1px solid black;")
+        self.setStyleSheet('border: 1px solid black;')
         # Store data separately from display label, but use label for default.
         self.data = self.text()
 
@@ -93,7 +101,7 @@ class ClickableDragItem(DragItem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_active('false')
-    
+
     def mousePressEvent(self, event: QMouseEvent):
         self.clicked.emit()
         return super().mousePressEvent(event)
@@ -108,8 +116,7 @@ class ClickableDragItem(DragItem):
 
 
 class DragWidget(QWidget):
-    """
-    Generic list sorting handler.
+    """Generic list sorting handler.
     """
 
     orderChanged = Signal(list, list)
@@ -201,7 +208,7 @@ class DragWidget(QWidget):
     def add_item(self, item: DragItem):
         self.blayout.addWidget(item)
         item.setParent(self)
-    
+
     def remove_item(self, item: DragItem):
         self.blayout.removeWidget(item)
 
@@ -214,7 +221,7 @@ class DragWidget(QWidget):
                 # The target indicator has no data.
                 data.append(w.data)
         return data
-    
+
     def items(self) -> list[DragItem]:
         all_items = [self.blayout.itemAt(i).widget() for i in range(self.blayout.count())]
         # print(all_items)
@@ -247,7 +254,7 @@ class ClickableDragWidget(DragWidget):
         if self.active_item is not None:
             self.active_item.set_active('false')
 
-        self.active_item = item 
+        self.active_item = item
         if self.active_item is not None:
             self.active_item.set_active('true')
         self.activeItemChanged.emit(item)
@@ -274,22 +281,22 @@ class MultiSectionDragWidget(QWidget):
         else:
             self.blayout = QHBoxLayout()
         self.setLayout(self.blayout)
-    
+
     def get_item_data(self) -> list:
         return list(chain(*self._item_data))
 
     def get_item_data_separated(self) -> list[list]:
         return self._item_data
-    
+
     def _update_item_data(self):
         self._item_data = [section.get_item_data() for section in self.sections]
 
     def items(self) -> list[DragItem]:
         return list(chain(*self._items))
-    
+
     def items_separated(self) -> list[list[DragItem]]:
         return self._items
-    
+
     def _update_items(self):
         self._items = [section.items() for section in self.sections]
 
@@ -319,7 +326,7 @@ class MultiSectionDragWidget(QWidget):
         self._items.append([])
         self._item_data.append([])
         return new_section
-    
+
     def add_item(self, i_section: int, item: DragItem):
         self.sections[i_section].add_item(item)
         self._items[i_section].append(item)
@@ -376,7 +383,7 @@ if __name__ == '__main__':
             counter = 0
             for i_sec, section_name in enumerate([f'Section {i + 1}' for i in range(n_sections)]):
                 self.multi_drag.add_section(section_name)
-                for l in ["A", "B", "C", "D"]:
+                for l in ['A', 'B', 'C', 'D']:
                     item = ClickableDragItem(l)
                     item.set_data(counter)  # Store the data.
                     counter += 1

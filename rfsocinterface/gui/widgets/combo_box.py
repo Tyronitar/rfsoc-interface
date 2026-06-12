@@ -1,6 +1,7 @@
-from PySide6.QtWidgets import QCheckBox, QStylePainter, QStyleOptionComboBox, QComboBox, QStyle
-from PySide6.QtGui import QStandardItemModel, QPalette, QFontMetrics
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics, QPalette, QStandardItemModel
+from PySide6.QtWidgets import QComboBox, QStyle, QStyleOptionComboBox, QStylePainter
+
 
 class CheckableComboBox(QComboBox):
     """A combobox that allows for checkable items.
@@ -16,13 +17,13 @@ class CheckableComboBox(QComboBox):
         self.view().doubleClicked.connect(self.handleItemPressed)
         self.setModel(QStandardItemModel(self))
         self._changed = False
-        
+
     def checked_indices(self) -> list[int]:
         return [
-            i for i in range(self.count()) 
+            i for i in range(self.count())
             if self.model().item(i, self.modelColumn()).checkState() == Qt.CheckState.Checked
         ]
-    
+
     def deselect_all(self):
         for i in range(self.count()):
             self.setItemChecked(i, False)
@@ -57,11 +58,11 @@ class CheckableComboBox(QComboBox):
             item.setCheckState(Qt.CheckState.Checked)
         else:
             item.setCheckState(Qt.CheckState.Unchecked)
-    
+
     def set_default_title(self, title: str):
         self._default_title = title
         self.setTitle(title)
-        
+
     def update_checked_items(self):
         checked = self.checked_indices()
         if checked:

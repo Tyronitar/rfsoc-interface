@@ -1,15 +1,12 @@
-import pdb
-from rfsocinterface.core.data.storage import ProcessedData
-from pathlib import Path
-from typing import Literal
+
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-from scipy import signal
-from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.figure import Figure
 
+from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY
 
 
@@ -45,7 +42,7 @@ def plot_complex_datastreams_scatter_plot(
 
             ax.set_xlabel(xlabel, fontsize=16)
             ax.set_ylabel(ylabel, fontsize=16)
-                
+
             ax.tick_params(labelsize=14)
             ax.set_title(f'Resonator {i_res}', fontsize=16)
             figs.append(fig)

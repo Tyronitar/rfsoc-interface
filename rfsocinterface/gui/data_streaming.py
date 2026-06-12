@@ -1,23 +1,18 @@
 import logging
-from typing import TYPE_CHECKING, Iterator
-from PySide6.QtWidgets import QWidget, QCheckBox, QProgressDialog
-from PySide6.QtCore import Qt, Slot, QTimer, QCoreApplication, Signal
-from functools import partial
-from pathlib import Path
 import time
-import glob
+from typing import TYPE_CHECKING
 
 from kidpy3 import capture
-import tables
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QProgressDialog
 
-from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
-from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
-from rfsocinterface.core.utils import get_filename, PERMISSIONS_USR_RW, get_tod_template, TabName
-from rfsocinterface.core.utils import get_filename, PERMISSIONS_USR_RW, get_tod_template, TabName
-from rfsocinterface.core.data.storage import ProcessedData
+from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.utils import (
+    TabName,
+)
 from rfsocinterface.gui.main_widget import DataCollectionMainWidget
-from rfsocinterface.gui.widgets import PathValidator, get_lineEdit_text, get_num_value
-
+from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
+from rfsocinterface.gui.widgets import get_num_value
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -36,10 +31,10 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         self.setup_connections()
         self.update_channel_choices(self.channel_comboBox)
         main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
-    
+
     def setup_connections(self):
         self.start_pushButton.clicked.connect(self.start_streaming)
-    
+
     def wait_for_TOD(self, duration: int):
         """Wait for the TOD file to be created before processing."""
         pd = QProgressDialog('Collecting data...', 'Cancel', 0, duration, parent=self)
@@ -63,16 +58,16 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
             counter += 1
             if counter % 50 == 0:
                 _logger.info(f'Collecting data: {100 * (now - start) / duration:.2f}% complete...')
-        
+
     def process_data(self, date: str, setnum: int):
         pass
         # _logger.info('Processing data')
-    
+
     def start_streaming(self):
         self.save_location_widget.update_timer.stop()
         rfsocs, channels, rfchans, date, setnum = self.setup_data_collection()
         if not self.check_for_lo_sweep(rfsocs, channels):
-            _logger.info(f'Missing 1 or more LO sweeps, cancelling data collection.')
+            _logger.info('Missing 1 or more LO sweeps, cancelling data collection.')
             self.remove_TOD_files(rfchans)
             self.save_location_widget.update_timer.start()
             return
@@ -87,6 +82,6 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         # TODO: Add a check to see if the data collection was canceled
         self.append_global_data(rfsocs, channels, rfchans)
         self.process_data(date, setnum)
-    
+
     def stop_streaming(self):
         raise NotImplementedError('Stop streaming not implemented yet')

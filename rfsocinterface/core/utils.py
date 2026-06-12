@@ -1,46 +1,43 @@
-import logging
-
 import functools
-import pdb
-import os
-from pathlib import Path
-import json
-from enum import EnumMeta, IntEnum, StrEnum
-from dataclasses import dataclass
-from typing import Callable, ParamSpec, TypeVar, Iterable, overload, Any, Literal
-from datetime import datetime
-import logging
-from concurrent.futures import Future, CancelledError, ProcessPoolExecutor
-import itertools
-from itertools import islice
-import copy
-import sys
-from multiprocessing.connection import Connection
-import stat
-import subprocess
-import git
-from typing import Iterator, Sequence
-import warnings
-
 import io
+import itertools
+import json
+import logging
+import os
+import stat
+import sys
+import warnings
+from collections.abc import Mapping
+from concurrent.futures import CancelledError, Future, ProcessPoolExecutor
 from copy import deepcopy
-from PIL import Image
-from functools import partial, reduce
-import operator
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-from matplotlib.figure import Figure
-import h5py
+from dataclasses import dataclass
+from datetime import datetime
+from enum import EnumMeta, IntEnum, StrEnum
+from functools import partial
+from itertools import islice
+from multiprocessing.connection import Connection
+from pathlib import Path
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    Iterator,
+    Literal,
+    ParamSpec,
+    Sequence,
+    TypeVar,
+)
 
+import git
+import h5py
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+from matplotlib.figure import Figure
+from PIL import Image
 from scipy import ndimage
-from scipy.signal import sosfilt, sosfilt_zi, cheby1, group_delay, sos2tf
-from scipy.signal import resample_poly
-import redis
-
-import time
-from collections.abc import Mapping
+from scipy.signal import cheby1, group_delay, resample_poly, sos2tf, sosfilt, sosfilt_zi
 
 DEFAULT_DATA_DIRECTORY = '/data'
 DEFAULT_PARAMS_DIRECTORY = DEFAULT_DATA_DIRECTORY + '/params/'
@@ -192,6 +189,7 @@ def analog_to_digital(a: int, min: float, max: float, bits: int) -> int:
         min (float): The minimum possible digital number
         max (float): The maximum possible digital number
         bits (int): The number of bits for representing the numbers.
+
     Returns:
         (int): The digital equivalent number.
     """
@@ -212,6 +210,7 @@ def digital_to_analog(d: int, min: float, max: float, bits: int) -> int:
         min (float): The minimum possible analog number
         max (float): The maximum possible analog number
         bits (int): The number of bits for representing the numbers.
+
     Returns:
         (int): The analog equivalent number.
     """
@@ -232,7 +231,7 @@ def get_git_hash() -> str:
         repo = git.Repo(search_parent_directories=True)
         return repo.head.object.hexsha
     except Exception:
-        return "unknown"
+        return 'unknown'
 
 
 # From onrkidpy.py
@@ -277,7 +276,7 @@ def get_filename(
                 case 'power':
                     strings = [yymmdd, tile_name, 'Power_Sweep', hour_str]
         case 'tod' | 'azel' | 'optcam' | 'optcam_video':
-            this_dir_files = list(date_folder.glob(f'*TOD_set*'))
+            this_dir_files = list(date_folder.glob('*TOD_set*'))
             if not this_dir_files:
                 setnum = 1001
             else:
@@ -341,8 +340,7 @@ def get_sweep_filename(
     return date_folder / '_'.join(filter(None, strings))
 
 def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
-    """
-    Generate a Cartesian product of input arrays.
+    """Generate a Cartesian product of input arrays.
 
     Code from: https://stackoverflow.com/a/1235363
 
@@ -353,13 +351,13 @@ def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
     out : ndarray
         Array to place the Cartesian product in.
 
-    Returns
+    Returns:
     -------
     out : ndarray
         2-D array of shape (M, len(arrays)) containing Cartesian products
         formed of input arrays.
 
-    Examples
+    Examples:
     --------
     >>> cartesian(([1, 2, 3], [4, 5], [6, 7]))
     array([[1, 4, 6],
@@ -443,7 +441,7 @@ class Result:
 
 
 def batched(iterable, n):
-    "Batch data into lists of length n. The last batch may be shorter."
+    """Batch data into lists of length n. The last batch may be shorter."""
     # batched('ABCDEFG', 3) --> ABC DEF G
     if n < 1:
         raise ValueError('n must be >= 1')
@@ -476,10 +474,10 @@ class CombinedFuture(Future[Iterable[R]]):
 
         for future in self._futures:
             future.add_done_callback(self._future_completed_callback)
-    
+
     def __len__(self) -> int:
         return len(self._futures)
-    
+
     def cancel(self):
         all_cancelled = super().cancel()
         for future in self._futures:
@@ -496,7 +494,7 @@ class CombinedFuture(Future[Iterable[R]]):
         if future.cancelled():
             super().cancel()
             return
-        
+
         res = future.result()
         for r in res:
             if r.status == ResultStatus.SUCCESS:
@@ -530,7 +528,7 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
         _tele_logger.debug(f'{id} got response: "{response}", data: {data}')
         if response.lower() == f'{command}':
             break
-        elif response.lower() == 'err':
+        if response.lower() == 'err':
             raise RuntimeError(f'{err_msg}: {data}')
 
 def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_values=0) -> npt.NDArray:
@@ -603,7 +601,6 @@ def compute_chunk_shape(data_shape: tuple[int, ...], dtype_size: int, target_mb:
         data_shape (tuple[int, ...]): The shape of the data excluding the chunked dimension
     
     """
-
     target_bytes = target_mb * 1024 * 1024
     time_chunk = target_bytes // (np.prod(data_shape) * dtype_size)
     if max_chunk_size is not None:
@@ -656,7 +653,6 @@ def chunked_downsample(
 
 def build_interp_map(x: npt.ArrayLike, x_new: npt.ArrayLike):
     """Compute the indices and wieghts to interpolate x_new to x."""
-
     idx = np.searchsorted(x_new, x) - 1
     idx = np.clip(idx, 0, len(x_new) - 2)
 
@@ -675,8 +671,7 @@ def apply_interp(y: npt.ArrayLike, idx: int, w: float):
 
 
 def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.NDArray, npt.NDArray] | None=None):
-    """
-    Apply a second-order section filter to data in chunks.
+    """Apply a second-order section filter to data in chunks.
     
     Parameters:
     """
@@ -693,20 +688,20 @@ def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.
     if out is not None:
         if isinstance(out, tuple):
             if out[0].shape != x.shape:
-                raise ValueError(f"Output array must have shape {x.shape}, but got {out[0].shape}.")
+                raise ValueError(f'Output array must have shape {x.shape}, but got {out[0].shape}.')
             if return_zi:
                 if len(out) != 2:
-                    raise ValueError("Output array must be a tuple of two arrays if zi is provided.")
+                    raise ValueError('Output array must be a tuple of two arrays if zi is provided.')
                 if out[1].shape != zi_shape:
-                    print(f"zi_shape: {zi_shape}, out[1].shape: {out[1].shape}")
+                    print(f'zi_shape: {zi_shape}, out[1].shape: {out[1].shape}')
                     raise ValueError('Invalid zi output array shape. With axis=%r, an input with '
                                     'shape %r, and an sos array with %d sections, zi '
                                     'must have shape %r, got %r.' %
                                     (axis, x.shape, n_sections, zi_shape, out[1].shape))
         elif return_zi:
-            raise ValueError("Output array must be a tuple of two arrays if zi is provided.")
+            raise ValueError('Output array must be a tuple of two arrays if zi is provided.')
         elif out.shape != x.shape:
-            raise ValueError(f"Output array must have shape {x.shape}, but got {out.shape}.")
+            raise ValueError(f'Output array must have shape {x.shape}, but got {out.shape}.')
         else:  # Provided output array, and no zi provided
             out = (out, np.zeros(zi_shape))
     else:
@@ -735,10 +730,10 @@ def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.
         chunk_slice[axis] = slice(start, stop)
         chunk_slice = tuple(chunk_slice)
         out[0][chunk_slice], out[1][:] = sosfilt(sos, x[chunk_slice], axis=axis, zi=out[1])
-    
+
     if do_return and return_zi:
         return out
-    elif do_return:
+    if do_return:
         return out[0]
     # if zi is not None:
     #     return out, zf
@@ -757,7 +752,7 @@ def get_axis_slice(a, start=None, stop=None, step=None, axis: int | Iterable[int
     axis : int, optional
         The axis of `a` to be sliced.
 
-    Examples
+    Examples:
     --------
     >>> import numpy as np
     >>> from scipy.signal._arraytools import axis_slice
@@ -770,7 +765,7 @@ def get_axis_slice(a, start=None, stop=None, step=None, axis: int | Iterable[int
     array([[4, 5, 6],
            [7, 8, 9]])
 
-    Notes
+    Notes:
     -----
     The keyword arguments start, stop and step are used by calling
     slice(start, stop, step). This implies axis_slice() does not
@@ -808,7 +803,7 @@ def axis_slice(a, start=None, stop=None, step=None, axis=-1, direct_read: bool=F
     axis : int, optional
         The axis of `a` to be sliced.
 
-    Examples
+    Examples:
     --------
     >>> import numpy as np
     >>> from scipy.signal._arraytools import axis_slice
@@ -821,7 +816,7 @@ def axis_slice(a, start=None, stop=None, step=None, axis=-1, direct_read: bool=F
     array([[4, 5, 6],
            [7, 8, 9]])
 
-    Notes
+    Notes:
     -----
     The keyword arguments start, stop and step are used by calling
     slice(start, stop, step). This implies axis_slice() does not
@@ -857,7 +852,7 @@ def axis_index(a: npt.NDArray, indices: npt.ArrayLike | tuple[npt.ArrayLike, ...
     axis : int, optional
         The axis of `a` to be indexed.
 
-    Examples
+    Examples:
     --------
     >>> import numpy as np
     >>> from scipy.signal._arraytools import axis_index
@@ -872,7 +867,7 @@ def axis_index(a: npt.NDArray, indices: npt.ArrayLike | tuple[npt.ArrayLike, ...
     """
     if isinstance(axis, tuple):
         if len(indices) != len(axis):
-            raise ValueError("If axis is a tuple, indices must be a tuple of the same length.")
+            raise ValueError('If axis is a tuple, indices must be a tuple of the same length.')
     a_index = [slice(None)] * a.ndim
     if isinstance(axis, tuple):
         for i, ax in enumerate(axis):
@@ -890,8 +885,7 @@ def axis_reverse(a, axis=-1):
     return axis_slice(a, step=-1, axis=axis)
 
 def odd_ext(x, n, axis=-1):
-    """
-    Odd extension at the boundaries of an array
+    """Odd extension at the boundaries of an array
 
     Generate a new ndarray by making an odd extension of `x` along an axis.
 
@@ -904,7 +898,7 @@ def odd_ext(x, n, axis=-1):
     axis : int, optional
         The axis along which to extend `x`. Default is -1.
 
-    Examples
+    Examples:
     --------
     >>> import numpy as np
     >>> from scipy.signal._arraytools import odd_ext
@@ -928,8 +922,8 @@ def odd_ext(x, n, axis=-1):
     if n < 1:
         return x
     if n > x.shape[axis] - 1:
-        raise ValueError(("The extension length n (%d) is too big. " +
-                         "It must not exceed x.shape[axis]-1, which is %d.")
+        raise ValueError(('The extension length n (%d) is too big. ' +
+                         'It must not exceed x.shape[axis]-1, which is %d.')
                          % (n, x.shape[axis] - 1))
     left_end = axis_slice(x, start=0, stop=1, axis=axis)
     left_ext = axis_slice(x, start=n, stop=0, step=-1, axis=axis)
@@ -943,7 +937,6 @@ def odd_ext(x, n, axis=-1):
 
 def _validate_pad(padlen, x, axis, ntaps):
     """Helper to validate padding for filtfilt"""
-
     if padlen is None:
         # Original padding; preserved for backwards compatibility.
         edge = ntaps * 3
@@ -953,8 +946,8 @@ def _validate_pad(padlen, x, axis, ntaps):
     # x's 'axis' dimension must be bigger than edge.
     if x.shape[axis] <= edge:
         raise ValueError(
-            f"The length of the input vector x must be greater than padlen, "
-            f"which is {edge}."
+            f'The length of the input vector x must be greater than padlen, '
+            f'which is {edge}.'
         )
 
     if edge > 0:
@@ -978,8 +971,8 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
         do_return = True
     elif out.shape != out_shape:
         raise ValueError(
-            f"Output array must have shape {out_shape}, "
-            f"but got {out.shape}."
+            f'Output array must have shape {out_shape}, '
+            f'but got {out.shape}.'
         )
 
     # NOTE: `y` and `ext` need to be stored in temporary arrays on disk.
@@ -990,7 +983,7 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
     ntaps -= min((sos[:, 2] == 0).sum(), (sos[:, 5] == 0).sum())
     edge, ext = _validate_pad(padlen, x, axis,
                               ntaps=ntaps)
-    
+
     y = np.zeros_like(ext)
 
     # Create zi
@@ -1042,8 +1035,7 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
         y = axis_slice(y, start=edge, stop=-edge, axis=axis)
     if do_return:
         return axis_slice(y, step=q, axis=axis)
-    else:
-        out[...] = axis_slice(y, step=q, axis=axis)
+    out[...] = axis_slice(y, step=q, axis=axis)
 
 def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_shape=None):
     N = dset.shape[axis]
@@ -1064,7 +1056,7 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_
 
     # Copmpute values to account for phase lag from the filter
     wc = 0.8 / q
-    sos = cheby1(8, 0.05, wc, output="sos")
+    sos = cheby1(8, 0.05, wc, output='sos')
     b, a = sos2tf(sos)
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', r'^The filter\'s denominator')
@@ -1133,7 +1125,6 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_
 
 def iterate_chunks(x: npt.NDArray | h5py.Dataset, chunk_size: int=None, axis: int=-1) -> Iterator[tuple[int, int, npt.NDArray]]:
     """Return an iterator over the array in chunks."""
-
     n = x.shape[axis]
     if chunk_size is None:
         if isinstance(x, h5py.Dataset):
@@ -1155,7 +1146,6 @@ def linregress_in_chunks(
     
     Assumes x and y are 1D arrays.
     """
-
     sum_x = 0.0
     sum_y = 0.0
     sum_x2 = 0.0
@@ -1230,18 +1220,18 @@ def rasterize(fig):
     buf.seek(0)
     pil_img = deepcopy(Image.open(buf))
     buf.close()
-    
+
     return pil_img
 
 def _parallel_plot_worker(*args, plot_fn):
     fig = plt.figure(figsize=(1,1))
     mpl.font_manager._get_font.cache_clear()  # necessary to reduce text corruption artifacts
     ax = fig.add_subplot(xticks=[], yticks=[])
-    
+
     plot_fn(fig, ax, *args)
     pil_img = rasterize(fig)
     plt.close()
-    
+
     return pil_img
 
 def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, callback: Callable | None=None):
@@ -1252,7 +1242,7 @@ def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, ca
         )
         for ax, rastered in zip(np.ravel(axes), plots):
             im = ax.imshow(rastered)
-            
+
             ax.draw_artist(ax.patch)
             ax.draw_artist(im)
             # ax.set_aspect('equal', adjustable='box')
@@ -1263,7 +1253,7 @@ def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, ca
 
     # fig.subplots_adjust(left=0, right=1, top=1, bottom=0, hspace=0, wspace=0)
     fig.tight_layout()
-    
+
     return fig
 
 
@@ -1279,7 +1269,7 @@ def reset_axes(ax: plt.Axes):
     ax.set_aspect('auto', adjustable='box')
 
     # Autoscaling
-    ax.autoscale(enable=True, axis="both", tight=False)
+    ax.autoscale(enable=True, axis='both', tight=False)
     ax.set_autoscale_on(True)
 
     # Remove fixed limits (important after imshow)
@@ -1291,8 +1281,8 @@ def reset_axes(ax: plt.Axes):
         im.remove()
 
     # Reset scale (in case log/symlog was used)
-    ax.set_xscale("linear")
-    ax.set_yscale("linear")
+    ax.set_xscale('linear')
+    ax.set_yscale('linear')
 
     # Reset margins to Matplotlib defaults
     ax.margins(x=0.05, y=0.05)
@@ -1310,7 +1300,7 @@ def add_colorbar_outside(mappable, ax: plt.Axes, position='right', orientation=N
     bbox = ax.get_position()
     cax = fig.add_axes([bbox.x1 + 0.01, bbox.y0, 0.01, bbox.height])
     fig.colorbar(mappable, cax=cax, location='right', orientation='vertical')
-    
+
 
 def closest(x: npt.NDArray, y: float) -> float:
     """Find the closest value in x to y."""
@@ -1351,7 +1341,7 @@ def dict_del_by_path(d: dict, keys: Sequence[str], val: Any):
 
 
 def dict_get_by_path_with_default(keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
-    return dict_get_by_path(d1, keys, 
+    return dict_get_by_path(d1, keys,
             default=dict_get_by_path(defaults, keys, default=fallback_value))
 
 
@@ -1395,7 +1385,7 @@ def dict_del_by_path(d: dict, keys: Sequence[str], val: Any):
 
 
 def dict_get_by_path_with_default(keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
-    return dict_get_by_path(d1, keys, 
+    return dict_get_by_path(d1, keys,
             default=dict_get_by_path(defaults, keys, default=fallback_value))
 
 
@@ -1418,7 +1408,7 @@ def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any
 if __name__ == '__main__':
     def plot_function(fig, ax, x, y):
         ax.plot(x, y)
-    
+
     grid_shape = (3, 2)
     callback = lambda: print('hi')
     fig, axes = plt.subplots(*grid_shape)
@@ -1435,8 +1425,8 @@ if __name__ == '__main__':
     plt.show()
     exit()
 
-    import timeit, functools
-    from scipy.signal import decimate
+    import functools
+
     n = 100000000
     x = np.random.randn(n)
     q = 10

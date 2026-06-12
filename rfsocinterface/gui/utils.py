@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import QCoreApplication
 
-
-from rfsocinterface.core.utils import GAUSSIAN_SIGMA
-from rfsocinterface.gui.widgets import ArgumentType
-
-
 # Useful Aliases
 tr = QCoreApplication.translate
 

@@ -4,17 +4,26 @@ import logging
 import pdb
 
 import matplotlib.pyplot as plt
+import numpy as np
+import numpy.typing as npt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-import numpy as np
-import numpy.typing as npt
 from scipy.optimize import curve_fit
 
-from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, get_beammap_pdf_template, OFF_RESONANCE_COLOR, BAD_RESONANCE_COLOR, get_detector_pos_pdf_template
-from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine, get_extent
-from rfsocinterface.core.params import copy_and_update_params_file
-
+from rfsocinterface.core.data import (
+    DataRoutine,
+    ProcessedData,
+    get_extent,
+    register_routine,
+)
+from rfsocinterface.core.utils import (
+    BAD_RESONANCE_COLOR,
+    DEFAULT_DATA_DIRECTORY,
+    OFF_RESONANCE_COLOR,
+    get_beammap_pdf_template,
+    get_detector_pos_pdf_template,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -107,10 +116,10 @@ class AnalyzeBeamMap(DataRoutine):
             za_bounds_offset=abs(za_bounds_offset),
             maxfev=maxfev,
         )
-    
+
     def inputs(self, pdata):
         return list(self.requires)
-    
+
     def _initialize_datasets(self, pdata: ProcessedData):
         if pdata.has('beammap', exact_match=True):
             _logger.warning(f'{self.name}: Beam Map group already exists in the file; overwriting datasets.')
@@ -124,7 +133,7 @@ class AnalyzeBeamMap(DataRoutine):
         beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
 
-    
+
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
         self._initialize_datasets(pdata)
 
@@ -179,7 +188,7 @@ class AnalyzeBeamMap(DataRoutine):
                 initial_fwhm,
                 initial_fwhm,
                 np.median(this_val)
-            )  
+            )
             bounds = (
                 # Lower bounds
                 (
@@ -212,7 +221,7 @@ class AnalyzeBeamMap(DataRoutine):
                     bounds=bounds
                 )
             except RuntimeError:
-                _logger.warning(f'{self.name}: Fit for tone {i_res} failed. Setting all values to zero.') 
+                _logger.warning(f'{self.name}: Fit for tone {i_res} failed. Setting all values to zero.')
                 popt = np.zeros(6)
                 pcov = np.zeros((6, 6))
                 continue
@@ -293,10 +302,10 @@ class PlotBeamMap(DataRoutine):
             save_dir=save_dir,
             dpi=dpi,
         )
-    
+
     def inputs(self, pdata: ProcessedData):
         return list(self.requires)
-    
+
     def run(self, pdata: ProcessedData, inputs: list[str]=None):
 
         # Load necessary datasets
@@ -367,7 +376,7 @@ class PlotBeamMap(DataRoutine):
                 cmap='jet',
                 interpolation='bilinear',
             )
-            
+
             # Draw a rectangle around the subplot indicating off-resonance / bad tones
             if chanmask[i_res] != 1:
                 line_color = OFF_RESONANCE_COLOR if chanmask[i_res] == 0 else BAD_RESONANCE_COLOR
@@ -392,7 +401,7 @@ class PlotBeamMap(DataRoutine):
                     ax.set_axis_off()
                 i_subplot = 0
             i_subplot +=1
-        
+
         if i_subplot > 1:
             pdf.savefig(fig)
         plt.close()
@@ -553,8 +562,8 @@ def combine_polarized_beammaps(
     # # Get positions relative to boresight of the telescope
     # delta_dx = az_center - np.median(az_center[onres_ind])
     # delta_dy = za_center - np.median(za_center[onres_ind])
-    
-    # # Save to a new parameters file 
+
+    # # Save to a new parameters file
     # copy_and_update_params_file(
     #     old_tile_name,
     #     new_tile_name,
@@ -582,5 +591,5 @@ def combine_polarized_beammaps(
         # plt.legend()
         pdf.savefig()
         plt.show()
-    
+
     pdb.set_trace()

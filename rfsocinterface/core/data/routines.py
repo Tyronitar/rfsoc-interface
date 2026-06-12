@@ -1,31 +1,34 @@
 """Data proccessing routines."""
 
 from __future__ import annotations
+
+import datetime
+import json
 import logging
-from typing import Literal, TypeVar
+import time
 import warnings
-import functools
+from typing import Literal, TypeVar
 
-import pdb
-
+import matplotlib as mpl
 import numpy as np
 import numpy.typing as npt
 from numpy.polynomial import Polynomial
 from scipy import signal
-import time
-import datetime
-import json
-import matplotlib as mpl
 
-from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
+from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.utils import PathJSONEncoder
+
 mpl.use('QtAgg')
 import matplotlib.pyplot as plt
 
-
-from rfsocinterface.core.data.utils import _logger, generate_calibrated_data, get_channel_group_name, get_step_group_name, rotate_basis, OPTCAM_PIX_SIZE_DEGREES, OPTCAM_OFFSET_AZ_PIX, OPTCAM_OFFSET_ZA_PIX
-from rfsocinterface.core.data.utils import DECIMATE_ORDER
-from rfsocinterface.core.utils import BUTTER_ORDER, axis_index, get_git_hash, axis_slice
+from rfsocinterface.core.data.utils import (
+    _logger,
+    generate_calibrated_data,
+    get_channel_group_name,
+    get_step_group_name,
+    rotate_basis,
+)
+from rfsocinterface.core.utils import BUTTER_ORDER, get_git_hash
 
 __all__ = (
     'ROUTINE_REGISTRY',
@@ -57,7 +60,7 @@ def register_routine(cls: type[T]) -> type[T]:
     """Class decorator for registering a DataRoutine subclass in the ROUTINE_REGISTRY."""
     if not issubclass(cls, DataRoutine):
         _logger.warning(f'Failed to register class {cls.__name__} as a DataRoutine; it does not inherit from DataRoutine.')
-        return
+        return None
     ROUTINE_REGISTRY[cls.name] = cls
     _logger.debug(f'Registered data routine: {cls.__name__}')
     return cls
@@ -65,8 +68,7 @@ def register_routine(cls: type[T]) -> type[T]:
 
 class DataRoutine:
     """Base class for data processing routines.
-    
-    
+
     Attributes:
         name (str): Name of the routine.
         version (str): Version of the routine.
@@ -84,7 +86,7 @@ class DataRoutine:
 
     def __init__(self, **params):
         self.params = params
-    
+
     def validate_inputs(self, pdata: ProcessedData, inputs: list):
         """Validate that the required datasets are present in the ProcessedData.
         
@@ -183,7 +185,7 @@ class DataRoutine:
         for key, item in pdata.file.items():
             if isinstance(item, type(pdata.file['/'])):  # dataset
                 pdata.file.copy(item, g, name=key)
-    
+
     def _get_metadata(
         self,
         timestamp: float,
@@ -240,7 +242,7 @@ class CutoffFilter(DataRoutine):
             btype=btype,
             datasets=datasets,
         )
-    
+
     def inputs(self, pdata: ProcessedData):
         return self.params['datasets']
 
@@ -427,7 +429,7 @@ class RemoveElectronicsNoise(DataRoutine):
             template_selection_indices=template_selection_indices,
             eigenmodes=eigenmodes,
         )
-    
+
     def inputs(self, pdata: ProcessedData):
         # Requires data_IQ, data_gain_phase, data_freq_diss, and data_mK
         # but there's no case where those wouldn't exist, so I'm not sure this matters
@@ -482,7 +484,7 @@ class RemoveElectronicsNoise(DataRoutine):
                 numerator = np.einsum('ijk,ik->ij', clean_gain_phase, templates[:, i_mode])  # 2 x N_tones
                 corr = numerator / denominator[:, i_mode:i_mode+1]  # 2 x N_tones
                 clean_gain_phase[:] = clean_gain_phase - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
-            
+
             # Apply clean data
             data_gain_phase[:] = clean_gain_phase
 
@@ -526,7 +528,7 @@ class CleanTOD(DataRoutine):
         if dataset not in ('data_mK', 'data_freq'):
             raise ValueError(f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or "data_freq".')
         super().__init__(dataset=dataset)
-    
+
     def inputs(self, pdata: ProcessedData):
         dsets = []
         dataset = self.params['dataset']
@@ -561,15 +563,14 @@ class CleanTOD(DataRoutine):
 
 def find_peaks(data: ProcessedData, primary_direction: str='az'):
     import numpy as np
-    from numpy.polynomial import Polynomial
     # find peak going forward / back
     # fit gaussian
     # take position of both peask
     # right is 10-15
     # left is 20-25
     i_res = 241
-    right_indices = np.argwhere(np.logical_and(10 <= data.time, data.time <= 15)).flatten()
-    left_indices = np.argwhere(np.logical_and(20 <= data.time, data.time <= 25)).flatten()
+    right_indices = np.argwhere(np.logical_and(data.time >= 10, data.time <= 15)).flatten()
+    left_indices = np.argwhere(np.logical_and(data.time >= 20, data.time <= 25)).flatten()
     telescope_pos = data.detector_az[i_res] if primary_direction.lower() == 'az' else data.detector_za[i_res]
 
     right_peak_idx = right_indices[np.argmax(data.data_mK[i_res, right_indices])]
@@ -583,7 +584,7 @@ def find_peaks(data: ProcessedData, primary_direction: str='az'):
 
     right_az_0 = (-1 * right_fit.coef[1]) / (2 * right_fit.coef[2])
     left_az_0 = (-1 * left_fit.coef[1]) / (2 * left_fit.coef[2])
-    plt.plot(telescope_pos[:], data.data_mK[i_res, :], label=f'Full Trace')
+    plt.plot(telescope_pos[:], data.data_mK[i_res, :], label='Full Trace')
     plt.plot(telescope_pos[right_slice], data.data_mK[i_res, right_slice], label=f'Right {primary_direction.upper()}_0 = {right_az_0}')
     plt.plot(telescope_pos[left_slice], data.data_mK[i_res, left_slice], label=f'Left {primary_direction.upper()}_0 = {left_az_0}')
     scan_rate = (telescope_pos[right_peak_idx + 10] - telescope_pos[right_peak_idx - 10]) \

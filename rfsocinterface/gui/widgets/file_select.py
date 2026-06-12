@@ -1,8 +1,14 @@
 from pathlib import Path
 
-from PySide6.QtCore import Signal, QCoreApplication, QMetaObject, QSize, Slot
+from PySide6.QtCore import QCoreApplication, QMetaObject, QSize, Signal, Slot
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QWidget, QFileDialog, QHBoxLayout, QPushButton, QToolButton
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QPushButton,
+    QToolButton,
+    QWidget,
+)
 
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 
@@ -23,7 +29,7 @@ class FileSelectWidget(QWidget):
     selectionChanged = Signal()
     textChanged = Signal(str)
     textEdited = Signal(str)
-    
+
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -31,7 +37,7 @@ class FileSelectWidget(QWidget):
 
         self.browse_dialog_options = DEFAULT_BROWSE_OPTIONS
         self.setup_connections()
-    
+
     def setup_connections(self):
         self.pushButton.clicked.connect(self.choose_file)
         self.lineEdit.clicked.connect(self.clicked.emit)
@@ -48,11 +54,11 @@ class FileSelectWidget(QWidget):
         self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
 
         self.lineEdit = ClickableLineEdit(parent=self)
-        self.lineEdit.setObjectName(u"lineEdit")
+        self.lineEdit.setObjectName('lineEdit')
         self.horizontalLayout.addWidget(self.lineEdit)
 
         self.pushButton = QPushButton(parent=self)
-        self.pushButton.setObjectName(u"pushButton")
+        self.pushButton.setObjectName('pushButton')
         self.horizontalLayout.addWidget(self.pushButton)
 
         self.setLayout(self.horizontalLayout)
@@ -70,18 +76,18 @@ class FileSelectWidget(QWidget):
             self.set_dir(str(Path(fname).parent))
 
     def retranslateUi(self):
-        self.setWindowTitle(QCoreApplication.translate("FileSelectWidget", u"FileSelectWidget", None))
-        self.pushButton.setText(QCoreApplication.translate("FileSelectWidget", u"Browse...", None))
+        self.setWindowTitle(QCoreApplication.translate('FileSelectWidget', 'FileSelectWidget', None))
+        self.pushButton.setText(QCoreApplication.translate('FileSelectWidget', 'Browse...', None))
 
     def text(self) -> str:
         return self.lineEdit.text()
-    
+
     def setText(self, text: str):
         self.lineEdit.setText(text)
-    
+
     def clear(self):
         self.lineEdit.clear()
-    
+
     def set_caption(self, caption: str):
         self.browse_dialog_options['caption'] = caption
 
@@ -90,7 +96,7 @@ class FileSelectWidget(QWidget):
 
     def set_dir(self, directory: str):
         self.browse_dialog_options['dir'] = directory
-    
+
     def set_placeholder_text(self, text: str):
         self.lineEdit.setPlaceholderText(text)
 
@@ -107,10 +113,10 @@ class FileUploadWidget(FileSelectWidget):
         super().__init__(parent)
 
         self.toolButton = QToolButton(self)
-        self.toolButton.setObjectName(u"toolButton")
+        self.toolButton.setObjectName('toolButton')
         self.toolButton.setEnabled(False)
         icon = QIcon()
-        icon.addFile(u":/icons/upload.png", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        icon.addFile(':/icons/upload.png', QSize(), QIcon.Mode.Normal, QIcon.State.Off)
         self.toolButton.setIcon(icon)
 
         self.horizontalLayout.addWidget(self.toolButton)
@@ -121,11 +127,10 @@ class FileUploadWidget(FileSelectWidget):
     @Slot()
     def upload(self):
         self.uploaded.emit(self.text())
-    
+
     @Slot(str)
     def enable_upload(self, text: str):
         if text != '':
             self.toolButton.setEnabled(True)
         else:
             self.toolButton.setEnabled(False)
-    

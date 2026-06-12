@@ -2,17 +2,15 @@
 
 import logging
 import logging.config
-import os
-from pathlib import Path
 import sys
-
-
 from argparse import ArgumentParser
+from pathlib import Path
 
-from PySide6.QtWidgets import QApplication, QMainWindow
-from PySide6.QtGui import QScreen
-from rfsocinterface.gui.main_window import MainWindow
 from pdfjs_viewer.stability import configure_global_stability
+from PySide6.QtGui import QScreen
+from PySide6.QtWidgets import QApplication, QMainWindow
+
+from rfsocinterface.gui.main_window import MainWindow
 
 
 def move_to_center(win: QMainWindow, screen: QScreen):
@@ -36,7 +34,7 @@ if __name__ == '__main__':
         default=0,
     )
     args = parser.parse_args()
-    
+
     # Set the log level
     if args.verbose > 1:
         log_level = logging.DEBUG

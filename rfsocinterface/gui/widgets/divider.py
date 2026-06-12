@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QFrame, QSizePolicy
 
+
 class HLine(QFrame):
     def __init__(self):
         super(HLine, self).__init__()

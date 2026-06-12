@@ -1,29 +1,25 @@
 """Code for computing the noise PSD."""
-from enum import StrEnum
-import pdb
 import logging
-
+from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from scipy import signal
-from matplotlib.backends.backend_pdf import PdfPages
-from argparse import ArgumentParser
-
-from kidpy3 import RawDataFile
 
 from rfsocinterface.core.data import (
     DataRoutine,
     ProcessedData,
-    flag_outliers,
     register_routine,
 )
 from rfsocinterface.core.data.routines import decode_tone_indices
-from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, MetaEnum, ensure_path, get_tod_template, ordinal, PERMISSIONS_ALL_FULL 
-
+from rfsocinterface.core.utils import (
+    MetaEnum,
+    ensure_path,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -639,7 +635,7 @@ class PlotPSD(DataRoutine):
                         onres_fig = plot_psd_df_over_f(
                             freq,
                             onres_psd,
-                            title=' - '.join(filter(None, (title, f'On-Resonance Tones'))),
+                            title=' - '.join(filter(None, (title, 'On-Resonance Tones'))),
                             show_error_band=show_error_band,
                             error_band_min_percentile=error_band_min_percentile,
                             error_band_max_percentile=error_band_max_percentile,

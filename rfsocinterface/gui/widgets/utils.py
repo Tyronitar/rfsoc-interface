@@ -1,19 +1,16 @@
 """Utils for PySide6 Custom Widgets."""
 
 
+from enum import IntEnum
 from numbers import Number
+from pathlib import Path
+from typing import Callable, Type
 
 from PySide6.QtGui import QValidator
-from pathlib import Path
-from rfsocinterface.core.utils import ensure_path
-from rfsocinterface.gui.widgets.file_select import FileSelectWidget
-
-
 from PySide6.QtWidgets import QCheckBox, QComboBox, QLayout, QLineEdit, QWidget
 
-
-from enum import IntEnum
-from typing import Callable, Type
+from rfsocinterface.core.utils import ensure_path
+from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 
 
 def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float, use_placeholder_text: bool=False) -> Number:

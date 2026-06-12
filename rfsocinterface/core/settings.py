@@ -1,12 +1,12 @@
 """Module for handling of settings files."""
 import copy
 import json
-from pathlib import Path
 import logging
+from pathlib import Path
 
-from rfsocinterface.core.utils import GLOBAL_SETTINGS_PATH
-from rfsocinterface.core.utils import USER_SETTINGS_PATH
 from rfsocinterface.core.utils import (
+    GLOBAL_SETTINGS_PATH,
+    USER_SETTINGS_PATH,
     ensure_path,
 )
 
@@ -14,57 +14,57 @@ _logger = logging.getLogger(__name__)
 
 
 DEFAULT_SETTINGS = {
-    "app": {
-        "tabs": [
-            "initialization",
-            "losweep",
-            "data",
-            "telescope",
-            "imaging"
+    'app': {
+        'tabs': [
+            'initialization',
+            'losweep',
+            'data',
+            'telescope',
+            'imaging'
         ],
-        "activeTab": "initialization"
+        'activeTab': 'initialization'
     },
-    "telescope": {
-        "jogVoltage": {
-            "azimuth": 5,
-            "zenith": 1
+    'telescope': {
+        'jogVoltage': {
+            'azimuth': 5,
+            'zenith': 1
         },
-        "controller": {
-            "class": "TelescopeMotorController",
-            "path": "./telescope.py"
+        'controller': {
+            'class': 'TelescopeMotorController',
+            'path': './telescope.py'
         }
     },
-    "defaults": {
-        "loSweep": {
-            "globalShift": 0,
-            "df": 1.0,
-            "deltaf": 100.0,
-            "flaggingThreshold": 3.0,
-            "fileSuffix": "none",
-            "secondSweep": {
-                "df": 1.0
+    'defaults': {
+        'loSweep': {
+            'globalShift': 0,
+            'df': 1.0,
+            'deltaf': 100.0,
+            'flaggingThreshold': 3.0,
+            'fileSuffix': 'none',
+            'secondSweep': {
+                'df': 1.0
             }
         },
-        "data": {
-            "useDefaultFilename": True,
-            "directory": "/data/"
+        'data': {
+            'useDefaultFilename': True,
+            'directory': '/data/'
         },
-        "rfsoc": {
-            "bitstream": "/home/xilinx/dualchan_v2.bit",
-            "channel": {
-                "dsp": {
-                    "loFreq": 400e6,
-                    "nAverages": 524288
+        'rfsoc': {
+            'bitstream': '/home/xilinx/dualchan_v2.bit',
+            'channel': {
+                'dsp': {
+                    'loFreq': 400e6,
+                    'nAverages': 524288
                 },
-                "rfin": 0.0,
-                "rfout": 0.0,
-                "minResonanceFrequency": 0,
-                "maxResonanceFrequency": 2e9,
-                "minResonanceDistanceFromLo": 1e6
+                'rfin': 0.0,
+                'rfout': 0.0,
+                'minResonanceFrequency': 0,
+                'maxResonanceFrequency': 2e9,
+                'minResonanceDistanceFromLo': 1e6
             }
         }
     },
-    "rfsocs": []
+    'rfsocs': []
 }
 
 class PathEncoder(json.JSONEncoder):
@@ -135,7 +135,7 @@ class Settings(dict):
             if 'rfsocs' in user_settings:
                 user_settings['rfsocs'] = self._load_rfsocs(user_settings.pop('rfsocs'))
             self.update(user_settings)
-    
+
     def save_settings(self, user_settings_path: Path=USER_SETTINGS_PATH):
         self._path = user_settings_path
         with self._path.expanduser().open('w') as f:
@@ -148,7 +148,7 @@ class Settings(dict):
 
 class SettingsError(Exception):
     def __init__(self, message: str):
-        super().__init__("Error in settings file: " + message)
+        super().__init__('Error in settings file: ' + message)
 
 
 def convert_to_kidy_format(rfsoc_config: dict) -> dict:
@@ -168,7 +168,7 @@ def convert_to_kidy_format(rfsoc_config: dict) -> dict:
     return {'rfsoc_config': kidpy_config}
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     settings = Settings()
     new_path = './new_settings.json'
     settings.load_settings(new_path)

@@ -1,40 +1,44 @@
 from __future__ import annotations
 
+# from telnetlib import Telnet
 import logging
-
-from PySide6.QtWidgets import QWidget, QMainWindow, QApplication, QAbstractButton, QDialog, QVBoxLayout, QCheckBox
-from PySide6.QtCore import Qt, Signal ,Slot, QObject, QThread, QTimer, QMutexLocker, QCoreApplication
-import serial.tools
-from rfsocinterface.core.telescope import ZE_OUT_CHANNEL
-from rfsocinterface.core.telescope import AZ_OUT_CHANNEL
-from rfsocinterface.core.telescope import make_controller
-from rfsocinterface.gui.uic.telescope_control_ui import Ui_TelescopeControlWidget as Ui_TelescopeControlWidget
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-from rfsocinterface.core.camera import SKPR_Camera_Control, MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
-from rfsocinterface.core.utils import P, R, TabName
-from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.gui.main_widget import TelescopeMainWidget
-from rfsocinterface.gui.widgets import get_num_value
-from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
-from typing import Callable, Concatenate, Any, TYPE_CHECKING
-import functools
-
-from multiprocessing import Process, Pipe, Queue
-from threading import Thread
 import time
-import numpy as np
-import numpy.typing as npt
+from threading import Thread
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-import sys
-import os
-import serial
-from pyModbusTCP.client import ModbusClient
-# from telnetlib import Telnet
-import glob
-from pathlib import Path
+import numpy as np
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from PySide6.QtCore import (
+    QCoreApplication,
+    QTimer,
+    Slot,
+)
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QApplication,
+    QDialog,
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+)
 
+from rfsocinterface.core.camera import (
+    MAX_FRAME_HEIGHT,
+    MAX_FRAME_WIDTH,
+)
+from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.telescope import (
+    AZ_OUT_CHANNEL,
+    ZE_OUT_CHANNEL,
+)
+from rfsocinterface.core.utils import TabName
+from rfsocinterface.gui.main_widget import TelescopeMainWidget
+from rfsocinterface.gui.uic.telescope_control_ui import (
+    Ui_TelescopeControlWidget as Ui_TelescopeControlWidget,
+)
+from rfsocinterface.gui.widgets import get_num_value
+from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -45,7 +49,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
     tab_name = TabName.TELESCOPE
 
-    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None):
+    def __init__(self, main_window: MainWindow, rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None):
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
 
@@ -102,7 +106,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_ui_telescope)
         self.timer.start(500)
-    
+
     def toggle_controls_enabled(self, enabled: bool):
         self.azimuth_setlineEdit.setEnabled(enabled)
         self.zenith_setlineEdit.setEnabled(enabled)
@@ -120,7 +124,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
     def stop_motion(self):
         self.send_telescope_command('stop_telescope')
-    
+
     def take_pic(self):
         pic_data = self.get_current_image()[0]
         fig = plt.figure()
@@ -135,14 +139,14 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         dialog_layout.addWidget(FigureCanvas(fig))
         dialog.setLayout(dialog_layout)
         dialog.show()
-    
+
     def toggle_jogging(self):
         if self.manual_controlcheckBox.isChecked():
             self.controller.setEnabled(True)
         else:
             self.controller.setEnabled(False)
-    
-    def jog(self, btn: QAbstractButton): 
+
+    def jog(self, btn: QAbstractButton):
         match btn:
             case self.controller.up_toolButton:
                 self.send_telescope_command('set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL)
@@ -152,15 +156,15 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
                 self.send_telescope_command('set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL)
             case self.controller.right_toolButton:
                 self.send_telescope_command('set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL)
-    
+
     def set_az_pos(self):
         new_pos = get_num_value(self.azimuth_setlineEdit)
         self.send_telescope_command('set_az_pos', new_pos)
-    
+
     def set_ze_pos(self):
         new_pos = get_num_value(self.zenith_setlineEdit)
         self.send_telescope_command('set_ze_pos', new_pos)
-    
+
     @Slot(float, float)
     def update_az_pos(self, new_pos: float, pps_pos: float | None):
         self.azimuth_actual_valLabel.setText(f'{new_pos:.3f}°')
@@ -170,7 +174,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
             self.azimuth_pps_valLabel.setText(f'{pps_pos:.3f}°')
         self.az_pos = new_pos
         self.az_pps_pos = pps_pos
-    
+
     @Slot(float)
     def update_az_cmd(self, new_pos: float):
         self.last_az_commanded = new_pos
@@ -206,7 +210,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     @Slot(float)
     def update_ze_err(self, new_err: float):
         self.zenith_error_valLabel.setText(f'{new_err:.3f}°')
-    
+
     def update_ui_telescope(self):
         az_velocity = (self.az_pos - self.last_az) / self.interval * 1000
         ze_velocity = (self.ze_pos - self.last_ze) / self.interval * 1000
@@ -222,7 +226,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         if self.last_ze_commanded is not None:
             ze_err = self.ze_pos - self.last_ze_commanded
             self.update_ze_err(ze_err)
-    
+
     #
     # Camera Handlers
     #
@@ -262,7 +266,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         if self.live_footage_thread is not None and self.live_footage_thread.is_alive():
             self.optical_pushButton.click()
         return super().closeEvent(event)
-    
+
 
 
 if __name__ == '__main__':

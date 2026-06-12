@@ -1,31 +1,28 @@
 """Handle RFSoC Parameter Files"""
 from __future__ import annotations
 
-import inspect
 import logging
-from pathlib import Path
 import pdb
-from packaging.version import Version, parse
+from pathlib import Path
 
+import h5py
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
 import numpy as np
 import numpy.typing as npt
-import h5py
 from kidpy3 import RawDataFile
+from matplotlib.figure import Figure
+from packaging.version import Version
 
 from rfsocinterface.core.utils import (
     DEFAULT_PARAMS_DIRECTORY,
     PERMISSIONS_ALL_FULL,
     PathLike,
-    get_params_file_template,
-    pad_to_length,
-    ensure_path,
     convert_path,
+    ensure_path,
+    get_params_file_template,
     mHz_axis_formatter,
     mHz_coordinate_formatter,
 )
-
 
 _logger = logging.getLogger(__name__)
 
@@ -49,7 +46,7 @@ class RFSoCParameters:
     def __init__(self, file: Path, mode: str='r'):
         self._file = h5py.File(file, mode=mode)
         self._test_format()
-    
+
     def _test_format(self):
         """Test that the params file is compatible with current format."""
         fail = False
@@ -58,7 +55,7 @@ class RFSoCParameters:
         elif self.version.release[0] != RFSoCParameters.VERSION.release[0]:
             # Major version differs (incompatible)
             fail = True  # Outdated format
-        
+
         if fail:
             raise ValueError(
                 f'File "{self._file.filename}" is not an appropriate format. '
@@ -143,7 +140,7 @@ class RFSoCParameters:
             )
         _logger.info(f'Initialized params file {filename}')
         return cls(filename, mode=mode)
-    
+
     def copy_and_update(
         self,
         new_tile_name: str,
@@ -164,7 +161,6 @@ class RFSoCParameters:
         params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
     ) -> RFSoCParameters:
         """Create a copy of a parameters file while changing the specified dsets."""
-
         f_center = f_center if f_center is not None else self.f_center
         rfin = rfin if rfin is not None else self.rfin
         rfout = rfout if rfout is not None else self.rfout
@@ -202,7 +198,7 @@ class RFSoCParameters:
         new_params.chan_number = chan_number
         new_params.ifslice_number = ifslice_number
         new_params.chanmask[:] = chanmask
-        new_params.baseband_freqs[:] = baseband_freqs 
+        new_params.baseband_freqs[:] = baseband_freqs
         new_params.tone_powers[:] = tone_powers
         new_params.detector_delta_x[:] = detdx
         new_params.detector_delta_y[:] = detdy
@@ -211,7 +207,7 @@ class RFSoCParameters:
         new_params.dfoverf_per_mK[:] = dfoverf
 
         return new_params
-    
+
     @staticmethod
     def exists(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> tuple[bool, str]:
         """Whether there is a params file for the specified tile."""
@@ -220,19 +216,19 @@ class RFSoCParameters:
 
     @classmethod
     def from_tile_name(cls, tile_name: str, mode: str='r', params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> RFSoCParameters | None:
-        
+
         if (result := RFSoCParameters.exists(tile_name, params_dir=params_dir)) and result[0]:
             return RFSoCParameters(result[1], mode=mode)
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc, tb):
         self.close()
-    
+
     def close(self):
         self._file.close()
-    
+
     # Attributes
     @property
     def version(self) -> Version:
@@ -245,23 +241,23 @@ class RFSoCParameters:
     @property
     def n_tones(self) -> int:
         return self._file.attrs['n_tones']
-    
+
     @n_tones.setter
     def n_tones(self, n: int):
         self._file.attrs['n_tones'] = n
-    
+
     @property
     def tile_name(self) -> str:
         return self._file.attrs['tile_name']
-    
+
     @tile_name.setter
     def tile_name(self, name: str):
         self._file.attrs['tile_name'] = name
-    
+
     @property
     def tile_number(self) -> int:
         return self._file.attrs['tile_number']
-    
+
     @tile_number.setter
     def tile_number(self, n: int):
         self._file.attrs['tile_number'] = n
@@ -269,7 +265,7 @@ class RFSoCParameters:
     @property
     def chan_number(self) -> int:
         return self._file.attrs['chan_number']
-    
+
     @chan_number.setter
     def chan_number(self, n: int):
         self._file.attrs['chan_number'] = n
@@ -277,15 +273,15 @@ class RFSoCParameters:
     @property
     def ifslice_number(self) -> int:
         return self._file.attrs['ifslice_number']
-    
+
     @ifslice_number.setter
     def ifslice_number(self, n: int):
         self._file.attrs['ifslice_number'] = n
-    
+
     @property
     def f_center(self) -> float:
         return self._file.attrs['f_center']
-    
+
     @f_center.setter
     def f_center(self, freq: float):
         self._file.attrs['f_center'] = freq
@@ -293,7 +289,7 @@ class RFSoCParameters:
     @property
     def rfin(self) -> float:
         return float(self._file.attrs['rfin'])
-    
+
     @rfin.setter
     def rfin(self, x: float):
         self._file.attrs['rfin'] = float(x)
@@ -301,16 +297,16 @@ class RFSoCParameters:
     @property
     def rfout(self) -> float:
         return float(self._file.attrs['rfout'])
-    
+
     @rfout.setter
     def rfout(self, x: float):
         self._file.attrs['rfout'] = float(x)
-    
+
     # Datasets
     @property
     def chanmask(self) -> h5py.Dataset:
         return self._file['chanmask']
-    
+
     @property
     def onres_ind(self) -> npt.NDArray:
         """Indices of on-resonance tones."""
@@ -353,11 +349,11 @@ class RFSoCParameters:
     @property
     def detector_pol(self) -> h5py.Dataset:
         return self._file['detector_pol']
-    
+
     @property
     def dfoverf_per_mK(self) -> h5py.Dataset:
         return self._file['dfoverf_per_mK']
-    
+
     def flag_collided_resonances(
         self,
         collision_threshold: float=1/5000,
@@ -414,9 +410,9 @@ class RFSoCParameters:
                 params_dir=params_dir,
             )
             return new_file
-        
+
         self.chanmask[:] = collided_ind
-    
+
     def add_off_resonance_tones(
         self,
         new_tile_name: str,
@@ -586,7 +582,7 @@ class RFSoCParameters:
             plt.show()
 
         return fig
-    
+
     @ensure_path(1)
     def append_to_TOD(self, file: Path):
         """Append global data from this parameters file to a TOD file."""
@@ -619,13 +615,13 @@ def update_params_file_format(*filenames: PathLike):
             if Version(fh.attrs['params_version']) >= RFSoCParameters.VERSION:
                 _logger.info(f'Skipping "{filename}"; Already up to date.')
                 continue
-        
+
         # Attenuation Settings
         if 'rfin' not in fh.attrs:
             fh.attrs['rfin'] = 0.0
         if 'rfout' not in fh.attrs:
             fh.attrs['rfout'] = 0.0
-        
+
         # Standardize LO Frequency
         if 'f_center' not in fh.attrs:
             if 'lo_freq' in fh.attrs:
@@ -638,7 +634,7 @@ def update_params_file_format(*filenames: PathLike):
             del fh.attrs['lo_freq']
         if 'lo_freq' in fh:
             del fh['lo_freq']
-        
+
         # Remove extra chanmasks
         if 'chanmask_non_collided' in fh:
             del fh['chanmask_non_collided']
@@ -650,9 +646,9 @@ def update_params_file_format(*filenames: PathLike):
 
         fh.close()
         _logger.info(f'Updated "{filename}" to version {RFSoCParameters.VERSION}.')
-        
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     filenames = [
         'params_tile_Be260114Tr_100_tones.h5',
     ]

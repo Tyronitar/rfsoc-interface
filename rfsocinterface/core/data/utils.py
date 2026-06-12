@@ -2,27 +2,22 @@
 
 
 from __future__ import annotations
-import pdb
-import time
+
 import logging
-from itertools import chain, batched
-import typing
 from typing import Literal
 
 # import tables
 import h5py
+
 # from tables.link import ExternalLink
 import numpy as np
 import numpy.typing as npt
 from numpy.polynomial import polynomial as poly
-from scipy.interpolate import make_interp_spline
-from numpy.polynomial import Polynomial
-from scipy.stats import linregress
 from scipy import signal
 
 from rfsocinterface.core.utils import (
-    build_interp_map,
     argclosest,
+    build_interp_map,
 )
 
 _logger = logging.getLogger(__name__)
@@ -32,7 +27,7 @@ OPTCAM_OFFSET_AZ_PIX = 74
 OPTCAM_OFFSET_ZA_PIX = 49
 DEFAULT_MAP_DPIX = 0.03
 OPTCAM_HEIGHT_PIXELS = 1944
-OPTCAM_WIDTH_PIXELS = 2592 
+OPTCAM_WIDTH_PIXELS = 2592
 # DATA_DIRECTORY = 'reference_data'  # For testing with local data files
 
 N_POLARIZATION = 2
@@ -167,7 +162,6 @@ def rotate_basis(
         rotation_angle: npt.NDArray,
 ):
     """Compute change of basis, rotating with the specified angle."""
-
     out_data[0] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0] - \
         np.sin(rotation_angle)[:, np.newaxis] * in_data[1]
 
@@ -184,7 +178,7 @@ def generate_calibrated_data(
     adc_units_to_hz: npt.NDArray,
     df_per_mK: npt.NDArray,
 ):
-        
+
     # now use the derivatives to convert to a frequency shift
     # need to optimally weight the data based on the response
     # in each direction (assuming the noise is identical in I and Q)
@@ -241,14 +235,14 @@ def find_missed_packets(
             # Expected number of samples in time elapsed between start and end of window
             # In theory, this is 1 less than the number of actual samples in the window
             # i.e. (2 * window_size)
-            expected_samples = int(window_dtime // med_dtime)  
+            expected_samples = int(window_dtime // med_dtime)
             actual_samples = window_max_idx - window_min_idx
             # A packet was potentially missed
             if expected_samples > actual_samples:
                 packets_missed = expected_samples - actual_samples + 1
 
                 # Look in a larger window to avoid spurious problems
-                # Look outside the window by number of supposed missed packets to 
+                # Look outside the window by number of supposed missed packets to
                 # verfiy that they were actually missed
                 large_window_min_idx = max(0, i - window_size)
                 large_window_max_idx = min(n_samples, i + window_size + packets_missed)
@@ -274,8 +268,7 @@ def interpolate_timestamp_streaming(
     chunk_size: int = 4096,
     time_offset: float = 0.0
 ):
-    """
-    Compute a linear fit of raw_timestamp vs packet_indices and generate
+    """Compute a linear fit of raw_timestamp vs packet_indices and generate
     an equally spaced new timestamp dataset in chunks.
 
     Parameters
@@ -293,7 +286,6 @@ def interpolate_timestamp_streaming(
     time_offset : float
         Optional offset to add to output timestamps
     """
-
     N = raw_timestamp.shape[0]
 
     # Accumulators for linear regression
@@ -326,7 +318,7 @@ def interpolate_timestamp_streaming(
     # Compute slope (a) and intercept (b)
     denom = n_total * sum_x2 - sum_x ** 2
     if denom == 0:
-        raise ValueError("Degenerate packet_indices, cannot compute regression.")
+        raise ValueError('Degenerate packet_indices, cannot compute regression.')
     a = (n_total * sum_xy - sum_x * sum_y) / denom
     b = (sum_y - a * sum_x) / n_total
 
@@ -344,7 +336,7 @@ def interpolate_timestamp_streaming(
         # Write directly to HDF5
         new_timestamp[start:stop] = new_chunk
 
-    
+
 def interpolate_missing_data(
     input_data_I: h5py.Dataset,
     input_data_Q: h5py.Dataset,
@@ -380,7 +372,7 @@ def interpolate_missing_data(
         dtime = (timestamp[index] - timestamp[prev_index]) / this_missed_packets
         missing_packet_start_t = timestamp[prev_index] + dtime
         current_t = timestamp[index]
-        missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False) 
+        missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False)
         new_data_I = poly.polyval(missed_packet_t - times[0], fit_I)
         new_data_Q = poly.polyval(missed_packet_t - times[0], fit_Q)
         new_data = np.stack((new_data_I, new_data_Q))
@@ -510,7 +502,7 @@ def interpolate_telescope_position(
     _logger.info(f'Using PPS for detector positions in {direction.upper()} direction.')
 
     # Upsample the telescope positions ignoring the positions when the pulse is receivd,
-    # since the extra commands slow the loop 
+    # since the extra commands slow the loop
     interpolated_tel_pos = np.interp(
         data_timestamp,
         np.delete(telescope_timestamp, pps_tel_idx),
@@ -534,10 +526,10 @@ def interpolate_telescope_position(
         pps_samples_tel[i] = argclosest(interpolated_tel_pos[sample-search_radius:sample+search_radius+1], pps_tel_pos[i]) + sample - search_radius
 
 
-    # The first pps pulse that was receied in both the raw data and the telescope data 
+    # The first pps pulse that was receied in both the raw data and the telescope data
     start_idx = argclosest(pps_samples_data, pps_samples_tel[0])
 
-    # Find the median offset between the two sets of PPS samples, and shift the 
+    # Find the median offset between the two sets of PPS samples, and shift the
     # interpolated telescope positions by this amount to sync them up.
     pps_offset = np.zeros(pps_samples_tel.shape, dtype=int)
     for i, pps_tel_sample in enumerate(pps_samples_tel):
@@ -552,17 +544,17 @@ def interpolate_telescope_position(
         additional_offset = RFSOC_TIME_OFFSET_ZA * sample_rate
     median_offset = np.round(np.median(pps_offset.astype(float) + additional_offset)).astype(int)
 
-    # If the median offset is positive, that means the telescope data is lagging behind 
-    # the RFSoC, so we shift to the left. If it's negative, the telescope data is ahead 
-    # of the RFSoC, so we shift to the right. Hence the negative sign. 
+    # If the median offset is positive, that means the telescope data is lagging behind
+    # the RFSoC, so we shift to the left. If it's negative, the telescope data is ahead
+    # of the RFSoC, so we shift to the right. Hence the negative sign.
     fixed_positions = np.roll(interpolated_tel_pos, -median_offset)
-    
+
     # Fill the array with nans where we shifted away from
     if median_offset < 0:
         fixed_positions[:-median_offset] = np.nan
     else:
         fixed_positions[-median_offset:] = np.nan
-    
+
     print(f'Shifting telescope positions by {-median_offset} samples')
 
     return fixed_positions

@@ -1,31 +1,29 @@
-from pathlib import Path
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Slot, Signal
-from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator, QIntValidator
-from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
-from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import Ui_RFSOCAdvancedSettingsWidget
-from rfsocinterface.gui.widgets.utils import PathValidator
-from rfsocinterface.gui.widgets.icon_label import IconLabel
-from PySide6.QtWidgets import QWidget, QFileDialog, QVBoxLayout
-
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QDoubleValidator, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QAbstractButton,
     QDialogButtonBox,
+    QVBoxLayout,
     QWidget,
 )
-import tables
 
-
-import numpy as np
-
-from rfsocinterface.gui.widgets.section import Section
-from rfsocinterface.core.utils import IPV4_REGEX, MAC_REGEX
-from rfsocinterface.gui.widgets.icon_label import IconLabel, verify_lineEdit, ERROR_ICON_CODE, highlight_error_line_edit
 from rfsocinterface.core.rfsoc import RFSOCWrapper
-from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY
+from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, IPV4_REGEX, MAC_REGEX
+from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
+from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import (
+    Ui_RFSOCAdvancedSettingsWidget,
+)
 from rfsocinterface.gui.widgets import get_lineEdit_text, get_num_value
+from rfsocinterface.gui.widgets.icon_label import (
+    ERROR_ICON_CODE,
+    IconLabel,
+    verify_lineEdit,
+)
+from rfsocinterface.gui.widgets.section import Section
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -40,17 +38,17 @@ class RFSOCSettingsWidget(QWidget):
         super().__init__(parent)
         self.rfsoc = rfsoc
         self.setupUi()
-    
+
     def collapse(self, recursive: bool=False):
         self.channel1_section.collapse(recursive=recursive)
         self.channel2_section.collapse(recursive=recursive)
         self.advanced_section.collapse(recursive=recursive)
-    
+
     def update_channel_names(self):
         """Update the channel names in the sections."""
         self.channel1_section.setTitle(self.rfsoc.get_tile_name(1))
         self.channel2_section.setTitle(self.rfsoc.get_tile_name(2))
-    
+
     def setupUi(self):
         layout = QVBoxLayout()
 
@@ -101,7 +99,7 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
         # # self.tone_power_file_upload_widget.uploaded.connect(self.upload_tone_powers)
         # self.udp_openPushButton.clicked.connect(self.setup_udp)
         # self.buttonBox.clicked.connect(self.restore_defaults)
-    
+
     def _additional_setup(self):
         self.bitstream_fileUploadWidget.set_placeholder_text('/path/to/filename.bit')
         self.bitstream_fileUploadWidget.uploaded.connect(self.upload_bitstream)
@@ -114,23 +112,23 @@ class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
 
         self.comport_channel2_fileUploadWidget.set_placeholder_text('/path/to/filename')
         self.comport_channel2_fileUploadWidget.uploaded.connect(self.upload_channel2_comport)
-    
+
     @Slot(str)
     def upload_bitstream(self, bitstream: str):
         self.rfsoc.upload_bitstream(bitstream)
-    
+
     @Slot(str)
     def upload_atten_comport(self, comport: str):
         self.rfsoc.set_atten_comport(comport)
-    
+
     @Slot(str)
     def upload_channel1_comport(self, comport: str):
         self.rfsoc.set_lo_comport(0, comport)
-    
+
     @Slot(str)
     def upload_channel2_comport(self, comport: str):
         self.rfsoc.set_lo_comport(1, comport)
-    
+
     def set_defaults(self):
         settings = self.rfsoc.settings
 
@@ -190,7 +188,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.eth_port_lineEdit
         ]
         self.eth_pushButton.clicked.connect(self.configure_hardware)
-        
+
         # Error Labels
         self.make_error_labels()
         self.hide_error_labels()
@@ -199,12 +197,12 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.buttonBox.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(self.set_defaults)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(self.clear_form)
 
-    
+
     @property
     def main_window(self) -> 'MainWindow':
         """Return the main window of the application."""
         return self.get_all_parents()[-1]
-    
+
     def get_all_parents(self) -> list[QWidget]:
         """Return a list of all parent widgets."""
         parents = []
@@ -213,7 +211,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             parents.append(widget)
             widget = widget.parent()
         return parents
-    
+
     def load_params_file(self):
         params_file = self.params_fileSelectWidget.text()
         if params_file and Path(params_file).exists():
@@ -225,16 +223,16 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                 self.update_fields()
             finally:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
-    
+
     def update_fields(self):
         self.lo_freq_lineEdit.setText(f'{self.rfsoc.get_channel(self.channel).lo_freq / 1e6:.3f}')
         self.rfout_lineEdit.setText(str(self.rfsoc.get_rfout(self.channel)))
         self.rfin_lineEdit.setText(str(self.rfsoc.get_rfin(self.channel)))
-            
+
     def hide_error_labels(self):
         for label in self.error_labels:
             label.setVisible(False)
-        
+
     def make_error_labels(self):
         # Attenuation Error Labels
         att_err_str = 'Attenuation must be in range [0.0, 31.75]'
@@ -242,7 +240,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.rfout_error_label.deleteLater()
         self.rfout_error_label= IconLabel(ERROR_ICON_CODE, att_err_str, color='red', wrap_text=True, parent=self)
         self.if_gridLayout.addWidget(self.rfout_error_label, 1, 1, Qt.AlignmentFlag.AlignLeft)
-        
+
         self.if_gridLayout.removeWidget(self.rfin_error_label)
         self.rfin_error_label.deleteLater()
         self.rfin_error_label = IconLabel(ERROR_ICON_CODE, att_err_str, color='red', wrap_text=True, parent=self)
@@ -280,7 +278,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.eth_mac_error_label,
             self.eth_port_error_label,
         ]
-    
+
     def clear_form(self):
         self.params_fileSelectWidget.clear()
         self.eth_source_lineEdit.clear()
@@ -291,7 +289,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.rfout_lineEdit.clear()
         self.lo_freq_lineEdit.clear()
         self.hide_error_labels()
-    
+
     @Slot(str)
     def upload_firmware(self, bitstream: str):
         self.setCursor(Qt.CursorShape.WaitCursor)
@@ -342,7 +340,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                 func = self.rfsoc.set_rfout
             case _:
                 raise ValueError(f'Function `set_attenuation` called with illegal argument "{attenuation}"; must be in ["in", "out"]')
-        
+
         valid, toggled = verify_lineEdit(lineEdit, error_label)
         if toggled:
             self.height_updated.emit()
@@ -354,7 +352,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                 func(self.channel, att)
             finally:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
-    
+
     def set_lo_freq(self):
         lo_freq = get_num_value(self.lo_freq_lineEdit) * 1e6  # MHz to Hz
         self.setCursor(Qt.CursorShape.WaitCursor)
@@ -363,7 +361,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
             self.rfsoc.set_frequency(self.channel, lo_freq)
         finally:
             self.setCursor(Qt.CursorShape.ArrowCursor)
-    
+
     def set_defaults(self):
         chan_settings = self.rfsoc.channel_settings(self.channel)
 
@@ -380,7 +378,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         self.rfin_lineEdit.setText(str(chan_settings['rfin']))
         self.rfout_lineEdit.setText(str(chan_settings['rfout']))
         self.lo_freq_lineEdit.setText(f'{chan_settings["dsp"]["loFreq"] * 1e-6}')
-    
+
     @Slot(QAbstractButton)
     def restore_defaults(self, button: QAbstractButton):
         std_btn = self.buttonBox.standardButton(button)

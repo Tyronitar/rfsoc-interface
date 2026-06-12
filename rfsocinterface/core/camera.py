@@ -1,45 +1,42 @@
 from __future__ import annotations
-import logging
-from pathlib import Path
-import threading
-from multiprocessing.connection import Connection
-from multiprocessing import Array, Lock
-import subprocess
-import queue
-from queue import Queue
-import copy
-import time
-from typing import Any, Optional
-import pdb
-import h5py
 
+import copy
+import logging
+import queue
+import subprocess
+import threading
+import time
+from multiprocessing import Array, Lock
+from multiprocessing.connection import Connection
+from queue import Queue
+from typing import Any, Optional
+
+import cv2
+import h5py
+import matplotlib.pyplot as plt
+import numpy as np
 from vmbpy import (
-    VmbSystem,
-    PixelFormat,
     Camera,
+    CameraEvent,
     Frame,
     FrameStatus,
+    PixelFormat,
     Stream,
-    AccessMode,
-    VmbFeatureError,
     VmbCameraError,
-    CameraEvent,
+    VmbFeatureError,
+    VmbSystem,
 )
-from vmbpy.util import LOG_CONFIG_INFO_CONSOLE_ONLY
-import numpy as np
-import numpy.typing as npt
-import h5py
-import cv2
-import matplotlib.pyplot as plt
-from matplotlib import animation
 
 try:
     import thread
 except ImportError:
     import _thread as thread
 
-from rfsocinterface.core.utils import get_filename, PathLike, PERMISSIONS_USR_RW
-from rfsocinterface.core.utils import ensure_path
+from rfsocinterface.core.utils import (
+    PERMISSIONS_USR_RW,
+    PathLike,
+    get_filename,
+)
 
 _logger = logging.getLogger(__name__)
 _camera_logger = logging.getLogger('rfsocinterface.cameraControl')
@@ -73,7 +70,7 @@ class SKPR_Camera_Control:
                 cam.Width.set(MAX_FRAME_WIDTH)
                 cam.Gamma.set = 1
                 cam.set_pixel_format(PixelFormat.Rgb8)
-    
+
     def take_pic(self, savefile: PathLike=None, save: bool=False, show: bool=False) -> cv2.typing.MatLike:
         with VmbSystem.get_instance() as vmb:
             cams = vmb.get_all_cameras()
@@ -96,7 +93,7 @@ class SKPR_Camera_Control:
 
                 plt.imshow(pic_data)
                 plt.show()
-            
+
             return pic_data
 
 #
@@ -151,7 +148,7 @@ class VideoFileWriter(threading.Thread):
                 _camera_logger.debug(f'VideoFileWriter: {n_frames} frames written...')
             timestamp_dataset.resize(n_frames + 1, axis=0)
             timestamp_dataset[-1] = timestamp
-    
+
         timestamp_file.close()
         self.proc.stdin.close()
         self.proc.wait()
@@ -196,7 +193,7 @@ class FrameProducer(threading.Thread):
     #     self.cam.AcquisitionMode.set('Continuous')
 
     def run(self):
-        _camera_logger.debug('Thread \'FrameProducer({})\' started.'.format(self.cam.get_id()))
+        _camera_logger.debug(f"Thread 'FrameProducer({self.cam.get_id()})' started.")
 
         try:
             with self.cam:
@@ -215,7 +212,7 @@ class FrameProducer(threading.Thread):
         finally:
             try_put_frame(self.frame_queue, self.cam, None)
 
-        _camera_logger.debug('Thread \'FrameProducer({})\' terminated.'.format(self.cam.get_id()))
+        _camera_logger.debug(f"Thread 'FrameProducer({self.cam.get_id()})' terminated.")
 
 
 def make_controller(
@@ -256,7 +253,7 @@ class CameraController:
         with self.vmb:
             self._initialize_system(**features)
             self.run()
-    
+
     def _initialize_system(self, **features):
         _camera_logger.debug('Initializing VMB Camera System...')
         try:
@@ -346,7 +343,7 @@ class CameraController:
             # Wait for shutdown to complete
             for producer in self.producers.values():
                 producer.join()
-        
+
 
         _logger.debug('All camera FrameProducer threads joined.')
         self.send('done')
@@ -377,7 +374,7 @@ class CameraController:
             _camera_logger.debug(f'CAMERA sent command "{command}" with data {args}')
 
 
-    
+
     def set_feature(self, cam: Camera | str, feature_name: str, val: Any):
         if isinstance(cam, str):
             cam = self.vmb.get_camera_by_id(cam)
@@ -397,7 +394,7 @@ class CameraController:
         except VmbFeatureError as e:
             self.send('err', 'CRITICAL', f'Unable to set "{feature_name}" to "val": {e}')
             raise VmbFeatureError from e
-    
+
     def _consumer_loop(self):
         frames: dict[str, Frame] = {}
         self.alive = True
@@ -462,7 +459,7 @@ class CameraController:
                         case _:
                             self.send('err', 'NON-CRITICAL', f'Unknown command "{command}" received.')
                             continue
-                
+
                 if self._joining_writer_thread:
                     # join(0) returns immediately without waiting
                     self._writer_thread.join(0)
@@ -473,7 +470,7 @@ class CameraController:
                 # Update current state by dequeuing all currently available frames.
                 while True:
                     if not self.alive:
-                        _camera_logger.debug(f'alive=False; Ending consumer loop...')
+                        _camera_logger.debug('alive=False; Ending consumer loop...')
                         break
                     try:
                         cam_id, frame = self.frame_queue.get_nowait()
@@ -516,8 +513,8 @@ class CameraController:
                         # plt.pause(0.25)
 
                 time.sleep(interval)
-                        
-                
+
+
         except KeyboardInterrupt:
             self.alive = False
 

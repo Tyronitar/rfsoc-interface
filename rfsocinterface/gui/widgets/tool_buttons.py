@@ -1,6 +1,7 @@
 """Various bespoke tool buttons."""
 from PySide6.QtWidgets import QToolButton
 
+
 class RoundedToolButton(QToolButton):
     """A tool button with rounded corners."""
     def __init__(
