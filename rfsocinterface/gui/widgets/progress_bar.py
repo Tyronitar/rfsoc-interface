@@ -18,7 +18,9 @@ class IncrementalProgressDialog(QProgressDialog):
 
 def make_progress_dialog_incrementer(pd: IncrementalProgressDialog) -> Callable:
     """Create a function that increments a progress dialog by 1."""
+
     def incrementer():
         pd.incremented.emit()
         QCoreApplication.processEvents()
+
     return incrementer

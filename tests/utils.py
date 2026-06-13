@@ -20,6 +20,7 @@ __all__ = [
     'assert_greater_than',
 ]
 
+
 def check_equal_dict(result: dict, expected: dict) -> bool:
     """Return whether two dictionaries are equal."""
     try:
@@ -28,6 +29,7 @@ def check_equal_dict(result: dict, expected: dict) -> bool:
         return False
         # assert False
     return all(list(vals))
+
 
 def assert_equal_dict(result: dict, expected: dict) -> None:
     """Return whether two dictionaries are equal."""

@@ -4,12 +4,20 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QWidg
 
 ERROR_ICON_CODE = 'fa5s.exclamation-circle'
 
-class IconLabel(QWidget):
 
+class IconLabel(QWidget):
     IconSize = QSize(16, 16)
     HorizontalSpacing = 2
 
-    def __init__(self, qta_id: str, text: str, color: str='black', final_stretch=True, wrap_text: bool=False, parent: QWidget | None=None):
+    def __init__(
+        self,
+        qta_id: str,
+        text: str,
+        color: str = 'black',
+        final_stretch=True,
+        wrap_text: bool = False,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent=parent)
 
         layout = QHBoxLayout()
@@ -24,7 +32,9 @@ class IconLabel(QWidget):
         layout.addSpacing(self.HorizontalSpacing)
         self.label = QLabel(text)
         self.label.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         self.label.setWordWrap(wrap_text)
         self.min_width = self.label.fontMetrics().horizontalAdvance(self.label.text())
         self.setColor(color)
@@ -35,14 +45,15 @@ class IconLabel(QWidget):
         if final_stretch:
             layout.addStretch()
 
-    def setIcon(self, icon_id: str, color: str='black'):
+    def setIcon(self, icon_id: str, color: str = 'black'):
         self.icon.setPixmap(qta.icon(icon_id, color=color).pixmap(self.IconSize))
 
-    def setColor(self, color:str):
+    def setColor(self, color: str):
         self.label.setStyleSheet(f'color: {color};')
 
     def setText(self, text: str):
         self.label.setText(text)
+
 
 def highlight_error_line_edit(line_edit: QLineEdit):
     line_edit.setStyleSheet(
@@ -52,10 +63,11 @@ def highlight_error_line_edit(line_edit: QLineEdit):
         """
     )
 
+
 def verify_lineEdit(
     source: QLineEdit,
-    error_label: IconLabel | None=None,
-    toggle_enabled: list[QWidget]=[],
+    error_label: IconLabel | None = None,
+    toggle_enabled: list[QWidget] = [],
 ) -> tuple[bool, bool]:
     toggled = False
     if not source.hasAcceptableInput():

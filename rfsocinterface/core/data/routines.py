@@ -50,6 +50,7 @@ T = TypeVar('DataRoutine', bound='DataRoutine')
 
 class ProcessingStage:
     """Enum for the different stages of data processing."""
+
     PRE_PROCESSING = 'pre_processing'
     PROCESSING_L1 = 'processing_l1'
     PROCESSING_L2 = 'processing_l2'
@@ -59,7 +60,9 @@ class ProcessingStage:
 def register_routine(cls: type[T]) -> type[T]:
     """Class decorator for registering a DataRoutine subclass in the ROUTINE_REGISTRY."""
     if not issubclass(cls, DataRoutine):
-        _logger.warning(f'Failed to register class {cls.__name__} as a DataRoutine; it does not inherit from DataRoutine.')
+        _logger.warning(
+            f'Failed to register class {cls.__name__} as a DataRoutine; it does not inherit from DataRoutine.'
+        )
         return None
     ROUTINE_REGISTRY[cls.name] = cls
     _logger.debug(f'Registered data routine: {cls.__name__}')
@@ -75,8 +78,9 @@ class DataRoutine:
         record_checkpoint (bool): Whether to record a checkpoint after applying this routine.
         requires (set): Set of dataset names required by this routine.
         produces (set): Set of dataset names produced by this routine.
-    
+
     """
+
     name = 'base'
     version = '0.0.0'
     record_checkpoint = False  # override per routine if desired
@@ -89,7 +93,7 @@ class DataRoutine:
 
     def validate_inputs(self, pdata: ProcessedData, inputs: list):
         """Validate that the required datasets are present in the ProcessedData.
-        
+
         Raises:
             RuntimeError: If any required datasets are missing from the ProcessedData.
         """
@@ -100,7 +104,7 @@ class DataRoutine:
     # ---- main entry point ----
     def apply(self, pdata: ProcessedData):
         """Apply the routine to the given ProcessedData.
-        
+
         This method handles the common workflow of validating inputs, running the computation,
         logging metadata, and recording checkpoints. The actual computation should be implemented
         in the run() method of the subclass.
@@ -139,7 +143,7 @@ class DataRoutine:
         return outputs
 
     # ---- to be implemented by subclasses ----
-    def run(self, pdata: ProcessedData, inputs: list=None):
+    def run(self, pdata: ProcessedData, inputs: list = None):
         raise NotImplementedError(
             f'DataRoutine [{type(self).__name__}] is missing a run method'
         )
@@ -209,32 +213,36 @@ class DataRoutine:
             'runtime_sec': runtime,
         }
 
+
 #
 # Begin Data Routine Catlog
 #
 
+
 @register_routine
 class CutoffFilter(DataRoutine):
     """Base class for cutoff filters (low-pass, high-pass, band-pass).
-    
-    Not meant to be used directly, but provides common functionality for the different 
+
+    Not meant to be used directly, but provides common functionality for the different
     types of cutoff filters.
     """
+
     name = 'CutoffFilter'
     version = '1.0.0'
 
-    def __init__(self,
+    def __init__(
+        self,
         filter_freq: float,
         btype: str,
-        datasets: list[str]=['/vdsets/data_mK'],
+        datasets: list[str] = ['/vdsets/data_mK'],
     ):
         """Initialize the cutoff filter routine.
-        
+
         Arguments:
             filter_freq (float): The cutoff frequency for the filter in Hz.
             btype (str): The type of filter to apply. Must be one of 'low', 'high',
                 'bandpass', or 'bandstop'.
-            datasets (list[str], optional): List of dataset names to apply the filter 
+            datasets (list[str], optional): List of dataset names to apply the filter
                 to. Defaults to ['/vdsets/data_mK'].
         """
         super().__init__(
@@ -246,10 +254,10 @@ class CutoffFilter(DataRoutine):
     def inputs(self, pdata: ProcessedData):
         return self.params['datasets']
 
-    def run(self, pdata: ProcessedData, inputs: list[str]=None):
+    def run(self, pdata: ProcessedData, inputs: list[str] = None):
         """Apply the cutoff filter to the specified datasets.
-        
-        Applies a Butterworth filter with the specified cutoff frequency and type to 
+
+        Applies a Butterworth filter with the specified cutoff frequency and type to
         each of the input datasets.
         """
         filter_freq = self.params['filter_freq']
@@ -279,7 +287,7 @@ class LowPassFilter(CutoffFilter):
     def __init__(
         self,
         filter_freq: float,
-        datasets: list[str]=['/vdsets/data_mK'],
+        datasets: list[str] = ['/vdsets/data_mK'],
     ):
         super().__init__(filter_freq, btype='lowpass', datasets=datasets)
 
@@ -293,20 +301,22 @@ class HighPassFilter(CutoffFilter):
     def __init__(
         self,
         filter_freq: float,
-        datasets: list[str]=['/vdsets/data_mK'],
+        datasets: list[str] = ['/vdsets/data_mK'],
     ):
         super().__init__(filter_freq, btype='highpass', datasets=datasets)
+
 
 #
 # Electronics Noise Removal
 #
 
-def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
+
+def compute_templates(data: npt.NDArray, max_modes: int = 30) -> npt.NDArray:
     """Compute templates for correlated noise removal.
 
     Args:
         data (npt.NDArray): Input data (2 x N_tone x N_samples).
-        max_modes (int, optional): Maximum number of eigenmodes to use for template 
+        max_modes (int, optional): Maximum number of eigenmodes to use for template
             construction.
 
     Returns:
@@ -319,7 +329,9 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     n_tones = data.shape[1]
 
     # Create a separate correlation matrix for all data channels
-    correlation_matrices = np.matmul(deproj_flat, np.conj(np.transpose(deproj, axes=(0, 2, 1))))
+    correlation_matrices = np.matmul(
+        deproj_flat, np.conj(np.transpose(deproj, axes=(0, 2, 1)))
+    )
 
     # Calculate the eigenmodes of the correlation matrices
     eigen_values, v = np.linalg.eig(correlation_matrices)
@@ -342,7 +354,9 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
             log_eigen_values = np.log10(sorted_eigen_values[:, n_modes:])
         mu = np.mean(log_eigen_values, axis=1)
         sigma = np.std(log_eigen_values, axis=1)
-        large_eigen_values = np.where(log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis])
+        large_eigen_values = np.where(
+            log_eigen_values > (mu + sigma_mult * sigma)[:, np.newaxis]
+        )
         i_count = large_eigen_values[0].size - np.sum(large_eigen_values[0])
         q_count = large_eigen_values[0].size - i_count
         new_modes = max(i_count, q_count)
@@ -351,25 +365,29 @@ def compute_templates(data: npt.NDArray, max_modes: int=30) -> npt.NDArray:
     _logger.debug(f'RemoveElectronincsNoise: Using {n_modes} eigen modes')
 
     # create templates based on the N_mode largest eigenmodes of each
-    templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], deproj)
+    templates = np.einsum('ijk,ijl->ikl', sorted_v[:, :, 0:n_modes], deproj)
 
     # subtract the mean again to be sure
-    templates = np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
+    templates = (
+        np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
+    )
     return templates
 
 
-def decode_tone_indices(pdata: ProcessedData, selection_indices: npt.NDArray | str, i_chan: int=None) -> npt.NDArray:
+def decode_tone_indices(
+    pdata: ProcessedData, selection_indices: npt.NDArray | str, i_chan: int = None
+) -> npt.NDArray:
     """Helper method for decoding the selected indices for routines.
 
     Arguments:
         pdata (ProcessedData): ProcessedData object containing the data.
-        selection_indices (npt.NDArray | str, optional): Either a string specifying the 
-            type of tones to select or an array of indices to select. Possible string 
+        selection_indices (npt.NDArray | str, optional): Either a string specifying the
+            type of tones to select or an array of indices to select. Possible string
             values are:
                 - 'onres' or 'on_res' or 'on_resonance': Select on-resonance tones
                 - 'offres' or 'off_res' or 'off_resonance': Select off-resonance tones
                 - 'all': Select all tones
-        i_chan (int, optional): The channel index to select the tones for. If None, 
+        i_chan (int, optional): The channel index to select the tones for. If None,
             will use the tone indices for all channels.
 
     Returns:
@@ -378,45 +396,65 @@ def decode_tone_indices(pdata: ProcessedData, selection_indices: npt.NDArray | s
     if isinstance(selection_indices, str):
         match selection_indices.lower():
             case 'onres' | 'on_res' | 'on_resonance':
-                return pdata.get_onres_ind(i_chan) if i_chan is not None else pdata.onres_ind
+                return (
+                    pdata.get_onres_ind(i_chan)
+                    if i_chan is not None
+                    else pdata.onres_ind
+                )
             case 'offres' | 'off_res' | 'off_resonance':
-                return pdata.get_offres_ind(i_chan) if i_chan is not None else pdata.offres_ind
+                return (
+                    pdata.get_offres_ind(i_chan)
+                    if i_chan is not None
+                    else pdata.offres_ind
+                )
             case 'all':
-                return np.arange(pdata.get_n_tones(i_chan), dtype=int) if i_chan is not None else np.arange(pdata.n_tones, dtype=int)
+                return (
+                    np.arange(pdata.get_n_tones(i_chan), dtype=int)
+                    if i_chan is not None
+                    else np.arange(pdata.n_tones, dtype=int)
+                )
             case _:
-                _logger.warning(f'Unkown index selection string: {selection_indices}; defaulting to all tones')
-                return np.arange(pdata.get_n_tones(i_chan), dtype=int) if i_chan is not None else np.arange(pdata.n_tones, dtype=int)
+                _logger.warning(
+                    f'Unkown index selection string: {selection_indices}; defaulting to all tones'
+                )
+                return (
+                    np.arange(pdata.get_n_tones(i_chan), dtype=int)
+                    if i_chan is not None
+                    else np.arange(pdata.n_tones, dtype=int)
+                )
     else:
         return selection_indices
+
 
 @register_routine
 class RemoveElectronicsNoise(DataRoutine):
     """Routine to remove correlated electronics noise.
-    
-    Removes correlated electronics noise using eigenmode decomposition of the 
+
+    Removes correlated electronics noise using eigenmode decomposition of the
     gain/phase data. Then rotates the cleaned gain/phase data back to IQ and regenerates
     the calibrated data arrays (data_freq_diss, data_mK).
     """
+
     name = 'RemoveElectronicsNoise'
     version = '1.0.0'
 
     def __init__(
         self,
-        max_modes: int=30,
-        lp_filt_freq: float=0,
-        template_selection_indices: npt.NDArray | str='all',
-        eigenmodes: list[int]=None,
+        max_modes: int = 30,
+        lp_filt_freq: float = 0,
+        template_selection_indices: npt.NDArray | str = 'all',
+        eigenmodes: list[int] = None,
     ):
         """Initialize the RemoveElectronicsNoise routine.
-        
+
         Arguments:
-            max_modes (int, optional): Maximum number of eigenmodes to use for template 
+            max_modes (int, optional): Maximum number of eigenmodes to use for template
                 construction.
             lp_filt_freq (float, optional): The cutoff frequency for the low-pass filter
-                applied to the gain/phase data before computing templates. Set to 0 or 
+                applied to the gain/phase data before computing templates. Set to 0 or
                 a value >= Nyquist to disable filtering. Defaults to 0 (no filtering).
-            template_selection_indices (npt.NDArray | str, optional): Indices of tones 
-                to use for computing the templates. Can be any value supported by 
+            template_selection_indices (npt.NDArray | str, optional): Indices of tones
+                to use for computing the templates. Can be any value supported by
                 `decode_tone_indices`. Defaults to `all`.
             eigenmodes (list[int], optional): The actual number of modes used for each
                 channel. If None, will be computed and stored in the params after running.
@@ -437,17 +475,18 @@ class RemoveElectronicsNoise(DataRoutine):
         for i_chan in range(pdata.n_chan):
             group_name = get_channel_group_name(i_chan)
             group_name = f'/channels/{get_channel_group_name(i_chan)}/'
-            dsets.extend([
-            group_name + 'time_ordered_data/data_IQ',
-            group_name + 'time_ordered_data/data_gain_phase',
-            group_name + 'time_ordered_data/data_freq_diss',
-            group_name + 'time_ordered_data/data_mK',
-            group_name + 'calibration_info',
-        ])
+            dsets.extend(
+                [
+                    group_name + 'time_ordered_data/data_IQ',
+                    group_name + 'time_ordered_data/data_gain_phase',
+                    group_name + 'time_ordered_data/data_freq_diss',
+                    group_name + 'time_ordered_data/data_mK',
+                    group_name + 'calibration_info',
+                ]
+            )
         return dsets
 
-
-    def run(self, pdata: ProcessedData, inputs: list[str]=None):
+    def run(self, pdata: ProcessedData, inputs: list[str] = None):
         eigenmodes = []  # The actual number of modes we use for each channel
         lp_filt_freq = self.params['lp_filt_freq']
         template_selection_indices = self.params['template_selection_indices']
@@ -455,9 +494,13 @@ class RemoveElectronicsNoise(DataRoutine):
         fs = pdata.fs
 
         for i_chan in range(pdata.n_chan):
-            selection_indices = decode_tone_indices(pdata, template_selection_indices, i_chan)
+            selection_indices = decode_tone_indices(
+                pdata, template_selection_indices, i_chan
+            )
 
-            data_gain_phase = pdata.get_from_channel(i_chan, 'time_ordered_data/data_gain_phase')
+            data_gain_phase = pdata.get_from_channel(
+                i_chan, 'time_ordered_data/data_gain_phase'
+            )
             clean_gain_phase = np.copy(data_gain_phase)
             clean_gain_phase -= np.mean(clean_gain_phase, axis=-1, keepdims=True)
             if 0 < lp_filt_freq < fs / 2:
@@ -472,18 +515,23 @@ class RemoveElectronicsNoise(DataRoutine):
                 data_lp = signal.sosfiltfilt(filt_sos, clean_gain_phase)
             else:
                 data_lp = clean_gain_phase[:]
-            templates = compute_templates(data_lp[:, selection_indices], max_modes=max_modes)  # 2 x N_modes x N_samples
+            templates = compute_templates(
+                data_lp[:, selection_indices], max_modes=max_modes
+            )  # 2 x N_modes x N_samples
 
             n_modes = templates.shape[1]
             eigenmodes.append(n_modes)
             denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
 
-
             for i_mode in range(n_modes):
                 clean_gain_phase -= np.mean(clean_gain_phase, axis=-1, keepdims=True)
-                numerator = np.einsum('ijk,ik->ij', clean_gain_phase, templates[:, i_mode])  # 2 x N_tones
-                corr = numerator / denominator[:, i_mode:i_mode+1]  # 2 x N_tones
-                clean_gain_phase[:] = clean_gain_phase - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
+                numerator = np.einsum(
+                    'ijk,ik->ij', clean_gain_phase, templates[:, i_mode]
+                )  # 2 x N_tones
+                corr = numerator / denominator[:, i_mode : i_mode + 1]  # 2 x N_tones
+                clean_gain_phase[:] = clean_gain_phase - np.einsum(
+                    'ij,ikl->ijl', corr, templates[:, i_mode : i_mode + 1]
+                )  # 2 x N_tones x N_samples
 
             # Apply clean data
             data_gain_phase[:] = clean_gain_phase
@@ -496,8 +544,12 @@ class RemoveElectronicsNoise(DataRoutine):
                 data_IQ,
                 -calibration_info['IQ_to_gain_phase_angle'],
             )
-            data_IQ[:] = data_IQ[:] - np.mean(data_IQ[:], axis=-1, keepdims=True)  # Mean center
-            data_freq_diss = pdata.get_from_channel(i_chan, 'time_ordered_data/data_freq_diss')
+            data_IQ[:] = data_IQ[:] - np.mean(
+                data_IQ[:], axis=-1, keepdims=True
+            )  # Mean center
+            data_freq_diss = pdata.get_from_channel(
+                i_chan, 'time_ordered_data/data_freq_diss'
+            )
             data_mK = pdata.get_from_channel(i_chan, 'time_ordered_data/data_mK')
             generate_calibrated_data(
                 data_IQ,
@@ -515,18 +567,21 @@ class RemoveElectronicsNoise(DataRoutine):
 @register_routine
 class CleanTOD(DataRoutine):
     """Routine to remove common-mode signals from the time-ordered data."""
+
     name = 'CleanTOD'
     version = '1.0.0'
 
-    def __init__(self, dataset: Literal['data_mK', 'data_freq']='data_mK'):
+    def __init__(self, dataset: Literal['data_mK', 'data_freq'] = 'data_mK'):
         """Initialize the CleanTOD routine.
-        
+
         Arguments:
-            dataset (str, optional): The name of the dataset to clean. Must be either 
+            dataset (str, optional): The name of the dataset to clean. Must be either
                 'data_mK' or 'data_freq'. Defaults to 'data_mK'.
         """
         if dataset not in ('data_mK', 'data_freq'):
-            raise ValueError(f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or "data_freq".')
+            raise ValueError(
+                f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or "data_freq".'
+            )
         super().__init__(dataset=dataset)
 
     def inputs(self, pdata: ProcessedData):
@@ -535,11 +590,12 @@ class CleanTOD(DataRoutine):
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
         for i_chan in range(pdata.n_chan):
-            dsets.append(f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}')
+            dsets.append(
+                f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}'
+            )
         return dsets
 
-    def run(self, pdata: ProcessedData, inputs: list[str]=None):
-
+    def run(self, pdata: ProcessedData, inputs: list[str] = None):
         for i_chan, dset in enumerate(inputs):
             data = pdata[dset]
             good_tones = pdata.get_onres_ind(i_chan)
@@ -554,24 +610,34 @@ class CleanTOD(DataRoutine):
                 _logger.exception(msg)
                 raise ValueError(msg)
             template = template - np.mean(template)
-            template_corr = np.sum(np.multiply(data[array_slice],template), axis=-1) / \
-                            np.sum(np.multiply(template,template))
+            template_corr = np.sum(
+                np.multiply(data[array_slice], template), axis=-1
+            ) / np.sum(np.multiply(template, template))
             data[array_slice] = data[array_slice] - np.outer(template_corr, template)
 
             return inputs
 
 
-def find_peaks(data: ProcessedData, primary_direction: str='az'):
+def find_peaks(data: ProcessedData, primary_direction: str = 'az'):
     import numpy as np
+
     # find peak going forward / back
     # fit gaussian
     # take position of both peask
     # right is 10-15
     # left is 20-25
     i_res = 241
-    right_indices = np.argwhere(np.logical_and(data.time >= 10, data.time <= 15)).flatten()
-    left_indices = np.argwhere(np.logical_and(data.time >= 20, data.time <= 25)).flatten()
-    telescope_pos = data.detector_az[i_res] if primary_direction.lower() == 'az' else data.detector_za[i_res]
+    right_indices = np.argwhere(
+        np.logical_and(data.time >= 10, data.time <= 15)
+    ).flatten()
+    left_indices = np.argwhere(
+        np.logical_and(data.time >= 20, data.time <= 25)
+    ).flatten()
+    telescope_pos = (
+        data.detector_az[i_res]
+        if primary_direction.lower() == 'az'
+        else data.detector_za[i_res]
+    )
 
     right_peak_idx = right_indices[np.argmax(data.data_mK[i_res, right_indices])]
     left_peak_idx = left_indices[np.argmax(data.data_mK[i_res, left_indices])]
@@ -579,18 +645,36 @@ def find_peaks(data: ProcessedData, primary_direction: str='az'):
     right_slice = slice(right_peak_idx - 2, right_peak_idx + 3)
     left_slice = slice(left_peak_idx - 2, left_peak_idx + 3)
 
-    right_fit = Polynomial.fit(telescope_pos[right_slice], data.data_mK[i_res, right_slice], 2).convert()
-    left_fit = Polynomial.fit(telescope_pos[left_slice], data.data_mK[i_res, left_slice], 2).convert()
+    right_fit = Polynomial.fit(
+        telescope_pos[right_slice], data.data_mK[i_res, right_slice], 2
+    ).convert()
+    left_fit = Polynomial.fit(
+        telescope_pos[left_slice], data.data_mK[i_res, left_slice], 2
+    ).convert()
 
     right_az_0 = (-1 * right_fit.coef[1]) / (2 * right_fit.coef[2])
     left_az_0 = (-1 * left_fit.coef[1]) / (2 * left_fit.coef[2])
     plt.plot(telescope_pos[:], data.data_mK[i_res, :], label='Full Trace')
-    plt.plot(telescope_pos[right_slice], data.data_mK[i_res, right_slice], label=f'Right {primary_direction.upper()}_0 = {right_az_0}')
-    plt.plot(telescope_pos[left_slice], data.data_mK[i_res, left_slice], label=f'Left {primary_direction.upper()}_0 = {left_az_0}')
-    scan_rate = (telescope_pos[right_peak_idx + 10] - telescope_pos[right_peak_idx - 10]) \
-        / (data.time[right_peak_idx + 10] - data.time[right_peak_idx - 10])
-    time_delay = (left_az_0 - right_az_0) / scan_rate / 2  # Amount RFSoC is behind the telescope
-    plt.annotate(f'Time Delay (seconds RFSoC lags behind telescope)= {time_delay:.3f}s', (.1, .1), xycoords='axes fraction')
+    plt.plot(
+        telescope_pos[right_slice],
+        data.data_mK[i_res, right_slice],
+        label=f'Right {primary_direction.upper()}_0 = {right_az_0}',
+    )
+    plt.plot(
+        telescope_pos[left_slice],
+        data.data_mK[i_res, left_slice],
+        label=f'Left {primary_direction.upper()}_0 = {left_az_0}',
+    )
+    scan_rate = (
+        telescope_pos[right_peak_idx + 10] - telescope_pos[right_peak_idx - 10]
+    ) / (data.time[right_peak_idx + 10] - data.time[right_peak_idx - 10])
+    time_delay = (
+        (left_az_0 - right_az_0) / scan_rate / 2
+    )  # Amount RFSoC is behind the telescope
+    plt.annotate(
+        f'Time Delay (seconds RFSoC lags behind telescope)= {time_delay:.3f}s',
+        (0.1, 0.1),
+        xycoords='axes fraction',
+    )
     plt.legend()
     plt.show()
-

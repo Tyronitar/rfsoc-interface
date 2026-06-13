@@ -192,14 +192,12 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         plt.close(self.figure)
         self.reject()
 
-    def move_line(self, x: float, update_line_edit: bool=True):
+    def move_line(self, x: float, update_line_edit: bool = True):
         """Move the line to the specified x value."""
         self.temp_fit_f0 = x
         self.canvas.line.set_xdata([x, x])
         self.figure_canvas.draw_idle()
-        self.delta_value_label.setText(
-            f'{(x - self.resonator.tone) * 1e-3:.3f}'
-        )
+        self.delta_value_label.setText(f'{(x - self.resonator.tone) * 1e-3:.3f}')
         if update_line_edit:
             self.new_freq_lineEdit.setText(f'{x * 1e-6:.9f}')
 
@@ -298,10 +296,14 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
 
         self.setup_connections()
 
-
         self.adjustSize()
 
-    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+    def replot_figure(
+        self,
+        plotting_function: Callable[Concatenate[Figure, P], None],
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ):
         self.canvas.replot_figure(plotting_function, *args, **kwargs)
 
     def close_to_line(self, xdata: float, epsilon: float = RTOL_EPSILON) -> bool:
@@ -374,7 +376,13 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         sweep (LoSweepData): The relevant LO sweep data.
     """
 
-    def __init__(self, sweep_data: LoSweepData, rfsoc: RFSOCWrapper | None=None, channel: int |None=None, parent: QWidget | None = None):
+    def __init__(
+        self,
+        sweep_data: LoSweepData,
+        rfsoc: RFSOCWrapper | None = None,
+        channel: int | None = None,
+        parent: QWidget | None = None,
+    ):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
@@ -394,12 +402,19 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
                 raise ValueError('Must specify a channel when `rfsoc` is set.')
 
     def set_window_name(self, name: str):
-        self.setWindowTitle(QCoreApplication.translate('Dialog', f'LO Sweep Diagnostics - {name}', None))
+        self.setWindowTitle(
+            QCoreApplication.translate('Dialog', f'LO Sweep Diagnostics - {name}', None)
+        )
 
     def click_button_box(self, button: QAbstractButton):
-        if self.buttonBox.buttonRole(button) == QDialogButtonBox.ButtonRole.DestructiveRole:
+        if (
+            self.buttonBox.buttonRole(button)
+            == QDialogButtonBox.ButtonRole.DestructiveRole
+        ):
             self.close_without_saving()
-        elif self.buttonBox.buttonRole(button) == QDialogButtonBox.ButtonRole.AcceptRole:
+        elif (
+            self.buttonBox.buttonRole(button) == QDialogButtonBox.ButtonRole.AcceptRole
+        ):
             self.accept()
 
     def set_sweep(self, sweep_data: LoSweepData):
@@ -417,7 +432,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
             parent=self,
             caption='Save Plot',
             dir=str(folder),
-            filter='Images (*.png *.jpg *.xpm);;PDF (*.pdf);;All Files (*)'
+            filter='Images (*.png *.jpg *.xpm);;PDF (*.pdf);;All Files (*)',
         )
         if fname:
             fig = self.get_figure()
@@ -453,9 +468,13 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
             QMessageBox.Icon.Warning,
             f'Do you want to save the changes you made to {self.savefile.stem}?',
             "Your changes will be lost if you don't save them",
-            parent=self
+            parent=self,
         )
-        msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel
+        )
         msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
         ret = msg.exec()
         match ret:
@@ -468,8 +487,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
                 self.reject()
                 return True
             case _:
-                raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
-
+                raise RuntimeError(
+                    f'Unexpected option returned from QMessageBox: {ret}'
+                )
 
     def click_plot(self, event: MouseEvent):
         """Handle clicking the plots."""
@@ -541,7 +561,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         screen_dpix = self.screen().logicalDotsPerInchX()
         return width_pixels / screen_dpix
 
-    def plot(self, callback: Callable | None=None, fig: Figure | None=None) -> Figure | None:
+    def plot(
+        self, callback: Callable | None = None, fig: Figure | None = None
+    ) -> Figure | None:
         """Plot all of the resonators."""
         if not self.isHidden():
             # Get the width of the window and determine how many columns will fit
@@ -562,7 +584,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
         # Only continue it if the plotting wasn't canceled
         if res is not None:
-        #     # self.set_figure(res)
+            #     # self.set_figure(res)
             return res
 
     def toggle_unflagged(self):
@@ -579,7 +601,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
     @classmethod
     @ensure_path(1)
-    def from_h5(cls, filepath: Path, parent: QWidget | None = None) -> DiagnosticsDialog:
+    def from_h5(
+        cls, filepath: Path, parent: QWidget | None = None
+    ) -> DiagnosticsDialog:
         """Create a DiagnosticsDialog from an HDF5 file."""
         sweep_data = LoSweepData.load(filepath)
         dialog = cls(sweep_data, parent=parent)
@@ -605,14 +629,13 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         return dialog
 
 
-def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON):
+def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float = ATOL_EPSILON):
     res = np.allclose(np.real(line.get_xdata()[0]), event.xdata, atol=epsilon), {}
     return res
 
 
 class SaveParamsDialog(QDialog):
-
-    def __init__(self, parent: QWidget | None=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent=parent)
         self.setupUi()
 
@@ -631,7 +654,8 @@ class SaveParamsDialog(QDialog):
         self.pushButton = QPushButton('Choose From File...', parent=self)
         self.pushButton.clicked.connect(self.choose_from_file)
         self.buttonBox = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
         self.buttonBox.accepted.connect(self.accept)
@@ -648,7 +672,7 @@ class SaveParamsDialog(QDialog):
             parent=self,
             caption='Select Parameters File',
             dir=DEFAULT_PARAMS_DIRECTORY,
-            filter='HDF5 (*.h5);;All Files (*)'
+            filter='HDF5 (*.h5);;All Files (*)',
         )
         if fname:
             path = Path(fname).with_suffix('.h5')
@@ -664,19 +688,22 @@ class SaveParamsDialog(QDialog):
             QMessageBox.Icon.Warning,
             f'Overwriting "{path.name}"',
             f'"{path.name}" already exists. Save anyway and overwrite the existing file?',
-            parent=self
+            parent=self,
         )
-        msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel)
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel
+        )
         msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
         ret = msg.exec()
         match ret:
             case QMessageBox.StandardButton.Save:
-
                 return True
             case QMessageBox.StandardButton.Cancel:
                 return False  # Don't close
             case _:
-                raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
+                raise RuntimeError(
+                    f'Unexpected option returned from QMessageBox: {ret}'
+                )
 
     def accept(self):
         tile_name = self.get_current_tile_name()
@@ -688,8 +715,9 @@ class SaveParamsDialog(QDialog):
                     return None
             return super().accept()
 
+
 class BlindSweepDialog(QDialog):
-    def __init__(self, data: LoSweepData, parent: QWidget | None=None):
+    def __init__(self, data: LoSweepData, parent: QWidget | None = None):
         super().__init__(parent)
         self.setupUi()
         self.setSizeGripEnabled(True)
@@ -704,7 +732,7 @@ class BlindSweepDialog(QDialog):
         self.f0 = data.detector_f
         self.selected_line = None
         self.dragging = False
-        self.action_stack: list[tuple[str, Any]]= []
+        self.action_stack: list[tuple[str, Any]] = []
         self.stack_pointer = -1
         self._cancelled = False
 
@@ -724,10 +752,11 @@ class BlindSweepDialog(QDialog):
             remove_function=self.remove_line,
             remove_description='Remove the currently selected line from the plot.',
             undo_function=self.undo,
-            redo_function=self.redo
+            redo_function=self.redo,
         )
         button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
         button_box.accepted.connect(self.save_tones)
@@ -742,7 +771,11 @@ class BlindSweepDialog(QDialog):
         self.setLayout(layout)
 
     def set_window_name(self, name: str):
-        self.setWindowTitle(QCoreApplication.translate('Dialog', f'Fitted Resonance Adjustment - {name}', None))
+        self.setWindowTitle(
+            QCoreApplication.translate(
+                'Dialog', f'Fitted Resonance Adjustment - {name}', None
+            )
+        )
 
     def _handle_save_params_finished(self, result: int):
         dialog: SaveParamsDialog = self.sender()
@@ -768,9 +801,13 @@ class BlindSweepDialog(QDialog):
             QMessageBox.Icon.Warning,
             'Close without saving?',
             "Your changes will be lost if you don't save them",
-            parent=self
+            parent=self,
         )
-        msg.setStandardButtons(QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel
+        )
         msg.setDefaultButton(QMessageBox.StandardButton.Cancel)
         ret = msg.exec()
         match ret:
@@ -781,7 +818,9 @@ class BlindSweepDialog(QDialog):
             case QMessageBox.StandardButton.Discard:
                 super().reject()
             case _:
-                raise RuntimeError(f'Unexpected option returned from QMessageBox: {ret}')
+                raise RuntimeError(
+                    f'Unexpected option returned from QMessageBox: {ret}'
+                )
 
     def reject(self):
         self.close_without_saving()
@@ -810,20 +849,20 @@ class BlindSweepDialog(QDialog):
     def get_vlines(self) -> list[plt.Line2D]:
         """Get the vertical lines in the plot."""
         # The first n_tones lines should be the S21 traces for each tone
-        return self.ax.lines[self.n_tones:]
+        return self.ax.lines[self.n_tones :]
 
-    def find_resonances(self, callback: Callable=None, **kwargs):
+    def find_resonances(self, callback: Callable = None, **kwargs):
         f0, depths = self.data.find_resonances(**kwargs)
         self.f0 = f0
         self.depths = depths
         if callback is not None:
             callback()
 
-    def find_resonances_and_plot(self, callback: Callable=None, **kwargs):
+    def find_resonances_and_plot(self, callback: Callable = None, **kwargs):
         self.find_resonances(**kwargs)
         self.plot(callback=callback)
 
-    def plot(self, callback: Callable=None):
+    def plot(self, callback: Callable = None):
         self.replot_figure(self.data.plot_blind_sweep, self.f0, callback=callback)
         # fig = self.data.plot_blind_sweep(f0)
         # self.set_figure(fig)
@@ -834,7 +873,7 @@ class BlindSweepDialog(QDialog):
             parent=self,
             caption='Save PDF',
             dir='blind_sweep.pdf',  # TODO: Get the directory the sweep is saved to (or today's date)
-            filter='PDF (*.pdf);;All Files (*)'
+            filter='PDF (*.pdf);;All Files (*)',
         )
         if filename:
             pd = IncrementalProgressDialog(
@@ -848,7 +887,9 @@ class BlindSweepDialog(QDialog):
             pd.setValue(0)
             pd.show()
             increment_progress = make_progress_dialog_incrementer(pd)
-            self.data.plot_new_resonances(self.f0, savefile=filename, callback=increment_progress)
+            self.data.plot_new_resonances(
+                self.f0, savefile=filename, callback=increment_progress
+            )
 
     def closest_vline(self, x: float) -> tuple[int, plt.Line2D]:
         lines = self.get_vlines()
@@ -863,7 +904,12 @@ class BlindSweepDialog(QDialog):
         self.figure_canvas.mpl_connect('motion_notify_event', self.mouse_move)
         self.figure_canvas.mpl_connect('pick_event', self.pick_line)
 
-    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+    def replot_figure(
+        self,
+        plotting_function: Callable[Concatenate[Figure, P], None],
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ):
         self.canvas.replot_figure(plotting_function, *args, **kwargs)
         for l in self.get_vlines():
             l.set_picker(line_picker)
@@ -882,17 +928,20 @@ class BlindSweepDialog(QDialog):
 
         self.adjustSize()
 
-    def move_selected_line(self, x: float, add_to_stack: bool=False):
+    def move_selected_line(self, x: float, add_to_stack: bool = False):
         """Move the currentyl selected line to the specified x value."""
         if add_to_stack:
-            self.push_to_stack('move_line', self.selected_line, self.selected_line_start, x)
+            self.push_to_stack(
+                'move_line', self.selected_line, self.selected_line_start, x
+            )
 
         self.selected_line.set_xdata([x, x])
         self.ax.draw_artist(self.selected_line)
         self.figure_canvas.draw_idle()
 
-
-    def close_to_line(self, line: plt.Line2D, xdata: float, epsilon: float=ATOL_EPSILON) -> bool:
+    def close_to_line(
+        self, line: plt.Line2D, xdata: float, epsilon: float = ATOL_EPSILON
+    ) -> bool:
         """Return whether a value is close to a line."""
         return np.allclose(line.get_xdata()[0], xdata, atol=epsilon)
 
@@ -910,14 +959,14 @@ class BlindSweepDialog(QDialog):
 
     def push_to_stack(self, action: str, *data):
         self.stack_pointer += 1
-        self.action_stack = self.action_stack[:self.stack_pointer]
+        self.action_stack = self.action_stack[: self.stack_pointer]
         self.action_stack.append((action, *data))
         # print(f'Pushed action "{action}" to stack with data {data}')
 
     def undo(self):
         # print(f'Called UNDO. Current stack: {self.action_stack}, pointer = {self.stack_pointer}')
         # If nothing to undo return
-        if len(self.action_stack[:self.stack_pointer + 1]) == 0:
+        if len(self.action_stack[: self.stack_pointer + 1]) == 0:
             return
         action, *data = self.action_stack[self.stack_pointer]
         # print(f'UNDO: action={action} with data {data}')
@@ -926,7 +975,10 @@ class BlindSweepDialog(QDialog):
                 line, old_x, new_x = data
                 line.set_xdata([old_x, old_x])
             case 'add_line':
-                line, x, = data
+                (
+                    line,
+                    x,
+                ) = data
                 line.remove()
             case 'remove_line':
                 line, x = data
@@ -934,7 +986,9 @@ class BlindSweepDialog(QDialog):
                 # line.set_picker(line_picker)
                 # line.set_pickradius(10)
             case _:
-                raise NotImplementedError(f'Undoing action "{action}" is not yet supported.')
+                raise NotImplementedError(
+                    f'Undoing action "{action}" is not yet supported.'
+                )
 
         self.figure_canvas.draw_idle()
         self.stack_pointer -= 1
@@ -960,7 +1014,9 @@ class BlindSweepDialog(QDialog):
                 line, x = data
                 line.remove()
             case _:
-                raise NotImplementedError(f'Redoing action "{action}" is not yet supported.')
+                raise NotImplementedError(
+                    f'Redoing action "{action}" is not yet supported.'
+                )
 
         self.figure_canvas.draw_idle()
         self.stack_pointer += 1
@@ -982,7 +1038,9 @@ class BlindSweepDialog(QDialog):
         if not self._editing:
             return
         if self.selected_line is not None:
-            self.push_to_stack('remove_line', self.selected_line, self.selected_line.get_xdata()[0])
+            self.push_to_stack(
+                'remove_line', self.selected_line, self.selected_line.get_xdata()[0]
+            )
             self.selected_line.remove()
             self.selected_line = None
 
@@ -1024,7 +1082,6 @@ class BlindSweepDialog(QDialog):
         if not self.close_to_line(closest_line, event.xdata):
             self.set_selected_line(None)
             closest_line.set_linewidth('1.5')
-
 
     def mouse_move(self, event: MouseEvent):
         """Handle mouse movement."""
@@ -1068,7 +1125,7 @@ class BlindSweepDialog(QDialog):
 
 # TODO: Finish this
 class PowerSweepDialog(QDialog):
-    def __init__(self, sweep_data: PowerSweepData, parent: QWidget | None=None):
+    def __init__(self, sweep_data: PowerSweepData, parent: QWidget | None = None):
         super().__init__(parent)
 
         self.sweep_data = sweep_data
@@ -1091,7 +1148,9 @@ class PowerSweepDialog(QDialog):
         # vlayout.addWidget(self.pdf_view)
 
         self.pdf_viewer = PDFViewerWidget(parent=self, preset='simple')
-        self.pdf_viewer.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        self.pdf_viewer.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding
+        )
         self.try_load_pdf()
         vlayout.addWidget(self.pdf_viewer)
 
@@ -1114,16 +1173,18 @@ class PowerSweepDialog(QDialog):
         section_layout.addWidget(self.max_deviation_lineEdit, 2, 2)
         self.refit_button = QPushButton('Refit', parent=self)
         section_layout.addWidget(self.refit_button, 3, 1)
-        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.horizontalSpacer = QSpacerItem(
+            40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+        )
         section_layout.addItem(self.horizontalSpacer, 0, 1)
 
         self.section.setContentLayout(section_layout)
         self.section.setTitle('Refit Optimal Power Levels')
-        vlayout.addWidget(self.section)#, alignment=Qt.AlignmentFlag.AlignBottom)
+        vlayout.addWidget(self.section)  # , alignment=Qt.AlignmentFlag.AlignBottom)
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=self
+            parent=self,
         )
         vlayout.addWidget(self.button_box)
 
@@ -1143,13 +1204,17 @@ class PowerSweepDialog(QDialog):
             self.pdf_viewer.show_blank_page()
             return False
         except PermissionError:
-            _logger.debug(f'Missing required permissions to view "{self.filename}". Showing blank page.')
+            _logger.debug(
+                f'Missing required permissions to view "{self.filename}". Showing blank page.'
+            )
             self.pdf_viewer.show_blank_page()
             return False
         return True
 
     def set_window_name(self, name: str):
-        self.setWindowTitle(QCoreApplication.translate('Dialog', f'Power Sweep Results - {name}', None))
+        self.setWindowTitle(
+            QCoreApplication.translate('Dialog', f'Power Sweep Results - {name}', None)
+        )
 
     def _cleanup_pdf_viewer(self):
         """Ensure the PDF viewer backend is cleaned up before the dialog is destroyed."""
@@ -1182,12 +1247,21 @@ class PowerSweepDialog(QDialog):
         """Refit the power sweep."""
         # Get parameters from the GUI
         try:
-            baseline_percentage = get_num_value(self.percentile_lineEdit, use_placeholder_text=True) / 100
-            cutoff_percentile = get_num_value(self.bad_power_cutoff_lineEdit, use_placeholder_text=True) / 100
-            max_deviation = get_num_value(self.max_deviation_lineEdit, use_placeholder_text=True)
+            baseline_percentage = (
+                get_num_value(self.percentile_lineEdit, use_placeholder_text=True) / 100
+            )
+            cutoff_percentile = (
+                get_num_value(self.bad_power_cutoff_lineEdit, use_placeholder_text=True)
+                / 100
+            )
+            max_deviation = get_num_value(
+                self.max_deviation_lineEdit, use_placeholder_text=True
+            )
         except ValueError:
             # Handle case when a line edit doesn't have a valid value
-            _logger.warning('Unable to get fit parameters properly from PowerSweepDialog. Cancelling refit.')
+            _logger.warning(
+                'Unable to get fit parameters properly from PowerSweepDialog. Cancelling refit.'
+            )
             return False
 
         # Find optimnal power levels again using new parameters
@@ -1264,7 +1338,6 @@ class PowerSweepDialog(QDialog):
         self.try_load_pdf()
 
         return True
-
 
     def closeEvent(self, event):
         # Clean up PDF viewer (page/profile) before closing to avoid Qt warning

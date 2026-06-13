@@ -19,10 +19,17 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+
 class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
     tab_name = TabName.DATA
 
-    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent=None):
+    def __init__(
+        self,
+        main_window: 'MainWindow',
+        rfsocs: list[RFSOCWrapper],
+        settings: dict,
+        parent=None,
+    ):
         super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
         self.save_location_widget.file_type = 'tod'
@@ -30,7 +37,9 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         self.channel_comboBox.set_default_title('Select Channels...')
         self.setup_connections()
         self.update_channel_choices(self.channel_comboBox)
-        main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
+        main_window.channelNamesUpdated.connect(
+            lambda: self.update_channel_choices(self.channel_comboBox)
+        )
 
     def setup_connections(self):
         self.start_pushButton.clicked.connect(self.start_streaming)
@@ -53,11 +62,15 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
             QCoreApplication.processEvents()
             now = time.time()
             remaining_time = duration - (now - start)
-            pd.setLabelText(f'Collecting data...\nRemaining time: {int(remaining_time)} seconds')
+            pd.setLabelText(
+                f'Collecting data...\nRemaining time: {int(remaining_time)} seconds'
+            )
             pd.setValue(now - start)
             counter += 1
             if counter % 50 == 0:
-                _logger.info(f'Collecting data: {100 * (now - start) / duration:.2f}% complete...')
+                _logger.info(
+                    f'Collecting data: {100 * (now - start) / duration:.2f}% complete...'
+                )
 
     def process_data(self, date: str, setnum: int):
         pass
@@ -74,7 +87,9 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
 
         duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)
 
-        _logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
+        _logger.debug(
+            f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}'
+        )
         capture(rfchans, self.wait_for_TOD, duration)
         _logger.info('Completed data streaming')
         self.save_location_widget.update_default_save_location()

@@ -11,7 +11,9 @@ class CustomConsoleFormatter(logging.Formatter):
     red = '\x1b[31;21m'
     bold_red = '\x1b[31;1m'
     reset = '\x1b[0m'
-    debug_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)'
+    debug_format = (
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)'
+    )
     info_format = '%(message)s'
     warning_format = '%(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)'
 
@@ -20,7 +22,7 @@ class CustomConsoleFormatter(logging.Formatter):
         logging.INFO: grey + info_format + reset,
         logging.WARNING: yellow + warning_format + reset,
         logging.ERROR: red + warning_format + reset,
-        logging.CRITICAL: bold_red + warning_format + reset
+        logging.CRITICAL: bold_red + warning_format + reset,
     }
 
     def format(self, record):

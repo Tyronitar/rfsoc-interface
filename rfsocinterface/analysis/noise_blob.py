@@ -1,4 +1,3 @@
-
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -14,11 +13,11 @@ def plot_complex_datastreams_scatter_plot(
     pd: ProcessedData,
     chanmask: npt.NDArray,
     filename: str,
-    basis: str='fd',
+    basis: str = 'fd',
 ) -> list[Figure]:
     """Make a noise blob.
-    
-    Plots 
+
+    Plots
     Arguments:
         data: Data to plot (2 x N_tones x N_samples).
         chanmask: (N_tones)
@@ -50,11 +49,14 @@ def plot_complex_datastreams_scatter_plot(
             plt.close(fig)
     return figs
 
+
 if __name__ == '__main__':
     date = '20250916'
     setnum = 1017
-    basis='fd'
-    output_file = f'{DEFAULT_DATA_DIRECTORY}/{date}/{date}_set{setnum}_noise_blob_{basis}.pdf'
+    basis = 'fd'
+    output_file = (
+        f'{DEFAULT_DATA_DIRECTORY}/{date}/{date}_set{setnum}_noise_blob_{basis}.pdf'
+    )
     ds_factor = 4
 
     pd = ProcessedData.from_tod(
@@ -63,7 +65,9 @@ if __name__ == '__main__':
         do_electronics_noise_removal=True,
         ds_factor=ds_factor,
     )
-    raw_data = RawDataFile('/data/20250916/20250916_Be231102p2_100_tones_TOD_set1017.h5', 'r')
+    raw_data = RawDataFile(
+        '/data/20250916/20250916_Be231102p2_100_tones_TOD_set1017.h5', 'r'
+    )
 
     figs = plot_complex_datastreams_scatter_plot(
         pd,
@@ -86,5 +90,3 @@ if __name__ == '__main__':
     #     plt.legend()
     # plt.show()
     pd.close()
-
-

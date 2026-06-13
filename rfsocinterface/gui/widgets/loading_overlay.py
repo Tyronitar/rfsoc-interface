@@ -1,4 +1,5 @@
 """Code for a loading overlay."""
+
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter
 from PySide6.QtWidgets import (
@@ -16,6 +17,7 @@ from rfsocinterface.gui.widgets.tool_buttons import RoundedToolButton
 
 class LoadingOverlay(QWidget):
     """An overlay to display over the GUI while a slow action is performed."""
+
     finished = Signal()
 
     def __init__(self, parent=None):
@@ -30,11 +32,15 @@ class LoadingOverlay(QWidget):
 
         self.close_button = RoundedToolButton(parent=self)
         close_icon = QIcon()
-        close_icon.addFile(':/icons/close.svg', QSize(14, 14), QIcon.Mode.Normal, QIcon.State.Off)
+        close_icon.addFile(
+            ':/icons/close.svg', QSize(14, 14), QIcon.Mode.Normal, QIcon.State.Off
+        )
         self.close_button.setIcon(close_icon)
         self.close_button.clicked.connect(self.cancel)
 
-        self.spinner = StickyWaitingSpinner(parent=self, center_on_parent=False, **STANDARD_STICKY_SPINNER_SETTINGS)
+        self.spinner = StickyWaitingSpinner(
+            parent=self, center_on_parent=False, **STANDARD_STICKY_SPINNER_SETTINGS
+        )
         label_font = QFont('Arial', 20, QFont.Weight.Medium)
         self.label = QLabel('Loading...', parent=self)
         self.label.setFont(label_font)
@@ -80,8 +86,6 @@ class LoadingOverlay(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.fillRect(self.rect(), self.fillcolor)
-
-
 
 
 if __name__ == '__main__':

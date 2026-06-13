@@ -2,6 +2,7 @@
 
 Implementation from https://www.pythonguis.com/faq/pyside6-drag-drop-widgets/
 """
+
 from itertools import chain
 
 from PySide6.QtCore import QMimeData, QPoint, Qt, Signal, Slot
@@ -85,13 +86,13 @@ class DragItem(QLabel):
             mime = QMimeData()
             drag.setMimeData(mime)
 
-
             drag.setPixmap(pixmap)
-            drag.setHotSpot(QPoint(drag.pixmap().width()/4, drag.pixmap().height() / 4))
-
+            drag.setHotSpot(
+                QPoint(drag.pixmap().width() / 4, drag.pixmap().height() / 4)
+            )
 
             drag.exec(Qt.DropAction.MoveAction)
-            self.show() # Show this widget again, if it's dropped outside.
+            self.show()  # Show this widget again, if it's dropped outside.
 
 
 class ClickableDragItem(DragItem):
@@ -116,8 +117,7 @@ class ClickableDragItem(DragItem):
 
 
 class DragWidget(QWidget):
-    """Generic list sorting handler.
-    """
+    """Generic list sorting handler."""
 
     orderChanged = Signal(list, list)
 
@@ -223,7 +223,9 @@ class DragWidget(QWidget):
         return data
 
     def items(self) -> list[DragItem]:
-        all_items = [self.blayout.itemAt(i).widget() for i in range(self.blayout.count())]
+        all_items = [
+            self.blayout.itemAt(i).widget() for i in range(self.blayout.count())
+        ]
         # print(all_items)
         return list(filter(lambda item: isinstance(item, DragItem), all_items))
 
@@ -263,7 +265,6 @@ class ClickableDragWidget(DragWidget):
         item: ClickableDragItem = self.sender()
         if self.blayout.indexOf(item) != -1:
             self.set_active_item(item)
-
 
 
 class MultiSectionDragWidget(QWidget):
@@ -357,7 +358,9 @@ class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
         self.blayout.addWidget(section_label)
         self.blayout.addWidget(new_section)
         i_sec = len(self.sections)
-        new_section.activeItemChanged.connect(lambda item: self.set_active_item(i_sec, item))
+        new_section.activeItemChanged.connect(
+            lambda item: self.set_active_item(i_sec, item)
+        )
         self.sections.append(new_section)
         self._items.append([])
         self._item_data.append([])
@@ -375,13 +378,18 @@ class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
 
 
 if __name__ == '__main__':
+
     class MainWindow(QMainWindow):
         def __init__(self):
             super().__init__()
-            self.multi_drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Horizontal, parent=self)
+            self.multi_drag = ClickableMultiSectionDragWidget(
+                orientation=Qt.Orientation.Horizontal, parent=self
+            )
             n_sections = 2
             counter = 0
-            for i_sec, section_name in enumerate([f'Section {i + 1}' for i in range(n_sections)]):
+            for i_sec, section_name in enumerate(
+                [f'Section {i + 1}' for i in range(n_sections)]
+            ):
                 self.multi_drag.add_section(section_name)
                 for l in ['A', 'B', 'C', 'D']:
                     item = ClickableDragItem(l)
@@ -407,7 +415,6 @@ if __name__ == '__main__':
             container.setLayout(layout)
 
             self.setCentralWidget(container)
-
 
     app = QApplication([])
     w = MainWindow()

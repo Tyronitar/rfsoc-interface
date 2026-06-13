@@ -1,4 +1,5 @@
 """Module for handling parallelization."""
+
 from __future__ import annotations
 
 import traceback
@@ -27,7 +28,12 @@ from rfsocinterface.core.utils import (
 
 
 class JobPool:
-    def __init__(self, max_workers: int | None=None, use_logical: bool=False, close_timeout: int | None=None):
+    def __init__(
+        self,
+        max_workers: int | None = None,
+        use_logical: bool = False,
+        close_timeout: int | None = None,
+    ):
         n_cpu = psutil.cpu_count(logical=use_logical)
         if max_workers is None:
             max_workers = n_cpu
@@ -44,11 +50,11 @@ class JobPool:
         return self.executor.active and len(self.futures) > 0
 
     def schedule(
-            self,
-            fn: Callable[P, R],
-            *args: P.args,
-            done_callbacks: list[Callable[[Future], None]]=[],
-            **kwargs: P.kwargs,
+        self,
+        fn: Callable[P, R],
+        *args: P.args,
+        done_callbacks: list[Callable[[Future], None]] = [],
+        **kwargs: P.kwargs,
     ) -> Future[R]:
         """Schedule a function to be computed by the JobPool.
 
@@ -58,7 +64,7 @@ class JobPool:
             **kwargs (P.kwargs): Keyword arguments to pass to `fn`.
             done_callbacks (list[Callable[[Future], None]]): Callback functions
                 to be called when the future is finished. Defaults to [].
-        
+
         Returns:
             (Future[R]): Future representing the result of calling `fn`.
         """
@@ -70,12 +76,12 @@ class JobPool:
         return f
 
     def map(
-            self,
-            fn: Callable[..., R],
-            *iterables: Iterable[Any],
-            done_callbacks: list[Callable[[Future], None]]=[],
-            timeout: float | None=None,
-            chunksize: int=1,
+        self,
+        fn: Callable[..., R],
+        *iterables: Iterable[Any],
+        done_callbacks: list[Callable[[Future], None]] = [],
+        timeout: float | None = None,
+        chunksize: int = 1,
     ) -> CombinedFuture:
         """Apply `fn` to every item of `iterable` and return an iterator of the results.
 
@@ -108,7 +114,7 @@ class JobPool:
 
     def cancel_all(self) -> bool:
         """Cancel all currently running jobs.
-        
+
         Returns:
             (bool): Whether all jobs were succesfully canceled.
         """
@@ -117,7 +123,7 @@ class JobPool:
             all_canceled |= f.cancel()
         return all_canceled
 
-    def shutdown(self, wait: bool=False):
+    def shutdown(self, wait: bool = False):
         """Shutdown the executor and wait for all threads to finish."""
         self.stop()
         if wait:
@@ -126,7 +132,7 @@ class JobPool:
     def stop(self):
         self.executor.stop()
 
-    def join(self, timeout: float=None):
+    def join(self, timeout: float = None):
         self.executor.join(timeout=timeout)
 
     def close(self):
@@ -158,6 +164,7 @@ def process_chunk(function: Callable, chunk: list, **kwargs) -> list:
     """Processes a chunk of the iterable passed to map dealing with errors."""
     return [execute(function, *args, **kwargs) for args in chunk]
 
+
 class QPoolExecutor(QObject):
     progress = Signal(int)
     error = Signal(BaseException)
@@ -165,7 +172,7 @@ class QPoolExecutor(QObject):
     result = Signal(object)
     pool: ThreadPoolExecutor | ProcessPoolExecutor
 
-    def __init__(self, max_workers: int=None, parent=None):
+    def __init__(self, max_workers: int = None, parent=None):
         QObject.__init__(self, parent=parent)
         n_cpu = psutil.cpu_count(logical=True)
         if max_workers is None:
@@ -193,17 +200,27 @@ class QPoolExecutor(QObject):
         except BaseException as e:
             self.error.emit(e)
 
-    def schedule(self, fn: Callable[P, R], args: tuple, kwargs: dict, timeout: float=None) -> Future[R]:
+    def schedule(
+        self, fn: Callable[P, R], args: tuple, kwargs: dict, timeout: float = None
+    ) -> Future[R]:
         f = self.pool.submit(fn, *args, **kwargs)
 
         f.add_done_callback(self.handle_future_done)
         return f
 
-    def map(self, fn: Callable[..., R], *iterables: Iterable, timeout: float | None=None, chunksize: int=1) -> CombinedFuture[Iterable[R]]:
+    def map(
+        self,
+        fn: Callable[..., R],
+        *iterables: Iterable,
+        timeout: float | None = None,
+        chunksize: int = 1,
+    ) -> CombinedFuture[Iterable[R]]:
         if chunksize < 1:
             raise ValueError('chunksize must be >= 1')
-        futures = [self.schedule(process_chunk, (fn, chunk), {})
-                   for chunk in iter_chunks(zip(*iterables), chunksize)]
+        futures = [
+            self.schedule(process_chunk, (fn, chunk), {})
+            for chunk in iter_chunks(zip(*iterables), chunksize)
+        ]
         return CombinedFuture(futures)
 
     def stop(self):
@@ -212,16 +229,16 @@ class QPoolExecutor(QObject):
     def close(self):
         self.pool.shutdown(cancel_futures=False)
 
-    def join(self, timeout: int=None):
+    def join(self, timeout: int = None):
         self.pool.shutdown(wait=True)
 
     @property
     def active(self) -> bool:
         raise NotImplementedError
 
-class QThreadPoolExecutor(QPoolExecutor):
 
-    def __init__(self, max_workers: int=None, parent=None):
+class QThreadPoolExecutor(QPoolExecutor):
+    def __init__(self, max_workers: int = None, parent=None):
         super().__init__(max_workers=max_workers, parent=parent)
         self.pool = ThreadPoolExecutor(self.max_workers)
 
@@ -229,8 +246,9 @@ class QThreadPoolExecutor(QPoolExecutor):
     def active(self) -> bool:
         return not self.pool._shutdown
 
+
 class QProcessPoolExecutor(QPoolExecutor):
-    def __init__(self, max_workers: int=None, parent=None):
+    def __init__(self, max_workers: int = None, parent=None):
         super().__init__(max_workers=max_workers, parent=parent)
         self.pool = ProcessPoolExecutor(self.max_workers)
 
@@ -247,9 +265,16 @@ class QJobPool(JobPool, QObject):
     job_finished = Signal()
     result = Signal(object)
 
-    def __init__(self, max_workers: int | None=None, close_timeout: int | None=None, parent=None):
+    def __init__(
+        self,
+        max_workers: int | None = None,
+        close_timeout: int | None = None,
+        parent=None,
+    ):
         QObject.__init__(self, parent=parent)  # Initialize QObject
-        JobPool.__init__(self, max_workers=max_workers, use_logical=True, close_timeout=close_timeout)
+        JobPool.__init__(
+            self, max_workers=max_workers, use_logical=True, close_timeout=close_timeout
+        )
 
     def _setup_signals(self):
         self.executor.progress.connect(self.handle_progress)
@@ -273,14 +298,30 @@ class QJobPool(JobPool, QObject):
     def handle_job_finished(self):
         self.job_finished.emit()
 
+
 class QThreadJobPool(QJobPool):
-    def __init__(self, max_workers: int | None=None, close_timeout: int | None=None, parent=None):
-        super().__init__(max_workers=max_workers, close_timeout=close_timeout, parent=parent)
+    def __init__(
+        self,
+        max_workers: int | None = None,
+        close_timeout: int | None = None,
+        parent=None,
+    ):
+        super().__init__(
+            max_workers=max_workers, close_timeout=close_timeout, parent=parent
+        )
         self.executor = QThreadPoolExecutor(max_workers=self.max_workers, parent=self)
         self._setup_signals()
 
+
 class QProcessJobPool(QJobPool):
-    def __init__(self, max_workers: int | None=None, close_timeout: int | None=None, parent=None):
-        super().__init__(max_workers=max_workers, close_timeout=close_timeout, parent=parent)
+    def __init__(
+        self,
+        max_workers: int | None = None,
+        close_timeout: int | None = None,
+        parent=None,
+    ):
+        super().__init__(
+            max_workers=max_workers, close_timeout=close_timeout, parent=parent
+        )
         self.executor = QProcessPoolExecutor(max_workers=self.max_workers, parent=self)
         self._setup_signals()

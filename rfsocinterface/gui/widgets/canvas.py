@@ -41,6 +41,7 @@ class EditTool(ToolToggleBase):
     image = ':/icons/edit.svg'
     radio_group = 'default'
 
+
 class AddTool(ToolBase):
     description = 'Add an artist to the plot'
     image = ':/icons/plus.svg'
@@ -140,15 +141,22 @@ class ScrollableCanvas(QScrollArea):
             return True
         return super().eventFilter(obj, event)
 
-    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+    def replot_figure(
+        self,
+        plotting_function: Callable[Concatenate[Figure, P], None],
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ):
         self.figure.clf()
         plotting_function(*args, fig=self.figure, **kwargs)
+
 
 class EditMode(str, Enum):
     EDIT = 'edit'
 
     def __str__(self):
         return self.value
+
 
 class EditToolBar(NavigationToolbar2QT):
     toolitems = NavigationToolbar2QT.toolitems
@@ -158,27 +166,30 @@ class EditToolBar(NavigationToolbar2QT):
         canvas,
         parent=None,
         coordinates=True,
-        add_group: bool=False,
-        add_edit_button: bool=False,
-        edit_description: str=EditTool.description,
-        add_function: Callable=None,
-        add_description: str=AddTool.description,
-        remove_function: Callable=None,
-        remove_description: str=RemoveTool.description,
-        undo_function: Callable=None,
-        undo_description: str=UndoTool.description,
-        redo_function: Callable=None,
-        redo_description: str=RedoTool.description,
+        add_group: bool = False,
+        add_edit_button: bool = False,
+        edit_description: str = EditTool.description,
+        add_function: Callable = None,
+        add_description: str = AddTool.description,
+        remove_function: Callable = None,
+        remove_description: str = RemoveTool.description,
+        undo_function: Callable = None,
+        undo_description: str = UndoTool.description,
+        redo_function: Callable = None,
+        redo_description: str = RedoTool.description,
     ):
         self.add_function = add_function
         self.remove_function = remove_function
         self.undo_function = undo_function
         self.redo_function = redo_function
-        add_group = add_group or add_edit_button or \
-            (add_function is not None) or \
-            (remove_function is not None) or \
-            (undo_function is not None) or \
-            (redo_function is not None)
+        add_group = (
+            add_group
+            or add_edit_button
+            or (add_function is not None)
+            or (remove_function is not None)
+            or (undo_function is not None)
+            or (redo_function is not None)
+        )
         new_group = []
         if add_group:
             new_group.append((None, None, None, None))
@@ -262,25 +273,26 @@ class EditToolBar(NavigationToolbar2QT):
         if 'toggle_edit' in self._actions:
             self._actions['toggle_edit'].setChecked(self.mode.name == 'EDIT')
 
+
 class ToolbarCanvas(QWidget):
     """Widget canvas that contains the navbar."""
 
     def __init__(
         self,
         parent=None,
-        fig: Figure | None=None,
-        scrollable: bool=False,
-        add_edit: bool=False,
-        edit_description: str=EditTool.description,
-        coordinates: bool=True,
-        add_function: Callable=None,
-        add_description: str=AddTool.description,
-        remove_function: Callable=None,
-        remove_description: str=RemoveTool.description,
-        undo_function: Callable=None,
-        undo_description: str=UndoTool.description,
-        redo_function: Callable=None,
-        redo_description: str=RedoTool.description,
+        fig: Figure | None = None,
+        scrollable: bool = False,
+        add_edit: bool = False,
+        edit_description: str = EditTool.description,
+        coordinates: bool = True,
+        add_function: Callable = None,
+        add_description: str = AddTool.description,
+        remove_function: Callable = None,
+        remove_description: str = RemoveTool.description,
+        undo_function: Callable = None,
+        undo_description: str = UndoTool.description,
+        redo_function: Callable = None,
+        redo_description: str = RedoTool.description,
     ):
         """Initialize a ResonatorCanvas."""
         super().__init__(parent)
@@ -342,7 +354,12 @@ class ToolbarCanvas(QWidget):
         self.nav = self.manager.toolbar
         layout.replaceWidget(old_nav, self.nav)
 
-    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+    def replot_figure(
+        self,
+        plotting_function: Callable[Concatenate[Figure, P], None],
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ):
         if isinstance(self.canvas, ScrollableCanvas):
             self.canvas.replot_figure(plotting_function, *args, **kwargs)
         else:
@@ -388,7 +405,12 @@ class ResonatorCanvas(QWidget):
         """Update the figure of this widget."""
         self.update()
 
-    def replot_figure(self, plotting_function: Callable[Concatenate[Figure, P], None], *args: P.args, **kwargs: P.kwargs):
+    def replot_figure(
+        self,
+        plotting_function: Callable[Concatenate[Figure, P], None],
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ):
         self.canvas.replot_figure(plotting_function, *args, **kwargs)
         self.line = self.figure.axes[0].get_lines()[1]
 
@@ -461,10 +483,12 @@ class DiagnosticsCanvas(ScrollableCanvas):
             fig.draw_artist(ax.patch)
 
             ax.patch.set_linewidth(0)
-            self.bm.update_artists([
-                (ax.patch, ax.patch.get_tightbbox()),
-                (ax, ax.bbox),
-            ])
+            self.bm.update_artists(
+                [
+                    (ax.patch, ax.patch.get_tightbbox()),
+                    (ax, ax.bbox),
+                ]
+            )
 
             if self.is_edited(ax):
                 self.add_edited_marker(ax)
@@ -472,10 +496,12 @@ class DiagnosticsCanvas(ScrollableCanvas):
         if axes is not None:
             axes.patch.set_linewidth(5)
             axes.patch.set_edgecolor(SELECTED_RESONANCE_COLOR)
-            self.bm.update_artists([
-                (axes.patch, axes.patch.get_clip_box()),
-                (axes, axes.bbox),
-            ])
+            self.bm.update_artists(
+                [
+                    (axes.patch, axes.patch.get_clip_box()),
+                    (axes, axes.bbox),
+                ]
+            )
         self.selected_axes = axes
         self.canvas.blit()
         self.canvas.flush_events()
@@ -485,10 +511,12 @@ class DiagnosticsCanvas(ScrollableCanvas):
         ax.patch.set_linewidth(5)
         ax.patch.set_edgecolor(EDITED_RESONANCE_COLOR)
 
-        self.bm.update_artists([
-            (ax.patch, ax.patch.get_tightbbox()),
-            (ax, ax.bbox),
-        ])
+        self.bm.update_artists(
+            [
+                (ax.patch, ax.patch.get_tightbbox()),
+                (ax, ax.bbox),
+            ]
+        )
 
     def set_edited(self, idx: int):
         self.edited_axes.add(idx)

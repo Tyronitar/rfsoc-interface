@@ -45,11 +45,20 @@ if TYPE_CHECKING:
 
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
+
 class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """Window for controlling telescope motion."""
+
     tab_name = TabName.TELESCOPE
 
-    def __init__(self, main_window: MainWindow, rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None):
+    def __init__(
+        self,
+        main_window: MainWindow,
+        rfsocs: list[RFSOCWrapper],
+        settings: dict,
+        client_id: str,
+        parent: QWidget | None = None,
+    ):
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
 
@@ -75,8 +84,10 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.connect_to_telescope_command('ze_pos_comm', self.update_ze_cmd)
 
         # Set up Optical Camera
-        self.live_footage_fig, self.live_footage_ax = plt.subplots(figsize=(12,9))
-        self.live_footage_im = self.live_footage_ax.imshow(np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)))
+        self.live_footage_fig, self.live_footage_ax = plt.subplots(figsize=(12, 9))
+        self.live_footage_im = self.live_footage_ax.imshow(
+            np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3))
+        )
         self.live_footage_fig.tight_layout()
         self.live_footage_ax.set_axis_off()
 
@@ -86,7 +97,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
         self.live_footage_thread = None
         self.optical_pushButton.clicked.connect(self.toggle_live_footage)
-        self.frame_rate = 5 # FPS
+        self.frame_rate = 5  # FPS
 
         # Initialize the numbers in the GUI
         self.az_pos = self.last_az = 0
@@ -149,13 +160,21 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def jog(self, btn: QAbstractButton):
         match btn:
             case self.controller.up_toolButton:
-                self.send_telescope_command('set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL)
+                self.send_telescope_command(
+                    'set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL
+                )
             case self.controller.down_toolButton:
-                self.send_telescope_command('set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL)
+                self.send_telescope_command(
+                    'set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL
+                )
             case self.controller.left_toolButton:
-                self.send_telescope_command('set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL)
+                self.send_telescope_command(
+                    'set_voltage', self.az_jog_voltage, AZ_OUT_CHANNEL
+                )
             case self.controller.right_toolButton:
-                self.send_telescope_command('set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL)
+                self.send_telescope_command(
+                    'set_voltage', -self.az_jog_voltage, AZ_OUT_CHANNEL
+                )
 
     def set_az_pos(self):
         new_pos = get_num_value(self.azimuth_setlineEdit)
@@ -266,7 +285,6 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         if self.live_footage_thread is not None and self.live_footage_thread.is_alive():
             self.optical_pushButton.click()
         return super().closeEvent(event)
-
 
 
 if __name__ == '__main__':

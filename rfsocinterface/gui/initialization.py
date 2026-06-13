@@ -16,10 +16,17 @@ from rfsocinterface.gui.widgets.section import Section
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
+
 class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
     tab_name = TabName.INITIALIZATION
 
-    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, parent: QWidget | None = None):
+    def __init__(
+        self,
+        main_window: 'MainWindow',
+        rfsocs: list[RFSOCWrapper],
+        settings: dict,
+        parent: QWidget | None = None,
+    ):
         super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
         self.items: list[tuple[Section, RFSOCSettingsWidget]] = []
@@ -40,7 +47,7 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
         for widget in self.rfsoc_widgets:
             widget.update_channel_names()
 
-    def add_section(self, rfsoc: RFSOCWrapper, toggle: bool=False):
+    def add_section(self, rfsoc: RFSOCWrapper, toggle: bool = False):
         # channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)
         section_id = len(self.items) + 1
         section = Section(self.scrollAreaWidgetContents, animationDuration=100)
@@ -77,7 +84,7 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
         for _, widget in self.items:
             yield widget
 
-    def collapse_all(self, recursive: bool=False):
+    def collapse_all(self, recursive: bool = False):
         for section in self.sections:
             section.collapse(recursive=recursive)
 

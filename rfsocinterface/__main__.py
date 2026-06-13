@@ -16,8 +16,8 @@ from rfsocinterface.gui.main_window import MainWindow
 def move_to_center(win: QMainWindow, screen: QScreen):
     win.move(screen.geometry().center() - win.geometry().center())
 
-if __name__ == '__main__':
 
+if __name__ == '__main__':
     logconf_file = Path(__file__).parent / 'logging.conf'
     logging.config.fileConfig(logconf_file)
     _logger = logging.getLogger('rfsocinterface')
@@ -51,7 +51,6 @@ if __name__ == '__main__':
     # _logger.warning('WARNING message')
     # _logger.error('ERROR message')
     # _logger.critical('CRITICAL message')
-
 
     # Ensure PDF viewer stability BEFORE QApplication creation
     configure_global_stability(

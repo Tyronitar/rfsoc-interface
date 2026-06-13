@@ -47,10 +47,11 @@ TOGGLE_BUTTON_CSS = """
         }
 """
 
+
 class Section(wd.QWidget):
     clicked = cr.Signal()
 
-    def __init__(self, parent=None,*, animationDuration=100):
+    def __init__(self, parent=None, *, animationDuration=100):
         super().__init__(parent)
         self.initialized = False
         self.animationDuration = animationDuration
@@ -61,7 +62,9 @@ class Section(wd.QWidget):
         self.mainLayout = wd.QGridLayout(self)
         self.contentHeight = 0
 
-        self.toggleButton.setToolButtonStyle(cr.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toggleButton.setToolButtonStyle(
+            cr.Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
         # self.toggleButton.setStyleSheet("QToolButton {border: none;}")
         self.toggleButton.setArrowType(cr.Qt.ArrowType.RightArrow)
         self.toggleButton.setCheckable(True)
@@ -82,7 +85,9 @@ class Section(wd.QWidget):
         # let the entire widget grow and shrink with its content
         self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self, b'minimumHeight'))
         self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self, b'maximumHeight'))
-        self.toggleAnimation.addAnimation(cr.QPropertyAnimation(self.contentArea, b'maximumHeight'))
+        self.toggleAnimation.addAnimation(
+            cr.QPropertyAnimation(self.contentArea, b'maximumHeight')
+        )
 
         self.mainLayout.setVerticalSpacing(0)
         self.mainLayout.setContentsMargins(0, 0, 0, 0)
@@ -117,7 +122,7 @@ class Section(wd.QWidget):
             # if isinstance(obj, IconLabel):
             #     obj.hidden.connect(self.update_self)
             if obj.isWidgetType():
-            # if type(obj) in (wd.QWidget, wd.QPushButton, wd.QToolButton, wd.QLineEdit):
+                # if type(obj) in (wd.QWidget, wd.QPushButton, wd.QToolButton, wd.QLineEdit):
                 obj.installEventFilter(self)
             if isinstance(obj, wd.QAbstractButton):
                 obj.clicked.connect(lambda: self.clicked.emit())
@@ -132,7 +137,7 @@ class Section(wd.QWidget):
             return False
         return super().eventFilter(watched, event)
 
-    def setTitle(self,title):
+    def setTitle(self, title):
         self.toggleButton.setText(title)
 
     def setContentLayout(self, contentLayout: wd.QLayout):
@@ -148,7 +153,9 @@ class Section(wd.QWidget):
             # child.installEventFilter(self)
         self.install_event_filter_recursively(self.layout())
 
-        self.collapsedHeight = self.sizeHint().height() - self.contentArea.maximumHeight()
+        self.collapsedHeight = (
+            self.sizeHint().height() - self.contentArea.maximumHeight()
+        )
         self.contentHeight = self.contentArea.layout().sizeHint().height()
         self.update_size()
         self.update_animation()
@@ -163,7 +170,9 @@ class Section(wd.QWidget):
             SectionAnimation.setDuration(self.animationDuration)
             SectionAnimation.setStartValue(self.collapsedHeight)
             SectionAnimation.setEndValue(self.collapsedHeight + self.contentHeight)
-        contentAnimation = self.toggleAnimation.animationAt(self.toggleAnimation.animationCount() - 1)
+        contentAnimation = self.toggleAnimation.animationAt(
+            self.toggleAnimation.animationCount() - 1
+        )
         contentAnimation.setDuration(self.animationDuration)
         contentAnimation.setStartValue(0)
         contentAnimation.setEndValue(self.contentHeight)
@@ -179,7 +188,9 @@ class Section(wd.QWidget):
         section_animation.setDuration(duration)
         section_animation.setStartValue(self.height())
         section_animation.setEndValue(self.collapsedHeight + self.contentHeight)
-        content_animation_min = cr.QPropertyAnimation(self.contentArea, b'minimumHeight')
+        content_animation_min = cr.QPropertyAnimation(
+            self.contentArea, b'minimumHeight'
+        )
         content_animation_min.setDuration(duration)
         content_animation_min.setStartValue(self.contentArea.height())
         content_animation_min.setEndValue(self.contentHeight)
@@ -243,7 +254,7 @@ class Section(wd.QWidget):
             # resize_animation.start()
             # parent.toggleAnimation.start()
 
-    def collapse(self, recursive: bool=False):
+    def collapse(self, recursive: bool = False):
         if recursive:
             for child in self.children_sections:
                 child.collapse()
@@ -251,14 +262,13 @@ class Section(wd.QWidget):
         self.toggleButton.setChecked(False)
         self.set_duration(self.animationDuration)
 
-    def expand(self, recursive: bool=False):
+    def expand(self, recursive: bool = False):
         if recursive:
             for child in self.children_sections:
                 child.expand()
         self.set_duration(0)
         self.toggleButton.setChecked(True)
         self.set_duration(self.animationDuration)
-
 
     def height_changed(self):
         source = self.sender()
@@ -317,6 +327,7 @@ def find_section_height(widget: wd.QWidget) -> int:
             total += widget.collapsedHeight
     return total
 
+
 def find_children_sections(widget: wd.QWidget) -> list[Section]:
     children = []
     if widget is None:
@@ -335,8 +346,8 @@ def find_children_sections(widget: wd.QWidget) -> list[Section]:
     return children
 
 
-
 if __name__ == '__main__':
+
     class Window(wd.QMainWindow):
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -353,7 +364,6 @@ if __name__ == '__main__':
             mainLayout.addWidget(section)
             mainLayout.addStretch(1)
             self.setCentralWidget(self.place_holder)
-
 
     app = wd.QApplication(sys.argv)
     window = Window()

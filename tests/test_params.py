@@ -1,4 +1,5 @@
 """Tests for RFSoC parameter files."""
+
 import numpy as np
 import pytest
 
@@ -32,22 +33,26 @@ def test_initialize_params(tmpdir):
     assert_close(params.detector_beam_ampl, np.ones(n_tones, dtype=np.int8))
     assert_close(params.dfoverf_per_mK, np.ones(n_tones))
 
-@pytest.mark.parametrize('field, dtype, size, low, high', [
-    ('f_center', np.float64, 1, 0, 800e6),
-    ('rfin', np.float64, 1, 0, 31.75),
-    ('rfout', np.float64, 1, 0, 31.75),
-    ('tile_number', int, 1, 0, 20),
-    ('chan_number', int, 1, 0, 20),
-    ('ifslice_number', int, 1, 0, 20),
-    ('chanmask', np.int8, -1, -1, 2),
-    ('baseband_freqs', np.float64, -1, None, None),
-    ('tone_powers', np.float64, -1, None, None),
-    ('detector_delta_x', np.float64, -1, None, None),
-    ('detector_delta_y', np.float64, -1, None, None),
-    ('detector_beam_ampl', np.float64, -1, None, None),
-    ('detector_pol', np.int8, -1, 0, 3),
-    ('dfoverf_per_mK', np.float64, -1, None, None),
-])
+
+@pytest.mark.parametrize(
+    'field, dtype, size, low, high',
+    [
+        ('f_center', np.float64, 1, 0, 800e6),
+        ('rfin', np.float64, 1, 0, 31.75),
+        ('rfout', np.float64, 1, 0, 31.75),
+        ('tile_number', int, 1, 0, 20),
+        ('chan_number', int, 1, 0, 20),
+        ('ifslice_number', int, 1, 0, 20),
+        ('chanmask', np.int8, -1, -1, 2),
+        ('baseband_freqs', np.float64, -1, None, None),
+        ('tone_powers', np.float64, -1, None, None),
+        ('detector_delta_x', np.float64, -1, None, None),
+        ('detector_delta_y', np.float64, -1, None, None),
+        ('detector_beam_ampl', np.float64, -1, None, None),
+        ('detector_pol', np.int8, -1, 0, 3),
+        ('dfoverf_per_mK', np.float64, -1, None, None),
+    ],
+)
 def test_copy_and_update(tmpdir, field: str, dtype: np.dtype, size, low, high):
     tile_name = 'test_name'
     n_tones = 100

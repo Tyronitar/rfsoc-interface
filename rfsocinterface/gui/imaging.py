@@ -49,7 +49,14 @@ def dummy_func(file: Path, string: str, num: float, enum: str, check: bool):
 
 
 class DitherPatternWidget(FunctionWidget):
-    def __init__(self, fn: Callable[Concatenate[str, PathLike, P], Any], command: str, file_func: Callable[[], PathLike], args: list[tuple]=[], parent=None):
+    def __init__(
+        self,
+        fn: Callable[Concatenate[str, PathLike, P], Any],
+        command: str,
+        file_func: Callable[[], PathLike],
+        args: list[tuple] = [],
+        parent=None,
+    ):
         super().__init__(fn, args, parent)
         self.command = command
         self.file_func = file_func
@@ -59,11 +66,19 @@ class DitherPatternWidget(FunctionWidget):
         file = self.file_func()
         self.fn(self.command, file, *values)
 
+
 class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWidget):
     tab_name = TabName.IMAGING
     startMapping = Signal()
 
-    def __init__(self, main_window: 'MainWindow', rfsocs: list[RFSOCWrapper], settings: dict, client_id: str, parent: QWidget | None=None) -> None:
+    def __init__(
+        self,
+        main_window: 'MainWindow',
+        rfsocs: list[RFSOCWrapper],
+        settings: dict,
+        client_id: str,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
         self.setupUi(self)
         self.pipeline_dialog = PipelineDialog(self)
@@ -75,12 +90,14 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self._recording = False
         self._video_frames = []
         self._timestamps = []
-        self.optical_frame_rate = 5 # Frames / second
+        self.optical_frame_rate = 5  # Frames / second
 
-        self._file =  '.'
+        self._file = '.'
         self.channel_comboBox.set_default_title('Select Channels...')
         self.update_channel_choices(self.channel_comboBox)
-        main_window.channelNamesUpdated.connect(lambda: self.update_channel_choices(self.channel_comboBox))
+        main_window.channelNamesUpdated.connect(
+            lambda: self.update_channel_choices(self.channel_comboBox)
+        )
         self.patterns: list[FunctionWidget] = []
 
         self.stacked_layout = QStackedLayout()
@@ -110,7 +127,10 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
                 (('Secondary Dither: ', ArgumentType.FLOAT), {'default': 0.04}),
                 (('Return to starting position', ArgumentType.BOOL), {'default': True}),
                 (('Large Map Mode', ArgumentType.BOOL), {'default': False}),
-                (('Primary Direction', ArgumentType.ENUM), {'options': ['AZ', 'ZA'], 'default': 'AZ'}),
+                (
+                    ('Primary Direction', ArgumentType.ENUM),
+                    {'options': ['AZ', 'ZA'], 'default': 'AZ'},
+                ),
             ],
         )
         self.add_dither_pattern(
@@ -136,7 +156,6 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.mapping_pushButton.clicked.connect(self.choose_mapping_routines)
         self.choose_pattern(1)
 
-
     def _add_default_routines(self):
         default_routines = self.settings['defaults']['imaging']['mappingRoutines']
         for routine_dict in default_routines:
@@ -153,9 +172,10 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.pipeline_dialog.accept()
         self.pipeline = self.pipeline_dialog.make_pipeline()
 
-
     def run_telescope_scan(self, command: str, *args) -> int:
-        pd = QProgressDialog('Running...', 'Cancel and Stop Telescope', 0, 100, parent=self)
+        pd = QProgressDialog(
+            'Running...', 'Cancel and Stop Telescope', 0, 100, parent=self
+        )
         pd.canceled.connect(lambda: self.send_telescope_command('stop_telescope'))
         pd.setAutoClose(False)
         pd.setAutoReset(False)
@@ -209,7 +229,9 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
     def get_azel_file(self) -> Path:
         return Path(str(self._file).replace('TOD', 'AZEL'))
 
-    def add_dither_pattern(self, label: str, command: str, args: list[tuple[str, ArgumentType]]):
+    def add_dither_pattern(
+        self, label: str, command: str, args: list[tuple[str, ArgumentType]]
+    ):
         pattern = DitherPatternWidget(
             self.run_telescope_scan,
             command,
@@ -268,7 +290,9 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         #     self._timestamps = []
         # self.video_thread = Thread(target=self.video_loop)
         # self.video_thread.start()
-        self.send_camera_command('start_recording', str(video_savefile), str(optcam_savefile))
+        self.send_camera_command(
+            'start_recording', str(video_savefile), str(optcam_savefile)
+        )
         self.wait_for_camera_command('recording_started')
         _logger.info('Optical video recording started')
 
@@ -313,7 +337,9 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
                 self.video_file['timestamp'][-1] = timestamp
                 self.video_file['optical_video'][:, :, :, -1] = image
                 t1 = time.time()
-                _camera_logger.debug(f'Wrote frame to optcam file in {t1 - t0:.3f} seconds')
+                _camera_logger.debug(
+                    f'Wrote frame to optcam file in {t1 - t0:.3f} seconds'
+                )
 
     def run(self):
         # Update the current save file
@@ -342,6 +368,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         if self.buttonGroup.checkedButton() == self.video_radioButton:
             self.stop_recording_video()
 
-        if self._telescope_command_data == 0:  # Value other than 1 idicates the scan stopped early
+        if (
+            self._telescope_command_data == 0
+        ):  # Value other than 1 idicates the scan stopped early
             self.make_map()
-

@@ -1,6 +1,5 @@
 """Utils for PySide6 Custom Widgets."""
 
-
 from enum import IntEnum
 from numbers import Number
 from pathlib import Path
@@ -13,7 +12,11 @@ from rfsocinterface.core.utils import ensure_path
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 
 
-def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float, use_placeholder_text: bool=False) -> Number:
+def get_num_value(
+    line_edit: QLineEdit,
+    num_type: Type[Number] = float,
+    use_placeholder_text: bool = False,
+) -> Number:
     """Get the value from a QLineEdit and convert to a number."""
     val = get_lineEdit_text(line_edit, use_placeholder_text=use_placeholder_text)
     try:
@@ -24,6 +27,7 @@ def get_num_value(line_edit: QLineEdit, num_type: Type[Number]=float, use_placeh
 
 class ArgumentType(IntEnum):
     """Class for specifying the type of argument to add to a GUI."""
+
     BOOL = 0
     ENUM = 1
     INT = 2
@@ -50,9 +54,9 @@ class ArgumentType(IntEnum):
             case ArgumentType.ENUM:
                 return QComboBox.currentText
             case ArgumentType.INT:
-                return (lambda wid: get_num_value(wid, int))
+                return lambda wid: get_num_value(wid, int)
             case ArgumentType.FLOAT:
-                return (lambda wid: get_num_value(wid, float))
+                return lambda wid: get_num_value(wid, float)
             case ArgumentType.FILE:
                 return FileSelectWidget.text
             case _:
@@ -74,7 +78,7 @@ def get_total_height(obj: QWidget):
     return summation
 
 
-def get_lineEdit_text(line_edit: QLineEdit, use_placeholder_text: bool=False) -> str:
+def get_lineEdit_text(line_edit: QLineEdit, use_placeholder_text: bool = False) -> str:
     val = line_edit.text()
     if val == '' and use_placeholder_text:
         val = line_edit.placeholderText()
@@ -82,8 +86,7 @@ def get_lineEdit_text(line_edit: QLineEdit, use_placeholder_text: bool=False) ->
 
 
 class PathValidator(QValidator):
-
-    def __init__(self, parent: QWidget | None=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent=parent)
 
     @ensure_path(1)

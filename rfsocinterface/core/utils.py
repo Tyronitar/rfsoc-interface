@@ -81,13 +81,16 @@ FLAGGED_RESONANCE_COLOR = 'yellow'
 SELECTED_RESONANCE_COLOR = 'dodgerblue'
 EDITED_RESONANCE_COLOR = 'limegreen'
 
+
 class TabName(StrEnum):
     """Possible tab names for the GUI."""
+
     INITIALIZATION = 'initialization'
     LOSWEEP = 'losweep'
     TELESCOPE = 'telescope'
     DATA = 'data'
     IMAGING = 'imaging'
+
 
 class MetaEnum(EnumMeta):
     def __contains__(cls, item):
@@ -181,7 +184,7 @@ class PathJSONEncoder(json.JSONEncoder):
 
 def analog_to_digital(a: int, min: float, max: float, bits: int) -> int:
     """Convert an analog number to digital.
-    
+
     Needed because DAQ inputs/outputs have different resolutions.
 
     Arguments:
@@ -202,7 +205,7 @@ def analog_to_digital(a: int, min: float, max: float, bits: int) -> int:
 
 def digital_to_analog(d: int, min: float, max: float, bits: int) -> int:
     """Convert a digital number to analog.
-    
+
     Needed because DAQ inputs/outputs have different resolutions.
 
     Arguments:
@@ -218,6 +221,7 @@ def digital_to_analog(d: int, min: float, max: float, bits: int) -> int:
     a = vals[d]
     return a
 
+
 def recursive_update(d: Mapping, u: Mapping):
     for k, v in u.items():
         if isinstance(v, Mapping):
@@ -225,6 +229,7 @@ def recursive_update(d: Mapping, u: Mapping):
         else:
             d[k] = v
     return d
+
 
 def get_git_hash() -> str:
     try:
@@ -241,32 +246,33 @@ def get_yymmdd():
 
 
 def get_chanmask(chanmask_file=''):
-
-    if chanmask_file=='':
+    if chanmask_file == '':
         chanmask_file = '/home/onrkids/onrkidpy/params/chanmask.npy'
     chanmask = np.load(chanmask_file)
     return chanmask
 
 
 def get_filename(
-    base_dir: Path=Path('/data/'),
+    base_dir: Path = Path('/data/'),
     file_type='lo',
     tile_name='',
-    attenuation=0.,
-    mkdir: bool=False,
+    attenuation=0.0,
+    mkdir: bool = False,
 ):
-    #see if we already have the parent folder for today's date
+    # see if we already have the parent folder for today's date
     yymmdd = get_yymmdd()
     date_folder = base_dir / yymmdd
     if mkdir:
         date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
 
-    #provide the name of the file
+    # provide the name of the file
     match file_type.lower():
         case 'lo' | 'tonelist' | 'power':
-            hour = float(datetime.now().strftime('%H')) \
-                + float(datetime.now().strftime('%M'))/60. \
-                + float(datetime.now().strftime('%S'))/3600.
+            hour = (
+                float(datetime.now().strftime('%H'))
+                + float(datetime.now().strftime('%M')) / 60.0
+                + float(datetime.now().strftime('%S')) / 3600.0
+            )
             hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
             match file_type.lower():
                 case 'lo':
@@ -292,28 +298,34 @@ def get_filename(
         case 'attenuator':
             strings = [yymmdd, tile_name, f'attenuator{attenuation:02d}']
         case _:
-            raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
+            raise ValueError(
+                f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}'
+            )
     return date_folder / '_'.join(filter(None, strings))
+
 
 def get_current_LO_sweep_hour_string() -> str:
     """Return the current time in the LO sweep filename format.
-    
+
     The format is `hourHHpMMSS`
     """
-    hour = float(datetime.now().strftime('%H')) \
-        + float(datetime.now().strftime('%M'))/60. \
-        + float(datetime.now().strftime('%S'))/3600.
+    hour = (
+        float(datetime.now().strftime('%H'))
+        + float(datetime.now().strftime('%M')) / 60.0
+        + float(datetime.now().strftime('%S')) / 3600.0
+    )
     return f'hour{hour:04.4f}'.replace('.', 'p')
+
 
 @ensure_path('data_dir')
 def get_sweep_filename(
-    data_dir: Path=Path(DEFAULT_DATA_DIRECTORY),
-    sweep_type: Literal['lo', 'power', 'temperature', 'blind']='lo',
+    data_dir: Path = Path(DEFAULT_DATA_DIRECTORY),
+    sweep_type: Literal['lo', 'power', 'temperature', 'blind'] = 'lo',
     tile_name='',
-    suffix: str='',
-    date: str=None,
-    hour: str=None,
-    mkdir: bool=False,
+    suffix: str = '',
+    date: str = None,
+    hour: str = None,
+    mkdir: bool = False,
 ):
     # See if we already have the parent folder for today's date
     if date is None:
@@ -322,7 +334,7 @@ def get_sweep_filename(
     if mkdir:
         date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
 
-    #provide the name of the file
+    # provide the name of the file
     if hour is None:
         hour = get_current_LO_sweep_hour_string()
     match sweep_type.lower():
@@ -335,11 +347,14 @@ def get_sweep_filename(
         case 'blind':
             sweep_name = 'Blind_Sweep'
         case _:
-            raise ValueError(f'Invalid file type: "{sweep_type.lower()}"; must be one of {FileType}')
+            raise ValueError(
+                f'Invalid file type: "{sweep_type.lower()}"; must be one of {FileType}'
+            )
     strings = [date, tile_name, sweep_name, hour, suffix]
     return date_folder / '_'.join(filter(None, strings))
 
-def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
+
+def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None = None):
     """Generate a Cartesian product of input arrays.
 
     Code from: https://stackoverflow.com/a/1235363
@@ -385,19 +400,20 @@ def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
     if out is None:
         out = np.zeros([n, len(arrays)], dtype=dtype)
 
-    #m = n / arrays[0].size
+    # m = n / arrays[0].size
     m = int(n / arrays[0].size)
-    out[:,0] = np.repeat(arrays[0], m)
+    out[:, 0] = np.repeat(arrays[0], m)
     if arrays[1:]:
         cartesian(*arrays[1:], out=out[0:m, 1:])
         for j in range(1, arrays[0].size):
-        #for j in xrange(1, arrays[0].size):
-            out[j*m:(j+1)*m, 1:] = out[0:m, 1:]
+            # for j in xrange(1, arrays[0].size):
+            out[j * m : (j + 1) * m, 1:] = out[0:m, 1:]
     return out
+
 
 def ordinal(n: int) -> str:
     """Append the english ordinal suffix to an integer.
-    
+
     From https://stackoverflow.com/a/20007730.
     """
     if 11 <= (n % 100) <= 13:
@@ -406,9 +422,11 @@ def ordinal(n: int) -> str:
         suffix = ['th', 'st', 'nd', 'rd', 'th'][min(n % 10, 4)]
     return str(n) + suffix
 
+
 #
 # Utils for parallelized code
 #
+
 
 def print_future_result(f: Future):
     try:
@@ -428,6 +446,7 @@ def print_future_result(f: Future):
 # Code borrowed from the Pebble library: https://pypi.org/project/Pebble/
 class ResultStatus(IntEnum):
     """Status of results of a function execution."""
+
     SUCCESS = 0
     FAILURE = 1
     ERROR = 2
@@ -436,6 +455,7 @@ class ResultStatus(IntEnum):
 @dataclass
 class Result:
     """Result of a function execution."""
+
     status: ResultStatus
     value: Any
 
@@ -446,7 +466,7 @@ def batched(iterable, n):
     if n < 1:
         raise ValueError('n must be >= 1')
     it = iter(iterable)
-    while (batch := list(islice(it, n))):
+    while batch := list(islice(it, n)):
         yield batch
 
 
@@ -457,7 +477,9 @@ def iter_chunks(iterable: iter, chunksize: int) -> iter:
     else:
         yield from itertools.batched(iterable, chunksize)
 
+
 # End Pebble code
+
 
 class CombinedFuture(Future[Iterable[R]]):
     """Class representing the result of multiple function calls.
@@ -485,7 +507,6 @@ class CombinedFuture(Future[Iterable[R]]):
         return all_cancelled
 
     def _future_completed_callback(self, future: Future[list[Result]]) -> None:
-
         if self.cancelled() or self.done():
             return
 
@@ -510,15 +531,19 @@ class CombinedFuture(Future[Iterable[R]]):
         self._results = itertools.chain.from_iterable(self._results)
         self.set_result(self._results)
 
+
 def gaussian_filter(x: npt.NDArray, sigma: tuple[float, float]) -> npt.NDArray:
     return ndimage.gaussian_filter(
         x,
         sigma,
         mode='reflect',
-        truncate=1. / sigma[1],
+        truncate=1.0 / sigma[1],
     )
 
-def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg: str=''):
+
+def wait_for_telescope_command(
+    conn: Connection, id: str, command: str, err_msg: str = ''
+):
     if not err_msg:
         err_msg = f'Error occured while waiting for command "{command}": '
     while True:
@@ -531,7 +556,10 @@ def wait_for_telescope_command(conn: Connection, id: str, command: str, err_msg:
         if response.lower() == 'err':
             raise RuntimeError(f'{err_msg}: {data}')
 
-def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_values=0) -> npt.NDArray:
+
+def pad_to_length(
+    x: npt.NDArray, target_length: int, axis: int = -1, constant_values=0
+) -> npt.NDArray:
     """Pad an array with zeros along an axis to a target length.
 
     Parameters:
@@ -545,27 +573,35 @@ def pad_to_length(x: npt.NDArray, target_length: int, axis: int=-1, constant_val
     pad_widths = [(0, 0)] * x.ndim
     pad_amount = target_length - x.shape[axis]
     if pad_amount < 0:
-        raise ValueError(f'Target length {target_length} is less than current length {x.shape[axis]} along axis {axis}.')
+        raise ValueError(
+            f'Target length {target_length} is less than current length {x.shape[axis]} along axis {axis}.'
+        )
     pad_widths[axis] = (0, pad_amount)
     return np.pad(x, pad_widths, mode='constant', constant_values=constant_values)
 
 
-def list_datasets(group: h5py.Group, full_names: bool=False) -> list[tuple[str, h5py.Dataset]]:
+def list_datasets(
+    group: h5py.Group, full_names: bool = False
+) -> list[tuple[str, h5py.Dataset]]:
     """Recursively list all datasets in the specified group."""
     datasets = []
+
     def search_fn(name: str, obj: H5pyObject):
         if isinstance(obj, h5py.Dataset):
             if full_names:
                 datasets.append((obj.name, obj))
             else:
                 datasets.append((name, obj))
+
     group.visititems(search_fn)
     return datasets
 
 
-def search(src: h5py.Group, name: str, full_name: bool=True, exact_match: bool=False) -> tuple[str, H5pyObject] | None:
+def search(
+    src: h5py.Group, name: str, full_name: bool = True, exact_match: bool = False
+) -> tuple[str, H5pyObject] | None:
     """Search recursively through an HDF5 group for the specified name.
-    
+
     This function will return the first object found whose name matches `name`.
     Returns `None` if no match is found.
 
@@ -574,32 +610,40 @@ def search(src: h5py.Group, name: str, full_name: bool=True, exact_match: bool=F
         name (str): The target name to search for.
         full_name (bool): Whether to return the full name of the object. Defaults to True.
         exact_match (bool): Whether to only accept exact name matches. If False, this
-            function will succeed if an object is found whose name contains `name`. 
+            function will succeed if an object is found whose name contains `name`.
             Defaults to False.
 
-    
+
     Returns:
         obj_name (str): The name of the found object.
         obj (h5py.Group | h5py.Dataset): The object matching the search query.
-    
+
     """
+
     def search_fn(obj_name: str, obj: H5pyObject):
         success = name == obj_name if exact_match else name in obj_name
         if success:
             if full_name:
                 return obj.name, obj
             return obj_name, obj
+
     return src.visititems(search_fn)
+
 
 #
 # Chunked array handling utils
 #
-def compute_chunk_shape(data_shape: tuple[int, ...], dtype_size: int, target_mb: float=4, max_chunk_size: int=None):
+def compute_chunk_shape(
+    data_shape: tuple[int, ...],
+    dtype_size: int,
+    target_mb: float = 4,
+    max_chunk_size: int = None,
+):
     """Compute the chunk shape to have the target chunk size in MB.
-    
+
     Arguments:
         data_shape (tuple[int, ...]): The shape of the data excluding the chunked dimension
-    
+
     """
     target_bytes = target_mb * 1024 * 1024
     time_chunk = target_bytes // (np.prod(data_shape) * dtype_size)
@@ -614,10 +658,9 @@ def chunked_downsample(
     out_dset: h5py.Dataset,
     q: int,
     chunk_size: int,
-    axis: int=-1,
-    use_filter: bool=True,
+    axis: int = -1,
+    use_filter: bool = True,
 ):
-
     overlap = 32 * q
     N = dset.shape[axis]
 
@@ -638,18 +681,26 @@ def chunked_downsample(
             read_stop = min(N, start + chunk_size)
             chunk = axis_slice(dset, start=read_start, stop=read_stop, axis=axis)
             # dec = axis_slice(chunk, step=q, axis=axis)
-            dec_start = int(q * np.ceil(start / q)) - start  # Make sure we start on a multiple of q
+            dec_start = (
+                int(q * np.ceil(start / q)) - start
+            )  # Make sure we start on a multiple of q
             dec = axis_slice(chunk, start=dec_start, step=q, axis=axis)
 
         valid_start = downsampled_equiv(start - read_start)
-        valid_stop = valid_start + min(downsampled_equiv(min(chunk_size, N - start)), out_dset.shape[axis] - out_index)
+        valid_stop = valid_start + min(
+            downsampled_equiv(min(chunk_size, N - start)),
+            out_dset.shape[axis] - out_index,
+        )
 
         valid = axis_slice(dec, start=valid_start, stop=valid_stop, axis=axis)
 
-        write_slice = get_axis_slice(out_dset, start=out_index, stop=out_index+valid.shape[axis], axis=axis)
+        write_slice = get_axis_slice(
+            out_dset, start=out_index, stop=out_index + valid.shape[axis], axis=axis
+        )
         out_dset[write_slice] = valid
 
         out_index += valid.shape[axis]
+
 
 def build_interp_map(x: npt.ArrayLike, x_new: npt.ArrayLike):
     """Compute the indices and wieghts to interpolate x_new to x."""
@@ -663,16 +714,21 @@ def build_interp_map(x: npt.ArrayLike, x_new: npt.ArrayLike):
 
     return idx, w
 
+
 def apply_interp(y: npt.ArrayLike, idx: int, w: float):
     return (1 - w) * y[idx] + w * y[idx + 1]
 
 
-
-
-
-def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.NDArray, npt.NDArray] | None=None):
+def sosfilt_in_chunks(
+    sos,
+    x,
+    n_chunks=1,
+    zi=None,
+    axis: int = -1,
+    out: tuple[npt.NDArray, npt.NDArray] | None = None,
+):
     """Apply a second-order section filter to data in chunks.
-    
+
     Parameters:
     """
     do_return = True
@@ -688,20 +744,30 @@ def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.
     if out is not None:
         if isinstance(out, tuple):
             if out[0].shape != x.shape:
-                raise ValueError(f'Output array must have shape {x.shape}, but got {out[0].shape}.')
+                raise ValueError(
+                    f'Output array must have shape {x.shape}, but got {out[0].shape}.'
+                )
             if return_zi:
                 if len(out) != 2:
-                    raise ValueError('Output array must be a tuple of two arrays if zi is provided.')
+                    raise ValueError(
+                        'Output array must be a tuple of two arrays if zi is provided.'
+                    )
                 if out[1].shape != zi_shape:
                     print(f'zi_shape: {zi_shape}, out[1].shape: {out[1].shape}')
-                    raise ValueError('Invalid zi output array shape. With axis=%r, an input with '
-                                    'shape %r, and an sos array with %d sections, zi '
-                                    'must have shape %r, got %r.' %
-                                    (axis, x.shape, n_sections, zi_shape, out[1].shape))
+                    raise ValueError(
+                        'Invalid zi output array shape. With axis=%r, an input with '
+                        'shape %r, and an sos array with %d sections, zi '
+                        'must have shape %r, got %r.'
+                        % (axis, x.shape, n_sections, zi_shape, out[1].shape)
+                    )
         elif return_zi:
-            raise ValueError('Output array must be a tuple of two arrays if zi is provided.')
+            raise ValueError(
+                'Output array must be a tuple of two arrays if zi is provided.'
+            )
         elif out.shape != x.shape:
-            raise ValueError(f'Output array must have shape {x.shape}, but got {out.shape}.')
+            raise ValueError(
+                f'Output array must have shape {x.shape}, but got {out.shape}.'
+            )
         else:  # Provided output array, and no zi provided
             out = (out, np.zeros(zi_shape))
     else:
@@ -710,10 +776,12 @@ def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.
     if zi is None:
         out[1][:] = np.zeros(zi_shape)
     elif zi.shape != zi_shape:
-        raise ValueError('Invalid zi shape. With axis=%r, an input with '
-                        'shape %r, and an sos array with %d sections, zi '
-                        'must have shape %r, got %r.' %
-                        (axis, x.shape, n_sections, zi_shape, zi.shape))
+        raise ValueError(
+            'Invalid zi shape. With axis=%r, an input with '
+            'shape %r, and an sos array with %d sections, zi '
+            'must have shape %r, got %r.'
+            % (axis, x.shape, n_sections, zi_shape, zi.shape)
+        )
     else:
         out[1][:] = zi
 
@@ -729,7 +797,9 @@ def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.
         chunk_slice = [slice(None)] * x.ndim
         chunk_slice[axis] = slice(start, stop)
         chunk_slice = tuple(chunk_slice)
-        out[0][chunk_slice], out[1][:] = sosfilt(sos, x[chunk_slice], axis=axis, zi=out[1])
+        out[0][chunk_slice], out[1][:] = sosfilt(
+            sos, x[chunk_slice], axis=axis, zi=out[1]
+        )
 
     if do_return and return_zi:
         return out
@@ -740,7 +810,10 @@ def sosfilt_in_chunks(sos, x, n_chunks=1, zi=None, axis: int=-1, out: tuple[npt.
     # else:
     #     return out
 
-def get_axis_slice(a, start=None, stop=None, step=None, axis: int | Iterable[int]=-1) -> tuple[slice, ...]:
+
+def get_axis_slice(
+    a, start=None, stop=None, step=None, axis: int | Iterable[int] = -1
+) -> tuple[slice, ...]:
     """Return the slice to use in order to slice along axis 'axis' from 'a'.
 
     Parameters
@@ -791,7 +864,9 @@ def get_axis_slice(a, start=None, stop=None, step=None, axis: int | Iterable[int
     return tuple(a_slice)
 
 
-def axis_slice(a, start=None, stop=None, step=None, axis=-1, direct_read: bool=False) -> npt.NDArray:
+def axis_slice(
+    a, start=None, stop=None, step=None, axis=-1, direct_read: bool = False
+) -> npt.NDArray:
     """Take a slice along axis 'axis' from 'a'.
 
     Parameters
@@ -840,7 +915,11 @@ def axis_slice(a, start=None, stop=None, step=None, axis=-1, direct_read: bool=F
     return a[a_slice]
 
 
-def axis_index(a: npt.NDArray, indices: npt.ArrayLike | tuple[npt.ArrayLike, ...], axis: int | tuple[int, ...]=-1):
+def axis_index(
+    a: npt.NDArray,
+    indices: npt.ArrayLike | tuple[npt.ArrayLike, ...],
+    axis: int | tuple[int, ...] = -1,
+):
     """Index `a` along axis `axis` with `indices`.
 
     Parameters
@@ -867,7 +946,9 @@ def axis_index(a: npt.NDArray, indices: npt.ArrayLike | tuple[npt.ArrayLike, ...
     """
     if isinstance(axis, tuple):
         if len(indices) != len(axis):
-            raise ValueError('If axis is a tuple, indices must be a tuple of the same length.')
+            raise ValueError(
+                'If axis is a tuple, indices must be a tuple of the same length.'
+            )
     a_index = [slice(None)] * a.ndim
     if isinstance(axis, tuple):
         for i, ax in enumerate(axis):
@@ -877,12 +958,14 @@ def axis_index(a: npt.NDArray, indices: npt.ArrayLike | tuple[npt.ArrayLike, ...
     b = a[tuple(a_index)]
     return b
 
+
 def axis_reverse(a, axis=-1):
     """Reverse the 1-D slices of `a` along axis `axis`.
 
     Returns axis_slice(a, step=-1, axis=axis).
     """
     return axis_slice(a, step=-1, axis=axis)
+
 
 def odd_ext(x, n, axis=-1):
     """Odd extension at the boundaries of an array
@@ -922,18 +1005,22 @@ def odd_ext(x, n, axis=-1):
     if n < 1:
         return x
     if n > x.shape[axis] - 1:
-        raise ValueError(('The extension length n (%d) is too big. ' +
-                         'It must not exceed x.shape[axis]-1, which is %d.')
-                         % (n, x.shape[axis] - 1))
+        raise ValueError(
+            (
+                'The extension length n (%d) is too big. '
+                + 'It must not exceed x.shape[axis]-1, which is %d.'
+            )
+            % (n, x.shape[axis] - 1)
+        )
     left_end = axis_slice(x, start=0, stop=1, axis=axis)
     left_ext = axis_slice(x, start=n, stop=0, step=-1, axis=axis)
     right_end = axis_slice(x, start=-1, axis=axis)
     right_ext = axis_slice(x, start=-2, stop=-(n + 2), step=-1, axis=axis)
-    ext = np.concatenate((2 * left_end - left_ext,
-                          x,
-                          2 * right_end - right_ext),
-                         axis=axis)
+    ext = np.concatenate(
+        (2 * left_end - left_ext, x, 2 * right_end - right_ext), axis=axis
+    )
     return ext
+
 
 def _validate_pad(padlen, x, axis, ntaps):
     """Helper to validate padding for filtfilt"""
@@ -957,7 +1044,13 @@ def _validate_pad(padlen, x, axis, ntaps):
     return edge, ext
 
 
-def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | None=None, out: npt.NDArray | None=None) -> npt.NDArray:
+def decimate_in_chunks(
+    x: npt.NDArray,
+    q: int,
+    axis: int = -1,
+    padlen: int | None = None,
+    out: npt.NDArray | None = None,
+) -> npt.NDArray:
     sos = cheby1(8, 0.05, 0.8 / q, output='sos')
     n_sections = sos.shape[0]
     do_return = False
@@ -971,8 +1064,7 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
         do_return = True
     elif out.shape != out_shape:
         raise ValueError(
-            f'Output array must have shape {out_shape}, '
-            f'but got {out.shape}.'
+            f'Output array must have shape {out_shape}, ' f'but got {out.shape}.'
         )
 
     # NOTE: `y` and `ext` need to be stored in temporary arrays on disk.
@@ -981,8 +1073,7 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
     # `method` is "pad"...
     ntaps = 2 * n_sections + 1
     ntaps -= min((sos[:, 2] == 0).sum(), (sos[:, 5] == 0).sum())
-    edge, ext = _validate_pad(padlen, x, axis,
-                              ntaps=ntaps)
+    edge, ext = _validate_pad(padlen, x, axis, ntaps=ntaps)
 
     y = np.zeros_like(ext)
 
@@ -1037,7 +1128,10 @@ def decimate_in_chunks(x: npt.NDArray, q: int, axis: int = -1, padlen: int | Non
         return axis_slice(y, step=q, axis=axis)
     out[...] = axis_slice(y, step=q, axis=axis)
 
-def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_shape=None):
+
+def new_decimate_in_chunks(
+    dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_shape=None
+):
     N = dset.shape[axis]
 
     if chunk_shape is None:
@@ -1077,12 +1171,10 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_
     x0 = axis_slice(dset, stop=1, axis=axis)
     zi = x0 * zi
 
-
     out_pos = 0
     out_pos -= delay_out
 
     for start in range(0, N, chunk_size):
-
         stop = min(start + chunk_size, N)
         if stop - start < chunk.shape[axis]:
             shape = list(dset.chunks)
@@ -1097,7 +1189,9 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_
             y[:], zi = sosfilt(sos, chunk, axis=axis, zi=zi)
 
         # decimate
-        dec_start = int(q * np.ceil(start / q)) - start  # Make sure we start on a multiple of q
+        dec_start = (
+            int(q * np.ceil(start / q)) - start
+        )  # Make sure we start on a multiple of q
         dec = axis_slice(y, start=dec_start, step=q, axis=axis)
 
         n_out = dec.shape[axis]
@@ -1113,17 +1207,21 @@ def new_decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_
 
         out_sl = get_axis_slice(out_dset, start=write_start, stop=write_stop, axis=axis)
 
-        out_dset[out_sl] = axis_slice(dec, stop=write_stop-write_start, axis=axis)
+        out_dset[out_sl] = axis_slice(dec, stop=write_stop - write_start, axis=axis)
 
         out_pos += n_out
 
     # Use reflect padding for the last `delay_out` samples
     same_slice = get_axis_slice(out_dset, start=out_pos, axis=axis)
-    last_values = np.take(out_dset, np.arange(out_pos - 1, out_pos - delay_out - 1, -1), axis=axis)
+    last_values = np.take(
+        out_dset, np.arange(out_pos - 1, out_pos - delay_out - 1, -1), axis=axis
+    )
     out_dset[same_slice] = last_values
 
 
-def iterate_chunks(x: npt.NDArray | h5py.Dataset, chunk_size: int=None, axis: int=-1) -> Iterator[tuple[int, int, npt.NDArray]]:
+def iterate_chunks(
+    x: npt.NDArray | h5py.Dataset, chunk_size: int = None, axis: int = -1
+) -> Iterator[tuple[int, int, npt.NDArray]]:
     """Return an iterator over the array in chunks."""
     n = x.shape[axis]
     if chunk_size is None:
@@ -1140,10 +1238,10 @@ def iterate_chunks(x: npt.NDArray | h5py.Dataset, chunk_size: int=None, axis: in
 def linregress_in_chunks(
     x: npt.ArrayLike | h5py.Dataset,
     y: npt.ArrayLike | h5py.Dataset,
-    chunk_size: int=None,
+    chunk_size: int = None,
 ) -> tuple[float, float]:
     """Compute linear regression using x and y in chunks.
-    
+
     Assumes x and y are 1D arrays.
     """
     sum_x = 0.0
@@ -1167,32 +1265,46 @@ def linregress_in_chunks(
     return a, b
 
 
-
 #
 # File Templates
 #
 
-def get_tod_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY, chan_name: str=None) -> str:
+
+def get_tod_template(
+    date: str,
+    setnum: int,
+    data_dir: str = DEFAULT_DATA_DIRECTORY,
+    chan_name: str = None,
+) -> str:
     if chan_name is None:
         chan_name = '*'
     return f'{data_dir}/{date}/{date}_{chan_name}_TOD_set{setnum}.h5'
 
 
-def get_azel_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+def get_azel_template(
+    date: str, setnum: int, data_dir: str = DEFAULT_DATA_DIRECTORY
+) -> str:
     return f'{data_dir}/{date}/{date}_AZEL_set{setnum}.h5'
     # return f'{data_dir}/{date}/{date}_set{setnum}_AZEL.h5'
 
 
-def get_optcam_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY, old: bool=False) -> str:
+def get_optcam_template(
+    date: str, setnum: int, data_dir: str = DEFAULT_DATA_DIRECTORY, old: bool = False
+) -> str:
     if old:
         return f'{data_dir}/{date}/{date}_optcam_set{setnum}.h5'
     return f'{data_dir}/{date}/{date}_set{setnum}_optcam.h5'
 
-def get_processed_file_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+
+def get_processed_file_template(
+    date: str, setnum: int, data_dir: str = DEFAULT_DATA_DIRECTORY
+) -> str:
     return f'{data_dir}/{date}/{date}_set{setnum}_processed_data.h5'
 
 
-def get_consolidated_file_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+def get_consolidated_file_template(
+    date: str, setnum: int, data_dir: str = DEFAULT_DATA_DIRECTORY
+) -> str:
     return f'{data_dir}/{date}/{date}_set{setnum}_consolidated_data.h5'
 
 
@@ -1200,19 +1312,28 @@ def get_file_stub(date: str, setnum: int) -> str:
     return f'{date}_set{setnum}'
 
 
-def get_params_file_template(tile_name: str, params_dir: str=DEFAULT_PARAMS_DIRECTORY) -> str:
+def get_params_file_template(
+    tile_name: str, params_dir: str = DEFAULT_PARAMS_DIRECTORY
+) -> str:
     return f'{params_dir}/params_tile_{tile_name}.h5'
 
 
-def get_beammap_pdf_template(date: str, setnum: int, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+def get_beammap_pdf_template(
+    date: str, setnum: int, data_dir: str = DEFAULT_DATA_DIRECTORY
+) -> str:
     return str(Path(data_dir) / f'{date}/{date}_set{setnum}_beammap.pdf')
 
-def get_detector_pos_pdf_template(date: str, tile_name: str, data_dir: str=DEFAULT_DATA_DIRECTORY) -> str:
+
+def get_detector_pos_pdf_template(
+    date: str, tile_name: str, data_dir: str = DEFAULT_DATA_DIRECTORY
+) -> str:
     return str(Path(data_dir) / f'{date}/{tile_name}_detector_pos.pdf')
+
 
 #
 # Parallelized Plotting
 #
+
 
 def rasterize(fig):
     buf = io.BytesIO()
@@ -1223,8 +1344,9 @@ def rasterize(fig):
 
     return pil_img
 
+
 def _parallel_plot_worker(*args, plot_fn):
-    fig = plt.figure(figsize=(1,1))
+    fig = plt.figure(figsize=(1, 1))
     mpl.font_manager._get_font.cache_clear()  # necessary to reduce text corruption artifacts
     ax = fig.add_subplot(xticks=[], yticks=[])
 
@@ -1234,7 +1356,14 @@ def _parallel_plot_worker(*args, plot_fn):
 
     return pil_img
 
-def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, callback: Callable | None=None):
+
+def parallel_plot(
+    fig: Figure,
+    axes: plt.Axes,
+    plot_fn: Callable,
+    *iterables,
+    callback: Callable | None = None,
+):
     with ProcessPoolExecutor(max_workers=8) as executor:
         plots = executor.map(
             partial(_parallel_plot_worker, plot_fn=plot_fn),
@@ -1259,7 +1388,7 @@ def parallel_plot(fig: Figure, axes: plt.Axes, plot_fn: Callable, *iterables, ca
 
 def reset_axes(ax: plt.Axes):
     """Restore a Matplotlib Axes to a clean, default state.
-    
+
     Useful after imshow(), pcolormesh(), etc. cine they change state that isn't reset
     by ax.cla().
     """
@@ -1290,6 +1419,7 @@ def reset_axes(ax: plt.Axes):
     # Grid & ticks (optional, but predictable)
     ax.grid(False)
 
+
 def add_colorbar_outside(mappable, ax: plt.Axes, position='right', orientation=None):
     if orientation is None:
         if position in ['right', 'left']:
@@ -1316,7 +1446,7 @@ def sigma_to_fwhm(sigma: float) -> float:
     return 2 * np.sqrt(2 * np.log(2)) * sigma
 
 
-def dict_get_by_path(d: dict, keys: Sequence[str], default: Any=None) -> Any:
+def dict_get_by_path(d: dict, keys: Sequence[str], default: Any = None) -> Any:
     root = d
     try:
         for key in keys[:-1]:
@@ -1340,16 +1470,23 @@ def dict_del_by_path(d: dict, keys: Sequence[str], val: Any):
     del root[keys[-1]]
 
 
-def dict_get_by_path_with_default(keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
-    return dict_get_by_path(d1, keys,
-            default=dict_get_by_path(defaults, keys, default=fallback_value))
+def dict_get_by_path_with_default(
+    keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any = None
+) -> Any:
+    return dict_get_by_path(
+        d1, keys, default=dict_get_by_path(defaults, keys, default=fallback_value)
+    )
 
 
-def dict_get_with_default(key: str, d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+def dict_get_with_default(
+    key: str, d1: dict, defaults: dict, fallback_value: Any = None
+) -> Any:
     return d1.get(key, defaults.get(key, fallback_value))
 
 
-def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any]]) -> dict:
+def load_dict_or_defaults(
+    d1: dict, d2: dict, items: list[tuple[str | tuple, Any]]
+) -> dict:
     out_dict = {}
     for key, fallback in items:
         if isinstance(key, tuple):
@@ -1360,7 +1497,8 @@ def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any
             out_dict[key] = val
     return out_dict
 
-def dict_get_by_path(d: dict, keys: Sequence[str], default: Any=None) -> Any:
+
+def dict_get_by_path(d: dict, keys: Sequence[str], default: Any = None) -> Any:
     root = d
     try:
         for key in keys[:-1]:
@@ -1384,16 +1522,23 @@ def dict_del_by_path(d: dict, keys: Sequence[str], val: Any):
     del root[keys[-1]]
 
 
-def dict_get_by_path_with_default(keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
-    return dict_get_by_path(d1, keys,
-            default=dict_get_by_path(defaults, keys, default=fallback_value))
+def dict_get_by_path_with_default(
+    keys: Sequence[str], d1: dict, defaults: dict, fallback_value: Any = None
+) -> Any:
+    return dict_get_by_path(
+        d1, keys, default=dict_get_by_path(defaults, keys, default=fallback_value)
+    )
 
 
-def dict_get_with_default(key: str, d1: dict, defaults: dict, fallback_value: Any=None) -> Any:
+def dict_get_with_default(
+    key: str, d1: dict, defaults: dict, fallback_value: Any = None
+) -> Any:
     return d1.get(key, defaults.get(key, fallback_value))
 
 
-def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any]]) -> dict:
+def load_dict_or_defaults(
+    d1: dict, d2: dict, items: list[tuple[str | tuple, Any]]
+) -> dict:
     out_dict = {}
     for key, fallback in items:
         if isinstance(key, tuple):
@@ -1406,6 +1551,7 @@ def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any
 
 
 if __name__ == '__main__':
+
     def plot_function(fig, ax, x, y):
         ax.plot(x, y)
 
@@ -1433,7 +1579,6 @@ if __name__ == '__main__':
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
     y = np.zeros(n // q)
-
 
     # decimate_in_chunks(x, q, out=y)
 

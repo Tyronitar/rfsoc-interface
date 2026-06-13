@@ -1,4 +1,5 @@
 """Module for handling of settings files."""
+
 import copy
 import json
 import logging
@@ -15,24 +16,12 @@ _logger = logging.getLogger(__name__)
 
 DEFAULT_SETTINGS = {
     'app': {
-        'tabs': [
-            'initialization',
-            'losweep',
-            'data',
-            'telescope',
-            'imaging'
-        ],
-        'activeTab': 'initialization'
+        'tabs': ['initialization', 'losweep', 'data', 'telescope', 'imaging'],
+        'activeTab': 'initialization',
     },
     'telescope': {
-        'jogVoltage': {
-            'azimuth': 5,
-            'zenith': 1
-        },
-        'controller': {
-            'class': 'TelescopeMotorController',
-            'path': './telescope.py'
-        }
+        'jogVoltage': {'azimuth': 5, 'zenith': 1},
+        'controller': {'class': 'TelescopeMotorController', 'path': './telescope.py'},
     },
     'defaults': {
         'loSweep': {
@@ -41,31 +30,24 @@ DEFAULT_SETTINGS = {
             'deltaf': 100.0,
             'flaggingThreshold': 3.0,
             'fileSuffix': 'none',
-            'secondSweep': {
-                'df': 1.0
-            }
+            'secondSweep': {'df': 1.0},
         },
-        'data': {
-            'useDefaultFilename': True,
-            'directory': '/data/'
-        },
+        'data': {'useDefaultFilename': True, 'directory': '/data/'},
         'rfsoc': {
             'bitstream': '/home/xilinx/dualchan_v2.bit',
             'channel': {
-                'dsp': {
-                    'loFreq': 400e6,
-                    'nAverages': 524288
-                },
+                'dsp': {'loFreq': 400e6, 'nAverages': 524288},
                 'rfin': 0.0,
                 'rfout': 0.0,
                 'minResonanceFrequency': 0,
                 'maxResonanceFrequency': 2e9,
-                'minResonanceDistanceFromLo': 1e6
-            }
-        }
+                'minResonanceDistanceFromLo': 1e6,
+            },
+        },
     },
-    'rfsocs': []
+    'rfsocs': [],
 }
+
 
 class PathEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -124,7 +106,7 @@ class Settings(dict):
         return new_rfsocs
 
     @ensure_path(1)
-    def load_settings(self, user_settings_path: Path=USER_SETTINGS_PATH):
+    def load_settings(self, user_settings_path: Path = USER_SETTINGS_PATH):
         self._load_global_settings()
         if not user_settings_path.expanduser().exists():
             Settings._create_settings(user_settings_path)
@@ -136,7 +118,7 @@ class Settings(dict):
                 user_settings['rfsocs'] = self._load_rfsocs(user_settings.pop('rfsocs'))
             self.update(user_settings)
 
-    def save_settings(self, user_settings_path: Path=USER_SETTINGS_PATH):
+    def save_settings(self, user_settings_path: Path = USER_SETTINGS_PATH):
         self._path = user_settings_path
         with self._path.expanduser().open('w') as f:
             json.dump(self, f, indent=4, cls=PathEncoder)

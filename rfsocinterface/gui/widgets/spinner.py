@@ -77,12 +77,12 @@ class WaitingSpinner(QWidget):
 
     def __init__(
         self,
-        parent: QWidget=None,
+        parent: QWidget = None,
         center_on_parent: bool = True,
         disable_parent_when_spinning: bool = False,
         modality: Qt.WindowModality = Qt.WindowModality.NonModal,
         roundness: float = 100.0,
-        opacity: float=3.0,
+        opacity: float = 3.0,
         fade: float = 80.0,
         lines: int = 20,
         line_length: int = 10,
@@ -348,16 +348,15 @@ class WaitingSpinner(QWidget):
         return color
 
 
-
 class StickyWaitingSpinner(WaitingSpinner):
     def __init__(
         self,
-        parent: QWidget=None,
+        parent: QWidget = None,
         center_on_parent: bool = True,
         disable_parent_when_spinning: bool = False,
         modality: Qt.WindowModality = Qt.WindowModality.NonModal,
         roundness: float = 100.0,
-        opacity: float=3,
+        opacity: float = 3,
         fade: float = 80.0,
         lines: int = 20,
         line_length: int = 10,
@@ -380,9 +379,8 @@ class StickyWaitingSpinner(WaitingSpinner):
             line_width=line_width,
             radius=radius,
             speed=speed,
-            color=color
+            color=color,
         )
-
 
     def paintEvent(self, _: QPaintEvent) -> None:  # pylint: disable=invalid-name
         """Paint the WaitingSpinner."""
@@ -401,11 +399,12 @@ class StickyWaitingSpinner(WaitingSpinner):
         sigma = 30
         normalization_factor = 20
         # normalization_factor = 1
-        normalization_factor =  self._revolutions_per_second / 60  * 1100
+        normalization_factor = self._revolutions_per_second / 60 * 1100
         current_angle = self._primary_angle
-        self._primary_angle += 1 / (1 + alpha * np.exp(-(dist**2 / (2 * sigma**2)))) * normalization_factor
+        self._primary_angle += (
+            1 / (1 + alpha * np.exp(-(dist**2 / (2 * sigma**2)))) * normalization_factor
+        )
         self._primary_angle %= 360
-
 
         painter.setPen(Qt.PenStyle.NoPen)
         for i in range(self._number_of_lines):
@@ -415,7 +414,12 @@ class StickyWaitingSpinner(WaitingSpinner):
                 self._inner_radius + self._line_length,
             )
             dist = (current_angle - 270 + 180) % 360 - 180
-            rotate_angle = 1 / (1 + alpha * np.exp(-(dist**2 / (2 * sigma**2)))) * normalization_factor / 2
+            rotate_angle = (
+                1
+                / (1 + alpha * np.exp(-(dist**2 / (2 * sigma**2))))
+                * normalization_factor
+                / 2
+            )
             current_angle = (current_angle - rotate_angle) % 360
             # rotate_angle = 360 * i / self._number_of_lines
             painter.rotate(current_angle)
@@ -447,13 +451,10 @@ class StickyWaitingSpinner(WaitingSpinner):
 
     def _update_timer(self) -> None:
         """Update the spinning speed of the WaitingSpinner."""
-        self._timer.setInterval(
-            int(1000 / 60)
-        )
+        self._timer.setInterval(int(1000 / 60))
 
 
 # Code for determining the parameters I want:
-
 
 
 # pylint: disable=too-many-instance-attributes,too-many-statements
@@ -473,7 +474,7 @@ class SpinnerConfigurator(QWidget):
 
     spinner = None
 
-    def __init__(self, sticky: bool=False) -> None:
+    def __init__(self, sticky: bool = False) -> None:
         super().__init__()
         self.sticky = sticky
         self.init_ui()
@@ -641,6 +642,7 @@ class SpinnerConfigurator(QWidget):
         print(text)
         msg_box.exec_()
 
+
 def set_palette(my_app):
     my_app.setStyle('Fusion')
     dark_palette = QtGui.QPalette()
@@ -657,15 +659,20 @@ def set_palette(my_app):
     dark_palette.setColor(QtGui.QPalette.Disabled, QtGui.QPalette.Text, disabled_color)
     dark_palette.setColor(QtGui.QPalette.Button, dark_color)
     dark_palette.setColor(QtGui.QPalette.ButtonText, white_color)
-    dark_palette.setColor(QtGui.QPalette.Disabled, QtGui.QPalette.ButtonText, disabled_color)
+    dark_palette.setColor(
+        QtGui.QPalette.Disabled, QtGui.QPalette.ButtonText, disabled_color
+    )
     dark_palette.setColor(QtGui.QPalette.BrightText, QtGui.QColor(187, 134, 252))
     dark_palette.setColor(QtGui.QPalette.Link, QtGui.QColor(187, 134, 252))
     dark_palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(187, 134, 252))
     dark_palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(255, 255, 255))
-    dark_palette.setColor(QtGui.QPalette.Disabled, QtGui.QPalette.HighlightedText, disabled_color)
+    dark_palette.setColor(
+        QtGui.QPalette.Disabled, QtGui.QPalette.HighlightedText, disabled_color
+    )
     my_app.setPalette(dark_palette)
     my_app.setStyleSheet(
-        'QToolTip { color: #ffffff; background-color: rgb(187, 134, 252); border: 0px solid white; }')
+        'QToolTip { color: #ffffff; background-color: rgb(187, 134, 252); border: 0px solid white; }'
+    )
 
 
 if __name__ == '__main__':

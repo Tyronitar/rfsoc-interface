@@ -56,8 +56,10 @@ DEFAULT_CAMERA_FEATURE_VALUES = {
     'AcquisitionMode': 'Continuous',
 }
 
+
 def quit_function():
-    thread.interrupt_main() # raises KeyboardInterrupt
+    thread.interrupt_main()  # raises KeyboardInterrupt
+
 
 class SKPR_Camera_Control:
     def __init__(self):
@@ -71,12 +73,14 @@ class SKPR_Camera_Control:
                 cam.Gamma.set = 1
                 cam.set_pixel_format(PixelFormat.Rgb8)
 
-    def take_pic(self, savefile: PathLike=None, save: bool=False, show: bool=False) -> cv2.typing.MatLike:
+    def take_pic(
+        self, savefile: PathLike = None, save: bool = False, show: bool = False
+    ) -> cv2.typing.MatLike:
         with VmbSystem.get_instance() as vmb:
             cams = vmb.get_all_cameras()
             with cams[0] as cam:
                 frame = cam.get_frame()
-            pic_data = np.flip(np.flip(frame.as_numpy_ndarray(),0),1)
+            pic_data = np.flip(np.flip(frame.as_numpy_ndarray(), 0), 1)
 
             if save:
                 if not savefile:
@@ -87,18 +91,20 @@ class SKPR_Camera_Control:
                 f.close()
 
             if show:
-                im_hsv = cv2.cvtColor(pic_data,cv2.COLOR_RGB2HSV)
-                im_hsv[..., 1] = im_hsv[..., 1] * 1.
-                pic_data = cv2.cvtColor(im_hsv,cv2.COLOR_HSV2RGB)
+                im_hsv = cv2.cvtColor(pic_data, cv2.COLOR_RGB2HSV)
+                im_hsv[..., 1] = im_hsv[..., 1] * 1.0
+                pic_data = cv2.cvtColor(im_hsv, cv2.COLOR_HSV2RGB)
 
                 plt.imshow(pic_data)
                 plt.show()
 
             return pic_data
 
+
 #
 # Adapted from vmbpy example code
 #
+
 
 def try_put_frame(q: queue.Queue, cam: Camera, frame: Optional[Frame]):
     try:
@@ -118,12 +124,18 @@ class VideoFileWriter(threading.Thread):
         cmd = [
             'ffmpeg',
             '-y',
-            '-f', 'rawvideo',
-            '-vcodec', 'rawvideo',
-            '-pix_fmt', 'rgb24',
-            '-s', f'{MAX_FRAME_WIDTH}x{MAX_FRAME_HEIGHT}',
-            '-loglevel', 'fatal',
-            '-i', '-',  # Read from stdin
+            '-f',
+            'rawvideo',
+            '-vcodec',
+            'rawvideo',
+            '-pix_fmt',
+            'rgb24',
+            '-s',
+            f'{MAX_FRAME_WIDTH}x{MAX_FRAME_HEIGHT}',
+            '-loglevel',
+            'fatal',
+            '-i',
+            '-',  # Read from stdin
             '-an',
             str(video_file),
         ]
@@ -134,7 +146,9 @@ class VideoFileWriter(threading.Thread):
     def run(self):
         _camera_logger.debug('VideoFileWriter: Started writing to file.')
         timestamp_file = h5py.File(self.timestamp_file, 'a')
-        timestamp_dataset = timestamp_file.create_dataset('timestamp', shape=(0,), maxshape=(None,), dtype=np.float64)
+        timestamp_dataset = timestamp_file.create_dataset(
+            'timestamp', shape=(0,), maxshape=(None,), dtype=np.float64
+        )
         timestamp_file.attrs['video_file'] = str(self.video_file)
         while True:
             obj = self.queue.get()
@@ -153,6 +167,7 @@ class VideoFileWriter(threading.Thread):
         self.proc.stdin.close()
         self.proc.wait()
         _camera_logger.debug('VideoFileWriter: Finished cleanup.')
+
 
 class FrameProducer(threading.Thread):
     def __init__(self, cam: Camera, frame_queue: Queue):
@@ -221,22 +236,45 @@ def make_controller(
     timestamp_array: Array,
     camera_lock: Lock,
     timestamp_lock: Lock,
-    max_queue_size: int=FRAME_QUEUE_SIZE,
+    max_queue_size: int = FRAME_QUEUE_SIZE,
     **features,
 ) -> CameraController:
-    return CameraController(connection, camera_array, timestamp_array, camera_lock, timestamp_lock, max_queue_size=max_queue_size, **features)
+    return CameraController(
+        connection,
+        camera_array,
+        timestamp_array,
+        camera_lock,
+        timestamp_lock,
+        max_queue_size=max_queue_size,
+        **features,
+    )
 
 
 class CameraController:
-    def __init__(self, conn: Connection, camera_array: Array, timestamp_array: Array, camera_lock: Lock, timestamp_lock: Lock, max_queue_size: int=FRAME_QUEUE_SIZE, **features):
-        _camera_logger.debug(f'Initializing CameraController with max_queue_size={max_queue_size}, features={features}')
+    def __init__(
+        self,
+        conn: Connection,
+        camera_array: Array,
+        timestamp_array: Array,
+        camera_lock: Lock,
+        timestamp_lock: Lock,
+        max_queue_size: int = FRAME_QUEUE_SIZE,
+        **features,
+    ):
+        _camera_logger.debug(
+            f'Initializing CameraController with max_queue_size={max_queue_size}, features={features}'
+        )
         self._initialized = False
         self.connection = conn
         self.frame_queue = Queue(maxsize=max_queue_size)
         self.producers = {}
         self.producers_lock = threading.Lock()
-        self.camera_array = np.frombuffer(camera_array.get_obj(), dtype=np.uint8).reshape(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)
-        self.timestamp_array = np.frombuffer(timestamp_array.get_obj(), dtype=np.float64).reshape(1)
+        self.camera_array = np.frombuffer(
+            camera_array.get_obj(), dtype=np.uint8
+        ).reshape(MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3)
+        self.timestamp_array = np.frombuffer(
+            timestamp_array.get_obj(), dtype=np.float64
+        ).reshape(1)
         self.camera_lock = camera_lock
         self.timestamp_lock = timestamp_lock
         self._listener_thread = threading.Thread(target=self._consumer_loop)
@@ -247,7 +285,9 @@ class CameraController:
         if self.connection is None:
             # Plot the images instead
             self.figure, self.axes = plt.subplots()
-            self.im = plt.imshow(np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH)), animated=True)
+            self.im = plt.imshow(
+                np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH)), animated=True
+            )
             plt.show(block=False)
         self.vmb = VmbSystem.get_instance()
         with self.vmb:
@@ -257,7 +297,6 @@ class CameraController:
     def _initialize_system(self, **features):
         _camera_logger.debug('Initializing VMB Camera System...')
         try:
-
             if len(features) == 0:
                 features = DEFAULT_CAMERA_FEATURE_VALUES
                 _camera_logger.debug('Using default features for cameras')
@@ -311,7 +350,9 @@ class CameraController:
 
     def run(self):
         if not self._initialized:
-            _logger.debug('VMB Camera System could not be initialized, terminating process')
+            _logger.debug(
+                'VMB Camera System could not be initialized, terminating process'
+            )
             return
 
         _logger.debug('Starting VMB Camera System...')
@@ -344,7 +385,6 @@ class CameraController:
             for producer in self.producers.values():
                 producer.join()
 
-
         _logger.debug('All camera FrameProducer threads joined.')
         self.send('done')
 
@@ -354,7 +394,7 @@ class CameraController:
         self.connection.send([command, *args])
         _camera_logger.debug(f'CAMERA sent command "{command}" with data {args}')
 
-    def send(self, command: str, *args, timeout: float=None):
+    def send(self, command: str, *args, timeout: float = None):
         """Send a command to the main process."""
         if timeout:
             timer = threading.Timer(
@@ -364,7 +404,9 @@ class CameraController:
             timer.start()
             try:
                 self.connection.send([command, *args])
-                _camera_logger.debug(f'CAMERA sent command "{command}" with data {args}')
+                _camera_logger.debug(
+                    f'CAMERA sent command "{command}" with data {args}'
+                )
             except KeyboardInterrupt:
                 _camera_logger.error(f'CAMERA timed out sending command "{command}"')
             finally:
@@ -373,8 +415,6 @@ class CameraController:
             self.connection.send([command, *args])
             _camera_logger.debug(f'CAMERA sent command "{command}" with data {args}')
 
-
-
     def set_feature(self, cam: Camera | str, feature_name: str, val: Any):
         if isinstance(cam, str):
             cam = self.vmb.get_camera_by_id(cam)
@@ -382,7 +422,9 @@ class CameraController:
         try:
             cam.get_feature_by_name(feature_name).set(val)
         except VmbFeatureError as e:
-            self.send('err', 'CRITICAL', f'Unable to set "{feature_name}" to "val": {e}')
+            self.send(
+                'err', 'CRITICAL', f'Unable to set "{feature_name}" to "val": {e}'
+            )
             raise VmbFeatureError from e
 
     def get_feature(self, cam: Camera | str, feature_name: str):
@@ -392,7 +434,9 @@ class CameraController:
         try:
             return cam.get_feature_by_name(feature_name).get()
         except VmbFeatureError as e:
-            self.send('err', 'CRITICAL', f'Unable to set "{feature_name}" to "val": {e}')
+            self.send(
+                'err', 'CRITICAL', f'Unable to set "{feature_name}" to "val": {e}'
+            )
             raise VmbFeatureError from e
 
     def _consumer_loop(self):
@@ -408,11 +452,15 @@ class CameraController:
                 # Check for commands from the main process
                 if self.connection is not None and self.connection.poll():
                     command, *args = self.connection.recv()
-                    _camera_logger.debug(f'CAMERA received command: "{command}", args: {args}')
+                    _camera_logger.debug(
+                        f'CAMERA received command: "{command}", args: {args}'
+                    )
                     match command:
                         case 'start_recording':
                             video_file, timestamp_file = args
-                            self._writer_thread = VideoFileWriter(video_file, timestamp_file, self._write_queue)
+                            self._writer_thread = VideoFileWriter(
+                                video_file, timestamp_file, self._write_queue
+                            )
                             self._recording = True
                             interval = 0.05  # faster frame rate when recording
                             self._writer_thread.start()
@@ -449,7 +497,12 @@ class CameraController:
                                 with cam:
                                     try:
                                         val = self.get_feature(cam, feature_name)
-                                        self.send('get_feature', cam.get_id(), feature_name, val)
+                                        self.send(
+                                            'get_feature',
+                                            cam.get_id(),
+                                            feature_name,
+                                            val,
+                                        )
                                     except VmbFeatureError:
                                         self.alive = False
                                         break
@@ -457,7 +510,11 @@ class CameraController:
                             self.alive = False
                             break
                         case _:
-                            self.send('err', 'NON-CRITICAL', f'Unknown command "{command}" received.')
+                            self.send(
+                                'err',
+                                'NON-CRITICAL',
+                                f'Unknown command "{command}" received.',
+                            )
                             continue
 
                 if self._joining_writer_thread:
@@ -486,7 +543,10 @@ class CameraController:
 
                 # Construct image by stitching frames together.
                 if frames:
-                    cv_images = [frames[cam_id].as_numpy_ndarray() for cam_id in sorted(frames.keys())]
+                    cv_images = [
+                        frames[cam_id].as_numpy_ndarray()
+                        for cam_id in sorted(frames.keys())
+                    ]
 
                     # Rotate image so it's aligned properly
                     cv_images = np.flip(np.flip(cv_images, 1), 2)
@@ -513,7 +573,6 @@ class CameraController:
                         # plt.pause(0.25)
 
                 time.sleep(interval)
-
 
         except KeyboardInterrupt:
             self.alive = False

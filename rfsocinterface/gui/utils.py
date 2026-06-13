@@ -53,6 +53,3 @@ DATA_ROUTINE_FUNCTION_WIDGET_ARGS = {
     #     ]
     # ),
 }
-
-
-

@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QLineEdit, QWidget
 class ClickableLineEdit(QLineEdit):
     clicked = Signal()
 
-    def __init__(self, parent: QWidget=None):
+    def __init__(self, parent: QWidget = None):
         super().__init__(parent=parent)
 
     def mousePressEvent(self, arg__1):

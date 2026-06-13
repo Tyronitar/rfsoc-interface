@@ -12,21 +12,27 @@ from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
 
 _logger = logging.getLogger(__name__)
 
-class Pipeline:
 
-    def __init__(self, routines: list[DataRoutine]=[]):
+class Pipeline:
+    def __init__(self, routines: list[DataRoutine] = []):
         self.routines = routines
 
-    def from_tod(self, date: str, setnum: int, downsampling_factor: int=1, use_pps: bool=True) -> ProcessedData:
+    def from_tod(
+        self, date: str, setnum: int, downsampling_factor: int = 1, use_pps: bool = True
+    ) -> ProcessedData:
         _logger.info(f'Pipeline: Running pipeline on TOD {date}_set{setnum}')
-        cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=downsampling_factor, use_pps=use_pps)
+        cd = ConsolidatedData.from_tod(
+            date, setnum, downsampling_factor=downsampling_factor, use_pps=use_pps
+        )
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
         self.run(pd)
         return pd
 
     def from_consolidated_data(self, date: str, setnum: int) -> ProcessedData:
-        _logger.info(f'Pipeline: Running pipeline from ConsolidatedData {date}_set{setnum}')
+        _logger.info(
+            f'Pipeline: Running pipeline from ConsolidatedData {date}_set{setnum}'
+        )
         cd = ConsolidatedData.load(date, setnum)
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
@@ -37,11 +43,13 @@ class Pipeline:
         routine_cls = ROUTINE_REGISTRY[name]
         routine = routine_cls(**params)
         self.routines.append(routine)
-        _logger.debug(f'Pipeline: Added routine {name} with params {params} to pipeline.')
+        _logger.debug(
+            f'Pipeline: Added routine {name} with params {params} to pipeline.'
+        )
 
     def load_config(self, config: dict):
         """Loads a pipeline configuration from a dictionary.
-        
+
         The dictionary should have the following format:
         {
             "routine_name_1": {
@@ -64,18 +72,18 @@ class Pipeline:
         for routine in self.routines:
             routine.apply(pdata)
 
-def plot_psd(
-        ax: plt.Axes,
-        color: str,
-        label: str,
-        freq: npt.NDArray,
-        psd: npt.NDArray,
-        min_percentile: float=16,
-        max_percentile: float=84,
-        flat_spectrum: bool=True,
-        flat_spectrum_search_bounds: tuple=(10, 50),
-) -> list[Figure]:
 
+def plot_psd(
+    ax: plt.Axes,
+    color: str,
+    label: str,
+    freq: npt.NDArray,
+    psd: npt.NDArray,
+    min_percentile: float = 16,
+    max_percentile: float = 84,
+    flat_spectrum: bool = True,
+    flat_spectrum_search_bounds: tuple = (10, 50),
+) -> list[Figure]:
     # cutoff = 250  # Number of data points to cut off at the end
     # psd = psd[:, :, :-cutoff]
     # freq = freq[:-cutoff]
@@ -115,7 +123,6 @@ def plot_psd(
         #     med_color = 'g'
         #     fill_color = 'lightgreen'
 
-
     plot_data_med = 10 * np.log10(psd_med)
 
     psd_min = psd_med[:]
@@ -137,11 +144,18 @@ def plot_psd(
     ydata_med = np.mean(plot_data_med, axis=0)
     ydata_max = np.mean(plot_data_max, axis=0)
 
-
     if flat_spectrum:
-        flat_spectrum_idx = np.where((xdata > flat_spectrum_search_bounds[0]) & (xdata < flat_spectrum_search_bounds[1]))
+        flat_spectrum_idx = np.where(
+            (xdata > flat_spectrum_search_bounds[0])
+            & (xdata < flat_spectrum_search_bounds[1])
+        )
         flat_spectrum_noise = np.median(ydata_med[flat_spectrum_idx])
-        ax.plot(xdata, ydata_med, color=med_color, label=rf'{label} ({flat_spectrum_noise:.1f} dBc Hz$^{{-1}}$)')
+        ax.plot(
+            xdata,
+            ydata_med,
+            color=med_color,
+            label=rf'{label} ({flat_spectrum_noise:.1f} dBc Hz$^{{-1}}$)',
+        )
         plt.axhline(flat_spectrum_noise, color=med_color, linestyle='dashed')
     else:
         ax.plot(xdata, ydata_med, color=med_color, label=label)
@@ -153,4 +167,3 @@ def plot_psd(
         facecolor=fill_color,
         alpha=0.5,
     )
-

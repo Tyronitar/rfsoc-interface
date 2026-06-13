@@ -5,11 +5,12 @@ from PySide6.QtWidgets import QComboBox, QStyle, QStyleOptionComboBox, QStylePai
 
 class CheckableComboBox(QComboBox):
     """A combobox that allows for checkable items.
-    
-    Code adapted from: https://stackoverflow.com/a/22775990 and 
+
+    Code adapted from: https://stackoverflow.com/a/22775990 and
     https://stackoverflow.com/a/35831986.
     """
-    def __init__(self, title: str='', parent=None):
+
+    def __init__(self, title: str = '', parent=None):
         super().__init__(parent)
         self.setTitle(title)
         self._default_title = title
@@ -20,8 +21,10 @@ class CheckableComboBox(QComboBox):
 
     def checked_indices(self) -> list[int]:
         return [
-            i for i in range(self.count())
-            if self.model().item(i, self.modelColumn()).checkState() == Qt.CheckState.Checked
+            i
+            for i in range(self.count())
+            if self.model().item(i, self.modelColumn()).checkState()
+            == Qt.CheckState.Checked
         ]
 
     def deselect_all(self):
@@ -84,7 +87,9 @@ class CheckableComboBox(QComboBox):
             opt = QStyleOptionComboBox()
             self.initStyleOption(opt)
             metrics = QFontMetrics(self.font())
-            elided = metrics.elidedText(self._title, Qt.TextElideMode.ElideRight, self.width() - 25)
+            elided = metrics.elidedText(
+                self._title, Qt.TextElideMode.ElideRight, self.width() - 25
+            )
             opt.currentText = elided
             painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, opt)
             painter.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, opt)

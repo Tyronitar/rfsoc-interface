@@ -27,10 +27,12 @@ class FunctionWidget(QWidget):
     """Class for generalizing a function and its arguments for a Qt GUI."""
 
     def __init__(
-            self,
-            fn: Callable[P, R],
-            args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[],
-            parent=None,
+        self,
+        fn: Callable[P, R],
+        args: list[
+            tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]
+        ] = [],
+        parent=None,
     ):
         super().__init__(parent=parent)
         self.fn = fn
@@ -45,15 +47,20 @@ class FunctionWidget(QWidget):
 
         self.form_layout = QFormLayout(parent=container)
         container.setLayout(self.form_layout)
-        for (arg, kwargs) in args:
+        for arg, kwargs in args:
             self.add_argument(*arg, **kwargs)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.scroll_area)
         self.setLayout(layout)
 
-    def add_argument(self, label: str, arg_types: ArgumentType | tuple[ArgumentType], *args: Q.args, **kwargs: Q.kwargs):
-
+    def add_argument(
+        self,
+        label: str,
+        arg_types: ArgumentType | tuple[ArgumentType],
+        *args: Q.args,
+        **kwargs: Q.kwargs,
+    ):
         label = label.strip(': ')
         has_default = False
         if 'default' in kwargs:
@@ -68,14 +75,27 @@ class FunctionWidget(QWidget):
 
         new_row = QHBoxLayout()
         for i, arg_type in enumerate(arg_types):
-            widget = self.arg_to_widget(label, arg_type, *args, default_val=default_vals[i] if has_default else None, **kwargs)
+            widget = self.arg_to_widget(
+                label,
+                arg_type,
+                *args,
+                default_val=default_vals[i] if has_default else None,
+                **kwargs,
+            )
             new_row.addWidget(widget)
         if any(arg_type != ArgumentType.BOOL for arg_type in arg_types):
             self.form_layout.addRow(label + ':', new_row)
         else:
             self.form_layout.addRow(new_row)
 
-    def arg_to_widget(self, label: str, arg_type: ArgumentType, *args: Q.args, default_val=None, **kwargs: Q.kwargs) -> QWidget:
+    def arg_to_widget(
+        self,
+        label: str,
+        arg_type: ArgumentType,
+        *args: Q.args,
+        default_val=None,
+        **kwargs: Q.kwargs,
+    ) -> QWidget:
         match arg_type:
             case ArgumentType.BOOL:
                 widget = arg_type.widget(label, *args, parent=self, **kwargs)
@@ -102,14 +122,18 @@ class FunctionWidget(QWidget):
             if len(arg_types) > 1:
                 # If there are multiple arguments, get the values from each widget
                 this_value = []
-                hlayout: QHBoxLayout = self.form_layout.itemAt(i, QFormLayout.ItemRole.FieldRole)
+                hlayout: QHBoxLayout = self.form_layout.itemAt(
+                    i, QFormLayout.ItemRole.FieldRole
+                )
                 for j, arg_type in enumerate(arg_types):
                     # Get every widget in the hlayout
                     input_widget = hlayout.itemAt(j).widget()
                     this_value.append(arg_type.access_function()(input_widget))
                 values.append(tuple(this_value))
             else:
-                hlayout: QHBoxLayout = self.form_layout.itemAt(i, QFormLayout.ItemRole.FieldRole)
+                hlayout: QHBoxLayout = self.form_layout.itemAt(
+                    i, QFormLayout.ItemRole.FieldRole
+                )
                 input_widget = hlayout.itemAt(0).widget()
                 values.append(arg_types[0].access_function()(input_widget))
         return values
@@ -118,21 +142,27 @@ class FunctionWidget(QWidget):
         values = self.get_inputs()
         return self.fn(*values)
 
+
 class FunctionDragItem(ClickableDragItem):
     def __init__(
-            self,
-            fn: Callable[P, R],
-            args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[],
-            label: str = None,
-            *init_args,
-            **init_kwargs,
+        self,
+        fn: Callable[P, R],
+        args: list[
+            tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]
+        ] = [],
+        label: str = None,
+        *init_args,
+        **init_kwargs,
     ):
         if not label:
             label = fn.__name__
         super().__init__(label, *init_args, **init_kwargs)
         self.fn = fn
-        self.args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=args
+        self.args: list[
+            tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]
+        ] = args
         self.func_widget = FunctionWidget(self.fn, self.args, parent=self.parent())
+
 
 class DragFunctionWidget(QWidget):
     def __init__(self, parent=None):
@@ -169,7 +199,14 @@ class DragFunctionWidget(QWidget):
         pass
 
     @overload
-    def add_item(self, label: str, fn: Callable, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]) -> FunctionDragItem:
+    def add_item(
+        self,
+        label: str,
+        fn: Callable,
+        args: list[
+            tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]
+        ] = [],
+    ) -> FunctionDragItem:
         pass
 
     def add_item(self, *data):
@@ -202,7 +239,9 @@ class DragFunctionWidget(QWidget):
     @Slot()
     def display_args(self):
         item: FunctionDragItem = self.sender()
-        self.func_container.setCurrentIndex(self.func_container.indexOf(item.func_widget))
+        self.func_container.setCurrentIndex(
+            self.func_container.indexOf(item.func_widget)
+        )
 
     def mousePressEvent(self, event: QMouseEvent):
         child = self.childAt(event.position())
@@ -211,6 +250,7 @@ class DragFunctionWidget(QWidget):
             self.drag.set_active_item(None)
             self.func_container.setCurrentIndex(0)
         return super().mousePressEvent(event)
+
 
 class MultiSectionDragFunctionWidget(QWidget):
     orderChanged = Signal(list, list)
@@ -254,7 +294,15 @@ class MultiSectionDragFunctionWidget(QWidget):
         pass
 
     @overload
-    def add_item(self, i_section: int, label: str, fn: Callable, args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]=[]) -> FunctionDragItem:
+    def add_item(
+        self,
+        i_section: int,
+        label: str,
+        fn: Callable,
+        args: list[
+            tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]
+        ] = [],
+    ) -> FunctionDragItem:
         pass
 
     def add_item(self, *data):
@@ -294,7 +342,9 @@ class MultiSectionDragFunctionWidget(QWidget):
     @Slot()
     def display_args(self):
         item: FunctionDragItem = self.sender()
-        self.func_container.setCurrentIndex(self.func_container.indexOf(item.func_widget))
+        self.func_container.setCurrentIndex(
+            self.func_container.indexOf(item.func_widget)
+        )
 
     def mousePressEvent(self, event: QMouseEvent):
         child = self.childAt(event.position())
@@ -308,7 +358,9 @@ class MultiSectionDragFunctionWidget(QWidget):
 if __name__ == '__main__':
     enum_choices = ['hello', 'world']
 
-    def dummy_func(string: str, num: float, nums: tuple[float, float], enum: str, check: bool):
+    def dummy_func(
+        string: str, num: float, nums: tuple[float, float], enum: str, check: bool
+    ):
         assert enum in enum_choices
         print(f'"{string}", {num}, {nums}, {enum}, {check}')
 
@@ -323,7 +375,9 @@ if __name__ == '__main__':
 
     n_sections = 2
     counter = 0
-    for i_sec, section_name in enumerate([f'Section {i + 1}' for i in range(n_sections)]):
+    for i_sec, section_name in enumerate(
+        [f'Section {i + 1}' for i in range(n_sections)]
+    ):
         drag.add_section(section_name)
         drag.add_item(
             i_sec,
@@ -340,8 +394,14 @@ if __name__ == '__main__':
             [
                 (('Str Arg: ', ArgumentType.STR), {'default': ('default string',)}),
                 (('Float Arg: ', ArgumentType.FLOAT), {'default': (10.2,)}),
-                (('Double Float Arg: ', (ArgumentType.FLOAT, ArgumentType.FLOAT)), {'default': (10.2, 64.7)}),
-                (('Enum Arg: ', ArgumentType.ENUM), {'options': enum_choices, 'default': ('world',)}),
+                (
+                    ('Double Float Arg: ', (ArgumentType.FLOAT, ArgumentType.FLOAT)),
+                    {'default': (10.2, 64.7)},
+                ),
+                (
+                    ('Enum Arg: ', ArgumentType.ENUM),
+                    {'options': enum_choices, 'default': ('world',)},
+                ),
                 (('Bool Arg', ArgumentType.BOOL), {'default': (True,)}),
             ],
         )

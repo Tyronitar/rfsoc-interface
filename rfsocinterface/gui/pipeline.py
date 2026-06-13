@@ -33,7 +33,9 @@ class RoutineSelectionDialog(QDialog):
 
         self.button_box = QDialogButtonBox(self)
         self.button_box.setOrientation(Qt.Orientation.Horizontal)
-        self.button_box.setStandardButtons(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box.setStandardButtons(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         layout.addRow(self.button_box)
 
         self.setLayout(layout)
@@ -48,7 +50,6 @@ STAGE_TO_SECTION_MAP = {
 
 
 class PipelineDialog(QDialog, Ui_PipelineDialog):
-
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setupUi(self)
@@ -86,7 +87,6 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         for item in self.drag_function_widget.items():
             new_pipeline.add_routine(item.func_widget.call_function())
         return new_pipeline
-
 
     def reject(self):
         # Un-remove any items that were removed
@@ -135,16 +135,20 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
     def add_routine(self, routine_type_name: str, *args):
         routine_cls: Type[DataRoutine] = ROUTINE_NAME_MAP[routine_type_name]
         if routine_type_name not in ROUTINE_NAME_MAP:
-            raise ValueError(f'Routine type {routine_type_name} not in DATA_ROUTINE_FUNCTION_WIDGET_ARGS')
+            raise ValueError(
+                f'Routine type {routine_type_name} not in DATA_ROUTINE_FUNCTION_WIDGET_ARGS'
+            )
         if len(args) == 0:
-            args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type_name]  # Get default values
+            args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[
+                routine_type_name
+            ]  # Get default values
         section = STAGE_TO_SECTION_MAP[routine_cls.stage]
         item = self.drag_function_widget.add_item(section, *args)
         # item = self.drag_function_widget.add_item(*args)
         item.clicked.emit()  # Set active itme and display the function's aruments
         self._new_items[section].append(item)
 
-    def remove_routine(self, i_sec: int, item: FunctionDragItem | None=None):
+    def remove_routine(self, i_sec: int, item: FunctionDragItem | None = None):
         if item is None:
             i_sec, item = self.drag_function_widget.active_item
         if item is not None:
@@ -176,4 +180,3 @@ if __name__ == '__main__':
 
     w.show()
     app.exec()
-

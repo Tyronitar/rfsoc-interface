@@ -90,6 +90,7 @@ ignore = [
     "FBT002",  # Boolean default positional argument in function definitions
     "FBT003",  # Boolean positional value in function call,
     "ERA001",  # Commented-out code
+    "ISC001", # Single-line implicitly string concatenation
 ]
 
 task-tags = [

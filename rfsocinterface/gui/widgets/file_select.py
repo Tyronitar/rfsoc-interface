@@ -20,6 +20,7 @@ DEFAULT_BROWSE_OPTIONS = {
     'selectedFilter': 'All Files(*.*)',
 }
 
+
 class FileSelectWidget(QWidget):
     clicked = Signal()
     cursorPositionChanged = Signal(int, int)
@@ -29,7 +30,6 @@ class FileSelectWidget(QWidget):
     selectionChanged = Signal()
     textChanged = Signal(str)
     textEdited = Signal(str)
-
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -76,8 +76,12 @@ class FileSelectWidget(QWidget):
             self.set_dir(str(Path(fname).parent))
 
     def retranslateUi(self):
-        self.setWindowTitle(QCoreApplication.translate('FileSelectWidget', 'FileSelectWidget', None))
-        self.pushButton.setText(QCoreApplication.translate('FileSelectWidget', 'Browse...', None))
+        self.setWindowTitle(
+            QCoreApplication.translate('FileSelectWidget', 'FileSelectWidget', None)
+        )
+        self.pushButton.setText(
+            QCoreApplication.translate('FileSelectWidget', 'Browse...', None)
+        )
 
     def text(self) -> str:
         return self.lineEdit.text()
@@ -106,10 +110,11 @@ class FileSelectWidget(QWidget):
             raise ValueError(f'Filter {filt} not found in {all_filters.split(";;")}')
         self.browse_dialog_options['selectedFilter'] = filt
 
+
 class FileUploadWidget(FileSelectWidget):
     uploaded = Signal(str)
 
-    def __init__(self, parent = None):
+    def __init__(self, parent=None):
         super().__init__(parent)
 
         self.toolButton = QToolButton(self)
