@@ -1,3 +1,5 @@
+"""Data processing code for generating maps."""
+
 import logging
 import time
 from pathlib import Path

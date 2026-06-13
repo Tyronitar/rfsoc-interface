@@ -25,7 +25,7 @@ from rfsocinterface.core.data.routines import (
 )
 from rfsocinterface.core.data.storage import (
     ConsolidatedData,
-    NewDataStorage,
+    DataStorage,
     ProcessedData,
 )
 from rfsocinterface.core.data.utils import (
@@ -72,7 +72,7 @@ __all__ = [
     'HighPassFilter',
     'LowPassFilter',
     'MakeVideo',
-    'NewDataStorage',
+    'DataStorage',
     'Pipeline',
     'PlotMap',
     'ProcessedData',

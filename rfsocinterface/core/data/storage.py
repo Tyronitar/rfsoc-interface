@@ -1,3 +1,4 @@
+"""Module for data storage classes."""
 from __future__ import annotations
 
 import glob
@@ -5,6 +6,7 @@ import json
 import logging
 import pdb
 import shutil
+import typing
 from importlib.metadata import version
 from pathlib import Path
 from typing import Iterator, overload
@@ -56,8 +58,8 @@ from rfsocinterface.core.utils import (
 _logger = logging.getLogger(__name__)
 
 
-class NewDataStorage:
-    """This wrapper around HDF5 files for data storage.
+class DataStorage:
+    """Thin wrapper around HDF5 files for data storage.
 
     Attributes:
         file (h5py.File): The file that the file is stored in.
@@ -65,6 +67,7 @@ class NewDataStorage:
 
     @ensure_path(1)
     def __init__(self, filename: Path, mode: str = 'a'):
+        """Initialize a DataStorage Object."""
         self.filename = filename
         self.file = None
         self.mode = None
@@ -72,7 +75,7 @@ class NewDataStorage:
 
     @overload
     @classmethod
-    def load(cls, filename: str, mode: str = 'a') -> NewDataStorage:
+    def load(cls, filename: str, mode: str = 'a') -> DataStorage:
         pass
 
     @overload
@@ -83,57 +86,67 @@ class NewDataStorage:
         setnum: int,
         mode: str = 'a',
         data_dir: str = DEFAULT_DATA_DIRECTORY,
-    ) -> NewDataStorage:
+    ) -> DataStorage:
         pass
 
     @classmethod
     def load(
         cls, *args, mode: str = 'a', data_dir: str = DEFAULT_DATA_DIRECTORY
-    ) -> NewDataStorage:
+    ) -> DataStorage:
+        """Load a data file."""
         if len(args) == 1:
             return cls(args[0], mode=mode)
-        if len(args) == 2:
+        if len(args) == 2:  # noqa: PLR2004
             date, setnum = args
             filename = cls.get_template(date, setnum, data_dir=data_dir)
             return cls(filename, mode=mode)
         raise ValueError('Invalid number of arguments')
 
     def open(self, mode: str = 'r'):
+        """Open the file in the specified mode."""
         self.file = h5py.File(self.filename, mode=mode)
         self.mode = mode
 
     def close(self):
+        """Close the file."""
         if self.file is None:
             raise OSError(f'Attempting to close {self.filename} before opening file.')
         self.file.close()
 
     def get(self, name: str) -> H5pyObject:
+        """Get an object from the file."""
         return self.file[name]
 
     def __getitem__(self, key):
+        """Get an object from the file."""
         return self.get(key)
 
     def __delitem__(self, key: str):
+        """Remove an object from the file."""
         del self.file[key]
 
     def has(self, name: str, exact_match: bool = False) -> bool:
+        """Whether an key is present in the file."""
         res = self.search(name, exact_match=exact_match)
         return res is not None
 
     def __contains__(self, key: str) -> bool:
+        """Whether an key is present in the file."""
         return key in self.file
 
     def search(
         self, name: str, full_name: bool = True, exact_match: bool = False
     ) -> tuple[str, H5pyObject] | None:
+        """Search for a key in the file."""
         return search(self.file, name, full_name=full_name, exact_match=exact_match)
 
     def list_datasets(self, full_names: bool = False) -> list[tuple[str, h5py.Dataset]]:
+        """Return a list of all datasets in the file."""
         return list_datasets(self.file, full_names=full_names)
 
     def list_dataset_names(self, full_names: bool = False) -> list[str]:
-        l = self.list_datasets(full_names=full_names)
-        return [name for (name, _) in l]
+        """Return a list of all dataset names in the file."""
+        return [name for (name, _) in self.list_datasets(full_names=full_names)]
 
     def create_group(
         self,
@@ -141,6 +154,7 @@ class NewDataStorage:
         track_order: bool | None = None,
         track_times: bool | None = None,
     ) -> h5py.Group:
+        """Create a group in the file."""
         return self.file.create_group(
             name, track_order=track_order, track_times=track_times
         )
@@ -169,10 +183,12 @@ class NewDataStorage:
 
     @property
     def attrs(self) -> h5py.AttributeManager:
+        """The file's attributes."""
         return self.file.attrs
 
     @property
     def date(self) -> str:
+        """The date of data collection."""
         return self.attrs['date']
 
     @date.setter
@@ -181,6 +197,7 @@ class NewDataStorage:
 
     @property
     def setnum(self) -> int:
+        """The set number."""
         return self.attrs['setnum']
 
     @setnum.setter
@@ -191,44 +208,57 @@ class NewDataStorage:
     def get_template(
         date: str, setnum: int, data_dir: str = DEFAULT_DATA_DIRECTORY
     ) -> str:
+        """Get the filename template for this file."""
         raise NotImplementedError('Must be implemented by subclass')
 
     @property
     def tod_template(self) -> str:
+        """The TOD filename for this data's date and setnum."""
         return get_tod_template(self.date, self.setnum)
 
     @property
     def azel_template(self) -> str:
+        """The AZEL filename for this data's date and setnum."""
         return get_azel_template(self.date, self.setnum)
 
     @property
     def optcam_template(self) -> str:
+        """The optcam filename for this data's date and setnum."""
         return get_optcam_template(self.date, self.setnum)
 
     @property
     def consolidated_file_template(self) -> str:
+        """The consolidated data filename for this data's date and setnum."""
         return get_consolidated_file_template(self.date, self.setnum)
 
     @property
     def processed_file_template(self) -> str:
+        """The processed data filename for this data's date and setnum."""
         return get_processed_file_template(self.date, self.setnum)
 
     @property
     def file_stub(self) -> str:
+        """The file stub (i.e. <date>_set<setnum>)."""
         return get_file_stub(self.date, self.setnum)
 
     @property
     def folder(self) -> Path:
+        """The folder this data is stored in."""
         return Path(self.filename).parent
 
     def __enter__(self):
+        """Load the data file."""
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        """Clean up  the data file."""
         self.close()
 
 
-class ProcessedData(NewDataStorage):
+class ProcessedData(DataStorage):
+    """Storage of downstream processed data."""
+
+    @typing.override
     @staticmethod
     def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
         return get_processed_file_template(date, setnum, data_dir=data_dir)
@@ -255,7 +285,7 @@ class ProcessedData(NewDataStorage):
         Also creates virtual datasets for each dataset, combined across channels.
         """
         n_samples = self['global_data'].attrs['n_samples']
-        for _, channel_group in self['channels'].items():
+        for channel_group in self['channels'].values():
             time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
             n_tones = channel_group.attrs['n_tones']
             data_IQ = time_ordered_data_group['data_IQ']
@@ -339,7 +369,7 @@ class ProcessedData(NewDataStorage):
         )
 
         i_tone = 0
-        for _, channel_group in self['channels'].items():
+        for channel_group in self['channels'].values():
             n_tones = channel_group.attrs['n_tones']
             this_data_group = channel_group['time_ordered_data']
             data_gain_phase_layout[:, i_tone : i_tone + n_tones] = h5py.VirtualSource(
@@ -373,14 +403,16 @@ class ProcessedData(NewDataStorage):
     # Useful getter methods
     #
     def list_history(self) -> list[dict]:
+        """Return a list of each processing step."""
         if not self.has('processing_history'):
             return []
         hist = self['processing_history']
         return list(hist.keys())
 
     def print_history(self, verbose: bool = False):
+        """Print the processing history for this file."""
         if not self.has('processing_history'):
-            print('No history')
+            print('No history')  # noqa: T201
             return
 
         hist = self.file['processing_history']
@@ -389,42 +421,47 @@ class ProcessedData(NewDataStorage):
             step = hist[k]
             name = step.attrs.get('name', '?')
             if verbose:
-                print(f'[{k}]:\n{json.dumps(dict(step.attrs), indent=4)}')
+                print(f'[{k}]:\n{json.dumps(dict(step.attrs), indent=4)}')  # noqa: T201
             else:
                 params = json.loads(step.attrs.get('params', '{}'))
 
                 param_str = ', '.join(f'{k}={v}' for k, v in params.items())
-                print(f'[{k}] {name}({param_str})')
+                print(f'[{k}] {name}({param_str})')  # noqa: T201
 
     def channels(self) -> Iterator[h5py.Group]:
+        """Return an iterator over each channel group."""
         yield from self['channels'].values()
 
     def get_channel_group(self, i_chan: int) -> h5py.Group:
+        """Return the specified channel group."""
         return self[f'channels/channel_{i_chan:03d}']
 
     def get_channel_group_from_tile_name(self, tile_name: str) -> h5py.Group:
+        """Return the specified channel group by tile name."""
         tile_names = []
-        for _, channel_group in self['channels'].items():
+        for channel_group in self['channels'].values():
             this_tile_name = channel_group.attrs['tile_name']
             tile_names.append(this_tile_name)
             if this_tile_name == tile_name:
                 return channel_group
-        raise KeyError(
-            f'Unable to find channel with name "{tile_name}". Tile names found: {tile_names}'
+        msg = (
+            f'Unable to find channel with name "{tile_name}". Tile names found: '
+            f'{tile_names}'
         )
+        raise KeyError(msg)
 
     def get_from_channel(self, i_chan: int, obj_name: str) -> H5pyObject:
+        """Return the object from the specified channel group."""
         return self.get_channel_group(i_chan)[obj_name]
 
     def get_from_all_channels(self, obj_name: str) -> list[H5pyObject]:
-        l = []
-        for channel_group in self['channels'].values():
-            l.append(channel_group[obj_name])
-        return l
+        """Return a list of `obj_name` from each channel group."""
+        return [channel_group[obj_name] for channel_group in self['channels'].values()]
 
     def search_in_channel(
         self, i_chan: int, name: str, full_name: bool = True, exact_match: bool = False
     ) -> tuple[str, H5pyObject] | None:
+        """Search for the name in the specified channel group."""
         return search(
             self.get_channel_group(i_chan),
             name,
@@ -435,25 +472,28 @@ class ProcessedData(NewDataStorage):
     def search_in_all_channels(
         self, name: str, full_name: bool = True, exact_match: bool = False
     ) -> list[tuple[str, H5pyObject]] | None:
-        l = []
-        for channel_group in self['channels'].values():
-            l.append(
-                search(
-                    channel_group, name, full_name=full_name, exact_match=exact_match
-                )
+        """Search for the name in the each channel group."""
+        return [
+            search(
+                channel_group, name, full_name=full_name, exact_match=exact_match
             )
-        return l
+            for channel_group in self['channels'].values()
+        ]
 
     def get_n_tones(self, i_chan: int) -> int:
+        """Return n_tones for the specified channel."""
         return self.get_channel_group(i_chan).attrs['n_tones']
 
     def get_chanmask(self, i_chan: int) -> npt.NDArray:
+        """Return the chanmask for the specified channel."""
         return self.get_from_channel(i_chan, 'tones')['chanmask']
 
     def get_onres_ind(self, i_chan: int) -> npt.NDArray:
+        """Return on-resonance indices for the specified channel."""
         return np.argwhere(self.get_chanmask(i_chan) == 1).flatten()
 
     def get_offres_ind(self, i_chan: int) -> npt.NDArray:
+        """Return off-resonance indices for the specified channel."""
         return np.argwhere(self.get_chanmask(i_chan) == 0).flatten()
 
     #
@@ -461,14 +501,17 @@ class ProcessedData(NewDataStorage):
     #
     @property
     def n_chan(self) -> int:
+        """The nmuber of channels."""
         return self['channels'].attrs['n_channels']
 
     @property
     def n_samples(self) -> int:
+        """The nmuber of samples collected."""
         return self['vdsets'].attrs['n_samples']
 
     @property
     def n_tones(self) -> int:
+        """The total nmuber of tones."""
         return self['vdsets'].attrs['n_tones']
 
     @property
@@ -478,43 +521,53 @@ class ProcessedData(NewDataStorage):
 
     @property
     def virtual_datasets(self) -> h5py.Group:
+        """The virtual dataset group in the file."""
         return self['vdsets']
 
     # Time-ordered data
     @property
     def timestamp(self) -> h5py.Dataset:
+        """The timestamps for each data sample.."""
         return self['global_data/timestamp']
 
     @property
     def optical_image(self) -> h5py.Dataset:
+        """The optical image."""
         return self['global_data/optical_image']
 
     @property
     def optical_visibility(self) -> h5py.Dataset:
+        """The optical visibility at the time of data capture."""
         return self['global_data/optical_visibility']
 
     @property
     def data_IQ(self) -> h5py.Dataset:
+        """The data in ADC units."""
         return self['vdsets/data_IQ']
 
     @property
     def data_gain_phase(self) -> h5py.Dataset:
+        """The data in the gain/phase basis."""
         return self['vdsets/data_gain_phase']
 
     @property
     def data_freq_diss(self) -> h5py.Dataset:
+        """The data in the frequency/dissipation basis."""
         return self['vdsets/data_freq_diss']
 
     @property
     def data_mK(self) -> h5py.Dataset:
+        """The data in milikelvin."""
         return self['vdsets/data_mK']
 
     @property
     def detector_az(self) -> h5py.Dataset:
+        """Azimuthal angle for each detector at each timestamp."""
         return self['vdsets/detector_az']
 
     @property
     def detector_za(self) -> h5py.Dataset:
+        """Zenith angle for each detector at each timestamp."""
         return self['vdsets/detector_za']
 
     #
@@ -522,6 +575,19 @@ class ProcessedData(NewDataStorage):
     #
     @property
     def tones_table(self) -> h5py.Dataset:
+        """The table containing tone-specific values.
+
+        Contains the keys:
+            baseband_freq: The frequency of the tone relative to the baseband.
+            power: The relative power of this tone.
+            delta_x: The x position relative to the center of the focal plane.
+            delta_y: The y position relative to the center of the focal plane.
+            beam_amplitude: The beam amplitude for this resonator.
+            polarization: The polarization for this resonator.
+            dfoverf_per_mK: The change in df/f per mK for this tone.
+            chanmask: Mask value indicating if this tone is on-resonance (1),
+                off-resonance (0), or flagged as bad (-1).
+        """
         return self['vdsets/tones']
 
     def _set_table_field(
@@ -543,27 +609,30 @@ class ProcessedData(NewDataStorage):
 
     @property
     def tone_counts(self) -> npt.NDArray:
-        counts = []
-        for i_chan in range(self.n_chan):
-            counts.append(self.get_n_tones(i_chan))
+        """The number of tones for each channel."""
+        counts = [self.get_n_tones(i_chan) for i_chan in range(self.n_chan)]
         return np.array(counts)
 
     def get_channel_index_from_tone_index(self, tone_index: int) -> int:
+        """Get which channel `tone_index` is a part of."""
         cumulative_counts = np.cumsum(self.tone_counts)
-        channel_index = np.searchsorted(cumulative_counts, tone_index, side='right')
-        return channel_index
+        return np.searchsorted(cumulative_counts, tone_index, side='right')
 
     @property
     def baseband_freqs(self) -> npt.NDArray:
+        """The frequencies relative to baseband."""
         return self.tones_table['baseband_freq']
 
     def set_baseband_freqs(self, new_freqs: npt.NDArray):
+        """Set the frequencies relative to baseband."""
         self._set_table_field('tones', 'baseband_freq', new_freqs)
 
     def get_f_center(self, i_chan: int) -> float:
+        """Return the LO frequency for the specified channel."""
         return self.get_channel_group(i_chan).attrs['f_center']
 
     def detector_f(self) -> npt.NDArray:
+        """The frequency of each tone."""
         f = self.baseband_freqs
         i_tone = 0
         for channel_group in self.channels():
@@ -574,66 +643,84 @@ class ProcessedData(NewDataStorage):
 
     @property
     def tone_powers(self) -> npt.NDArray:
+        """The relative power level for each tone."""
         return self.tones_table['power']
 
     def set_tone_powers(self, new_powers: npt.NDArray):
+        """Set the relative power level for each tone."""
         self._set_table_field('tones', 'power', new_powers)
 
     @property
     def chanmask(self) -> npt.NDArray:
+        """Mask indicating on/off resonance tones and bad resonators."""
         return self.tones_table['chanmask']
 
     def set_chanmask(self, new_chanmask: npt.NDArray):
+        """Update the chanmask."""
         self._set_table_field('tones', 'chanmask', new_chanmask)
 
     @property
     def onres_ind(self) -> npt.NDArray:
+        """The indices of on-resonance tones."""
         return np.argwhere(self.chanmask == 1).flatten().astype(int)
 
     @property
     def offres_ind(self) -> npt.NDArray:
+        """The indices of off-resonance tones."""
         return np.argwhere(self.chanmask == 0).flatten().astype(int)
 
     @property
     def detector_pol(self) -> npt.NDArray:
+        """The polarization of each resonator."""
         return self.tones_table['polarization']
 
     def set_detector_pol(self, new_pols: npt.NDArray):
+        """Update detector_pol."""
         self._set_table_field('tones', 'polarization', new_pols)
 
     @property
     def detector_beam_ampl(self) -> npt.NDArray:
+        """The beam amplitude for each resonator."""
         return self.tones_table['beam_amplitude']
 
     def set_detector_beam_ampl(self, new_ampls: npt.NDArray):
+        """Update the detector_beam_ampl."""
         self._set_table_field('tones', 'beam_amplitude', new_ampls)
 
     @property
     def detector_delta_x(self) -> npt.NDArray:
+        """The x position relative to the center of the focal plane."""
         return self.tones_table['delta_x']
 
     def set_detector_delta_x(self, new_delta_x: npt.NDArray):
+        """Update detector_delta_x."""
         self._set_table_field('tones', 'delta_x', new_delta_x)
 
     @property
     def detector_delta_y(self) -> npt.NDArray:
+        """The y position relative to the center of the focal plane."""
         return self.tones_table['delta_y']
 
     def set_detector_delta_y(self, new_delta_y: npt.NDArray):
+        """Update detector_delta_y."""
         self._set_table_field('tones', 'delta_y', new_delta_y)
 
     @property
     def dfoverf_per_mK(self) -> npt.NDArray:
+        """The change in df/f per mK for each resonator."""
         return self.tones_table['dfoverf_per_mK']
 
     def set_dfoverf_per_mK(self, new_dfoverf_per_mK: npt.NDArray):
+        """Update dfoverf_per_mK."""
         self._set_table_field('tones', 'dfoverf_per_mK', new_dfoverf_per_mK)
 
     @property
     def carrier_amplitudes(self) -> h5py.Dataset:
+        """The median amplitude of the raw I and Q signals."""
         return self['vdsets/carrier_amplitudes']
 
     def carrier_amplitude_norm(self) -> float:
+        """The norm of the carrier amplitudes."""
         amps = self.carrier_amplitudes[:]
         z = amps[0] + amps[1] * 1j
         return np.mean(np.abs(z))
@@ -643,51 +730,69 @@ class ProcessedData(NewDataStorage):
     #
     @property
     def calibration_info(self) -> h5py.Dataset:
+        """Table containing calibration-relevant information.
+
+        Contains the keys:
+            adc_units_to_hz: The conversion factor from ADC units to Hz.
+            IQ_to_gain_phase_angle: The rotation angle from ADC units to gain/phase.
+            IQ_to_freq_diss_angle: The rotation angle from ADC units to frequency/
+                dissipation.
+            df_per_mK: The change in frequency per mK.
+        """
         return self['vdsets/calibration_info']
 
     @property
     def adc_units_to_hz(self) -> npt.NDArray:
+        """The conversion factor from ADC units to Hz."""
         return self.calibration_info['adc_units_to_hz']
 
     def set_adc_units_to_hz(self, new_adc_units_to_hz: npt.NDArray):
+        """Update adc_units_to_hz."""
         self._set_table_field(
             'calibration_info', 'adc_units_to_hz', new_adc_units_to_hz
         )
 
     @property
     def IQ_to_gain_phase_angle(self) -> npt.NDArray:
+        """The rotation angle from ADC units to gain/phase."""
         return self.calibration_info['IQ_to_gain_phase_angle']
 
     def set_IQ_to_gain_phase_angle(self, new_angle: npt.NDArray):
+        """Update IQ_to_gain_phase_angle."""
         self._set_table_field('calibration_info', 'IQ_to_gain_phase_angle', new_angle)
 
     @property
     def IQ_to_freq_diss_angle(self) -> npt.NDArray:
+        """The rotation angle from ADC units to frequency/dissipation."""
         return self.calibration_info['IQ_to_freq_diss_angle']
 
     def set_IQ_to_freq_diss_angle(self, new_angle: npt.NDArray):
+        """Update IQ_to_freq_diss_angle."""
         self._set_table_field('calibration_info', 'IQ_to_freq_diss_angle', new_angle)
 
     @property
     def df_per_mK(self) -> npt.NDArray:
+        """The change in frequency per mK."""
         return self.calibration_info['df_per_mK']
 
     def set_df_per_mK(self, new_df_per_mK: npt.NDArray):
+        """Update df_per_mK."""
         self._set_table_field('calibration_info', 'df_per_mK', new_df_per_mK)
 
 
-class ConsolidatedData(NewDataStorage):
+class ConsolidatedData(DataStorage):
     """Class representing the data from the various sources consolidated into one file.
 
     Combines the data from the TOD files, LO sweeps, and params files into one file.
     """
 
+    @typing.override
     @staticmethod
     def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
         return get_consolidated_file_template(date, setnum, data_dir=data_dir)
 
     @classmethod
-    def from_tod(
+    def from_tod(  # noqa: PLR0912, PLR0915
         cls,
         date: str,
         setnum: int,
@@ -695,6 +800,7 @@ class ConsolidatedData(NewDataStorage):
         downsampling_factor: int = 1,
         use_pps: bool = True,
     ) -> ConsolidatedData:
+        """Consolidate the data for the specified data set."""
         todtemplate = get_tod_template(date, setnum)
         tele_template = Path(get_azel_template(date, setnum))
         optcam_template = Path(get_optcam_template(date, setnum))
@@ -772,7 +878,7 @@ class ConsolidatedData(NewDataStorage):
             telescope_params = json.loads(azel_file.attrs.get('params', '{}'))
             try:
                 za_tel = azel_file['za_tel']
-            except:
+            except KeyError:
                 za_tel = azel_file['el_tel']
             timestamp_tel = azel_file['timestamp_tel']
             if 'az_pps' in azel_file:
@@ -809,7 +915,7 @@ class ConsolidatedData(NewDataStorage):
 
         try:
             kidpy_version = version('kidpy3')
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             _logger.warning(f'kidpy3 version could not be accessed: {e}')
             kidpy_version = 'N/A'
         step_0.attrs['kidpy_version'] = kidpy_version
@@ -858,8 +964,8 @@ class ConsolidatedData(NewDataStorage):
             global_data_group.create_dataset('optical_image', data=np.array([]))
         global_data_group.create_dataset('optical_visibility', data=vis)
 
-        chunk_shape_1d = compute_chunk_shape(tuple(), 8, max_chunk_size=total_samples)
-        chunk_shape_1d_ds = compute_chunk_shape(tuple(), 8, max_chunk_size=n_samples_ds)
+        chunk_shape_1d = compute_chunk_shape((), 8, max_chunk_size=total_samples)
+        chunk_shape_1d_ds = compute_chunk_shape((), 8, max_chunk_size=n_samples_ds)
         timestamp = global_data_group.create_dataset(
             'timestamp',
             shape=(n_samples_ds,),
@@ -1127,14 +1233,12 @@ class ConsolidatedData(NewDataStorage):
                 downsampling_factor,
                 chunk_shape=temp_data_IQ.chunks,
             )
-            downsampled_interpolated_samples = []
-            for sample in temp_interpolated_samples:
-                if sample % downsampling_factor == 0:
-                    downsampled_interpolated_samples.append(
-                        sample // downsampling_factor
-                    )
             downsampled_interpolated_samples = np.array(
-                downsampled_interpolated_samples
+                [
+                    sample // downsampling_factor
+                    for sample in temp_interpolated_samples
+                    if sample % downsampling_factor == 0
+                ]
             )
             interpolated_samples.resize(downsampled_interpolated_samples.shape)
             interpolated_samples = downsampled_interpolated_samples[:]
@@ -1205,6 +1309,7 @@ class ConsolidatedData(NewDataStorage):
         return cdata
 
     def create_processed_data(self, mode: str = 'a') -> ProcessedData:
+        """Create the processed data from this consolidated data."""
         pfile_path = Path(self.processed_file_template)
         self.close()
         shutil.copy2(self.filename, pfile_path)

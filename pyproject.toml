@@ -91,6 +91,7 @@ ignore = [
     "FBT003",  # Boolean positional value in function call,
     "ERA001",  # Commented-out code
     "ISC001", # Single-line implicitly string concatenation
+    "N812", # Lowercase imports that are aliased to non-lowercase names
 ]
 
 task-tags = [
@@ -121,7 +122,16 @@ inline-quotes = "single"
 ignore-variadic-names = true
 
 [tool.ruff.lint.pep8-naming]
-extend-ignore-names = ["setData", "headerData", "rowCount", "columnCount"]
+extend-ignore-names = [
+    "setData",
+    "headerData",
+    "rowCount",
+    "columnCount",
+    "*mK*",
+    "*IQ*",
+    "*data_I*",
+    "*data_Q*",
+]
 
 [tool.ruff.lint.pydocstyle]
 # Use Google-style docstrings.
