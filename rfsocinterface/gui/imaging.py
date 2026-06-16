@@ -103,20 +103,6 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self.stacked_layout = QStackedLayout()
         self.dither_groupBox.layout().addLayout(self.stacked_layout, 2, 0, 1, 2)
         self.startMapping.connect(self.make_map)
-
-        self.add_dither_pattern(
-            'AZ Scan Mode',
-            'az_scan_mode',
-            [
-                (('Starting azimuth: ', ArgumentType.FLOAT), {'default': -5}),
-                (('End azimuth: ', ArgumentType.FLOAT), {'default': 5}),
-                (('N Repeats: ', ArgumentType.INT), {'default': 2}),
-                (('Zenith angle dither: ', ArgumentType.FLOAT), {'default': 0.04}),
-                (('Return to starting position', ArgumentType.BOOL), {'default': True}),
-                (('Large Map Mode', ArgumentType.BOOL), {'default': False}),
-            ],
-        )
-
         self.add_dither_pattern(
             'Dither Pattern',
             'dither_pattern',
