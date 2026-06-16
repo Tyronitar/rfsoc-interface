@@ -31,7 +31,7 @@ from rfsocinterface.core.utils import (
     PERMISSIONS_USR_RW,
     convert_path,
     ensure_path,
-    get_current_LO_sweep_hour_string,
+    get_current_lo_sweep_hour_string,
     get_sweep_filename,
     get_yymmdd,
     mHz_axis_formatter,
@@ -178,7 +178,7 @@ class ResonatorData:
         ax.set_title(f'Transmission Magnitude near Resonator #{self.idx}')
         ax.set_xlabel('Frequency (MHz)')
         ax.set_ylabel(r'$|S_{21}|$')
-        ax.xaxis.set_major_formatter(FuncFormatter(mHz_axis_formatter))
+        ax.xaxis.set_major_formatter(mHz_axis_formatter)
         ax.format_coord = mHz_coordinate_formatter
 
         ax.plot(self.freq, self.s21)
@@ -661,7 +661,7 @@ class LoSweepData:
 
         ax.set_xlabel('Frequency (MHz)')
         ax.set_ylabel(r'$|S_{21}|$')
-        ax.xaxis.set_major_formatter(FuncFormatter(mHz_axis_formatter))
+        ax.xaxis.set_major_formatter(mHz_axis_formatter)
         ax.format_coord = mHz_coordinate_formatter
 
         for i_tone in range(self.n_tones):
@@ -773,7 +773,7 @@ class LoSweepData:
                             ax.axvline(resonance, linestyle='--', color='green')
                     ax.set_xlabel('Frequency (MHz)')
                     ax.set_ylabel(r'$|S_{21}|$')
-                    ax.xaxis.set_major_formatter(FuncFormatter(mHz_axis_formatter))
+                    ax.xaxis.set_major_formatter(mHz_axis_formatter)
                     ax.format_coord = mHz_coordinate_formatter
                     if callback is not None:
                         callback()
@@ -892,7 +892,7 @@ class LoSweep:
         self.date = date
 
         if hour is None:
-            hour = get_current_LO_sweep_hour_string()
+            hour = get_current_lo_sweep_hour_string()
         self.hour = hour
 
         if savefile is None:
@@ -1101,7 +1101,7 @@ class CompositeSweep(Generic[CompositeSweepDataType]):
         self.date = date
 
         if hour is None:
-            hour = get_current_LO_sweep_hour_string()
+            hour = get_current_lo_sweep_hour_string()
         self.hour = hour
 
         if savefile is None:

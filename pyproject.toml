@@ -131,6 +131,7 @@ extend-ignore-names = [
     "*IQ*",
     "*data_I*",
     "*data_Q*",
+    "*Hz*",
 ]
 
 [tool.ruff.lint.pylint]

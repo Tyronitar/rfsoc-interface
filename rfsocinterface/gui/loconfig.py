@@ -25,7 +25,7 @@ from rfsocinterface.core.utils import (
     dict_get_by_path,
     dict_set_by_path,
     ensure_path,
-    get_current_LO_sweep_hour_string,
+    get_current_lo_sweep_hour_string,
     get_filename,
     get_yymmdd,
     load_dict_or_defaults,
@@ -527,7 +527,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         full_span = get_num_value(self.deltaf_lineEdit) * 1e3
 
         date = get_yymmdd()
-        hour = get_current_LO_sweep_hour_string()
+        hour = get_current_lo_sweep_hour_string()
         suffix = []
         match self.filename_buttonGroup.checkedButton():
             case self.filename_elevation_radioButton:
@@ -888,7 +888,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         power_levels = self.get_power_levels()
 
         date = get_yymmdd()
-        hour = get_current_LO_sweep_hour_string()
+        hour = get_current_lo_sweep_hour_string()
         suffix = []
         match self.filename_buttonGroup.checkedButton():
             case self.filename_elevation_radioButton:

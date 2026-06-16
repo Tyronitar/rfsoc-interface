@@ -52,7 +52,7 @@ from rfsocinterface.core.utils import (
     get_tod_template,
     iterate_chunks,
     list_datasets,
-    new_decimate_in_chunks,
+    decimate_in_chunks,
     search,
 )
 
@@ -1236,7 +1236,7 @@ class ConsolidatedData(DataStorage):
 
             # Downsample timestamp and IQ data
             _logger.info('ConsolidatedData: Downsampling IQ data...')
-            new_decimate_in_chunks(
+            decimate_in_chunks(
                 temp_data_IQ,
                 data_IQ,
                 downsampling_factor,
