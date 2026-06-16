@@ -1,4 +1,5 @@
 """Module for data storage classes."""
+
 from __future__ import annotations
 
 import glob
@@ -474,9 +475,7 @@ class ProcessedData(DataStorage):
     ) -> list[tuple[str, H5pyObject]] | None:
         """Search for the name in the each channel group."""
         return [
-            search(
-                channel_group, name, full_name=full_name, exact_match=exact_match
-            )
+            search(channel_group, name, full_name=full_name, exact_match=exact_match)
             for channel_group in self['channels'].values()
         ]
 
@@ -677,6 +676,16 @@ class ProcessedData(DataStorage):
     def set_detector_pol(self, new_pols: npt.NDArray):
         """Update detector_pol."""
         self._set_table_field('tones', 'polarization', new_pols)
+
+    @property
+    def pol_ind_1(self) -> npt.NDArray:
+        """Which tones are polarization 1."""
+        return np.argwhere(self.detector_pol == 1).flatten()
+
+    @property
+    def pol_ind_2(self) -> npt.NDArray:
+        """Which tones are polarization 2."""
+        return np.argwhere(self.detector_pol == 2).flatten()  # noqa: PLR2004
 
     @property
     def detector_beam_ampl(self) -> npt.NDArray:

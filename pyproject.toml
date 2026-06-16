@@ -133,6 +133,10 @@ extend-ignore-names = [
     "*data_Q*",
 ]
 
+[tool.ruff.lint.pylint]
+max-branches = 20
+max-statements = 100
+
 [tool.ruff.lint.pydocstyle]
 # Use Google-style docstrings.
 convention = "google"

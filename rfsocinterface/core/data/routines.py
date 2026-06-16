@@ -236,7 +236,7 @@ class CutoffFilter(DataRoutine):
         self,
         filter_freq: float,
         btype: str,
-        datasets: Sequence[str]=['/vdsets/data_mK'],
+        datasets: Sequence[str] = ['/vdsets/data_mK'],
     ):
         """Initialize the cutoff filter routine.
 
@@ -257,7 +257,7 @@ class CutoffFilter(DataRoutine):
     def inputs(self, pdata: ProcessedData):
         return self.params['datasets']
 
-    def run(self, pdata: ProcessedData, inputs: Sequence[str]=[]):
+    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         """Apply the cutoff filter to the specified datasets.
 
         Applies a Butterworth filter with the specified cutoff frequency and type to
@@ -311,7 +311,7 @@ class HighPassFilter(CutoffFilter):
     def __init__(
         self,
         filter_freq: float,
-        datasets: Sequence[str]=['/vdsets/data_mK'],
+        datasets: Sequence[str] = ['/vdsets/data_mK'],
     ):
         """Initialize the HighPassFilter routine.
 
@@ -330,12 +330,12 @@ class HighPassFilter(CutoffFilter):
 
 def compute_templates(
     data: npt.NDArray,
-    max_modes: int=30,
-    low_sigma: float=1.5,
-    low_sigma_tone_threshold: float=25,
-    med_sigma: float=2.5,
-    med_sigma_tone_threshold: float=50,
-    high_sigma: float=3,
+    max_modes: int = 30,
+    low_sigma: float = 1.5,
+    low_sigma_tone_threshold: float = 25,
+    med_sigma: float = 2.5,
+    med_sigma_tone_threshold: float = 50,
+    high_sigma: float = 3,
 ) -> npt.NDArray:
     """Compute templates for correlated noise removal.
 
@@ -398,13 +398,13 @@ def compute_templates(
     templates = np.einsum('ijk,ijl->ikl', sorted_v[:, :, 0:n_modes], deproj)
 
     # subtract the mean again to be sure
-    return (
-        np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
-    )
+    return np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
 
 
 def decode_tone_indices(
-    pdata: ProcessedData, selection_indices: npt.NDArray | str, i_chan: int | None=None
+    pdata: ProcessedData,
+    selection_indices: npt.NDArray | str,
+    i_chan: int | None = None,
 ) -> npt.NDArray:
     """Helper method for decoding the selected indices for routines.
 
@@ -473,7 +473,7 @@ class RemoveElectronicsNoise(DataRoutine):
         max_modes: int = 30,
         lp_filt_freq: float = 0,
         template_selection_indices: npt.NDArray | str = 'all',
-        eigenmodes: list[int] | None=None,
+        eigenmodes: list[int] | None = None,
     ):
         """Initialize the RemoveElectronicsNoise routine.
 
@@ -519,7 +519,7 @@ class RemoveElectronicsNoise(DataRoutine):
         return dsets
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: Sequence[str]=[]):
+    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         eigenmodes = []  # The actual number of modes we use for each channel
         lp_filt_freq = self.params['lp_filt_freq']
         template_selection_indices = self.params['template_selection_indices']
@@ -612,9 +612,11 @@ class CleanTOD(DataRoutine):
                 'data_mK' or 'data_freq'. Defaults to 'data_mK'.
         """
         if dataset not in ('data_mK', 'data_freq'):
-            msg = (f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or'
+            msg = (
+                f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or'
                 ' "data_freq".'
             )
+            _logger.error(msg)
             raise ValueError(msg)
         super().__init__(dataset=dataset)
 
@@ -629,7 +631,7 @@ class CleanTOD(DataRoutine):
         ]
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: Sequence[str]=[]):
+    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         for i_chan, dset in enumerate(inputs):
             data = pdata[dset]
             good_tones = pdata.get_onres_ind(i_chan)

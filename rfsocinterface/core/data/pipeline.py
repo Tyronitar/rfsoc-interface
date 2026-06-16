@@ -1,4 +1,5 @@
 """Module for code related to data processing pipelines."""
+
 from __future__ import annotations
 
 import logging

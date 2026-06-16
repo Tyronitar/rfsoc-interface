@@ -2,8 +2,9 @@
 
 import logging
 import time
+import typing
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal, Sequence
 
 import av
 import h5py
@@ -40,11 +41,11 @@ _logger = logging.getLogger(__name__)
 
 
 def plot_map(
-    map: npt.NDArray,
+    map_data: npt.NDArray,
     map_x: npt.NDArray,
     map_y: npt.NDArray,
     extent: tuple[float, float, float, float],
-    max_abs: float = None,
+    max_abs: float | None = None,
     flagged_map: npt.NDArray = None,
     contour_levels: npt.NDArray = None,
     cb_shrink: float = 0.95,
@@ -53,15 +54,16 @@ def plot_map(
     title: str = '',
     add_x_label: bool = True,
 ) -> Figure:
+    """Create a plot for a map."""
     xlim = min(map_x), max(map_x)
     ylim = max(map_y), min(map_y)
 
     if max_abs is None:
-        max_abs = np.nanmax(np.abs(map))
+        max_abs = np.nanmax(np.abs(map_data))
 
     fig = plt.figure()
     plt.imshow(
-        np.flip(np.transpose(map[::-1]), 1),
+        np.flip(np.transpose(map_data[::-1]), 1),
         aspect='equal',
         extent=extent,
         vmin=-max_abs,
@@ -179,7 +181,7 @@ def compute_map_kernel(
 
 @register_routine
 class BinTODIntoMap(DataRoutine):
-    """Bin time-ordered data into a map based on detector positions and pointing information.
+    """Bin time-ordered data into a map based on telescope pointing information.
 
     Creates the following items in the HDF5 file:
     - /map: group containing the map datasets.
@@ -202,7 +204,7 @@ class BinTODIntoMap(DataRoutine):
     name = 'BinTODIntoMap'
     version = '2.1.0'
 
-    produces = {
+    produces: ClassVar[set] = {
         '/map/netd',
         '/map/hits_map',
         '/map/sum_map',
@@ -253,9 +255,12 @@ class BinTODIntoMap(DataRoutine):
                 SKIPR).
         """
         if dataset not in ('data_mK', 'data_freq'):
-            raise ValueError(
-                f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or "data_freq".'
+            msg = (
+                f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or '
+                '"data_freq".'
             )
+            _logger.error(msg)
+            raise ValueError(msg)
         if beam_map_mode:
             az_trim = 0.0
             za_trim = 0.0
@@ -273,16 +278,15 @@ class BinTODIntoMap(DataRoutine):
             sigma=sigma,
         )
 
+    @typing.override
     def inputs(self, pdata: ProcessedData):
-        dsets = []
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
-        for i_chan in range(pdata.n_chan):
-            dsets.append(
-                f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}'
-            )
-        return dsets
+        return [
+            f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}'
+            for i_chan in range(pdata.n_chan)
+        ]
 
     def _initialize_map_arrays(
         self,
@@ -298,7 +302,8 @@ class BinTODIntoMap(DataRoutine):
         """
         if pdata.has('map', exact_match=True):
             _logger.warning(
-                f'{self.name}: Map group already exists in the file; overwriting datasets.'
+                f'{self.name}: Map group already exists in the file; '
+                'overwriting datasets.'
             )
             del pdata['map']
         map_group = pdata.create_group('map')
@@ -344,7 +349,8 @@ class BinTODIntoMap(DataRoutine):
                 np.arange(pdata.n_samples), interpolated_samples
             )
 
-    def run(self, pdata: ProcessedData, inputs: list[str] = None):
+    @typing.override
+    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
@@ -438,7 +444,8 @@ class BinTODIntoMap(DataRoutine):
             # Get the good samples if they haven't been specified
             this_clean_data = np.squeeze(data[i_tone])
 
-            # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
+            # Get this detector's positions, need to account for rotation in EL based on
+            # beammap taken at EL=89
             x_ind = np.squeeze(np.round((this_detector_az - map_az[0]) / dpix))
             x_ind = x_ind.astype('int64')
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
@@ -447,7 +454,6 @@ class BinTODIntoMap(DataRoutine):
             # eliminate samples outside the map
             i_chan = pdata.get_channel_index_from_tone_index(i_tone)
             good_samples = pdata['map/good_samples'][i_chan][:]
-            # good_samples = np.arange(pdata.n_samples)  # TODO: Update this after fixing good_samples
             valid_index = np.ndarray.flatten(
                 np.argwhere(
                     np.logical_and(
@@ -471,7 +477,8 @@ class BinTODIntoMap(DataRoutine):
                     1.0 * weight
                 )
 
-        # Create kernel and convolve with map to get more accurate values for pixels with few hits
+        # Create kernel and convolve with map to get more accurate values for pixels
+        # with few hits.
         kernel = compute_map_kernel(
             r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
         )
@@ -493,7 +500,7 @@ class BinTODIntoMap(DataRoutine):
         pdata['map/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating map.')
 
-        return list(self.produces) + ['/vdsets/chanmask']
+        return [*list(self.produces), '/vdsets/chanmask']
 
 
 @register_routine
@@ -515,7 +522,7 @@ class PlotMap(DataRoutine):
     name = 'PlotMap'
     version = '2.1.0'
 
-    requires = {
+    requires: ClassVar[set] = {
         '/map/map_az',
         '/map/map_za',
         '/map/netd',
@@ -524,7 +531,7 @@ class PlotMap(DataRoutine):
         '/map/total_map',
     }
 
-    produces = {
+    produces: ClassVar[set] = {
         '/map/plotting/flagged_map_1',
         '/map/plotting/flagged_map_2',
         '/map/plotting/flagged_total_map',
@@ -539,7 +546,7 @@ class PlotMap(DataRoutine):
         cb_shrink: float = 0.95,
         max_abs_threshold: float = 0.75,
         save_plot: bool = True,
-        savefile: Path = None,
+        savefile: Path | None = None,
         show: bool = False,
         keep_figure_open: bool = False,
         overwrite: bool = True,
@@ -562,6 +569,8 @@ class PlotMap(DataRoutine):
                 plot will be saved in the same directory as the HDF5 file. Defaults to
                 None.
             show (bool, optional): Whether to display the plot. Defaults to False.
+            keep_figure_open (bool, optional): Whether to keep the figure open after
+                plotting. Defaults to False.
             overwrite (bool, optional): Whether to overwrite existing plotting datasets
                 in the HDF5 file. Defaults to True.
         """
@@ -577,10 +586,12 @@ class PlotMap(DataRoutine):
             overwrite=overwrite,
         )
 
+    @typing.override
     def inputs(self, pdata: ProcessedData):
         return list(self.requires)
 
-    def run(self, pdata: ProcessedData, inputs: list[str] = None):
+    @typing.override
+    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         reset_arrays = self._intialize_arrays(pdata)
         if reset_arrays:
             self._get_combined_map(pdata)
@@ -618,7 +629,7 @@ class PlotMap(DataRoutine):
     def _get_combined_map(
         self, pdata: ProcessedData
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-        """Get the combined map of flagged pixels based on individual maps and the total map."""
+        """Get the combined map of flagged pixels."""
         sigma = self.params['gaussian_sigma']
         map_val = pdata['map/map_val']
         total_map = pdata['map/total_map']
@@ -631,12 +642,9 @@ class PlotMap(DataRoutine):
         nan_map_2 = np.isnan(flagged_map_2)
         nan_map_3 = np.isnan(flagged_map_3)
 
-        # Combine the boolean maps such that if any pixel is flagged in any map, it is flagged in the combined map
+        # Combine the boolean maps such that if any pixel is flagged in any map, it is
+        # flagged in the combined map
         combined_nan_map = np.logical_or(np.logical_or(nan_map_1, nan_map_2), nan_map_3)
-
-        # Get the coordinates of True values in the combined_nan_map
-        flagged_positions = np.where(combined_nan_map)
-        final_flagged_coords = list(zip(flagged_positions[0], flagged_positions[1]))
 
         # Apply this combined map to each of the final maps
         flagged_map_1[combined_nan_map] = 1
@@ -700,8 +708,8 @@ class PlotMap(DataRoutine):
             ]
 
         netd = pdata['map/netd']
-        netd_1 = netd[pdata.detector_pol == 1]
-        netd_2 = netd[pdata.detector_pol == 2]
+        netd_1 = netd[pdata.pol_ind_1]
+        netd_2 = netd[pdata.pol_ind_2]
         valid_netd_1 = np.argwhere(netd_1 > 0)
         valid_netd_2 = np.argwhere(netd_2 > 0)
 
@@ -729,7 +737,8 @@ class PlotMap(DataRoutine):
         fig, axes = plt.subplots(4, 1, figsize=(15, 7.5), sharex=True)
         fig.suptitle(
             f'{pdata.file_stub}\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
-            f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units}, NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
+            f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
+            f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
         )
         for ax in axes:
             ax.set_ylabel('ZA (degrees)')
@@ -834,7 +843,7 @@ def animate_video(
     max_abs_threshold: float = 0.75,
     repeat_delay_ms: float = 2000,
     show: bool = False,
-    savefile: Path = None,
+    savefile: Path | None = None,
 ) -> tuple[Figure, animation.FuncAnimation]:
     """Animate the video of the map evolution over time.
 
@@ -855,7 +864,7 @@ def animate_video(
             animation will not be saved. Defaults to None.
     """
     smoothed_map = np.transpose(total_map, (0, 2, 1))
-    max_abs = 0.75 * np.max(np.abs(smoothed_map))
+    max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
     vmax = max_abs
     vmin = -max_abs
     vmax = 500
@@ -921,7 +930,7 @@ class MakeVideo(DataRoutine):
     name = 'MakeVideo'
     version = '1.1.0'
 
-    produces = {
+    produces: ClassVar[set] = {
         '/video/netd',
         '/video/hits_map',
         '/video/sum_map',
@@ -950,7 +959,7 @@ class MakeVideo(DataRoutine):
         block_size_s: float = 1,
         plot: bool = True,
         show: bool = False,
-        savefile: Path = None,
+        savefile: Path | None = None,
         overwrite: bool = True,
     ):
         """Initialize the MakeVideo routine.
@@ -964,6 +973,8 @@ class MakeVideo(DataRoutine):
                 filter applied to the data when computing NETD values.
             med_netd_cut_threshold (float, optional): The threshold for cutting tones
                 based on their NETD values.
+            max_abs_threshold (float, optional): The maximum absolute value multiplier
+                for the color scale in the plot. Defaults to 0.75.
             az_trim (float, optional): The amount to trim from the edges of the map in
                 the azimuth direction, in degrees. Defaults to 2.3 degrees.
             za_trim (float, optional): The amount to trim from the edges of the map in
@@ -990,9 +1001,12 @@ class MakeVideo(DataRoutine):
                 in the HDF5 file. Defaults to True.
         """
         if dataset not in ('data_mK', 'data_freq'):
-            raise ValueError(
-                f'Unable to use dataset {dataset} for BinTODIntoMap; choose "data_mK" or "data_freq".'
+            msg = (
+                f'{self.name}: Unable to use dataset {dataset}; choose "data_mK" or '
+                '"data_freq".'
             )
+            _logger.error(msg)
+            raise ValueError(msg)
         if beam_map_mode:
             az_trim = 0.0
             za_trim = 0.0
@@ -1016,18 +1030,17 @@ class MakeVideo(DataRoutine):
             overwrite=overwrite,
         )
 
+    @typing.override
     def inputs(self, pdata: ProcessedData):
-        dsets = []
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
-        for i_chan in range(pdata.n_chan):
-            dsets.append(
-                f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}'
-            )
+        return [
+            f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}'
+            for i_chan in range(pdata.n_chan)
+        ]
         # dsets.append('/global_data/optical_video')
         # dsets.append('/global_data/optical_timestamp')
-        return dsets
 
     def _initialize_map_arrays(
         self,
@@ -1042,11 +1055,13 @@ class MakeVideo(DataRoutine):
     ):
         """Initialize the datasets for the video in the ProcessedData object.
 
-        If the 'video' group already exists, it will overwrite it, creating new datasets.
+        If the 'video' group already exists, it will overwrite it and create new
+        datasets.
         """
         if pdata.has('video', exact_match=True):
             _logger.warning(
-                f'{self.name}: Video group already exists in the file; overwriting datasets.'
+                f'{self.name}: Video group already exists in the file; '
+                'overwriting datasets.'
             )
             del pdata['video']
         video_group = pdata.create_group('video')
@@ -1096,223 +1111,231 @@ class MakeVideo(DataRoutine):
                 np.arange(pdata.n_samples), interpolated_samples
             )
 
-    def run(self, pdata: ProcessedData, inputs: list[str] = None):
-        if self.params['overwrite']:
-            dpix = self.params['dpix']
-            beam_map_mode = self.params['beam_map_mode']
-            block_size_s = self.params['block_size_s']
-            blocks = np.arange(0, pdata.n_samples, int(pdata.fs * block_size_s))
-            n_blocks = blocks.size - 1
-            n_pix_x, n_pix_y, map_az, map_za = get_map_size(
-                pdata.detector_az,
-                pdata.detector_za,
-                self.params['az_trim'],
-                self.params['za_trim'],
-                dpix,
-                beam_map_mode=beam_map_mode,
+    def _compute_new_maps(self, pdata: ProcessedData):  # noqa: PLR0912, PLR0915
+        dpix = self.params['dpix']
+        beam_map_mode = self.params['beam_map_mode']
+        block_size_s = self.params['block_size_s']
+        blocks = np.arange(0, pdata.n_samples, int(pdata.fs * block_size_s))
+        n_blocks = blocks.size - 1
+        n_pix_x, n_pix_y, map_az, map_za = get_map_size(
+            pdata.detector_az,
+            pdata.detector_za,
+            self.params['az_trim'],
+            self.params['za_trim'],
+            dpix,
+            beam_map_mode=beam_map_mode,
+        )
+        n_maps = N_POLARIZATION if not beam_map_mode else self.n_tones
+
+        # Determine optical video dimenmsions before intiializing arryas
+        if np.size(pdata.optical_image) == 0:
+            optical_image_shape = (0, 0, 0)
+        else:
+            scaled_optical_image = get_scaled_optical_image(
+                dpix, pdata.optical_image[:], map_az, map_za
             )
-            n_maps = N_POLARIZATION if not beam_map_mode else self.n_tones
+            optical_image_shape = scaled_optical_image.shape
 
-            # Determine optical video dimenmsions before intiializing arryas
-            if np.size(pdata.optical_image) == 0:
-                optical_image_shape = (0, 0, 0)
-            else:
-                scaled_optical_image = get_scaled_optical_image(
-                    dpix, pdata.optical_image[:], map_az, map_za
-                )
-                optical_image_shape = scaled_optical_image.shape
-
-            if 'optical_video_file' in pdata['global_data'].attrs:
-                container = av.open(pdata['global_data'].attrs['optical_video_file'])
-                video = container.streams.video[0]
-                n_frames = video.frames
-                shape = (video.height, video.width, 3, n_frames)
-                full_optical_video = np.zeros(shape, dtype=np.uint8)
-                _logger.info(f'{self.name}: Reading optical video from mp4 file...')
-                for i_frame, frame in enumerate(container.decode(video=0)):
-                    full_optical_video[..., i_frame] = frame.to_ndarray(format='rgb24')
-                _logger.info(f'{self.name}: Finished reading optical video.')
-                scaled_optical_image = get_scaled_optical_image(
-                    dpix, full_optical_video[..., 0], map_az, map_za
-                )
-                optical_image_shape = scaled_optical_image.shape
-            elif 'optical_video' in pdata['global_data']:
-                full_optical_video = pdata['global_data/optical_video']
-
-            self._initialize_map_arrays(
-                pdata,
-                n_blocks,
-                n_maps,
-                n_pix_x,
-                n_pix_y,
-                optical_image_shape,
-                dpix,
-                block_size_s,
+        if 'optical_video_file' in pdata['global_data'].attrs:
+            container = av.open(pdata['global_data'].attrs['optical_video_file'])
+            video = container.streams.video[0]
+            n_frames = video.frames
+            shape = (video.height, video.width, 3, n_frames)
+            full_optical_video = np.zeros(shape, dtype=np.uint8)
+            _logger.info(f'{self.name}: Reading optical video from mp4 file...')
+            for i_frame, frame in enumerate(container.decode(video=0)):
+                full_optical_video[..., i_frame] = frame.to_ndarray(format='rgb24')
+            _logger.info(f'{self.name}: Finished reading optical video.')
+            scaled_optical_image = get_scaled_optical_image(
+                dpix, full_optical_video[..., 0], map_az, map_za
             )
-            pdata['video/map_az'][:] = map_az
-            pdata['video/map_za'][:] = map_za
-            detector_az = pdata.detector_az
-            detector_za = pdata.detector_za
-            optical_video = pdata['video/cropped_optical_video']
-
-            match self.params['dataset']:
-                case 'data_mK':
-                    data = pdata.data_mK[:]
-                case 'data_freq':
-                    data = pdata.data_freq_diss[0]
-
-            sum_map = pdata['video/sum_map'][:]
-            hits_map = pdata['video/hits_map'][:]
-            netd = pdata['video/netd'][:]
-
-            chanmask = pdata.chanmask[:]
-
-            # Compute NETD values
-            _logger.info(f'{self.name}: Computing netd...')
-            wind = signal.get_window('hamming', pdata.n_samples)
-            hp_filter_freq = self.params['hp_filter_freq']
-            lp_filter_freq = self.params['lp_filter_freq']
-            for i_tone in np.where(chanmask == 1)[0]:
-                this_freq, this_psd = signal.periodogram(
-                    data[i_tone, :], pdata.fs, window=wind
-                )
-                valid_freq = np.where(
-                    (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
-                )
-                netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
-            _logger.info(f'{self.name}: Done computing netd')
-
-            # Get rid of tones with bad weights
-            med_netd_cut_threshold = self.params['med_netd_cut_threshold']
-            good_idx = np.argwhere(chanmask == 1).flatten()
-            good_netd = netd[good_idx]
-            chanmask[good_idx] = np.where(
-                good_netd > med_netd_cut_threshold * np.nanmedian(good_netd),
-                -1,
-                chanmask[good_idx],
+            optical_image_shape = scaled_optical_image.shape
+        elif 'optical_video' in pdata['global_data']:
+            full_optical_video = pdata['global_data/optical_video']
+        else:
+            msg = (
+                f'{self.name}: Could not find optical video for provided '
+                'procesed dataset.'
             )
+            raise ValueError(msg)
 
-            good_idx = np.argwhere(chanmask == 1).flatten()
-            good_netd = netd[good_idx]
-            netd_med = np.median(np.log10(good_netd))
-            netd_std = np.std(np.log10(good_netd))
-            chanmask[good_idx] = np.where(
-                good_netd > 10 ** (netd_med + netd_std * 2), -1, chanmask[good_idx]
+        self._initialize_map_arrays(
+            pdata,
+            n_blocks,
+            n_maps,
+            n_pix_x,
+            n_pix_y,
+            optical_image_shape,
+            dpix,
+            block_size_s,
+        )
+        pdata['video/map_az'][:] = map_az
+        pdata['video/map_za'][:] = map_za
+        detector_az = pdata.detector_az
+        detector_za = pdata.detector_za
+        optical_video = pdata['video/cropped_optical_video']
+
+        match self.params['dataset']:
+            case 'data_mK':
+                data = pdata.data_mK[:]
+            case 'data_freq':
+                data = pdata.data_freq_diss[0]
+
+        sum_map = pdata['video/sum_map'][:]
+        hits_map = pdata['video/hits_map'][:]
+        netd = pdata['video/netd'][:]
+
+        chanmask = pdata.chanmask[:]
+
+        # Compute NETD values
+        _logger.info(f'{self.name}: Computing netd...')
+        wind = signal.get_window('hamming', pdata.n_samples)
+        hp_filter_freq = self.params['hp_filter_freq']
+        lp_filter_freq = self.params['lp_filter_freq']
+        for i_tone in np.where(chanmask == 1)[0]:
+            this_freq, this_psd = signal.periodogram(
+                data[i_tone, :], pdata.fs, window=wind
             )
-            chanmask[good_idx] = np.where(
-                good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx]
+            valid_freq = np.where(
+                (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
             )
+            netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
+        _logger.info(f'{self.name}: Done computing netd')
 
-            netd[chanmask != 1] = 0
+        # Get rid of tones with bad weights
+        med_netd_cut_threshold = self.params['med_netd_cut_threshold']
+        good_idx = np.argwhere(chanmask == 1).flatten()
+        good_netd = netd[good_idx]
+        chanmask[good_idx] = np.where(
+            good_netd > med_netd_cut_threshold * np.nanmedian(good_netd),
+            -1,
+            chanmask[good_idx],
+        )
 
+        good_idx = np.argwhere(chanmask == 1).flatten()
+        good_netd = netd[good_idx]
+        netd_med = np.median(np.log10(good_netd))
+        netd_std = np.std(np.log10(good_netd))
+        chanmask[good_idx] = np.where(
+            good_netd > 10 ** (netd_med + netd_std * 2), -1, chanmask[good_idx]
+        )
+        chanmask[good_idx] = np.where(
+            good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx]
+        )
+
+        netd[chanmask != 1] = 0
+
+        if beam_map_mode:
+            tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
+        else:
+            tones_to_map = np.argwhere(chanmask == 1).flatten()
+
+        # Create map
+        _logger.info(f'{self.name}: Creating map...')
+        for n_loop, i_tone in enumerate(tones_to_map):
+            if n_loop == np.size(tones_to_map) // 2:
+                _logger.info(f'{self.name}: Halfway done creating map...')
             if beam_map_mode:
-                tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
+                map_idx = i_tone
+                weight = 1.0
             else:
-                tones_to_map = np.argwhere(chanmask == 1).flatten()
+                map_idx = (
+                    pdata.detector_pol[i_tone] - 1
+                )  # Polarization 1 -> Index 0, 2 -> 1, etc.
+                weight = 1.0 / netd[i_tone] ** 2.0
 
-            # Create map
-            _logger.info(f'{self.name}: Creating map...')
-            for n_loop, i_tone in enumerate(tones_to_map):
-                if n_loop == np.size(tones_to_map) // 2:
-                    _logger.info(f'{self.name}: Halfway done creating map...')
-                if beam_map_mode:
-                    map_idx = i_tone
-                    weight = 1.0
-                else:
-                    map_idx = (
-                        pdata.detector_pol[i_tone] - 1
-                    )  # Polarization 1 -> Index 0, 2 -> 1, etc.
-                    weight = 1.0 / netd[i_tone] ** 2.0
+            this_detector_az = detector_az[i_tone]
+            this_detector_za = detector_za[i_tone]
 
-                this_detector_az = detector_az[i_tone]
-                this_detector_za = detector_za[i_tone]
+            # Get the good samples if they haven't been specified
+            this_clean_data = np.squeeze(data[i_tone])
 
-                # Get the good samples if they haven't been specified
-                this_clean_data = np.squeeze(data[i_tone])
+            # Get this detector's positions, need to account for rotation in EL based on
+            # beammap taken at EL=89
+            x_ind = np.squeeze(np.round((this_detector_az - map_az[0]) / dpix))
+            x_ind = x_ind.astype('int64')
+            y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
+            y_ind = y_ind.astype('int64')
 
-                # Get this detector's positions, need to account for rotation in EL based on beammap taken at EL=89
-                x_ind = np.squeeze(np.round((this_detector_az - map_az[0]) / dpix))
-                x_ind = x_ind.astype('int64')
-                y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
-                y_ind = y_ind.astype('int64')
-
-                # eliminate samples outside the map
-                i_chan = pdata.get_channel_index_from_tone_index(i_tone)
-                good_samples = pdata['video/good_samples'][i_chan][:]
-                valid_index = np.ndarray.flatten(
-                    np.argwhere(
+            # eliminate samples outside the map
+            i_chan = pdata.get_channel_index_from_tone_index(i_tone)
+            good_samples = pdata['video/good_samples'][i_chan][:]
+            valid_index = np.ndarray.flatten(
+                np.argwhere(
+                    np.logical_and(
                         np.logical_and(
-                            np.logical_and(
-                                x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x
-                            ),
-                            np.logical_and(
-                                y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y
-                            ),
-                        )
+                            x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x
+                        ),
+                        np.logical_and(
+                            y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y
+                        ),
                     )
                 )
-                good_samples = good_samples[valid_index]
-
-                # loop over samples to create sum and hits maps
-                for i_block, block_end in enumerate(blocks[1:]):
-                    block_slice = slice(blocks[i_block], block_end)
-                    for time_sample in good_samples[block_slice]:
-                        sum_map[
-                            i_block, map_idx, x_ind[time_sample], y_ind[time_sample]
-                        ] += this_clean_data[time_sample] * weight
-                        hits_map[
-                            i_block, map_idx, x_ind[time_sample], y_ind[time_sample]
-                        ] += 1.0 * weight
-
-            # Create kernel and convolve with map to get more accurate values for pixels with few hits
-            kernel = compute_map_kernel(
-                r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
             )
-            for i_block in range(n_blocks):
-                for map_idx in range(n_maps):
-                    sum_map[i_block, map_idx] = signal.convolve2d(
-                        sum_map[i_block, map_idx], kernel, mode='same'
-                    )
-                    hits_map[i_block, map_idx] = signal.convolve2d(
-                        hits_map[i_block, map_idx], kernel, mode='same'
-                    )
+            good_samples = good_samples[valid_index]
 
-            pdata.set_chanmask(chanmask)
-            pdata['video/hits_map'][:] = hits_map
-            pdata['video/sum_map'][:] = sum_map
-            with np.errstate(divide='ignore', invalid='ignore'):
-                pdata['video/map_val'] = sum_map / hits_map
-                total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
-            pdata['video/total_map'] = total_map
-            pdata['video/netd'][:] = netd
-            _logger.info(f'{self.name}: Done creating maps.')
+            # loop over samples to create sum and hits maps
+            for i_block, block_end in enumerate(blocks[1:]):
+                block_slice = slice(blocks[i_block], block_end)
+                for time_sample in good_samples[block_slice]:
+                    sum_map[
+                        i_block, map_idx, x_ind[time_sample], y_ind[time_sample]
+                    ] += this_clean_data[time_sample] * weight
+                    hits_map[
+                        i_block, map_idx, x_ind[time_sample], y_ind[time_sample]
+                    ] += 1.0 * weight
 
-            # Optical Video processing
-            if pdata.has('global_data/optical_video_timestamp', exact_match=True):
-                _logger.info(f'{self.name}: Synchronizing mm and optical videos...')
-                optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
-                full_scaled_video = get_scaled_optical_image(
-                    dpix, full_optical_video, map_az, map_za
+        # Create kernel and convolve with map to get more accurate values for pixels
+        # with few hits
+        kernel = compute_map_kernel(
+            r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
+        )
+        for i_block in range(n_blocks):
+            for map_idx in range(n_maps):
+                sum_map[i_block, map_idx] = signal.convolve2d(
+                    sum_map[i_block, map_idx], kernel, mode='same'
                 )
-                video_timestamp = np.zeros(n_blocks)
-                for i_block, block_end in enumerate(blocks[1:]):
-                    block_slice = slice(blocks[i_block], block_end)
-                    timestamp_block = pdata.timestamp[block_slice]
-                    this_timestamp = np.mean(timestamp_block)
-                    video_timestamp[i_block] = this_timestamp
-                    closest_optical_frame = argclosest(
-                        optical_timestamp, this_timestamp
-                    )
-                    optical_video[i_block] = full_scaled_video[
-                        ..., closest_optical_frame
-                    ]
-            else:
-                optical_video[:] = np.repeat(
-                    scaled_optical_image[np.newaxis], n_blocks, axis=0
+                hits_map[i_block, map_idx] = signal.convolve2d(
+                    hits_map[i_block, map_idx], kernel, mode='same'
                 )
 
-            optical_video[:] = np.clip(optical_video[:], 0, 127)
-            optical_video[:] = optical_video[:] * 2
+        pdata.set_chanmask(chanmask)
+        pdata['video/hits_map'][:] = hits_map
+        pdata['video/sum_map'][:] = sum_map
+        with np.errstate(divide='ignore', invalid='ignore'):
+            pdata['video/map_val'] = sum_map / hits_map
+            total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
+        pdata['video/total_map'] = total_map
+        pdata['video/netd'][:] = netd
+        _logger.info(f'{self.name}: Done creating maps.')
+
+        # Optical Video processing
+        if pdata.has('global_data/optical_video_timestamp', exact_match=True):
+            _logger.info(f'{self.name}: Synchronizing mm and optical videos...')
+            optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
+            full_scaled_video = get_scaled_optical_image(
+                dpix, full_optical_video, map_az, map_za
+            )
+            video_timestamp = np.zeros(n_blocks)
+            for i_block, block_end in enumerate(blocks[1:]):
+                block_slice = slice(blocks[i_block], block_end)
+                timestamp_block = pdata.timestamp[block_slice]
+                this_timestamp = np.mean(timestamp_block)
+                video_timestamp[i_block] = this_timestamp
+                closest_optical_frame = argclosest(optical_timestamp, this_timestamp)
+                optical_video[i_block] = full_scaled_video[..., closest_optical_frame]
+        else:
+            optical_video[:] = np.repeat(
+                scaled_optical_image[np.newaxis], n_blocks, axis=0
+            )
+
+        optical_video[:] = np.clip(optical_video[:], 0, 127)
+        optical_video[:] = optical_video[:] * 2
+
+    @typing.override
+    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+        if self.params['overwrite']:
+            self._compute_new_maps()
         else:
             # Use existing datasets and just make the video
             map_az = pdata['video/map_az'][:]
