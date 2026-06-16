@@ -20,7 +20,6 @@ from rfsocinterface.core.data.routines import (
     RemoveElectronicsNoise,
     compute_templates,
     decode_tone_indices,
-    find_peaks,
     register_routine,
 )
 from rfsocinterface.core.data.storage import (
@@ -80,7 +79,6 @@ __all__ = [
     'RemoveElectronicsNoise',
     'compute_templates',
     'decode_tone_indices',
-    'find_peaks',
     'flag_outliers',
     'generate_calibrated_data',
     'get_channel_group_name',
