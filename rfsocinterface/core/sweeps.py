@@ -1,10 +1,12 @@
+"""Code pertaining to performing and anayzing calibration sweeps."""
 from __future__ import annotations
 
 import datetime
 import logging
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Generic, Literal, TypeVar
+from typing import TYPE_CHECKING, Generic, Literal, TypeVar
 
 import h5py
 import matplotlib.pyplot as plt
@@ -54,8 +56,9 @@ CompositeSweepDataType = TypeVar('CompositeSweepDataType', bound='CompositeSweep
 
 
 def simple_derivative_fits(
-    df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray
+    df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray  # noqa: ARG001
 ):
+    """Perform a basic resoance fit finding the local minima."""
     # set up some preliminary values that we'll need
     n_freq = np.size(freq)
     old_tone_freq = tone_list
@@ -64,7 +67,6 @@ def simple_derivative_fits(
     ).flatten()[0]
 
     # smooth the data
-    x = s21
     s21 = savgol_filter(s21, 7, 3, mode='mirror')
 
     # search for local minima
@@ -73,19 +75,17 @@ def simple_derivative_fits(
         while keepgoing:
             lo_ind = int(max(center_ind - 1, 0))
             hi_ind = int(min(center_ind + 2, n_freq))
-            # min_ind = np.argwhere(s21[lo_ind:hi_ind] == min(s21[lo_ind:hi_ind])).flatten()[0]
             min_ind = np.argmin(s21[lo_ind:hi_ind])
             if min_ind == (center_ind - lo_ind):
                 keepgoing = False
             else:
                 center_ind = lo_ind + min_ind
 
-    f0 = freq[center_ind]
-    return f0
+    return freq[center_ind]
 
 
 def create_resonator_mini_plot(
-    fig: Figure,
+    fig: Figure,  # noqa: ARG001
     ax: plt.Axes,
     idx: int,
     freq: npt.NDArray,
@@ -94,6 +94,7 @@ def create_resonator_mini_plot(
     chanmask: int,
     flagged: bool,
 ):
+    """Create a mini scale plot fo the resoannce and surrounding S_21."""
     ax.set_box_aspect(1.0)
     ax.set_facecolor(ON_RESONANCE_COLOR)
     ax.set_yticks([])
@@ -146,16 +147,17 @@ class ResonatorData:
         """Plot the results of the LO sweep fitting for this resonator.
 
         Arguments:
-            ax (plt.Axes | None): The axes to place the plot in. If None, this method
+            fig (plt.Axes, optional): The figure to place the plot in. If None, this
+                method will create a new figure. Defaults to None.
+            ax (plt.Axes, optional): The axes to place the plot in. If None, this method
                 will create a new figure. Defaults to None.
-            animated (bool): Whether to make the vertical line animated. Defaults to
-                False.
+            animated (bool, optional): Whether to make the vertical line animated.
+                Defaults to False.
 
         Returns:
             (Figure | None): The newly created figure. Will only return something if
                 no axes was provided.
         """
-        return_fig = False
         # If axes is provided, make the mini plot inside
         if ax is not None:
             create_resonator_mini_plot(
@@ -242,7 +244,7 @@ class ResonatorData:
 
     @property
     def chanmask(self) -> int:
-        """The chanmask value for this resonator"""
+        """The chanmask value for this resonator."""
         return self.data.chanmask[self.idx]
 
     @chanmask.setter
@@ -260,6 +262,7 @@ class ResonatorData:
 
     @property
     def flagged(self) -> bool:
+        """Whether this resonator has been flagged."""
         return np.abs(self.difference) > self.data.diff_to_flag[self.idx]
 
     @property
@@ -286,7 +289,7 @@ class ResonatorData:
         return np.ptp(self.freq)
 
     def fit(
-        self, df: float, start: float = None, callback: Callable | None = None
+        self, df: float, start: float | None = None, callback: Callable | None = None
     ) -> tuple[float, float, float]:
         """Perform a fit to find the resonance frequency."""
         if start is None:
@@ -313,7 +316,8 @@ class LoSweepData:
         s21 (npt.NDArray): The value of S_{21} at all frequencies in `freq`.
         chanmask (npt.NDarray): A mask to determine which frequencies are on-resonance.
         resonator_data (list[ResonatorData]): List of the data for each resonator.
-        fit_f0 (npt.NDArray): The fitted resonance frequencies for each resonator, in Hz.
+        fit_f0 (npt.NDArray): The fitted resonance frequencies for each resonator,
+            in Hz.
         fit_qi (npt.NDArray): The qi factor of the fitted resonance frequency for each
             resonator, in Hz.
         fit_qc (npt.NDArray): The qc factor of the fitted resonance frequency for each
@@ -330,9 +334,9 @@ class LoSweepData:
         chanmask: npt.NDArray,
         tile_name: str,
         diff_to_flag: float = 3e3,
-        filename: str = None,
-        date: str = None,
-        hour: str = None,
+        filename: str | None = None,
+        date: str | None = None,
+        hour: str | None = None,
     ) -> None:
         """Initialize a LoSweepData object."""
         self.filename = convert_path(filename)
@@ -368,6 +372,7 @@ class LoSweepData:
 
     @ensure_path(1)
     def save_new_tone_list(self, fname: Path):
+        """Save the tone list to a numpy file."""
         path = fname.with_suffix('.npy')
         path.touch(PERMISSIONS_USR_RW, exist_ok=True)
         np.save(fname, self.new_baseband_freqs)
@@ -376,9 +381,11 @@ class LoSweepData:
     def save(self):
         """Save the LO Sweep to the current HDF5 file."""
         if self.filename is None:
-            raise RuntimeWarning(
-                'No filename specified for this sweep. Use `save_as` to specify a filename.'
+            msg = (
+                'No filename specified for this sweep. '
+                'Use `save_as` to specify a filename.'
             )
+            raise RuntimeWarning(msg)
         self.save_as(self.filename)
 
     @ensure_path(1)

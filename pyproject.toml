@@ -56,6 +56,7 @@ build-backend = "poetry.core.masonry.api"
 # ========== Ruff Settings ==========
 
 [tool.ruff]
+target-version = "py312"
 include = [
     "pyproject.toml",
     "rfsocinterface/*.py",
