@@ -9,7 +9,7 @@ from kidpy3.data_handler import Rfchan
 from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QMessageBox, QWidget
 
-from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text
+from rfsocinterface.core.rfsoc import RFSoCWrapper, get_channel_from_text
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.core.sweeps import LoSweepData
 from rfsocinterface.core.utils import PERMISSIONS_USR_RW, TabName
@@ -27,7 +27,7 @@ class MainWidget(QWidget):
     def __init__(
         self,
         main_window: 'MainWindow',
-        rfsocs: list[RFSOCWrapper],
+        rfsocs: list[RFSoCWrapper],
         settings: dict,
         parent: QWidget | None = None,
     ):
@@ -54,7 +54,7 @@ class MainWidget(QWidget):
 
     def get_selected_channels(
         self, combo_box: CheckableComboBox
-    ) -> list[tuple[RFSOCWrapper, int]]:
+    ) -> list[tuple[RFSoCWrapper, int]]:
         checked_ids = combo_box.checked_indices()
         checked_text = [combo_box.itemText(i) for i in checked_ids]
         if not checked_text:
@@ -165,7 +165,7 @@ class DataCollectionMainWidget(MainWidget):
     def __init__(
         self,
         main_window: 'MainWindow',
-        rfsocs: list[RFSOCWrapper],
+        rfsocs: list[RFSoCWrapper],
         settings: dict,
         parent=None,
     ):
@@ -173,7 +173,7 @@ class DataCollectionMainWidget(MainWidget):
 
     def setup_data_collection(
         self,
-    ) -> tuple[list[RFSOCWrapper], list[int], list[Rfchan], str, int]:
+    ) -> tuple[list[RFSoCWrapper], list[int], list[Rfchan], str, int]:
         chans = self.get_selected_channels(self.channel_comboBox)
         rfsocs = []
         channels = []
@@ -195,7 +195,7 @@ class DataCollectionMainWidget(MainWidget):
         return rfsocs, channels, rfchans, date, setnum
 
     def append_global_data(
-        self, rfsocs: list[RFSOCWrapper], channels: list[int], rfchans: list[Rfchan]
+        self, rfsocs: list[RFSoCWrapper], channels: list[int], rfchans: list[Rfchan]
     ):
         """Append global data for each selected channel."""
         for rfsoc, channel, rfchan in zip(rfsocs, channels, rfchans):
@@ -208,7 +208,7 @@ class DataCollectionMainWidget(MainWidget):
             path.unlink(missing_ok=True)
 
     def check_for_lo_sweep(
-        self, rfsocs: list[RFSOCWrapper], channels: list[int]
+        self, rfsocs: list[RFSoCWrapper], channels: list[int]
     ) -> bool:
         for rfsoc, channel in zip(rfsocs, channels):
             tile_name = rfsoc.get_tile_name(channel)

@@ -6,7 +6,7 @@ from kidpy3 import capture
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QProgressDialog
 
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.utils import (
     TabName,
 )
@@ -26,7 +26,7 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
     def __init__(
         self,
         main_window: 'MainWindow',
-        rfsocs: list[RFSOCWrapper],
+        rfsocs: list[RFSoCWrapper],
         settings: dict,
         parent=None,
     ):

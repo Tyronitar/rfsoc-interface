@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, IPV4_REGEX, MAC_REGEX
 from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
 from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import (
@@ -35,7 +35,7 @@ DEFAULT_CONFIG = 'defaults.yaml'
 
 
 class RFSOCSettingsWidget(QWidget):
-    def __init__(self, rfsoc: RFSOCWrapper, parent: QWidget | None = None):
+    def __init__(self, rfsoc: RFSoCWrapper, parent: QWidget | None = None):
         super().__init__(parent)
         self.rfsoc = rfsoc
         self.setupUi()
@@ -91,7 +91,7 @@ class RFSOCSettingsWidget(QWidget):
 
 
 class AdvancedSettingsWidget(QWidget, Ui_RFSOCAdvancedSettingsWidget):
-    def __init__(self, rfsoc: RFSOCWrapper, parent: QWidget | None = None):
+    def __init__(self, rfsoc: RFSoCWrapper, parent: QWidget | None = None):
         super().__init__(parent)
         self.setupUi(self)
         self.rfsoc = rfsoc
@@ -164,7 +164,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     height_updated = Signal()
 
     def __init__(
-        self, rfsoc: RFSOCWrapper, channel: int, parent: QWidget | None = None
+        self, rfsoc: RFSoCWrapper, channel: int, parent: QWidget | None = None
     ):
         super().__init__(parent)
         self.rfsoc = rfsoc

@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.utils import TabName
 from rfsocinterface.gui.main_widget import MainWidget
 from rfsocinterface.gui.rfsoc_settings import RFSOCSettingsWidget
@@ -23,7 +23,7 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
     def __init__(
         self,
         main_window: 'MainWindow',
-        rfsocs: list[RFSOCWrapper],
+        rfsocs: list[RFSoCWrapper],
         settings: dict,
         parent: QWidget | None = None,
     ):
@@ -47,7 +47,7 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
         for widget in self.rfsoc_widgets:
             widget.update_channel_names()
 
-    def add_section(self, rfsoc: RFSOCWrapper, toggle: bool = False):
+    def add_section(self, rfsoc: RFSoCWrapper, toggle: bool = False):
         # channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)
         section_id = len(self.items) + 1
         section = Section(self.scrollAreaWidgetContents, animationDuration=100)

@@ -27,7 +27,7 @@ from rfsocinterface.core.camera import (
     MAX_FRAME_HEIGHT,
     MAX_FRAME_WIDTH,
 )
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.telescope import (
     AZ_OUT_CHANNEL,
     ZA_OUT_CHANNEL,
@@ -54,7 +54,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def __init__(
         self,
         main_window: MainWindow,
-        rfsocs: list[RFSOCWrapper],
+        rfsocs: list[RFSoCWrapper],
         settings: dict,
         client_id: str,
         parent: QWidget | None = None,

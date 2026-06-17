@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.core.sweeps import DEFAULT_NCOLS, LoSweep, LoSweepData, PowerSweep
 from rfsocinterface.core.utils import (
@@ -71,7 +71,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     def __init__(
         self,
         main_window: 'MainWindow',
-        rfsocs: list[RFSOCWrapper],
+        rfsocs: list[RFSoCWrapper],
         settings: dict,
         parent: QWidget | None = None,
     ) -> None:
@@ -420,7 +420,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     def run_sweeps(
         self,
-        selected_channels: list[tuple[RFSOCWrapper, int]],
+        selected_channels: list[tuple[RFSoCWrapper, int]],
         show_diagnostics: bool = True,
         upload_all_new_tone_lists: bool = True,
         high_res_sweep: bool = False,
@@ -516,7 +516,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     def setup_sweeps(
         self,
-        selected_channels: list[tuple[RFSOCWrapper, int]],
+        selected_channels: list[tuple[RFSoCWrapper, int]],
         sweep_type: Literal['lo', 'blind'] = 'lo',
         high_res_sweep: bool = False,
     ) -> list[LoSweep]:
@@ -612,7 +612,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return True
 
     def plot_sweeps(
-        self, selected_channels: list[tuple[RFSOCWrapper, int]], sweeps: list[LoSweep]
+        self, selected_channels: list[tuple[RFSoCWrapper, int]], sweeps: list[LoSweep]
     ) -> bool:
         # for (rfsoc, chan), sweep in zip(selected_channels, sweeps):
         #     sweep_data = sweep.data
@@ -706,7 +706,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return True
 
     def plot_blind_sweeps(
-        self, selected_channels: list[tuple[RFSOCWrapper, int]], sweeps: list[LoSweep]
+        self, selected_channels: list[tuple[RFSoCWrapper, int]], sweeps: list[LoSweep]
     ) -> bool:
         # Setup progress dialog
         total_tones = sum(sweep.data.n_tones for sweep in sweeps)
@@ -819,7 +819,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     def run_power_sweeps(
         self,
-        selected_channels: list[tuple[RFSOCWrapper, int]],
+        selected_channels: list[tuple[RFSoCWrapper, int]],
     ) -> bool:
         pd = IncrementalProgressDialog(
             'Setting Up Power Sweep...',
@@ -879,7 +879,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return plot_complete
 
     def setup_power_sweeps(
-        self, selected_channels: list[tuple[RFSOCWrapper, int]]
+        self, selected_channels: list[tuple[RFSoCWrapper, int]]
     ) -> list[PowerSweep]:
         # Get values from GUI, converting KHz to Hz
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
@@ -974,7 +974,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     def plot_power_sweeps(
         self,
-        selected_channels: list[tuple[RFSOCWrapper, int]],
+        selected_channels: list[tuple[RFSoCWrapper, int]],
         sweeps: list[PowerSweep],
     ) -> bool:
         # Setup progress dialog
@@ -1073,7 +1073,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             levels = [0]
         return levels
 
-    def _write_new_tones(self, sweep_data: LoSweepData, rfsoc: RFSOCWrapper, chan: int):
+    def _write_new_tones(self, sweep_data: LoSweepData, rfsoc: RFSoCWrapper, chan: int):
         """Write the new tones from fitting an LO Sweep to the RFSoC"""
         tone_file = get_filename(
             file_type='tonelist', tile_name=rfsoc.get_tile_name(chan)

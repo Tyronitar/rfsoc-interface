@@ -19,7 +19,7 @@ from rfsocinterface.core.camera import MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
 from rfsocinterface.core.data import (
     Pipeline,
 )
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.utils import (
     PERMISSIONS_USR_RW,
     P,
@@ -74,7 +74,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
     def __init__(
         self,
         main_window: 'MainWindow',
-        rfsocs: list[RFSOCWrapper],
+        rfsocs: list[RFSoCWrapper],
         settings: dict,
         client_id: str,
         parent: QWidget | None = None,

@@ -40,7 +40,7 @@ from rfsocinterface.core.utils import (
 )
 
 if TYPE_CHECKING:
-    from rfsocinterface.core.rfsoc import RFSOCWrapper
+    from rfsocinterface.core.rfsoc import RFSoCWrapper
 
 
 _logger = logging.getLogger(__name__)
@@ -861,7 +861,7 @@ class LoSweep:
 
     def __init__(
         self,
-        rfsoc: RFSOCWrapper,
+        rfsoc: RFSoCWrapper,
         chan: int,
         tone_shift: float,
         freq_step: float,
@@ -1081,7 +1081,7 @@ class CompositeSweep(Generic[CompositeSweepDataType]):
 
     def __init__(
         self,
-        rfsoc: RFSOCWrapper,
+        rfsoc: RFSoCWrapper,
         chan: int,
         tone_shift: float,
         freq_step: float,
@@ -1714,7 +1714,7 @@ class PowerSweep(CompositeSweep[PowerSweepData]):
 
     def __init__(
         self,
-        rfsoc: RFSOCWrapper,
+        rfsoc: RFSoCWrapper,
         chan: int,
         tone_shift: float,
         freq_step: float,

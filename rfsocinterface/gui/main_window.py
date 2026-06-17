@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from rfsocinterface.core.camera import MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSoCWrapper
 
 # from kidpy3 import RFSOC
 from rfsocinterface.core.settings import Settings, SettingsError
@@ -69,7 +69,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.timestamp_array_lock = Lock()
 
         self.tabs: dict[TabName, MainWidget] = {}
-        self.rfsocs: list[RFSOCWrapper] = []
+        self.rfsocs: list[RFSoCWrapper] = []
         self.init_rfsocs()
 
         self.setupUi(self)
@@ -246,7 +246,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def init_rfsocs(self):
         for rfsoc_settings in self.settings['rfsocs']:
-            rfsoc = RFSOCWrapper(rfsoc_settings)
+            rfsoc = RFSoCWrapper(rfsoc_settings)
             self.rfsocs.append(rfsoc)
 
     def resize_to_current(self, index: int):

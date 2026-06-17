@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (
 )
 
 from rfsocinterface.core.params import RFSoCParameters
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.sweeps import (
     DEFAULT_NCOLS,
     LoSweepData,
@@ -379,7 +379,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def __init__(
         self,
         sweep_data: LoSweepData,
-        rfsoc: RFSOCWrapper | None = None,
+        rfsoc: RFSoCWrapper | None = None,
         channel: int | None = None,
         parent: QWidget | None = None,
     ):
