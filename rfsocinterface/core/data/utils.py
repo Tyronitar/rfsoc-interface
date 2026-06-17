@@ -563,6 +563,6 @@ def interpolate_telescope_position(
     else:
         fixed_positions[-median_offset:] = np.nan
     
-    print(f'Shifting telescope positions by {-median_offset} samples')
+    _logger.debug(f'Shifting telescope positions by {-median_offset} samples')
 
     return fixed_positions
