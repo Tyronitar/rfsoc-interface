@@ -16,7 +16,6 @@ from kidpy3.measure import ResonatorFinder
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
-from matplotlib.ticker import FuncFormatter
 from numpy.polynomial import Polynomial
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter

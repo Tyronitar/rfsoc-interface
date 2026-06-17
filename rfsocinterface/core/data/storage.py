@@ -42,6 +42,7 @@ from rfsocinterface.core.utils import (
     PathLike,
     chunked_downsample,
     compute_chunk_shape,
+    decimate_in_chunks,
     ensure_path,
     get_azel_template,
     get_consolidated_file_template,
@@ -52,7 +53,6 @@ from rfsocinterface.core.utils import (
     get_tod_template,
     iterate_chunks,
     list_datasets,
-    decimate_in_chunks,
     search,
 )
 
