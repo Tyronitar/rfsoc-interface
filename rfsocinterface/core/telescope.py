@@ -34,7 +34,7 @@ _logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 
-ZEPORT = 23
+ZA_PORT = 23
 
 # ZA motor switches back and forth between these two channels when faults occur.
 AKD1 = '169.254.250.165'
@@ -229,8 +229,8 @@ class TelescopeMotorController:
 
         # Zenith Angle
         try:
-            self.ser_za = Telnet(host=AKD1, port=ZEPORT)
-            self.ser_za.open(host=AKD1, port=ZEPORT)
+            self.ser_za = Telnet(host=AKD1, port=ZA_PORT)
+            self.ser_za.open(host=AKD1, port=ZA_PORT)
         except OSError:
             msg = (
                 'Could not communicate with ZA controller. System could not initialize.'
@@ -248,7 +248,7 @@ class TelescopeMotorController:
             self.write_ser_za('DRV.EN', timeout=0.1)
             _tele_logger.debug('ZA motor connected and software enabled by Python.')
 
-        # Allow continuous reading of last ZE position synced with PPS
+        # Allow continuous reading of last ZA position synced with PPS
         self.write_ser_za('DIN1.FILTER 0', timeout=0.1)
 
         self.write_ser_za('CAP0.EVENT', timeout=0.1)
@@ -257,7 +257,7 @@ class TelescopeMotorController:
         self.write_ser_za('CAP0.MODE 0', timeout=0.1)
         self.write_ser_za('CAP0.EN 1', timeout=0.1)
 
-        # Initialize ZE values
+        # Initialize ZA values
         self.za_pos = self.za_pps_pos = 0
         self.get_ser_za_pos(timeout=0.1)
         _tele_logger.info(f'Telescope ZA position is: {self.za_pos}')
@@ -586,7 +586,7 @@ class TelescopeMotorController:
         new_pos: float,
         scan_mode: bool = False,
         stop_run: bool = True,
-        primary_scan_direction: str = 'ze',
+        primary_scan_direction: str='za',
     ):
         """Set the serial zenith angle position."""
         # self.zenithCommanded.emit(new_pos)
@@ -603,7 +603,7 @@ class TelescopeMotorController:
         new_pos: float,
         scan_mode: bool = False,
         stop_run: bool = True,
-        primary_scan_direction: str = 'za',
+        primary_scan_direction: str='za',
     ):
         self.send('za_pos_comm', new_pos, timeout=0.25)
         # new_pos = float(new_pos)
@@ -629,7 +629,7 @@ class TelescopeMotorController:
         # profiler = cProfile.Profile()
         # profiler.enable()
         try:
-            _tele_logger.debug(f'Starting ZE loop #{counter}')
+            _tele_logger.debug(f'Starting ZA loop #{counter}')
             while abs(za_pos - new_pos) > tolerance and self._run:
                 # Choose direction of motion
                 direction = -1 if za_pos > new_pos else 1
@@ -656,12 +656,12 @@ class TelescopeMotorController:
                     data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
                 self.set_ao_value(data_value, ZA_OUT_CHANNEL)
-                _tele_logger.debug('Getting ser ze pos')
+                _tele_logger.debug('Getting ser za pos')
                 za_pos, za_pps_pos = self.get_ser_za_pos()
                 if abs(za_pos - new_pos) <= tolerance:
                     self.set_ao_value(ZERO_DATA, ZA_OUT_CHANNEL)
                 if scan_mode:
-                    _tele_logger.debug('appending scan mode position data')
+                    _tele_logger.debug('Appending scan mode position data')
                     position_data = np.append(
                         position_data,
                         [az_pos, za_pos, time.time(), az_pps_pos, za_pps_pos],
