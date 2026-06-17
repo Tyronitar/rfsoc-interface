@@ -30,7 +30,7 @@ from rfsocinterface.core.camera import (
 from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.core.telescope import (
     AZ_OUT_CHANNEL,
-    ZE_OUT_CHANNEL,
+    ZA_OUT_CHANNEL,
 )
 from rfsocinterface.core.utils import TabName
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
@@ -66,22 +66,22 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.zenith_commanded_valLabel.setText('N/A')
 
         self.interval = 200  # Milliseconds between update calls
-        self.ze_jog_voltage = 1  # Degrees / second
+        self.za_jog_voltage = 1  # Degrees / second
         self.az_jog_voltage = 5  # Degrees / second
 
         # Control Connections
         self.enable_motion_checkBox.toggled.connect(self.toggle_motion_enabled)
         self.stop_pushButton.clicked.connect(self.stop_motion)
         self.azimuth_setpushButton.clicked.connect(self.set_az_pos)
-        self.zenith_setpushButton.clicked.connect(self.set_ze_pos)
+        self.zenith_setpushButton.clicked.connect(self.set_za_pos)
         self.controller.buttonGroup.buttonPressed.connect(self.jog)
         self.controller.buttonGroup.buttonReleased.connect(self.stop_motion)
         self.manual_controlcheckBox.toggled.connect(self.toggle_jogging)
 
         self.connect_to_telescope_command('az_pos', self.update_az_pos)
-        self.connect_to_telescope_command('ze_pos', self.update_ze_pos)
+        self.connect_to_telescope_command('za_pos', self.update_za_pos)
         self.connect_to_telescope_command('az_pos_comm', self.update_az_cmd)
-        self.connect_to_telescope_command('ze_pos_comm', self.update_ze_cmd)
+        self.connect_to_telescope_command('za_pos_comm', self.update_za_cmd)
 
         # Set up Optical Camera
         self.live_footage_fig, self.live_footage_ax = plt.subplots(figsize=(12, 9))
@@ -102,16 +102,14 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         # Initialize the numbers in the GUI
         self.az_pos = self.last_az = 0
         self.az_pps_pos = None
-        self.ze_pos = self.last_ze = 0
-        self.ze_pps_pos = None
+        self.za_pos = self.last_za = 0
+        self.za_pps_pos = None
 
         self.send_telescope_command('get_ser_az_pos')
-        self.send_telescope_command('get_ser_ze_pos')
+        self.send_telescope_command('get_ser_za_pos')
 
         self.last_az_commanded = None
-        self.last_ze_commanded = None
-        # self.update_az_cmd(self.last_az_commanded)
-        # self.update_ze_cmd(self.last_ze_commanded)
+        self.last_za_commanded = None
 
         # Update Timer
         self.timer = QTimer(self)
@@ -161,11 +159,11 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         match btn:
             case self.controller.up_toolButton:
                 self.send_telescope_command(
-                    'set_voltage', -self.ze_jog_voltage, ZE_OUT_CHANNEL
+                    'set_voltage', -self.za_jog_voltage, ZA_OUT_CHANNEL
                 )
             case self.controller.down_toolButton:
                 self.send_telescope_command(
-                    'set_voltage', self.ze_jog_voltage, ZE_OUT_CHANNEL
+                    'set_voltage', self.za_jog_voltage, ZA_OUT_CHANNEL
                 )
             case self.controller.left_toolButton:
                 self.send_telescope_command(
@@ -180,9 +178,9 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         new_pos = get_num_value(self.azimuth_setlineEdit)
         self.send_telescope_command('set_az_pos', new_pos)
 
-    def set_ze_pos(self):
+    def set_za_pos(self):
         new_pos = get_num_value(self.zenith_setlineEdit)
-        self.send_telescope_command('set_ze_pos', new_pos)
+        self.send_telescope_command('set_za_pos', new_pos)
 
     @Slot(float, float)
     def update_az_pos(self, new_pos: float, pps_pos: float | None):
@@ -208,43 +206,43 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.azimuth_error_valLabel.setText(f'{new_err:.3f}°')
 
     @Slot(float, float)
-    def update_ze_pos(self, new_pos: float, pps_pos: float | None):
+    def update_za_pos(self, new_pos: float, pps_pos: float | None):
         self.zenith_actual_valLabel.setText(f'{new_pos:.3f}°')
         if pps_pos is None:
             self.zenith_pps_valLabel.setText('N/A')
         else:
             self.zenith_pps_valLabel.setText(f'{pps_pos:.3f}°')
-        self.ze_pos = new_pos
-        self.ze_pps_pos = pps_pos
+        self.za_pos = new_pos
+        self.za_pps_pos = pps_pos
 
     @Slot(float)
-    def update_ze_cmd(self, new_pos: float):
-        self.last_ze_commanded = new_pos
+    def update_za_cmd(self, new_pos: float):
+        self.last_za_commanded = new_pos
         self.zenith_commanded_valLabel.setText(f'{new_pos:.3f}°')
 
     @Slot(float)
-    def update_ze_vel(self, new_vel: float):
+    def update_za_vel(self, new_vel: float):
         self.zenith_velocity_valLabel.setText(f'{new_vel:.2f}°/sec')
 
     @Slot(float)
-    def update_ze_err(self, new_err: float):
+    def update_za_err(self, new_err: float):
         self.zenith_error_valLabel.setText(f'{new_err:.3f}°')
 
     def update_ui_telescope(self):
         az_velocity = (self.az_pos - self.last_az) / self.interval * 1000
-        ze_velocity = (self.ze_pos - self.last_ze) / self.interval * 1000
+        za_velocity = (self.za_pos - self.last_za) / self.interval * 1000
         self.update_az_pos(self.az_pos, self.az_pps_pos)
-        self.update_ze_pos(self.ze_pos, self.ze_pps_pos)
+        self.update_za_pos(self.za_pos, self.za_pps_pos)
         self.last_az = self.az_pos
-        self.last_ze = self.ze_pos
+        self.last_za = self.za_pos
         self.update_az_vel(az_velocity)
-        self.update_ze_vel(ze_velocity)
+        self.update_za_vel(za_velocity)
         if self.last_az_commanded is not None:
             az_err = self.az_pos - self.last_az_commanded
             self.update_az_err(az_err)
-        if self.last_ze_commanded is not None:
-            ze_err = self.ze_pos - self.last_ze_commanded
-            self.update_ze_err(ze_err)
+        if self.last_za_commanded is not None:
+            za_err = self.za_pos - self.last_za_commanded
+            self.update_za_err(za_err)
 
     #
     # Camera Handlers

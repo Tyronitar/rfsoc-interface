@@ -50,7 +50,7 @@ ADDR_PL_FB = 588
 GEAR_RATIO = 258
 
 AZ_OUT_CHANNEL = 1
-ZE_OUT_CHANNEL = 0
+ZA_OUT_CHANNEL = 0
 
 ZERO_DATA = analog_to_digital(0, -10, 10, 16)
 
@@ -60,20 +60,20 @@ AZ_SAMPLING_TIME = 0.002
 AZ_BASE_SPEED = 1.5
 AZ_POS_TOL_DEG = 0.02
 AZ_HOME = 0
-ZE_BASE_SPEED = 0.4
-ZE_POS_TOL_DEG = 0.01
-ZE_DEAFULT_RPM_PER_VOLT = 40
-ZE_SCAN_RPM_PER_VOLT = 4
+ZA_BASE_SPEED = 0.4
+ZA_POS_TOL_DEG = 0.01
+ZA_DEAFULT_RPM_PER_VOLT = 40
+ZA_SCAN_RPM_PER_VOLT = 4
 
 SPEED_MULTIPLIER = 0.35
 SCAN_MODE_FAR_APPROACH_SEPARATION_DEG = 0.5
 FAR_APPROACH_SEPARATION_DEG = 15
-ZE_APPROACH_SEPARATION_DEG = 0.5
+ZA_APPROACH_SEPARATION_DEG = 0.5
 
 NEG_SW_LIM = -181.000
 POS_SW_LIM = 181.000
-NEG_ZE_SW_LIM = -np.inf
-POS_ZE_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
+NEG_ZA_SW_LIM = -np.inf
+POS_ZA_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
 
 
 def quit_function():
@@ -127,17 +127,17 @@ class TelescopeMotorController:
                         self.get_ser_az_pos()
                     case 'set_az_pos':
                         self.set_az_pos(*args)
-                    case 'get_ser_ze_pos':
-                        self.get_ser_ze_pos()
-                    case 'set_ze_pos':
-                        self.set_ze_pos(*args)
+                    case 'get_ser_za_pos':
+                        self.get_ser_za_pos()
+                    case 'set_za_pos':
+                        self.set_za_pos(*args)
                     case 'set_voltage':
                         self._run = True
                         self.set_ao_value(*args)
                     case 'set_az_speed_relation':
                         self.set_az_speed_relation(*args)
-                    case 'set_ze_speed_relation':
-                        self.set_ze_speed_relation(*args)
+                    case 'set_za_speed_relation':
+                        self.set_za_speed_relation(*args)
                     case 'stared_image':
                         self.stared_image(*args)
                     case 'dither_pattern':
@@ -229,8 +229,8 @@ class TelescopeMotorController:
 
         # Zenith Angle
         try:
-            self.ser_ze = Telnet(host=AKD1, port=ZEPORT)
-            self.ser_ze.open(host=AKD1, port=ZEPORT)
+            self.ser_za = Telnet(host=AKD1, port=ZEPORT)
+            self.ser_za.open(host=AKD1, port=ZEPORT)
         except OSError:
             msg = (
                 'Could not communicate with ZA controller. System could not initialize.'
@@ -240,27 +240,27 @@ class TelescopeMotorController:
             self.send('done')
             return
 
-        status_string = self.write_ser_ze('DRV.ACTIVE', timeout=0.1)
+        status_string = self.write_ser_za('DRV.ACTIVE', timeout=0.1)
         status = float(status_string.split('\r')[0])
         if status == 1:
             _tele_logger.debug('ZA motor connected and software already enabled.')
         else:
-            self.write_ser_ze('DRV.EN', timeout=0.1)
+            self.write_ser_za('DRV.EN', timeout=0.1)
             _tele_logger.debug('ZA motor connected and software enabled by Python.')
 
         # Allow continuous reading of last ZE position synced with PPS
-        self.write_ser_ze('DIN1.FILTER 0', timeout=0.1)
+        self.write_ser_za('DIN1.FILTER 0', timeout=0.1)
 
-        self.write_ser_ze('CAP0.EVENT', timeout=0.1)
-        self.write_ser_ze('CAP0.TRIGGER 1', timeout=0.1)
-        self.write_ser_ze('CAP0.EDGE 1', timeout=0.1)
-        self.write_ser_ze('CAP0.MODE 0', timeout=0.1)
-        self.write_ser_ze('CAP0.EN 1', timeout=0.1)
+        self.write_ser_za('CAP0.EVENT', timeout=0.1)
+        self.write_ser_za('CAP0.TRIGGER 1', timeout=0.1)
+        self.write_ser_za('CAP0.EDGE 1', timeout=0.1)
+        self.write_ser_za('CAP0.MODE 0', timeout=0.1)
+        self.write_ser_za('CAP0.EN 1', timeout=0.1)
 
         # Initialize ZE values
-        self.ze_pos = self.ze_pps_pos = 0
-        self.get_ser_ze_pos(timeout=0.1)
-        _tele_logger.info(f'Telescope ZA position is: {self.ze_pos}')
+        self.za_pos = self.za_pps_pos = 0
+        self.get_ser_za_pos(timeout=0.1)
+        _tele_logger.info(f'Telescope ZA position is: {self.za_pos}')
         self._initialized = True
         _tele_logger.debug('Succesfully initialized TelescopeMotorController')
 
@@ -307,7 +307,7 @@ class TelescopeMotorController:
         self.ser_az.reset_output_buffer()
         return status
 
-    def write_ser_ze(
+    def write_ser_za(
         self, command: str | bytes, stop: str = b'\r\n', timeout: float | None = None
     ) -> str:
         """Write a command to the zenith angle motor.
@@ -337,8 +337,8 @@ class TelescopeMotorController:
                 data = data + '\r\n'
             data = data.encode()
         start_time = time.time()
-        self.ser_ze.write(data)
-        status = self.ser_ze.read_until(stop, timeout).decode()  # Empty buffer
+        self.ser_za.write(data)
+        status = self.ser_za.read_until(stop, timeout).decode()  # Empty buffer
         elapsed = time.time() - start_time
         _tele_logger.debug(
             f'ZA Command {data!r} returned result {status!r} in {elapsed*1e3:.2f} ms'
@@ -352,7 +352,7 @@ class TelescopeMotorController:
         for job in self._active_jobs:
             job.join()
         self.ser_az.close()
-        self.ser_ze.close()
+        self.ser_za.close()
         self.send('done')
 
     def set_ao_value(self, data: float, channel: int):
@@ -363,7 +363,7 @@ class TelescopeMotorController:
     def set_ao_zero(self):
         """Set the output voltage to 0."""
         self.set_ao_value(ZERO_DATA, AZ_OUT_CHANNEL)
-        self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
+        self.set_ao_value(ZERO_DATA, ZA_OUT_CHANNEL)
         _tele_logger.debug('Set voltages to zero.')
 
     # Azimuth settings
@@ -437,7 +437,7 @@ class TelescopeMotorController:
         ##confirm position
         az_pos, az_pps_pos = self.get_ser_az_pos()
         if scan_mode:
-            za_pos, za_pps_pos = self.get_ser_ze_pos()
+            za_pos, za_pps_pos = self.get_ser_za_pos()
             position_data = []
         counter = 0
         ##Run loop
@@ -527,20 +527,20 @@ class TelescopeMotorController:
             _logger.info(f'AZ speed relation set to: {rpm_per_ten_volt * 10} RPM / V')
 
     # Zenith angle settings
-    def get_ser_ze_pos(self, timeout: float = 0.1) -> tuple[float, float]:
+    def get_ser_za_pos(self, timeout: float = 0.1) -> tuple[float, float]:
         """Get the serial zenith angle position."""
         # Get old values as a fallback
-        old_pos = self.ze_pos
-        old_pps_pos = self.ze_pps_pos
+        old_pos = self.za_pos
+        old_pps_pos = self.za_pps_pos
 
         # Query the values from the motor
-        pos_str = self.write_ser_ze('PL.FB', timeout=timeout / 3)
-        state_str = self.write_ser_ze('CAP0.STATE', timeout=timeout / 3)
+        pos_str = self.write_ser_za('PL.FB', timeout=timeout / 3)
+        state_str = self.write_ser_za('CAP0.STATE', timeout=timeout / 3)
         state = float(state_str.split(' ')[0].split('>')[-1])
         if state == 1:
             # It's been latched so get the position and reset the latch
-            pps_pos_str = self.write_ser_ze('CAP0.PLFB', timeout=timeout / 3)
-            self.write_ser_ze('CAP0.EN 1', timeout=timeout / 3)
+            pps_pos_str = self.write_ser_za('CAP0.PLFB', timeout=timeout / 3)
+            self.write_ser_za('CAP0.EN 1', timeout=timeout / 3)
         else:
             new_pps_pos = old_pps_pos
 
@@ -574,15 +574,14 @@ class TelescopeMotorController:
             else:
                 new_pps_pos = float(pps_split_string[-1])
 
-        self.ze_pos = new_pos
-        self.ze_pps_pos = new_pps_pos
+        self.za_pos = new_pos
+        self.za_pps_pos = new_pps_pos
 
         if self._initialized:
-            # _tele_logger.debug(f'Sending ze_pos to GUI')
-            self.send('ze_pos', new_pos, new_pps_pos, timeout=timeout)
+            self.send('za_pos', new_pos, new_pps_pos, timeout=timeout)
         return new_pos, new_pps_pos
 
-    def set_ze_pos(
+    def set_za_pos(
         self,
         new_pos: float,
         scan_mode: bool = False,
@@ -593,33 +592,32 @@ class TelescopeMotorController:
         # self.zenithCommanded.emit(new_pos)
         self._run = True
         worker_thread = Thread(
-            target=self._set_ze_pos,
+            target=self._set_za_pos,
             args=(new_pos, scan_mode, stop_run, primary_scan_direction),
         )
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
-    def _set_ze_pos(
+    def _set_za_pos(
         self,
         new_pos: float,
         scan_mode: bool = False,
         stop_run: bool = True,
         primary_scan_direction: str = 'za',
     ):
-        self.send('ze_pos_comm', new_pos, timeout=0.25)
+        self.send('za_pos_comm', new_pos, timeout=0.25)
         # new_pos = float(new_pos)
         self.set_ao_zero()
 
         # confirm position
-        za_pos, _ = self.get_ser_ze_pos()
-        # self.conn.send(['ze_pos', pos])
+        za_pos, _ = self.get_ser_za_pos()
         if scan_mode:
             az_pos, az_pps_pos = self.get_ser_az_pos()
             position_data = []
         if scan_mode and primary_scan_direction.lower() == 'za':
-            tolerance = ZE_POS_TOL_DEG * 5
+            tolerance = ZA_POS_TOL_DEG * 5
         else:
-            tolerance = ZE_POS_TOL_DEG
+            tolerance = ZA_POS_TOL_DEG
         counter = 0
 
         # Run loop
@@ -641,10 +639,10 @@ class TelescopeMotorController:
                 elif abs(za_pos - new_pos) > FAR_APPROACH_SEPARATION_DEG:
                     # If we are far from the setpoint, go at max speed
                     data_value = direction * analog_to_digital(7.25, -10, 10, 16)
-                elif abs(za_pos - new_pos) > ZE_APPROACH_SEPARATION_DEG:
+                elif abs(za_pos - new_pos) > ZA_APPROACH_SEPARATION_DEG:
                     # If we are semifar from the setpoint, start slowing down
                     this_speed = (
-                        SPEED_MULTIPLIER * abs(za_pos - new_pos) + ZE_BASE_SPEED
+                        SPEED_MULTIPLIER * abs(za_pos - new_pos) + ZA_BASE_SPEED
                     )
                     data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
                 else:
@@ -652,17 +650,16 @@ class TelescopeMotorController:
                     this_speed = (
                         SPEED_MULTIPLIER
                         * abs(za_pos - new_pos) ** 2
-                        / ZE_APPROACH_SEPARATION_DEG
-                        + ZE_BASE_SPEED
+                        / ZA_APPROACH_SEPARATION_DEG
+                        + ZA_BASE_SPEED
                     )
                     data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
-                self.set_ao_value(data_value, ZE_OUT_CHANNEL)
+                self.set_ao_value(data_value, ZA_OUT_CHANNEL)
                 _tele_logger.debug('Getting ser ze pos')
-                za_pos, za_pps_pos = self.get_ser_ze_pos()
+                za_pos, za_pps_pos = self.get_ser_za_pos()
                 if abs(za_pos - new_pos) <= tolerance:
-                    self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
-                # self.conn.send(['ze_pos', pos])
+                    self.set_ao_value(ZERO_DATA, ZA_OUT_CHANNEL)
                 if scan_mode:
                     _tele_logger.debug('appending scan mode position data')
                     position_data = np.append(
@@ -679,7 +676,7 @@ class TelescopeMotorController:
 
         if stop_run:
             self._run = False
-        self.set_ao_value(ZERO_DATA, ZE_OUT_CHANNEL)
+        self.set_ao_value(ZERO_DATA, ZA_OUT_CHANNEL)
         # stop_time = time.time()
         # print(f'Average time per loop: {(stop_time - start_time) / counter}')
         # profiler.disable()
@@ -687,9 +684,9 @@ class TelescopeMotorController:
         # self.zenithVelocityChanged.emit(0)
         ## Read position again
         # time.sleep(0.1)
-        za_pos, _ = self.get_ser_ze_pos()
+        za_pos, _ = self.get_ser_za_pos()
         _tele_logger.debug(
-            f'Finished setting ze_pos to {new_pos}. '
+            f'Finished setting za_pos to {new_pos}. '
             f'Actual={za_pos}, Error={za_pos - new_pos:.5f}'
         )
         if scan_mode:
@@ -717,7 +714,7 @@ class TelescopeMotorController:
         start_time = time.time()
         end_time = start_time + duration
         az_pos, az_pos_pps = self.get_ser_az_pos()
-        za_pos, za_pos_pps = self.get_ser_ze_pos()
+        za_pos, za_pos_pps = self.get_ser_za_pos()
         position_data = []
         while self._run and time.time() < end_time:
             position_data.extend([az_pos, za_pos, time.time(), az_pos_pps, za_pos_pps])
@@ -818,13 +815,13 @@ class TelescopeMotorController:
         primary_start_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         primary_end_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         initial_az, _ = self.get_ser_az_pos()
-        initial_ze, _ = self.get_ser_ze_pos()
+        initial_za, _ = self.get_ser_za_pos()
         if primary_az:
             primary_start += initial_az
             primary_stop += initial_az
         else:
-            primary_start += initial_ze
-            primary_stop += initial_ze
+            primary_start += initial_za
+            primary_stop += initial_za
 
         # Set start position in current thread
         _tele_logger.info('Moving telescope to initial position')
@@ -835,10 +832,10 @@ class TelescopeMotorController:
         if primary_az:
             self._set_az_pos(primary_start - primary_start_buffer, stop_run=False)
         else:
-            self._set_ze_pos(primary_start - primary_start_buffer, stop_run=False)
+            self._set_za_pos(primary_start - primary_start_buffer, stop_run=False)
 
         if primary_az:
-            self.set_ze_speed_relation(ZE_SCAN_RPM_PER_VOLT)
+            self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
 
         az_speed_factor = 1 / 3 if large_map_mode else 1.0
 
@@ -861,11 +858,11 @@ class TelescopeMotorController:
             if not self._run:
                 break
             if large_map_mode:
-                new_ze = initial_ze + (i_rep - (n_repeats - 1) / 2) * secondary_dither
-                self._set_ze_pos(new_ze, stop_run=False)
+                new_za = initial_za + (i_rep - (n_repeats - 1) / 2) * secondary_dither
+                self._set_za_pos(new_za, stop_run=False)
             elif primary_az:
-                new_ze = initial_ze + (i_rep % 2) * secondary_dither
-                self._set_ze_pos(new_ze, stop_run=False)
+                new_za = initial_za + (i_rep % 2) * secondary_dither
+                self._set_za_pos(new_za, stop_run=False)
             else:
                 new_az = initial_az + (i_rep % 2) * secondary_dither
                 self._set_az_pos(new_az, stop_run=False)
@@ -879,7 +876,7 @@ class TelescopeMotorController:
                         speed_factor=az_speed_factor,
                     )
                 else:
-                    this_position_data = self._set_ze_pos(
+                    this_position_data = self._set_za_pos(
                         primary_stop + primary_end_buffer + 0.5,
                         scan_mode=True,
                         stop_run=False,
@@ -898,7 +895,7 @@ class TelescopeMotorController:
                         speed_factor=az_speed_factor,
                     )
                 else:
-                    this_position_data = self._set_ze_pos(
+                    this_position_data = self._set_za_pos(
                         primary_start - primary_start_buffer - 0.5,
                         scan_mode=True,
                         stop_run=False,
@@ -936,7 +933,7 @@ class TelescopeMotorController:
                 {
                     # Generic parameters
                     'initial_az': initial_az,
-                    'initial_ze': initial_ze,
+                    'initial_za': initial_za,
                     # self._run can only be False here if the dither was cancelled
                     'completed': self._run,
                     # Arguments to this function
@@ -953,7 +950,7 @@ class TelescopeMotorController:
 
         # Reset telescope
         if primary_az:
-            self.set_ze_speed_relation(ZE_DEAFULT_RPM_PER_VOLT)
+            self.set_za_speed_relation(ZA_DEAFULT_RPM_PER_VOLT)
         if position_return:
             _tele_logger.info('Dither Pattern: Resetting telescope position...')
             self.send(
@@ -961,7 +958,7 @@ class TelescopeMotorController:
                 'Running Dither Pattern\nResetting telescope position',
             )
             self._set_az_pos(initial_az, stop_run=False)
-            self._set_ze_pos(initial_ze, stop_run=False)
+            self._set_za_pos(initial_za, stop_run=False)
 
         # self._run is only changed if the telescope was stopped mid scan
         if not self._run:
@@ -973,7 +970,7 @@ class TelescopeMotorController:
         _tele_logger.info('Scan Complete')
         self.send('dither_pattern_complete', 0)
 
-    def set_ze_speed_relation(self, rpm_per_volt: float):
+    def set_za_speed_relation(self, rpm_per_volt: float):
         """Set the speed of the motor in RPM/1V.
 
         Default is 40, which would roughly turn the telescope 1 degree/second.
@@ -982,8 +979,8 @@ class TelescopeMotorController:
         if self._initialized:
             command = 'AIN.VSCALE ' + str(rpm_per_volt) + '\r\n'
             command = command.encode('ASCII')
-            self.ser_ze.write(command)
-            self.ser_ze.read_until(b'\r\n', 0.1).decode()
+            self.ser_za.write(command)
+            self.ser_za.read_until(b'\r\n', 0.1).decode()
             _logger.info(f'ZA speed relation set to: {rpm_per_volt} RPM / V')
 
 
@@ -1004,9 +1001,6 @@ if __name__ == '__main__':
         ao_device = device.get_ao_device()
         sul_range_out = ao_device.get_info().get_ranges()[0]
         ao_flags = ul.AOutFlag.DEFAULT
-
-        # Set output to zero
-        # self.set_ao_zero()
     except ul.ul_exception.ULException as e:
         msg = (
             f'Error encounterd when attempting to connect to device: {e.error_message}'
