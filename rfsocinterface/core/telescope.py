@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import queue
 import threading
 import time
 from multiprocessing.connection import Connection
+from pathlib import Path
 from threading import Thread
 from typing import Literal
-
-try:
-    import thread  # type: ignore
-except ImportError:
-    import _thread as thread
-import json
-from pathlib import Path
 
 import h5py
 import numpy as np
@@ -29,6 +24,7 @@ from telnetlib3.telnetlib import Telnet
 from rfsocinterface.core.utils import (
     PERMISSIONS_USR_RW,
     analog_to_digital,
+    quit_function,
 )
 
 _logger = logging.getLogger(__name__)
@@ -75,11 +71,6 @@ NEG_SW_LIM = -181.000
 POS_SW_LIM = 181.000
 NEG_ZA_SW_LIM = -np.inf
 POS_ZA_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
-
-
-def quit_function():
-    """Quit/interrupt a thread."""
-    thread.interrupt_main()  # raises KeyboardInterrupt
 
 
 class TelescopeMotorController:

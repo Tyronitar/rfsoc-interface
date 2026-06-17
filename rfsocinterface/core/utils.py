@@ -27,6 +27,11 @@ from typing import (
     TypeVar,
 )
 
+try:
+    import thread  # type: ignore
+except ImportError:
+    import _thread as thread
+
 import git
 import h5py
 import matplotlib as mpl
@@ -1136,3 +1141,8 @@ def load_dict_or_defaults(
             val = dict_get_with_default(key, d1, d2, fallback_value=fallback)
             out_dict[key] = val
     return out_dict
+
+
+def quit_function():
+    """Quit/interrupt a thread."""
+    thread.interrupt_main()  # raises KeyboardInterrupt
