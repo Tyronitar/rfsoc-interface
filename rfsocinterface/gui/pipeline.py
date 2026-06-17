@@ -1,5 +1,3 @@
-from typing import Type
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout
 
@@ -133,7 +131,7 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
             return d.combo_box.currentText()
 
     def add_routine(self, routine_type_name: str, *args):
-        routine_cls: Type[DataRoutine] = ROUTINE_NAME_MAP[routine_type_name]
+        routine_cls: type[DataRoutine] = ROUTINE_NAME_MAP[routine_type_name]
         if routine_type_name not in ROUTINE_NAME_MAP:
             raise ValueError(
                 f'Routine type {routine_type_name} not in DATA_ROUTINE_FUNCTION_WIDGET_ARGS'

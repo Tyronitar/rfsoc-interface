@@ -1,8 +1,9 @@
 import logging
 import time
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import numpy.typing as npt
 from kidpy3.data_handler import Rfchan
@@ -198,7 +199,7 @@ class DataCollectionMainWidget(MainWidget):
         self, rfsocs: list[RFSoCWrapper], channels: list[int], rfchans: list[Rfchan]
     ):
         """Append global data for each selected channel."""
-        for rfsoc, channel, rfchan in zip(rfsocs, channels, rfchans):
+        for rfsoc, channel, rfchan in zip(rfsocs, channels, rfchans, strict=False):
             rfsoc.append_global_data(channel, rfchan.raw_filename)
 
     def remove_TOD_files(self, rfchans: list[Rfchan]):
@@ -210,7 +211,7 @@ class DataCollectionMainWidget(MainWidget):
     def check_for_lo_sweep(
         self, rfsocs: list[RFSoCWrapper], channels: list[int]
     ) -> bool:
-        for rfsoc, channel in zip(rfsocs, channels):
+        for rfsoc, channel in zip(rfsocs, channels, strict=False):
             tile_name = rfsoc.get_tile_name(channel)
             sweep = LoSweepData.load_most_recent(tile_name)
             if sweep is None:

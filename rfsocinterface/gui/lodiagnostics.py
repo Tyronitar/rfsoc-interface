@@ -8,9 +8,10 @@ import logging
 import re
 import time
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 from threading import Thread
-from typing import Any, Callable, Concatenate
+from typing import Any, Concatenate
 
 import matplotlib.pyplot as plt
 import numpy as np

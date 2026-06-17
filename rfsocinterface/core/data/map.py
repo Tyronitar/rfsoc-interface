@@ -3,8 +3,9 @@
 import logging
 import time
 import typing
+from collections.abc import Sequence
 from pathlib import Path
-from typing import ClassVar, Literal, Sequence
+from typing import ClassVar, Literal
 
 import av
 import h5py

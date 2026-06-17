@@ -1,8 +1,8 @@
 """Code for monitoring and updating the state of the RFSoC."""
 
 import logging
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, Sequence
 
 import numpy as np
 import numpy.typing as npt

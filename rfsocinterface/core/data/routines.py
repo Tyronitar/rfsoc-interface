@@ -8,7 +8,8 @@ import logging
 import time
 import typing
 import warnings
-from typing import ClassVar, Literal, Sequence, TypeVar
+from collections.abc import Sequence
+from typing import ClassVar, Literal, TypeVar
 
 import matplotlib as mpl
 import numpy as np

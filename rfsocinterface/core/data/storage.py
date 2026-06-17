@@ -8,9 +8,10 @@ import logging
 import pdb
 import shutil
 import typing
+from collections.abc import Iterator
 from importlib.metadata import version
 from pathlib import Path
-from typing import Iterator, overload
+from typing import overload
 
 import h5py
 import numpy as np

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 from rfsocinterface.core.data.routines import ROUTINE_REGISTRY, DataRoutine
 from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData

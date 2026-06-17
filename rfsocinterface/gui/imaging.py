@@ -1,9 +1,10 @@
 import copy
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Callable, Concatenate
+from typing import TYPE_CHECKING, Any, Concatenate
 
 import h5py
 import numpy as np

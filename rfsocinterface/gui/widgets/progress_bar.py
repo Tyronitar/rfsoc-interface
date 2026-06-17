@@ -1,4 +1,4 @@
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtCore import QCoreApplication, Signal, Slot
 from PySide6.QtWidgets import QProgressDialog

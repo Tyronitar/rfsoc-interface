@@ -198,7 +198,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         ]
         blind_types = [float, float, int, float, int]
         for key, lineEdit, num_type in zip(
-            blind_keys, self.blind_sweep_lineEdits, blind_types
+            blind_keys, self.blind_sweep_lineEdits, blind_types, strict=False
         ):
             try:
                 dict_set_by_path(
@@ -305,7 +305,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             ('blindSweep', 'maxNoiseFluctuation'),
             ('blindSweep', 'baselinePercentile'),
         ]
-        for key, lineEdit in zip(blind_keys, self.blind_sweep_lineEdits):
+        for key, lineEdit in zip(blind_keys, self.blind_sweep_lineEdits, strict=False):
             lineEdit.setText(str(dict_get_by_path(self.gui_state, key, default='')))
 
         # Sweep Type
@@ -505,7 +505,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         # Upload new tone lists as needed
         # If a highres sweep is going to happen (i.e `upload_all_new_tone_lists` = True),
         # all tone liusts are updated. Otherwise, only for sweeps that were acxcepted.
-        for i, ((rfsoc, chan), sweep) in enumerate(zip(selected_channels, sweeps)):
+        for i, ((rfsoc, chan), sweep) in enumerate(
+            zip(selected_channels, sweeps, strict=False)
+        ):
             if (
                 upload_all_new_tone_lists
                 or self._sweep_dialog_results[i] == QDialog.DialogCode.Accepted
@@ -643,7 +645,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         plotting_threads = []
         dialogs: list[DiagnosticsDialog] = []
         figs: list[Figure] = []
-        for (rfsoc, chan), sweep in zip(selected_channels, sweeps):
+        for (rfsoc, chan), sweep in zip(selected_channels, sweeps, strict=False):
             sweep_data = sweep.data
             sweep_data.reset_stop_signals()
 
@@ -696,7 +698,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             return False
         pd.close()
 
-        for dw, fig in zip(dialogs, figs):
+        for dw, fig in zip(dialogs, figs, strict=False):
             dw.set_figure(fig)
             QApplication.processEvents()
             # fig.tight_layout()
@@ -744,7 +746,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         plotting_threads = []
         dialogs: list[BlindSweepDialog] = []
-        for (rfsoc, chan), sweep in zip(selected_channels, sweeps):
+        for (rfsoc, chan), sweep in zip(selected_channels, sweeps, strict=False):
             sweep_data = sweep.data
             sweep_data.reset_stop_signals()
 
@@ -997,7 +999,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         # plotting_threads = []
         _logger.debug('Initializing PowerSweepDialogs...')
         dialogs: list[PowerSweepDialog] = []
-        for (rfsoc, chan), sweep in zip(selected_channels, sweeps):
+        for (rfsoc, chan), sweep in zip(selected_channels, sweeps, strict=False):
             sweep_data = sweep.data
             sweep_data.reset_stop_signals()
 

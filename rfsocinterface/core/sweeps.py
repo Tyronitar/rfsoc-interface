@@ -1,4 +1,5 @@
 """Code pertaining to performing and anayzing calibration sweeps."""
+
 from __future__ import annotations
 
 import datetime
@@ -56,7 +57,10 @@ CompositeSweepDataType = TypeVar('CompositeSweepDataType', bound='CompositeSweep
 
 
 def simple_derivative_fits(
-    df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray  # noqa: ARG001
+    df: npt.NDArray,
+    freq: npt.NDArray,
+    tone_list: npt.NDArray,
+    s21: npt.NDArray,  # noqa: ARG001
 ):
     """Perform a basic resoance fit finding the local minima."""
     # set up some preliminary values that we'll need
@@ -758,7 +762,7 @@ class LoSweepData:
             group_size = nrows * ncols
             stop = self.n_tones
             group_starts = np.arange(0, stop + group_size, group_size, dtype=int)
-            for start_idx, end_idx in zip(group_starts, group_starts[1:]):
+            for start_idx, end_idx in zip(group_starts, group_starts[1:], strict=False):
                 fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
                 for i, i_tone in enumerate(range(start_idx, min(end_idx, stop))):
                     if self._plot_canceled:
@@ -1426,7 +1430,7 @@ class PowerSweepData(CompositeSweepData):
             hour = fh.attrs['hour'] if 'hour' in fh.attrs else None
 
         sweeps = []
-        for this_fit_f0, arr in zip(fit_f0, sweep_data):
+        for this_fit_f0, arr in zip(fit_f0, sweep_data, strict=False):
             sweep = LoSweepData(bb_freqs, f_center, arr, chanmask, tile_name)
             sweep.fit_f0[:] = this_fit_f0
             sweeps.append(sweep)

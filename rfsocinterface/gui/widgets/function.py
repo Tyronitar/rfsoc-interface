@@ -1,4 +1,5 @@
-from typing import Any, Callable, Concatenate, overload
+from collections.abc import Callable
+from typing import Any, Concatenate, overload
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal, Slot

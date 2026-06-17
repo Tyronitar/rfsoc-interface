@@ -8,7 +8,7 @@ import os
 import stat
 import typing
 import warnings
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from datetime import datetime
@@ -18,12 +18,8 @@ from multiprocessing.connection import Connection
 from pathlib import Path
 from typing import (
     Any,
-    Callable,
-    Iterable,
-    Iterator,
     Literal,
     ParamSpec,
-    Sequence,
     TypeVar,
 )
 
@@ -1009,7 +1005,7 @@ def parallel_plot(
             partial(_parallel_plot_worker, plot_fn=plot_fn),
             *iterables,
         )
-        for ax, rastered in zip(np.ravel(axes), plots):
+        for ax, rastered in zip(np.ravel(axes), plots, strict=False):
             im = ax.imshow(rastered)
 
             ax.draw_artist(ax.patch)

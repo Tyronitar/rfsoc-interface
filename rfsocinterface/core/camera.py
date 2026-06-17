@@ -270,7 +270,7 @@ class CameraController:
                     for feature_name, val in features.items():
                         try:
                             self.set_feature(cam, feature_name, val)
-                        except VmbFeatureError as e:  # noqa: PERF203
+                        except VmbFeatureError as e:
                             msg = (
                                 f'Error setting feature "{feature_name}" to "{val}" '
                                 f'for camera {cam.get_id()}: {e}'
