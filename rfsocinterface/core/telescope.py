@@ -1,4 +1,5 @@
 """Code for controlling a telescope in a parralel process."""
+
 from __future__ import annotations
 
 import logging
@@ -79,6 +80,7 @@ POS_ZA_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
 def quit_function():
     """Quit/interrupt a thread."""
     thread.interrupt_main()  # raises KeyboardInterrupt
+
 
 class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
@@ -586,7 +588,7 @@ class TelescopeMotorController:
         new_pos: float,
         scan_mode: bool = False,
         stop_run: bool = True,
-        primary_scan_direction: str='za',
+        primary_scan_direction: str = 'za',
     ):
         """Set the serial zenith angle position."""
         # self.zenithCommanded.emit(new_pos)
@@ -603,7 +605,7 @@ class TelescopeMotorController:
         new_pos: float,
         scan_mode: bool = False,
         stop_run: bool = True,
-        primary_scan_direction: str='za',
+        primary_scan_direction: str = 'za',
     ):
         self.send('za_pos_comm', new_pos, timeout=0.25)
         # new_pos = float(new_pos)
@@ -991,6 +993,7 @@ def make_controller(connection: Connection) -> TelescopeMotorController:
 
 if __name__ == '__main__':
     import sys
+
     try:
         # Connect to device
         descriptor = ul.get_daq_device_inventory(ul.InterfaceType.ANY)[0]

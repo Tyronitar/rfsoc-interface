@@ -8,6 +8,7 @@ from pathlib import Path
 from rfsocinterface.core.utils import (
     GLOBAL_SETTINGS_PATH,
     USER_SETTINGS_PATH,
+    PathJSONEncoder,
     ensure_path,
 )
 
@@ -49,15 +50,11 @@ DEFAULT_SETTINGS = {
 }
 
 
-class PathEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Path):
-            return str(obj)
-        return super().default(obj)
-
-
 class Settings(dict):
+    """Class for storing and updating user settings."""
+
     def __init__(self, *args, **kwargs):
+        """Initialize the Settings dictionary."""
         super().__init__(*args, **kwargs)
         self._path = None
 
@@ -78,9 +75,11 @@ class Settings(dict):
         self['rfsocs'] = self._load_rfsocs(self.pop('rfsocs', []))
 
     def default_rfsoc_settings(self) -> dict:
+        """Get the default settings for RFSoCs."""
         return self['defaults'].get('rfsoc', {})
 
     def default_channel_settings(self) -> dict:
+        """Get the default settings for a channel."""
         return self.default_rfsoc_settings().get('channel', {})
 
     def _load_rfsocs(self, rfsocs: list[dict]) -> list[dict]:
@@ -107,6 +106,7 @@ class Settings(dict):
 
     @ensure_path(1)
     def load_settings(self, user_settings_path: Path = USER_SETTINGS_PATH):
+        """Load settings from a file."""
         self._load_global_settings()
         if not user_settings_path.expanduser().exists():
             Settings._create_settings(user_settings_path)
@@ -119,40 +119,20 @@ class Settings(dict):
             self.update(user_settings)
 
     def save_settings(self, user_settings_path: Path = USER_SETTINGS_PATH):
+        """Save settings to file."""
         self._path = user_settings_path
         with self._path.expanduser().open('w') as f:
-            json.dump(self, f, indent=4, cls=PathEncoder)
+            json.dump(self, f, indent=4, cls=PathJSONEncoder)
         _logger.info(f'Saved settings to {self._path.expanduser()}')
 
     def __str__(self):
+        """Format the settings as a string."""
         return json.dumps(self, indent=4)
 
 
 class SettingsError(Exception):
+    """Class for settings-related errors."""
+
     def __init__(self, message: str):
+        """Initialize a SettingsError."""
         super().__init__('Error in settings file: ' + message)
-
-
-def convert_to_kidy_format(rfsoc_config: dict) -> dict:
-    kidpy_config = {}
-    kidpy_config['rfsoc_name'] = rfsoc_config['name']
-    kidpy_config['bitstream'] = rfsoc_config['bitstream']
-    kidpy_config['redis_ip'] = rfsoc_config['redis']['ip']
-    kidpy_config['redis_port'] = rfsoc_config['redis']['port']
-    kidpy_config['ethernet_config'] = {
-        'udp_data_a_sourceip': rfsoc_config['channel1']['sourceip'],
-        'udp_data_b_sourceip': rfsoc_config['channel2']['sourceip'],
-        'udp_data_a_destip': rfsoc_config['channel1']['destip'],
-        'udp_data_b_destip': rfsoc_config['channel2']['destip'],
-        'port_a': rfsoc_config['channel1']['port'],
-        'port_b': rfsoc_config['channel2']['port'],
-    }
-    return {'rfsoc_config': kidpy_config}
-
-
-if __name__ == '__main__':
-    settings = Settings()
-    new_path = './new_settings.json'
-    settings.load_settings(new_path)
-    settings['app']['activeTab'] = 'data'
-    settings.save_settings(Path(new_path))
