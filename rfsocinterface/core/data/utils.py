@@ -214,7 +214,7 @@ def find_missed_packets_with_indices(
         if this_missed_packets > 0:
             missed_packets = np.vstack([missed_packets, [i, this_missed_packets]])
 
-    _logger.debug(f'{np.sum(missed_packets[:, 1])} missed packets')
+    _logger.info(f'find_missed_packets: {np.sum(missed_packets[:, 1])} missed packets')
     return missed_packets
 
 
@@ -350,6 +350,7 @@ def interpolate_missing_data(
     input_data_Q: h5py.Dataset,
     timestamp: h5py.Dataset,
     output_dset: h5py.Dataset,
+    output_pps_dset: h5py.Dataset,
     output_indices_dset: h5py.Dataset,
     packet_indices: h5py.Dataset,
     missed_packets: npt.NDArray,
@@ -391,6 +392,7 @@ def interpolate_missing_data(
         output_indices_dset.resize(old_size + np.size(this_interpolated_indices), axis=0)
         output_indices_dset[old_size:] = this_interpolated_indices
         output_dset[..., this_interpolated_indices] = new_data
+        output_pps_dset[this_interpolated_indices] = 0
 
 
 def get_detector_positions_no_interp(
@@ -563,6 +565,7 @@ def interpolate_telescope_position(
     else:
         fixed_positions[-median_offset:] = np.nan
     
-    _logger.debug(f'Shifting telescope positions by {-median_offset} samples')
+    _logger.info(f'interpolate_telescope_position: Shifting telescope positions by {-median_offset} samples')
+    pdb.set_trace()
 
     return fixed_positions

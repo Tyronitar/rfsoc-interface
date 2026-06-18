@@ -25,10 +25,10 @@ if __name__ == '__main__':
     dataset = 'data_freq'
     datasets = ['/vdsets/data_freq_diss']
 
-    find_fwhm = FindFWHM(
-        'az',
-        [241],
-    )
+    #find_fwhm = FindFWHM(
+    #    'az',
+    #    [241],
+    #)
 
     noise_removal_offres = RemoveElectronicsNoise(
         template_selection_indices='offres',
@@ -89,12 +89,14 @@ if __name__ == '__main__':
         plot_beammap,
     ])
 
-    date = '20260521'
-    setnum = 1010
+    date = '20260617'
+    setnum = 1004
 
     pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
 
     # pdata = ProcessedData.load(date, setnum, mode='a')
+    # pipeline.run(pdata)
+
     # pdb.set_trace()
     # map_val = pdata['map/map_val'][:]
     # map_az = pdata['map/map_az'][:]

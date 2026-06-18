@@ -332,9 +332,10 @@ class PlotBeamMap(DataRoutine):
 
         fom = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
         high_snr_ind = np.argwhere(
-            np.bitwise_and(
+            # np.bitwise_and(
                 amplitude > np.percentile(amplitude, high_snr_percentile),
-                fom > fom_cutoff)
+                # fom > fom_cutoff
+            # )
         ).flatten()
 
         # Create scatter plot of beam centers

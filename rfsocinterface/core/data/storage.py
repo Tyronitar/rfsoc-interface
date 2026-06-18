@@ -908,6 +908,12 @@ class ConsolidatedData(NewDataStorage):
                 compression='lzf',
                 shuffle=True,
             )
+            temp_pps = time_ordered_data_group.create_dataset(
+                'temp_pps',
+                shape=(total_samples,),
+                dtype=np.uint8,
+                chunks=chunk_shape_1d,
+            )
             # Detector Positions
             temp_detector_az = time_ordered_data_group.create_dataset(
                 'temp_detector_az',
@@ -958,6 +964,7 @@ class ConsolidatedData(NewDataStorage):
                     raw_data.adc_q,
                     temp_timestamp,
                     temp_data_IQ,
+                    temp_pps,
                     temp_interpolated_samples,
                     pkt_idx,
                     this_missed_packets,
@@ -974,6 +981,12 @@ class ConsolidatedData(NewDataStorage):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
                 temp_data_IQ[1, :, sample_indices] = chunk[valid_tone_index]
 
+            if raw_data.pps is not None:
+                _logger.info('ConsolidatedData: Copying pps dataset...')
+                for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.pps, chunk_size=4096):
+                    sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
+                    temp_pps[sample_indices] = chunk
+
             # Detector Positions
             if azel_exists:
                 _logger.info('ConsolidatedData: Computing detector positions...')
@@ -983,7 +996,7 @@ class ConsolidatedData(NewDataStorage):
                         timestamp_tel[:],
                         az_tel[:],
                         az_pps_tel[:],
-                        raw_data.pps[:],
+                        temp_pps[:],
                         direction='az',
                     )
                     corrected_za_tel = interpolate_telescope_position(
@@ -991,7 +1004,7 @@ class ConsolidatedData(NewDataStorage):
                         timestamp_tel[:],
                         za_tel[:],
                         za_pps_tel[:],
-                        raw_data.pps[:],
+                        temp_pps[:],
                         direction='za',
                     )
                     get_detector_positions_no_interp(
@@ -1054,6 +1067,7 @@ class ConsolidatedData(NewDataStorage):
             del time_ordered_data_group['temp_interpolated_samples']
             del time_ordered_data_group['temp_detector_az']
             del time_ordered_data_group['temp_detector_za']
+            del time_ordered_data_group['temp_pps']
 
         # Get rid of full timestamp now that data from all channels read
         del global_data_group['temp_timestamp']
