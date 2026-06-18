@@ -57,10 +57,10 @@ CompositeSweepDataType = TypeVar('CompositeSweepDataType', bound='CompositeSweep
 
 
 def simple_derivative_fits(
-    df: npt.NDArray,
+    df: npt.NDArray,  # noqa: ARG001
     freq: npt.NDArray,
     tone_list: npt.NDArray,
-    s21: npt.NDArray,  # noqa: ARG001
+    s21: npt.NDArray,
 ):
     """Perform a basic resoance fit finding the local minima."""
     # set up some preliminary values that we'll need
@@ -426,7 +426,8 @@ class LoSweepData:
                 path.stat().st_mtime
             ) < datetime.datetime.strptime(NEW_LO_SWEEP_FORMAT_DATE, '%Y%m%d'):
                 _logger.warning(
-                    f'LO sweep file {path!s} is from before {NEW_LO_SWEEP_FORMAT_DATE}. Attempting to load with backwards compatibility.'
+                    f'LO sweep file {path!s} is from before {NEW_LO_SWEEP_FORMAT_DATE}.'
+                    ' Attempting to load with backwards compatibility.'
                 )
                 tone_list = f['global_data/baseband_freqs'][:]
                 data = f['global_data/lo_sweep'][:]
@@ -446,8 +447,8 @@ class LoSweepData:
                 f_center = f.attrs['f_center']
                 tile_name = f.attrs['tile_name']
 
-                date = f.attrs['date'] if 'date' in f.attrs else None
-                hour = f.attrs['hour'] if 'hour' in f.attrs else None
+                date = f.attrs.get('date', None)
+                hour = f.attrs.get('hour', None)
 
         sweep = cls(
             tone_list,
@@ -467,7 +468,7 @@ class LoSweepData:
 
     @property
     def difference(self) -> npt.NDArray:
-        """The absolute difference of the fitted frequencies and the provided tones, in Hz."""
+        """The absolute difference of the fitted frequencies and the provided tones."""
         return np.abs(self.fit_f0 - self.detector_f)
 
     @property
@@ -527,7 +528,7 @@ class LoSweepData:
 
     @property
     def new_baseband_freqs(self) -> npt.NDArray:
-        """The new base band frequencies, based on the fit"""
+        """The new base band frequencies, based on the fit."""
         return self.fit_f0 - self.f_center
 
     @property
@@ -536,9 +537,11 @@ class LoSweepData:
         return self.detector_f - self.f_center
 
     def cancel_fit(self):
+        """Cancel fitting resonances."""
         self._fit_canceled = True
 
     def cancel_plot(self):
+        """Cancel plotting of this sweep."""
         self._plot_canceled = True
 
     def fit(self, callback: Callable | None = None, max_workers: int = 4):
@@ -575,8 +578,12 @@ class LoSweepData:
         """Plot the results of fitting the LO sweep.
 
         Arguments:
-            ncols (int): The number of columns to use in the figure. The figure will have
-                one inch width for each column.
+            ncols (int, optional): The number of columns to use in the figure. The
+                figure will have one inch width for each column.
+            callback (Callable, optional): Callback function to call after every plot is
+                generated. Defaults to None.
+            fig (Figure, optional): The figure to plot to. Will create a new figure if
+                set to None. Defaults to None
 
         Returns:
             (Figure): The generated figure showing the plot for each resonator.
