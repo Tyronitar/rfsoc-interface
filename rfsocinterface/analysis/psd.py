@@ -1,6 +1,7 @@
 """Code for computing the noise PSD."""
 
 import logging
+import typing
 from enum import StrEnum
 from pathlib import Path
 
@@ -84,6 +85,7 @@ class ComputeNoisePSD(DataRoutine):
             selection_indices=selection_indices,
         )
 
+    @typing.override
     def inputs(self, pdata: ProcessedData) -> list[str]:
         dsets = []
         bases = self.params['bases']
@@ -103,6 +105,7 @@ class ComputeNoisePSD(DataRoutine):
                     )
         return dsets
 
+    @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None) -> list[str]:
         # Initialize PSD group in the file if needed
         if not pdata.has('psd', exact_match=True):
@@ -130,7 +133,8 @@ class ComputeNoisePSD(DataRoutine):
                     data = pdata.data_freq_diss[:] / f[np.newaxis, :, np.newaxis]
                 case _:
                     raise ValueError(
-                        f'{self.name}: Cannot compute noise PSD for unknown basis "{basis}"'
+                        f'{self.name}: Cannot compute noise PSD for '
+                        f'unknown basis "{basis}"'
                     )
             if cut_time > 0:
                 n_samples_to_cut = np.round(cut_time * pdata.fs).astype(int)
@@ -226,8 +230,6 @@ def plot_psd_df_over_f(
     ax: plt.Axes = None,
     f0: float | None = None,
     dev_pwr: float | None = None,
-    adc_units_to_hz: float | None = None,
-    csd: npt.NDArray | None = None,
     offres_median: npt.NDArray | None = None,
     show_error_band: bool = False,
     error_band_min_percentile: float = 16,
@@ -262,10 +264,12 @@ def plot_psd_df_over_f(
             None (not included in the title).
         show_error_band (bool, optional): Whether to show the error band. Defaults
             to True.
-        error_band_min_perncentile (float, optional): Percentile of lower error bound
+        error_band_min_percentile (float, optional): Percentile of lower error bound
             for the plot. Defaults to 16.
-        error_band_max_perncentile (float, optional): Percentile of upper error bound
+        error_band_max_percentile (float, optional): Percentile of upper error bound
             for the plot. Defaults to 84.
+        show_flat_spectrum_level (bool, optional): Whether to show the flat spectrum
+            level in the plot. Defaults to False.
         offres_median (npt.NDArray, optional): Median PSD of the off-resonance tones to
             plot as a dashed line.
         flat_spectrum_search_bounds (tuple[float, float], optional): Frequency bounds to
@@ -275,7 +279,8 @@ def plot_psd_df_over_f(
         ylim (tuple[float, float], optional): y-axis limits for the plot. Defaults to
             None (automatic limits).
         title (str, optional): Title to give to the plot. Defaults to None.
-        label (str, optional): Label for the plot to use in the legend. Defaults to None.
+        label (str, optional): Label for the plot to use in the legend. Defaults to
+            None.
         add_legend (bool, optional): Whether to add a legend to the plot. Defaults to
             True.
         figure_kwargs (dict, optional): Keyword arguments to pass to `plt.figure` if a
@@ -333,7 +338,7 @@ def plot_psd_df_over_f(
         ' - '.join(filter(None, (super_label, label))) for super_label in super_labels
     ]
 
-    if psd.ndim == 3:
+    if psd.ndim == 3:  # noqa: PLR2004
         psd_med = np.median(psd, axis=1)
         plot_data_med = psd_med
     else:
@@ -360,7 +365,7 @@ def plot_psd_df_over_f(
     for j, this_label in enumerate(labels):
         # Error band
         if show_error_band:
-            if psd.ndim != 3:
+            if psd.ndim != 3:  # noqa: PLR2004
                 _logger.error('Cannot show error band for PSD with dimensions != 3.')
             else:
                 psd_min = np.percentile(psd[j], error_band_min_percentile, axis=0)
@@ -430,10 +435,12 @@ def plot_psd_dbc_hz(
             be created.
         show_error_band (bool, optional): Whether to show the error band. Defaults
             to True.
-        error_band_min_perncentile (float, optional): Percentile of lower error bound
+        error_band_min_percentile (float, optional): Percentile of lower error bound
             for the plot. Defaults to 16.
-        error_band_max_perncentile (float, optional): Percentile of upper error bound
+        error_band_max_percentile (float, optional): Percentile of upper error bound
             for the plot. Defaults to 84.
+        show_flat_spectrum_level (bool, optional): Whether to show the flat spectrum
+            level in the plot. Defaults to True.
         flat_spectrum_search_bounds (tuple[float, float], optional): Frequency bounds to
             search for the flat spectrum level. Defaults to (10, 50) Hz.
         xlim (tuple[float, float], optional): x-axis limits for the plot. Defaults to
@@ -441,7 +448,8 @@ def plot_psd_dbc_hz(
         ylim (tuple[float, float], optional): y-axis limits for the plot. Defaults to
             None (automatic limits).
         title (str, optional): Title to give to the plot. Defaults to None.
-        label (str, optional): Label for the plot to use in the legend. Defaults to None.
+        label (str, optional): Label for the plot to use in the legend. Defaults to
+            None.
         add_legend (bool, optional): Whether to add a legend to the plot. Defaults to
             True.
         figure_kwargs (dict, optional): Keyword arguments to pass to `plt.figure` if a
@@ -563,15 +571,15 @@ class PlotPSD(DataRoutine):
             *bases (PsdBasis): Variable length of bases to plot the PSD for.
             show_error_band (bool, optional): Whether to show the error band. Defaults
                 to True.
-            error_band_min_perncentile (float, optional): Percentile of lower error
+            error_band_min_percentile (float, optional): Percentile of lower error
                 bound for the plot. Defaults to 16.
-            error_band_max_perncentile (float, optional): Percentile of upper error
+            error_band_max_percentile (float, optional): Percentile of upper error
                 bound for the plot. Defaults to 84.
             title (str, optional): Title to give to the plots. Defaults to None.
-            show (bool, optional): Whether to show the plots after creating them. Defaults
-                to False. Frequency / Disspiation plots for individual resonators will
-                never be shown to screen, but this controls whether the on-resonance
-                tone PSD plot will be shown.
+            show (bool, optional): Whether to show the plots after creating them.
+                Defaults to False. Frequency / Disspiation plots for individual
+                resonators will never be shown to screen, but this controls whether the
+                on-resonance tone PSD plot will be shown.
             savefile (Path, optional): Path to save the plots to as a PDF. If None, the
                 plots will be saved to the same directory as the data with a default
                 name based on the data file. Defaults to None.
@@ -586,6 +594,7 @@ class PlotPSD(DataRoutine):
             savefile=savefile,
         )
 
+    @typing.override
     def inputs(self, pdata: ProcessedData) -> list[str]:
         dsets = []
         bases = self.params['bases']
@@ -598,6 +607,7 @@ class PlotPSD(DataRoutine):
                 dsets.append(f'/psd/{basis}/selection_indices')
         return dsets
 
+    @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None) -> list[str]:
         bases = self.params['bases']
         title = self.params['title']

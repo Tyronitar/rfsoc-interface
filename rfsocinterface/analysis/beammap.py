@@ -554,7 +554,6 @@ class PlotBeamMap(DataRoutine):
         return []
 
 
-# ruff: disable[F841]
 def combine_polarized_beammaps(
     pol1_data: ProcessedData,
     pol2_data: ProcessedData,
@@ -567,7 +566,6 @@ def combine_polarized_beammaps(
     Creates a new params_file with detector_delta_x, detector_delta_y,
         detector_beam_ampl, and detector_pol.
     """
-    import pdb
     onres_ind = pol1_data.onres_ind
     # old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']
     chanmask = pol1_data.chanmask
@@ -670,6 +668,3 @@ def combine_polarized_beammaps(
         # plt.legend()
         pdf.savefig()
         plt.show()
-
-    pdb.set_trace()
-# ruff: enable[F841]

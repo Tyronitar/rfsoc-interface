@@ -1,4 +1,5 @@
 """Code for plotting and analyzing a "noise blob"."""
+
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -87,11 +88,11 @@ if __name__ == '__main__':
     #     plt.title(f'LO Sweep for Resonator {i_res}')
     #     plt.plot(sweep_i, label='data_I')
     #     plt.plot(sweep_q, label='data_Q')
-        # plt.annotate(
-        #     f'$\\theta$ LO sweep = {np.degrees(pd.IQ_to_freq_diss_angle[i_res]):.03} '
-        #     'degrees',
-        #     (0, 0),
-        # )
+    # plt.annotate(
+    #     f'$\\theta$ LO sweep = {np.degrees(pd.IQ_to_freq_diss_angle[i_res]):.03} '
+    #     'degrees',
+    #     (0, 0),
+    # )
     #     plt.legend()
     # plt.show()
     pd.close()

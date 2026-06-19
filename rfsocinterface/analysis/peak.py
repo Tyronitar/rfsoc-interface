@@ -1,4 +1,5 @@
 """Code for finding and characterizing peaks in the detector response."""
+
 import logging
 import typing
 from collections.abc import Sequence
@@ -15,6 +16,7 @@ from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routin
 from rfsocinterface.core.utils import sigma_to_fwhm
 
 _logger = logging.getLogger(__name__)
+
 
 def gaussian_profile(parameters: npt.NDArray, x_vals: npt.NDArray) -> npt.NDArray:
     """Return a Gaussian. Used for peak fitting."""
@@ -45,6 +47,7 @@ def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
     """Compute standard deviation using historgram frequencies as weights."""
     return np.sqrt(var_histogram(val, freq))
 
+
 @register_routine
 class CheckFocus(DataRoutine):
     """Routine to check the detector's focus determine timing offsets.
@@ -52,6 +55,7 @@ class CheckFocus(DataRoutine):
     Assumes the data was collected in two dithers, out and back, with no secondary
     dither.
     """
+
     name = 'CheckFocus'
     version = '1.0.0'
 
@@ -93,8 +97,11 @@ class CheckFocus(DataRoutine):
 
     @typing.override
     def inputs(self, pdata: ProcessedData):
-        dset = '/vdsets/data_mK' if self.params['dataset'] == 'data_mK' else \
-            '/vdsets/data_freq_diss'
+        dset = (
+            '/vdsets/data_mK'
+            if self.params['dataset'] == 'data_mK'
+            else '/vdsets/data_freq_diss'
+        )
         direction = self.params['primary_direction']
         return [
             f'/vdsets/detector_{direction}',
@@ -111,12 +118,13 @@ class CheckFocus(DataRoutine):
             )
             return
         focus_group = pdata.create_group('focus')
+        focus_group.create_dataset('fwhms', shape=(pdata.n_tones,), dtype=np.float64)
         focus_group.create_dataset(
-            'fwhms', shape=(pdata.n_tones,), dtype=np.float64)
+            'amplitudes', shape=(pdata.n_tones,), dtype=np.float64
+        )
         focus_group.create_dataset(
-            'amplitudes', shape=(pdata.n_tones,), dtype=np.float64)
-        focus_group.create_dataset(
-            'good_resonators', shape=(pdata.n_tones,), dtype=np.uint8)
+            'good_resonators', shape=(pdata.n_tones,), dtype=np.uint8
+        )
 
     @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
@@ -149,7 +157,8 @@ class CheckFocus(DataRoutine):
                 last_good_sample = np.argwhere(~np.isnan(telescope_pos))[-1]
                 relative_pos = np.abs(telescope_pos - telescope_pos[first_good_sample])
                 samples_0 = np.argmax(
-                    (relative_pos >= fit_radius_deg) & ~np.isnan(telescope_pos))
+                    (relative_pos >= fit_radius_deg) & ~np.isnan(telescope_pos)
+                )
                 relative_pos = np.abs(telescope_pos - telescope_pos[last_good_sample])
                 samples_1 = np.where(
                     (relative_pos >= fit_radius_deg) & ~np.isnan(telescope_pos)
@@ -251,7 +260,8 @@ class CheckFocus(DataRoutine):
                     color='orange',
                 )
                 right_gaussian = gaussian_profile(
-                    res_right.x, telescope_pos[right_fit_ind])
+                    res_right.x, telescope_pos[right_fit_ind]
+                )
                 plt.plot(
                     telescope_pos[right_fit_ind],
                     right_gaussian,
@@ -270,13 +280,13 @@ class CheckFocus(DataRoutine):
                     telescope_pos[left_fit_ind],
                     data_segment[left_fit_ind],
                     label=(
-                        f'Left (${{{primary_direction.upper()}}}_0$ = '
-                        f'{left_az_0:.3f})',
+                        f'Left (${{{primary_direction.upper()}}}_0$ = {left_az_0:.3f})',
                     ),
                     color='green',
                 )
                 left_gaussian = gaussian_profile(
-                    res_left.x, telescope_pos[left_fit_ind])
+                    res_left.x, telescope_pos[left_fit_ind]
+                )
                 plt.plot(
                     telescope_pos[left_fit_ind],
                     left_gaussian,
@@ -292,8 +302,8 @@ class CheckFocus(DataRoutine):
                 )
 
                 scan_rate = (
-                    telescope_pos[right_peak_idx + 10] - \
-                        telescope_pos[right_peak_idx - 10]
+                    telescope_pos[right_peak_idx + 10]
+                    - telescope_pos[right_peak_idx - 10]
                 ) / (time[right_peak_idx + 10] - time[right_peak_idx - 10])
                 time_delay = (
                     (left_az_0 - right_az_0) / scan_rate / 2
@@ -322,8 +332,11 @@ class CheckFocus(DataRoutine):
                     telescope_pos[min(right_peak_idx + 50, len(telescope_pos) - 1)],
                 )
                 plt.xlabel(
-                    f'{"Azimuth" if primary_direction.lower() == "az" else\
-                        "Zenith Angle"} (degrees)'
+                    f'{
+                        "Azimuth"
+                        if primary_direction.lower() == "az"
+                        else "Zenith Angle"
+                    } (degrees)'
                 )
                 plt.ylabel(f'Detector Response ({units})')
                 plt.tight_layout(rect=[0, 0.15, 1, 1])
@@ -336,7 +349,8 @@ class CheckFocus(DataRoutine):
             pdata['focus/amplitudes'][good_resonators] = amplitudes
             pdata['focus/good_resonators'][good_resonators] = 1
             self._plot_summary_statistics(
-                fwhms, amplitudes, good_resonators, pdf, pdata)
+                fwhms, amplitudes, good_resonators, pdf, pdata
+            )
 
         return ['/focus/fwhms', '/focus/amplitudes', '/focus/good_resonators']
 
@@ -394,4 +408,3 @@ class CheckFocus(DataRoutine):
                 plt.close(fig)
             except Exception:  # noqa: BLE001
                 pass
-

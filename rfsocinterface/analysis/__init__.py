@@ -18,8 +18,8 @@ from rfsocinterface.analysis.psd import (
 
 __all__ = [
     'AnalyzeBeamMap',
-    'ComputeNoisePSD',
     'CheckFocus',
+    'ComputeNoisePSD',
     'PlotBeamMap',
     'PlotPSD',
     'PsdBasis',
