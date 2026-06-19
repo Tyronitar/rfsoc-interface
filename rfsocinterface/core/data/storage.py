@@ -30,6 +30,7 @@ from rfsocinterface.core.data.utils import (
     interpolate_missing_data,
     interpolate_timestamp_streaming,
     interpolate_telescope_position,
+    new_interp_tele_posistion,
     rotate_basis,
 )
 from rfsocinterface.core.sweeps import LoSweepData
@@ -970,6 +971,23 @@ class ConsolidatedData(NewDataStorage):
                     this_missed_packets,
                     valid_tone_index
                 )
+            if raw_data.pps is not None:
+                _logger.info('ConsolidatedData: Copying pps dataset...')
+                for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.pps, chunk_size=4096):
+                    sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
+                    temp_pps[sample_indices] = chunk
+            # if azel_exists:
+            #     _logger.info('ConsolidatedData: Computing detector positions...')
+            #     if use_pps and raw_data.pps is not None and az_pps_tel is not None and za_pps_tel is not None:
+            #         corrected_az_tel = new_interp_tele_posistion(
+            #             temp_timestamp,
+            #             timestamp_tel[:],
+            #             az_tel[:],
+            #             az_pps_tel[:],
+            #             temp_pps[:],
+            #             direction='az',
+            #         )
+            # pdb.set_trace()
 
             _logger.info('ConsolidatedData: Copying Raw IQ data...')
             chunk_shape_read_adc = compute_chunk_shape((1024, ), 8, max_chunk_size=n_samples)
@@ -981,17 +999,13 @@ class ConsolidatedData(NewDataStorage):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
                 temp_data_IQ[1, :, sample_indices] = chunk[valid_tone_index]
 
-            if raw_data.pps is not None:
-                _logger.info('ConsolidatedData: Copying pps dataset...')
-                for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.pps, chunk_size=4096):
-                    sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
-                    temp_pps[sample_indices] = chunk
+
 
             # Detector Positions
             if azel_exists:
-                _logger.info('ConsolidatedData: Computing detector positions...')
+                _logger.info('ConsolidatedData: Correlating telescope pointing information...')
                 if use_pps and raw_data.pps is not None and az_pps_tel is not None and za_pps_tel is not None:
-                    corrected_az_tel = interpolate_telescope_position(
+                    corrected_az_tel = new_interp_tele_posistion(
                         temp_timestamp,
                         timestamp_tel[:],
                         az_tel[:],
@@ -999,7 +1013,7 @@ class ConsolidatedData(NewDataStorage):
                         temp_pps[:],
                         direction='az',
                     )
-                    corrected_za_tel = interpolate_telescope_position(
+                    corrected_za_tel = new_interp_tele_posistion(
                         temp_timestamp,
                         timestamp_tel[:],
                         za_tel[:],
@@ -1007,6 +1021,7 @@ class ConsolidatedData(NewDataStorage):
                         temp_pps[:],
                         direction='za',
                     )
+                    _logger.info('ConsolidatedData: Computing detector positions...')
                     get_detector_positions_no_interp(
                         corrected_az_tel,
                         corrected_za_tel,

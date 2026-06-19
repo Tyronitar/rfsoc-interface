@@ -89,8 +89,8 @@ if __name__ == '__main__':
         plot_beammap,
     ])
 
-    date = '20260617'
-    setnum = 1004
+    date = '20260521'
+    setnum = 1010
 
     pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
 

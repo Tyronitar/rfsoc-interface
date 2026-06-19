@@ -19,7 +19,7 @@ import matplotlib as mpl
 
 from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
 from rfsocinterface.core.utils import PathJSONEncoder
-mpl.use('QtAgg')
+# mpl.use('QtAgg')
 import matplotlib.pyplot as plt
 
 
