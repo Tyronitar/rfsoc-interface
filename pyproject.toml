@@ -130,9 +130,13 @@ extend-ignore-names = [
     "columnCount",
     "*mK*",
     "*IQ*",
-    "*data_I*",
-    "*data_Q*",
+    "*_IQ_*",
+    "*_IQ",
+    "*_{I,Q}",
+    "*_{I,Q}_*",
     "*Hz*",
+    "*dB*",
+    "*TOD*",
 ]
 
 [tool.ruff.lint.pylint]
