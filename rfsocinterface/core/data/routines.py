@@ -176,7 +176,7 @@ class DataRoutine:
         step_group = hist.create_group(step_name)
 
         for k, v in meta.items():
-            if isinstance(v, (dict, list)):
+            if isinstance(v, dict | list):
                 step_group.attrs[k] = json.dumps(v, cls=PathJSONEncoder)
             else:
                 step_group.attrs[k] = v

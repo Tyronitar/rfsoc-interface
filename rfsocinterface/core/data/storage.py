@@ -632,7 +632,7 @@ class ProcessedData(DataStorage):
         return self.get_channel_group(i_chan).attrs['f_center']
 
     def detector_f(self) -> npt.NDArray:
-        """The frequency of each tone."""
+        """The absolute frequency of each tone."""
         f = self.baseband_freqs
         i_tone = 0
         for channel_group in self.channels():
