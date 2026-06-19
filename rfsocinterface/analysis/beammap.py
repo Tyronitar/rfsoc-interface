@@ -1,7 +1,8 @@
 """Beam map analysis routines."""
 
 import logging
-import pdb
+import typing
+from typing import ClassVar
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,7 +29,7 @@ from rfsocinterface.core.utils import (
 _logger = logging.getLogger(__name__)
 
 
-def Gauss_2d(
+def gauss_2d(
     xy_coords: tuple[npt.NDArray, npt.NDArray],
     amp: float,
     x0: float,
@@ -37,6 +38,7 @@ def Gauss_2d(
     fwhm_y: float,
     offset: float,
 ) -> npt.NDArray:
+    """Create a 2D Gaussian."""
     (x, y) = xy_coords
     sigma_x = fwhm_x / (2 * np.sqrt(2 * np.log(2)))
     sigma_y = fwhm_y / (2 * np.sqrt(2 * np.log(2)))
@@ -71,13 +73,13 @@ class AnalyzeBeamMap(DataRoutine):
     name = 'AnalyzeBeamMap'
     version = '1.0.0'
 
-    requires = {
+    requires: ClassVar[set[str]] = {
         '/map/map_val',
         '/map/map_az',
         '/map/map_za',
     }
 
-    produces = {
+    produces: ClassVar[set[str]] = {
         '/beammap/az_center',
         '/beammap/za_center',
         '/beammap/amplitude',
@@ -94,6 +96,7 @@ class AnalyzeBeamMap(DataRoutine):
         max_fwhm: float = 1.0,
         az_bounds_offset: float = 0.2,
         za_bounds_offset: float = 0.2,
+        max_radius: float = 0.1,
         maxfev: int = 10000,
     ):
         """Initialize the AnalyzeBeamMap routine.
@@ -108,6 +111,8 @@ class AnalyzeBeamMap(DataRoutine):
             za_bounds_offset (float, optional): Relative offset to use when determining
                 the bounds of the center of the Gaussian in zenith angle. Defaults to
                 0.2.
+            max_radius (float, optional): The maximum radius to use when determining the
+                location of the bright source in teh map. Defaults to 0.1.
             maxfev (int, optional): Maximum function evaluations to try before
                 abandoning the fit. Defaults to 10000.
         """
@@ -117,16 +122,19 @@ class AnalyzeBeamMap(DataRoutine):
             max_fwhm=max_fwhm,
             az_bounds_offset=abs(az_bounds_offset),
             za_bounds_offset=abs(za_bounds_offset),
+            max_radius=max_radius,
             maxfev=maxfev,
         )
 
+    @typing.override
     def inputs(self, pdata):
         return list(self.requires)
 
     def _initialize_datasets(self, pdata: ProcessedData):
         if pdata.has('beammap', exact_match=True):
             _logger.warning(
-                f'{self.name}: Beam Map group already exists in the file; overwriting datasets.'
+                f'{self.name}: Beam Map group already exists in the file; '
+                'overwriting datasets.'
             )
             del pdata['beammap']
         beammap_group = pdata.create_group('beammap')
@@ -138,6 +146,7 @@ class AnalyzeBeamMap(DataRoutine):
         beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
 
+    @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
         self._initialize_datasets(pdata)
 
@@ -159,6 +168,7 @@ class AnalyzeBeamMap(DataRoutine):
         az_bounds_offset = self.params['az_bounds_offset']
         za_bounds_offset = self.params['za_bounds_offset']
         maxfev = self.params['maxfev']
+        max_radius = self.params['max_radius']
 
         n_tones = pdata.onres_ind.size
         _logger.info(f'{self.name}: Analyzing beam map...')
@@ -173,7 +183,7 @@ class AnalyzeBeamMap(DataRoutine):
             az_max = az[az_idx, :]
             za_max = za[:, za_idx]
             separation = np.sqrt((az - az_max[0]) ** 2 + (za - za_max[0]) ** 2)
-            index = np.argwhere(separation < 0.1)
+            index = np.argwhere(separation < max_radius)
             flat_index = np.ravel_multi_index(
                 (index[:, 0], index[:, 1]), map_val[i_res].shape
             )
@@ -223,7 +233,7 @@ class AnalyzeBeamMap(DataRoutine):
             )
             try:
                 popt, pcov = curve_fit(
-                    Gauss_2d,
+                    gauss_2d,
                     (this_az, this_za),
                     this_val,
                     p0=start_params,
@@ -234,7 +244,8 @@ class AnalyzeBeamMap(DataRoutine):
                 )
             except RuntimeError:
                 _logger.warning(
-                    f'{self.name}: Fit for tone {i_res} failed. Setting all values to zero.'
+                    f'{self.name}: Fit for tone {i_res} failed.'
+                    'Setting all values to zero.'
                 )
                 popt = np.zeros(6)
                 pcov = np.zeros((6, 6))
@@ -250,7 +261,7 @@ class AnalyzeBeamMap(DataRoutine):
                 (
                     (
                         this_val
-                        - Gauss_2d(
+                        - gauss_2d(
                             (this_az, this_za),
                             popt[0],
                             popt[1],
@@ -276,7 +287,7 @@ class PlotBeamMap(DataRoutine):
     name = 'PlotBeamMap'
     version = '1.1.0'
 
-    requires = {
+    requires: ClassVar[set[str]] = {
         '/map/map_val',
         '/map/map_az',
         '/map/map_za',
@@ -307,8 +318,10 @@ class PlotBeamMap(DataRoutine):
                 SNR. Defaults to 55.
             fom_cutoff (float, optional): The minimum FOM value to consider for high
                 SNR. Defaults to 50.
-            nrows (int, optional): The number of rows for plots in one page. Defaults to 10.
-            ncols (int, optional): The number of columns for plots in one page. Defaults to 10.
+            nrows (int, optional): The number of rows for plots in one page. Defaults to
+                10.
+            ncols (int, optional): The number of columns for plots in one page. Defaults
+                to 10.
             show_all (bool, optional): Whether to include all resonances in the pdf.
                 If False, will only who on-resonance tones. Defaults to False.
             savefile (str, optional): Where to save the pdf. If `None` is provided, will
@@ -330,9 +343,11 @@ class PlotBeamMap(DataRoutine):
             dpi=dpi,
         )
 
+    @typing.override
     def inputs(self, pdata: ProcessedData):
         return list(self.requires)
 
+    @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
         # Load necessary datasets
         az_center = pdata['beammap/az_center'][:]
@@ -539,42 +554,45 @@ class PlotBeamMap(DataRoutine):
         return []
 
 
+# ruff: disable[F841]
 def combine_polarized_beammaps(
     pol1_data: ProcessedData,
     pol2_data: ProcessedData,
     new_tile_name: str,
-    amplitude_normalization_percentile: float = 75,
+    amplitude_normalization_percentile: float = 75,  # noqa: ARG001
     pdf_filename: str | None = None,
 ):
     """Determines various tile parameters from two beam maps of opposite polarizations.
 
-        Creates a new params_file with detector_delta_x, detector_delta_y, detector_beam_ampl,
-    and detector_pol.
-
+    Creates a new params_file with detector_delta_x, detector_delta_y,
+        detector_beam_ampl, and detector_pol.
     """
+    import pdb
     onres_ind = pol1_data.onres_ind
-    old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']
+    # old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']
     chanmask = pol1_data.chanmask
 
     az_center_pol1 = pol1_data['beammap/az_center'][:]
     za_center_pol1 = pol1_data['beammap/za_center'][:]
     amplitude_pol1 = pol1_data['beammap/amplitude'][:]
-    chisq_pol1 = pol1_data['beammap/chisq'][:]
-    fwhm_az_pol1 = pol1_data['beammap/fwhm_az'][:]
-    fwhm_za_pol1 = pol1_data['beammap/fwhm_za'][:]
+    # chisq_pol1 = pol1_data['beammap/chisq'][:]
+    # fwhm_az_pol1 = pol1_data['beammap/fwhm_az'][:]
+    # fwhm_za_pol1 = pol1_data['beammap/fwhm_za'][:]
 
     az_center_pol2 = pol2_data['beammap/az_center'][:]
     za_center_pol2 = pol2_data['beammap/za_center'][:]
     amplitude_pol2 = pol2_data['beammap/amplitude'][:]
-    chisq_pol2 = pol2_data['beammap/chisq'][:]
-    fwhm_az_pol2 = pol2_data['beammap/fwhm_az'][:]
-    fwhm_za_pol2 = pol2_data['beammap/fwhm_za'][:]
+    # chisq_pol2 = pol2_data['beammap/chisq'][:]
+    # fwhm_az_pol2 = pol2_data['beammap/fwhm_az'][:]
+    # fwhm_za_pol2 = pol2_data['beammap/fwhm_za'][:]
 
     # Normalize amplitudes
-    sorted_amp_pol1 = np.argsort(amplitude_pol1)
-    sorted_amp_pol2 = np.argsort(amplitude_pol2)
-    # amplitude_pol1 /= np.percentile(amplitude_pol1[onres_ind], amplitude_normalization_percentile)
-    # amplitude_pol2 /= np.percentile(amplitude_pol2[onres_ind], amplitude_normalization_percentile)
+    # sorted_amp_pol1 = np.argsort(amplitude_pol1)
+    # sorted_amp_pol2 = np.argsort(amplitude_pol2)
+    # amplitude_pol1 /= np.percentile(
+    #     amplitude_pol1[onres_ind], amplitude_normalization_percentile)
+    # amplitude_pol2 /= np.percentile(
+    #     amplitude_pol2[onres_ind], amplitude_normalization_percentile)
 
     # Correct for shifts in source position
     az_center = np.zeros(chanmask.size)
@@ -614,7 +632,7 @@ def combine_polarized_beammaps(
     if pdf_filename is None:
         pdf_filename = get_detector_pos_pdf_template(pol1_data.date, new_tile_name)
     pol1 = np.argwhere(detector_pol == 1).flatten()
-    pol2 = np.argwhere(detector_pol == 2).flatten()
+    pol2 = np.argwhere(detector_pol == 2).flatten()  # noqa: PLR2004
     with PdfPages(pdf_filename) as pdf:
         plt.scatter(
             az_center[pol2],
@@ -654,3 +672,4 @@ def combine_polarized_beammaps(
         plt.show()
 
     pdb.set_trace()
+# ruff: enable[F841]
