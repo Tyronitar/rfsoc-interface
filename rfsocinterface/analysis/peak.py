@@ -1,4 +1,4 @@
-import pdb
+"""Code for finding and characterizing peaks in the detector response."""
 from typing import Literal
 
 import matplotlib.patches as mpatches
@@ -13,6 +13,7 @@ from rfsocinterface.core.utils import sigma_to_fwhm
 
 
 def gaussian_profile(parameters: npt.NDArray, x_vals: npt.NDArray) -> npt.NDArray:
+    """Return a Gaussian. Used for peak fitting."""
     a0, a1, mu, sigma = parameters
     return a0 + a1 * np.exp(-0.5 * ((x_vals - mu) / sigma) ** 2)
 
@@ -20,20 +21,24 @@ def gaussian_profile(parameters: npt.NDArray, x_vals: npt.NDArray) -> npt.NDArra
 def loss_function(
     parameters: npt.NDArray, x_vals: npt.NDArray, y_vals: npt.NDArray
 ) -> npt.NDArray:
+    """Compare the expected Gaussian to the expected result."""
     model_vals = gaussian_profile(parameters, x_vals)
     return y_vals - model_vals
 
 
 def mean_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    """Compute a weighted mean using historgram frequencies as weights."""
     return np.average(val, weights=freq)
 
 
 def var_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    """Compute variance using historgram frequencies as weights."""
     dev = freq * (val - mean_histogram(val, freq)) ** 2
     return dev.sum() / freq.sum()
 
 
 def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    """Compute standard deviation using historgram frequencies as weights."""
     return np.sqrt(var_histogram(val, freq))
 
 
@@ -345,6 +350,7 @@ class FindFWHM(DataRoutine):
         ]
 
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
+        import pdb
         primary_direction = self.params['primary_direction']
         resonators = self.params['resonators']
         fit_radius_deg = self.params['fit_radius_deg']
