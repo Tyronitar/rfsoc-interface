@@ -105,6 +105,22 @@ task-tags = [
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 
+extend-safe-fixes = [
+    "B006",
+    "C408",
+    "C400",
+    "D415",
+    "PLC0414",
+    "PLR1714",
+    "RET503",
+    "RET504",
+    "RUF013",
+    "SIM102",
+    "SIM105",
+    "SIM117",
+    "W291",
+]
+
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 

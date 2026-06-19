@@ -138,7 +138,7 @@ class AnalyzeBeamMap(DataRoutine):
         beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
 
-    def run(self, pdata: ProcessedData, inputs: list[str] = None):
+    def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
         self._initialize_datasets(pdata)
 
         az = pdata['map/map_az'][:][:, np.newaxis]
@@ -296,7 +296,7 @@ class PlotBeamMap(DataRoutine):
         nrows: int = 10,
         ncols: int = 10,
         show_all: bool = True,
-        savefile: str = None,
+        savefile: str | None = None,
         save_dir: str = DEFAULT_DATA_DIRECTORY,
         dpi: float = 300,
     ):
@@ -333,7 +333,7 @@ class PlotBeamMap(DataRoutine):
     def inputs(self, pdata: ProcessedData):
         return list(self.requires)
 
-    def run(self, pdata: ProcessedData, inputs: list[str] = None):
+    def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
         # Load necessary datasets
         az_center = pdata['beammap/az_center'][:]
         za_center = pdata['beammap/za_center'][:]
@@ -499,10 +499,10 @@ class PlotBeamMap(DataRoutine):
                     bbox_transform=fig.transFigure,
                     pad=bbox_pad,
                     borderpad=0,
-                    prop=dict(
+                    prop={
                         # color='white',
-                        horizontalalignment='center',
-                    ),
+                        'horizontalalignment': 'center',
+                    },
                 )
                 # t.patch.set_alpha(0.25)
                 # t.patch.set_color('black')
@@ -544,7 +544,7 @@ def combine_polarized_beammaps(
     pol2_data: ProcessedData,
     new_tile_name: str,
     amplitude_normalization_percentile: float = 75,
-    pdf_filename: str = None,
+    pdf_filename: str | None = None,
 ):
     """Determines various tile parameters from two beam maps of opposite polarizations.
 

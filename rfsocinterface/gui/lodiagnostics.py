@@ -4,6 +4,7 @@ import matplotlib as mpl
 
 mpl.use('QtAgg')
 
+import contextlib
 import logging
 import re
 import time
@@ -398,9 +399,8 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         self.redrawn_axes = set()
         self.rfsoc = rfsoc
         self.channel = channel
-        if rfsoc is not None:
-            if channel is None:
-                raise ValueError('Must specify a channel when `rfsoc` is set.')
+        if rfsoc is not None and channel is None:
+            raise ValueError('Must specify a channel when `rfsoc` is set.')
 
     def set_window_name(self, name: str):
         self.setWindowTitle(
@@ -454,10 +454,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         super().accept()
 
     def closeEvent(self, event: QCloseEvent):
-        if self.edited:
-            if not self.close_without_saving():
-                event.ignore()
-                return
+        if self.edited and not self.close_without_saving():
+            event.ignore()
+            return
         event.accept()
 
     def close_without_saving(self) -> bool:
@@ -587,6 +586,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         if res is not None:
             #     # self.set_figure(res)
             return res
+        return None
 
     def toggle_unflagged(self):
         """Toggle whether the unflagged resonator plots are shown."""
@@ -631,8 +631,7 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
 
 
 def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float = ATOL_EPSILON):
-    res = np.allclose(np.real(line.get_xdata()[0]), event.xdata, atol=epsilon), {}
-    return res
+    return np.allclose(np.real(line.get_xdata()[0]), event.xdata, atol=epsilon), {}
 
 
 class SaveParamsDialog(QDialog):
@@ -715,6 +714,7 @@ class SaveParamsDialog(QDialog):
                 if not overwrite:
                     return None
             return super().accept()
+        return None
 
 
 class BlindSweepDialog(QDialog):
@@ -852,18 +852,18 @@ class BlindSweepDialog(QDialog):
         # The first n_tones lines should be the S21 traces for each tone
         return self.ax.lines[self.n_tones :]
 
-    def find_resonances(self, callback: Callable = None, **kwargs):
+    def find_resonances(self, callback: Callable | None = None, **kwargs):
         f0, depths = self.data.find_resonances(**kwargs)
         self.f0 = f0
         self.depths = depths
         if callback is not None:
             callback()
 
-    def find_resonances_and_plot(self, callback: Callable = None, **kwargs):
+    def find_resonances_and_plot(self, callback: Callable | None = None, **kwargs):
         self.find_resonances(**kwargs)
         self.plot(callback=callback)
 
-    def plot(self, callback: Callable = None):
+    def plot(self, callback: Callable | None = None):
         self.replot_figure(self.data.plot_blind_sweep, self.f0, callback=callback)
         # fig = self.data.plot_blind_sweep(f0)
         # self.set_figure(fig)
@@ -1232,10 +1232,8 @@ class PowerSweepDialog(QDialog):
                             self.pdf_viewer.backend.cleanup()
                 except Exception:
                     pass
-                try:
+                with contextlib.suppress(Exception):
                     self.pdf_viewer.deleteLater()
-                except Exception:
-                    pass
         except Exception:
             pass
 

@@ -77,9 +77,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.closeWindow.connect(self.close)
 
     def get_current_image(self) -> tuple[npt.NDArray, float]:
-        with self.camera_array_lock:
-            with self.timestamp_array_lock:
-                return self.camera_array[:], self.timestamp_array[:]
+        with self.camera_array_lock, self.timestamp_array_lock:
+            return self.camera_array[:], self.timestamp_array[:]
 
     def _make_telescope_controller(self):
         from rfsocinterface.core.telescope import make_controller

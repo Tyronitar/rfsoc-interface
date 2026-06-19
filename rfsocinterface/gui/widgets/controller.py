@@ -5,7 +5,7 @@ from rfsocinterface.gui.uic.controller_ui import Ui_Controller
 
 
 class Controller(QWidget, Ui_Controller):
-    """Widget for Handling directional input"""
+    """Widget for Handling directional input."""
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)

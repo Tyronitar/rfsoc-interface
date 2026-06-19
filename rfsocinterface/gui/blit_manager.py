@@ -37,9 +37,8 @@ class BlitManager:
     def on_draw(self, event: DrawEvent):
         """Callback to register with 'draw_event'."""
         cv = self.canvas
-        if event is not None:
-            if event.canvas != cv:
-                raise RuntimeError
+        if event is not None and event.canvas != cv:
+            raise RuntimeError
         # Copy the background before drawing
         self._bg = cv.copy_from_bbox(cv.figure.bbox)
         self._draw_animated()

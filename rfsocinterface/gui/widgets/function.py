@@ -30,11 +30,11 @@ class FunctionWidget(QWidget):
     def __init__(
         self,
         fn: Callable[P, R],
-        args: list[
-            tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]
-        ] = [],
+        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]] | None = None,
         parent=None,
     ):
+        if args is None:
+            args = []
         super().__init__(parent=parent)
         self.fn = fn
         self.args: list[tuple[str, tuple[ArgumentType, ...]]] = []
@@ -148,13 +148,13 @@ class FunctionDragItem(ClickableDragItem):
     def __init__(
         self,
         fn: Callable[P, R],
-        args: list[
-            tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]
-        ] = [],
-        label: str = None,
+        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]] | None = None,
+        label: str | None = None,
         *init_args,
         **init_kwargs,
     ):
+        if args is None:
+            args = []
         if not label:
             label = fn.__name__
         super().__init__(label, *init_args, **init_kwargs)
@@ -204,9 +204,7 @@ class DragFunctionWidget(QWidget):
         self,
         label: str,
         fn: Callable,
-        args: list[
-            tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]
-        ] = [],
+        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]] | None = None,
     ) -> FunctionDragItem:
         pass
 
@@ -247,7 +245,7 @@ class DragFunctionWidget(QWidget):
     def mousePressEvent(self, event: QMouseEvent):
         child = self.childAt(event.position())
         # Clicking off of the list items or parameters should deselect
-        if child is None or child == self.drop_container or child == self.drag:
+        if child is None or child in (self.drop_container, self.drag):
             self.drag.set_active_item(None)
             self.func_container.setCurrentIndex(0)
         return super().mousePressEvent(event)
@@ -300,9 +298,7 @@ class MultiSectionDragFunctionWidget(QWidget):
         i_section: int,
         label: str,
         fn: Callable,
-        args: list[
-            tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]
-        ] = [],
+        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]] | None = None,
     ) -> FunctionDragItem:
         pass
 
@@ -350,7 +346,7 @@ class MultiSectionDragFunctionWidget(QWidget):
     def mousePressEvent(self, event: QMouseEvent):
         child = self.childAt(event.position())
         # Clicking off of the list items or parameters should deselect
-        if child is None or child == self.drop_container or child == self.drag:
+        if child is None or child in (self.drop_container, self.drag):
             self.drag.set_active_item(-1, None)
             self.func_container.setCurrentIndex(0)
         return super().mousePressEvent(event)

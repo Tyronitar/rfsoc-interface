@@ -877,8 +877,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         if not self.fit_power_sweeps(sweeps):
             return False
 
-        plot_complete = self.plot_power_sweeps(selected_channels, sweeps)
-        return plot_complete
+        return self.plot_power_sweeps(selected_channels, sweeps)
 
     def setup_power_sweeps(
         self, selected_channels: list[tuple[RFSoCWrapper, int]]
@@ -1076,7 +1075,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return levels
 
     def _write_new_tones(self, sweep_data: LoSweepData, rfsoc: RFSoCWrapper, chan: int):
-        """Write the new tones from fitting an LO Sweep to the RFSoC"""
+        """Write the new tones from fitting an LO Sweep to the RFSoC."""
         tone_file = get_filename(
             file_type='tonelist', tile_name=rfsoc.get_tile_name(chan)
         )

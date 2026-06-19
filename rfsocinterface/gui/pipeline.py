@@ -129,6 +129,7 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         d = RoutineSelectionDialog(self)
         if d.exec():
             return d.combo_box.currentText()
+        return None
 
     def add_routine(self, routine_type_name: str, *args):
         routine_cls: type[DataRoutine] = ROUTINE_NAME_MAP[routine_type_name]

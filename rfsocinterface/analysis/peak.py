@@ -344,7 +344,7 @@ class FindFWHM(DataRoutine):
             '/global_data/timestamp',
         ]
 
-    def run(self, pdata: ProcessedData, inputs: list[str] = None):
+    def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
         primary_direction = self.params['primary_direction']
         resonators = self.params['resonators']
         fit_radius_deg = self.params['fit_radius_deg']

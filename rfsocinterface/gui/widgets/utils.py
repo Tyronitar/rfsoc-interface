@@ -64,7 +64,7 @@ class ArgumentType(IntEnum):
 
 
 def layout_widgets(layout: QLayout) -> list[QWidget]:
-    """Get widgets contained in layout"""
+    """Get widgets contained in layout."""
     return [layout.itemAt(i).widget() for i in range(layout.count())]
 
 

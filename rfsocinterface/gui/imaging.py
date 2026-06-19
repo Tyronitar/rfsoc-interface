@@ -55,9 +55,11 @@ class DitherPatternWidget(FunctionWidget):
         fn: Callable[Concatenate[str, PathLike, P], Any],
         command: str,
         file_func: Callable[[], PathLike],
-        args: list[tuple] = [],
+        args: list[tuple] | None = None,
         parent=None,
     ):
+        if args is None:
+            args = []
         super().__init__(fn, args, parent)
         self.command = command
         self.file_func = file_func

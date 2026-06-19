@@ -35,7 +35,7 @@ from rfsocinterface.core.telescope import (
 from rfsocinterface.core.utils import TabName
 from rfsocinterface.gui.main_widget import TelescopeMainWidget
 from rfsocinterface.gui.uic.telescope_control_ui import (
-    Ui_TelescopeControlWidget as Ui_TelescopeControlWidget,
+    Ui_TelescopeControlWidget,
 )
 from rfsocinterface.gui.widgets import get_num_value
 from rfsocinterface.gui.widgets.canvas import ToolbarCanvas

@@ -61,7 +61,7 @@ def test_copy_and_update(tmpdir, field: str, dtype: np.dtype, size, low, high):
     params = RFSoCParameters.new_file(tile_name, n_tones, params_dir=tmpdir)
 
     rng = np.random.default_rng()
-    if dtype == np.int8 or dtype == int:
+    if dtype in (np.int8, int):
         new_val = rng.integers(low, high, size, dtype=dtype)
     else:
         new_val = rng.random(size, dtype=dtype)

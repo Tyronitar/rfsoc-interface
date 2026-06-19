@@ -103,7 +103,7 @@ class ComputeNoisePSD(DataRoutine):
                     )
         return dsets
 
-    def run(self, pdata: ProcessedData, inputs: list[str] = None) -> list[str]:
+    def run(self, pdata: ProcessedData, inputs: list[str] | None = None) -> list[str]:
         # Initialize PSD group in the file if needed
         if not pdata.has('psd', exact_match=True):
             psd_group = pdata.create_group('psd')
@@ -234,12 +234,12 @@ def plot_psd_df_over_f(
     error_band_max_percentile: float = 84,
     show_flat_spectrum_level: bool = False,
     flat_spectrum_search_bounds: tuple[float, float] = (10, 50),
-    xlim: tuple[float, float] = None,
-    ylim: tuple[float, float] = None,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
     title: str | None = None,
-    label: str = None,
+    label: str | None = None,
     add_legend: bool = True,
-    figure_kwargs: dict = {},
+    figure_kwargs: dict | None = None,
     freq_color: str = 'b',
     diss_color: str = 'o',
     offres_color: str = 'r',
@@ -296,6 +296,8 @@ def plot_psd_df_over_f(
         (Figure | None): If no `ax` was provided, a new figure is generated to
             create the plot and is returned.
     """
+    if figure_kwargs is None:
+        figure_kwargs = {}
     fig = None
 
     # Create figure if needed
@@ -395,6 +397,7 @@ def plot_psd_df_over_f(
     if fig is not None:
         fig.tight_layout()
         return fig
+    return None
 
 
 def plot_psd_dbc_hz(
@@ -406,12 +409,12 @@ def plot_psd_dbc_hz(
     error_band_max_percentile: float = 84,
     show_flat_spectrum_level: bool = True,
     flat_spectrum_search_bounds: tuple[float, float] = (10, 50),
-    xlim: tuple[float, float] = None,
-    ylim: tuple[float, float] = None,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
     title: str | None = None,
-    label: str = None,
+    label: str | None = None,
     add_legend: bool = True,
-    figure_kwargs: dict = {},
+    figure_kwargs: dict | None = None,
     color: str = 'b',
     title_fontsize: int = 16,
     axis_label_fontsize: int = 16,
@@ -455,6 +458,8 @@ def plot_psd_dbc_hz(
         (Figure | None): If no `ax` was provided, a new figure is generated to
             create the plot and is returned.
     """
+    if figure_kwargs is None:
+        figure_kwargs = {}
     fig = None
 
     # Create figure if needed
@@ -527,6 +532,7 @@ def plot_psd_dbc_hz(
     if fig is not None:
         fig.tight_layout()
         return fig
+    return None
 
 
 @register_routine
@@ -547,9 +553,9 @@ class PlotPSD(DataRoutine):
         show_error_band: bool = True,
         error_band_min_percentile: float = 16,
         error_band_max_percentile: float = 84,
-        title: str = None,
+        title: str | None = None,
         show: bool = False,
-        savefile: Path = None,
+        savefile: Path | None = None,
     ):
         """Initialize the PlotPSD routine.
 
@@ -592,7 +598,7 @@ class PlotPSD(DataRoutine):
                 dsets.append(f'/psd/{basis}/selection_indices')
         return dsets
 
-    def run(self, pdata: ProcessedData, inputs: list[str] = None) -> list[str]:
+    def run(self, pdata: ProcessedData, inputs: list[str] | None = None) -> list[str]:
         bases = self.params['bases']
         title = self.params['title']
         show_error_band = self.params['show_error_band']
@@ -612,10 +618,10 @@ class PlotPSD(DataRoutine):
                         subtitles = ['I', 'Q', 'Average']
                     else:
                         subtitles = ['Gain', 'Phase', 'Average']
-                    titles = list(
+                    titles = [
                         ' - '.join(filter(None, (title, subtitle)))
                         for subtitle in subtitles
-                    )
+                    ]
                     with PdfPages(pdf_path) as pdf:
                         fig0 = plot_psd_dbc_hz(
                             basis_group['freq'][:],
