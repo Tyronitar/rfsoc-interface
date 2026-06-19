@@ -282,7 +282,7 @@ class CameraController:
                             return
             self._initialized = True
             _camera_logger.debug('Succesfully initialized VMB Camera System')
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             msg = f'Error encoutered initializing camera controller: {e}'
             _camera_logger.critical(msg, exc_info=True)
             self.send('err', 'CRITICAL', msg)

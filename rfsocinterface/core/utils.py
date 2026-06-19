@@ -83,6 +83,8 @@ FLAGGED_RESONANCE_COLOR = 'yellow'
 SELECTED_RESONANCE_COLOR = 'dodgerblue'
 EDITED_RESONANCE_COLOR = 'limegreen'
 
+MAX_ATTENUATION = 31.75
+
 
 class TabName(StrEnum):
     """Possible tab names for the GUI."""
@@ -125,7 +127,9 @@ def mHz_coordinate_formatter(x: float, y: float) -> str:
     return f'x={x * 1e-6:.5f}, y={y}'
 
 
-def convert_path(path: PathLike | None) -> Path | None:
+def convert_path[PathLike: (str, Path, bytes, os.PathLike)](
+    path: PathLike | None,
+) -> Path | None:
     """Ensure that a Path is a Path object."""
     if path is None:
         return path

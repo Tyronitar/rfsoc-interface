@@ -93,6 +93,7 @@ ignore = [
     "ERA001",  # Commented-out code
     "ISC001", # Single-line implicitly string concatenation
     "N812", # Lowercase imports that are aliased to non-lowercase names
+    "F405", # undefined local with import start usage
 ]
 
 task-tags = [

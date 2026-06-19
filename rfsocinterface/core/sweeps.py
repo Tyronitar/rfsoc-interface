@@ -9,7 +9,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from itertools import pairwise
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, Literal, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 import h5py
 import matplotlib.pyplot as plt
@@ -30,6 +30,7 @@ from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     DEFAULT_DATA_DIRECTORY,
     FLAGGED_RESONANCE_COLOR,
+    MAX_ATTENUATION,
     OFF_RESONANCE_COLOR,
     ON_RESONANCE_COLOR,
     PERMISSIONS_USR_RW,
@@ -823,7 +824,7 @@ class LoSweepData:
         plot: bool = False,
     ):
         """Create a new parameters file from blind sweep results."""
-        f0, depths = self.find_resonances()
+        f0, _ = self.find_resonances()
         if plot:
             old_f0 = None
             if old_params is not None:
@@ -1083,7 +1084,7 @@ class LoSweep:
         return data
 
 
-class CompositeSweep(Generic[CompositeSweepDataType]):
+class CompositeSweep[CompositeSweepDataType: 'CompositeSweepData']:
     """Class for a sweep consisting of multiple LO sweeps."""
 
     sweep_type = ''
@@ -1753,3 +1754,107 @@ class PowerSweepData(CompositeSweepData):
                 tone_powers=self.max_readout_power,
             )
         return params
+
+
+class PowerSweep(CompositeSweep[PowerSweepData]):
+    """Sweep stepping over various attenuation levels."""
+
+    sweep_type = 'power'
+
+    def __init__(  # noqa: D417
+        self,
+        rfsoc: RFSoCWrapper,
+        chan: int,
+        tone_shift: float,
+        freq_step: float,
+        full_span: float,
+        power_levels: npt.NDArray,
+        savefile: Path | None = None,
+        filename_suffix: str = '',
+        date: str | None = None,
+        hour: str | None = None,
+        mkdir: bool = False,
+        **kwargs,
+    ):
+        """Initialize a PowerSweep.
+
+        Arguments:
+            power_levels (npt.NDArray): Power at the resonator relative to the nominal
+                rfout and rfin values, in dB.
+        """
+        super().__init__(
+            rfsoc,
+            chan,
+            tone_shift,
+            freq_step,
+            full_span,
+            savefile=savefile,
+            filename_suffix=filename_suffix,
+            date=date,
+            hour=hour,
+            mkdir=mkdir,
+        )
+
+        self.power_levels = power_levels
+        self.starting_rfin = self.rfsoc.get_rfin(self.chan)
+        self.starting_rfout = self.rfsoc.get_rfout(self.chan)
+
+        self._setup_sweeps()
+
+    @typing.override
+    def _setup_sweeps(self):
+        self.rfins = []
+        self.rfouts = []
+        for power_level in self.power_levels:
+            this_rfout = self.starting_rfout - power_level
+            this_rfin = self.starting_rfin + power_level
+            if (
+                this_rfin < 0
+                or this_rfin > MAX_ATTENUATION
+                or this_rfout < 0
+                or this_rfout > MAX_ATTENUATION
+            ):
+                raise ValueError('All power levels must be in range [0, 31.75].')
+            self.rfins.append(this_rfin)
+            self.rfouts.append(this_rfout)
+            this_savefile = self.savefile.with_stem(
+                f'{self.savefile.stem}_{power_level:+f}dB'.replace('.', '_')
+            )
+            sweep = LoSweep(
+                self.rfsoc,
+                self.chan,
+                self.tone_shift,
+                self.freq_step,
+                self.full_span,
+                savefile=this_savefile,
+                date=self.date,
+                hour=self.hour,
+            )
+            self._sweeps.append(sweep)
+
+    @typing.override
+    def _between_sweep_callback(self, i_sweep: int, sweep: LoSweep):
+        # Set the appropriate power level for this sweep
+        self.rfsoc.set_rfin(self.chan, self.rfins[i_sweep])
+        self.rfsoc.set_rfout(self.chan, self.rfouts[i_sweep])
+
+    @typing.override
+    def _end_sweeps_callback(self):
+        # Reset to original power level
+        self.rfsoc.set_rfin(self.chan, self.starting_rfin)
+        self.rfsoc.set_rfout(self.chan, self.starting_rfout)
+
+    @typing.override
+    def save_sweeps(self, data: list[LoSweepData]):
+        self._data = PowerSweepData(
+            self.bb_freqs,
+            self.f_center,
+            data,
+            self.power_levels,
+            self.starting_rfin,
+            self.starting_rfout,
+            filename=self.savefile,
+            date=self.date,
+            hour=self.hour,
+        )
+        self._data.save_as(self.savefile)

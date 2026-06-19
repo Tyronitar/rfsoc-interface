@@ -294,7 +294,7 @@ class TelescopeMotorController:
         status = self.ser_az.read_until(stop).decode()  # Empty buffer
         elapsed = time.time() - start_time
         _tele_logger.debug(
-            f'AZ Command {data!r} returned result {status!r} in {elapsed*1e3:.2f} ms'
+            f'AZ Command {data!r} returned result {status!r} in {elapsed * 1e3:.2f} ms'
         )
         self.ser_az.reset_input_buffer()
         self.ser_az.reset_output_buffer()
@@ -334,7 +334,7 @@ class TelescopeMotorController:
         status = self.ser_za.read_until(stop, timeout).decode()  # Empty buffer
         elapsed = time.time() - start_time
         _tele_logger.debug(
-            f'ZA Command {data!r} returned result {status!r} in {elapsed*1e3:.2f} ms'
+            f'ZA Command {data!r} returned result {status!r} in {elapsed * 1e3:.2f} ms'
         )
         return status
 
@@ -841,7 +841,7 @@ class TelescopeMotorController:
                 f'Dither Pattern: Starting repeat {i_rep + 1} of {n_repeats} '
                 '---------------------------------------------'
             )
-            label_text = f'Running Dither Pattern\n' f'Repeat {i_rep + 1} / {n_repeats}'
+            label_text = f'Running Dither Pattern\nRepeat {i_rep + 1} / {n_repeats}'
             if len(rep_times) > 0:
                 label_text += (
                     f'\nEstimated time remaining: '

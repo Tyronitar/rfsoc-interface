@@ -31,13 +31,13 @@ from rfsocinterface.core.utils import BUTTER_ORDER, get_git_hash
 
 __all__ = (
     'ROUTINE_REGISTRY',
-    'register_routine',
-    'DataRoutine',
-    'CutoffFilter',
-    'LowPassFilter',
-    'HighPassFilter',
-    'RemoveElectronicsNoise',
     'CleanTOD',
+    'CutoffFilter',
+    'DataRoutine',
+    'HighPassFilter',
+    'LowPassFilter',
+    'RemoveElectronicsNoise',
+    'register_routine',
 )
 
 
@@ -56,7 +56,9 @@ class ProcessingStage:
     POST_PROCESSING = 'post_processing'
 
 
-def register_routine(cls: type[DataRoutineType]) -> type[DataRoutineType]:
+def register_routine[DataRoutineType: 'DataRoutine'](
+    cls: type[DataRoutineType],
+) -> type[DataRoutineType]:
     """Class decorator for registering a DataRoutine class in the ROUTINE_REGISTRY."""
     if not issubclass(cls, DataRoutine):
         _logger.warning(

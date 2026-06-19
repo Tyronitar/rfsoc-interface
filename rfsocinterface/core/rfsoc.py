@@ -551,7 +551,7 @@ def get_channel_from_text(
     if text == '':
         raise SettingsError('No channel selected')
     try:
-        rfsoc_name = text.split(' - ')[0]
+        rfsoc_name = text.split(' - ', maxsplit=1)[0]
         rfsoc = None
         for rf in rfsocs:
             if rf.settings['name'] == rfsoc_name:

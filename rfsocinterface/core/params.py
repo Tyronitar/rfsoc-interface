@@ -427,7 +427,7 @@ class RFSoCParameters:
         """
         if make_new_file and new_tile_name is None:
             raise ValueError(
-                '`new_tile_name` must be set when creating a new parameters' ' file'
+                '`new_tile_name` must be set when creating a new parameters file'
             )
         new_chanmask = self.chanmask[:]
 

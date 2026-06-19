@@ -950,7 +950,7 @@ class ConsolidatedData(DataStorage):
                     'optical_image', data=optcam_file['optical_video'][..., 0]
                 )
                 optical_video = optcam_file['optical_video']
-                chunk_shape = optical_video.shape[:-1] + (1,)
+                chunk_shape = (*optical_video.shape[:-1], 1)
                 global_data_group.create_dataset(
                     'optical_video',
                     data=optical_video,

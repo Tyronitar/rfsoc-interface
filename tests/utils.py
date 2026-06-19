@@ -11,13 +11,13 @@ import numpy as np
 import pytest
 
 __all__ = [
-    'assert_equal',
     'assert_close',
+    'assert_equal',
+    'assert_equal_dict',
+    'assert_greater_than',
+    'assert_less_than',
     'catch_exits',
     'sleep_and_raise',
-    'assert_equal_dict',
-    'assert_less_than',
-    'assert_greater_than',
 ]
 
 
