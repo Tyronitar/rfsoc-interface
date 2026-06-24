@@ -6,6 +6,7 @@ from pathlib import Path
 import logging
 import shutil
 from typing import Iterator, overload
+from typing import Self
 
 import pdb
 
@@ -72,24 +73,41 @@ class NewDataStorage:
 
     @overload
     @classmethod
-    def load(cls, filename: str, mode: str='a') -> NewDataStorage:
+    def load(cls, filename: str, mode: str='a') -> Self:
         pass
 
     @overload
     @classmethod
-    def load(cls, date: str, setnum: int, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> NewDataStorage:
+    def load(cls, date: str, setnum: int, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> Self:
         pass
 
     @classmethod
-    def load(cls, *args, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> NewDataStorage:
+    def load(cls, *args, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> Self:
         if len(args) == 1:
+            # Just the filename was provided
             return cls(args[0], mode=mode)
-        elif len(args) == 2:
-            date, setnum = args
+        if len(args) == 2:
+            if isinstance(args[1], (int, np.integer)):
+                # Date / setnum provided
+                date, setnum = args
+                filename = cls.get_template(date, setnum, data_dir=data_dir)
+                return cls(filename, mode=mode)
+            # filename / mode provided
+            return cls(args[0], mode=args[1])
+        if len(args) == 3 and isinstance(args[1], (int, np.integer)):
+            # date, setnum, mode provided
+            date, setnum, mode = args
             filename = cls.get_template(date, setnum, data_dir=data_dir)
             return cls(filename, mode=mode)
-        else:
-            raise ValueError("Invalid number of arguments")
+        if len(args) == 4 and isinstance(args[1], (int, np.integer)):
+            # date, setnum, mode, data_dir provided
+            date, setnum, mode, data_dir = args
+            filename = cls.get_template(date, setnum, data_dir=data_dir)
+            return cls(filename, mode=mode)
+        raise TypeError(
+            'Expected either load(filename[, mode]) or load(date, setnum[, mode, data_dir]).'
+            f'Got {args}.'
+        )
 
     def open(self, mode: str='r'):
         self.file = h5py.File(self.filename, mode=mode)
