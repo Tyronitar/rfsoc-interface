@@ -580,13 +580,18 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         """Create a DiagnosticsDialog from an HDF5 file."""
         sweep_data = LoSweepData.load(filepath)
         dialog = cls(sweep_data, parent=parent)
+        dialog.plot_and_show()
 
+        return dialog
+    
+    def plot_and_show(self):
+        """Plot the sweep and show the results."""
         pd = IncrementalProgressDialog(
             f'Plotting LO sweep...',
             'Cancel',
             0,
-            sweep_data.n_tones,
-            parent=parent,
+            self.sweep_data.n_tones,
+            parent=self,
         )
         pd.setWindowTitle('Opening Lo Sweep Diagnostics')
         pd.setAutoClose(True)
@@ -596,10 +601,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         QApplication.processEvents()
         increment_progress = make_progress_dialog_incrementer(pd)
 
-        fig = dialog.plot(callback=increment_progress)
-        dialog.set_figure(fig)
-
-        return dialog
+        fig = self.plot(callback=increment_progress)
+        self.set_figure(fig)
+        self.show()
 
 
 def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON):

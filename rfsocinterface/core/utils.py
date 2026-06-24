@@ -100,6 +100,11 @@ class MetaEnum(EnumMeta):
             return False
         return True
 
+def create_axis_formatter(precision: int) -> Callable[[float, int], str]:
+    def formatter(x: float, pos: int) -> str:
+        return f'{x * 1e-6:.{precision}f}'
+    return formatter
+
 
 def mHz_axis_formatter(x: float, pos: int) -> str:
     """Format the x-axis labels for the resonator plot, converting to MHz.
@@ -1414,6 +1419,20 @@ def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any
             out_dict[key] = val
     return out_dict
 
+def mean_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    return np.average(val, weights=freq)
+
+
+def var_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    dev = freq * (val - mean_histogram(val, freq)) ** 2
+    return dev.sum() / freq.sum()
+
+
+def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    return np.sqrt(var_histogram(val, freq))
+
+
+
 
 if __name__ == '__main__':
     def plot_function(fig, ax, x, y):
@@ -1443,7 +1462,6 @@ if __name__ == '__main__':
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
     y = np.zeros(n // q)
-
 
     # decimate_in_chunks(x, q, out=y)
 

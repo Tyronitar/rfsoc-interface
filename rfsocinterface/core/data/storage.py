@@ -295,7 +295,7 @@ class ProcessedData(NewDataStorage):
                 tones_table['chanmask'],
                 channel_group.attrs['tile_name'],
             )
-            IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
+            IQ_to_freq_diss_angle, adc_units_to_hz, _ = sweep.freq_direction()
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
             calibration_info['adc_units_to_hz'] = adc_units_to_hz
 
@@ -534,7 +534,10 @@ class ProcessedData(NewDataStorage):
         i_tone = 0
         for channel_group in self.channels():
             n_tones = channel_group.attrs['n_tones']
-            f[i_tone:i_tone+n_tones] += channel_group.attrs['f_center']
+            if 'f_cener' in channel_group.attrs:
+                f[i_tone:i_tone+n_tones] += channel_group.attrs['f_center']
+            else:
+                f[i_tone:i_tone+n_tones] += channel_group.attrs['lo_freq']
             i_tone += n_tones
         return f
 
@@ -638,6 +641,18 @@ class ProcessedData(NewDataStorage):
 
     def set_df_per_mK(self, new_df_per_mK: npt.NDArray):
         self._set_table_field('calibration_info', 'df_per_mK', new_df_per_mK)
+    
+    def get_lo_sweep(self, i_chan: int) -> LoSweepData:
+        group =  self.get_channel_group(i_chan)
+        return LoSweepData(
+            group['tones']['baseband_freq'],
+            group.attrs['lo_freq'],
+            group['lo_sweep'][:],
+            group['tones']['chanmask'],
+            group.attrs['tile_name'],
+        )
+           
+
 
 
 class ConsolidatedData(NewDataStorage):

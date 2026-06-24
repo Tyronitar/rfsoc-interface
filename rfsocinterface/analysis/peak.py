@@ -12,6 +12,8 @@ from scipy.optimize import least_squares
 
 from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine
 from rfsocinterface.core.utils import sigma_to_fwhm
+from rfsocinterface.core.utils import mean_histogram
+from rfsocinterface.core.utils import std_histogram
 
 def gaussian_profile(parameters: npt.NDArray, x_vals: npt.NDArray) -> npt.NDArray:
     a0, a1, mu, sigma = parameters
@@ -21,18 +23,6 @@ def gaussian_profile(parameters: npt.NDArray, x_vals: npt.NDArray) -> npt.NDArra
 def loss_function(parameters: npt.NDArray, x_vals: npt.NDArray, y_vals: npt.NDArray) -> npt.NDArray:
     model_vals = gaussian_profile(parameters, x_vals)
     return y_vals - model_vals
-
-def mean_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
-    return np.average(val, weights=freq)
-
-
-def var_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
-    dev = freq * (val - mean_histogram(val, freq)) ** 2
-    return dev.sum() / freq.sum()
-
-def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
-    return np.sqrt(var_histogram(val, freq))
-
 
 def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: str='az', fractional_difference_threshold: float=0.5, dataset: str='data_mK'):
     """Check focus and timing offsets."""
