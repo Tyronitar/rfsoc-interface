@@ -4,6 +4,7 @@ import logging
 import logging.config
 import os
 from pathlib import Path
+import sys
 
 
 from argparse import ArgumentParser
@@ -11,6 +12,7 @@ from argparse import ArgumentParser
 from PySide6.QtWidgets import QApplication, QMainWindow
 from PySide6.QtGui import QScreen
 from rfsocinterface.gui.main_window import MainWindow
+from pdfjs_viewer.stability import configure_global_stability
 
 
 def move_to_center(win: QMainWindow, screen: QScreen):
@@ -52,7 +54,16 @@ if __name__ == '__main__':
     # _logger.error('ERROR message')
     # _logger.critical('CRITICAL message')
 
-    app = QApplication()
+
+    # Ensure PDF viewer stability BEFORE QApplication creation
+    configure_global_stability(
+        disable_gpu=True,
+        disable_webgl=True,
+        disable_gpu_compositing=True,
+        disable_unnecessary_features=True,
+    )
+
+    app = QApplication(sys.argv)
     screen = app.primaryScreen()
 
     w = MainWindow()

@@ -17,10 +17,12 @@ import tables
 from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, P, R, PathLike
 from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
 from rfsocinterface.core.utils import convert_path, recursive_update, ensure_path
+from rfsocinterface.core.params import RFSoCParameters
+from rfsocinterface.core.sweeps import LoSweepData
 
 _logger = logging.getLogger(__name__)   
 
-PATH_SETTINGS = ['toneList', 'tonePowers', 'chanmask', 'loComport', 'attenComport', 'bitstream']
+PATH_SETTINGS = ['loComport', 'attenComport', 'bitstream']
 
 
 class RFSOCWrapper:
@@ -155,9 +157,11 @@ class RFSOCWrapper:
         self.rfsoc.rf1.chan_number = 1
         self.rfsoc.rf2.chan_number = 2
     
-    def get_last_tones(self):
+    def get_last_tones(self) -> tuple[tuple[npt.NDArray, npt.NDArray], tuple[npt.NDArray, npt.NDArray]]:
+        res = [None, None]
         for chan in [1, 2]:
             tones_and_pow = self.get_tone_list(chan)
+            res[chan - 1] = tones_and_pow
             if tones_and_pow is not None:
                 rfchan = self.get_channel(chan)
                 tones, powers = tones_and_pow
@@ -167,10 +171,13 @@ class RFSOCWrapper:
                 rfchan.n_tones = ntones
                 chanmask = np.ones(ntones, dtype=int)
                 rfchan.chanmask = chanmask
+        return tuple(res)
     
-    def get_last_lo_freqs(self):
+    def get_last_lo_freqs(self) -> tuple[float, float]:
+        res = [0.0, 0.0]
         for chan in [1, 2]:
-            self.get_frequency(chan)
+            res[chan - 1] = self.get_frequency(chan)
+        return tuple(res)
 
 
     def make_kidpy_rfsoc(self) -> RFSOC:
@@ -188,9 +195,9 @@ class RFSOCWrapper:
         self.set_channel_number()
         self.get_last_attenuations()
         if 'paramsFile' in self.channel_settings(1):
-            self.load_params_file(1, self.channel_settings(1)['paramsFile'], upload_tones=False)
+            self.load_params_file(1, self.channel_settings(1)['paramsFile'], upload_tones=False, set_freq=False, set_atten=False)
         if 'paramsFile' in self.channel_settings(2):
-            self.load_params_file(2, self.channel_settings(2)['paramsFile'], upload_tones=False)
+            self.load_params_file(2, self.channel_settings(2)['paramsFile'], upload_tones=False, set_freq=False, set_atten=False)
         _logger.debug(f'RFSoC {self.name} initialized kidpy RFSOC object')
     
     def channel_settings(self, channel: int) -> dict:
@@ -245,14 +252,22 @@ class RFSOCWrapper:
         with np.printoptions(threshold=20):
             _logger.debug(f'RFSoC {self.name} sucessfully set tone list for channel {chan}: {tonelist} with powers {amplitudes}')
     
-    def get_last_attenuations(self):
-        """Get the last attenuations for all addresses from the settings file."""
+    def get_last_attenuations(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Get the last attenuations for all addresses from the settings file.
+        
+        Returns:
+            (tuple[tuple[float, float], tuple[float, float]]: The (rfin, rfout) for both
+                channels.
+        """
+        res = [[0, 0], [0, 0]]
         for addr in range(1, 5):
             channel = 1 if addr < 3 else 2
             attenuator = 'rfin' if addr % 2 == 0 else 'rfout'
             value = self.channel_settings(channel)[attenuator]
+            res[channel - 1][addr % 2] = value
             _logger.info(f'RFSoC {self.name} got last value for "{attenuator}" for channel {channel}: {value:.2f} dB')
             self.set_atten(addr, value)
+        return tuple(tuple(r) for r in res)
     
     def get_atten(self, addr: int) -> float:
         """Get the attenuation for the specified address."""
@@ -320,8 +335,8 @@ class RFSOCWrapper:
         with np.printoptions(threshold=20):
             _logger.debug(f'RFSoC {self.name} set `chanmask` for channel {chan} to {chanmask}')
 
-    def get_chanmask(self, chan: int) -> npt.ArrayLike:
-        return self.get_channel(chan).chanmask 
+    def get_chanmask(self, chan: int) -> npt.NDArray:
+        return self.get_channel(chan).chanmask
 
     def set_ntones(self, chan: int, ntones: int):
         self.get_channel(chan).n_tones = ntones
@@ -373,11 +388,11 @@ class RFSOCWrapper:
             case _:
                 raise ValueError(f'Invalid channel {channel}. Must be 1 or 2.')
     
-    def get_channel_name(self, channel: int) -> str:
+    def get_tile_name(self, channel: int) -> str:
         rfchan = self.get_channel(channel)
         return str(rfchan.tile_name)
     
-    def set_channel_name(self, channel: int, tile_name: str):
+    def set_tile_name(self, channel: int, tile_name: str):
         rfchan = self.get_channel(channel)
         rfchan.tile_name = tile_name
         self.channel_settings(channel)['tile_name'] = tile_name
@@ -386,39 +401,56 @@ class RFSOCWrapper:
     def get_channel_from_name(self, tile_name: str) -> int:
         """Get the channel number from the tile name."""
         for i in [1, 2]:
-            if tile_name == self.get_channel_name(i):
+            if tile_name == self.get_tile_name(i):
                 return i
-        raise SettingsError(f'Could not find channel with tile name {tile_name} in RFSoC {self.name}. Valid names are {[self.get_channel_name(i) for i in [1, 2]]}')
+        raise SettingsError(f'Could not find channel with tile name {tile_name} in RFSoC {self.name}. Valid names are {[self.get_tile_name(i) for i in [1, 2]]}')
         
-
     @ensure_path(2)
-    def load_params_file(self, channel: int, params_filename: Path, upload_tones: bool=True):
+    def load_params_file(
+        self,
+        channel: int,
+        params_filename: Path,
+        upload_tones: bool=True,
+        set_freq: bool=True,
+        set_atten: bool=True,
+    ):
 
         if not params_filename.exists():
             raise SettingsError(f'Params file {params_filename} does not exist.')
-        
-        with tables.File(params_filename, 'r') as fh:
-            _logger.info(f'Loading parameters from "params_filename" into {self.name}')
-            tone_list = fh.root.baseband_freqs[:]
-            tone_powers = fh.root.tone_powers[:]
-            if 'lo_freq' in fh.root:
-                lo_freq = fh.root.lo_freq[()]
-            else:
-                lo_freq = fh.root._v_attrs['lo_freq']
-            chanmask = fh.root.chanmask[:]
-            ntones = fh.root._v_attrs.n_tones
-            tile_name = fh.root._v_attrs.tile_name
 
-        self.set_channel_name(channel, tile_name)
+        with RFSoCParameters(params_filename, mode='r') as params:
+            _logger.info(f'Loading parameters from "{params_filename}" into {self.name} channel {channel}')
+            tone_list = params.baseband_freqs[:]
+            tone_powers = params.tone_powers[:]
+            lo_freq = params.f_center
+            chanmask = params.chanmask[:]
+            ntones = params.n_tones
+            tile_name = params.tile_name
+            rfin = params.rfin
+            rfout = params.rfout
+
+        self.set_tile_name(channel, tile_name)
         self.set_ntones(channel, ntones)
-        self.set_frequency(channel, lo_freq)
+        if set_freq:
+            self.set_frequency(channel, lo_freq)
+        if set_atten:
+            self.set_rfout(channel, rfout)
+            self.set_rfin(channel, rfin)
         if upload_tones:
             self.set_tone_list(channel, tonelist=tone_list, amplitudes=tone_powers)
         self.set_chanmask(channel, chanmask)
         self.channel_settings(channel)['paramsFile'] = params_filename
 
-        
         _logger.info(f'RFSoC {self.name} loaded parameters from {params_filename} for channel {channel}')
+    
+    # TODO: Expand this
+    def save_changes_to_params_file(self, channel: int):
+        """Save the current state of the RFSoC to the parameters file.
+        
+        Currently, only updates the chanmask.
+        """
+        with RFSoCParameters(self.channel_settings(channel)['paramsFile'], 'a') as params:
+            params.chanmask[:] = self.get_chanmask(channel)
     
     @ensure_path(1)
     def setup_capture(self, file: Path, channels: list[int]) -> list[Rfchan]:
@@ -434,6 +466,19 @@ class RFSOCWrapper:
         """Capture data from this RFSoC."""
         rfchans = self.setup_capture(file, channels)
         return capture(rfchans, fn, *args, **kwargs)
+    
+    @ensure_path(2)
+    def append_global_data(self, channel: int, file: Path):
+        """Append global data and the most recent LO sweep for a tile to a TOD file."""
+        with RFSoCParameters(self.channel_settings(channel)['paramsFile'], 'r') as params:
+            params.append_to_TOD(file)
+        tile_name = self.get_tile_name(channel)
+        sweep = LoSweepData.load_most_recent(tile_name)
+        if sweep is not None:
+            sweep.append_to_TOD(file)
+
+        _logger.debug(f'Appended global data from tile "{tile_name}" to {str(file)}')
+
     
     def capture_packets(self, channel: int, n_packets: int) -> npt.NDArray:
         """Capture the specified number of packets from the specified channel.
