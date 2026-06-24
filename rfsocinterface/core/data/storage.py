@@ -11,7 +11,7 @@ import typing
 from collections.abc import Iterator
 from importlib.metadata import version
 from pathlib import Path
-from typing import overload
+from typing import Self, overload
 
 import h5py
 import numpy as np
@@ -80,7 +80,7 @@ class DataStorage:
 
     @overload
     @classmethod
-    def load(cls, filename: str, mode: str = 'a') -> DataStorage:
+    def load(cls, filename: str, mode: str = 'a') -> Self:
         pass
 
     @overload
@@ -91,21 +91,43 @@ class DataStorage:
         setnum: int,
         mode: str = 'a',
         data_dir: str = DEFAULT_DATA_DIRECTORY,
-    ) -> DataStorage:
+    ) -> Self:
         pass
 
+    # ruff: disable[PLR2004]
     @classmethod
     def load(
         cls, *args, mode: str = 'a', data_dir: str = DEFAULT_DATA_DIRECTORY
-    ) -> DataStorage:
+    ) -> Self:
         """Load a data file."""
         if len(args) == 1:
+            # Just the filename was provided
             return cls(args[0], mode=mode)
-        if len(args) == 2:  # noqa: PLR2004
-            date, setnum = args
+        if len(args) == 2:
+            if isinstance(args[1], (int, np.integer)):
+                # Date / setnum provided
+                date, setnum = args
+                filename = cls.get_template(date, setnum, data_dir=data_dir)
+                return cls(filename, mode=mode)
+            # filename / mode provided
+            return cls(args[0], mode=args[1])
+        if len(args) == 3 and isinstance(args[1], (int, np.integer)):
+            # date, setnum, mode provided
+            date, setnum, mode = args
             filename = cls.get_template(date, setnum, data_dir=data_dir)
             return cls(filename, mode=mode)
-        raise ValueError('Invalid number of arguments')
+        if len(args) == 4 and isinstance(args[1], (int, np.integer)):
+            # date, setnum, mode, data_dir provided
+            date, setnum, mode, data_dir = args
+            filename = cls.get_template(date, setnum, data_dir=data_dir)
+            return cls(filename, mode=mode)
+        raise TypeError(
+            'Expected either load(filename[, mode]) or '
+            'load(date, setnum[, mode, data_dir]).'
+            f'Got {args}.'
+        )
+
+    # ruff: enable[PLR2004]
 
     @classmethod
     def from_h5py(cls, file: h5py.File) -> DataStorage:
