@@ -6,10 +6,14 @@ import numpy as np
 from numpy.polynomial import Polynomial
 import numpy.typing as npt
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as path_effects
 from matplotlib.figure import Figure
+import scipy
 from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 from kidpy3 import RawDataFile
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY
 
@@ -126,13 +130,14 @@ def plot_arc(
 def plot_angle_in_blob(
         data_IQ: npt.NDArray,
         data_freq_diss: npt.NDArray,
-        angle: float,
+        IQ_to_freq_diss_angle: float,
         adc_units_to_Hz: float,
         title: str='',
         fit_order: int=2,
         alpha: float=0.5,
         sigma: float=2.5,
         markersize: float=0.5,
+        source_crossing_sample: int=None,
     ) -> Figure:
     """Plot the IQ noise blob and the rotation angle used to convert to freq/diss.
     
@@ -157,7 +162,7 @@ def plot_angle_in_blob(
     x0 = y0 = 0
     # x0 = y0 = 0
 
-    # Compute best fit for IQ data
+    # Identify inliers for IQ data and scatter plot
     iq_mean = np.mean(data_IQ, axis=1, keepdims=True)
     iq_std = np.std(data_IQ, axis=1, keepdims=True)
     iq_inliers_mask = (data_IQ >=  iq_mean - sigma * iq_std) & (data_IQ <= iq_mean + sigma * iq_std)
@@ -165,9 +170,8 @@ def plot_angle_in_blob(
     # iq_inliers = np.ones(data_IQ.shape[1], dtype=bool)
     iq_inliers = data_IQ[:, iq_inliers_mask]
     ax.scatter(iq_inliers[0], iq_inliers[1], label='IQ Data in Hz', color='blue', rasterized=True, alpha=alpha, edgecolors=None, s=markersize)
-    fit_IQ = Polynomial.fit(iq_inliers[0], iq_inliers[1], fit_order)
 
-    # Compute best fit for freq / diss data
+    # Identify inliers for freq / diss data and scatter plot
     fd_mean = np.mean(data_freq_diss, axis=1, keepdims=True)
     fd_std = np.std(data_freq_diss, axis=1, keepdims=True)
     fd_inliers_mask = (data_freq_diss >=  fd_mean - sigma * fd_std) & (data_freq_diss<= fd_mean + sigma * fd_std)
@@ -175,85 +179,156 @@ def plot_angle_in_blob(
     fd_inliers = data_freq_diss[:, fd_inliers_mask]
     ax.scatter(fd_inliers[0], fd_inliers[1], label='Freq / Diss Data', color='red', rasterized=True, alpha=alpha, edgecolors=None, s=markersize)
     # fd_inliers = np.ones(data_freq_diss.shape[1], dtype=bool)
-    fit_fd = Polynomial.fit(fd_inliers[0], fd_inliers[1], fit_order)
 
-    # Plot fits
+    # Compute best fit for IQ and freq / diss data
     min_iq = np.min(iq_inliers, axis=1)
     max_iq = np.max(iq_inliers, axis=1)
     min_fd = np.min(fd_inliers, axis=1)
     max_fd = np.max(fd_inliers, axis=1)
-    x_fit = np.linspace(min(min_iq[0], min_fd[0]), max(max_iq[0], max_fd[0]))
+    min_x = min(min_iq[0], min_fd[0])
+    max_x = max(max_iq[0], max_fd[0])
+    min_y = min(min_iq[1], min_fd[1])
+    max_y = max(max_iq[1], max_fd[1])
+    med_plot_dim = abs(min(max_x, max_y)) / 2
+    med_plot_dim_iq = abs(np.min(max_iq)) / 2
+    med_plot_dim_fd = abs(np.min(max_fd)) / 2
+    x_fit = np.linspace(min_x, max_x)
+
+    # fit_IQ = Polynomial.fit(iq_inliers[0], iq_inliers[1], fit_order)
+    # fit_fd = Polynomial.fit(fd_inliers[0], fd_inliers[1], fit_order)
+
+    # Plot fits
     # x_iq = np.linspace(min_iq[0], max_iq[0], 100)
-    ax.plot(x_fit, fit_IQ(x_fit), linestyle='--', color='blue', label='IQ fit')
+    # ax.plot(x_fit, fit_IQ(x_fit), linestyle=':', color='blue', label='IQ fit')
     # x_fd = np.linspace(np.min(data_freq_diss[0]), np.max(data_freq_diss[0]), 100)
-    ax.plot(x_fit, fit_fd(x_fit), linestyle='--', color='red', label='freq/diss fit')
- 
-    # # Plot center point
-    # ax.scatter(x0, y0, label='IQ midpoint', color='blue')
+    # ax.plot(x_fit, fit_fd(x_fit), linestyle=':', color='red', label='freq/diss fit')
 
-    # Determmine direction the data is oriented using the midpoint of the fit
-    # i_bar = (min_iq[0] + max_iq[0]) / 2
-    i_bar = iq_mean[0, 0]
-    q_bar = fit_IQ(i_bar)
-    sign_i = np.sign(i_bar)
-    sign_q = np.sign(q_bar)
-    f_bar = fd_mean[0, 0]
-    d_bar = fit_fd(f_bar)
+
+    # Do PCA analysis to determine the directions of the datasets
+    iq_pca = PCA(n_components=2)
+    iq_pca.fit(data_IQ.T)
+    fd_pca = PCA(n_components=2)
+    fd_pca.fit(data_freq_diss.T)
+    scaled_iq_vec = iq_pca.components_[0] * med_plot_dim
+    scaled_fd_vec = fd_pca.components_[0] * med_plot_dim
+
+    iq_angle = np.atan2(scaled_iq_vec[1], scaled_iq_vec[0])
+    fd_angle = np.atan2(scaled_fd_vec[1], scaled_fd_vec[0])
+    iq_angle_label = f'Initial angle based on IQ fit ($\\theta = {np.degrees(iq_angle):.2f}^\\circ$)'
+    fd_angle_label = f'Fitted angle of Freq / Diss data ($\\theta = {np.degrees(fd_angle):.2f}^\\circ$)'
+
+    iq_color = 'blue'
+    iq_pca_vec_plot = ax.quiver(0, 0, scaled_iq_vec[0], scaled_iq_vec[1], scale_units='xy', scale=1, linestyle=':', color=iq_color, label=f'IQ principal component vector \n($\\theta = {np.rad2deg(iq_angle):.2f}^\\circ$)')
+    iq_pca_vec_plot.set_path_effects([
+        path_effects.withStroke(linewidth=2, foreground='black')
+    ])
+    fd_color = 'red'
+    fd_pca_vec_plot = ax.quiver(0, 0, scaled_fd_vec[0], scaled_fd_vec[1], scale_units='xy', scale=1, linestyle=':', color=fd_color, label=f'Freq / Diss principal component vector \n($\\theta = {np.rad2deg(fd_angle):.2f}^\\circ$)')
+    fd_pca_vec_plot.set_path_effects([
+        path_effects.withStroke(linewidth=2, foreground='black')
+    ])
+
+    # # # Plot center point
+    # # ax.scatter(x0, y0, label='IQ midpoint', color='blue')
+
+    # # Determmine direction the data is oriented using the midpoint of the fit
+    # # i_bar = (min_iq[0] + max_iq[0]) / 2
+    # i_bar = iq_mean[0, 0]
+    # q_bar = fit_IQ(i_bar)
+    # sign_i = np.sign(i_bar)
+    # sign_q = np.sign(q_bar)
+    # f_bar = fd_mean[0, 0]
+    # d_bar = fit_fd(f_bar)
     
-    # Compute the angle the IQ data is at relative to the IQ basis
-    m_bar = fit_IQ.deriv()(i_bar)
-    m_bar_fd = fit_fd.deriv()(f_bar)
-    # current_angle = np.atan2(sign_q * np.abs(m_bar), sign_i)
-    current_angle = np.atan2(m_bar, 1)
-    current_angle_fd = np.atan2(m_bar_fd, 1)
-    # print(f'\ti_bar = {i_bar}')
-    # print(f'\tm_bar = {m_bar}')
-    # print(f'\ttheta = {np.degrees(current_angle)} degrees')
+    # # Compute the angle the IQ data is at relative to the IQ basis
+    # m_bar = fit_IQ.deriv()(i_bar)
+    # m_bar_fd = fit_fd.deriv()(f_bar)
+    # # current_angle = np.atan2(sign_q * np.abs(m_bar), sign_i)
+    # iq_angle = np.atan2(m_bar, 1)
+    # fd_angle = np.atan2(m_bar_fd, 1)
+    # # print(f'\ti_bar = {i_bar}')
+    # # print(f'\tm_bar = {m_bar}')
+    # # print(f'\ttheta = {np.degrees(current_angle)} degrees')
 
-    r = np.ptp(iq_inliers) / 4
+    if source_crossing_sample is not None:
+        source_iq = data_IQ[:, source_crossing_sample]
+        iq_angle = np.atan2(source_iq[1], source_iq[0])
+        # x_plot = np.linspace(min(min_iq[0], min_fd[0]), max(max_iq[0], max_fd[0]), num=10)
+        x_plot = x_fit
+        dx = np.diff(x_plot)
+        m_iq = source_iq[1] / source_iq[0]
+        y_plot_iq = m_iq * x_plot
+        dy_iq = np.diff(y_plot_iq)
+        # ax.plot(x_plot, y_plot_iq, linestyle='--', marker='>', markevery=5, color='blue', label='IQ vector at source crossing')
+        # ax.axline((0, 0), source_iq, linestyle=':', color='blue', label='IQ vector at source crossing')
+
+        iq_color = 'cyan'
+        ax.quiver(0, 0, source_iq[0], source_iq[1], scale_units='xy', scale=1, color=iq_color, label=f'IQ vector at source crossing')
+        iq_angle_label = f'IQ angle implied by source crossing \n($\\theta = {np.rad2deg(iq_angle):.2f}^\\circ$)'
+
+        source_fd = data_freq_diss[:, source_crossing_sample]
+        fd_angle = np.atan2(source_fd[1], source_fd[0])
+        m_fd = source_fd[1] / source_fd[0]
+        y_plot_fd = m_fd * x_plot
+        dy_fd = np.diff(y_plot_fd)
+        # ax.plot(x_plot, y_plot_fd, linestyle='--', marker='>', markevery=5, color='red', label='freq/diss vector at source crossing')
+        # ax.axline((0, 0), source_fd, linestyle='--', color='red', label='freq/diss vector at source crossing')
+
+        fd_color = 'darkorange'
+        ax.quiver(0, 0, source_fd[0], source_fd[1], scale_units='xy', scale=1, color=fd_color, label=f'Freq / Diss vector at source crossing')
+        fd_angle_label = f'Freq / Diss angle implied by source crossing \n($\\theta = {np.rad2deg(fd_angle):.2f}^\\circ$)'
+
+        # ax.quiver(x_plot[:-1], y_plot_fd[:-1], dx, dy_fd, scale_units='xy', scale=1, color='red')
+
+    # r = np.ptp(iq_inliers) / 4
+    r = med_plot_dim * 1.5
     # Plot angle of rotation used for computing freq / diss
     plot_arc(
         ax,
-        current_angle,
-        current_angle + angle,
+        iq_angle,
+        iq_angle + IQ_to_freq_diss_angle,
         r,
         x0=x0,
         y0=y0,
         color='black',
-        label=f'Actual rotation to Freq / Diss from LO sweep ($\\theta = {np.degrees(angle):.2f}^\\circ$)',
+        label=f'Actual rotation to Freq / Diss using LO sweep angle \n($\\theta = {np.rad2deg(IQ_to_freq_diss_angle):.2f}^\\circ$)',
     )
 
     # Plot angle freq/diss data makes with the basis
-    r2 = r / 2
+    r2 = r * 2 / 3
     plot_arc(
         ax,
         0,
-        current_angle_fd,
+        fd_angle,
         r2,
         x0=x0,
         y0=y0,
-        color='xkcd:bright red',
-        label=f'Fitted angle of Freq / Diss data ($\\theta = {np.degrees(current_angle_fd):.2f}^\\circ$)',
+        color=fd_color,
+        label=fd_angle_label,
     )
     # Plot angle IQ data makes with the basis
-    r1 = r / 4
+    r1 = r / 3
     plot_arc(
         ax,
         0,
-        current_angle,
+        iq_angle,
         r1,
         x0=x0,
         y0=y0,
-        color='xkcd:bright blue',
-        label=f'Initial angle based on IQ fit ($\\theta = {np.degrees(current_angle):.2f}^\\circ$)',
+        color=iq_color,
+        label=iq_angle_label,
     )
 
     # ax.legend()
     # Shrink current axis by 20%
     box = ax.get_position()
-    ax.set_position([box.x0, box.y0 + box.height * 0.15, box.width, box.height * 0.9])
     handles, labels = ax.get_legend_handles_labels()
-    order = [0, 1, 2, 3, 5, 6, 4]
+    if source_crossing_sample is None:
+        order = [0, 1, 2, 3, 5, 6, 4]
+        ax.set_position([box.x0, box.y0 + box.height * 0.15, box.width, box.height * 0.9])
+    else:
+        order = [0, 1, 2, 3, 4, 8, 5, 7, 6]
+        ax.set_position([box.x0, box.y0 + box.height * 0.25, box.width, box.height * 0.8])
 
     # Put a legend to the right of the current axis
     ax.legend(
@@ -262,8 +337,8 @@ def plot_angle_in_blob(
         loc='upper center',
         bbox_to_anchor=(0.5, -0.15),
         ncol=4,
+        fontsize=8,
     )
-    # fig.tight_layout()
 
     return fig
 

@@ -1,5 +1,6 @@
 import pdb
 
+from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -47,6 +48,7 @@ if __name__ == '__main__':
         188, 193, 194, 195, 196,
         198, 200,
     ]
+    good_res = sorted(neg_res + pos_res)
     axis_formatter = create_axis_formatter(3)
 
     # sweep_file = '/data/20260617/20260617_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_LO_Sweep_hour14p0403_high_res.h5'
@@ -64,8 +66,53 @@ if __name__ == '__main__':
     ind_val = np.arange(edge_indices[0], edge_indices[1])
     freq_val = sweep.freq[:, ind_val] - sweep.detector_f[:, np.newaxis]
 
+    filt_sos_lp = signal.butter(
+        2,
+        15,
+        btype='lowpass',
+        fs=pdata.fs,
+        output='sos',
+        analog=False,
+    )
+    filt_sos_hp = signal.butter(
+        2,
+        0.5,
+        btype='highpass',
+        fs=pdata.fs,
+        output='sos',
+        analog=False,
+    )
+    data_IQ = pdata.data_IQ[:]
+    filt_data_IQ = signal.sosfiltfilt(filt_sos_hp, data_IQ)
+    filt_data_IQ = signal.sosfiltfilt(filt_sos_lp, filt_data_IQ)
+
+    cut_time = 5
+    cut_samples = int(cut_time * pdata.fs)
+    cut_data_IQ = filt_data_IQ[..., cut_samples:-cut_samples]
+    cut_data_IQ_normalized = cut_data_IQ / pdata.carrier_amplitudes[:, :][..., np.newaxis]
+
+    max_i_samples = np.argmax(np.abs(cut_data_IQ_normalized[0]), axis=-1).flatten()
+    max_i = cut_data_IQ_normalized[0, range(pdata.n_tones), max_i_samples]
+    max_q_samples = np.argmax(np.abs(cut_data_IQ_normalized[1]), axis=-1).flatten()
+    max_q = cut_data_IQ_normalized[1, range(pdata.n_tones), max_q_samples]
+    source_cut_sample = np.where(np.abs(max_i) >= np.abs(max_q), max_i_samples, max_q_samples)
+    source_sample = source_cut_sample + cut_samples  # Actual sample index of the source crossing
+
+    # for i_res in good_res:
+    #     plt.title(f'Resonator {i_res} - Data I')
+    #     plt.plot(cut_data_IQ[0, i_res])
+    #     plt.axvline(source_cut_sample[i_res], color='red', linestyle='--', label=f'Source Sample = {source_cut_sample[i_res]}')
+    #     plt.legend()
+    #     plt.figure()
+    #     plt.title(f'Resonator {i_res} - Data Q')
+    #     plt.plot(cut_data_IQ[1, i_res])
+    #     plt.axvline(source_cut_sample[i_res], color='red', linestyle='--', label=f'Source Sample = {source_cut_sample[i_res]}')
+    #     plt.legend()
+    #     plt.show()
+    #     pdb.set_trace()
+
     with PdfPages('sweep_results.pdf') as pdf:
-        for i_res in sorted(neg_res + pos_res):
+        for i_res in good_res:
             fig, axes = plt.subplots(1, 3, figsize=(12, 4))
             if i_res in pos_res:
                 suffix = '(Positive)'
@@ -123,6 +170,7 @@ if __name__ == '__main__':
                 alpha=0.1,
                 # sigma=4,
                 markersize=1,
+                source_crossing_sample=source_sample[i_res],
             )
             if i_res in neg_res:
                 fig.set_facecolor(BAD_RESONANCE_COLOR)
