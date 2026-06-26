@@ -89,13 +89,14 @@ if __name__ == '__main__':
         plot_beammap,
     ])
 
-    date = '20260521'
-    setnum = 1010
+    date = '20260617'
+    setnum = 1001
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    # pdata = ProcessedData.load(date, setnum, mode='a')
-    # pipeline.run(pdata)
+    pdata = ProcessedData.load(date, setnum, mode='a')
+    pipeline.run(pdata)
 
     # pdb.set_trace()
     # map_val = pdata['map/map_val'][:]

@@ -1,4 +1,6 @@
 import pdb
+import logging
+import logging.config
 
 from scipy import signal
 import numpy as np
@@ -15,9 +17,18 @@ from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
 
 
 if __name__ == '__main__':
+    logging.config.fileConfig('rfsocinterface/logging.conf')
+    _logger = logging.getLogger('rfsocinterface')
+    _logger.handlers[0].setLevel(logging.INFO)
     # app = QApplication()
+    date = '20260617'
+    setnum = 1001
+    # cdata = ConsolidatedData.from_tod(date, setnum, downsampling_factor=16)
+    # cdata = ConsolidatedData.load(date, setnum, mode='r')
+    # pdata = cdata.create_processed_data()
 
-    pdata = ProcessedData.load('20260617', 1001, 'r')
+    pdata = ProcessedData.load(date, setnum, 'r')
+
     sweep = pdata.get_lo_sweep(0)
     detector_f = pdata.detector_f()
     data_IQ = pdata.data_IQ[:]
@@ -82,7 +93,6 @@ if __name__ == '__main__':
         output='sos',
         analog=False,
     )
-    data_IQ = pdata.data_IQ[:]
     filt_data_IQ = signal.sosfiltfilt(filt_sos_hp, data_IQ)
     filt_data_IQ = signal.sosfiltfilt(filt_sos_lp, filt_data_IQ)
 
@@ -100,13 +110,13 @@ if __name__ == '__main__':
 
     # for i_res in good_res:
     #     plt.title(f'Resonator {i_res} - Data I')
-    #     plt.plot(cut_data_IQ[0, i_res])
-    #     plt.axvline(source_cut_sample[i_res], color='red', linestyle='--', label=f'Source Sample = {source_cut_sample[i_res]}')
+    #     plt.plot(data_IQ[0, i_res])
+    #     plt.axvline(source_sample[i_res], color='red', linestyle='--', label=f'Source Sample = {source_sample[i_res]}')
     #     plt.legend()
     #     plt.figure()
     #     plt.title(f'Resonator {i_res} - Data Q')
-    #     plt.plot(cut_data_IQ[1, i_res])
-    #     plt.axvline(source_cut_sample[i_res], color='red', linestyle='--', label=f'Source Sample = {source_cut_sample[i_res]}')
+    #     plt.plot(data_IQ[1, i_res])
+    #     plt.axvline(source_sample[i_res], color='red', linestyle='--', label=f'Source Sample = {source_sample[i_res]}')
     #     plt.legend()
     #     plt.show()
     #     pdb.set_trace()

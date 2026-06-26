@@ -7,6 +7,7 @@ import logging
 import shutil
 from typing import Iterator, overload
 from typing import Self
+from scipy import signal
 
 import pdb
 
@@ -287,26 +288,7 @@ class ProcessedData(NewDataStorage):
                 dtype=CALIBRATION_TABLE_DTYPE,
             )
 
-            # Collect calibration information
-            sweep = LoSweepData(
-                tones_table['baseband_freq'],
-                channel_group.attrs['f_center'],
-                channel_group['lo_sweep'][:],
-                tones_table['chanmask'],
-                channel_group.attrs['tile_name'],
-            )
-            IQ_to_freq_diss_angle, adc_units_to_hz, _ = sweep.freq_direction()
-            calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
-            calibration_info['adc_units_to_hz'] = adc_units_to_hz
-
-            detector_f = tones_table['baseband_freq'] + channel_group.attrs['f_center']
-            df_per_mK = compute_df_per_mK(
-                tones_table['polarization'],
-                tones_table['beam_amplitude'],
-                detector_f,
-                tones_table['dfoverf_per_mK'],
-            )
-            calibration_info['df_per_mK'] = df_per_mK
+  
 
             # Rotate to Gain / Phase
             IQ_to_gain_phase_angle = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])
@@ -317,9 +299,69 @@ class ProcessedData(NewDataStorage):
                 IQ_to_gain_phase_angle,
             )
 
+            # Collect calibration information
+            sweep = LoSweepData(
+                tones_table['baseband_freq'],
+                # channel_group.attrs['lo_freq'],
+                channel_group.attrs['f_center'],
+                channel_group['lo_sweep'][:],
+                tones_table['chanmask'],
+                channel_group.attrs['tile_name'],
+            )
+            IQ_to_freq_diss_angle, adc_units_to_hz, _ = sweep.freq_direction()
+
+            # # Compute IQ to freq/diss angle based on the source crossing
+            # # First mean center IQ data
+            # data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
+
+            # data_iq = data_IQ[:]
+            # filt_sos_lp = signal.butter(
+            #     2,
+            #     15,
+            #     btype='lowpass',
+            #     fs=self.fs,
+            #     output='sos',
+            #     analog=False,
+            # )
+            # filt_sos_hp = signal.butter(
+            #     2,
+            #     0.5,
+            #     btype='highpass',
+            #     fs=self.fs,
+            #     output='sos',
+            #     analog=False,
+            # )
+            # filt_data_IQ = signal.sosfiltfilt(filt_sos_hp, data_iq)
+            # filt_data_IQ = signal.sosfiltfilt(filt_sos_lp, filt_data_IQ)
+
+            # cut_time = 5
+            # cut_samples = int(cut_time * self.fs)
+            # cut_data_IQ = filt_data_IQ[..., cut_samples:-cut_samples]
+            # cut_data_IQ_normalized = cut_data_IQ / carrier_amplitudes[:][..., np.newaxis]
+
+            # max_i_samples = np.argmax(np.abs(cut_data_IQ_normalized[0]), axis=-1).flatten()
+            # max_i = cut_data_IQ_normalized[0, range(n_tones), max_i_samples]
+            # max_q_samples = np.argmax(np.abs(cut_data_IQ_normalized[1]), axis=-1).flatten()
+            # max_q = cut_data_IQ_normalized[1, range(n_tones), max_q_samples]
+            # source_cut_sample = np.where(np.abs(max_i) >= np.abs(max_q), max_i_samples, max_q_samples)
+            # source_sample = source_cut_sample + cut_samples  # Actual sample index of the source crossing
+            # source_amplitudes = data_iq[:, range(n_tones), source_sample]
+            # IQ_to_freq_diss_angle = -np.atan2(source_amplitudes[1], source_amplitudes[0])
+
+            calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
+            calibration_info['adc_units_to_hz'] = adc_units_to_hz
+
+            detector_f = tones_table['baseband_freq'] + channel_group.attrs['f_center']
+            # detector_f = tones_table['baseband_freq'] + channel_group.attrs['lo_freq']
+            df_per_mK = compute_df_per_mK(
+                tones_table['polarization'],
+                tones_table['beam_amplitude'],
+                detector_f,
+                tones_table['dfoverf_per_mK'],
+            )
+            calibration_info['df_per_mK'] = df_per_mK
+
             # Generate calibrated data
-            # First mean center IQ data
-            data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
             generate_calibrated_data(
                 data_IQ,
                 data_freq_diss,

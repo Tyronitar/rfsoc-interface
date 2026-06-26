@@ -192,93 +192,58 @@ def plot_angle_in_blob(
     med_plot_dim = abs(min(max_x, max_y)) / 2
     med_plot_dim_iq = abs(np.min(max_iq)) / 2
     med_plot_dim_fd = abs(np.min(max_fd)) / 2
-    x_fit = np.linspace(min_x, max_x)
 
-    # fit_IQ = Polynomial.fit(iq_inliers[0], iq_inliers[1], fit_order)
-    # fit_fd = Polynomial.fit(fd_inliers[0], fd_inliers[1], fit_order)
-
-    # Plot fits
-    # x_iq = np.linspace(min_iq[0], max_iq[0], 100)
-    # ax.plot(x_fit, fit_IQ(x_fit), linestyle=':', color='blue', label='IQ fit')
-    # x_fd = np.linspace(np.min(data_freq_diss[0]), np.max(data_freq_diss[0]), 100)
-    # ax.plot(x_fit, fit_fd(x_fit), linestyle=':', color='red', label='freq/diss fit')
-
-
-    # Do PCA analysis to determine the directions of the datasets
-    iq_pca = PCA(n_components=2)
-    iq_pca.fit(data_IQ.T)
-    fd_pca = PCA(n_components=2)
-    fd_pca.fit(data_freq_diss.T)
-    scaled_iq_vec = iq_pca.components_[0] * med_plot_dim
-    scaled_fd_vec = fd_pca.components_[0] * med_plot_dim
-
-    iq_angle = np.atan2(scaled_iq_vec[1], scaled_iq_vec[0])
-    fd_angle = np.atan2(scaled_fd_vec[1], scaled_fd_vec[0])
-    iq_angle_label = f'Initial angle based on IQ fit ($\\theta = {np.degrees(iq_angle):.2f}^\\circ$)'
-    fd_angle_label = f'Fitted angle of Freq / Diss data ($\\theta = {np.degrees(fd_angle):.2f}^\\circ$)'
+    # Scale vectors in plot by largest dimension / 2
+    iq_ptp = np.ptp(iq_inliers, axis=1)
+    fd_ptp = np.ptp(fd_inliers, axis=1)
+    vector_scaling_factor = max(*iq_ptp, *fd_ptp) / 2
 
     iq_color = 'blue'
-    iq_pca_vec_plot = ax.quiver(0, 0, scaled_iq_vec[0], scaled_iq_vec[1], scale_units='xy', scale=1, linestyle=':', color=iq_color, label=f'IQ principal component vector \n($\\theta = {np.rad2deg(iq_angle):.2f}^\\circ$)')
-    iq_pca_vec_plot.set_path_effects([
-        path_effects.withStroke(linewidth=2, foreground='black')
-    ])
+    # iq_color = 'cyan'
+
     fd_color = 'red'
-    fd_pca_vec_plot = ax.quiver(0, 0, scaled_fd_vec[0], scaled_fd_vec[1], scale_units='xy', scale=1, linestyle=':', color=fd_color, label=f'Freq / Diss principal component vector \n($\\theta = {np.rad2deg(fd_angle):.2f}^\\circ$)')
-    fd_pca_vec_plot.set_path_effects([
-        path_effects.withStroke(linewidth=2, foreground='black')
-    ])
+    # fd_color = 'darkorange'
 
-    # # # Plot center point
-    # # ax.scatter(x0, y0, label='IQ midpoint', color='blue')
+    if source_crossing_sample is None:
+        # Do PCA analysis to determine the directions of the datasets
+        iq_pca = PCA(n_components=2)
+        iq_pca.fit(data_IQ.T)
+        fd_pca = PCA(n_components=2)
+        fd_pca.fit(data_freq_diss.T)
 
-    # # Determmine direction the data is oriented using the midpoint of the fit
-    # # i_bar = (min_iq[0] + max_iq[0]) / 2
-    # i_bar = iq_mean[0, 0]
-    # q_bar = fit_IQ(i_bar)
-    # sign_i = np.sign(i_bar)
-    # sign_q = np.sign(q_bar)
-    # f_bar = fd_mean[0, 0]
-    # d_bar = fit_fd(f_bar)
-    
-    # # Compute the angle the IQ data is at relative to the IQ basis
-    # m_bar = fit_IQ.deriv()(i_bar)
-    # m_bar_fd = fit_fd.deriv()(f_bar)
-    # # current_angle = np.atan2(sign_q * np.abs(m_bar), sign_i)
-    # iq_angle = np.atan2(m_bar, 1)
-    # fd_angle = np.atan2(m_bar_fd, 1)
-    # # print(f'\ti_bar = {i_bar}')
-    # # print(f'\tm_bar = {m_bar}')
-    # # print(f'\ttheta = {np.degrees(current_angle)} degrees')
+        scaled_iq_vec = iq_pca.components_[0] * vector_scaling_factor
+        iq_angle = np.atan2(scaled_iq_vec[1], scaled_iq_vec[0])
+        iq_vec_label = 'IQ principal component vector'
+        iq_angle_label = f'IQ angle based on PCA ($\\theta = {np.degrees(iq_angle):.2f}^\\circ$)'
 
-    if source_crossing_sample is not None:
+        scaled_fd_vec = fd_pca.components_[0] * vector_scaling_factor
+        fd_angle = np.atan2(scaled_fd_vec[1], scaled_fd_vec[0])
+        fd_vec_label = 'FD principal component vector'
+        fd_angle_label = f'Freq / Diss angle based on PCA ($\\theta = {np.degrees(fd_angle):.2f}^\\circ$)'
+    else:
+        # USe the source crossing values to compute the direction
         source_iq = data_IQ[:, source_crossing_sample]
-        iq_angle = np.atan2(source_iq[1], source_iq[0])
-        # x_plot = np.linspace(min(min_iq[0], min_fd[0]), max(max_iq[0], max_fd[0]), num=10)
-        x_plot = x_fit
-        dx = np.diff(x_plot)
-        m_iq = source_iq[1] / source_iq[0]
-        y_plot_iq = m_iq * x_plot
-        dy_iq = np.diff(y_plot_iq)
-        # ax.plot(x_plot, y_plot_iq, linestyle='--', marker='>', markevery=5, color='blue', label='IQ vector at source crossing')
-        # ax.axline((0, 0), source_iq, linestyle=':', color='blue', label='IQ vector at source crossing')
+        source_fd = data_freq_diss[:, source_crossing_sample]
 
-        iq_color = 'cyan'
-        ax.quiver(0, 0, source_iq[0], source_iq[1], scale_units='xy', scale=1, color=iq_color, label=f'IQ vector at source crossing')
+        scaled_iq_vec = source_iq / np.linalg.norm(source_iq) * vector_scaling_factor
+        iq_angle = np.atan2(source_iq[1], source_iq[0])
+        iq_vec_label = 'IQ vector at source crossing'
         iq_angle_label = f'IQ angle implied by source crossing \n($\\theta = {np.rad2deg(iq_angle):.2f}^\\circ$)'
 
-        source_fd = data_freq_diss[:, source_crossing_sample]
+        scaled_fd_vec = source_fd / np.linalg.norm(source_fd) * vector_scaling_factor
         fd_angle = np.atan2(source_fd[1], source_fd[0])
-        m_fd = source_fd[1] / source_fd[0]
-        y_plot_fd = m_fd * x_plot
-        dy_fd = np.diff(y_plot_fd)
-        # ax.plot(x_plot, y_plot_fd, linestyle='--', marker='>', markevery=5, color='red', label='freq/diss vector at source crossing')
-        # ax.axline((0, 0), source_fd, linestyle='--', color='red', label='freq/diss vector at source crossing')
-
-        fd_color = 'darkorange'
-        ax.quiver(0, 0, source_fd[0], source_fd[1], scale_units='xy', scale=1, color=fd_color, label=f'Freq / Diss vector at source crossing')
+        fd_vec_label = 'Freq / Diss vector at source crossing'
         fd_angle_label = f'Freq / Diss angle implied by source crossing \n($\\theta = {np.rad2deg(fd_angle):.2f}^\\circ$)'
 
-        # ax.quiver(x_plot[:-1], y_plot_fd[:-1], dx, dy_fd, scale_units='xy', scale=1, color='red')
+    # Plot the vectors
+    iq_vec_plot = ax.quiver(0, 0, scaled_iq_vec[0], scaled_iq_vec[1], scale_units='xy', scale=1, linestyle=':', color=iq_color, label=iq_vec_label)
+    iq_vec_plot.set_path_effects([
+        path_effects.withStroke(linewidth=1, foreground='black')
+    ])
+    fd_vec_plot = ax.quiver(0, 0, scaled_fd_vec[0], scaled_fd_vec[1], scale_units='xy', scale=1, linestyle=':', color=fd_color, label=fd_vec_label)
+    fd_vec_plot.set_path_effects([
+        path_effects.withStroke(linewidth=1, foreground='black')
+    ])
 
     # r = np.ptp(iq_inliers) / 4
     r = med_plot_dim * 1.5
@@ -291,7 +256,7 @@ def plot_angle_in_blob(
         x0=x0,
         y0=y0,
         color='black',
-        label=f'Actual rotation to Freq / Diss using LO sweep angle \n($\\theta = {np.rad2deg(IQ_to_freq_diss_angle):.2f}^\\circ$)',
+        label=f'Actual rotation used to create Freq / Diss data \n($\\theta = {np.rad2deg(IQ_to_freq_diss_angle):.2f}^\\circ$)',
     )
 
     # Plot angle freq/diss data makes with the basis
@@ -323,12 +288,8 @@ def plot_angle_in_blob(
     # Shrink current axis by 20%
     box = ax.get_position()
     handles, labels = ax.get_legend_handles_labels()
-    if source_crossing_sample is None:
-        order = [0, 1, 2, 3, 5, 6, 4]
-        ax.set_position([box.x0, box.y0 + box.height * 0.15, box.width, box.height * 0.9])
-    else:
-        order = [0, 1, 2, 3, 4, 8, 5, 7, 6]
-        ax.set_position([box.x0, box.y0 + box.height * 0.25, box.width, box.height * 0.8])
+    order = [0, 1, 2, 3, 6, 5, 4]
+    ax.set_position([box.x0, box.y0 + box.height * 0.25, box.width, box.height * 0.8])
 
     # Put a legend to the right of the current axis
     ax.legend(
