@@ -161,7 +161,7 @@ class NewDataStorage:
 
     @property
     def date(self) -> str:
-        return self.attrs['date']
+        return str(self.attrs['date'], encoding='utf-8')
 
     @date.setter
     def date(self, date: str):
