@@ -2,6 +2,7 @@ from rfsocinterface.gui.widgets.canvas import (
     ScrollableCanvas,
     ResonatorCanvas,
     DiagnosticsCanvas,
+    ToolbarCanvas,
 )
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from rfsocinterface.gui.widgets.controller import Controller

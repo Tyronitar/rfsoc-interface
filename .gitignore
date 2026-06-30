@@ -176,6 +176,7 @@ cython_debug/
 *.npy
 *.npz
 *.h5
+*.h5.*
 data/
 !rfsocinterface/core/*
 !Default_tone_list.npy
