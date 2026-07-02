@@ -1,6 +1,7 @@
 """Custom classes for logging."""
 
 import logging
+from typing import ClassVar, override
 
 
 class CustomConsoleFormatter(logging.Formatter):
@@ -17,7 +18,7 @@ class CustomConsoleFormatter(logging.Formatter):
     info_format = '%(message)s'
     warning_format = '%(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)'
 
-    FORMATS = {
+    FORMATS: ClassVar[dict[int, str]] = {
         logging.DEBUG: grey + debug_format + reset,
         logging.INFO: grey + info_format + reset,
         logging.WARNING: yellow + warning_format + reset,
@@ -25,6 +26,7 @@ class CustomConsoleFormatter(logging.Formatter):
         logging.CRITICAL: bold_red + warning_format + reset,
     }
 
+    @override
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)

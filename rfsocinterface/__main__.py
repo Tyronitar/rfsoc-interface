@@ -7,15 +7,10 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 from pdfjs_viewer.stability import configure_global_stability
-from PySide6.QtGui import QScreen
-from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtWidgets import QApplication
 
 from rfsocinterface.gui.main_window import MainWindow
-
-
-def move_to_center(win: QMainWindow, screen: QScreen):
-    win.move(screen.geometry().center() - win.geometry().center())
-
+from rfsocinterface.gui.utils import move_to_center
 
 if __name__ == '__main__':
     logconf_file = Path(__file__).parent / 'logging.conf'
@@ -24,7 +19,9 @@ if __name__ == '__main__':
 
     parser = ArgumentParser(
         prog='rfsocinterface',
-        description='A user-friendly GUI for configuring and monitoring MKID readout software.',
+        description=(
+            'A user-friendly GUI for configuring and monitoring MKID readout software.'
+        ),
     )
     parser.add_argument(
         '-v',
