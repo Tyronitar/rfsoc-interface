@@ -257,8 +257,8 @@ class MultiSectionDragFunctionWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Vertical)
-        self.drag.orderChanged.connect(self.orderChanged.emit)
-        self.drag.orderChanged.connect(lambda _, l: print(l))
+        self.drag.order_changed.connect(self.orderChanged.emit)
+        self.drag.order_changed.connect(lambda _, l: print(l))
 
         hlayout = QHBoxLayout()
 
