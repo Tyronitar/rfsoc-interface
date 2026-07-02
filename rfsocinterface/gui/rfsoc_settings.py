@@ -21,7 +21,7 @@ from rfsocinterface.gui.widgets import get_lineEdit_text, get_num_value
 from rfsocinterface.gui.widgets.icon_label import (
     ERROR_ICON_CODE,
     IconLabel,
-    verify_lineEdit,
+    verify_line_edit,
 )
 from rfsocinterface.gui.widgets.section import Section
 
@@ -367,16 +367,16 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     @Slot()
     def configure_hardware(self):
         # TODO: This implicitly requires both channels to have the proper settings
-        source_ok, source_toggled = verify_lineEdit(
+        source_ok, source_toggled = verify_line_edit(
             self.eth_source_lineEdit, self.eth_source_error_label
         )
-        dest_ok, dest_toggled = verify_lineEdit(
+        dest_ok, dest_toggled = verify_line_edit(
             self.eth_dest_lineEdit, self.eth_dest_error_label
         )
-        mac_ok, mac_toggled = verify_lineEdit(
+        mac_ok, mac_toggled = verify_line_edit(
             self.eth_mac_lineEdit, self.eth_mac_error_label
         )
-        port_ok, port_toggled = verify_lineEdit(
+        port_ok, port_toggled = verify_line_edit(
             self.eth_port_lineEdit, self.eth_port_error_label
         )
 
@@ -408,7 +408,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                     f'Function `set_attenuation` called with illegal argument "{attenuation}"; must be in ["in", "out"]'
                 )
 
-        valid, toggled = verify_lineEdit(lineEdit, error_label)
+        valid, toggled = verify_line_edit(lineEdit, error_label)
         if toggled:
             self.height_updated.emit()
         elif valid:

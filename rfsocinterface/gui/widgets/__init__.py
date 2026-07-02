@@ -32,7 +32,7 @@ from rfsocinterface.gui.widgets.icon_label import (
     ERROR_ICON_CODE,
     IconLabel,
     highlight_error_line_edit,
-    verify_lineEdit,
+    verify_line_edit,
 )
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from rfsocinterface.gui.widgets.progress_bar import (
@@ -94,5 +94,5 @@ __all__ = [
     'highlight_error_line_edit',
     'layout_widgets',
     'make_progress_dialog_incrementer',
-    'verify_lineEdit',
+    'verify_line_edit',
 ]
