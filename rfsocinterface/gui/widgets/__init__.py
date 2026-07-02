@@ -1,3 +1,5 @@
+"""Sub package containing various Qt6 widgets."""
+
 from rfsocinterface.gui.widgets.canvas import (
     DiagnosticsCanvas,
     ResonatorCanvas,
@@ -83,6 +85,7 @@ __all__ = [
     'ScrollableCanvas',
     'Section',
     'StickyWaitingSpinner',
+    'ToolbarCanvas',
     'VLine',
     'WaitingSpinner',
     'get_lineEdit_text',

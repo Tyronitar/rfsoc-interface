@@ -1,12 +1,10 @@
+"""Widgets for matplotlib plotting in a PySide6 GUI."""
+
 from collections.abc import Callable
-from enum import Enum
-from typing import Concatenate
+from enum import StrEnum
+from typing import Concatenate, override
 
 import matplotlib as mpl
-
-mpl.use('QtAgg')
-mpl.rcParams['toolbar'] = 'toolbar2'
-
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -34,8 +32,11 @@ from rfsocinterface.core.utils import (
 )
 from rfsocinterface.gui.blit_manager import BlitManager
 
+mpl.use('QtAgg')
+mpl.rcParams['toolbar'] = 'toolbar2'
 
 class EditTool(ToolToggleBase):
+    """Matplotlib toolbar item for editing."""
     default_keymap = 'e'
     description = 'Edit the plot'
     default_toggled = False
@@ -44,49 +45,65 @@ class EditTool(ToolToggleBase):
 
 
 class AddTool(ToolBase):
+    """Matplotlib toolbar item for adding something to the plot."""
+
     description = 'Add an artist to the plot'
     image = ':/icons/plus.svg'
 
     def __init__(self, toolmanager, name, fn: Callable):
+        """Initialize an AddTool."""
         super().__init__(toolmanager, name)
         self.fn = fn
 
+    @override
     def trigger(self, sender, event, data=None):
         self.fn(sender, event, data)
 
 
 class RemoveTool(ToolBase):
+    """Matplotlib toolbar item for removing something from the plot."""
+
     description = 'Remove the currently selected artist from the plot'
     image = ':/icons/minus.svg'
 
     def __init__(self, toolmanager, name, fn: Callable):
+        """Initialize a RemoveTool."""
         super().__init__(toolmanager, name)
         self.fn = fn
 
+    @override
     def trigger(self, sender, event, data=None):
         self.fn(sender, event, data)
 
 
 class UndoTool(ToolBase):
+    """Matplotlib toolbar item for undoing the last action."""
+
     description = 'Undo the last action'
     image = ':/icons/undo.svg'
 
     def __init__(self, toolmanager, name, fn: Callable):
+        """Initialize an UndoTool."""
         super().__init__(toolmanager, name)
         self.fn = fn
 
+    @override
     def trigger(self, sender, event, data=None):
         self.fn(sender, event, data)
 
 
 class RedoTool(ToolBase):
+    """Matplotlib toolbar item for redoing the last undone action."""
+
     description = 'Redo the last action'
     image = ':/icons/redo.svg'
 
     def __init__(self, toolmanager, name, fn: Callable):
+        """Initialize a RedoTool."""
         super().__init__(toolmanager, name)
         self.fn = fn
 
+    @override
     def trigger(self, sender, event, data=None):
         self.fn(sender, event, data)
 
@@ -111,6 +128,7 @@ class ScrollableCanvas(QScrollArea):
 
     @property
     def figure(self) -> Figure:
+        """Get this canvas's figure."""
         return self.canvas.figure
 
     def set_figure(self, fig: Figure):
@@ -121,6 +139,7 @@ class ScrollableCanvas(QScrollArea):
         self.widget().setStyleSheet('background-color:white;')
         self.bm = BlitManager(self.canvas)
 
+    @override
     def eventFilter(self, obj: QObject, event: QEvent):
         """Filter all mouse scroll events inside the canvas."""
         if isinstance(event, QWheelEvent):
@@ -148,25 +167,29 @@ class ScrollableCanvas(QScrollArea):
         *args: P.args,
         **kwargs: P.kwargs,
     ):
+        """Replot inside this canvas's figure."""
         self.figure.clf()
         plotting_function(*args, fig=self.figure, **kwargs)
 
 
-class EditMode(str, Enum):
+class EditMode(StrEnum):
+    """Enum indicating that editing is enabled."""
     EDIT = 'edit'
 
     def __str__(self):
+        """Return a string representation of this EditMode."""
         return self.value
 
 
 class EditToolBar(NavigationToolbar2QT):
+    """Matplotlib navigation toolbar that has functionality for editing the plot."""
     toolitems = NavigationToolbar2QT.toolitems
 
     def __init__(
         self,
-        canvas,
-        parent=None,
-        coordinates=True,
+        canvas: FigureCanvas,
+        parent: QWidget | None = None,
+        coordinates: bool = True,
         add_group: bool = False,
         add_edit_button: bool = False,
         edit_description: str = EditTool.description,
@@ -179,6 +202,42 @@ class EditToolBar(NavigationToolbar2QT):
         redo_function: Callable | None = None,
         redo_description: str = RedoTool.description,
     ):
+        """Initialize an EditTooleBar.
+
+        Arguments:
+            canvas (FigureCanvas): The canvas this toolbar is managing.
+            parent (QWidget, optional): The parent widget for this toolbar. Defaults to
+                None.
+            coordinates (bool, optional): Whether to show plot coordinates on the right
+                of the toolbar. Defaults to True.
+            add_group (bool, optional): Whether a new group needs to be added to the
+                toolbar. Will be set to True if `add_edit_button` is True, or if any of
+                the function options are not None. Defaults to True.
+            add_edit_button (bool, optional): Whether to add an `EditTool` button.
+                Defaults to False.
+            edit_description (str, optional): The description to use for the edit
+                button. Defaults to `EditTool.description`.
+            add_function (Callable, optional): Function to call when clicking the
+                add button. If not None, an add button will be created and added to
+                the toolbar. Defaults to None.
+            add_description (str, optional): The description to use for the add
+                button. Defaults to `AddTool.description`.
+            remove_function (Callable, optional): Function to call when clicking the
+                remove button. If not None, a remove button will be created and added to
+                the toolbar. Defaults to None.
+            remove_description (str, optional): The description to use for the remove
+                button. Defaults to `RemoveTool.description`.
+            undo_function (Callable, optional): Function to call when clicking the
+                undo button. If not None, an undo button will be created and added to
+                the toolbar. Defaults to None.
+            undo_description (str, optional): The description to use for the undo
+                button. Defaults to `UndoTool.description`.
+            redo_function (Callable, optional): Function to call when clicking the
+                redo button. If not None, a redo button will be created and added to
+                the toolbar. Defaults to None.
+            redo_description (str, optional): The description to use for the redo
+                button. Defaults to `RedoTool.description`.
+        """
         self.add_function = add_function
         self.remove_function = remove_function
         self.undo_function = undo_function
@@ -229,22 +288,27 @@ class EditToolBar(NavigationToolbar2QT):
 
     @property
     def editing(self) -> bool:
+        """Whether editing mode is active."""
         return self.mode == EditMode.EDIT
 
     def set_edit_actions_enabled(self, enabled: bool):
+        """Set whether the editing actionas are enabled."""
         for action in ['add', 'remove', 'undo', 'redo']:
             if action in self._actions:
                 self._actions[action].setVisible(enabled)
 
     def pan(self, *args):
+        """Pan in the axes."""
         super().pan(*args)
         self.set_edit_actions_enabled(False)
 
     def zoom(self, *args):
+        """Zoom in the axes."""
         super().zoom(*args)
         self.set_edit_actions_enabled(False)
 
     def toggle_edit(self):
+        """Toggle editing mode."""
         if self.mode in [_Mode.PAN, _Mode.ZOOM]:
             # Need to release the lock in order to draw on the canvas
             self.canvas.widgetlock.release(self)
@@ -258,15 +322,19 @@ class EditToolBar(NavigationToolbar2QT):
         self._update_buttons_checked()
 
     def add(self):
+        """Call the toolbar's add function."""
         self.add_function()
 
     def remove(self):
+        """Call the toolbar's remove function."""
         self.remove_function()
 
     def undo(self):
+        """Call the toolbar's undo function."""
         self.undo_function()
 
     def redo(self):
+        """Call the toolbar's redo function."""
         self.redo_function()
 
     def _update_buttons_checked(self):
@@ -328,14 +396,17 @@ class ToolbarCanvas(QWidget):
 
     @property
     def editing(self) -> bool:
+        """Whether the plot is in editing mode."""
         return self.nav.editing
 
     @property
     def figure(self) -> Figure:
+        """Return this canvas's figure."""
         return self.canvas.figure
 
     @property
     def figure_canvas(self) -> FigureCanvas:
+        """Return this canvas's FigureCanvas."""
         if isinstance(self.canvas, ScrollableCanvas):
             return self.canvas.canvas
         return self.canvas
@@ -361,6 +432,7 @@ class ToolbarCanvas(QWidget):
         *args: P.args,
         **kwargs: P.kwargs,
     ):
+        """Replot inside this canvas's figure."""
         if isinstance(self.canvas, ScrollableCanvas):
             self.canvas.replot_figure(plotting_function, *args, **kwargs)
         else:
@@ -388,18 +460,22 @@ class ResonatorCanvas(QWidget):
 
     @property
     def manager(self) -> FigureManagerQT:
+        """Return this canvas's figure manager."""
         return self.canvas.manager
 
     @property
     def nav(self) -> NavigationToolbar2QT:
+        """Return this canvas's navigation toolbar."""
         return self.canvas.nav
 
     @property
     def figure(self) -> Figure:
+        """Return this canvas's figure manager."""
         return self.canvas.figure
 
     @property
     def figure_canvas(self) -> FigureCanvas:
+        """Return this canvas's FigureCanvas."""
         return self.canvas.figure_canvas
 
     def update_figure(self):
@@ -412,6 +488,7 @@ class ResonatorCanvas(QWidget):
         *args: P.args,
         **kwargs: P.kwargs,
     ):
+        """Replot inside this canvas's figure."""
         self.canvas.replot_figure(plotting_function, *args, **kwargs)
         self.line = self.figure.axes[0].get_lines()[1]
 
@@ -463,9 +540,11 @@ class DiagnosticsCanvas(ScrollableCanvas):
         self.bm.update()
 
     def get_ax_by_index(self, idx: int) -> plt.Axes:
+        """Return the figure's axes at the specified index."""
         return self.figure.get_axes()[idx]
 
     def is_edited(self, ax: plt.axes) -> bool:
+        """Whether the axes has been edited."""
         return self.figure.get_axes().index(ax) in self.edited_axes
 
     def select_axis(self, axes: plt.Axes | None):
@@ -520,25 +599,8 @@ class DiagnosticsCanvas(ScrollableCanvas):
         )
 
     def set_edited(self, idx: int):
+        """Indicate that the specified axes has been edited."""
         self.edited_axes.add(idx)
         ax = self.get_ax_by_index(idx)
         if ax != self.selected_axes:
             self.add_edited_marker(ax)
-
-
-if __name__ == '__main__':
-    import sys
-
-    from PySide6.QtWidgets import QApplication, QMainWindow
-
-    app = QApplication(sys.argv)
-    fig = plt.figure()
-    ax = plt.subplot()
-    canvas = ResonatorCanvas()
-    ax.plot(np.random.rand(10))
-    ax.axvline(0.5, color='red')
-    canvas.set_figure(fig)
-    win = QMainWindow()
-    win.setCentralWidget(canvas)
-    win.show()
-    sys.exit(app.exec())
