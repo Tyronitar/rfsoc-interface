@@ -697,7 +697,7 @@ class ProcessedData(NewDataStorage):
         group =  self.get_channel_group(i_chan)
         return LoSweepData(
             group['tones']['baseband_freq'],
-            group.attrs['lo_freq'],
+            group.attrs['f_center'],
             group['lo_sweep'][:],
             group['tones']['chanmask'],
             group.attrs['tile_name'],
