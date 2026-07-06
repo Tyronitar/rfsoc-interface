@@ -1,3 +1,5 @@
+"""Widgets for selecting a save path for future data files."""
+
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Slot
@@ -8,7 +10,9 @@ from rfsocinterface.gui.uic.save_location_ui import Ui_SaveLocationWidget
 
 
 class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
+    """Widget for selecting save locations for files, or using defaults otherwise."""
     def __init__(self, parent=None, file_type: str = 'tod'):
+        """Initialize a SaveLocationWidget."""
         super().__init__(parent)
         self.setupUi(self)
 
@@ -25,6 +29,7 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
         self.update_timer.start(10000)
 
     def change_save_location_visibility(self, visible: bool):
+        """Change whether the manual save location widgets are visible."""
         self.directory_label.setVisible(visible)
         self.directory_file_select.setVisible(visible)
         self.filename_label.setVisible(visible)
@@ -37,6 +42,7 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
         touch_file: bool = False,
         mode: int = PERMISSIONS_ALL_FULL,
     ) -> Path:
+        """Return the chosen save location."""
         if self.checkBox.isChecked():
             save_path = get_filename(
                 file_type=self.file_type, tile_name=chan_name, mkdir=mkdir
@@ -50,7 +56,8 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
         return save_path
 
     @Slot(str)
-    def update_save_locale_label(self, text: str):
+    def update_save_locale_label(self, text: str):  # noqa: ARG002
+        """Update the label showing the target save location."""
         if self.checkBox.isChecked():
             self._default_path = get_filename(file_type=self.file_type).with_suffix(
                 '.h5'
@@ -62,12 +69,14 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
 
     @Slot(Qt.CheckState)
     def handle_click_default_box(self, state: Qt.CheckState):
+        """Use the default save location."""
         save_path = self.get_chosen_save_location()
         self.save_locale_label.setText(f'Saving to "{save_path}"')
         self.change_save_location_visibility(state == Qt.CheckState.Unchecked)
 
     @Slot()
     def update_default_save_location(self):
+        """Update the default save location."""
         self._default_path = get_filename(
             file_type=self.file_type, tile_name='<TILE>'
         ).with_suffix('.h5')
