@@ -1,4 +1,5 @@
 """Code for a loading overlay."""
+from typing import override
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter
@@ -21,6 +22,7 @@ class LoadingOverlay(QWidget):
     finished = Signal()
 
     def __init__(self, parent=None):
+        """Initialize a LoadingOverlay."""
         super().__init__(parent=parent)
 
         self._cancelled = False
@@ -57,73 +59,39 @@ class LoadingOverlay(QWidget):
         self.hide()
 
     def text(self) -> str:
+        """Return the text in the overlay's label."""
         return self.label.text()
 
-    def setText(self, text: str):
+    def set_text(self, text: str):
+        """Set the text in the overlay's label."""
         self.label.setText(text)
 
     def _update_position(self):
+        """Move the overlay to be on top of its parent."""
         self.resize(self.parent().size())
         self.move(0, 0)
 
     def cancel(self):
+        """Cancel the active task."""
         self._cancelled = True
         self.stop()
 
     def start(self):
+        """Start the loading animation."""
         if self.parentWidget():
             self._update_position()
             self.spinner.start()
             self.show()
 
     def stop(self):
+        """Stop the loading animation."""
         self.spinner.stop()
         self.hide()
         self.finished.emit()
 
+    @override
     def paintEvent(self, event):
         self._update_position()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.fillRect(self.rect(), self.fillcolor)
-
-
-if __name__ == '__main__':
-    from PySide6.QtWidgets import (
-        QApplication,
-        QGridLayout,
-        QLabel,
-        QLineEdit,
-        QMainWindow,
-        QPushButton,
-        QWidget,
-    )
-
-    class MainWindow(QMainWindow):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-
-            self.container = QWidget(parent=self)
-            layout = QGridLayout(parent=self.container)
-            self.label = QLabel('Lorem ipsum:', parent=self.container)
-            self.lineEdit = QLineEdit(parent=self.container)
-            self.push_button = QPushButton('Click me to load', parent=self.container)
-
-            self.loading_overlay = LoadingOverlay(self)
-
-            self.push_button.clicked.connect(self.loading_overlay.start)
-
-            layout.addWidget(self.label, 0, 0)
-            layout.addWidget(self.lineEdit, 0, 1, 1, 2)
-            layout.addWidget(self.push_button, 1, 1)
-
-            self.container.setLayout(layout)
-            self.setCentralWidget(self.container)
-
-        def toggle_loading_screen(self):
-            self.loading_overlay.show()
-
-    app = QApplication()
-    win = MainWindow()
-    win.show()
-    app.exec()
