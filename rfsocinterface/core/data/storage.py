@@ -161,11 +161,14 @@ class NewDataStorage:
 
     @property
     def date(self) -> str:
-        return str(self.attrs['date'], encoding='utf-8')
+        date_val = self.attrs['date']
+        if isinstance(date_val, bytes):
+            return str(date_val, encoding='utf-8')
+        return date_val
 
     @date.setter
     def date(self, date: str):
-        self.attrs['date'] = date
+        self.attrs['date'] = str(date)
 
     @property
     def setnum(self) -> int:

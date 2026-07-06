@@ -30,6 +30,12 @@ _logger = logging.getLogger(__name__)
 XLIM = (0.1, 250)
 YLIM = (-110, -60)
 
+N0 = 1.71e10 # Singel spin electron density of states at the Fermi level
+kb_ev = 8.617342e-5 #[eV/K] Boltzman n Constant
+h_ev = 4.135e-15
+hbar_ev = h_ev/(2*np.pi)
+V = 3000 #Inductor volume in um^3. 
+
 class PsdBasis(StrEnum, metaclass=MetaEnum):
     """Enum for the different bases to use for computing the PSD."""
     IQ = 'IQ'
@@ -237,6 +243,7 @@ def plot_psd_df_over_f(
     tick_size: int=14,
 ) -> Figure | None:
     """Plot df/f noise for a single resonator.
+    basis_group,
 
     Args:
         freq (npt.NDArray): Array of frequencies (N_freq).
@@ -371,8 +378,72 @@ def plot_psd_df_over_f(
     if fig is not None:
         fig.tight_layout()
         return fig
+def plot_freq_diss(
+    psd,
+    freq,
+    detector_f,
+    onres_ind,
+    offres_ind,
+    adc_units_to_hz,
+    pdf_path,
+    title=None,
+    show_error_band=False,
+    error_band_min_percentile=None,
+    error_band_max_percentile=None,
+):
+   
 
+    pdf_path = Path(pdf_path)
+    #pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    # On-resonance tones
+    onres_psd = psd[:, onres_ind]    
+    offres_median = np.median(psd[:, offres_ind], axis=1)
+    figs = []
 
+    
+    onres_fig = plot_psd_df_over_f(
+        freq,
+        onres_psd,
+        title=" - ".join(filter(None, (title, "On-Resonance Tones"))),
+        show_error_band=show_error_band,
+        error_band_min_percentile=error_band_min_percentile,
+        error_band_max_percentile=error_band_max_percentile,
+        add_legend=True,
+        show_flat_spectrum_level=True,
+    )
+    figs.append(onres_fig)
+
+    plt.close(onres_fig)
+
+    for tone in onres_ind:
+        f0 = detector_f[tone]
+
+        if offres_median is not None:
+            this_offres_median = (
+                offres_median
+                / (adc_units_to_hz[tone] * f0)**2 
+            )
+        else:
+            this_offres_median = None
+
+        fig = plot_psd_df_over_f(
+            freq,
+            psd[:, tone],
+            f0=f0,
+            offres_median=None,
+            title=" - ".join(filter(None, (title, f"Resonator {tone}"))),
+            add_legend=True,
+            show_flat_spectrum_level=True,
+            ylim=(1e-21, 1e-15)
+        )
+        figs.append(fig)
+    
+    # Save all figures to PDF
+    with PdfPages(pdf_path) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
+            plt.close(fig)
+    
 def plot_psd_dbc_hz(
     freq: npt.NDArray,
     psd: npt.NDArray,

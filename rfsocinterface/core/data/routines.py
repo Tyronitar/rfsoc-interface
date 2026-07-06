@@ -419,7 +419,7 @@ def compute_templates_fspace(
     _logger.debug(f'RemoveElectronincsNoise: Using {n_modes} eigen modes')
 
     # create templates based on the N_mode largest eigenmodes of each
-    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs[0], output='sos', analog=False)
+    filt_sos = signal.butter(BUTTER_ORDER, lp_filt_freq, btype='low', fs=fs, output='sos', analog=False)
     data_lp = signal.sosfiltfilt(filt_sos, whitened_noise)
     templates = np.einsum('ijk,ijl->ikl', sorted_v[:,:,0:n_modes], whitened_noise)
 
@@ -548,7 +548,7 @@ class RemoveElectronicsNoise(DataRoutine):
 
             if self.params['fspace']:
                 # compute in fspace
-                compute_templates_fspace(data_lp[:, selection_indices], pdata.fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
+                templates = compute_templates_fspace(data_lp[:, selection_indices], pdata.fs, lp_filt_freq=lp_filt_freq, max_modes=max_modes)
             else:   
                 templates = compute_templates(data_lp[:, selection_indices], max_modes=max_modes)  # 2 x N_modes x N_samples
 

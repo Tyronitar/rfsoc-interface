@@ -13,7 +13,6 @@ from scipy.optimize import curve_fit
 
 from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, get_beammap_pdf_template, OFF_RESONANCE_COLOR, BAD_RESONANCE_COLOR, get_detector_pos_pdf_template
 from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine, get_extent
-from rfsocinterface.core.params import copy_and_update_params_file
 
 
 _logger = logging.getLogger(__name__)
