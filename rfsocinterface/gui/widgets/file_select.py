@@ -1,3 +1,5 @@
+"""Widget for selecting and uploading files."""
+
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QMetaObject, QSize, Signal, Slot
@@ -22,34 +24,38 @@ DEFAULT_BROWSE_OPTIONS = {
 
 
 class FileSelectWidget(QWidget):
+    """Widget for selecting files."""
     clicked = Signal()
-    cursorPositionChanged = Signal(int, int)
-    editingFinished = Signal()
-    inputRejected = Signal()
-    returnPressed = Signal()
-    selectionChanged = Signal()
-    textChanged = Signal(str)
-    textEdited = Signal(str)
+    cursor_position_changed = Signal(int, int)
+    editing_finished = Signal()
+    input_rejected = Signal()
+    return_pressed = Signal()
+    selection_changed = Signal()
+    text_changed = Signal(str)
+    text_edited = Signal(str)
 
     def __init__(self, parent=None):
+        """Initialize a FileSelectWidget."""
         super().__init__(parent=parent)
-        self.setupUi()
+        self.setup_ui()
 
         self.browse_dialog_options = DEFAULT_BROWSE_OPTIONS
         self.setup_connections()
 
     def setup_connections(self):
+        """Create all the signal connections."""
         self.pushButton.clicked.connect(self.choose_file)
         self.lineEdit.clicked.connect(self.clicked.emit)
-        self.lineEdit.cursorPositionChanged.connect(self.cursorPositionChanged.emit)
-        self.lineEdit.editingFinished.connect(self.editingFinished.emit)
-        self.lineEdit.inputRejected.connect(self.inputRejected.emit)
-        self.lineEdit.returnPressed.connect(self.returnPressed.emit)
-        self.lineEdit.selectionChanged.connect(self.selectionChanged.emit)
-        self.lineEdit.textChanged.connect(self.textChanged.emit)
-        self.lineEdit.textEdited.connect(self.textEdited.emit)
+        self.lineEdit.cursorPositionChanged.connect(self.cursor_position_changed.emit)
+        self.lineEdit.editingFinished.connect(self.editing_finished.emit)
+        self.lineEdit.inputRejected.connect(self.input_rejected.emit)
+        self.lineEdit.returnPressed.connect(self.return_pressed.emit)
+        self.lineEdit.selectionChanged.connect(self.selection_changed.emit)
+        self.lineEdit.textChanged.connect(self.text_changed.emit)
+        self.lineEdit.textEdited.connect(self.text_edited.emit)
 
-    def setupUi(self):
+    def setup_ui(self):
+        """Setup the UI for this widget."""
         self.horizontalLayout = QHBoxLayout()
         self.horizontalLayout.setContentsMargins(0, 0, 0, 0)
 
@@ -63,7 +69,7 @@ class FileSelectWidget(QWidget):
 
         self.setLayout(self.horizontalLayout)
 
-        self.retranslateUi()
+        self.retranslate_ui()
 
         QMetaObject.connectSlotsByName(self)
 
@@ -75,7 +81,8 @@ class FileSelectWidget(QWidget):
             self.lineEdit.setText(fname)
             self.set_dir(str(Path(fname).parent))
 
-    def retranslateUi(self):
+    def retranslate_ui(self):
+        """Retranslate the text in the widget."""
         self.setWindowTitle(
             QCoreApplication.translate('FileSelectWidget', 'FileSelectWidget', None)
         )
@@ -84,27 +91,35 @@ class FileSelectWidget(QWidget):
         )
 
     def text(self) -> str:
+        """Return the text in the widget's QLineEdit."""
         return self.lineEdit.text()
 
-    def setText(self, text: str):
+    def set_text(self, text: str):
+        """Set the text in the widget's QLineEdit."""
         self.lineEdit.setText(text)
 
     def clear(self):
+        """Clear all text in the widget's QLineEdit."""
         self.lineEdit.clear()
 
     def set_caption(self, caption: str):
+        """Set the caption for the file browsing dialog."""
         self.browse_dialog_options['caption'] = caption
 
     def set_filter(self, filt: str):
+        """Set the filter for the file browsing dialog."""
         self.browse_dialog_options['filter'] = filt
 
     def set_dir(self, directory: str):
+        """Set the directory for the file browsing dialog."""
         self.browse_dialog_options['dir'] = directory
 
     def set_placeholder_text(self, text: str):
+        """Set the placeholder text for the QLineEdit."""
         self.lineEdit.setPlaceholderText(text)
 
     def set_selected_filter(self, filt: str):
+        """Set the selected filter for the file browsing dialog."""
         all_filters = self.browse_dialog_options['filter']
         if filt not in all_filters:
             raise ValueError(f'Filter {filt} not found in {all_filters.split(";;")}')
@@ -112,9 +127,11 @@ class FileSelectWidget(QWidget):
 
 
 class FileUploadWidget(FileSelectWidget):
+    """FileSelectWidget that includes a button for "uploading" the selected file."""
     uploaded = Signal(str)
 
     def __init__(self, parent=None):
+        """Initialize a FileUploadWidget."""
         super().__init__(parent)
 
         self.toolButton = QToolButton(self)
@@ -131,10 +148,12 @@ class FileUploadWidget(FileSelectWidget):
 
     @Slot()
     def upload(self):
+        """Emit a signal with the curent text.."""
         self.uploaded.emit(self.text())
 
     @Slot(str)
     def enable_upload(self, text: str):
+        """Change whether the upload button is enabled."""
         if text != '':
             self.toolButton.setEnabled(True)
         else:

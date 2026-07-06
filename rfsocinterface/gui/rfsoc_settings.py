@@ -437,7 +437,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
         chan_settings = self.rfsoc.channel_settings(self.channel)
 
         if 'paramsFile' in chan_settings:
-            self.params_fileSelectWidget.setText(str(chan_settings['paramsFile']))
+            self.params_fileSelectWidget.set_text(str(chan_settings['paramsFile']))
 
         # Ethernet Settings
         self.eth_source_lineEdit.setText(chan_settings['sourceIP'])
