@@ -151,6 +151,7 @@ class FunctionWidget(QWidget):
 
 class FunctionDragItem(ClickableDragItem):
     """Drag and drop item representing a function."""
+
     def __init__(
         self,
         fn: Callable[P, R],
@@ -175,6 +176,7 @@ class FunctionDragItem(ClickableDragItem):
 
 class DragFunctionWidget(QWidget):
     """A orderable list of functions with a side panel for entering arguments."""
+
     def __init__(self, parent=None):
         """Initialize a DragFunctionWidget."""
         super().__init__(parent=parent)
@@ -271,6 +273,7 @@ class DragFunctionWidget(QWidget):
 
 class MultiSectionDragFunctionWidget(QWidget):
     """DragFunctionWidget that has multiple sections."""
+
     order_changed = Signal(list, list)
 
     def __init__(self, parent=None):
