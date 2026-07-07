@@ -47,8 +47,8 @@ class RFSOCSettingsWidget(QWidget):
 
     def update_channel_names(self):
         """Update the channel names in the sections."""
-        self.channel1_section.setTitle(self.rfsoc.get_tile_name(1))
-        self.channel2_section.setTitle(self.rfsoc.get_tile_name(2))
+        self.channel1_section.set_title(self.rfsoc.get_tile_name(1))
+        self.channel2_section.set_title(self.rfsoc.get_tile_name(2))
 
     def setupUi(self):
         layout = QVBoxLayout()
@@ -57,8 +57,8 @@ class RFSOCSettingsWidget(QWidget):
         self.channel1_widget = ChannelSettingsWidget(self.rfsoc, 1, parent=self)
         channel1_layout.addWidget(self.channel1_widget)
         self.channel1_section = Section(self)
-        self.channel1_section.setTitle(self.rfsoc.get_tile_name(1))
-        self.channel1_section.setContentLayout(channel1_layout)
+        self.channel1_section.set_title(self.rfsoc.get_tile_name(1))
+        self.channel1_section.set_content_layout(channel1_layout)
         layout.addWidget(self.channel1_section)
         # for label in self.channel1_widget.error_labels:
         #     label.made_visible.connect(self.channel1_section.height_changed)
@@ -71,8 +71,8 @@ class RFSOCSettingsWidget(QWidget):
         self.channel2_widget = ChannelSettingsWidget(self.rfsoc, 2, parent=self)
         channel2_layout.addWidget(self.channel2_widget)
         self.channel2_section = Section(self)
-        self.channel2_section.setTitle(self.rfsoc.get_tile_name(2))
-        self.channel2_section.setContentLayout(channel2_layout)
+        self.channel2_section.set_title(self.rfsoc.get_tile_name(2))
+        self.channel2_section.set_content_layout(channel2_layout)
         layout.addWidget(self.channel2_section)
         self.channel2_widget.height_updated.connect(
             self.channel2_section.height_changed
@@ -83,8 +83,8 @@ class RFSOCSettingsWidget(QWidget):
         self.advanced_widget = AdvancedSettingsWidget(self.rfsoc, parent=self)
         advanced_layout.addWidget(self.advanced_widget)
         self.advanced_section = Section(self)
-        self.advanced_section.setTitle('Advanced')
-        self.advanced_section.setContentLayout(advanced_layout)
+        self.advanced_section.set_title('Advanced')
+        self.advanced_section.set_content_layout(advanced_layout)
         layout.addWidget(self.advanced_section)
 
         self.setLayout(layout)

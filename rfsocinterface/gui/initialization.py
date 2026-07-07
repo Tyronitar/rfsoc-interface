@@ -51,7 +51,7 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
     def add_section(self, rfsoc: RFSoCWrapper, toggle: bool = False):
         # channel_settings = dict(self.settings['defaults']['channel'], **chan_dict)
         section_id = len(self.items) + 1
-        section = Section(self.scrollAreaWidgetContents, animationDuration=100)
+        section = Section(self.scrollAreaWidgetContents, animation_duration=100)
         section.setObjectName(f'section_{section_id}')
         # TODO: Make the channel dynamic
         rfsoc_widget = RFSOCSettingsWidget(rfsoc, self)
@@ -61,14 +61,14 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
         vertical_layout.setObjectName(f'section_{section_id}_verticalLayout')
         vertical_layout.addWidget(rfsoc_widget)
         # channel_section.setContentLayout(vertical_layout)
-        section.setContentLayout(rfsoc_widget.layout())
-        section.setTitle(rfsoc.settings['name'])
+        section.set_content_layout(rfsoc_widget.layout())
+        section.set_title(rfsoc.settings['name'])
 
         self.verticalLayout.addWidget(section, alignment=Qt.AlignmentFlag.AlignTop)
         self.items.append((section, rfsoc_widget))
         if toggle:
             section.set_duration(0)
-            section.toggleButton.toggle()
+            section.toggle_button.toggle()
             section.set_duration(100)
         self._enable_delete()
 

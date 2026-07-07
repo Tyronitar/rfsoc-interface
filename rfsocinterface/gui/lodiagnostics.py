@@ -1155,7 +1155,7 @@ class PowerSweepDialog(QDialog):
         self.try_load_pdf()
         vlayout.addWidget(self.pdf_viewer)
 
-        self.section = Section(parent=self, animationDuration=0)
+        self.section = Section(parent=self, animation_duration=0)
         section_layout = QGridLayout()
         self.percentile_label = QLabel('Baseline Percentage', parent=self)
         self.percentile_lineEdit = QLineEdit(parent=self)
@@ -1179,8 +1179,8 @@ class PowerSweepDialog(QDialog):
         )
         section_layout.addItem(self.horizontalSpacer, 0, 1)
 
-        self.section.setContentLayout(section_layout)
-        self.section.setTitle('Refit Optimal Power Levels')
+        self.section.set_content_layout(section_layout)
+        self.section.set_title('Refit Optimal Power Levels')
         vlayout.addWidget(self.section)  # , alignment=Qt.AlignmentFlag.AlignBottom)
 
         self.button_box = QDialogButtonBox(
