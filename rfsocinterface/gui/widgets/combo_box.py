@@ -1,4 +1,5 @@
 """Variations of the QComboBox."""
+
 from typing import override
 
 from PySide6.QtCore import Qt

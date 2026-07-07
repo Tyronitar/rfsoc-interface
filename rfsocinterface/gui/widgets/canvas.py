@@ -35,8 +35,10 @@ from rfsocinterface.gui.blit_manager import BlitManager
 mpl.use('QtAgg')
 mpl.rcParams['toolbar'] = 'toolbar2'
 
+
 class EditTool(ToolToggleBase):
     """Matplotlib toolbar item for editing."""
+
     default_keymap = 'e'
     description = 'Edit the plot'
     default_toggled = False
@@ -174,6 +176,7 @@ class ScrollableCanvas(QScrollArea):
 
 class EditMode(StrEnum):
     """Enum indicating that editing is enabled."""
+
     EDIT = 'edit'
 
     def __str__(self):
@@ -183,6 +186,7 @@ class EditMode(StrEnum):
 
 class EditToolBar(NavigationToolbar2QT):
     """Matplotlib navigation toolbar that has functionality for editing the plot."""
+
     toolitems = NavigationToolbar2QT.toolitems
 
     def __init__(

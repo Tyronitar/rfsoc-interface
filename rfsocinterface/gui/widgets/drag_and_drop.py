@@ -104,6 +104,7 @@ class DragItem(QLabel):
 
 class ClickableDragItem(DragItem):
     """A DragItem that emits clicked signals."""
+
     double_clicked = Signal()
     clicked = Signal()
 
@@ -259,6 +260,7 @@ class DragWidget(QWidget):
 
 class ClickableDragWidget(DragWidget):
     """DragWidget that uses ClickableDragItems."""
+
     active_item_changed = Signal(QWidget)
 
     def __init__(self, *args, orientation=Qt.Orientation.Vertical, **kwargs):
@@ -297,6 +299,7 @@ class ClickableDragWidget(DragWidget):
 
 class MultiSectionDragWidget(QWidget):
     """DragWidget with multiple independent sections."""
+
     order_changed = Signal(list, list)
 
     def __init__(self, orientation=Qt.Orientation.Vertical, parent=None):
@@ -382,6 +385,7 @@ class MultiSectionDragWidget(QWidget):
 
 class ClickableMultiSectionDragWidget(MultiSectionDragWidget):
     """A MultiSectionDragWidget that uses ClickableDragWidgets."""
+
     active_item_changed = Signal(int, QWidget)
 
     def __init__(self, orientation=Qt.Orientation.Vertical, parent=None):

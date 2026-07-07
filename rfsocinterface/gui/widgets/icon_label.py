@@ -9,6 +9,7 @@ ERROR_ICON_CODE = 'fa5s.exclamation-circle'
 
 class IconLabel(QWidget):
     """A text label with an icon in the front."""
+
     IconSize = QSize(16, 16)
     HorizontalSpacing = 2
 

@@ -1,3 +1,5 @@
+"""Widgets for representing functions and their arguments."""
+
 from collections.abc import Callable
 from typing import Any, Concatenate, overload
 
@@ -30,9 +32,11 @@ class FunctionWidget(QWidget):
     def __init__(
         self,
         fn: Callable[P, R],
-        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]] | None = None,
+        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]
+        | None = None,
         parent=None,
     ):
+        """Initialize a FunctionWidget."""
         if args is None:
             args = []
         super().__init__(parent=parent)
@@ -148,7 +152,8 @@ class FunctionDragItem(ClickableDragItem):
     def __init__(
         self,
         fn: Callable[P, R],
-        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]] | None = None,
+        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]
+        | None = None,
         label: str | None = None,
         *init_args,
         **init_kwargs,
@@ -204,7 +209,8 @@ class DragFunctionWidget(QWidget):
         self,
         label: str,
         fn: Callable,
-        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]] | None = None,
+        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]
+        | None = None,
     ) -> FunctionDragItem:
         pass
 
@@ -298,7 +304,8 @@ class MultiSectionDragFunctionWidget(QWidget):
         i_section: int,
         label: str,
         fn: Callable,
-        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]] | None = None,
+        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]
+        | None = None,
     ) -> FunctionDragItem:
         pass
 

@@ -338,7 +338,8 @@ class WaitingSpinner(QWidget):
             return color
         min_alpha_f = min_opacity / 100.0
         distance_threshold = math.ceil(
-            (total_nr_of_lines - 1) * trail_fade_perc / 100.0)
+            (total_nr_of_lines - 1) * trail_fade_perc / 100.0
+        )
         if count_distance > distance_threshold:
             color.setAlphaF(min_alpha_f)
         else:
@@ -353,6 +354,7 @@ class WaitingSpinner(QWidget):
 
 class StickyWaitingSpinner(WaitingSpinner):
     """Waiting spinner where the animation slows down and "bunches up" at the top."""
+
     def __init__(
         self,
         parent: QWidget = None,
@@ -466,6 +468,7 @@ class StickyWaitingSpinner(WaitingSpinner):
 # Code for determining the parameters I want:
 class SpinnerConfigurator(QWidget):
     """Interactive GUI for configuring spinner settings."""
+
     sb_roundness = None
     sb_opacity = None
     sb_fadeperc = None

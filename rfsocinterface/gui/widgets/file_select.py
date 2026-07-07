@@ -25,6 +25,7 @@ DEFAULT_BROWSE_OPTIONS = {
 
 class FileSelectWidget(QWidget):
     """Widget for selecting files."""
+
     clicked = Signal()
     cursor_position_changed = Signal(int, int)
     editing_finished = Signal()
@@ -128,6 +129,7 @@ class FileSelectWidget(QWidget):
 
 class FileUploadWidget(FileSelectWidget):
     """FileSelectWidget that includes a button for "uploading" the selected file."""
+
     uploaded = Signal(str)
 
     def __init__(self, parent=None):

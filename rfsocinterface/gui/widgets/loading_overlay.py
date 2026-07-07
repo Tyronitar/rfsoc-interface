@@ -1,4 +1,5 @@
 """Code for a loading overlay."""
+
 from typing import override
 
 from PySide6.QtCore import QSize, Qt, Signal

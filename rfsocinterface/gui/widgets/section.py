@@ -68,6 +68,7 @@ TOGGLE_BUTTON_CSS = """
 
 class Section(QWidget):
     """Collapsible container for other widgets."""
+
     clicked = Signal()
 
     def __init__(self, parent=None, *, animation_duration=100):
@@ -213,9 +214,7 @@ class Section(QWidget):
         section_animation.setDuration(duration)
         section_animation.setStartValue(self.height())
         section_animation.setEndValue(self.collapsed_height + self.content_height)
-        content_animation_min = QPropertyAnimation(
-            self.content_area, b'minimumHeight'
-        )
+        content_animation_min = QPropertyAnimation(self.content_area, b'minimumHeight')
         content_animation_min.setDuration(duration)
         content_animation_min.setStartValue(self.content_area.height())
         content_animation_min.setEndValue(self.content_height)

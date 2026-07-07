@@ -11,6 +11,7 @@ from rfsocinterface.gui.uic.save_location_ui import Ui_SaveLocationWidget
 
 class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
     """Widget for selecting save locations for files, or using defaults otherwise."""
+
     def __init__(self, parent=None, file_type: str = 'tod'):
         """Initialize a SaveLocationWidget."""
         super().__init__(parent)

@@ -92,6 +92,7 @@ def get_line_edit_text(line_edit: QLineEdit, use_placeholder_text: bool = False)
 
 class PathValidator(QValidator):
     """QValidator for testing file paths."""
+
     def __init__(self, parent: QWidget | None = None):
         """Initialize a PathValidator."""
         super().__init__(parent=parent)
