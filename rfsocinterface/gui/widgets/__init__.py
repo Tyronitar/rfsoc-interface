@@ -49,7 +49,7 @@ from rfsocinterface.gui.widgets.spinner import (
 from rfsocinterface.gui.widgets.utils import (
     ArgumentType,
     PathValidator,
-    get_lineEdit_text,
+    get_line_edit_text,
     get_num_value,
     get_total_height,
     layout_widgets,
@@ -88,7 +88,7 @@ __all__ = [
     'ToolbarCanvas',
     'VLine',
     'WaitingSpinner',
-    'get_lineEdit_text',
+    'get_line_edit_text',
     'get_num_value',
     'get_total_height',
     'highlight_error_line_edit',

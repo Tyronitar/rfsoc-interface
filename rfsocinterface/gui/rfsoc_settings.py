@@ -17,7 +17,7 @@ from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
 from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import (
     Ui_RFSOCAdvancedSettingsWidget,
 )
-from rfsocinterface.gui.widgets import get_lineEdit_text, get_num_value
+from rfsocinterface.gui.widgets import get_line_edit_text, get_num_value
 from rfsocinterface.gui.widgets.icon_label import (
     ERROR_ICON_CODE,
     IconLabel,
@@ -355,9 +355,9 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
     @Slot()
     def update_ethernet_config(self):
         chan_settings = self.rfsoc.channel_settings(self.channel)
-        chan_settings['sourceIP'] = get_lineEdit_text(self.eth_source_lineEdit)
-        chan_settings['destIP'] = get_lineEdit_text(self.eth_dest_lineEdit)
-        chan_settings['destMAC'] = get_lineEdit_text(self.eth_mac_lineEdit)
+        chan_settings['sourceIP'] = get_line_edit_text(self.eth_source_lineEdit)
+        chan_settings['destIP'] = get_line_edit_text(self.eth_dest_lineEdit)
+        chan_settings['destMAC'] = get_line_edit_text(self.eth_mac_lineEdit)
         chan_settings['port'] = get_num_value(self.eth_port_lineEdit, int)
         _logger.debug(
             f'ChannelSettingsWidget calling `update_kidpy_rfsoc` of RFSoC {self.rfsoc.name}'

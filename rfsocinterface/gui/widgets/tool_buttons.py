@@ -16,6 +16,7 @@ class RoundedToolButton(QToolButton):
         parent=None,
         **kwargs,
     ):
+        """Initialize a RoundedToolButton."""
         super().__init__(parent=parent, **kwargs)
 
         self.setFixedSize(size, size)
@@ -44,6 +45,7 @@ class CircularToolButton(RoundedToolButton):
         parent=None,
         **kwargs,
     ):
+        """Initialize a CircularToolButton."""
         super().__init__(
             size,
             radius_fraction=0.5,
