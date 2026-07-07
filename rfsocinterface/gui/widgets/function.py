@@ -1,16 +1,13 @@
 """Widgets for representing functions and their arguments."""
 
 from collections.abc import Callable
-from typing import Any, Concatenate, overload
+from typing import Any, Concatenate, overload, override
 
-import numpy as np
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
-    QApplication,
     QFormLayout,
     QHBoxLayout,
-    QMainWindow,
     QScrollArea,
     QStackedWidget,
     QVBoxLayout,
@@ -66,6 +63,7 @@ class FunctionWidget(QWidget):
         *args: Q.args,
         **kwargs: Q.kwargs,
     ):
+        """Add an argument to the widget."""
         label = label.strip(': ')
         has_default = False
         if 'default' in kwargs:
@@ -101,6 +99,7 @@ class FunctionWidget(QWidget):
         default_val=None,
         **kwargs: Q.kwargs,
     ) -> QWidget:
+        """Create the appropriate widget for the desired argument."""
         match arg_type:
             case ArgumentType.BOOL:
                 widget = arg_type.widget(label, *args, parent=self, **kwargs)
@@ -122,6 +121,7 @@ class FunctionWidget(QWidget):
                 return widget
 
     def get_inputs(self) -> list[Any]:
+        """Get the inputs for the function from the GUI."""
         values = []
         for i, (_, arg_types) in enumerate(self.args):
             if len(arg_types) > 1:
@@ -144,11 +144,13 @@ class FunctionWidget(QWidget):
         return values
 
     def call_function(self):
+        """Call the function represented by this widget."""
         values = self.get_inputs()
         return self.fn(*values)
 
 
 class FunctionDragItem(ClickableDragItem):
+    """Drag and drop item representing a function."""
     def __init__(
         self,
         fn: Callable[P, R],
@@ -158,6 +160,7 @@ class FunctionDragItem(ClickableDragItem):
         *init_args,
         **init_kwargs,
     ):
+        """Initialize a FunctionDragItem."""
         if args is None:
             args = []
         if not label:
@@ -171,7 +174,9 @@ class FunctionDragItem(ClickableDragItem):
 
 
 class DragFunctionWidget(QWidget):
+    """A orderable list of functions with a side panel for entering arguments."""
     def __init__(self, parent=None):
+        """Initialize a DragFunctionWidget."""
         super().__init__(parent=parent)
         self.drag = ClickableDragWidget(orientation=Qt.Orientation.Vertical)
 
@@ -198,6 +203,7 @@ class DragFunctionWidget(QWidget):
 
     @property
     def active_item(self) -> FunctionDragItem | None:
+        """Return the currently selected item."""
         return self.drag.active_item
 
     @overload
@@ -215,6 +221,7 @@ class DragFunctionWidget(QWidget):
         pass
 
     def add_item(self, *data):
+        """Add an item to the list."""
         if not isinstance(data[0], FunctionDragItem):
             label, fn, args = data
             item = FunctionDragItem(fn, args, label=label, parent=self)
@@ -227,27 +234,32 @@ class DragFunctionWidget(QWidget):
         return item
 
     def clear(self):
+        """Clear all items from the list."""
         for item in self.drag.items():
             self.drag.remove_item(item)
             self.func_container.removeWidget(item.func_widget)
         self.func_container.setCurrentIndex(0)
 
     def remove_item(self, item: FunctionDragItem):
+        """Remove an item from the list."""
         self.drag.remove_item(item)
         self.func_container.removeWidget(item.func_widget)
         item.deleteLater()
         self.func_container.setCurrentIndex(0)
 
     def items(self) -> list[FunctionDragItem]:
+        """Return a list of all items."""
         return self.drag.items()
 
     @Slot()
     def display_args(self):
+        """Show the arguments for the selected function in the side panel."""
         item: FunctionDragItem = self.sender()
         self.func_container.setCurrentIndex(
             self.func_container.indexOf(item.func_widget)
         )
 
+    @override
     def mousePressEvent(self, event: QMouseEvent):
         child = self.childAt(event.position())
         # Clicking off of the list items or parameters should deselect
@@ -258,13 +270,15 @@ class DragFunctionWidget(QWidget):
 
 
 class MultiSectionDragFunctionWidget(QWidget):
-    orderChanged = Signal(list, list)
+    """DragFunctionWidget that has multiple sections."""
+    order_changed = Signal(list, list)
 
     def __init__(self, parent=None):
+        """Initialize a MultiSectionDragFunctionWidget."""
         super().__init__(parent=parent)
         self.drag = ClickableMultiSectionDragWidget(orientation=Qt.Orientation.Vertical)
-        self.drag.order_changed.connect(self.orderChanged.emit)
-        self.drag.order_changed.connect(lambda _, l: print(l))
+        self.drag.order_changed.connect(self.order_changed.emit)
+        # self.drag.order_changed.connect(lambda _, item_data: print(item_data))
 
         hlayout = QHBoxLayout()
 
@@ -289,9 +303,11 @@ class MultiSectionDragFunctionWidget(QWidget):
 
     @property
     def active_item(self) -> tuple[int, FunctionDragItem | None]:
+        """Return the currently selected item."""
         return self.drag.active_item
 
     def add_section(self, label: str):
+        """Add a new section to the widget."""
         self.drag.add_section(label)
 
     @overload
@@ -310,6 +326,7 @@ class MultiSectionDragFunctionWidget(QWidget):
         pass
 
     def add_item(self, *data):
+        """Add an item to the list."""
         if not isinstance(data[1], FunctionDragItem):
             label, fn, args = data[1:]
             item = FunctionDragItem(fn, args, label=label, parent=self)
@@ -322,6 +339,7 @@ class MultiSectionDragFunctionWidget(QWidget):
         return item
 
     def clear(self):
+        """Clear all items from the list."""
         for i_sec, sec in enumerate(self.drag.sections):
             for item in sec.items():
                 self.drag.remove_item(i_sec, item)
@@ -329,27 +347,33 @@ class MultiSectionDragFunctionWidget(QWidget):
         self.func_container.setCurrentIndex(0)
 
     def remove_item(self, i_section: int, item: FunctionDragItem):
+        """Remove an item from the list."""
         self.drag.remove_item(i_section, item)
         self.func_container.removeWidget(item.func_widget)
         item.deleteLater()
         self.func_container.setCurrentIndex(0)
 
     def items(self) -> list[FunctionDragItem]:
+        """Return a list of all items."""
         return self.drag.items()
 
     def items_separated(self) -> list[list[FunctionDragItem]]:
+        """Return all items separated by section."""
         return self.drag.items_separated()
 
     def item_data_separated(self) -> list[list]:
+        """Return the data of all items separated by section."""
         return self.drag.get_item_data_separated()
 
     @Slot()
     def display_args(self):
+        """Show the arguments for the selected function in the side panel."""
         item: FunctionDragItem = self.sender()
         self.func_container.setCurrentIndex(
             self.func_container.indexOf(item.func_widget)
         )
 
+    @override
     def mousePressEvent(self, event: QMouseEvent):
         child = self.childAt(event.position())
         # Clicking off of the list items or parameters should deselect
@@ -357,58 +381,3 @@ class MultiSectionDragFunctionWidget(QWidget):
             self.drag.set_active_item(-1, None)
             self.func_container.setCurrentIndex(0)
         return super().mousePressEvent(event)
-
-
-if __name__ == '__main__':
-    enum_choices = ['hello', 'world']
-
-    def dummy_func(
-        string: str, num: float, nums: tuple[float, float], enum: str, check: bool
-    ):
-        assert enum in enum_choices
-        print(f'"{string}", {num}, {nums}, {enum}, {check}')
-
-    def root(n: float) -> float:
-        return np.sqrt(n)
-
-    app = QApplication()
-    w = QMainWindow()
-    # ...
-    drag = MultiSectionDragFunctionWidget(parent=w)
-    w.setCentralWidget(drag)
-
-    n_sections = 2
-    counter = 0
-    for i_sec, section_name in enumerate(
-        [f'Section {i + 1}' for i in range(n_sections)]
-    ):
-        drag.add_section(section_name)
-        drag.add_item(
-            i_sec,
-            'Square Root',
-            root,
-            [
-                (('Number: ', ArgumentType.FLOAT), {'default': 2.25}),
-            ],
-        )
-        drag.add_item(
-            i_sec,
-            'Dummy Func',
-            dummy_func,
-            [
-                (('Str Arg: ', ArgumentType.STR), {'default': ('default string',)}),
-                (('Float Arg: ', ArgumentType.FLOAT), {'default': (10.2,)}),
-                (
-                    ('Double Float Arg: ', (ArgumentType.FLOAT, ArgumentType.FLOAT)),
-                    {'default': (10.2, 64.7)},
-                ),
-                (
-                    ('Enum Arg: ', ArgumentType.ENUM),
-                    {'options': enum_choices, 'default': ('world',)},
-                ),
-                (('Bool Arg', ArgumentType.BOOL), {'default': (True,)}),
-            ],
-        )
-
-    w.show()
-    app.exec()
