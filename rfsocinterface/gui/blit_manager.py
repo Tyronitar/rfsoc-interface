@@ -1,4 +1,5 @@
 """Manager for handling drawing and blitting of animated artists."""
+
 from collections.abc import Iterable
 
 import matplotlib as mpl

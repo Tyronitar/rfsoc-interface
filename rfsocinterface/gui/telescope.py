@@ -1,10 +1,12 @@
+"""GUI tab for controlling the telescope."""
+
 from __future__ import annotations
 
 # from telnetlib import Telnet
 import logging
 import time
 from threading import Thread
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,9 +18,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import (
     QAbstractButton,
-    QApplication,
     QDialog,
-    QMainWindow,
     QVBoxLayout,
     QWidget,
 )
@@ -47,7 +47,7 @@ _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 
 class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
-    """Window for controlling telescope motion."""
+    """GUI tab for controlling the telescope."""
 
     tab_name = TabName.TELESCOPE
 
@@ -56,10 +56,10 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         main_window: MainWindow,
         rfsocs: list[RFSoCWrapper],
         settings: dict,
-        client_id: str,
         parent: QWidget | None = None,
     ):
-        super().__init__(main_window, rfsocs, settings, client_id, parent=parent)
+        """Initialize a TelescopeControlWidget."""
+        super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
 
         self.azimuth_commanded_valLabel.setText('N/A')
@@ -117,6 +117,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.timer.start(500)
 
     def toggle_controls_enabled(self, enabled: bool):
+        """Set whether the telescope control widgets are enabled."""
         self.azimuth_setlineEdit.setEnabled(enabled)
         self.zenith_setlineEdit.setEnabled(enabled)
         self.azimuth_setpushButton.setEnabled(enabled)
@@ -124,6 +125,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
     @Slot()
     def toggle_motion_enabled(self):
+        """Set whether telescope control is enabled."""
         if self.enable_motion_checkBox.isChecked():
             self.toggle_controls_enabled(True)
             self.toggle_jogging()
@@ -132,9 +134,11 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
             self.controller.setEnabled(False)
 
     def stop_motion(self):
+        """Stop the telescope."""
         self.send_telescope_command('stop_telescope')
 
     def take_pic(self):
+        """Take an optical image and show the image to screen."""
         pic_data = self.get_current_image()[0]
         fig = plt.figure()
         ax = fig.add_subplot(111)
@@ -150,12 +154,14 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         dialog.show()
 
     def toggle_jogging(self):
+        """Toggle whether manual joggin is enabled."""
         if self.manual_controlcheckBox.isChecked():
             self.controller.setEnabled(True)
         else:
             self.controller.setEnabled(False)
 
     def jog(self, btn: QAbstractButton):
+        """Jog the telescope according to button presses."""
         match btn:
             case self.controller.up_toolButton:
                 self.send_telescope_command(
@@ -175,15 +181,18 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
                 )
 
     def set_az_pos(self):
+        """Set the telescope's azimuth position."""
         new_pos = get_num_value(self.azimuth_setlineEdit)
         self.send_telescope_command('set_az_pos', new_pos)
 
     def set_za_pos(self):
+        """Set the telescope's zenith angle position."""
         new_pos = get_num_value(self.zenith_setlineEdit)
         self.send_telescope_command('set_za_pos', new_pos)
 
     @Slot(float, float)
     def update_az_pos(self, new_pos: float, pps_pos: float | None):
+        """Update the telescope's displayed azimuth position."""
         self.azimuth_actual_valLabel.setText(f'{new_pos:.3f}°')
         if pps_pos is None:
             self.azimuth_pps_valLabel.setText('N/A')
@@ -194,19 +203,23 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
     @Slot(float)
     def update_az_cmd(self, new_pos: float):
+        """Update the telescope's displayed commanded azimuth position."""
         self.last_az_commanded = new_pos
         self.azimuth_commanded_valLabel.setText(f'{new_pos:.3f}°')
 
     @Slot(float)
     def update_az_vel(self, new_vel: float):
+        """Update the telescope's displayed azimuthal velocity."""
         self.azimuth_velocity_valLabel.setText(f'{new_vel:.2f}°/sec')
 
     @Slot(float)
     def update_az_err(self, new_err: float):
+        """Update the telescope's displayed error in azimuth."""
         self.azimuth_error_valLabel.setText(f'{new_err:.3f}°')
 
     @Slot(float, float)
     def update_za_pos(self, new_pos: float, pps_pos: float | None):
+        """Update the telescope's displayed zenith angle position."""
         self.zenith_actual_valLabel.setText(f'{new_pos:.3f}°')
         if pps_pos is None:
             self.zenith_pps_valLabel.setText('N/A')
@@ -217,18 +230,22 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
 
     @Slot(float)
     def update_za_cmd(self, new_pos: float):
+        """Update the telescope's displayed commanded zenith angle position."""
         self.last_za_commanded = new_pos
         self.zenith_commanded_valLabel.setText(f'{new_pos:.3f}°')
 
     @Slot(float)
     def update_za_vel(self, new_vel: float):
+        """Update the telescope's displayed velocity in the zenith angle direction."""
         self.zenith_velocity_valLabel.setText(f'{new_vel:.2f}°/sec')
 
     @Slot(float)
     def update_za_err(self, new_err: float):
+        """Update the telescope's displayed error in zenith angle."""
         self.zenith_error_valLabel.setText(f'{new_err:.3f}°')
 
     def update_ui_telescope(self):
+        """Update the display with the telescope's information."""
         az_velocity = (self.az_pos - self.last_az) / self.interval * 1000
         za_velocity = (self.za_pos - self.last_za) / self.interval * 1000
         self.update_az_pos(self.az_pos, self.az_pps_pos)
@@ -248,12 +265,14 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     # Camera Handlers
     #
     def optical_camera_loop(self):
+        """Control loop for the optical video feed."""
         while self.optical_pushButton.isChecked():
             self.update_live_footage()
             time.sleep(1 / self.frame_rate)
 
     @Slot()
     def toggle_live_footage(self):
+        """Toggle whether the optical footage is shown."""
         if self.optical_pushButton.isChecked():
             # Start showing live footage
             self.live_footage_canvas.show()
@@ -270,12 +289,14 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
             self.optical_pushButton.setText('Show Optical Video')
 
     def update_live_footage(self):
+        """Update the data in the live footage."""
         if self.is_active_tab:  # Only update the canvas if the tab is in focus
             image, _ = self.get_current_image()
             self.live_footage_im.set_array(image)
             self.live_footage_canvas.canvas.draw()
             self.live_footage_canvas.canvas.flush_events()
 
+    @override
     def closeEvent(self, event):
         self.timer.stop()
         # don't need to wait for success msg, since listener thread will eat the message
@@ -283,13 +304,3 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         if self.live_footage_thread is not None and self.live_footage_thread.is_alive():
             self.optical_pushButton.click()
         return super().closeEvent(event)
-
-
-if __name__ == '__main__':
-    app = QApplication()
-
-    tel = TelescopeControlWidget()
-    win = QMainWindow()
-    win.setCentralWidget(tel)
-    win.show()
-    app.exec()

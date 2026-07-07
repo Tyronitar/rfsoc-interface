@@ -1,3 +1,5 @@
+"""GUI tab for timed data collection."""
+
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -21,6 +23,8 @@ _logger = logging.getLogger(__name__)
 
 
 class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
+    """GUI tab for timed data collection."""
+
     tab_name = TabName.DATA
 
     def __init__(
@@ -30,6 +34,7 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         settings: dict,
         parent=None,
     ):
+        """Initialize a DataStreamingWidget."""
         super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
         self.save_location_widget.file_type = 'tod'
@@ -42,6 +47,7 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         )
 
     def setup_connections(self):
+        """Setup widget connections."""
         self.start_pushButton.clicked.connect(self.start_streaming)
 
     def wait_for_TOD(self, duration: int):
@@ -69,14 +75,16 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
             counter += 1
             if counter % 50 == 0:
                 _logger.info(
-                    f'Collecting data: {100 * (now - start) / duration:.2f}% complete...'
+                    'Collecting data: '
+                    f'{100 * (now - start) / duration:.2f}% complete...'
                 )
 
     def process_data(self, date: str, setnum: int):
-        pass
+        """Process the data after collecting it."""
         # _logger.info('Processing data')
 
     def start_streaming(self):
+        """Start collecting data."""
         self.save_location_widget.update_timer.stop()
         rfsocs, channels, rfchans, date, setnum = self.setup_data_collection()
         if not self.check_for_lo_sweep(rfsocs, channels):
@@ -88,7 +96,8 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         duration = get_num_value(self.duration_lineEdit, int, use_placeholder_text=True)
 
         _logger.debug(
-            f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}'
+            f'Streaming {duration} seconds of data for chans: '
+            f'{[chan.tile_name for chan in rfchans]}'
         )
         capture(rfchans, self.wait_for_TOD, duration)
         _logger.info('Completed data streaming')
@@ -97,6 +106,3 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         # TODO: Add a check to see if the data collection was canceled
         self.append_global_data(rfsocs, channels, rfchans)
         self.process_data(date, setnum)
-
-    def stop_streaming(self):
-        raise NotImplementedError('Stop streaming not implemented yet')

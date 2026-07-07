@@ -177,7 +177,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.gridLayout = QGridLayout(self.telescope_tab)
         self.gridLayout.setObjectName('gridLayout')
         self.telescope_widget = TelescopeControlWidget(
-            self, self.rfsocs, self.settings, TabName.TELESCOPE, self.telescope_tab
+            self, self.rfsocs, self.settings, self.telescope_tab
         )
         self.telescope_widget.setObjectName('telescope_widget')
         self.gridLayout.addWidget(self.telescope_widget, 0, 0, 1, 1)
@@ -201,7 +201,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QCoreApplication.translate('MainWindow', 'Imaging', None),
         )
         self.imaging_widget = ImagingWidget(
-            self, self.rfsocs, self.settings, TabName.IMAGING, self.imaging_tab
+            self, self.rfsocs, self.settings, self.imaging_tab
         )
         self.verticalLayout_6 = QVBoxLayout(self.imaging_tab)
         self.verticalLayout_6.setObjectName('verticalLayout_6')
