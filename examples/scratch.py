@@ -39,8 +39,8 @@ if __name__ == '__main__':
     # raw_data = RawDataFile('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_TOD_set1008.h5', 'r')
     # raw_data = RawDataFile('/data/20250902/20250912_Device_aSi1_Channel2_TOD_set1008.h5', 'r')
 
-    angle_off, units_off = sweep_off.freq_direction()
-    angle_on, units_on = sweep_on.freq_direction()
+    angle_off, units_off, _ = sweep_off.freq_direction()
+    angle_on, units_on, _ = sweep_on.freq_direction()
     print(f'Theta ON = {angle_on[i_res]}')
     print(f'Theta OFF = {angle_off[i_res]}')
     print(f'Rotation angle = {pd.IQ_to_freq_diss_angle[i_res]}')

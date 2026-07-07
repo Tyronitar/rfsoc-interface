@@ -52,8 +52,6 @@ DEFAULT_SETTINGS = {
         "rfsoc": {
             "bitstream": "/home/xilinx/dualchan_v2.bit",
             "channel": {
-                "toneList": "/home/onrkids/readout/host/params/Default_tone_list.npy",
-                "tone_powers": "/home/onrkids/readout/host/params/Device_aSi1_Channel2_20220222_300K_200mK_max_readout_power.npy",
                 "dsp": {
                     "loFreq": 400e6,
                     "nAverages": 524288

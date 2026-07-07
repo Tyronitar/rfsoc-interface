@@ -6,15 +6,16 @@ mpl.use('QtAgg')
 
 from typing import Callable, Concatenate, Any
 from pathlib import Path
-from concurrent.futures import Future
+from threading import Thread
 import logging
-import pdb
-from matplotlib.artist import Artist
+import warnings
 import re
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backend_bases import MouseButton, MouseEvent, PickEvent
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backend_tools import Cursors
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
@@ -24,7 +25,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialogButtonBox,
     QLabel,
-    QMainWindow,
     QWidget,
     QDialog,
     QMessageBox,
@@ -37,23 +37,34 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QLineEdit,
     QGridLayout,
+    QSpacerItem,
+    QSizePolicy,
 )
+from pdfjs_viewer import PDFViewerWidget
 
-from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, LoSweep, DEFAULT_NCOLS
-from rfsocinterface.core.params import update_params_file, initialize_params_file, DEFAULT_PARAMS_DIRECTORY, get_params_file_template
+from rfsocinterface.core.sweeps import LoSweepData, ResonatorData, DEFAULT_NCOLS, PowerSweepData
+from rfsocinterface.core.params import RFSoCParameters
 from rfsocinterface.core.utils import (
     ON_RESONANCE_COLOR,
     OFF_RESONANCE_COLOR,
     FLAGGED_RESONANCE_COLOR,
     BAD_RESONANCE_COLOR,
+    DEFAULT_PARAMS_DIRECTORY,
+    convert_path,
+    ensure_path,
+    reset_axes,
+    P,
 )
+from rfsocinterface.core.rfsoc import RFSOCWrapper
 from rfsocinterface.gui.uic.lodiagnostics_ui import Ui_Dialog as Ui_DiagnosticsDialog
 from rfsocinterface.gui.uic.loresonator_ui import Ui_Dialog as Ui_ResonatorDialog
-from rfsocinterface.gui.widgets.progress_bar import IncrementalProgressDialog
-from rfsocinterface.core.utils import ensure_path, PathLike, reset_axes, P, PERMISSIONS_USR_RW
-from rfsocinterface.gui.widgets.progress_bar import make_progress_dialog_incrementer
-from rfsocinterface.gui.uic.blind_sweep_ui import Ui_Dialog as Ui_BlindSweepDialog
-from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
+from rfsocinterface.gui.widgets import (
+    IncrementalProgressDialog,
+    ToolbarCanvas,
+    Section,
+    make_progress_dialog_incrementer,
+    get_num_value
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -112,14 +123,9 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         # Fill in the necessary values in the UI
         self.old_freq_value_label.setText(f'{self.resonator.tone * 1e-6:.5f}')
         self.depth_value_label.setText('N/A')  # TODO: Resonance depth
+        self.initial_chanmask = self.resonator.chanmask
         self.current_chanmask = self.resonator.chanmask
-        match self.current_chanmask:
-            case 1:
-                self.onres_radioButton.click()
-            case 0:
-                self.offres_radioButton.click()
-            case _:
-                self.bad_res_radioButton.click()
+        self.set_chanmask(self.current_chanmask)
 
         # Temporary values for saving / undoing changes
         self.temp_fit_f0 = resonator.fit_f0
@@ -138,6 +144,9 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         # self.buttonBox.rejected.connect(self.reject)
         self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(
             self.reset_freq
+        )
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(
+            self.reset_chanmask
         )
         self.buttonBox.button(QDialogButtonBox.StandardButton.Cancel).clicked.connect(
             self.reject_changes
@@ -189,6 +198,16 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         )
         if update_line_edit:
             self.new_freq_lineEdit.setText(f'{x * 1e-6:.9f}')
+    
+    def set_chanmask(self, val: int):
+        """Set the chanmask to the specified value."""
+        match val:
+            case 1:
+                self.onres_radioButton.click()
+            case 0:
+                self.offres_radioButton.click()
+            case _:
+                self.bad_res_radioButton.click()
 
     def refit(self):
         """Refit the resonator."""
@@ -203,6 +222,10 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     def reset_freq(self):
         """Reset the line to the initial frequency."""
         self.move_line(self.resonator.fit_f0)
+    
+    def reset_chanmask(self):
+        """Reset the chanmask value to its initial value."""
+        self.set_chanmask(self.initial_chanmask)
 
     def change_freq(self):
         """Handle changes to the frequency in the lineEdit."""
@@ -347,19 +370,24 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         sweep (LoSweepData): The relevant LO sweep data.
     """
 
-    def __init__(self, sweep_data: LoSweepData, savefile: PathLike, parent: QWidget | None = None):
+    def __init__(self, sweep_data: LoSweepData, rfsoc: RFSOCWrapper | None=None, channel: int |None=None, parent: QWidget | None = None):
         """Initialize a DiagnosticsWindow."""
         super().__init__(parent=parent)
         self.setupUi(self)
         self.setSizeGripEnabled(True)
         self.set_sweep(sweep_data)
-        self.savefile = Path(savefile)
+        self.savefile = convert_path(sweep_data.filename)
         self.flagged_checkBox.clicked.connect(self.toggle_unflagged)
         self.buttonBox.clicked.connect(self.click_button_box)
         self.save_plots_pushButton.clicked.connect(self.save_plots_as)
 
         self.edited = False
         self.redrawn_axes = set()
+        self.rfsoc = rfsoc
+        self.channel = channel
+        if rfsoc is not None:
+            if channel is None:
+                raise ValueError('Must specify a channel when `rfsoc` is set.')
 
     def set_window_name(self, name: str):
         self.setWindowTitle(QCoreApplication.translate("Dialog", f'LO Sweep Diagnostics - {name}', None))
@@ -394,6 +422,16 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
                     pdf.savefig(fig)
             else:
                 fig.savefig(fname)
+    
+    def accept(self):
+        if self.edited:
+            self.sweep_data.save()
+            if self.rfsoc is not None:
+                # Update chanmask if it was edited
+                self.rfsoc.set_chanmask(self.channel, self.sweep_data.chanmask)
+                self.rfsoc.save_changes_to_params_file(self.channel)
+
+        super().accept()
     
     def closeEvent(self, event: QCloseEvent):
         if self.edited:
@@ -541,15 +579,21 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
     def from_h5(cls, filepath: Path, parent: QWidget | None = None) -> DiagnosticsDialog:
         """Create a DiagnosticsDialog from an HDF5 file."""
         sweep_data = LoSweepData.load(filepath)
-        dialog = cls(sweep_data, savefile=filepath, parent=parent)
+        dialog = cls(sweep_data, parent=parent)
+        dialog.plot_and_show()
 
+        return dialog
+    
+    def plot_and_show(self):
+        """Plot the sweep and show the results."""
         pd = IncrementalProgressDialog(
             f'Plotting LO sweep...',
             'Cancel',
             0,
-            sweep_data.n_tones,
-            parent=parent,
+            self.sweep_data.n_tones,
+            parent=self,
         )
+        pd.setWindowTitle('Opening Lo Sweep Diagnostics')
         pd.setAutoClose(True)
         pd.setValue(0)
         pd.show()
@@ -557,10 +601,9 @@ class DiagnosticsDialog(QDialog, Ui_DiagnosticsDialog):
         QApplication.processEvents()
         increment_progress = make_progress_dialog_incrementer(pd)
 
-        fig = dialog.plot(callback=increment_progress)
-        dialog.set_figure(fig)
-
-        return dialog
+        fig = self.plot(callback=increment_progress)
+        self.set_figure(fig)
+        self.show()
 
 
 def line_picker(line: plt.Line2D, event: MouseEvent, epsilon: float=ATOL_EPSILON):
@@ -709,11 +752,11 @@ class BlindSweepDialog(QDialog):
             f0 = np.real(np.array([line.get_xdata()[0] for line in self.get_vlines()]))
             bb_freqs = f0 - self.data.f_center
             bb_freqs = np.sort(bb_freqs)
-            path = Path(get_params_file_template(tile_name, params_dir=DEFAULT_PARAMS_DIRECTORY))
-            if not path.exists():
-                initialize_params_file(tile_name, bb_freqs, self.data.f_center)
-            else:
-                update_params_file(tile_name, baseband_freqs=bb_freqs)
+            params = RFSoCParameters.from_tile_name(tile_name, 'a')
+            if params is None:
+                params = RFSoCParameters.new_file(tile_name, bb_freqs.size)
+                params.f_center = self.data.f_center
+            params.baseband_freqs[:] = bb_freqs
             self.accept()
     
     def save_tones(self):
@@ -802,6 +845,7 @@ class BlindSweepDialog(QDialog):
                 self.data.n_tones,
                 parent=self,
             )
+            pd.setWindowTitle('Generating PDF')
             pd.setValue(0)
             pd.show()
             increment_progress = make_progress_dialog_incrementer(pd)
@@ -1023,57 +1067,215 @@ class BlindSweepDialog(QDialog):
             self.move_selected_line(event.xdata)
 
 
+# TODO: Finish this
+class PowerSweepDialog(QDialog):
+    def __init__(self, sweep_data: PowerSweepData, parent: QWidget | None=None):
+        super().__init__(parent)
 
-if __name__ == '__main__':
+        self.sweep_data = sweep_data
+        self.filename = sweep_data.filename.with_suffix('.pdf')
+        self.setupUi()
+        self._setup_connections()
+        self.setSizeGripEnabled(True)
 
-    from concurrent.futures import wait
-    import pdb
+    def setupUi(self):
+        vlayout = QVBoxLayout()
 
-    app = QApplication()
+        # self.document = QPdfDocument(parent=self)
+        # self.document.load(str(self.filename))
+        # self.pdf_view = QPdfView(
+        #     parent=self,
+        #     document=self.document,
+        #     pageMode=QPdfView.PageMode.MultiPage,
+        #     zoomMode=QPdfView.ZoomMode.FitToWidth,
+        # )
+        # vlayout.addWidget(self.pdf_view)
 
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-    from matplotlib.backends.backend_qt import FigureManagerQT
-    from matplotlib.backend_tools import ToolToggleBase
-    from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
-    # def plot_fn(fig: Figure, size: int=10):
-    #     if len(fig.axes) == 0:
-    #         ax = fig.add_subplot()
-    #     else:
-    #         ax = fig.axes[0]
-    #     ax.plot(np.arange(size), np.random.random(size))
+        self.pdf_viewer = PDFViewerWidget(parent=self, preset='simple')
+        self.pdf_viewer.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        self.try_load_pdf()
+        vlayout.addWidget(self.pdf_viewer)
 
-    # class MainWindow(QDialog):
-    #     def __init__(self, parent=None):
-    #         super().__init__(parent)
+        self.section = Section(parent=self, animationDuration=0)
+        section_layout = QGridLayout()
+        self.percentile_label = QLabel('Baseline Percentage', parent=self)
+        self.percentile_lineEdit = QLineEdit(parent=self)
+        self.percentile_lineEdit.setPlaceholderText('33')
+        section_layout.addWidget(self.percentile_label, 0, 0)
+        section_layout.addWidget(self.percentile_lineEdit, 0, 2)
+        self.bad_power_cutoff_label = QLabel('Power Cutoff Percentage', parent=self)
+        self.bad_power_cutoff_lineEdit = QLineEdit(parent=self)
+        self.bad_power_cutoff_lineEdit.setPlaceholderText('75')
+        section_layout.addWidget(self.bad_power_cutoff_label, 1, 0)
+        section_layout.addWidget(self.bad_power_cutoff_lineEdit, 1, 2)
+        self.max_deviation_label = QLabel('Max Deviation from Median (dB)', parent=self)
+        self.max_deviation_lineEdit = QLineEdit(parent=self)
+        self.max_deviation_lineEdit.setPlaceholderText('5')
+        section_layout.addWidget(self.max_deviation_label, 2, 0)
+        section_layout.addWidget(self.max_deviation_lineEdit, 2, 2)
+        self.refit_button = QPushButton('Refit', parent=self)
+        section_layout.addWidget(self.refit_button, 3, 1)
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        section_layout.addItem(self.horizontalSpacer, 0, 1)
 
-    #         self.canvas = ToolbarCanvas(self)
-    #         self.canvas.add_edit_button()
-    #         self.canvas.replot_figure(plot_fn)
-    #         # self.canvas = FigureCanvas(fig)
-    #         # self.manager = FigureManagerQT(self.canvas, 1)
-    #         # self.canvas.manager = self.manager
-    #         # self.nav = self.manager.toolbar
+        self.section.setContentLayout(section_layout)
+        self.section.setTitle('Refit Optimal Power Levels')
+        vlayout.addWidget(self.section)#, alignment=Qt.AlignmentFlag.AlignBottom)
 
-    #         layout = QVBoxLayout(self)
-    #         layout.setContentsMargins(0, 0, 0, 0)
-    #         self.setLayout(layout)
-    #         # layout.addWidget(self.nav)
-    #         layout.addWidget(self.canvas)
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self
+        )
+        vlayout.addWidget(self.button_box)
 
-    # win = MainWindow()
-    # win.show()
-    # dw = DiagnosticsDialog.from_h5('/data/20260203/20260203_Device_aSi1_Channel3_blind_LO_Sweep_hour13p9728.h5')
-    # dw = DiagnosticsDialog.from_h5('/data/20260204/20260204_1000_tone_uniform_202050829_LO_Sweep_hour13p2042.h5')
-    data = LoSweepData.load('/data/20260511/20260511_ONR_Blind_180_to_620MHz_1000_tones_LO_Sweep_hour13p6353.h5')
-    win = BlindSweepDialog(data)
-    win.find_resonances(
-        min_resonance_depth_dB=0.3,
-        spacing_threshold_Hz=3e3,
-        min_samples_per_resonance=4,
-        max_noise_fluctuation_dB=0.05,
-    )
-    win.plot()
-    win.show()
+        self.setLayout(vlayout)
+        self.setMinimumSize(600, 600)
+    
+    def _setup_connections(self):
+        self.refit_button.clicked.connect(self.refit_and_plot)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+    
+    def try_load_pdf(self):
+        try:
+            self.pdf_viewer.load_pdf(self.filename)
+        except (FileNotFoundError, FileExistsError, ValueError):
+            _logger.debug(f'"{self.filename}" does not exist. Showing blank page.')
+            self.pdf_viewer.show_blank_page()
+            return False
+        except PermissionError:
+            _logger.debug(f'Missing required permissions to view "{self.filename}". Showing blank page.')
+            self.pdf_viewer.show_blank_page()
+            return False
+        return True
 
-    # dw.show()
-    app.exec()
+    def set_window_name(self, name: str):
+        self.setWindowTitle(QCoreApplication.translate("Dialog", f'Power Sweep Results - {name}', None))
+
+    def _cleanup_pdf_viewer(self):
+        """Ensure the PDF viewer backend is cleaned up before the dialog is destroyed."""
+        try:
+            if hasattr(self, 'pdf_viewer') and self.pdf_viewer is not None:
+                try:
+                    # Call the backend cleanup which deletes page before profile.
+                    # Suppress RuntimeWarning from PySide6 disconnect() during
+                    # cleanup by catching warnings here instead of modifying
+                    # the installed pdfjs_viewer package.
+                    if hasattr(self.pdf_viewer, 'backend'):
+                        with warnings.catch_warnings():
+                            warnings.simplefilter('ignore', RuntimeWarning)
+                            self.pdf_viewer.backend.cleanup()
+                except Exception:
+                    pass
+                try:
+                    self.pdf_viewer.deleteLater()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    
+    def refit_and_plot(self):
+        fit_successful = self.refit()
+        if fit_successful:
+            self.replot()
+    
+    def refit(self) -> bool:
+        """Refit the power sweep."""
+        # Get parameters from the GUI
+        try:
+            baseline_percentage = get_num_value(self.percentile_lineEdit, use_placeholder_text=True) / 100
+            cutoff_percentile = get_num_value(self.bad_power_cutoff_lineEdit, use_placeholder_text=True) / 100
+            max_deviation = get_num_value(self.max_deviation_lineEdit, use_placeholder_text=True)
+        except ValueError:
+            # Handle case when a line edit doesn't have a valid value
+            _logger.warning('Unable to get fit parameters properly from PowerSweepDialog. Cancelling refit.')
+            return False
+
+        # Find optimnal power levels again using new parameters
+        pd = IncrementalProgressDialog(
+            f'Refitting Power Sweep...',
+            'Cancel',
+            0,
+            self.sweep_data.onres_ind.size,
+            parent=self,
+        )
+        pd.setWindowTitle('Running Sweep')
+        pd.setAutoClose(True)
+        pd.setValue(0)
+        pd.show()
+        increment_progress = make_progress_dialog_incrementer(pd)
+
+        thread = Thread(
+            target=self.sweep_data.find_optimal_readout_power,
+            kwargs={
+                'baseline_percentage': baseline_percentage,
+                'bad_power_cutoff_percentile': cutoff_percentile,
+                'max_power_deviation_from_median_dB': max_deviation,
+                'callback': increment_progress,
+            },
+        )
+        pd.canceled.connect(self.sweep_data.cancel_fit)
+
+        self.sweep_data.reset_stop_signals()
+
+        thread.start()
+
+        while not (self.sweep_data._fitted or self.sweep_data._fit_canceled):
+            QApplication.processEvents()
+            time.sleep(0.1)
+        
+        thread.join()
+
+        if pd.wasCanceled() or self.sweep_data._fit_canceled:
+            return False
+        pd.close()
+
+        self.sweep_data.save()
+        return True
+    
+    def replot(self):
+        """Replot the optimal readout powers."""
+        # Close PDF while editing
+        self.pdf_viewer.show_blank_page()
+        QApplication.processEvents()
+
+        # Regenerate PDF
+        pd = IncrementalProgressDialog(
+            f'Replotting Power Sweep...',
+            'Cancel',
+            0,
+            self.sweep_data.n_plots,
+            parent=self,
+        )
+        pd.setWindowTitle('Running Sweep')
+        pd.setAutoClose(True)
+        pd.setValue(0)
+        pd.show()
+        increment_progress = make_progress_dialog_incrementer(pd)
+        pd.canceled.connect(self.sweep_data.cancel_plot)
+
+        self.sweep_data.plot(callback=increment_progress)
+        QApplication.processEvents()
+
+        if pd.wasCanceled() or self.sweep_data._plot_canceled:
+            return False
+        pd.close()
+
+        # Load PDF after regenerating
+        self.try_load_pdf()
+
+        return True
+
+
+    def closeEvent(self, event):
+        # Clean up PDF viewer (page/profile) before closing to avoid Qt warning
+        self._cleanup_pdf_viewer()
+        super().closeEvent(event)
+
+    def accept(self) -> None:
+        self._cleanup_pdf_viewer()
+        super().accept()
+
+    def reject(self) -> None:
+        self._cleanup_pdf_viewer()
+        super().reject()

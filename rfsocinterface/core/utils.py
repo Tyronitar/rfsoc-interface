@@ -100,8 +100,13 @@ class MetaEnum(EnumMeta):
             return False
         return True
 
+def create_axis_formatter(precision: int) -> Callable[[float, int], str]:
+    def formatter(x: float, pos: int) -> str:
+        return f'{x * 1e-6:.{precision}f}'
+    return formatter
 
-def mHz_formatter(x: float, pos: int) -> str:
+
+def mHz_axis_formatter(x: float, pos: int) -> str:
     """Format the x-axis labels for the resonator plot, converting to MHz.
 
     Arguments:
@@ -114,7 +119,12 @@ def mHz_formatter(x: float, pos: int) -> str:
     return f'{x * 1e-6:.1f}'
 
 
-def convert_path(path: PathLike) -> Path | None:
+def mHz_coordinate_formatter(x: float, y: float) -> str:
+    """Format the actual coordinates in the axes to MHz, with higher precision."""
+    return f'x={x * 1e-6:.5f}, y={y}'
+
+
+def convert_path(path: PathLike | None) -> Path | None:
     """Ensure that a Path is a Path object."""
     if path is None:
         return path
@@ -126,7 +136,7 @@ def convert_path(path: PathLike) -> Path | None:
         return Path(path)
 
     # Input was not a PathLike
-    raise ValueError(f'Argument must be PathLike, got {type(path)}')
+    raise ValueError(f'Argument must be PathLike or None, got {type(path)}')
 
 
 def ensure_path(
@@ -247,7 +257,7 @@ def get_chanmask(chanmask_file=''):
 def get_filename(
     base_dir: Path=Path('/data/'),
     file_type='lo',
-    chan_name='',
+    tile_name='',
     attenuation=0.,
     mkdir: bool=False,
 ):
@@ -266,11 +276,11 @@ def get_filename(
             hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
             match file_type.lower():
                 case 'lo':
-                    strings = [yymmdd, chan_name, 'LO_Sweep', hour_str]
+                    strings = [yymmdd, tile_name, 'LO_Sweep', hour_str]
                 case 'tonelist':
-                    strings = [yymmdd, chan_name, 'tone_list', hour_str]
+                    strings = [yymmdd, tile_name, 'tone_list', hour_str]
                 case 'power':
-                    strings = [yymmdd, chan_name, 'Power_Sweep', hour_str]
+                    strings = [yymmdd, tile_name, 'Power_Sweep', hour_str]
         case 'tod' | 'azel' | 'optcam' | 'optcam_video':
             this_dir_files = list(date_folder.glob(f'*TOD_set*'))
             if not this_dir_files:
@@ -284,33 +294,43 @@ def get_filename(
             if file_type.lower() == 'optcam' or file_type.lower() == 'optcam_video':
                 strings = [yymmdd, file_type.lower(), f'set{setnum}']
             else:
-                strings = [yymmdd, chan_name, file_type.upper(), f'set{setnum}']
+                strings = [yymmdd, tile_name, file_type.upper(), f'set{setnum}']
         case 'attenuator':
-            strings = [yymmdd, chan_name, f'attenuator{attenuation:02d}']
+            strings = [yymmdd, tile_name, f'attenuator{attenuation:02d}']
         case _:
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
     return date_folder / '_'.join(filter(None, strings))
 
+def get_current_LO_sweep_hour_string() -> str:
+    """Return the current time in the LO sweep filename format.
+    
+    The format is `hourHHpMMSS`
+    """
+    hour = float(datetime.now().strftime('%H')) \
+        + float(datetime.now().strftime('%M'))/60. \
+        + float(datetime.now().strftime('%S'))/3600.
+    return f'hour{hour:04.4f}'.replace('.', 'p')
 
 @ensure_path('data_dir')
 def get_sweep_filename(
     data_dir: Path=Path(DEFAULT_DATA_DIRECTORY),
-    sweep_type='lo',
-    chan_name='',
+    sweep_type: Literal['lo', 'power', 'temperature', 'blind']='lo',
+    tile_name='',
     suffix: str='',
+    date: str=None,
+    hour: str=None,
     mkdir: bool=False,
 ):
     # See if we already have the parent folder for today's date
-    yymmdd = get_yymmdd()
-    date_folder = data_dir / yymmdd
+    if date is None:
+        date = get_yymmdd()
+    date_folder = data_dir / date
     if mkdir:
         date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
 
     #provide the name of the file
-    hour = float(datetime.now().strftime('%H')) \
-        + float(datetime.now().strftime('%M'))/60. \
-        + float(datetime.now().strftime('%S'))/3600.
-    hour_str = f'hour{hour:04.4f}'.replace('.', 'p')
+    if hour is None:
+        hour = get_current_LO_sweep_hour_string()
     match sweep_type.lower():
         case 'lo':
             sweep_name = 'LO_Sweep'
@@ -322,7 +342,7 @@ def get_sweep_filename(
             sweep_name = 'Blind_Sweep'
         case _:
             raise ValueError(f'Invalid file type: "{sweep_type.lower()}"; must be one of {FileType}')
-    strings = [yymmdd, chan_name, sweep_name, hour_str, suffix]
+    strings = [date, tile_name, sweep_name, hour, suffix]
     return date_folder / '_'.join(filter(None, strings))
 
 def cartesian(*arrays: npt.ArrayLike, out: npt.NDArray | None=None):
@@ -1399,6 +1419,20 @@ def load_dict_or_defaults(d1: dict, d2: dict, items: list[tuple[str | tuple, Any
             out_dict[key] = val
     return out_dict
 
+def mean_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    return np.average(val, weights=freq)
+
+
+def var_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    dev = freq * (val - mean_histogram(val, freq)) ** 2
+    return dev.sum() / freq.sum()
+
+
+def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    return np.sqrt(var_histogram(val, freq))
+
+
+
 
 if __name__ == '__main__':
     def plot_function(fig, ax, x, y):
@@ -1428,7 +1462,6 @@ if __name__ == '__main__':
     # y = decimate(x, q)
     y = decimate_in_chunks(x, q)
     y = np.zeros(n // q)
-
 
     # decimate_in_chunks(x, q, out=y)
 

@@ -343,7 +343,7 @@ class BinTODIntoMap(DataRoutine):
             chanmask[good_idx] = np.where(good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx])
 
             netd[chanmask != 1] = 0
-
+            
         if beam_map_mode:
             tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
         else:

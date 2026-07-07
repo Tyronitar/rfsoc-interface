@@ -6,6 +6,8 @@ from pathlib import Path
 import logging
 import shutil
 from typing import Iterator, overload
+from typing import Self
+from scipy import signal
 
 import pdb
 
@@ -30,6 +32,7 @@ from rfsocinterface.core.data.utils import (
     interpolate_missing_data,
     interpolate_timestamp_streaming,
     interpolate_telescope_position,
+    new_interp_tele_posistion,
     rotate_basis,
 )
 from rfsocinterface.core.sweeps import LoSweepData
@@ -71,24 +74,50 @@ class NewDataStorage:
 
     @overload
     @classmethod
-    def load(cls, filename: str, mode: str='a') -> NewDataStorage:
+    def load(cls, filename: str, mode: str='a') -> Self:
         pass
 
     @overload
     @classmethod
-    def load(cls, date: str, setnum: int, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> NewDataStorage:
+    def load(cls, date: str, setnum: int, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> Self:
         pass
 
     @classmethod
-    def load(cls, *args, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> NewDataStorage:
+    def load(cls, *args, mode: str='a', data_dir: str=DEFAULT_DATA_DIRECTORY) -> Self:
         if len(args) == 1:
+            # Just the filename was provided
+            assert isinstance(args[0], str)
+            if not Path(args[0]).exists():
+                raise FileNotFoundError(f'File {args[0]} does not exist.')
             return cls(args[0], mode=mode)
-        elif len(args) == 2:
-            date, setnum = args
+        if len(args) == 2:
+            if isinstance(args[1], (int, np.integer)):
+                # Date / setnum provided
+                date, setnum = args
+                filename = cls.get_template(date, setnum, data_dir=data_dir)
+                if not Path(filename).exists():
+                    raise FileNotFoundError(f'Could not find processed data for {date}_set{setnum}.')
+                return cls(filename, mode=mode)
+            # filename / mode provided
+            return cls(args[0], mode=args[1])
+        if len(args) == 3 and isinstance(args[1], (int, np.integer)):
+            # date, setnum, mode provided
+            date, setnum, mode = args
             filename = cls.get_template(date, setnum, data_dir=data_dir)
+            if not Path(filename).exists():
+                raise FileNotFoundError(f'Could not find processed data for {date}_set{setnum}.')
             return cls(filename, mode=mode)
-        else:
-            raise ValueError("Invalid number of arguments")
+        if len(args) == 4 and isinstance(args[1], (int, np.integer)):
+            # date, setnum, mode, data_dir provided
+            date, setnum, mode, data_dir = args
+            filename = cls.get_template(date, setnum, data_dir=data_dir)
+            if not Path(filename).exists():
+                raise FileNotFoundError(f'Could not find processed data for {date}_set{setnum}.')
+            return cls(filename, mode=mode)
+        raise TypeError(
+            'Expected either load(filename[, mode]) or load(date, setnum[, mode, data_dir]).'
+            f'Got {args}.'
+        )
 
     def open(self, mode: str='r'):
         self.file = h5py.File(self.filename, mode=mode)
@@ -268,26 +297,7 @@ class ProcessedData(NewDataStorage):
                 dtype=CALIBRATION_TABLE_DTYPE,
             )
 
-            # Collect calibration information
-            sweep = LoSweepData(
-                tones_table['baseband_freq'],
-                channel_group.attrs['lo_freq'],
-                channel_group['lo_sweep'][:],
-                tones_table['chanmask'],
-                channel_group.attrs['tile_name'],
-            )
-            IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
-            calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
-            calibration_info['adc_units_to_hz'] = adc_units_to_hz
-
-            detector_f = tones_table['baseband_freq'] + channel_group.attrs['lo_freq']
-            df_per_mK = compute_df_per_mK(
-                tones_table['polarization'],
-                tones_table['beam_amplitude'],
-                detector_f,
-                tones_table['dfoverf_per_mK'],
-            )
-            calibration_info['df_per_mK'] = df_per_mK
+  
 
             # Rotate to Gain / Phase
             IQ_to_gain_phase_angle = np.atan2(carrier_amplitudes[0], carrier_amplitudes[1])
@@ -298,9 +308,69 @@ class ProcessedData(NewDataStorage):
                 IQ_to_gain_phase_angle,
             )
 
-            # Generate calibrated data
+            # Collect calibration information
+            sweep = LoSweepData(
+                tones_table['baseband_freq'],
+                # channel_group.attrs['lo_freq'],
+                channel_group.attrs['f_center'],
+                channel_group['lo_sweep'][:],
+                tones_table['chanmask'],
+                channel_group.attrs['tile_name'],
+            )
+            IQ_to_freq_diss_angle, adc_units_to_hz, _ = sweep.freq_direction()
+
+            # Compute IQ to freq/diss angle based on the source crossing
             # First mean center IQ data
             data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
+
+            data_iq = data_IQ[:]
+            filt_sos_lp = signal.butter(
+                2,
+                15,
+                btype='lowpass',
+                fs=self.fs,
+                output='sos',
+                analog=False,
+            )
+            filt_sos_hp = signal.butter(
+                2,
+                0.5,
+                btype='highpass',
+                fs=self.fs,
+                output='sos',
+                analog=False,
+            )
+            filt_data_IQ = signal.sosfiltfilt(filt_sos_hp, data_iq)
+            filt_data_IQ = signal.sosfiltfilt(filt_sos_lp, filt_data_IQ)
+
+            cut_time = 5
+            cut_samples = int(cut_time * self.fs)
+            cut_data_IQ = filt_data_IQ[..., cut_samples:-cut_samples]
+            cut_data_IQ_normalized = cut_data_IQ / carrier_amplitudes[:][..., np.newaxis]
+
+            max_i_samples = np.argmax(np.abs(cut_data_IQ_normalized[0]), axis=-1).flatten()
+            max_i = cut_data_IQ_normalized[0, range(n_tones), max_i_samples]
+            max_q_samples = np.argmax(np.abs(cut_data_IQ_normalized[1]), axis=-1).flatten()
+            max_q = cut_data_IQ_normalized[1, range(n_tones), max_q_samples]
+            source_cut_sample = np.where(np.abs(max_i) >= np.abs(max_q), max_i_samples, max_q_samples)
+            source_sample = source_cut_sample + cut_samples  # Actual sample index of the source crossing
+            source_amplitudes = data_iq[:, range(n_tones), source_sample]
+            IQ_to_freq_diss_angle = -np.atan2(source_amplitudes[1], source_amplitudes[0])
+
+            calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
+            calibration_info['adc_units_to_hz'] = adc_units_to_hz
+
+            detector_f = tones_table['baseband_freq'] + channel_group.attrs['f_center']
+            # detector_f = tones_table['baseband_freq'] + channel_group.attrs['lo_freq']
+            df_per_mK = compute_df_per_mK(
+                tones_table['polarization'],
+                tones_table['beam_amplitude'],
+                detector_f,
+                tones_table['dfoverf_per_mK'],
+            )
+            calibration_info['df_per_mK'] = df_per_mK
+
+            # Generate calibrated data
             generate_calibrated_data(
                 data_IQ,
                 data_freq_diss,
@@ -507,15 +577,18 @@ class ProcessedData(NewDataStorage):
     def set_baseband_freqs(self, new_freqs: npt.NDArray):
         self._set_table_field('tones', 'baseband_freq', new_freqs)
 
-    def get_lo_freq(self, i_chan: int) -> float:
-        return  self.get_channel_group(i_chan).attrs['lo_freq']
+    def get_f_center(self, i_chan: int) -> float:
+        return  self.get_channel_group(i_chan).attrs['f_center']
 
     def detector_f(self) -> npt.NDArray:
         f = self.baseband_freqs
         i_tone = 0
         for channel_group in self.channels():
             n_tones = channel_group.attrs['n_tones']
-            f[i_tone:i_tone+n_tones] += channel_group.attrs['lo_freq']
+            if 'f_center' in channel_group.attrs:
+                f[i_tone:i_tone+n_tones] += channel_group.attrs['f_center']
+            else:
+                f[i_tone:i_tone+n_tones] += channel_group.attrs['lo_freq']
             i_tone += n_tones
         return f
 
@@ -619,6 +692,18 @@ class ProcessedData(NewDataStorage):
 
     def set_df_per_mK(self, new_df_per_mK: npt.NDArray):
         self._set_table_field('calibration_info', 'df_per_mK', new_df_per_mK)
+    
+    def get_lo_sweep(self, i_chan: int) -> LoSweepData:
+        group =  self.get_channel_group(i_chan)
+        return LoSweepData(
+            group['tones']['baseband_freq'],
+            group.attrs['f_center'],
+            group['lo_sweep'][:],
+            group['tones']['chanmask'],
+            group.attrs['tile_name'],
+        )
+           
+
 
 
 class ConsolidatedData(NewDataStorage):
@@ -672,12 +757,17 @@ class ConsolidatedData(NewDataStorage):
         tone_counts = []
         for file in todlist:
             raw_data = RawDataFile(file, 'r')
+            if raw_data.lo_sweep is None:
+                msg = f'File "{file}" does not have an LO sweep. Cannot process data.'
+                _logger.error(msg)
+                raise KeyError(msg)
             tone_counts.append(raw_data.n_tones[0])
 
             # TODO: Make kidpy store the tile name in the file
             # Temporary way to determine tile name from file names
             this_file_stem = Path(file).stem
-            this_tile_name = this_file_stem[:this_file_stem.index('TOD')].split('_')[1]
+            this_tile_name = '_'.join(this_file_stem.split('_')[1:-2])
+            # this_tile_name = this_file_stem[:this_file_stem.index('TOD')].split('_')[1]
             tile_names.append(this_tile_name)
 
             # Find the total number of samples accounting for missed packets
@@ -843,7 +933,7 @@ class ConsolidatedData(NewDataStorage):
             # Create the HDF5 group for this channel
             this_channel_group = all_channels_group.create_group(get_channel_group_name(i_chan))
             this_channel_group.attrs['tile_name'] = tile_names[i_chan]
-            this_channel_group.attrs['lo_freq'] = raw_data.lo_freq[0]
+            this_channel_group.attrs['f_center'] = raw_data.lo_freq[0]
             this_channel_group.attrs['detector_dx_dy_elevation_angle'] = raw_data.detector_dx_dy_elevation_angle[:]
             this_channel_group.attrs['attenuator_settings'] = raw_data.attenuator_settings[:]
             n_tones = raw_data.n_tones[0]
@@ -908,6 +998,12 @@ class ConsolidatedData(NewDataStorage):
                 compression='lzf',
                 shuffle=True,
             )
+            temp_pps = time_ordered_data_group.create_dataset(
+                'temp_pps',
+                shape=(total_samples,),
+                dtype=np.uint8,
+                chunks=chunk_shape_1d,
+            )
             # Detector Positions
             temp_detector_az = time_ordered_data_group.create_dataset(
                 'temp_detector_az',
@@ -958,11 +1054,29 @@ class ConsolidatedData(NewDataStorage):
                     raw_data.adc_q,
                     temp_timestamp,
                     temp_data_IQ,
+                    temp_pps,
                     temp_interpolated_samples,
                     pkt_idx,
                     this_missed_packets,
                     valid_tone_index
                 )
+            if raw_data.pps is not None:
+                _logger.info('ConsolidatedData: Copying pps dataset...')
+                for chunk_start, chunk_end, chunk in iterate_chunks(raw_data.pps, chunk_size=4096):
+                    sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
+                    temp_pps[sample_indices] = chunk
+            # if azel_exists:
+            #     _logger.info('ConsolidatedData: Computing detector positions...')
+            #     if use_pps and raw_data.pps is not None and az_pps_tel is not None and za_pps_tel is not None:
+            #         corrected_az_tel = new_interp_tele_posistion(
+            #             temp_timestamp,
+            #             timestamp_tel[:],
+            #             az_tel[:],
+            #             az_pps_tel[:],
+            #             temp_pps[:],
+            #             direction='az',
+            #         )
+            # pdb.set_trace()
 
             _logger.info('ConsolidatedData: Copying Raw IQ data...')
             chunk_shape_read_adc = compute_chunk_shape((1024, ), 8, max_chunk_size=n_samples)
@@ -974,26 +1088,29 @@ class ConsolidatedData(NewDataStorage):
                 sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
                 temp_data_IQ[1, :, sample_indices] = chunk[valid_tone_index]
 
+
+
             # Detector Positions
             if azel_exists:
-                _logger.info('ConsolidatedData: Computing detector positions...')
+                _logger.info('ConsolidatedData: Correlating telescope pointing information...')
                 if use_pps and raw_data.pps is not None and az_pps_tel is not None and za_pps_tel is not None:
-                    corrected_az_tel = interpolate_telescope_position(
+                    corrected_az_tel = new_interp_tele_posistion(
                         temp_timestamp,
                         timestamp_tel[:],
                         az_tel[:],
                         az_pps_tel[:],
-                        raw_data.pps[:],
+                        temp_pps[:],
                         direction='az',
                     )
-                    corrected_za_tel = interpolate_telescope_position(
+                    corrected_za_tel = new_interp_tele_posistion(
                         temp_timestamp,
                         timestamp_tel[:],
                         za_tel[:],
                         za_pps_tel[:],
-                        raw_data.pps[:],
+                        temp_pps[:],
                         direction='za',
                     )
+                    _logger.info('ConsolidatedData: Computing detector positions...')
                     get_detector_positions_no_interp(
                         corrected_az_tel,
                         corrected_za_tel,
@@ -1054,6 +1171,7 @@ class ConsolidatedData(NewDataStorage):
             del time_ordered_data_group['temp_interpolated_samples']
             del time_ordered_data_group['temp_detector_az']
             del time_ordered_data_group['temp_detector_za']
+            del time_ordered_data_group['temp_pps']
 
         # Get rid of full timestamp now that data from all channels read
         del global_data_group['temp_timestamp']

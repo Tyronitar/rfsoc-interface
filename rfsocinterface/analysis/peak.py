@@ -12,6 +12,8 @@ from scipy.optimize import least_squares
 
 from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine
 from rfsocinterface.core.utils import sigma_to_fwhm
+from rfsocinterface.core.utils import mean_histogram
+from rfsocinterface.core.utils import std_histogram
 
 def gaussian_profile(parameters: npt.NDArray, x_vals: npt.NDArray) -> npt.NDArray:
     a0, a1, mu, sigma = parameters
@@ -21,18 +23,6 @@ def gaussian_profile(parameters: npt.NDArray, x_vals: npt.NDArray) -> npt.NDArra
 def loss_function(parameters: npt.NDArray, x_vals: npt.NDArray, y_vals: npt.NDArray) -> npt.NDArray:
     model_vals = gaussian_profile(parameters, x_vals)
     return y_vals - model_vals
-
-def mean_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
-    return np.average(val, weights=freq)
-
-
-def var_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
-    dev = freq * (val - mean_histogram(val, freq)) ** 2
-    return dev.sum() / freq.sum()
-
-def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
-    return np.sqrt(var_histogram(val, freq))
-
 
 def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: str='az', fractional_difference_threshold: float=0.5, dataset: str='data_mK'):
     """Check focus and timing offsets."""
@@ -91,7 +81,7 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
                 loss_function,
                 x0,
                 args=(telescope_pos[right_fit_ind], data_segment[right_fit_ind]),
-                bounds=([-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))], [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))]),
+                bounds=([-1, 0, -15, 0.05 / (2 * np.sqrt(2 * np.log(2)))], [1, 1, 15, 0.2 / (2 * np.sqrt(2 * np.log(2)))]),
             )
 
             amplitude_right = res_right.x[1]
@@ -103,7 +93,7 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
                 loss_function,
                 x0,
                 args=(telescope_pos[left_fit_ind], data_segment[left_fit_ind]),
-                bounds=([-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))], [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))]),
+                bounds=([-1, 0, -15, 0.05 / (2 * np.sqrt(2 * np.log(2)))], [1, 1, 15, 0.2 / (2 * np.sqrt(2 * np.log(2)))]),
             )
 
             amplitude_left = res_left.x[1]
@@ -150,8 +140,8 @@ def check_focus(pdata: ProcessedData, resonators: list[int], primary_direction: 
             plt.plot(telescope_pos[left_fit_ind], left_gaussian, linestyle='--', color='green')
             left_patch = mpatches.Patch(color='green', label=f'Amplitude = {amplitude_left:.3e} {units}, FWHM = {fwhm_left:.3f} deg')
 
-            scan_rate = (telescope_pos[right_peak_idx + 10] - telescope_pos[right_peak_idx - 10]) \
-                / (time[right_peak_idx + 10] - time[right_peak_idx - 10])
+            scan_rate = (telescope_pos[min(right_peak_idx + 10, len(telescope_pos) - 1)] - telescope_pos[max(right_peak_idx - 10, 0)]) \
+                / (time[min(right_peak_idx + 10, len(telescope_pos) - 1)] - time[max(right_peak_idx - 10, 0)])
             time_delay = (left_az_0 - right_az_0) / scan_rate / 2  # Amount RFSoC is behind the telescope
             plt.plot([], [], label=f'Time Delay = {time_delay:.3f}s')
             plt.legend(loc="lower center", bbox_transform=fig.transFigure, bbox_to_anchor=(0.5, 0.0), ncol=3)

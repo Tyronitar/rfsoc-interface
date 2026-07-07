@@ -13,7 +13,6 @@ from scipy.optimize import curve_fit
 
 from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, get_beammap_pdf_template, OFF_RESONANCE_COLOR, BAD_RESONANCE_COLOR, get_detector_pos_pdf_template
 from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine, get_extent
-from rfsocinterface.core.params import copy_and_update_params_file
 
 
 _logger = logging.getLogger(__name__)
@@ -332,9 +331,10 @@ class PlotBeamMap(DataRoutine):
 
         fom = np.divide(amplitude, chisq, out=np.zeros_like(amplitude), where=chisq!=0)
         high_snr_ind = np.argwhere(
-            np.bitwise_and(
+            # np.bitwise_and(
                 amplitude > np.percentile(amplitude, high_snr_percentile),
-                fom > fom_cutoff)
+                # fom > fom_cutoff
+            # )
         ).flatten()
 
         # Create scatter plot of beam centers
