@@ -5,9 +5,7 @@ Code is from QtWaitingSpinner
 - PyPi: https://pypi.org/project/pyqtspinner/
 
 I'm copying it here, because it wasn't working just installing the package.
-"""
 
-"""
 The MIT License (MIT)
 
 Copyright (c) 2012-2014 Alexander Turkin
@@ -38,6 +36,7 @@ SOFTWARE.
 import math
 import sys
 from random import random
+from typing import override
 
 import numpy as np
 from PySide6 import QtGui
@@ -89,9 +88,13 @@ class WaitingSpinner(QWidget):
         line_width: int = 2,
         radius: int = 10,
         speed: float = math.pi / 2,
-        color: QColor = QColor(0, 0, 0),
+        color: QColor | None = None,
     ) -> None:
+        """Initialize a WaitingSpinner."""
         super().__init__(parent=parent)
+
+        if color is None:
+            color = QColor(0, 0, 0)
 
         self._center_on_parent: bool = center_on_parent
         self._disable_parent_when_spinning: bool = disable_parent_when_spinning
@@ -117,6 +120,7 @@ class WaitingSpinner(QWidget):
         self.setWindowModality(modality)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
+    @override
     def paintEvent(self, _: QPaintEvent) -> None:  # pylint: disable=invalid-name
         """Paint the WaitingSpinner."""
         self._update_position()
@@ -333,9 +337,8 @@ class WaitingSpinner(QWidget):
         if count_distance == 0:
             return color
         min_alpha_f = min_opacity / 100.0
-        distance_threshold = int(
-            math.ceil((total_nr_of_lines - 1) * trail_fade_perc / 100.0)
-        )
+        distance_threshold = math.ceil(
+            (total_nr_of_lines - 1) * trail_fade_perc / 100.0)
         if count_distance > distance_threshold:
             color.setAlphaF(min_alpha_f)
         else:
@@ -349,6 +352,7 @@ class WaitingSpinner(QWidget):
 
 
 class StickyWaitingSpinner(WaitingSpinner):
+    """Waiting spinner where the animation slows down and "bunches up" at the top."""
     def __init__(
         self,
         parent: QWidget = None,
@@ -363,9 +367,13 @@ class StickyWaitingSpinner(WaitingSpinner):
         line_width: int = 2,
         radius: int = 10,
         speed: float = math.pi / 2,
-        color: QColor = QColor(0, 0, 0),
+        color: QColor | None = None,
     ) -> None:
+        """Initialize a StickyWaitingSpinner."""
         self._primary_angle = 0
+        if color is None:
+            color = QColor(0, 0, 0)
+
         super().__init__(
             parent=parent,
             center_on_parent=center_on_parent,
@@ -382,6 +390,7 @@ class StickyWaitingSpinner(WaitingSpinner):
             color=color,
         )
 
+    @override
     def paintEvent(self, _: QPaintEvent) -> None:  # pylint: disable=invalid-name
         """Paint the WaitingSpinner."""
         self._update_position()
@@ -455,10 +464,8 @@ class StickyWaitingSpinner(WaitingSpinner):
 
 
 # Code for determining the parameters I want:
-
-
-# pylint: disable=too-many-instance-attributes,too-many-statements
 class SpinnerConfigurator(QWidget):
+    """Interactive GUI for configuring spinner settings."""
     sb_roundness = None
     sb_opacity = None
     sb_fadeperc = None
@@ -475,6 +482,7 @@ class SpinnerConfigurator(QWidget):
     spinner = None
 
     def __init__(self, sticky: bool = False) -> None:
+        """Initialize a SpinnerConfigurator."""
         super().__init__()
         self.sticky = sticky
         self.init_ui()
@@ -639,11 +647,12 @@ class SpinnerConfigurator(QWidget):
         clipboard = QApplication.clipboard()
         clipboard.clear()
         clipboard.setText(text)
-        print(text)
+        print(text)  # noqa: T201
         msg_box.exec_()
 
 
 def set_palette(my_app):
+    """Set the color palette for the SpinnerConfigurator."""
     my_app.setStyle('Fusion')
     dark_palette = QtGui.QPalette()
     dark_color = QtGui.QColor(45, 45, 45)
@@ -671,7 +680,8 @@ def set_palette(my_app):
     )
     my_app.setPalette(dark_palette)
     my_app.setStyleSheet(
-        'QToolTip { color: #ffffff; background-color: rgb(187, 134, 252); border: 0px solid white; }'
+        'QToolTip { color: #ffffff; background-color: rgb(187, 134, 252); '
+        'border: 0px solid white; }'
     )
 
 
