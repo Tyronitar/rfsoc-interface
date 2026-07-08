@@ -4,7 +4,7 @@ import logging
 import time
 from pathlib import Path
 from threading import Thread
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, override
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -149,6 +149,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         )
 
     def get_current_gui_state(self):
+        """Store a snapshot of the current GUI state."""
         # Sweep type
         match self.sweep_type_buttonGroup.checkedButton():
             case self.lo_sweep_radioButton:
@@ -197,14 +198,14 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             ('blindSweep', 'baselinePercentile'),
         ]
         blind_types = [float, float, int, float, int]
-        for key, lineEdit, num_type in zip(
+        for key, line_edit, num_type in zip(
             blind_keys, self.blind_sweep_lineEdits, blind_types, strict=False
         ):
             try:
                 dict_set_by_path(
                     self.gui_state,
                     key,
-                    get_num_value(lineEdit, num_type=num_type),
+                    get_num_value(line_edit, num_type=num_type),
                 )
             except ValueError:
                 continue
@@ -219,6 +220,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         )
 
     def load_gui_state_from_settings(self):
+        """Load the GUI state from the settings file."""
         defaults = self.settings['defaults'][self.tab_name]
         saved_gui_state = dict_get_by_path(self.settings, ('app', self.tab_name), {})
 
@@ -305,8 +307,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             ('blindSweep', 'maxNoiseFluctuation'),
             ('blindSweep', 'baselinePercentile'),
         ]
-        for key, lineEdit in zip(blind_keys, self.blind_sweep_lineEdits, strict=False):
-            lineEdit.setText(str(dict_get_by_path(self.gui_state, key, default='')))
+        for key, line_edit in zip(blind_keys, self.blind_sweep_lineEdits, strict=False):
+            line_edit.setText(str(dict_get_by_path(self.gui_state, key, default='')))
 
         # Sweep Type
         match self.gui_state['sweepType']:
@@ -318,12 +320,14 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 self.blind_sweep_radioButton.click()
 
     def restore_defaults(self):
+        """Populate fields with default values."""
         defaults = self.settings['defaults'][self.tab_name]
         self.gui_state.update(defaults)
         self._update_gui_to_match_settings()
         self.channel_comboBox.deselect_all()
 
     def make_error_labels(self):
+        """Make error labels for input problems."""
         # Attenuation Error Labels
         channel_err_str = 'No channel selected'
         # self.formLayout.removeWidget(self.channel_error_label)
@@ -336,6 +340,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self.channel_error_label.hide()
 
     def open_channels_in_initialization_tab(self):
+        """Open the selected channels in the initialization tab."""
         try:
             init_tab = self.main_window.tabs[TabName.INITIALIZATION]
         except KeyError:
@@ -357,6 +362,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     @Slot()
     def perform_sweep(self):
+        """Setup, run, and analyze the currently selected calibration sweep."""
         try:
             selected_channels = self.get_selected_channels(self.channel_comboBox)
         except SettingsError:
@@ -426,10 +432,12 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         high_res_sweep: bool = False,
         sweep_type: Literal['lo', 'blind'] = 'lo',
     ) -> bool:
+        """Run LO and blind sweeps, and plot when finished."""
         blind_sweep = sweep_type == 'blind'
 
         pd = IncrementalProgressDialog(
-            f'Setting Up{" High Resolution" if high_res_sweep else ""} {"Blind" if blind_sweep else "LO"} Sweep...',
+            f'Setting Up{" High Resolution" if high_res_sweep else ""} '
+            f'{"Blind" if blind_sweep else "LO"} Sweep...',
             'Cancel',
             0,
             100,
@@ -462,13 +470,17 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             )
 
         pd.setLabelText(
-            f'Running{" High Resolution" if high_res_sweep else ""} {"Blind" if blind_sweep else "LO"} Sweep{"s" if len(sweep_threads) > 1 else ""}...'
+            f'Running{" High Resolution" if high_res_sweep else ""} '
+            f'{"Blind" if blind_sweep else "LO"} '
+            f'Sweep{"s" if len(sweep_threads) > 1 else ""}...'
         )
         for sweep_thread in sweep_threads:
             sweep_thread.start()
 
         # Wait for all sweeps to finish or cancel
-        while not all((sweep._processed or sweep._canceled) for sweep in sweeps):
+        while not all(
+            (sweep.was_processed() or sweep.was_canceled()) for sweep in sweeps
+        ):
             QApplication.processEvents()
             time.sleep(0.1)
 
@@ -477,7 +489,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        if pd.wasCanceled() or any(sweep._canceled for sweep in sweeps):
+        if pd.wasCanceled() or any(sweep.was_canceled() for sweep in sweeps):
             # _logger.info('LO Sweep Canceled')
             return False
 
@@ -503,8 +515,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                 return False
 
         # Upload new tone lists as needed
-        # If a highres sweep is going to happen (i.e `upload_all_new_tone_lists` = True),
-        # all tone liusts are updated. Otherwise, only for sweeps that were acxcepted.
+        # If a highres sweep is going to happen (i.e `upload_all_new_tone_lists` = True)
+        # all tone lists are updated. Otherwise, only for sweeps that were acxcepted.
         for i, ((rfsoc, chan), sweep) in enumerate(
             zip(selected_channels, sweeps, strict=False)
         ):
@@ -522,6 +534,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         sweep_type: Literal['lo', 'blind'] = 'lo',
         high_res_sweep: bool = False,
     ) -> list[LoSweep]:
+        """Setup LO or blind sweeps."""
         # Get values from GUI, converting KHz to Hz
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
         diff_to_flag = get_num_value(self.flagging_lineEdit, float) * 1e3
@@ -562,6 +575,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return sweeps
 
     def fit_sweeps(self, sweeps: list[LoSweep]) -> bool:
+        """Fit LO sweeps after they've been run."""
         # Setup progress dialog
         total_steps = sum(sweep.data.n_fits for sweep in sweeps)
         pd = IncrementalProgressDialog(
@@ -591,7 +605,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # Wait for all fits to finish or cancel
         while not all(
-            (sweep.data._fitted or sweep.data._fit_canceled) for sweep in sweeps
+            (sweep.data.was_fitted() or sweep.data.fitting_canceled())
+            for sweep in sweeps
         ):
             QApplication.processEvents()
             time.sleep(0.1)
@@ -601,7 +616,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        if pd.wasCanceled() or any(sweep.data._fit_canceled for sweep in sweeps):
+        if pd.wasCanceled() or any(sweep.data.fitting_canceled() for sweep in sweeps):
             # _logger.info('LO Sweep Canceled')
             return False
 
@@ -616,6 +631,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     def plot_sweeps(
         self, selected_channels: list[tuple[RFSoCWrapper, int]], sweeps: list[LoSweep]
     ) -> bool:
+        """Plot LO sweeps and create diagnostics window."""
         # for (rfsoc, chan), sweep in zip(selected_channels, sweeps):
         #     sweep_data = sweep.data
         #     dialog = BlindSweepDialog(sweep_data, parent=self)
@@ -652,10 +668,11 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             # Make diagnostics window and setup connections
             dw = DiagnosticsDialog(sweep_data, rfsoc=rfsoc, channel=chan, parent=self)
             dw.set_window_name(rfsoc.get_channel(chan).tile_name)
-            # dw.finished.connect(lambda result: self._finish_sweep(result, sweep.savefile, sweep_data, rfsoc, chan, dw, False))
-            dw.finished.connect(self.handle_diagnostic_window_finished)
+            dw.finished.connect(self.handle_sweep_dialog_finished)
             dw.upload_pushButton.clicked.connect(
-                lambda: self._write_new_tones(sweep_data, rfsoc, chan)
+                lambda sd=sweep_data, rs=rfsoc, ch=chan: self._write_new_tones(
+                    sd, rs, ch
+                )
             )
             dialogs.append(dw)
 
@@ -681,7 +698,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # Wait for all fits to finish or cancel
         while not all(
-            (sweep.data._plotted or sweep.data._plot_canceled) for sweep in sweeps
+            (sweep.data.was_plotted() or sweep.data.plotting_canceled())
+            for sweep in sweeps
         ):
             pd.show()
             QApplication.processEvents()
@@ -692,7 +710,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        if pd.wasCanceled() or any(sweep.data._plot_canceled for sweep in sweeps):
+        if pd.wasCanceled() or any(sweep.data.plotting_canceled() for sweep in sweeps):
             # TODO: Handle cancel (i.e. destroy the plots and the dialogs)
             # _logger.info('LO Sweep Plotting Canceled')
             return False
@@ -710,6 +728,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     def plot_blind_sweeps(
         self, selected_channels: list[tuple[RFSoCWrapper, int]], sweeps: list[LoSweep]
     ) -> bool:
+        """Find resonances from a blind sweep and plot the results."""
         # Setup progress dialog
         total_tones = sum(sweep.data.n_tones for sweep in sweeps)
         pd = IncrementalProgressDialog(
@@ -753,7 +772,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             # Make blind sweep window and setup connections
             dw = BlindSweepDialog(sweep_data, parent=self)
             dw.set_window_name(rfsoc.get_channel(chan).tile_name)
-            dw.finished.connect(self.handle_diagnostic_window_finished)
+            dw.finished.connect(self.handle_sweep_dialog_finished)
             dialogs.append(dw)
 
             QApplication.processEvents()
@@ -780,7 +799,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # Wait for all fits to finish or cancel
         while not all(
-            (sweep.data._plotted or sweep.data._plot_canceled) for sweep in sweeps
+            (sweep.data.was_plotted() or sweep.data.plotting_canceled())
+            for sweep in sweeps
         ):
             pd.show()
             QApplication.processEvents()
@@ -791,7 +811,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        if pd.wasCanceled() or any(sweep.data._plot_canceled for sweep in sweeps):
+        if pd.wasCanceled() or any(sweep.data.plotting_canceled() for sweep in sweeps):
             # TODO: Handle cancel (i.e. destroy the plots and the dialogs)
             # _logger.info('Blind Sweep Plotting Canceled')
             return False
@@ -804,12 +824,14 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return True
 
     @Slot(int)
-    def handle_diagnostic_window_finished(self, result: int):
+    def handle_sweep_dialog_finished(self, result: int):
+        """Handle a sweep dialog completing."""
         source = self.sender()
         index = self._dialogs.index(source)
         self._sweep_dialog_results[index] = result
 
     def _wait_for_sweep_dialogs(self, dialogs: list[DiagnosticsDialog]):
+        """Wait for all sweep dialogs to finish."""
         _logger.debug('Waiting for LO dialogs to finish...')
         self._dialogs = dialogs
         n_sweeps = len(dialogs)
@@ -823,6 +845,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         self,
         selected_channels: list[tuple[RFSoCWrapper, int]],
     ) -> bool:
+        """Setup, run, fit, and plot power sweeps."""
         pd = IncrementalProgressDialog(
             'Setting Up Power Sweep...',
             'Cancel',
@@ -859,7 +882,9 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             sweep_thread.start()
 
         # Wait for all sweeps to finish or cancel
-        while not all((sweep._processed or sweep._canceled) for sweep in sweeps):
+        while not all(
+            (sweep.was_processed() or sweep.was_canceled()) for sweep in sweeps
+        ):
             QApplication.processEvents()
             time.sleep(0.1)
 
@@ -868,7 +893,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        if pd.wasCanceled() or any(sweep._canceled for sweep in sweeps):
+        if pd.wasCanceled() or any(sweep.was_canceled() for sweep in sweeps):
             # _logger.info('Power Sweep Canceled')
             return False
 
@@ -882,6 +907,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
     def setup_power_sweeps(
         self, selected_channels: list[tuple[RFSoCWrapper, int]]
     ) -> list[PowerSweep]:
+        """Setup power sweeps."""
         # Get values from GUI, converting KHz to Hz
         tone_shift = get_num_value(self.global_shift_lineEdit) * 1e3
         freq_step = get_num_value(self.df_lineEdit) * 1e3
@@ -920,6 +946,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return sweeps
 
     def fit_power_sweeps(self, sweeps: list[PowerSweep]) -> bool:
+        """Find optimal readout powers from power sweeps."""
         # Setup progress dialog
         total_steps = sum(sweep.data.n_fits for sweep in sweeps)
         pd = IncrementalProgressDialog(
@@ -949,7 +976,8 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         # Wait for all fits to finish or cancel
         while not all(
-            (sweep.data._fitted or sweep.data._fit_canceled) for sweep in sweeps
+            (sweep.data.was_fitted() or sweep.data.fitting_canceled())
+            for sweep in sweeps
         ):
             QApplication.processEvents()
             time.sleep(0.1)
@@ -961,7 +989,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         _logger.debug('All power sweep fitting threads finished.')
 
-        if pd.wasCanceled() or any(sweep.data._fit_canceled for sweep in sweeps):
+        if pd.wasCanceled() or any(sweep.data.fitting_canceled() for sweep in sweeps):
             # _logger.info('Power Sweep Canceled')
             return False
 
@@ -978,6 +1006,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         selected_channels: list[tuple[RFSoCWrapper, int]],
         sweeps: list[PowerSweep],
     ) -> bool:
+        """Plot power sweep results."""
         # Setup progress dialog
         total_steps = sum(sweep.data.n_plots for sweep in sweeps)
         pd = IncrementalProgressDialog(
@@ -1009,34 +1038,21 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
             dialog.setWindowFlag(Qt.Window, True)
             dialog.setWindowModality(Qt.NonModal)
             dialog.set_window_name(rfsoc.get_channel(chan).tile_name)
-            dialog.finished.connect(self.handle_diagnostic_window_finished)
+            dialog.finished.connect(self.handle_sweep_dialog_finished)
             dialogs.append(dialog)
 
             QApplication.processEvents()
 
-            # thread = Thread(target=sweep_data.plot, kwargs={'callback': increment_progress})
-            # plotting_threads.append(thread)
             pd.canceled.connect(sweep_data.cancel_plot)
 
         QApplication.processEvents()
-
-        # for thread in plotting_threads:
-        #     thread.start()
-
-        # Wait for all plotting to finish or cancel
-        # while not all ((sweep.data._plotted or sweep.data._plot_canceled) for sweep in sweeps):
-        #     QApplication.processEvents()
-        #     time.sleep(0.1)
-
-        # for thread in plotting_threads:
-        #     thread.join()
 
         # TODO: Parallelize this better
         # Plot in the main thread, since matplotlib gets mad otherwise
         _logger.debug('Starting power sweep plotting...')
         for i, sweep in enumerate(sweeps):
             sweep_data = sweep.data
-            if sweep_data._plot_canceled:
+            if sweep_data.plotting_canceled():
                 _logger.debug(
                     f'Power sweep plotting canceled before sweep {i + 1}/{len(sweeps)}.'
                 )
@@ -1049,7 +1065,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         QApplication.processEvents()
 
-        if pd.wasCanceled() or any(sweep.data._plot_canceled for sweep in sweeps):
+        if pd.wasCanceled() or any(sweep.data.plotting_canceled() for sweep in sweeps):
             _logger.debug('Power Sweep plotting Canceled')
             return False
 
@@ -1066,6 +1082,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         return True
 
     def get_power_levels(self) -> list[float]:
+        """Parse the selected power levels from the line edit."""
         levels = [
             float(x.strip())
             for x in filter(None, self.power_levels_lineEdit.text().split(','))
@@ -1088,6 +1105,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
     @ensure_path(1)
     def save_sweep(self, savefile: Path, sweep_data: LoSweepData):
+        """Save a sweep to file."""
         sweep_data.save_as(savefile)
         _logger.info(f'Saved LO sweep data to {savefile}')
 
@@ -1213,6 +1231,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
                     f'Invalid `active_suffix` encountered: {self.active_suffix}'
                 )
 
+    @override
     def closeEvent(self, event):
         # Save current state of GUI
         self.get_current_gui_state()

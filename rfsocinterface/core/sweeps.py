@@ -131,6 +131,218 @@ def create_resonator_mini_plot(
         ax.set_facecolor(BAD_RESONANCE_COLOR)
 
 
+class LoSweep:
+    """Class for performing an LO Sweep."""
+
+    def __init__(
+        self,
+        rfsoc: RFSoCWrapper,
+        chan: int,
+        tone_shift: float,
+        freq_step: float,
+        full_span: float,
+        diff_to_flag: float = 3e3,
+        savefile: Path | None = None,
+        sweep_type: Literal['lo', 'power', 'temperature', 'blind'] = 'lo',
+        filename_suffix: str = '',
+        date: str | None = None,
+        hour: str | None = None,
+        mkdir: bool = False,
+    ):
+        """Initialize an LoSweep."""
+        _logger.info(f'Initializing LO Sweep with {rfsoc.get_tile_name(chan)}...')
+
+        self.rfsoc = rfsoc
+        self.chan = chan
+        self.valon = rfsoc.get_valon(chan)
+        self.tone_shift = tone_shift
+        self.freq_step = freq_step
+        self.full_span = full_span
+        self.f_center = rfsoc.get_channel(chan).lo_freq
+        self.diff_to_flag = diff_to_flag
+        self._data = None
+
+        if date is None:
+            date = get_yymmdd()
+        self.date = date
+
+        if hour is None:
+            hour = get_current_lo_sweep_hour_string()
+        self.hour = hour
+
+        if savefile is None:
+            savefile = get_sweep_filename(
+                sweep_type=sweep_type,
+                tile_name=self.tile_name,
+                suffix=filename_suffix,
+                date=self.date,
+                hour=self.hour,
+                mkdir=mkdir,
+            )
+        self.savefile = savefile
+
+        rfsoc.set_frequency(chan, self.f_center)
+        if tone_shift != 0:
+            _logger.debug('Tone shift != 0. Computing new tones...')
+            self.f_center = rfsoc.get_frequency(chan)  # Hz
+            curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
+            new_tones = np.ndarray.tolist(
+                curr_tone_list
+                + float(tone_shift) * (curr_tone_list + self.f_center) / self.f_center
+            )
+            _logger.debug(
+                f'LoConfigWidget calling `set_tone_list` for RFSoC {rfsoc.name} '
+                f'channel {chan}'
+            )
+            _logger.info(
+                'Waiting for the RFSOC to finish writing the updated frequency list'
+            )
+            rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
+
+        self.tone_list = rfsoc.get_tone_list(chan)[0]
+
+        # Set up LO frequencies for sweep
+        n_steps = self.full_span // self.freq_step + 1
+        flo_step = self.freq_step
+
+        flo_start = self.f_center - flo_step * n_steps / 2.0
+        flo_stop = self.f_center + flo_step * n_steps / 2.0
+
+        self.flos = np.arange(flo_start, flo_stop + flo_step, flo_step)
+
+        self._processed = False
+        self._canceled = False
+
+    def was_processed(self) -> bool:
+        """Whether the sweep has been processed."""
+        return self._processed
+
+    def was_canceled(self) -> bool:
+        """Whether the sweep has been canceled."""
+        return self._canceled
+
+    @property
+    def tile_name(self) -> str:
+        """The name of the tile this sweep was performed on."""
+        return self.rfsoc.get_tile_name(self.chan)
+
+    @property
+    def n_steps(self) -> int:
+        """Number of steps in the LO sweep."""
+        return self.flos.size
+
+    def cancel(self):
+        """Cancel the LO sweep."""
+        self._canceled = True
+
+    @property
+    def data(self) -> LoSweepData:
+        """The results of the sweep."""
+        if self._data is None:
+            raise RuntimeWarning(
+                'Attempting to access nonexistant data of an LO sweep. '
+                'Has the sweep been run yet?'
+            )
+        return self._data
+
+    def _get_data_at(self, lo_freq: float) -> npt.NDArray:
+        """Set the LO frequency and collect data."""
+        self.rfsoc.set_frequency(self.chan, lo_freq)
+
+        # Read values and trash initial read, suspecting linear delay is cause..
+        # toss 20 packets in the garbage
+        packets = self.rfsoc.capture_packets(self.chan, 20)
+
+        # Actually use this data
+        # TODO: Can reduce Naccums to speed up LO sweep
+        n_accums = 100
+        packets = self.rfsoc.capture_packets(self.chan, n_accums)
+        data_i = []
+        data_q = []
+        # for packet in packets:
+        for i in range(packets.shape[1]):
+            packet = packets[:, i]
+            packet_i = packet[::2]
+            packet_q = packet[1::2]
+            data_i.append(packet_i)
+            data_q.append(packet_q)
+        data_i = np.array(data_i)
+        data_q = np.array(data_q)
+
+        i_med = np.median(data_i, axis=0)
+        q_med = np.median(data_q, axis=0)
+
+        z = i_med + 1j * q_med
+        return z[: len(self.tone_list)]
+
+    def run_sweep(
+        self, callback: Callable | None = None, save: bool = True
+    ) -> LoSweepData | None:
+        """Perform a stepped frequency sweep."""
+        _logger.info('Performing final setup before LO sweep...')
+        # Final setup before sweep
+        chanmask = self.rfsoc.get_chanmask(self.chan).copy()
+
+        if np.size(chanmask) == 0:  # Chanmask hasn't been set, so use all ones
+            chanmask = np.ones(np.size(self.tone_list), dtype=int)
+
+        self._processed = False
+
+        flo_start = self.flos[0]
+        flo_stop = self.flos[-1]
+
+        # Perform LO Sweep
+        _logger.info('Starting LO sweep...')
+        _logger.debug(
+            f'Starting LO sweep from {flo_start:.6f} MHz to {flo_stop:.6f} MHz '
+            f'in {self.n_steps} steps'
+        )
+        z = np.zeros((np.size(self.flos), np.size(self.tone_list)), dtype=complex)
+        for i, flo in enumerate(self.flos):
+            if self._canceled:
+                z = None
+                break
+            z[i, :] = self._get_data_at(flo)
+            if callback is not None:
+                callback()
+
+        # Process LO sweep
+        if z is None:
+            _logger.info('Sweep canceled. Exiting...')
+            data = None
+        else:
+            _logger.info('Processing sweep results')
+            f = np.zeros([np.size(self.tone_list), np.size(self.flos)])
+
+            for itone, ftone in enumerate(self.tone_list):
+                f[itone, :] = self.flos + ftone
+            sweep_data = np.array((f, z.T))
+            _logger.debug(f'Shape of LO sweep data: {sweep_data.shape}')
+
+            data = LoSweepData(
+                self.tone_list,
+                self.f_center,
+                sweep_data,
+                chanmask,
+                self.rfsoc.get_tile_name(self.chan),
+                diff_to_flag=self.diff_to_flag,
+                filename=self.savefile,
+                date=self.date,
+                hour=self.hour,
+            )
+            if save:
+                data.save()
+
+        # Set the LO back to the original frequency
+        self.rfsoc.set_frequency(self.chan, self.f_center)
+        self._data = data
+
+        if z is not None:
+            self._processed = True
+            _logger.info('Finished processing sweep results')
+        return data
+
+
 class ResonatorData:
     """Class for accessing and plotting the data of a single resonator.
 
@@ -539,6 +751,22 @@ class LoSweepData:
         """The baseband frequencies used during the LO sweep."""
         return self.detector_f - self.f_center
 
+    def was_fitted(self) -> bool:
+        """Whether the sweep's fitting was completed."""
+        return self._fitted
+
+    def fitting_canceled(self) -> bool:
+        """Whether the sweep's fitting was canceled before completion."""
+        return self._fit_canceled
+
+    def was_plotted(self) -> bool:
+        """Whether the sweep's plotting was completed."""
+        return self._plotted
+
+    def plotting_canceled(self) -> bool:
+        """Whether the sweep's plotting was canceled before completion."""
+        return self._plot_canceled
+
     def cancel_fit(self):
         """Cancel fitting resonances."""
         self._fit_canceled = True
@@ -880,210 +1108,6 @@ class LoSweepData:
         return None
 
 
-class LoSweep:
-    """Class for performing an LO Sweep."""
-
-    def __init__(
-        self,
-        rfsoc: RFSoCWrapper,
-        chan: int,
-        tone_shift: float,
-        freq_step: float,
-        full_span: float,
-        diff_to_flag: float = 3e3,
-        savefile: Path | None = None,
-        sweep_type: Literal['lo', 'power', 'temperature', 'blind'] = 'lo',
-        filename_suffix: str = '',
-        date: str | None = None,
-        hour: str | None = None,
-        mkdir: bool = False,
-    ):
-        """Initialize an LoSweep."""
-        _logger.info(f'Initializing LO Sweep with {rfsoc.get_tile_name(chan)}...')
-
-        self.rfsoc = rfsoc
-        self.chan = chan
-        self.valon = rfsoc.get_valon(chan)
-        self.tone_shift = tone_shift
-        self.freq_step = freq_step
-        self.full_span = full_span
-        self.f_center = rfsoc.get_channel(chan).lo_freq
-        self.diff_to_flag = diff_to_flag
-        self._data = None
-
-        if date is None:
-            date = get_yymmdd()
-        self.date = date
-
-        if hour is None:
-            hour = get_current_lo_sweep_hour_string()
-        self.hour = hour
-
-        if savefile is None:
-            savefile = get_sweep_filename(
-                sweep_type=sweep_type,
-                tile_name=self.tile_name,
-                suffix=filename_suffix,
-                date=self.date,
-                hour=self.hour,
-                mkdir=mkdir,
-            )
-        self.savefile = savefile
-
-        rfsoc.set_frequency(chan, self.f_center)
-        if tone_shift != 0:
-            _logger.debug('Tone shift != 0. Computing new tones...')
-            self.f_center = rfsoc.get_frequency(chan)  # Hz
-            curr_tone_list, curr_amp_list = rfsoc.get_tone_list(chan)
-            new_tones = np.ndarray.tolist(
-                curr_tone_list
-                + float(tone_shift) * (curr_tone_list + self.f_center) / self.f_center
-            )
-            _logger.debug(
-                f'LoConfigWidget calling `set_tone_list` for RFSoC {rfsoc.name} '
-                f'channel {chan}'
-            )
-            _logger.info(
-                'Waiting for the RFSOC to finish writing the updated frequency list'
-            )
-            rfsoc.set_tone_list(chan, new_tones, curr_amp_list.tolist())
-
-        self.tone_list = rfsoc.get_tone_list(chan)[0]
-
-        # Set up LO frequencies for sweep
-        n_steps = self.full_span // self.freq_step + 1
-        flo_step = self.freq_step
-
-        flo_start = self.f_center - flo_step * n_steps / 2.0
-        flo_stop = self.f_center + flo_step * n_steps / 2.0
-
-        self.flos = np.arange(flo_start, flo_stop + flo_step, flo_step)
-
-        self._processed = False
-        self._canceled = False
-
-    @property
-    def tile_name(self) -> str:
-        """The name of the tile this sweep was performed on."""
-        return self.rfsoc.get_tile_name(self.chan)
-
-    @property
-    def n_steps(self) -> int:
-        """Number of steps in the LO sweep."""
-        return self.flos.size
-
-    def cancel(self):
-        """Cancel the LO sweep."""
-        self._canceled = True
-
-    @property
-    def data(self) -> LoSweepData:
-        """The results of the sweep."""
-        if self._data is None:
-            raise RuntimeWarning(
-                'Attempting to access nonexistant data of an LO sweep. '
-                'Has the sweep been run yet?'
-            )
-        return self._data
-
-    def _get_data_at(self, lo_freq: float) -> npt.NDArray:
-        """Set the LO frequency and collect data."""
-        self.rfsoc.set_frequency(self.chan, lo_freq)
-
-        # Read values and trash initial read, suspecting linear delay is cause..
-        # toss 20 packets in the garbage
-        packets = self.rfsoc.capture_packets(self.chan, 20)
-
-        # Actually use this data
-        # TODO: Can reduce Naccums to speed up LO sweep
-        n_accums = 100
-        packets = self.rfsoc.capture_packets(self.chan, n_accums)
-        data_i = []
-        data_q = []
-        # for packet in packets:
-        for i in range(packets.shape[1]):
-            packet = packets[:, i]
-            packet_i = packet[::2]
-            packet_q = packet[1::2]
-            data_i.append(packet_i)
-            data_q.append(packet_q)
-        data_i = np.array(data_i)
-        data_q = np.array(data_q)
-
-        i_med = np.median(data_i, axis=0)
-        q_med = np.median(data_q, axis=0)
-
-        z = i_med + 1j * q_med
-        return z[: len(self.tone_list)]
-
-    def run_sweep(
-        self, callback: Callable | None = None, save: bool = True
-    ) -> LoSweepData | None:
-        """Perform a stepped frequency sweep."""
-        _logger.info('Performing final setup before LO sweep...')
-        # Final setup before sweep
-        chanmask = self.rfsoc.get_chanmask(self.chan).copy()
-
-        if np.size(chanmask) == 0:  # Chanmask hasn't been set, so use all ones
-            chanmask = np.ones(np.size(self.tone_list), dtype=int)
-
-        self._processed = False
-
-        flo_start = self.flos[0]
-        flo_stop = self.flos[-1]
-
-        # Perform LO Sweep
-        _logger.info('Starting LO sweep...')
-        _logger.debug(
-            f'Starting LO sweep from {flo_start:.6f} MHz to {flo_stop:.6f} MHz '
-            f'in {self.n_steps} steps'
-        )
-        z = np.zeros((np.size(self.flos), np.size(self.tone_list)), dtype=complex)
-        for i, flo in enumerate(self.flos):
-            if self._canceled:
-                z = None
-                break
-            z[i, :] = self._get_data_at(flo)
-            if callback is not None:
-                callback()
-
-        # Process LO sweep
-        if z is None:
-            _logger.info('Sweep canceled. Exiting...')
-            data = None
-        else:
-            _logger.info('Processing sweep results')
-            f = np.zeros([np.size(self.tone_list), np.size(self.flos)])
-
-            for itone, ftone in enumerate(self.tone_list):
-                f[itone, :] = self.flos + ftone
-            sweep_data = np.array((f, z.T))
-            _logger.debug(f'Shape of LO sweep data: {sweep_data.shape}')
-
-            data = LoSweepData(
-                self.tone_list,
-                self.f_center,
-                sweep_data,
-                chanmask,
-                self.rfsoc.get_tile_name(self.chan),
-                diff_to_flag=self.diff_to_flag,
-                filename=self.savefile,
-                date=self.date,
-                hour=self.hour,
-            )
-            if save:
-                data.save()
-
-        # Set the LO back to the original frequency
-        self.rfsoc.set_frequency(self.chan, self.f_center)
-        self._data = data
-
-        if z is not None:
-            self._processed = True
-            _logger.info('Finished processing sweep results')
-        return data
-
-
 class CompositeSweep[CompositeSweepDataType: 'CompositeSweepData']:
     """Class for a sweep consisting of multiple LO sweeps."""
 
@@ -1139,6 +1163,14 @@ class CompositeSweep[CompositeSweepDataType: 'CompositeSweepData']:
         self._sweeps = []
         self._processed = False
         self._canceled = False
+
+    def was_processed(self) -> bool:
+        """Whether the sweep has been processed."""
+        return self._processed
+
+    def was_canceled(self) -> bool:
+        """Whether the sweep has been canceled."""
+        return self._canceled
 
     @property
     def tile_name(self) -> str:
@@ -1328,6 +1360,14 @@ class CompositeSweepData:
         """The number of fits to perform for each sweep."""
         return sum(sweep.n_fits for sweep in self.sweeps)
 
+    def was_fitted(self) -> bool:
+        """Whether the sweep's fitting was completed."""
+        return self._fitted
+
+    def fitting_canceled(self) -> bool:
+        """Whether the sweep's fitting was canceled before completion."""
+        return self._fit_canceled
+
     def fit(self, callback: Callable | None = None):
         """Fit each sweep in this sweep."""
         raise NotImplementedError
@@ -1342,6 +1382,14 @@ class CompositeSweepData:
     def n_plots(self) -> int:
         """The number of plots to generate."""
         raise NotImplementedError
+
+    def was_plotted(self) -> bool:
+        """Whether the sweep's plotting was completed."""
+        return self._plotted
+
+    def plotting_canceled(self) -> bool:
+        """Whether the sweep's plotting was canceled before completion."""
+        return self._plot_canceled
 
     def plot(self, callback: Callable | None = None):
         """Plot the results of the sweep."""
