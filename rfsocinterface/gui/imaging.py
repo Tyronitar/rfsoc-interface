@@ -238,6 +238,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
     def capture_image(self):
         """Capture an optical image and save to file."""
         savefile = get_filename(file_type='optcam').with_suffix('.h5')
+        savefile.parent.mkdir(parents=True, exist_ok=True)
         savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
         optcam_file = h5py.File(savefile, 'a')
         optical_image_array = optcam_file.create_dataset(
@@ -256,6 +257,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         """Start recording the optical camera to file."""
         optcam_savefile = get_filename(file_type='optcam').with_suffix('.h5')
         video_savefile = get_filename(file_type='optcam_video').with_suffix('.mp4')
+        optcam_savefile.parent.mkdir(parents=True, exist_ok=True)
         optcam_savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
         video_savefile.touch(PERMISSIONS_USR_RW, exist_ok=True)
         self.send_camera_command(

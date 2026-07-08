@@ -53,6 +53,7 @@ class SaveLocationWidget(QWidget, Ui_SaveLocationWidget):
             filename = self.filename_file_select.text()
             save_path = Path(f'{directory}/{filename}')
         if touch_file:
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             save_path.touch(mode, exist_ok=True)
         return save_path
 

@@ -911,6 +911,7 @@ class ConsolidatedData(DataStorage):
             get_consolidated_file_template(date, setnum, data_dir=data_dir)
         )
         if not cfile_path.exists():
+            cfile_path.parent.mkdir(parents=True, exist_ok=True)
             cfile_path.touch(PERMISSIONS_ALL_FULL)
         cdata = cls(cfile_path, mode='w')
         cdata.date = date
