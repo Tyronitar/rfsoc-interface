@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 from rfsocinterface.core.rfsoc import RFSoCWrapper, get_channel_from_text
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.core.sweeps import LoSweepData
-from rfsocinterface.core.utils import PERMISSIONS_USR_RW, TabName
+from rfsocinterface.core.utils import PERMISSIONS_ALL_FULL, TabName
 from rfsocinterface.gui.widgets import CheckableComboBox, SaveLocationWidget
 
 if TYPE_CHECKING:
@@ -211,7 +211,7 @@ class DataCollectionMainWidget(MainWidget):
             save_location = self.save_location_widget.get_chosen_save_location(
                 chan_name=rfchan.tile_name,
                 touch_file=True,
-                mode=PERMISSIONS_USR_RW,
+                mode=PERMISSIONS_ALL_FULL,
                 mkdir=True,
             )
             rfchan.raw_filename = str(save_location)

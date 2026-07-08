@@ -7,6 +7,7 @@ from pathlib import Path
 
 from rfsocinterface.core.utils import (
     GLOBAL_SETTINGS_PATH,
+    PERMISSIONS_ALL_FULL,
     USER_SETTINGS_PATH,
     PathJSONEncoder,
     ensure_path,
@@ -63,7 +64,7 @@ class Settings(dict):
     @staticmethod
     @ensure_path(0)
     def _create_settings(path: Path):
-        path.expanduser().parent.mkdir(exist_ok=True)
+        path.expanduser().parent.mkdir(mode=PERMISSIONS_ALL_FULL, exist_ok=True)
         with path.expanduser().open('w') as f:
             json.dump(DEFAULT_SETTINGS, f, indent=4)
         _logger.info(f'Created default settings file at {path}')

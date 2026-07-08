@@ -274,7 +274,7 @@ def get_filename(
         date = get_yymmdd()
     date_folder = base_dir / date
     if mkdir:
-        date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
+        date_folder.mkdir(mode=PERMISSIONS_ALL_FULL, exist_ok=True)
 
     # provide the name of the file
     match file_type.lower():
@@ -340,7 +340,7 @@ def get_sweep_filename(
         date = get_yymmdd()
     date_folder = data_dir / date
     if mkdir:
-        date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
+        date_folder.mkdir(mode=PERMISSIONS_ALL_FULL, exist_ok=True)
 
     # provide the name of the file
     if hour is None:

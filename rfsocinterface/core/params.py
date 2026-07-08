@@ -77,7 +77,9 @@ class RFSoCParameters:
         """Create a new parameters file with the desired tile name."""
         filename = Path(get_params_file_template(tile_name, params_dir=params_dir))
         if not filename.exists():
-            filename.parent.mkdir(parents=True, exist_ok=True)
+            filename.parent.mkdir(
+                mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
+            )
             filename.touch(PERMISSIONS_ALL_FULL)
         with h5py.File(filename, 'w') as fh:
             # Attributes

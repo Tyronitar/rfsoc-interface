@@ -33,7 +33,7 @@ from rfsocinterface.core.utils import (
     MAX_ATTENUATION,
     OFF_RESONANCE_COLOR,
     ON_RESONANCE_COLOR,
-    PERMISSIONS_USR_RW,
+    PERMISSIONS_ALL_FULL,
     convert_path,
     ensure_path,
     get_current_lo_sweep_hour_string,
@@ -593,8 +593,8 @@ class LoSweepData:
     def save_new_tone_list(self, fname: Path):
         """Save the tone list to a numpy file."""
         path = fname.with_suffix('.npy')
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.touch(PERMISSIONS_USR_RW, exist_ok=True)
+        path.parent.mkdir(mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True)
+        path.touch(PERMISSIONS_ALL_FULL, exist_ok=True)
         np.save(fname, self.new_baseband_freqs)
         _logger.debug(f'LoSweepData saved new tone list to {path!s}')
 
@@ -612,8 +612,8 @@ class LoSweepData:
     def save_as(self, fname: Path):
         """Save the LO Sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.touch(PERMISSIONS_USR_RW)
+        path.parent.mkdir(mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True)
+        path.touch(PERMISSIONS_ALL_FULL)
         with h5py.File(path, 'w') as fh:
             fh.attrs['f_center'] = self.f_center
             fh.attrs['tile_name'] = self.tile_name
@@ -1416,8 +1416,8 @@ class CompositeSweepData:
     def save_as(self, fname: Path):
         """Save the sweep to an HDF5 file."""
         path = fname.with_suffix('.h5')
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.touch(PERMISSIONS_USR_RW)
+        path.parent.mkdir(mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True)
+        path.touch(PERMISSIONS_ALL_FULL)
         with h5py.File(path, 'w') as fh:
             fh.attrs['f_center'] = self.f_center
             fh.attrs['tile_name'] = self.tile_name

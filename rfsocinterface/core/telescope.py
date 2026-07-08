@@ -22,7 +22,7 @@ import uldaq as ul
 from telnetlib3.telnetlib import Telnet
 
 from rfsocinterface.core.utils import (
-    PERMISSIONS_USR_RW,
+    PERMISSIONS_ALL_FULL,
     analog_to_digital,
     quit_function,
 )
@@ -735,7 +735,7 @@ class TelescopeMotorController:
             f.create_dataset('az_pps', data=position_data[3::5])
             f.create_dataset('za_pps', data=position_data[4::5])
             f.create_dataset('optical_visibility', data=['****'])
-        path.chmod(PERMISSIONS_USR_RW)
+        path.chmod(PERMISSIONS_ALL_FULL)
 
         self._run = False
         _tele_logger.info('Scan Complete')
@@ -939,7 +939,7 @@ class TelescopeMotorController:
                     'primary_dither_direction': primary_dither_direction,
                 }
             )
-        path.chmod(PERMISSIONS_USR_RW)
+        path.chmod(PERMISSIONS_ALL_FULL)
 
         # Reset telescope
         if primary_az:
