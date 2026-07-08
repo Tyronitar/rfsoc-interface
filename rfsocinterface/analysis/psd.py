@@ -1,4 +1,4 @@
-"""Code for computing the noise PSD."""
+"""CMde for computing the noise PSD."""
 from enum import StrEnum
 import pdb
 import logging
@@ -12,6 +12,8 @@ from matplotlib.figure import Figure
 from scipy import signal
 from matplotlib.backends.backend_pdf import PdfPages
 from argparse import ArgumentParser
+import scipy.special as sp
+import h5py
 
 from kidpy3 import RawDataFile
 
@@ -34,7 +36,26 @@ N0 = 1.71e10 # Singel spin electron density of states at the Fermi level
 kb_ev = 8.617342e-5 #[eV/K] Boltzman n Constant
 h_ev = 4.135e-15
 hbar_ev = h_ev/(2*np.pi)
-V = 3000 #Inductor volume in um^3. 
+V = 3500 #Inductor volume in um^3. 
+
+
+def mb_from_h5(path: Path) -> dict:
+    """Create a LoSweepData object from a sweep file."""
+    path = path.with_suffix('.h5')
+    mb_dict = {'res':[],'delta_0':[],'alpha':[], 'f0':[]}
+    with h5py.File(path, 'r') as f:
+        res_list = f['Dark_Load/MB_fit']
+        index_name = ['res' +str(j).zfill(3) for j in range(0,len(res_list))]
+        for i in range(0,len(res_list)):
+            mb_dict['res'].append(i)
+            D = res_list[index_name[i]]['Fres_fit']['Delta'][()]
+            a = res_list[index_name[i]]['Fres_fit']['alpha'][()]
+            f = res_list[index_name[i]]['Fres_fit']['f0'][()]
+
+            mb_dict['alpha'].append(a)
+            mb_dict['delta_0'].append(D)
+            mb_dict['f0'].append(f)
+    return mb_dict
 
 class PsdBasis(StrEnum, metaclass=MetaEnum):
     """Enum for the different bases to use for computing the PSD."""
@@ -238,9 +259,9 @@ def plot_psd_df_over_f(
     diss_color: str='o',
     offres_color: str='r',
     title_fontsize: int=16,
-    axis_label_fontsize: int=16,
+    axis_label_fontsize: int=20,
     legend_fontsize: int=14,
-    tick_size: int=14,
+    tick_size: int=20,
 ) -> Figure | None:
     """Plot df/f noise for a single resonator.
     basis_group,
@@ -306,7 +327,7 @@ def plot_psd_df_over_f(
         if ylim is not None:
             ax.set_ylim(*ylim)
         ax.set_xlabel('Frequency (Hz)', fontsize=axis_label_fontsize)
-        ax.set_ylabel(r'Sdf/f ($Hz^{-1}$)', fontsize=axis_label_fontsize)
+        ax.set_ylabel(r'$S_V \times (d(\delta f / f)/ dV)^2$ ($Hz^{-1}$)', fontsize=axis_label_fontsize)
         ax.tick_params(labelsize=tick_size)
         if f0 is not None:
             title += f' (f0 = {f0 / 1e6:.3f} MHz)'
@@ -378,72 +399,348 @@ def plot_psd_df_over_f(
     if fig is not None:
         fig.tight_layout()
         return fig
-def plot_freq_diss(
+
+
+def get_SNqp(fres, T, Sdff_freq, delta_0,alpha, V):
+    omega = fres*2*np.pi
+    xi = lambda omega, T: (hbar_ev * omega)/(2*kb_ev * T)
+    k2 = 1/(2*N0*delta_0)*(1+np.sqrt(2*delta_0/(np.pi*kb_ev*T))*np.exp(-xi(omega,T)*sp.iv(0, xi(omega, T))))
+    SNqp = 4*V**2 * Sdff_freq/(alpha**2 * k2**2)
+    return SNqp
+
+def plot_SNqp(
+    freq: npt.NDArray,
+    psd: npt.NDArray,
+    delta_0: float,
+    alpha: float,
+    f0: float,
+    base_temp: float = 0.243,
+    volume: float = V,
+    ax: plt.Axes = None,
+    dev_pwr: float | None = None,
+    show_error_band: bool = False,
+    error_band_min_percentile: float = 16,
+    error_band_max_percentile: float = 84,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
+    title: str | None = None,
+    label: str | None = None,
+    add_legend: bool = True,
+    figure_kwargs: dict = {},
+    color: str = "b",
+    title_fontsize: int = 16,
+    axis_label_fontsize: int = 20,
+    legend_fontsize: int = 14,
+    tick_size: int = 20,
+) -> Figure | None:
+    """Plot quasiparticle number noise (SNqp).
+
+    Args:
+        freq: Frequency array (N_freq).
+        psd: Frequency PSD. May be either:
+            - (N_freq,) for a single resonator.
+            - (N_tones, N_freq) for multiple realizations (used to show an error band).
+        delta_0: Superconducting energy gap (eV).
+        alpha: Kinetic inductance fraction.
+        f0: Resonator frequency (Hz).
+        base_temp: Bath temperature (K).
+        volume: Inductor volume (defaults to global V).
+        ax: Existing matplotlib axes. If None, a new figure is created.
+
+    Returns:
+        Figure if a new figure was created, otherwise None.
+    """
+
+    fig = None
+
+    # Create figure if needed
+    if ax is None:
+        fig = plt.figure(**figure_kwargs)
+        ax = fig.add_subplot()
+
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+
+        if xlim is not None:
+            ax.set_xlim(*xlim)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+
+        ax.set_xlabel("Frequency (Hz)", fontsize=axis_label_fontsize)
+        ax.set_ylabel(r"$S_{N_{qp}}$", fontsize=axis_label_fontsize)
+        ax.tick_params(labelsize=tick_size)
+
+        plot_title = title
+        if plot_title is not None:
+            if f0 is not None:
+                plot_title += f" (f0 = {f0 / 1e6:.3f} MHz)"
+            if dev_pwr is not None:
+                plot_title += f" at dev_pwr {dev_pwr}"
+            ax.set_title(plot_title, fontsize=title_fontsize)
+
+    med_color, fill_color = decode_color_string(color)
+
+    # Convert PSD -> SNqp
+    if psd.ndim == 2:
+        snqp = np.asarray([
+            get_SNqp(f0, base_temp, this_psd, delta_0, alpha, volume)
+            for this_psd in psd
+        ])
+        plot_data = np.median(snqp, axis=0)
+    else:
+        snqp = get_SNqp(f0, base_temp, psd, delta_0, alpha, volume)
+        plot_data = snqp
+
+    # Error band
+    if show_error_band:
+        if snqp.ndim != 2:
+            _logger.error(
+                "Cannot show error band for SNqp with dimensions != 2."
+            )
+        else:
+            snqp_min = np.percentile(
+                snqp,
+                error_band_min_percentile,
+                axis=0,
+            )
+            snqp_max = np.percentile(
+                snqp,
+                error_band_max_percentile,
+                axis=0,
+            )
+
+            ax.fill_between(
+                freq,
+                snqp_min,
+                snqp_max,
+                facecolor=fill_color,
+                alpha=0.5,
+            )
+
+    # Plot median/single spectrum
+    ax.plot(
+        freq,
+        plot_data,
+        color=med_color,
+        label=label or r"$S_{N_{qp}}$",
+    )
+
+    if add_legend:
+        ax.legend(fontsize=legend_fontsize)
+
+    if fig is not None:
+        fig.tight_layout()
+        return fig, plot_data
+
+
+def plot_resonator_report(
     psd,
     freq,
     detector_f,
     onres_ind,
     offres_ind,
     adc_units_to_hz,
-    pdf_path,
     title=None,
-    show_error_band=False,
-    error_band_min_percentile=None,
-    error_band_max_percentile=None,
+    show_error_band=True,
+    error_band_min_percentile=16,
+    error_band_max_percentile=84,
+    axis_label_fontsize=20
 ):
-   
 
-    pdf_path = Path(pdf_path)
-    #pdf_path.parent.mkdir(parents=True, exist_ok=True)
+
     # On-resonance tones
-    onres_psd = psd[:, onres_ind]    
+
+    onres_ind = np.delete(onres_ind,14)
+    onres_psd = psd[:, onres_ind]
+
+    offres_psd = psd[:, offres_ind]
+
+
     offres_median = np.median(psd[:, offres_ind], axis=1)
+    offres_median = (
+                offres_median
+                / (np.median(adc_units_to_hz[onres_ind] * detector_f[onres_ind])) ** 2
+            )
+
     figs = []
 
-    
+    # Indices for histogram frequencies
+    freq_idx_1 = np.argmin(np.abs(freq - 1.0))
+    freq_idx_200 = np.argmin(np.abs(freq - 200.0))
+
+    # Arrays to collect values
+    sdff_1hz = []
+    sdff_200hz = []
+
+    sdfd_1hz = []
+    sdfd_200hz = []
+
+    snqp_1hz = []
+    snqp_200hz = []
+    snqp_full = []
+
     onres_fig = plot_psd_df_over_f(
         freq,
         onres_psd,
-        title=" - ".join(filter(None, (title, "On-Resonance Tones"))),
+        title="".join(filter(None, (title, "Median Noise PSDs: On-Resonance Tones"))),
         show_error_band=show_error_band,
         error_band_min_percentile=error_band_min_percentile,
         error_band_max_percentile=error_band_max_percentile,
         add_legend=True,
         show_flat_spectrum_level=True,
+        xlim=(0.1, 244),
+        ylim=(1e-19, 1e-16),
+        axis_label_fontsize=20
     )
     figs.append(onres_fig)
-
     plt.close(onres_fig)
+
+    mb_file_path = Path("/data/params/Be231102d2_AR_BS_dark_processed.h5")
+    mb_dict = mb_from_h5(mb_file_path)
+    
 
     for tone in onres_ind:
         f0 = detector_f[tone]
-
-        if offres_median is not None:
-            this_offres_median = (
-                offres_median
-                / (adc_units_to_hz[tone] * f0)**2 
-            )
-        else:
-            this_offres_median = None
 
         fig = plot_psd_df_over_f(
             freq,
             psd[:, tone],
             f0=f0,
-            offres_median=None,
+            offres_median= None,
             title=" - ".join(filter(None, (title, f"Resonator {tone}"))),
             add_legend=True,
             show_flat_spectrum_level=True,
-            ylim=(1e-21, 1e-15)
+            xlim = (0.1, 244),
+            ylim=(1e-19, 1e-16),
         )
         figs.append(fig)
+
+        mb_index = np.argmin(np.abs(f0 - mb_dict["f0"]))
+
+        fig, snqp = plot_SNqp(
+            freq,
+            psd[:, tone],
+            delta_0=mb_dict["delta_0"][mb_index],
+            alpha=mb_dict["alpha"][mb_index],
+            f0=f0,
+            title=" - ".join(filter(None, (title, f"Resonator {tone}"))),
+            add_legend=True,
+            ylim=(100, 1e5),
+            xlim = (0.1, 244)
+
+        )
+        figs.append(fig)
+
+        # Save histogram values
+        sdff_1hz.append(psd[0, tone, freq_idx_1])
+        sdff_200hz.append(psd[0, tone, freq_idx_200])
+        sdfd_1hz.append(psd[1, tone, freq_idx_1])
+        sdfd_200hz.append(psd[1, tone, freq_idx_200])
+        snqp_1hz.append(snqp[freq_idx_1])
+        snqp_200hz.append(snqp[freq_idx_200])
+        snqp_full.append(snqp)
+
+    snqp_med = np.median(np.array(snqp_full), axis=0)
+    snqp_min = np.percentile(np.array(snqp_full), 16, axis=0)
+    snqp_max = np.percentile(np.array(snqp_full), 84, axis=0)
+
     
-    # Save all figures to PDF
-    with PdfPages(pdf_path) as pdf:
-        for fig in figs:
-            pdf.savefig(fig)
-            plt.close(fig)
+
     
+
+    # Histogram pages
+    figs.append(
+        plot_histogram(
+            np.log10(sdff_1hz),
+            "Frequency Noise at 1 Hz",
+            r"$\log_{10}(S_{\delta f/f})$",
+        )
+    )
+
+    figs.append(
+        plot_histogram(
+            np.log10(sdff_200hz),
+            "Frequency Noise at 200 Hz",
+            r"$\log_{10}(S_{\delta f/f})$",
+        )
+    )
+
+    figs.append(
+        plot_histogram(
+            np.log10(sdfd_1hz),
+            "Dissapation Noise at 1 Hz",
+            r"$\log_{10}(S_{\delta f/f})$",
+        )
+    )
+
+    figs.append(
+        plot_histogram(
+            np.log10(sdfd_200hz),
+            "Dissapation Noise at 200 Hz",
+            r"$\log_{10}(S_{\delta f/f})$",
+        )
+    )
+
+    figs.append(
+        plot_histogram(
+            np.log10(snqp_1hz),
+            "Quasi-particle Noise at 1 Hz",
+            r"$\log_{10}(S_{N_{qp}})$",
+            XLIM=(0, 8)
+        )
+    )
+
+    figs.append(
+        plot_histogram(
+            np.log10(snqp_200hz),
+            "Quasi-particle Noise at 200 Hz",
+            r"$\log_{10}(S_{N_{qp}})$",
+            XLIM=(0, 8)
+        )
+    )
+    figs.append(
+        plot_histogram(
+            (snqp_1hz),
+            "Linear Quasi-particle Noise at 1 Hz",
+            r"$(S_{N_{qp}})$",
+            XLIM=(0, 30000),
+            bins = 20
+        )
+    )
+
+    figs.append(
+        plot_histogram(
+            (snqp_200hz),
+            "Linear Quasi-particle Noise at 200 Hz",
+            r"$(S_{N_{qp}})$",
+            XLIM=(0, 5000),
+            bins = 20
+
+        )
+    )
+    return figs
+   
+
+def plot_histogram(
+    values,
+    title,
+    xlabel,
+    ylabel="Count",
+    bins=20,
+    XLIM=(-21, -15),
+    axis_label_fontsize = 20
+):
+    fig, ax = plt.subplots(figsize=(9, 6))
+    ax.hist(values, bins=bins, range= XLIM, alpha=0.7, edgecolor='black')
+    ax.plot(values,range(len(values)), 'o', markersize=6, label='Indices')
+    ax.set_title(title)
+    ax.set_xlabel(xlabel, fontsize = axis_label_fontsize)
+    ax.set_ylabel(ylabel, fontsize = axis_label_fontsize)
+
+    ax.set_xlim(XLIM)
+    fig.tight_layout()
+    return fig
+
 def plot_psd_dbc_hz(
     freq: npt.NDArray,
     psd: npt.NDArray,
@@ -461,9 +758,9 @@ def plot_psd_dbc_hz(
     figure_kwargs: dict={},
     color: str='b',
     title_fontsize: int=16,
-    axis_label_fontsize: int=16,
+    axis_label_fontsize: int=20,
     legend_fontsize: int=14,
-    tick_size: int=14,
+    tick_size: int=20,
 ) -> Figure | None:
     """Plot a PSD in dBc/Hz over frequency.
 

@@ -1,12 +1,14 @@
 import logging
 import logging.config
 
-from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis, plot_psd_df_over_f, plot_freq_diss
+from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis, plot_psd_df_over_f, plot_resonator_report
 from rfsocinterface.core.data import *
 from rfsocinterface.analysis import *
 import pdb
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.backends.backend_pdf import PdfPages
+from pathlib import Path
 
 
 if __name__ == '__main__':
@@ -14,10 +16,10 @@ if __name__ == '__main__':
     #_logger = logging.getLogger('rfsocinterface')
     #_logger.handlers[0].setLevel(logging.INFO)
 
-    lp_filter_freq = 122
+    lp_filter_freq = 100
     hp_filter_freq = 0.001
-    noise_removal_lp_filt_freq = 10  # Filter disabled if set to 0
-    ds_factor = 2
+    noise_removal_lp_filt_freq = 0 # Filter disabled if set to 0
+    ds_factor = 1
 
     dataset = 'data_freq'
     datasets = ['/vdsets/data_freq_diss']
@@ -29,12 +31,12 @@ if __name__ == '__main__':
 
     noise_removal_offres = RemoveElectronicsNoise(
         template_selection_indices='offres',
-        lp_filt_freq=noise_removal_lp_filt_freq,
-        fspace = True
+        lp_filt_freq=244,
+        fspace = False
     )
     noise_removal_onres = RemoveElectronicsNoise(
         template_selection_indices='onres',
-        lp_filt_freq=noise_removal_lp_filt_freq,
+        lp_filt_freq=5,
         fspace = True
         
     )
@@ -59,7 +61,6 @@ if __name__ == '__main__':
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
     make_video = MakeVideo(
-        hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
         block_size_s=0.1,
         dpix=0.08,
@@ -91,17 +92,44 @@ if __name__ == '__main__':
 
 
     date = '20260319'
-    setnums = np.array([ 1023, 1025, 1027, 1028,1031, 1032])
+    #setnums = np.array([ 1011])
 
-    psd_obj_list = []
+    setnums = np.array([ 1023])
+
+    psd_fd_obj_list = []
+
+    psd_gp_obj_list = []
 
 
     for setnum in setnums:
-        pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-        psd_obj_list.append(pdata['psd/freq_diss/psd'])
+        pdata = pipeline.from_consolidated_data(date, setnum)
+        psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
+        psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
+        psd_gp_obj_list.append(pdata['psd/gain_phase/psd'])
 
-    psd_avg = np.mean(np.array(psd_obj_list), axis=0)
+
+    psd_fd_avg = np.mean(np.array(psd_fd_obj_list), axis=0)
+    psd_gp_avg = np.mean(np.array(psd_gp_obj_list), axis=0)
+
     psd_freq = pdata['psd/freq_diss/freq']
-    plot_freq_diss(psd_avg, psd_freq[:], pdata.detector_f(),pdata.onres_ind, pdata.offres_ind,  pdata.adc_units_to_hz, 'output.pdf')
+    figs = plot_resonator_report(psd_fd_avg, psd_freq[:], pdata.detector_f(),pdata.onres_ind, pdata.offres_ind,  pdata.adc_units_to_hz)
+    
+    
+    pdf_path = Path(date + 'output.pdf')
+
+
     pdb.set_trace()
+    figs.append(plot_psd_dbc_hz( psd_freq[:],psd_gp_avg[0, pdata.offres_ind]))
+    figs.append(plot_psd_dbc_hz( psd_freq[:],psd_gp_avg[1, pdata.offres_ind]))
+
+    figs.append(plot_psd_dbc_hz( psd_freq[:],psd_gp_avg[0, pdata.onres_ind]))
+    figs.append(plot_psd_dbc_hz( psd_freq[:],psd_gp_avg[1, pdata.onres_ind]))
+
+
+    with PdfPages(pdf_path) as pdf:
+        for fig in figs:
+            pdf.savefig(fig)
+            plt.close(fig)
+
+
     
