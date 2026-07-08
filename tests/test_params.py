@@ -73,7 +73,7 @@ def test_copy_and_update(tmpdir, field: str, dtype: np.dtype, size, low, high):
     original_val = getattr(params, field)
     kwargs = {field: new_val}
 
-    params_copy = params.copy_and_update('test_name_copy', **kwargs)
+    params_copy = params.copy_and_update('test_name_copy', params_dir=tmpdir, **kwargs)
 
     try:
         # Make sure the original array was preserved
