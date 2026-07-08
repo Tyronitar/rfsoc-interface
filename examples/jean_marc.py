@@ -1,6 +1,6 @@
 import time
 
-from rfsocinterface.core.rfsoc import RFSOCWrapper
+from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.settings import Settings
 
 from rfsocinterface.core.utils import get_filename, PERMISSIONS_USR_RW
@@ -12,7 +12,7 @@ if __name__ == "__main__":
     # Load the settings and initialize the RFSOC
     settings = Settings()
     settings.load_settings()
-    rfsoc = RFSOCWrapper(settings['rfsocs'][0])  # Just use the first RFSOC for this example
+    rfsoc = RFSoCWrapper(settings['rfsocs'][0])  # Just use the first RFSOC for this example
 
 
     # Load parameters file of your choice (contains LO frequency, tone frequencies, etc.)

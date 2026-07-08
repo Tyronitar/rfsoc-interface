@@ -1,12 +1,15 @@
 """Module for handling of settings files."""
+
 import copy
 import json
-from pathlib import Path
 import logging
+from pathlib import Path
 
-from rfsocinterface.core.utils import GLOBAL_SETTINGS_PATH
-from rfsocinterface.core.utils import USER_SETTINGS_PATH
 from rfsocinterface.core.utils import (
+    GLOBAL_SETTINGS_PATH,
+    PERMISSIONS_ALL_FULL,
+    USER_SETTINGS_PATH,
+    PathJSONEncoder,
     ensure_path,
 )
 
@@ -14,68 +17,45 @@ _logger = logging.getLogger(__name__)
 
 
 DEFAULT_SETTINGS = {
-    "app": {
-        "tabs": [
-            "initialization",
-            "losweep",
-            "data",
-            "telescope",
-            "imaging"
-        ],
-        "activeTab": "initialization"
+    'app': {
+        'tabs': ['initialization', 'losweep', 'data', 'telescope', 'imaging'],
+        'activeTab': 'initialization',
     },
-    "telescope": {
-        "jogVoltage": {
-            "azimuth": 5,
-            "zenith": 1
-        },
-        "controller": {
-            "class": "TelescopeMotorController",
-            "path": "./telescope.py"
-        }
+    'telescope': {
+        'jogVoltage': {'azimuth': 5, 'zenith': 1},
+        'controller': {'class': 'TelescopeMotorController', 'path': './telescope.py'},
     },
-    "defaults": {
-        "loSweep": {
-            "globalShift": 0,
-            "df": 1.0,
-            "deltaf": 100.0,
-            "flaggingThreshold": 3.0,
-            "fileSuffix": "none",
-            "secondSweep": {
-                "df": 1.0
-            }
+    'defaults': {
+        'loSweep': {
+            'globalShift': 0,
+            'df': 1.0,
+            'deltaf': 100.0,
+            'flaggingThreshold': 3.0,
+            'fileSuffix': 'none',
+            'secondSweep': {'df': 1.0},
         },
-        "data": {
-            "useDefaultFilename": True,
-            "directory": "/data/"
+        'data': {'useDefaultFilename': True, 'directory': '/data/'},
+        'rfsoc': {
+            'bitstream': '/home/xilinx/dualchan_v2.bit',
+            'channel': {
+                'dsp': {'loFreq': 400e6, 'nAverages': 524288},
+                'rfin': 0.0,
+                'rfout': 0.0,
+                'minResonanceFrequency': 0,
+                'maxResonanceFrequency': 2e9,
+                'minResonanceDistanceFromLo': 1e6,
+            },
         },
-        "rfsoc": {
-            "bitstream": "/home/xilinx/dualchan_v2.bit",
-            "channel": {
-                "dsp": {
-                    "loFreq": 400e6,
-                    "nAverages": 524288
-                },
-                "rfin": 0.0,
-                "rfout": 0.0,
-                "minResonanceFrequency": 0,
-                "maxResonanceFrequency": 2e9,
-                "minResonanceDistanceFromLo": 1e6
-            }
-        }
     },
-    "rfsocs": []
+    'rfsocs': [],
 }
-
-class PathEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Path):
-            return str(obj)
-        return super().default(obj)
 
 
 class Settings(dict):
+    """Class for storing and updating user settings."""
+
     def __init__(self, *args, **kwargs):
+        """Initialize the Settings dictionary."""
         super().__init__(*args, **kwargs)
         self._path = None
 
@@ -84,7 +64,7 @@ class Settings(dict):
     @staticmethod
     @ensure_path(0)
     def _create_settings(path: Path):
-        path.expanduser().parent.mkdir(exist_ok=True)
+        path.expanduser().parent.mkdir(mode=PERMISSIONS_ALL_FULL, exist_ok=True)
         with path.expanduser().open('w') as f:
             json.dump(DEFAULT_SETTINGS, f, indent=4)
         _logger.info(f'Created default settings file at {path}')
@@ -96,9 +76,11 @@ class Settings(dict):
         self['rfsocs'] = self._load_rfsocs(self.pop('rfsocs', []))
 
     def default_rfsoc_settings(self) -> dict:
+        """Get the default settings for RFSoCs."""
         return self['defaults'].get('rfsoc', {})
 
     def default_channel_settings(self) -> dict:
+        """Get the default settings for a channel."""
         return self.default_rfsoc_settings().get('channel', {})
 
     def _load_rfsocs(self, rfsocs: list[dict]) -> list[dict]:
@@ -124,7 +106,8 @@ class Settings(dict):
         return new_rfsocs
 
     @ensure_path(1)
-    def load_settings(self, user_settings_path: Path=USER_SETTINGS_PATH):
+    def load_settings(self, user_settings_path: Path = USER_SETTINGS_PATH):
+        """Load settings from a file."""
         self._load_global_settings()
         if not user_settings_path.expanduser().exists():
             Settings._create_settings(user_settings_path)
@@ -135,42 +118,22 @@ class Settings(dict):
             if 'rfsocs' in user_settings:
                 user_settings['rfsocs'] = self._load_rfsocs(user_settings.pop('rfsocs'))
             self.update(user_settings)
-    
-    def save_settings(self, user_settings_path: Path=USER_SETTINGS_PATH):
+
+    def save_settings(self, user_settings_path: Path = USER_SETTINGS_PATH):
+        """Save settings to file."""
         self._path = user_settings_path
         with self._path.expanduser().open('w') as f:
-            json.dump(self, f, indent=4, cls=PathEncoder)
+            json.dump(self, f, indent=4, cls=PathJSONEncoder)
         _logger.info(f'Saved settings to {self._path.expanduser()}')
 
     def __str__(self):
+        """Format the settings as a string."""
         return json.dumps(self, indent=4)
 
 
 class SettingsError(Exception):
+    """Class for settings-related errors."""
+
     def __init__(self, message: str):
-        super().__init__("Error in settings file: " + message)
-
-
-def convert_to_kidy_format(rfsoc_config: dict) -> dict:
-    kidpy_config = {}
-    kidpy_config['rfsoc_name'] = rfsoc_config['name']
-    kidpy_config['bitstream'] = rfsoc_config['bitstream']
-    kidpy_config['redis_ip'] = rfsoc_config['redis']['ip']
-    kidpy_config['redis_port'] = rfsoc_config['redis']['port']
-    kidpy_config['ethernet_config'] = {
-        'udp_data_a_sourceip': rfsoc_config['channel1']['sourceip'],
-        'udp_data_b_sourceip': rfsoc_config['channel2']['sourceip'],
-        'udp_data_a_destip': rfsoc_config['channel1']['destip'],
-        'udp_data_b_destip': rfsoc_config['channel2']['destip'],
-        'port_a': rfsoc_config['channel1']['port'],
-        'port_b': rfsoc_config['channel2']['port'],
-    }
-    return {'rfsoc_config': kidpy_config}
-
-
-if __name__ == "__main__":
-    settings = Settings()
-    new_path = './new_settings.json'
-    settings.load_settings(new_path)
-    settings['app']['activeTab'] = 'data'
-    settings.save_settings(Path(new_path))
+        """Initialize a SettingsError."""
+        super().__init__('Error in settings file: ' + message)

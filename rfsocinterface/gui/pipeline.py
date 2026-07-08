@@ -1,32 +1,34 @@
-from typing import Type
-from itertools import chain
+"""Code for interactively configuring data processing."""
 
+from typing import override
 
-from rfsocinterface.gui.uic.pipeline_ui import Ui_PipelineDialog
-from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
-
-
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout
 
-from rfsocinterface.gui.widgets.function import FunctionDragItem
 from rfsocinterface.core.data import (
+    ROUTINE_NAME_MAP,
+    DataRoutine,
     Pipeline,
     ProcessingStage,
-    DataRoutine,
-    ROUTINE_NAME_MAP,
 )
+from rfsocinterface.gui.uic.pipeline_ui import Ui_PipelineDialog
+from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
+from rfsocinterface.gui.widgets.function import FunctionDragItem
 
 
 class RoutineSelectionDialog(QDialog):
+    """Dialog for selecting a new data routine to add to the list."""
+
     def __init__(self, parent=None):
+        """Initialize a RoutineSelectionDialog."""
         super().__init__(parent=parent)
-        self.setupUi()
+        self.setup_ui()
 
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
 
-    def setupUi(self):
+    def setup_ui(self):
+        """Setup the dialog."""
         self.setWindowTitle('Select Mapping Routine')
         self.setModal(True)
         layout = QFormLayout()
@@ -37,7 +39,9 @@ class RoutineSelectionDialog(QDialog):
 
         self.button_box = QDialogButtonBox(self)
         self.button_box.setOrientation(Qt.Orientation.Horizontal)
-        self.button_box.setStandardButtons(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box.setStandardButtons(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         layout.addRow(self.button_box)
 
         self.setLayout(layout)
@@ -52,8 +56,10 @@ STAGE_TO_SECTION_MAP = {
 
 
 class PipelineDialog(QDialog, Ui_PipelineDialog):
+    """Dialog for configuring and reordering data routines."""
 
     def __init__(self, parent=None):
+        """Initialize a PipelineDialog."""
         super().__init__(parent=parent)
         self.setupUi(self)
         self.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
@@ -73,25 +79,27 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         self.drag_function_widget.add_section('Post-processing')
         # self.drag_function_widget.orderChanged.connect(self.update_order)
 
+    @override
     def exec(self):
         self._current_items = self.drag_function_widget.items_separated()
-        print(f'Original order: {self.drag_function_widget.item_data_separated()}\n')
+        # print(f'Original order: {self.drag_function_widget.item_data_separated()}\n')
         self._new_items = [[]] * 4
         self._removed_items = [[]] * 4
         return super().exec()
-    
+
     # @Slot(list, list)
     # def update_order(self, items: list[list[FunctionDragItem]], data: list):
     #     self._current_items = items
     #     print('updated order')
-    
+
     def make_pipeline(self) -> Pipeline:
+        """Create a Pipeline object from the dialog."""
         new_pipeline = Pipeline()
         for item in self.drag_function_widget.items():
             new_pipeline.add_routine(item.func_widget.call_function())
         return new_pipeline
-    
 
+    @override
     def reject(self):
         # Un-remove any items that were removed
         for section_items in self._removed_items:
@@ -114,6 +122,7 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
 
         super().reject()
 
+    @override
     def accept(self):
         # Actually remove items
         for section in self._removed_items:
@@ -125,6 +134,7 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         super().accept()
 
     def select_and_add_routine(self):
+        """Select a routine type and add a new instance to the list."""
         routine_type = self.select_routine()
         if routine_type is None:
             return
@@ -135,20 +145,28 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         d = RoutineSelectionDialog(self)
         if d.exec():
             return d.combo_box.currentText()
+        return None
 
     def add_routine(self, routine_type_name: str, *args):
-        routine_cls: Type[DataRoutine] = ROUTINE_NAME_MAP[routine_type_name]
+        """Add a routine to the list."""
+        routine_cls: type[DataRoutine] = ROUTINE_NAME_MAP[routine_type_name]
         if routine_type_name not in ROUTINE_NAME_MAP:
-            raise ValueError(f'Routine type {routine_type_name} not in DATA_ROUTINE_FUNCTION_WIDGET_ARGS')
+            raise ValueError(
+                f'Routine type {routine_type_name} not in '
+                'DATA_ROUTINE_FUNCTION_WIDGET_ARGS'
+            )
         if len(args) == 0:
-            args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[routine_type_name]  # Get default values
+            args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[
+                routine_type_name
+            ]  # Get default values
         section = STAGE_TO_SECTION_MAP[routine_cls.stage]
         item = self.drag_function_widget.add_item(section, *args)
         # item = self.drag_function_widget.add_item(*args)
         item.clicked.emit()  # Set active itme and display the function's aruments
         self._new_items[section].append(item)
 
-    def remove_routine(self, i_sec: int, item: FunctionDragItem | None=None):
+    def remove_routine(self, i_sec: int, item: FunctionDragItem | None = None):
+        """Remove a routine from the list."""
         if item is None:
             i_sec, item = self.drag_function_widget.active_item
         if item is not None:
@@ -165,19 +183,3 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
             item.hide()
             # ...but keep track of it in case changes are discarded
             self._removed_items[i_sec].append(item)
-    
-        
-if __name__ == '__main__':
-    from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton
-
-    app = QApplication()
-
-    w = QMainWindow()
-    butt = QPushButton('Click me')
-    d = PipelineDialog(w)
-    butt.clicked.connect(d.exec)
-    w.setCentralWidget(butt)
-
-    w.show()
-    app.exec()
-

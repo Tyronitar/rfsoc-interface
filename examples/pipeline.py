@@ -22,7 +22,7 @@ if __name__ == '__main__':
     dataset = 'data_freq'
     datasets = ['/vdsets/data_freq_diss']
 
-    find_fwhm = FindFWHM(
+    find_fwhm = CheckFocus(
         'az',
         [241],
     )
