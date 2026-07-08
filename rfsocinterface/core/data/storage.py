@@ -191,7 +191,10 @@ class DataStorage:
     @property
     def date(self) -> str:
         """The date of data collection."""
-        return self.attrs['date']
+        date = self.attrs['date']
+        if isinstance(date, bytes):
+            return str(self.attrs['date'], encoding='utf-8')
+        return str(date)
 
     @date.setter
     def date(self, date: str):
