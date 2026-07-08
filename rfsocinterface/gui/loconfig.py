@@ -30,12 +30,12 @@ from rfsocinterface.core.utils import (
     get_yymmdd,
     load_dict_or_defaults,
 )
-from rfsocinterface.gui.lodiagnostics import (
+from rfsocinterface.gui.main_widget import MainWidget
+from rfsocinterface.gui.sweep_diagnostics import (
     BlindSweepDialog,
     DiagnosticsDialog,
     PowerSweepDialog,
 )
-from rfsocinterface.gui.main_widget import MainWidget
 from rfsocinterface.gui.uic.loconfig_ui import Ui_LoConfigWidget as Ui_LOConfigWidget
 from rfsocinterface.gui.widgets import (
     ERROR_ICON_CODE,
