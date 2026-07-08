@@ -8,6 +8,7 @@ from tests.utils import assert_close
 
 
 def test_initialize_params(tmpdir):
+    """Test the initialization of new parameters files."""
     tile_name = 'test_name'
     n_tones = 100
     params = RFSoCParameters.new_file(tile_name, n_tones, params_dir=tmpdir)
@@ -54,6 +55,7 @@ def test_initialize_params(tmpdir):
     ],
 )
 def test_copy_and_update(tmpdir, field: str, dtype: np.dtype, size, low, high):
+    """Test copying a params file and updating various values."""
     tile_name = 'test_name'
     n_tones = 100
     if size == -1:
