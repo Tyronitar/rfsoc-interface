@@ -41,5 +41,13 @@ jobs:
       - name: Make UI files
         run: make all
 
+      - name: Lint Code
+        uses: astral-sh/ruff-action@v4.0.0
+
+      - name: Format Code
+        uses: astral-sh/ruff-action@v4.0.0
+        with:
+          args: "format --check"
+
       - name: Run Test Suite
         run: poetry run pytest
