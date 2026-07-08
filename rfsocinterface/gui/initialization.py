@@ -267,7 +267,7 @@ class ChannelSettingsWidget(QWidget, Ui_ChannelSettingsWidget):
                     f'{self.rfsoc.name} with ({self.channel}, {params_file})'
                 )
                 self.rfsoc.load_params_file(self.channel, params_file)
-                self.main_window.channelNamesUpdated.emit()
+                self.main_window.channel_names_updated.emit()
                 self.update_fields()
             finally:
                 self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -512,7 +512,7 @@ class InitializationWidget(MainWidget, Ui_InitializationTabWidget):
 
         self.add_toolButton.clicked.connect(lambda: self.add_section(toggle=True))
         self.delete_toolButton.clicked.connect(self.remove_section)
-        main_window.channelNamesUpdated.connect(self.update_channel_names)
+        main_window.channel_names_updated.connect(self.update_channel_names)
 
     def update_channel_names(self):
         """Update the channel names in the sections."""

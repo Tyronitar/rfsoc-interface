@@ -99,7 +99,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         self._file = '.'
         self.channel_comboBox.set_default_title('Select Channels...')
         self.update_channel_choices(self.channel_comboBox)
-        main_window.channelNamesUpdated.connect(
+        main_window.channel_names_updated.connect(
             lambda: self.update_channel_choices(self.channel_comboBox)
         )
         self.patterns: list[FunctionWidget] = []

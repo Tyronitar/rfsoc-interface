@@ -1,12 +1,14 @@
+"""Main window and GUI manager."""
+
 import logging
 from multiprocessing import Array, Lock, Pipe, Process, Queue
 from multiprocessing.connection import Connection
 from threading import Thread
+from typing import override
 
 import numpy as np
 import numpy.typing as npt
 from PySide6.QtCore import QCoreApplication, Signal, Slot
-from PySide6.QtGui import QScreen
 from PySide6.QtWidgets import (
     QGridLayout,
     QMainWindow,
@@ -36,13 +38,14 @@ _camera_logger = logging.getLogger('rfsocinterface.cameraControl')
 class MainWindow(QMainWindow, Ui_MainWindow):
     """The Main program window."""
 
-    channelNamesUpdated = Signal()
-    telescopeUpdate = Signal(str, tuple)
-    cameraUpdate = Signal(str, tuple)
-    closeWindow = Signal()
+    channel_names_updated = Signal()
+    telescope_update = Signal(str, tuple)
+    camera_update = Signal(str, tuple)
+    close_window = Signal()
 
     @ensure_path(1)
     def __init__(self, parent: QWidget | None = None):
+        """Initialize the MainWindow."""
         super().__init__(parent)
 
         self.settings = Settings()
@@ -74,14 +77,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.setupUi(self)
         self._additional_ui_setup()
-        self.closeWindow.connect(self.close)
+        self.close_window.connect(self.close)
 
     def get_current_image(self) -> tuple[npt.NDArray, float]:
+        """Return the current optical image."""
         with self.camera_array_lock, self.timestamp_array_lock:
             return self.camera_array[:], self.timestamp_array[:]
 
     def _make_telescope_controller(self):
-        from rfsocinterface.core.telescope import make_controller
+        from rfsocinterface.core.telescope import make_controller  # noqa: PLC0415
 
         # If it already exists, we're good
         if self.telescope_controller_process is not None:
@@ -96,7 +100,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._telescope_listener_thread.start()
 
     def _make_camera_controller(self):
-        from rfsocinterface.core.camera import make_controller
+        from rfsocinterface.core.camera import make_controller  # noqa: PLC0415
 
         # If it already exists, we're good
         if self.camera_controller_process is not None:
@@ -168,7 +172,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabs[TabName.DATA] = self.data_widget
 
     def _make_telescope_tab(self):
-        from rfsocinterface.gui.telescope import TelescopeControlWidget
+        from rfsocinterface.gui.telescope import TelescopeControlWidget  # noqa: PLC0415
 
         self._make_telescope_controller()
         self._make_camera_controller()
@@ -189,7 +193,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tabs[TabName.TELESCOPE] = self.telescope_widget
 
     def _make_imaging_tab(self):
-        from rfsocinterface.gui.imaging import ImagingWidget
+        from rfsocinterface.gui.imaging import ImagingWidget  # noqa: PLC0415
 
         self._make_telescope_controller()
         self._make_camera_controller()
@@ -228,7 +232,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     self._make_imaging_tab()
                 case _:
                     raise SettingsError(
-                        f'Invalid name "{tab}" in general.tabs; valid options are {[name.value for name in TabName]}'
+                        f'Invalid name "{tab}" in general.tabs; valid options are '
+                        f'{[name.value for name in TabName]}'
                     )
 
         active_tab = self.settings['app'].get('activeTab', TabName.INITIALIZATION)
@@ -237,6 +242,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.set_active_tab(active_tab)
 
     def index(self, tab_name: TabName) -> int:
+        """Get the index of the specified tab."""
         return list(self.tabs.keys()).index(tab_name)
 
     def tab_at(self, index: int) -> TabName:
@@ -244,11 +250,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return list(self.tabs.keys())[index]
 
     def init_rfsocs(self):
+        """Initialize RFSoCs from the settings file."""
         for rfsoc_settings in self.settings['rfsocs']:
             rfsoc = RFSoCWrapper(rfsoc_settings)
             self.rfsocs.append(rfsoc)
 
     def resize_to_current(self, index: int):
+        """Resize the window to fit the current content."""
         for i in range(self.tabWidget.count()):
             tab = self.tabWidget.widget(i)
             if i != index:
@@ -278,15 +286,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     case 'err':
                         criticality = data[0]
                         if criticality == 'CRITICAL':
-                            raise RuntimeError(
+                            raise RuntimeError(  # noqa: TRY301
                                 f'Critical error from telescope controller: {data[1]}'
                             )
                     case 'done':
                         break
                     case _:
-                        self.telescopeUpdate.emit(response, data)
+                        self.telescope_update.emit(response, data)
         except RuntimeError as e:
-            self.closeWindow.emit()
+            self.close_window.emit()
             raise RuntimeError from e
 
     def _camera_listener_loop(self):
@@ -303,15 +311,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     case 'err':
                         criticality = data[0]
                         if criticality == 'CRITICAL':
-                            raise RuntimeError(
+                            raise RuntimeError(  # noqa: TRY301
                                 f'Critical error from camera controller: {data[1]}'
                             )
                     case 'done':
                         break
                     case _:
-                        self.cameraUpdate.emit(response, data)
+                        self.camera_update.emit(response, data)
         except RuntimeError as e:
-            self.closeWindow.emit()
+            self.close_window.emit()
             raise RuntimeError from e
 
     @Slot(int)
@@ -322,13 +330,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         _logger.debug(f'Active tab updated to index {index}')
 
     def set_active_tab(self, tab: TabName):
+        """Set the active tab."""
         if tab in self.tabs:
             _logger.debug(f'Setting active tab to {tab}')
             self.tabWidget.setCurrentIndex(self.index(tab))
 
     def get_active_tab(self) -> TabName:
+        """Return the current active tab."""
         return self.settings['app']['activeTab']
 
+    @override
     def closeEvent(self, event):
         self.hide()
         for tab in self.tabs.values():
@@ -346,7 +357,3 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.settings.save_settings()
         return super().closeEvent(event)
-
-
-def move_to_center(win: QMainWindow, screen: QScreen):
-    win.move(screen.geometry().center() - win.geometry().center())

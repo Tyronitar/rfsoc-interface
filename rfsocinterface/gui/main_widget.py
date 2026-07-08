@@ -94,8 +94,8 @@ class TelescopeMainWidget(MainWidget):
         """Initialize a TelescopeMainbWidget."""
         super().__init__(main_window, rfsocs, settings, parent)
 
-        self.main_window.telescopeUpdate.connect(self.handle_telescope)
-        self.main_window.cameraUpdate.connect(self.handle_camera)
+        self.main_window.telescope_update.connect(self.handle_telescope)
+        self.main_window.camera_update.connect(self.handle_camera)
         self.telescope_commands: dict[str, list[Callable]] = {}
         self._telescope_command_data = (
             None  # Data returned from a command that was waited for

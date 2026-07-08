@@ -42,7 +42,7 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         self.channel_comboBox.set_default_title('Select Channels...')
         self.setup_connections()
         self.update_channel_choices(self.channel_comboBox)
-        main_window.channelNamesUpdated.connect(
+        main_window.channel_names_updated.connect(
             lambda: self.update_channel_choices(self.channel_comboBox)
         )
 

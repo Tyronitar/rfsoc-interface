@@ -128,7 +128,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
 
         self.make_error_labels()
         self.update_channel_choices(self.channel_comboBox)
-        main_window.channelNamesUpdated.connect(
+        main_window.channel_names_updated.connect(
             lambda: self.update_channel_choices(self.channel_comboBox)
         )
         self.filename_buttonGroup.buttonClicked.connect(self.swap_filename_suffix)
