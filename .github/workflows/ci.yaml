@@ -13,9 +13,9 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-          sudo apt update && sudo apt install -y libegl1-mesa-dev
+      - name: Install dependencies
+        run: |
+            sudo apt update && sudo apt install -y libegl1-mesa-dev
 
       - name: Install Python
         uses: actions/setup-python@v4
