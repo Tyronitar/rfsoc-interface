@@ -6,6 +6,7 @@ import pdb
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
+from matplotlib.patches import Patch
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import numpy.typing as npt
@@ -497,6 +498,8 @@ def combine_polarized_beammaps(
     pol1_data: ProcessedData,
     pol2_data: ProcessedData,
     new_tile_name: str,
+    bad_resonators: npt.ArrayLike | None = None,
+    focal_plane_center: str='top left',
     amplitude_normalization_percentile: float=75,
     pdf_filename: str=None,
 ):
@@ -506,7 +509,9 @@ def combine_polarized_beammaps(
     and detector_pol.
     
     """
-    onres_ind = pol1_data.onres_ind
+    good_ind = pol1_data.onres_ind
+    if bad_resonators is not None:
+        good_ind = np.setdiff1d(good_ind, bad_resonators)
     old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']
     chanmask = pol1_data.chanmask
 
@@ -536,7 +541,7 @@ def combine_polarized_beammaps(
     detector_pol = np.zeros(chanmask.size, dtype=np.int8)
     beam_ampl = np.zeros(chanmask.size)
 
-    for i_res in onres_ind:
+    for i_res in good_ind:
         if amplitude_pol1[i_res] > amplitude_pol2[i_res]:
             detector_pol[i_res] = 1
             az_center[i_res] = az_center_pol1[i_res]
@@ -550,9 +555,19 @@ def combine_polarized_beammaps(
 
     # TODO: Update params file
 
-    # # Get positions relative to boresight of the telescope
-    # delta_dx = az_center - np.median(az_center[onres_ind])
-    # delta_dy = za_center - np.median(za_center[onres_ind])
+    # # Get positions relative to the center of the tile
+    # delta_dx = az_center - np.median(az_center[good_ind])
+    # delta_dy = za_center - np.median(za_center[good_ind])
+
+    az_median = np.median(az_center)
+    za_median = np.median(za_center)
+    az_center = az_center - np.median(az_center)
+    za_center = za_center - np.median(za_center)
+    rot = 1./90.*np.pi/2.
+    az_center = az_center * np.cos(rot) - za_center * np.sin(rot)
+    za_center = az_center * np.sin(rot) + za_center * np.cos(rot)
+    az_center += az_median
+    za_center += za_median
     
     # # Save to a new parameters file 
     # copy_and_update_params_file(
@@ -564,23 +579,35 @@ def combine_polarized_beammaps(
     #     detector_pol=detector_pol
     # )
 
-    # Plot centers
-    if pdf_filename is None:
-        pdf_filename = get_detector_pos_pdf_template(pol1_data.date, new_tile_name)
     pol1 = np.argwhere(detector_pol == 1).flatten()
     pol2 = np.argwhere(detector_pol == 2).flatten()
-    with PdfPages(pdf_filename) as pdf:
-        plt.scatter(az_center[pol2], za_center[pol2], marker='x', color='blue', label=f'Polarization 2 (N = {pol2.size})')
-        for i_pol in pol2:
-           plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='blue', fontsize=20.)
-        plt.scatter(az_center[pol1], za_center[pol1], marker='+', color='red', label=f'Polarization 1 (N = {pol1.size})')
-        for i_pol in pol1:
-           plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='red', fontsize=20.)
-        plt.xlabel('AZ Position (deg)')
-        plt.ylabel('ZA Position (deg)')
-        plt.gca().invert_yaxis()
-        # plt.legend()
-        pdf.savefig()
-        plt.show()
+    match focal_plane_center:
+        case 'top left':
+            center_za = np.min(za_center[good_ind])
+            center_az = np.min(az_center[good_ind])
+        case 'top right':
+            center_za = np.min(za_center[good_ind])
+            center_az = np.max(az_center[good_ind])
+
+    # Plot centers
+    # if pdf_filename is None:
+    #     pdf_filename = get_detector_pos_pdf_template(pol1_data.date, new_tile_name)
+    # with PdfPages(pdf_filename) as pdf:
+    #     plt.figure(figsize=(10, 10))
+    #     plt.title(f'Detector Positions and Polarizations - {old_tile_name}')
+    #     plt.scatter(az_center[pol2], za_center[pol2], marker='x', color='blue', label=f'Polarization 2 (N = {pol2.size})')
+    #     for i_pol in pol2:
+    #        plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='blue', fontsize=20.)
+    #     plt.scatter(az_center[pol1], za_center[pol1], marker='+', color='red', label=f'Polarization 1 (N = {pol1.size})')
+    #     for i_pol in pol1:
+    #        plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='red', fontsize=20.)
+    #     plt.xlabel('AZ Position (deg)')
+    #     plt.ylabel('ZA Position (deg)')
+    #     plt.scatter(center_az, center_za, marker='o', color='black', label='Focal Plane Center')
+    #     plt.gca().invert_yaxis()
+    #     plt.legend()
+    #     plt.tight_layout()
+    #     pdf.savefig()
+    #     plt.show()
     
-    pdb.set_trace()
+    return az_center, za_center, detector_pol, beam_ampl
