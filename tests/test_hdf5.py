@@ -1,18 +1,17 @@
 """Tests for HDF5-related code."""
 
-import pytest
-from tests.conftest import TOD_FILE
-from unittest.mock import MagicMock
 import h5py
 
 from rfsocinterface.core.utils import (
     search,
 )
+from tests.conftest import TOD_FILE
 
 
 @TOD_FILE
 def test_search(datafiles):
-    file = h5py.File(list(datafiles.iterdir())[0], 'r')
+    """Test searching for keywords in HDF5 files."""
+    file = h5py.File(next(iter(datafiles.iterdir())), 'r')
 
     # Standard search
     res = search(file, 'adc_i')
