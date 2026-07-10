@@ -202,3 +202,6 @@ data/
 
 # Extra UI files
 ui_resources/*.py
+
+# Keep testing data files
+!tests/test_data/*
