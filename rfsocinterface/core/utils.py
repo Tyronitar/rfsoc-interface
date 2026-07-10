@@ -496,7 +496,7 @@ def search(
     """
 
     def search_fn(obj_name: str, obj: H5pyObject):
-        success = name == obj_name if exact_match else name in obj_name
+        success = name == obj.name if exact_match else name in obj.name
         if success:
             if full_name:
                 return obj.name, obj
