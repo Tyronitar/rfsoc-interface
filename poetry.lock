@@ -2570,6 +2570,21 @@ pytest = ">=4.6"
 testing = ["fields", "hunter", "process-tests", "pytest-xdist", "virtualenv"]
 
 [[package]]
+name = "pytest-datafiles"
+version = "3.0.1"
+description = "py.test plugin to create a 'tmp_path' containing predefined files/directories."
+optional = false
+python-versions = ">=3.8"
+groups = ["dev"]
+files = [
+    {file = "pytest_datafiles-3.0.1-py3-none-any.whl", hash = "sha256:c48f27a8afec03a482a10587ab5f5ab930ced4cbdeb2e3a2cbcc0323a51d22c7"},
+    {file = "pytest_datafiles-3.0.1.tar.gz", hash = "sha256:05fc3eef2429fe26ae42283cccb1f3831b53b12d4bd8b4734bf42973d4af6e16"},
+]
+
+[package.dependencies]
+pytest = ">=6.2.0"
+
+[[package]]
 name = "pytest-mock"
 version = "3.15.1"
 description = "Thin-wrapper around the mock package for easier use with pytest"
@@ -3242,4 +3257,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "a5405c3e00cc819528df05c0051a04ac49eba5efbcc52a1d2299b0edd572203c"
+content-hash = "d0438b7ae1032bc1111157efa91f111e58a081eb12f1c089880c9b46a495ecef"
