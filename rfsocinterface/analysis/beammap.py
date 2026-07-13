@@ -559,15 +559,16 @@ def combine_polarized_beammaps(
     # delta_dx = az_center - np.median(az_center[good_ind])
     # delta_dy = za_center - np.median(za_center[good_ind])
 
-    az_median = np.median(az_center)
-    za_median = np.median(za_center)
-    az_center = az_center - np.median(az_center)
-    za_center = za_center - np.median(za_center)
-    rot = 1./90.*np.pi/2.
-    az_center = az_center * np.cos(rot) - za_center * np.sin(rot)
-    za_center = az_center * np.sin(rot) + za_center * np.cos(rot)
-    az_center += az_median
-    za_center += za_median
+    # Rotate by the rotation of the focal plane
+    # az_median = np.median(az_center)
+    # za_median = np.median(za_center)
+    # az_center = az_center - np.median(az_center)
+    # za_center = za_center - np.median(za_center)
+    # rot = 1./90.*np.pi/2.
+    # az_center = az_center * np.cos(rot) - za_center * np.sin(rot)
+    # za_center = az_center * np.sin(rot) + za_center * np.cos(rot)
+    # az_center += az_median
+    # za_center += za_median
     
     # # Save to a new parameters file 
     # copy_and_update_params_file(

@@ -94,26 +94,53 @@ if __name__ == '__main__':
     # Top left = min(x + y)      |      Top Right = max(x - y)
     # --------------------------------------------------------
     # Bottom left = min(x - y)   |   Bottom Right = max(x + y)
-    top_left_tile_1 = np.argmin(tile_1_az_centers + tile_1_za_centers).flatten()
-    top_right_tile_2 = np.argmax(tile_2_az_centers - tile_2_za_centers).flatten()
-    # Use median between tiles
-    focal_center_az = np.median(np.concatenate([tile_1_az_centers[top_left_tile_1], tile_2_az_centers[top_right_tile_2]]))
-    focal_center_za = np.median(np.concatenate([tile_1_za_centers[top_left_tile_1], tile_2_za_centers[top_right_tile_2]]))
+    top_left_tile_2_idx = np.argmin(tile_2_az_centers + tile_2_za_centers).flatten()
+    top_left_tile_2 = np.array([tile_2_az_centers[top_left_tile_2_idx], tile_2_za_centers[top_left_tile_2_idx]]).squeeze()
+    top_right_tile_1_idx = np.argmax(tile_1_az_centers - tile_1_za_centers).flatten()
+    top_right_tile_1 = np.array([tile_1_az_centers[top_right_tile_1_idx], tile_1_za_centers[top_right_tile_1_idx]]).squeeze()
+    # Top right of tile 1 is more complicated, since there's no detector in the corner
+    bottom_right_tile_1_idx = np.argmax(tile_1_az_centers + tile_1_za_centers).flatten()
+    bottom_right_tile_1 = np.array([tile_1_az_centers[bottom_right_tile_1_idx], tile_1_za_centers[bottom_right_tile_1_idx]]).squeeze()
+    bottom_left_tile_2_idx = np.argmin(tile_2_az_centers - tile_2_za_centers).flatten()
+    bottom_left_tile_2 = np.array([tile_2_az_centers[bottom_left_tile_2_idx], tile_2_za_centers[bottom_left_tile_2_idx]]).squeeze()
+    diff_vector = bottom_left_tile_2 - bottom_right_tile_1
+    true_top_right = top_left_tile_2 - diff_vector
 
-    plt.scatter(focal_center_az, focal_center_za, marker='o', color='black', label=f'Focal Plane Center (AZ = {focal_center_az:.2f}, ZA = {focal_center_za:.2f})')
+    # Use median between tiles
+    focal_center = (top_left_tile_2 + true_top_right) / 2
+    # focal_center_az = np.median(np.concatenate([tile_2_az_centers[top_left_tile_2_idx], tile_1_az_centers[top_right_tile_1_idx]]))
+    # focal_center_za = np.median(np.concatenate([tile_2_za_centers[top_left_tile_2_idx], tile_1_za_centers[top_right_tile_1_idx]]))
+    center_offset = top_left_tile_2 - focal_center
+    # center_offset_az = (tile_2_az_centers[top_left_tile_2_idx] - focal_center_az).item()
+    # center_offset_za = (tile_2_za_centers[top_left_tile_2_idx] - focal_center_za).item()
+    angle = np.atan2(center_offset[1], center_offset[0])
+    az_shift = np.cos(-np.pi / 2) * center_offset[0] - np.sin(-np.pi/2) * center_offset[1]
+    za_shift = np.cos(-np.pi / 2) * center_offset[1] + np.sin(-np.pi/2) * center_offset[0]
+    first_distance = np.sqrt(center_offset[0] ** 2 + center_offset[1] ** 2)
+    second_distance = np.sqrt(az_shift ** 2 + za_shift ** 2)
+    pdb.set_trace()
+    focal_center[0] += az_shift
+    focal_center[1] += za_shift
+    # focal_center_za += za_shift
+    # focal_center_az += az_shift
+
+    plt.scatter(focal_center[0], focal_center[1], marker='o', color='black', label=f'Focal Plane Center (AZ = {focal_center[0]:.2f}, ZA = {focal_center[1]:.2f})')
+    # plt.scatter(tile_2_az_centers[top_left_tile_2_idx], tile_2_za_centers[top_left_tile_2_idx], marker='o', color='red')
+    # plt.scatter(true_top_right[0], true_top_right[1], marker='o', color='orange')
+    # plt.scatter(focal_center[0] + az_shift, focal_center[1] + za_shift, marker='o', color='purple', label=f'Focal Plane Center with offset')
     plt.xlabel('AZ Position (deg)')
     plt.ylabel('ZA Position (deg)')
     # plt.scatter(center_az, center_za, marker='o', color='black', label='Focal Plane Center')
     plt.gca().invert_yaxis()
+    plt.gca().set_aspect('equal')
     plt.legend()
     plt.tight_layout()
     pdf.savefig()
     plt.show()
     pdf.close()
 
-    detdx_1 =  focal_center_az - tile_1_az_centers
-    detdy_1 =  focal_center_za - tile_1_za_centers
-    detdx_2 =  focal_center_az - tile_2_az_centers
-    detdy_2 =  focal_center_za - tile_2_za_centers
-    pdb.set_trace()
+    # detdx_1 =  focal_center_az - tile_1_az_centers
+    # detdy_1 =  focal_center_za - tile_1_za_centers
+    # detdx_2 =  focal_center_az - tile_2_az_centers
+    # detdy_2 =  focal_center_za - tile_2_za_centers
 
