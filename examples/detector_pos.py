@@ -5,6 +5,8 @@ import pdb
 import numpy as np
 
 from rfsocinterface.core.data import ProcessedData
+from rfsocinterface.core.params import RFSoCParameters
+from rfsocinterface.core.utils import get_params_file_template
 from rfsocinterface.analysis.beammap import combine_polarized_beammaps
 
 
@@ -19,6 +21,10 @@ if __name__ == '__main__':
     tile_names = (
         'Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power',
         'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
+    )
+    new_tile_names = (
+        'Device_aSi1_Channel2_telescope_275mK_20260714',
+        'Device_aSi2_Channel3_telescope_275mK_20260714'
     )
     setnums = (
         (1001, 1004),
@@ -78,39 +84,39 @@ if __name__ == '__main__':
         hpol = np.argwhere(detector_pol == 1).flatten().astype(int)
         vpol = np.argwhere(detector_pol == 2).flatten().astype(int)
         marker = markers[i_tile]
-        plt.scatter(az_center[vpol], za_center[vpol], marker=marker, color=colors[i_tile][0], label=f'Tile {i_tile + 1} V-Pol (N = {vpol.size})')
+        plt.scatter(az_center[vpol], za_center[vpol], marker=marker, color=colors[i_tile][0], label=f'Tile {i_tile + 2} V-Pol (N = {vpol.size})')
         # for i_pol in pol2:
         #     plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='blue', fontsize=20.)
-        plt.scatter(az_center[hpol], za_center[hpol], marker=marker, color=colors[i_tile][1], label=f'Tile {i_tile + 1} H-Pol (N = {hpol.size})')
+        plt.scatter(az_center[hpol], za_center[hpol], marker=marker, color=colors[i_tile][1], label=f'Tile {i_tile + 2} H-Pol (N = {hpol.size})')
         # for i_pol in pol1:
         #     plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='red', fontsize=20.)
-    tile_1_az_centers = az_centers[0][good_inds[0]]
-    tile_1_za_centers = za_centers[0][good_inds[0]]
-    tile_2_az_centers = az_centers[1][good_inds[1]]
-    tile_2_za_centers = za_centers[1][good_inds[1]]
+    tile_2_az_centers = az_centers[0][good_inds[0]]
+    tile_2_za_centers = za_centers[0][good_inds[0]]
+    tile_3_az_centers = az_centers[1][good_inds[1]]
+    tile_3_za_centers = za_centers[1][good_inds[1]]
 
     # Find the center of the focal plane
     # To find the most extreme points (when y is increasing downwards):
     # Top left = min(x + y)      |      Top Right = max(x - y)
     # --------------------------------------------------------
     # Bottom left = min(x - y)   |   Bottom Right = max(x + y)
-    top_left_tile_2_idx = np.argmin(tile_2_az_centers + tile_2_za_centers).flatten()
-    top_left_tile_2 = np.array([tile_2_az_centers[top_left_tile_2_idx], tile_2_za_centers[top_left_tile_2_idx]]).squeeze()
-    top_right_tile_1_idx = np.argmax(tile_1_az_centers - tile_1_za_centers).flatten()
-    top_right_tile_1 = np.array([tile_1_az_centers[top_right_tile_1_idx], tile_1_za_centers[top_right_tile_1_idx]]).squeeze()
+    top_left_tile_3_idx = np.argmin(tile_3_az_centers + tile_3_za_centers).flatten()
+    top_left_tile_3 = np.array([tile_3_az_centers[top_left_tile_3_idx], tile_3_za_centers[top_left_tile_3_idx]]).squeeze()
+    top_right_tile_2_idx = np.argmax(tile_2_az_centers - tile_2_za_centers).flatten()
+    top_right_tile_2 = np.array([tile_2_az_centers[top_right_tile_2_idx], tile_2_za_centers[top_right_tile_2_idx]]).squeeze()
     # Top right of tile 1 is more complicated, since there's no detector in the corner
-    bottom_right_tile_1_idx = np.argmax(tile_1_az_centers + tile_1_za_centers).flatten()
-    bottom_right_tile_1 = np.array([tile_1_az_centers[bottom_right_tile_1_idx], tile_1_za_centers[bottom_right_tile_1_idx]]).squeeze()
-    bottom_left_tile_2_idx = np.argmin(tile_2_az_centers - tile_2_za_centers).flatten()
-    bottom_left_tile_2 = np.array([tile_2_az_centers[bottom_left_tile_2_idx], tile_2_za_centers[bottom_left_tile_2_idx]]).squeeze()
-    diff_vector = bottom_left_tile_2 - bottom_right_tile_1
-    true_top_right = top_left_tile_2 - diff_vector
+    bottom_right_tile_2_idx = np.argmax(tile_2_az_centers + tile_2_za_centers).flatten()
+    bottom_right_tile_2 = np.array([tile_2_az_centers[bottom_right_tile_2_idx], tile_2_za_centers[bottom_right_tile_2_idx]]).squeeze()
+    bottom_left_tile_3_idx = np.argmin(tile_3_az_centers - tile_3_za_centers).flatten()
+    bottom_left_tile_3 = np.array([tile_3_az_centers[bottom_left_tile_3_idx], tile_3_za_centers[bottom_left_tile_3_idx]]).squeeze()
+    diff_vector = bottom_left_tile_3 - bottom_right_tile_2
+    true_top_right = top_left_tile_3 - diff_vector
 
     # Use median between tiles
-    focal_center = (top_left_tile_2 + true_top_right) / 2
+    focal_center = (top_left_tile_3 + true_top_right) / 2
     # focal_center_az = np.median(np.concatenate([tile_2_az_centers[top_left_tile_2_idx], tile_1_az_centers[top_right_tile_1_idx]]))
     # focal_center_za = np.median(np.concatenate([tile_2_za_centers[top_left_tile_2_idx], tile_1_za_centers[top_right_tile_1_idx]]))
-    center_offset = top_left_tile_2 - focal_center
+    center_offset = top_left_tile_3 - focal_center
     # center_offset_az = (tile_2_az_centers[top_left_tile_2_idx] - focal_center_az).item()
     # center_offset_za = (tile_2_za_centers[top_left_tile_2_idx] - focal_center_za).item()
     angle = np.atan2(center_offset[1], center_offset[0])
@@ -118,7 +124,6 @@ if __name__ == '__main__':
     za_shift = np.cos(-np.pi / 2) * center_offset[1] + np.sin(-np.pi/2) * center_offset[0]
     first_distance = np.sqrt(center_offset[0] ** 2 + center_offset[1] ** 2)
     second_distance = np.sqrt(az_shift ** 2 + za_shift ** 2)
-    pdb.set_trace()
     focal_center[0] += az_shift
     focal_center[1] += za_shift
     # focal_center_za += za_shift
@@ -139,8 +144,28 @@ if __name__ == '__main__':
     plt.show()
     pdf.close()
 
-    # detdx_1 =  focal_center_az - tile_1_az_centers
-    # detdy_1 =  focal_center_za - tile_1_za_centers
-    # detdx_2 =  focal_center_az - tile_2_az_centers
-    # detdy_2 =  focal_center_za - tile_2_za_centers
+    # Make new parameters files
+    detdx_2 =  focal_center[0] - tile_2_az_centers
+    detdy_2 =  focal_center[1] - tile_2_za_centers
+    detdx_3 =  focal_center[0] - tile_3_az_centers
+    detdy_3 =  focal_center[1] - tile_3_za_centers
 
+    with RFSoCParameters.load(tile_names[0], mode='r') as old_tile_2_params, \
+            old_tile_2_params.copy_and_update(new_tile_names[0]) as new_tile_2_params:
+        new_tile_2_params.detector_delta_x[good_inds[0]] = detdx_2
+        new_tile_2_params.detector_delta_y[good_inds[0]] = detdy_2
+        new_tile_2_params.detector_pol[:] = detector_pols[0]
+        new_tile_2_params.detector_beam_ampl[:] = beam_ampls[0]
+        bad_res_tile_2 = np.setdiff1d(
+            np.argwhere(detector_pols[0] == 0).flatten(), old_tile_2_params.offres_ind)
+        new_tile_2_params.chanmask[bad_res_tile_2] = -1
+
+    with RFSoCParameters.load(tile_names[1], mode='r') as old_tile_3_params, \
+            old_tile_3_params.copy_and_update(new_tile_names[1]) as new_tile_3_params:
+        new_tile_3_params.detector_delta_x[good_inds[1]] = detdx_3
+        new_tile_3_params.detector_delta_y[good_inds[1]] = detdy_3
+        new_tile_3_params.detector_pol[:] = detector_pols[1]
+        new_tile_3_params.detector_beam_ampl[:] = beam_ampls[1]
+        bad_res_tile_3 = np.setdiff1d(
+            np.argwhere(detector_pols[1] == 0).flatten(), old_tile_3_params.offres_ind)
+        new_tile_3_params.chanmask[bad_res_tile_3] = -1

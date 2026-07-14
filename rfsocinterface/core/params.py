@@ -64,6 +64,21 @@ class RFSoCParameters:
                 f'File "{self._file.filename}" is not an appropriate format. '
                 'Use `update_params_file_format` to update the file and try again.'
             )
+    
+    @classmethod
+    def load(
+        cls,
+        tile_name: str,
+        mode: str='r',
+        params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    ) -> RFSoCParameters:
+        filename = Path(get_params_file_template(tile_name, params_dir=params_dir))
+        if not filename.exists():
+            raise FileNotFoundError(
+                f'Unable to find a params file for tile "{tile_name}" '
+                f'in directory {params_dir}'
+            )
+        return cls(filename, mode=mode)
 
     @classmethod
     def new_file(
