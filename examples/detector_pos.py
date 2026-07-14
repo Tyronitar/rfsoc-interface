@@ -159,6 +159,7 @@ if __name__ == '__main__':
         bad_res_tile_2 = np.setdiff1d(
             np.argwhere(detector_pols[0] == 0).flatten(), old_tile_2_params.offres_ind)
         new_tile_2_params.chanmask[bad_res_tile_2] = -1
+        new_tile_2_params.focal_plane_center_za = focal_center[1]
 
     with RFSoCParameters.load(tile_names[1], mode='r') as old_tile_3_params, \
             old_tile_3_params.copy_and_update(new_tile_names[1]) as new_tile_3_params:
@@ -169,3 +170,4 @@ if __name__ == '__main__':
         bad_res_tile_3 = np.setdiff1d(
             np.argwhere(detector_pols[1] == 0).flatten(), old_tile_3_params.offres_ind)
         new_tile_3_params.chanmask[bad_res_tile_3] = -1
+        new_tile_3_params.focal_plane_center_za = focal_center[1]
