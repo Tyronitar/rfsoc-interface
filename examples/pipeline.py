@@ -94,37 +94,25 @@ if __name__ == '__main__':
     date = '20260319'
     #setnums = np.array([ 1011])
 
-    setnums = np.array([ 1023])
+    setnums = np.array([ 1023, 1025, 1027, 1028,1031, 1032])
 
     psd_fd_obj_list = []
 
-    psd_gp_obj_list = []
 
 
     for setnum in setnums:
         pdata = pipeline.from_consolidated_data(date, setnum)
         psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
         psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
-        psd_gp_obj_list.append(pdata['psd/gain_phase/psd'])
 
 
     psd_fd_avg = np.mean(np.array(psd_fd_obj_list), axis=0)
-    psd_gp_avg = np.mean(np.array(psd_gp_obj_list), axis=0)
 
-    psd_freq = pdata['psd/freq_diss/freq']
-    figs = plot_resonator_report(psd_fd_avg, psd_freq[:], pdata.detector_f(),pdata.onres_ind, pdata.offres_ind,  pdata.adc_units_to_hz)
+    psd_freq = pdata['psd/freq_diss/freq'][:]
+    figs = plot_resonator_report(psd_fd_avg, psd_freq, pdata.detector_f(),pdata.onres_ind, pdata.offres_ind,  pdata.adc_units_to_hz)
     
     
     pdf_path = Path(date + 'output.pdf')
-
-
-    pdb.set_trace()
-    figs.append(plot_psd_dbc_hz( psd_freq[:],psd_gp_avg[0, pdata.offres_ind]))
-    figs.append(plot_psd_dbc_hz( psd_freq[:],psd_gp_avg[1, pdata.offres_ind]))
-
-    figs.append(plot_psd_dbc_hz( psd_freq[:],psd_gp_avg[0, pdata.onres_ind]))
-    figs.append(plot_psd_dbc_hz( psd_freq[:],psd_gp_avg[1, pdata.onres_ind]))
-
 
     with PdfPages(pdf_path) as pdf:
         for fig in figs:

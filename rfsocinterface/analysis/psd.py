@@ -259,9 +259,9 @@ def plot_psd_df_over_f(
     diss_color: str='o',
     offres_color: str='r',
     title_fontsize: int=16,
-    axis_label_fontsize: int=20,
+    axis_label_fontsize: int=16,
     legend_fontsize: int=14,
-    tick_size: int=20,
+    tick_size: int=14,
 ) -> Figure | None:
     """Plot df/f noise for a single resonator.
     basis_group,
@@ -429,16 +429,18 @@ def plot_SNqp(
     figure_kwargs: dict = {},
     color: str = "b",
     title_fontsize: int = 16,
-    axis_label_fontsize: int = 20,
+    axis_label_fontsize: int = 16,
     legend_fontsize: int = 14,
-    tick_size: int = 20,
+    tick_size: int = 14,
+    input_is_snqp: bool = False,
 ) -> Figure | None:
     """Plot quasiparticle number noise (SNqp).
 
     Args:
         freq: Frequency array (N_freq).
-        psd: Frequency PSD. May be either:
-            - (N_freq,) for a single resonator.
+        psd: Frequency PSD, or already-computed SNqp values if `input_is_snqp`
+            is True. May be either:
+            - (N_freq,) for a single resonator/curve.
             - (N_tones, N_freq) for multiple realizations (used to show an error band).
         delta_0: Superconducting energy gap (eV).
         alpha: Kinetic inductance fraction.
@@ -446,6 +448,11 @@ def plot_SNqp(
         base_temp: Bath temperature (K).
         volume: Inductor volume (defaults to global V).
         ax: Existing matplotlib axes. If None, a new figure is created.
+        input_is_snqp (bool, optional): If True, `psd` is treated as
+            already-computed SNqp curve(s) (e.g. one per resonator) rather
+            than a raw PSD that should be converted via `get_SNqp`. The
+            median (and error band, if requested) is taken directly across
+            the first axis. Defaults to False.
 
     Returns:
         Figure if a new figure was created, otherwise None.
@@ -480,16 +487,18 @@ def plot_SNqp(
 
     med_color, fill_color = decode_color_string(color)
 
-    # Convert PSD -> SNqp
-    if psd.ndim == 2:
+    # Convert PSD -> SNqp (or use already-computed SNqp values directly)
+    if input_is_snqp:
+        snqp = np.asarray(psd)
+        plot_data = np.median(snqp, axis=0) if snqp.ndim == 2 else snqp
+    elif psd.ndim == 2:
         snqp = np.asarray([
             get_SNqp(f0, base_temp, this_psd, delta_0, alpha, volume)
             for this_psd in psd
         ])
         plot_data = np.median(snqp, axis=0)
     else:
-        snqp = get_SNqp(f0, base_temp, psd, delta_0, alpha, volume)
-        plot_data = snqp
+        snqp = np.mean(psd, axis=0)
 
     # Error band
     if show_error_band:
@@ -640,13 +649,22 @@ def plot_resonator_report(
         snqp_200hz.append(snqp[freq_idx_200])
         snqp_full.append(snqp)
 
-    snqp_med = np.median(np.array(snqp_full), axis=0)
-    snqp_min = np.percentile(np.array(snqp_full), 16, axis=0)
-    snqp_max = np.percentile(np.array(snqp_full), 84, axis=0)
-
-    
-
-    
+    # Median SNqp across all resonators, with error band
+    fig, snqp_median = plot_SNqp(
+        freq,
+        np.array(snqp_full),
+        delta_0=mb_dict["delta_0"][mb_index],
+        alpha=mb_dict["alpha"][mb_index],
+        f0=f0,
+        title=" - ".join(filter(None, (title, "Median SNqp - All Resonators"))),
+        add_legend=True,
+        ylim=(100, 1e5),
+        xlim=(0.1, 244),
+        show_error_band=True,
+        input_is_snqp=True,
+    )
+    figs.append(fig)
+    plt.close(fig)
 
     # Histogram pages
     figs.append(
@@ -707,7 +725,6 @@ def plot_resonator_report(
             bins = 20
         )
     )
-
     figs.append(
         plot_histogram(
             (snqp_200hz),
@@ -733,9 +750,10 @@ def plot_histogram(
     fig, ax = plt.subplots(figsize=(9, 6))
     ax.hist(values, bins=bins, range= XLIM, alpha=0.7, edgecolor='black')
     ax.plot(values,range(len(values)), 'o', markersize=6, label='Indices')
-    ax.set_title(title)
+    ax.set_title(title, fontsize = axis_label_fontsize)
     ax.set_xlabel(xlabel, fontsize = axis_label_fontsize)
     ax.set_ylabel(ylabel, fontsize = axis_label_fontsize)
+    ax.tick_params(labelsize = axis_label_fontsize)
 
     ax.set_xlim(XLIM)
     fig.tight_layout()
@@ -758,9 +776,9 @@ def plot_psd_dbc_hz(
     figure_kwargs: dict={},
     color: str='b',
     title_fontsize: int=16,
-    axis_label_fontsize: int=20,
+    axis_label_fontsize: int=16,
     legend_fontsize: int=14,
-    tick_size: int=20,
+    tick_size: int=14,
 ) -> Figure | None:
     """Plot a PSD in dBc/Hz over frequency.
 
@@ -1038,4 +1056,3 @@ class PlotPSD(DataRoutine):
                             pdf.savefig(fig)
                             plt.close(fig)
         return []
-
