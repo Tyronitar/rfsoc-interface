@@ -11,8 +11,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
+from scipy.spatial import KDTree
 
-from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, get_beammap_pdf_template, OFF_RESONANCE_COLOR, BAD_RESONANCE_COLOR, get_detector_pos_pdf_template
+from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY, get_beammap_pdf_template, OFF_RESONANCE_COLOR, BAD_RESONANCE_COLOR, get_detector_pos_pdf_template, mutual_nearest_pairs_between_groups
 from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine, get_extent
 
 
@@ -580,8 +581,41 @@ def combine_polarized_beammaps(
     #     detector_pol=detector_pol
     # )
 
-    pol1 = np.argwhere(detector_pol == 1).flatten()
-    pol2 = np.argwhere(detector_pol == 2).flatten()
+    # Find pairs of points and use the median position
+    pol1 = np.argwhere(detector_pol[good_ind] == 1).flatten()
+    pol2 = np.argwhere(detector_pol[good_ind] == 2).flatten()
+
+    points = np.column_stack([az_center, za_center])[good_ind]
+    pairs, dist = mutual_nearest_pairs_between_groups(points, pol1, pol2, r=0.05)
+    # plt.figure(figsize=(8, 8))
+    # plt.scatter(points[pol2, 0], points[pol2, 1], color='blue')
+    # plt.scatter(points[pol1, 0], points[pol1, 1], color='red')
+    # for (i,j) in pairs:
+    #     plt.plot([points[i, 0], points[j, 0]], [points[i, 1], points[j, 1]], '-k')
+    # plt.gca().set_aspect('equal')
+    # plt.gca().invert_yaxis()
+
+    for (i,j) in pairs:
+        mean_point = (points[i] + points[j]) / 2
+        az_center[good_ind[i]] = mean_point[0]
+        za_center[good_ind[i]] = mean_point[1]
+        az_center[good_ind[j]] = mean_point[0]
+        za_center[good_ind[j]] = mean_point[1]
+        points[i, :] = mean_point
+        points[j, :] = mean_point
+
+    # plt.figure(figsize=(10, 10))
+    # plt.scatter(points[pol2, 0], points[pol2, 1], color='blue')
+    # for i_pol in pol2:
+    #     plt.text(points[i_pol, 0], points[i_pol, 1], f'{good_ind[i_pol]}', color='blue', fontsize=20.)
+    # plt.scatter(points[pol1, 0], points[pol1, 1], color='red')
+    # for i_pol in pol1:
+    #     plt.text(points[i_pol, 0], points[i_pol, 1], f'{good_ind[i_pol]}', color='red', fontsize=20.)
+    # plt.gca().set_aspect('equal')
+    # plt.gca().invert_yaxis()
+    # plt.show()
+    # pdb.set_trace()
+
     match focal_plane_center:
         case 'top left':
             center_za = np.min(za_center[good_ind])
