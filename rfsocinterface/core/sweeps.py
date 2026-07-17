@@ -9,7 +9,6 @@ from concurrent.futures import Future
 from typing import Callable, Generic, TypeVar, TYPE_CHECKING
 from multiprocessing import Lock
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, wait
-import rfsocinterface.analysis.KID_fitting_analysis.fit_mb_params as mb_params
 
 from pathlib import Path
 from PySide6.QtWidgets import QProgressDialog
@@ -104,7 +103,7 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
     else:
         f0 = freq[center_ind]
     
-    return f0
+    return f0, 0, 0
    
 
 
@@ -295,7 +294,7 @@ class ResonatorData:
         return_fig = False
         # If axes is provided, make the mini plot inside
         if ax is not None:
-            create_IQCircle_mini_plot(
+            create_resonator_mini_plot(
                 None,
                 ax,
                 self.idx,
@@ -650,24 +649,28 @@ class LoSweepData:
         self._fit_canceled = False
         _logger.debug('Fitting LO sweep results...')
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            res = executor.map(
+            results = executor.map(
                 simple_derivative_fits,
                 (self.df for _ in range(self.n_good_tones)),
-                self.freq[self.onres_ind, :],
-                self.detector_f[self.onres_ind],
-                self.s21[self.onres_ind, :],
+                self.freq[:, :],
+                self.detector_f[:],
+                self.s21[:, :],
             )
-            for i, f0 in enumerate(res):
+
+            for i, (fit_f0, fit_qi, fit_qc) in enumerate(results):
                 if self._fit_canceled:
                     return
-                # i_res = self.onres_ind[i]
+
+                i_res = self.onres_ind[i]
+
                 self.fit_f0[i_res] = fit_f0
                 self.fit_qi[i_res] = fit_qi
                 self.fit_qc[i_res] = fit_qc
+
                 if callback is not None:
                     callback()
-            
-        self._fitted = True
+
+            self._fitted = True
 
     def plot(self, ncols: int=DEFAULT_NCOLS, callback: Callable | None=None, fig: Figure=None) -> Figure:
         """Plot the results of fitting the LO sweep.

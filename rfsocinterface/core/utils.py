@@ -255,6 +255,7 @@ def get_filename(
     tile_name='',
     attenuation=0.,
     mkdir: bool=False,
+    filename_suffix: str = ''
 ):
     #see if we already have the parent folder for today's date
     yymmdd = get_yymmdd()
@@ -263,6 +264,7 @@ def get_filename(
         date_folder.mkdir(PERMISSIONS_ALL_FULL, exist_ok=True)
 
     #provide the name of the file
+    strings = []
     match file_type.lower():
         case 'lo' | 'tonelist' | 'power':
             hour = float(datetime.now().strftime('%H')) \
@@ -294,6 +296,7 @@ def get_filename(
             strings = [yymmdd, tile_name, f'attenuator{attenuation:02d}']
         case _:
             raise ValueError(f'Invalid file type: "{file_type.lower()}"; must be one of {FileType}')
+    strings.append(filename_suffix)
     return date_folder / '_'.join(filter(None, strings))
 
 def get_current_LO_sweep_hour_string() -> str:

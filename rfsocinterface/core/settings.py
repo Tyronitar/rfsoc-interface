@@ -35,7 +35,7 @@ DEFAULT_SETTINGS = {
         }
     },
     "defaults": {
-        "loSweep": {
+        "losweep": {
             "globalShift": 0,
             "df": 1.0,
             "deltaf": 100.0,
