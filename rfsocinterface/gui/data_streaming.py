@@ -8,7 +8,6 @@ import time
 import glob
 
 from kidpy3 import capture
-import tables
 
 from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
 from rfsocinterface.core.rfsoc import RFSOCWrapper, get_channel_from_text

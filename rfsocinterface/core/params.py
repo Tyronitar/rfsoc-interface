@@ -274,11 +274,14 @@ class RFSoCParameters:
     
     @property
     def tile_name(self) -> str:
-        return self._file.attrs['tile_name']
+        name = self._file.attrs['tile_name']
+        if isinstance(name, bytes):
+            return name.decode('utf-8')
+        return name
     
     @tile_name.setter
     def tile_name(self, name: str):
-        self._file.attrs['tile_name'] = name
+        self._file.attrs['tile_name'] = str(name)
     
     @property
     def tile_number(self) -> int:

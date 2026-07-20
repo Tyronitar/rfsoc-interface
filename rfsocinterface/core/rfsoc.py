@@ -12,7 +12,6 @@ from kidpy3.rfsoc import RedisConnection
 from kidpy3.data_handler import Rfchan
 from kidpy3.hardware import Valon5009, Transceiver320d
 from kidpy3.hardware.Valon5009 import SYNTH_B
-import tables
 
 from rfsocinterface.core.utils import DEFAULT_PARAMS_DIRECTORY, P, R, PathLike
 from rfsocinterface.core.settings import SettingsError, convert_to_kidy_format
@@ -395,7 +394,7 @@ class RFSOCWrapper:
     def set_tile_name(self, channel: int, tile_name: str):
         rfchan = self.get_channel(channel)
         rfchan.tile_name = tile_name
-        self.channel_settings(channel)['tile_name'] = tile_name
+        self.channel_settings(channel)['tile_name'] = str(tile_name)
         _logger.info(f'RFSoC {self.name} set channel {channel} tile name to {tile_name}')
     
     def get_channel_from_name(self, tile_name: str) -> int:
@@ -425,7 +424,7 @@ class RFSOCWrapper:
             lo_freq = params.f_center
             chanmask = params.chanmask[:]
             ntones = params.n_tones
-            tile_name = params.tile_name
+            tile_name = str(params.tile_name)
             rfin = params.rfin
             rfout = params.rfout
 

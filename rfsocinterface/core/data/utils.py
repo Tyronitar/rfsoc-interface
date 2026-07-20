@@ -9,7 +9,6 @@ from itertools import chain, batched
 import typing
 from typing import Literal
 
-# import tables
 import h5py
 # from tables.link import ExternalLink
 import numpy as np

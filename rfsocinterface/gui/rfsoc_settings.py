@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QWidget,
 )
-import tables
 
 
 import numpy as np
