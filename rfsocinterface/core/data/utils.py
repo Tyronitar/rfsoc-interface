@@ -599,9 +599,10 @@ def new_interp_tele_posistion(
     pps_tel_pos = pps_position[pps_tel_idx]
     pps_times_tel = telescope_timestamp[pps_tel_idx]
 
-    if pps_tel_idx.size == 0:
-        # The telescoep never mvoed in this direction, so aligning the times doesn't
-        # matter. Just upsample the positions.
+    # pdb.set_trace()
+    if pps_tel_idx.size <= 1:
+        # The telescope didn't move enough in this direction, so aligning the times doesn't
+        # work. Just upsample the positions.
         _logger.info(f'Doing simple interpolation for detector positions in {direction.upper()} direction.')
         return np.interp(data_timestamp, telescope_timestamp, tel_position)
     _logger.info(f'Using PPS for detector positions in {direction.upper()} direction.')

@@ -37,6 +37,7 @@ import numpy.typing as npt
 from scipy import ndimage
 from scipy.signal import sosfilt, sosfilt_zi, cheby1, group_delay, sos2tf
 from scipy.signal import resample_poly
+from scipy.spatial import KDTree
 import redis
 
 import time
@@ -1432,6 +1433,174 @@ def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
     return np.sqrt(var_histogram(val, freq))
 
 
+
+def mutual_nearest_pairs(
+    points: np.ndarray,
+    r: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Find mutually nearest-neighbor pairs separated by less than r.
+
+    Parameters
+    ----------
+    points
+        Array with shape (n_points, n_dimensions).
+    r
+        Strict maximum allowed distance.
+
+    Returns
+    -------
+    pairs
+        Integer array with shape (n_pairs, 2). Each row contains (i, j),
+        with i < j.
+    distances
+        Distance corresponding to each pair.
+    """
+    points = np.asarray(points)
+
+    if points.ndim != 2:
+        raise ValueError("points must have shape (n_points, n_dimensions)")
+    if r <= 0:
+        raise ValueError("r must be positive")
+
+    n = len(points)
+    if n < 2:
+        return (
+            np.empty((0, 2), dtype=int),
+            np.empty(0, dtype=float),
+        )
+
+    tree = KDTree(points)
+
+    # k=2 because each point is normally its own nearest neighbor.
+    distances, indices = tree.query(
+        points,
+        k=2,
+        distance_upper_bound=r,
+    )
+
+    nearest_distance = distances[:, 1]
+    nearest_index = indices[:, 1]
+
+    point_index = np.arange(n)
+
+    # A missing neighbor is reported with index n and distance inf.
+    has_neighbor = nearest_index < n
+
+    # Only index nearest_index where it is valid.
+    mutual = np.zeros(n, dtype=bool)
+    valid_points = point_index[has_neighbor]
+    valid_neighbors = nearest_index[has_neighbor]
+
+    mutual[has_neighbor] = (
+        nearest_index[valid_neighbors] == valid_points
+    )
+
+    # i < nearest_index removes the duplicate (j, i).
+    keep = has_neighbor & mutual & (point_index < nearest_index)
+
+    pairs = np.column_stack(
+        (point_index[keep], nearest_index[keep])
+    )
+    pair_distances = nearest_distance[keep]
+
+    return pairs, pair_distances
+
+
+def mutual_nearest_pairs_between_groups(
+    points: np.ndarray,
+    group_a_indices: np.ndarray,
+    group_b_indices: np.ndarray,
+    r: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Find mutual nearest-neighbor pairs between groups A and B.
+
+    Each returned pair (i, j) satisfies:
+      - i belongs to group A
+      - j belongs to group B
+      - j is i's nearest point in group B
+      - i is j's nearest point in group A
+      - distance(i, j) < r
+
+    Parameters
+    ----------
+    points
+        Array of shape (n_points, n_dimensions).
+    group_a_indices
+        Indices into `points` belonging to group A.
+    group_b_indices
+        Indices into `points` belonging to group B.
+    r
+        Strict maximum pair distance.
+
+    Returns
+    -------
+    pairs
+        Array of shape (n_pairs, 2), containing global point indices.
+        The first column is from group A and the second from group B.
+    distances
+        Distance for each returned pair.
+    """
+    points = np.asarray(points)
+    group_a_indices = np.asarray(group_a_indices, dtype=int)
+    group_b_indices = np.asarray(group_b_indices, dtype=int)
+
+    if points.ndim != 2:
+        raise ValueError("points must have shape (n_points, n_dimensions)")
+    if r <= 0:
+        raise ValueError("r must be positive")
+
+    if len(group_a_indices) == 0 or len(group_b_indices) == 0:
+        return (
+            np.empty((0, 2), dtype=int),
+            np.empty(0, dtype=float),
+        )
+
+    points_a = points[group_a_indices]
+    points_b = points[group_b_indices]
+
+    tree_a = KDTree(points_a)
+    tree_b = KDTree(points_b)
+
+    # For each A point, find its nearest B point.
+    distance_a_to_b, nearest_b = tree_b.query(
+        points_a,
+        k=1,
+        distance_upper_bound=r,
+    )
+
+    # For each B point, find its nearest A point.
+    distance_b_to_a, nearest_a = tree_a.query(
+        points_b,
+        k=1,
+        distance_upper_bound=r,
+    )
+
+    a_local = np.arange(len(points_a))
+
+    # A missing neighbor is represented by index len(points_b)
+    # and distance infinity.
+    has_b_neighbor = nearest_b < len(points_b)
+
+    mutual = np.zeros(len(points_a), dtype=bool)
+
+    valid_a = a_local[has_b_neighbor]
+    valid_b = nearest_b[has_b_neighbor]
+
+    mutual[has_b_neighbor] = nearest_a[valid_b] == valid_a
+
+    # Enforce the strict condition distance < r.
+    keep = mutual & (distance_a_to_b < r)
+
+    pairs = np.column_stack((
+        group_a_indices[a_local[keep]],
+        group_b_indices[nearest_b[keep]],
+    ))
+
+    distances = distance_a_to_b[keep]
+
+    return pairs, distances
 
 
 if __name__ == '__main__':

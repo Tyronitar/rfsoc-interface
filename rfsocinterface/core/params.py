@@ -41,9 +41,11 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
     'chanmask',
 ]
 
+DEFAULT_FOCAL_PLANE_CENTER_ZA = 90.0
+
 class RFSoCParameters:
     """Class wrapping around RFSoC parameters files."""
-    VERSION = Version('1.0.0')
+    VERSION = Version('1.1.0')
 
     @ensure_path(1)
     def __init__(self, file: Path, mode: str='r'):
@@ -64,6 +66,21 @@ class RFSoCParameters:
                 f'File "{self._file.filename}" is not an appropriate format. '
                 'Use `update_params_file_format` to update the file and try again.'
             )
+    
+    @classmethod
+    def load(
+        cls,
+        tile_name: str,
+        mode: str='r',
+        params_dir: Path=DEFAULT_PARAMS_DIRECTORY,
+    ) -> RFSoCParameters:
+        filename = Path(get_params_file_template(tile_name, params_dir=params_dir))
+        if not filename.exists():
+            raise FileNotFoundError(
+                f'Unable to find a params file for tile "{tile_name}" '
+                f'in directory {params_dir}'
+            )
+        return cls(filename, mode=mode)
 
     @classmethod
     def new_file(
@@ -86,6 +103,7 @@ class RFSoCParameters:
             fh.attrs['tile_number'] = 0
             fh.attrs['chan_number'] = 0
             fh.attrs['ifslice_number'] = 0
+            fh.attrs['focal_plane_center_za'] = DEFAULT_FOCAL_PLANE_CENTER_ZA
             fh.attrs['params_version'] = str(RFSoCParameters.VERSION)
 
             # Datasets
@@ -153,6 +171,7 @@ class RFSoCParameters:
         tile_number: int=None,
         chan_number: int=None,
         ifslice_number: int=None,
+        focal_plane_center_za: float=None,
         chanmask: npt.NDArray=None,
         baseband_freqs: npt.NDArray=None,
         tone_powers: npt.NDArray=None,
@@ -172,6 +191,8 @@ class RFSoCParameters:
         chan_number = chan_number if chan_number is not None else self.chan_number
         ifslice_number = ifslice_number if ifslice_number is not None \
             else self.ifslice_number
+        focal_plane_center_za = focal_plane_center_za if focal_plane_center_za is not \
+            None else self.focal_plane_center_za
 
         chanmask = chanmask if chanmask is not None else self.chanmask[:]
         baseband_freqs = baseband_freqs if baseband_freqs is not None \
@@ -201,6 +222,7 @@ class RFSoCParameters:
         new_params.tile_number = tile_number
         new_params.chan_number = chan_number
         new_params.ifslice_number = ifslice_number
+        new_params.focal_plane_center_za = focal_plane_center_za
         new_params.chanmask[:] = chanmask
         new_params.baseband_freqs[:] = baseband_freqs 
         new_params.tone_powers[:] = tone_powers
@@ -281,6 +303,16 @@ class RFSoCParameters:
     @ifslice_number.setter
     def ifslice_number(self, n: int):
         self._file.attrs['ifslice_number'] = n
+
+    @property
+    def focal_plane_center_za(self) -> float:
+        if 'focal_plane_center_za' in self._file.attrs:
+            return self._file.attrs['focal_plane_center_za']
+        return DEFAULT_FOCAL_PLANE_CENTER_ZA  # Backwards-compatible default value
+    
+    @focal_plane_center_za.setter
+    def focal_plane_center_za(self, za: float):
+        self._file.attrs['focal_plane_center_za'] = za
     
     @property
     def f_center(self) -> float:
