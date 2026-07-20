@@ -13,6 +13,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import h5py
 from scipy.stats import norm
+from tqdm import tqdm
 
 
 matplotlib.rcParams.update({
@@ -37,15 +38,19 @@ matplotlib.rcParams.update({
 
 def collect_data(duration: int):
     start = time.time()
-    stop = start + duration
-    counter = 0
-    while time.time() < stop:
-        time.sleep(1.e-2)
-        counter += 1
-        if counter % 1000 == 0:
-            print('Collected data for {:.2f} seconds'.format(time.time() - start))
-        if counter % 5000 == 0:
-            print(f'{(time.time() - start) / duration}% complete')
+    elapsed_time = 0
+    with tqdm(
+        total=duration,
+        unit='s',
+        desc='Collecting data',
+        bar_format='{l_bar}{bar}| [{elapsed}<{remaining}, {rate_fmt}{postfix}]',
+    ) as pbar:
+        while elapsed_time < duration:
+            elapsed_time = time.time() - start
+            current_progress = min(elapsed_time, duration)
+            pbar.n = current_progress
+            pbar.refresh()
+            time.sleep(1.e-2)
     print('Done collecting data')
 
 def calc_packet_perf(file: str):
@@ -95,16 +100,18 @@ def calc_packet_perf(file: str):
         # plt.xlabel("Sample")
         # plt.ylabel("Δ Timestamp (Seconds)")
         # fig.savefig("ts_delta.pdf", dpi=300)
-        #
+        # #
         # fig = plt.figure(figsize=(10, 6))
         # ax = plt.axes((0.1, 0.1, 0.5, 0.8))
         # ax.minorticks_on()
-        # plt.stem(indx_delta[1:])
-        # plt.xlabel("Sample")
-        # plt.ylabel("Δ Packet Counter")
-        # plt.minorticks_on()
+        plt.stem(indx_delta[1:])
+        plt.xlabel("Sample")
+        plt.ylabel("Δ Packet Counter")
+        plt.minorticks_on()
+        plt.savefig('fig.png')
+        pdb.set_trace()
         # fig.savefig("index_delta.pdf", dpi=300)
-        # # plt.savefig("indx_delta.png")
+        # plt.savefig("indx_delta.png")
         #
         #
         # plt.figure(figsize=(12, 6))
@@ -168,6 +175,7 @@ def calc_packet_perf(file: str):
 
 
 if __name__ == '__main__':
+    # Prepare RFSoC
     # settings = Settings()
     # settings.load_settings()
     # rfsoc_settings = settings['rfsocs'][0]  # Just take the first one for testing
@@ -176,16 +184,12 @@ if __name__ == '__main__':
     # save_location = get_filename(file_type='tod', tile_name=rfchan.tile_name, mkdir=True).with_suffix('.h5')
     # rfchan.raw_filename = str(save_location)
 
+    # Collect data
     # duration = 30 * 60
     # print(f'Collecting {duration} seconds of data to "{save_location}"')
-
     # capture([rfchan], collect_data, duration)
-    save_location = '/data/20260720/20260720_Be231102p2_TOD_set1006.h5'
+
+    # Analyze performance
+    # save_location = '/data/20260720/20260720_Be231102p2_TOD_set1010.h5'
+    save_location = '/data/20260520/20260520_100_tone_uniform_202050829_TOD_set1003.h5'
     calc_packet_perf(save_location)
-
-    # fname = '/data/20260520/20260520_100_tone_uniform_202050829_TOD_set1002.h5'
-    # f = RawDataFile(fname, 'r')
-    # pkt_idx = f.pkt_idx[:] 
-
-    # missed_ind = np.argwhere(np.diff(pkt_idx) != 1)[0]
-    # pdb.set_trace()

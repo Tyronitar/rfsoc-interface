@@ -997,7 +997,7 @@ files = [
 
 [[package]]
 name = "kidpy3"
-version = "0.3.9-dev1+global_data_experimental_chunk_488"
+version = "0.3.8-dev1+experimental_chunk_488"
 description = ""
 optional = false
 python-versions = ">=3.12"
@@ -1021,8 +1021,8 @@ tqdm = ">=4.67.1,<5.0.0"
 [package.source]
 type = "git"
 url = "https://github.com/ASU-Astronomical-Instrumentation/readout.git"
-reference = "global_data_chunking"
-resolved_reference = "9293d7ad17a803771e1ff12d0306f61571d43276"
+reference = "experiment_chunking_488"
+resolved_reference = "04d248e0e37266a51986befd94bbb7afed4363ca"
 
 [[package]]
 name = "kiwisolver"
@@ -3160,4 +3160,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "17d0119ade3ba9013195694341eecde019149f67041021ff3c011fa85977d1cc"
+content-hash = "b0762e6f637d03cef822dbb8817f150cad0fc9b5c0a11a82d543972476aa593a"
