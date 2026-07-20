@@ -1035,7 +1035,7 @@ files = [
 
 [[package]]
 name = "kidpy3"
-version = "0.3.7"
+version = "0.3.8"
 description = ""
 optional = false
 python-versions = ">=3.12"
@@ -1059,8 +1059,8 @@ tqdm = ">=4.67.1,<5.0.0"
 [package.source]
 type = "git"
 url = "https://github.com/ASU-Astronomical-Instrumentation/readout.git"
-reference = "global_data"
-resolved_reference = "8bc8abeea7eaa95a81b0bdedf6f6a0eac5b76b2e"
+reference = "dualchan-dev-core"
+resolved_reference = "432a11572ddd89b13a36bddcdab07a4b182c3af6"
 
 [[package]]
 name = "kiwisolver"
@@ -3258,4 +3258,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "698057c8ca41821c1dc22c65b87b94921305af0e6f21dd0bfb8c5268ac4f9802"
+content-hash = "ed976dd93afd0e1362c6beda8c1e69c6fb524e6b6ca5fb6dcd1a87e06898bbfd"

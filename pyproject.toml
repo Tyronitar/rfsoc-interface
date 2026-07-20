@@ -16,7 +16,7 @@ uldaq = "^1.2.3"
 pymodbustcp = "^0.3.0"
 scikit-learn = "^1.5.2"
 opencv-python = "^4.10.0.84"
-kidpy3 = {git = "https://github.com/ASU-Astronomical-Instrumentation/readout.git", branch="global_data"}
+kidpy3 = {git = "https://github.com/ASU-Astronomical-Instrumentation/readout.git", branch="dualchan-dev-core"}
 exscript = "^2.6.28"
 psutil = "^6.1.1"
 vmbpy = "^1.1.0"
