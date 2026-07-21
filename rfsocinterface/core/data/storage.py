@@ -260,539 +260,6 @@ class DataStorage:
         self.close()
 
 
-class ProcessedData(DataStorage):
-    """Storage of downstream processed data."""
-
-    @typing.override
-    @staticmethod
-    def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
-        return get_processed_file_template(date, setnum, data_dir=data_dir)
-
-    def initialize_processed_data_fields(self):
-        """Initialize the datasets unique to the ProcessedData File.
-
-        Will create the following datasets for each channel:
-            * data_gain_phase (2, n_tones, n_samples): Detector data rotated to
-                gain/phase basis.
-            * data_freq_diss (2, n_tones, n_samples): Detector data rotated to
-                frequency/dissipation basis.
-            * data_mK (n_tones, n_samples): Calibrated detector data in mK units.
-            * carrier_amplitudes (2, n_tones): The median I/Q values for each tone.
-            * calibration_info (n_tones,): Structered datset containing various
-                information for creating the calibrated data. Contains:
-                * adc_units_to_hz: Conversion factor from ADC units (IQ data) to
-                    Hz (frequency/dissipation).
-                * IQ_to_gain_phase_angle: Angle in radians to rotate IQ basis to
-                    gain/phase.
-                * IQ_to_freq_diss_angle: Angle in radians to rotate IQ basis to
-                    frequency/dissipation.
-                * df_per_mK: Conversion factor to convert Hz to mK.
-        Also creates virtual datasets for each dataset, combined across channels.
-        """
-        n_samples = self['global_data'].attrs['n_samples']
-        for channel_group in self['channels'].values():
-            time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
-            n_tones = channel_group.attrs['n_tones']
-            data_IQ = time_ordered_data_group['data_IQ']
-            tones_table = channel_group['tones']
-
-            # Initialize caliibration-related datasets
-            data_gain_phase = time_ordered_data_group.create_dataset_like(
-                'data_gain_phase', data_IQ
-            )
-            data_freq_diss = time_ordered_data_group.create_dataset_like(
-                'data_freq_diss', data_IQ
-            )
-            mK_chunks = compute_chunk_shape((n_tones,), 8, max_chunk_size=n_samples)
-            data_mK = time_ordered_data_group.create_dataset(
-                'data_mK',
-                (n_tones, n_samples),
-                dtype=np.float64,
-                chunks=mK_chunks,
-            )
-            carrier_amplitudes = time_ordered_data_group.create_dataset(
-                'carrier_amplitudes', data=np.nanmedian(data_IQ[:], axis=-1)
-            )
-            calibration_info = channel_group.create_dataset(
-                'calibration_info',
-                shape=(n_tones,),
-                dtype=CALIBRATION_TABLE_DTYPE,
-            )
-
-            # Collect calibration information
-            sweep = LoSweepData(
-                tones_table['baseband_freq'],
-                channel_group.attrs['f_center'],
-                channel_group['lo_sweep'][:],
-                tones_table['chanmask'],
-                channel_group.attrs['tile_name'],
-            )
-            IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
-            calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
-            calibration_info['adc_units_to_hz'] = adc_units_to_hz
-
-            detector_f = tones_table['baseband_freq'] + channel_group.attrs['f_center']
-            df_per_mK = compute_df_per_mK(
-                tones_table['polarization'],
-                tones_table['beam_amplitude'],
-                detector_f,
-                tones_table['dfoverf_per_mK'],
-            )
-            calibration_info['df_per_mK'] = df_per_mK
-
-            # Rotate to Gain / Phase
-            IQ_to_gain_phase_angle = np.atan2(
-                carrier_amplitudes[0], carrier_amplitudes[1]
-            )
-            calibration_info['IQ_to_gain_phase_angle'] = IQ_to_gain_phase_angle
-            rotate_basis(
-                data_IQ,
-                data_gain_phase,
-                IQ_to_gain_phase_angle,
-            )
-
-            # Generate calibrated data
-            # First mean center IQ data
-            data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
-            generate_calibrated_data(
-                data_IQ,
-                data_freq_diss,
-                data_mK,
-                IQ_to_freq_diss_angle,
-                adc_units_to_hz,
-                df_per_mK,
-            )
-
-        # Make virtual datasets for the new stuff
-        total_tones = self['vdsets'].attrs['n_tones']
-        data_gain_phase_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
-        data_freq_diss_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
-        data_mK_layout = h5py.VirtualLayout((total_tones, n_samples), 'f8')
-        carrier_amplitudes_layout = h5py.VirtualLayout((2, total_tones), 'f8')
-        calibration_info_layout = h5py.VirtualLayout(
-            (total_tones,), CALIBRATION_TABLE_DTYPE
-        )
-
-        i_tone = 0
-        for channel_group in self['channels'].values():
-            n_tones = channel_group.attrs['n_tones']
-            this_data_group = channel_group['time_ordered_data']
-            data_gain_phase_layout[:, i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                this_data_group['data_gain_phase']
-            )
-            data_freq_diss_layout[:, i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                this_data_group['data_freq_diss']
-            )
-            data_mK_layout[i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                this_data_group['data_mK']
-            )
-            carrier_amplitudes_layout[:, i_tone : i_tone + n_tones] = (
-                h5py.VirtualSource(this_data_group['carrier_amplitudes'])
-            )
-            calibration_info_layout[i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                channel_group['calibration_info']
-            )
-            i_tone += n_tones
-
-        self['vdsets'].create_virtual_dataset('data_gain_phase', data_gain_phase_layout)
-        self['vdsets'].create_virtual_dataset('data_freq_diss', data_freq_diss_layout)
-        self['vdsets'].create_virtual_dataset('data_mK', data_mK_layout)
-        self['vdsets'].create_virtual_dataset(
-            'carrier_amplitudes', carrier_amplitudes_layout
-        )
-        self['vdsets'].create_virtual_dataset(
-            'calibration_info', calibration_info_layout
-        )
-
-    #
-    # Useful getter methods
-    #
-    def list_history(self) -> list[dict]:
-        """Return a list of each processing step."""
-        if not self.has('processing_history'):
-            return []
-        hist = self['processing_history']
-        return list(hist.keys())
-
-    def print_history(self, verbose: bool = False):
-        """Print the processing history for this file."""
-        if not self.has('processing_history'):
-            print('No history')  # noqa: T201
-            return
-
-        hist = self.file['processing_history']
-
-        for k in sorted(hist.keys()):
-            step = hist[k]
-            name = step.attrs.get('name', '?')
-            if verbose:
-                print(f'[{k}]:\n{json.dumps(dict(step.attrs), indent=4)}')  # noqa: T201
-            else:
-                params = json.loads(step.attrs.get('params', '{}'))
-
-                param_str = ', '.join(f'{k}={v}' for k, v in params.items())
-                print(f'[{k}] {name}({param_str})')  # noqa: T201
-
-    def channels(self) -> Iterator[h5py.Group]:
-        """Return an iterator over each channel group."""
-        yield from self['channels'].values()
-
-    def get_channel_group(self, i_chan: int) -> h5py.Group:
-        """Return the specified channel group."""
-        return self[f'channels/channel_{i_chan:03d}']
-
-    def get_channel_group_from_tile_name(self, tile_name: str) -> h5py.Group:
-        """Return the specified channel group by tile name."""
-        tile_names = []
-        for channel_group in self['channels'].values():
-            this_tile_name = channel_group.attrs['tile_name']
-            tile_names.append(this_tile_name)
-            if this_tile_name == tile_name:
-                return channel_group
-        msg = (
-            f'Unable to find channel with name "{tile_name}". Tile names found: '
-            f'{tile_names}'
-        )
-        raise KeyError(msg)
-
-    def get_from_channel(self, i_chan: int, obj_name: str) -> H5pyObject:
-        """Return the object from the specified channel group."""
-        return self.get_channel_group(i_chan)[obj_name]
-
-    def get_from_all_channels(self, obj_name: str) -> list[H5pyObject]:
-        """Return a list of `obj_name` from each channel group."""
-        return [channel_group[obj_name] for channel_group in self['channels'].values()]
-
-    def search_in_channel(
-        self, i_chan: int, name: str, full_name: bool = True, exact_match: bool = False
-    ) -> tuple[str, H5pyObject] | None:
-        """Search for the name in the specified channel group."""
-        return search(
-            self.get_channel_group(i_chan),
-            name,
-            full_name=full_name,
-            exact_match=exact_match,
-        )
-
-    def search_in_all_channels(
-        self, name: str, full_name: bool = True, exact_match: bool = False
-    ) -> list[tuple[str, H5pyObject]] | None:
-        """Search for the name in the each channel group."""
-        return [
-            search(channel_group, name, full_name=full_name, exact_match=exact_match)
-            for channel_group in self['channels'].values()
-        ]
-
-    def get_n_tones(self, i_chan: int) -> int:
-        """Return n_tones for the specified channel."""
-        return self.get_channel_group(i_chan).attrs['n_tones']
-
-    def get_chanmask(self, i_chan: int) -> npt.NDArray:
-        """Return the chanmask for the specified channel."""
-        return self.get_from_channel(i_chan, 'tones')['chanmask']
-
-    def get_onres_ind(self, i_chan: int) -> npt.NDArray:
-        """Return on-resonance indices for the specified channel."""
-        return np.argwhere(self.get_chanmask(i_chan) == 1).flatten()
-
-    def get_offres_ind(self, i_chan: int) -> npt.NDArray:
-        """Return off-resonance indices for the specified channel."""
-        return np.argwhere(self.get_chanmask(i_chan) == 0).flatten()
-
-    #
-    # Useful properties
-    #
-    @property
-    def n_chan(self) -> int:
-        """The nmuber of channels."""
-        return self['channels'].attrs['n_channels']
-
-    @property
-    def n_samples(self) -> int:
-        """The nmuber of samples collected."""
-        return self['vdsets'].attrs['n_samples']
-
-    @property
-    def n_tones(self) -> int:
-        """The total nmuber of tones."""
-        return self['vdsets'].attrs['n_tones']
-
-    @property
-    def fs(self) -> float:
-        """Return the averaged sampling rate across channels."""
-        return self['global_data'].attrs['fs']
-
-    @property
-    def virtual_datasets(self) -> h5py.Group:
-        """The virtual dataset group in the file."""
-        return self['vdsets']
-
-    # Time-ordered data
-    @property
-    def timestamp(self) -> h5py.Dataset:
-        """The timestamps for each data sample.."""
-        return self['global_data/timestamp']
-
-    @property
-    def optical_image(self) -> h5py.Dataset:
-        """The optical image."""
-        return self['global_data/optical_image']
-
-    @property
-    def optical_visibility(self) -> h5py.Dataset:
-        """The optical visibility at the time of data capture."""
-        return self['global_data/optical_visibility']
-
-    @property
-    def data_IQ(self) -> h5py.Dataset:
-        """The data in ADC units."""
-        return self['vdsets/data_IQ']
-
-    @property
-    def data_gain_phase(self) -> h5py.Dataset:
-        """The data in the gain/phase basis."""
-        return self['vdsets/data_gain_phase']
-
-    @property
-    def data_freq_diss(self) -> h5py.Dataset:
-        """The data in the frequency/dissipation basis."""
-        return self['vdsets/data_freq_diss']
-
-    @property
-    def data_mK(self) -> h5py.Dataset:
-        """The data in milikelvin."""
-        return self['vdsets/data_mK']
-
-    @property
-    def detector_az(self) -> h5py.Dataset:
-        """Azimuthal angle for each detector at each timestamp."""
-        return self['vdsets/detector_az']
-
-    @property
-    def detector_za(self) -> h5py.Dataset:
-        """Zenith angle for each detector at each timestamp."""
-        return self['vdsets/detector_za']
-
-    #
-    # Tone/detector properties
-    #
-    @property
-    def tones_table(self) -> h5py.Dataset:
-        """The table containing tone-specific values.
-
-        Contains the keys:
-            baseband_freq: The frequency of the tone relative to the baseband.
-            power: The relative power of this tone.
-            delta_x: The x position relative to the center of the focal plane.
-            delta_y: The y position relative to the center of the focal plane.
-            beam_amplitude: The beam amplitude for this resonator.
-            polarization: The polarization for this resonator.
-            dfoverf_per_mK: The change in df/f per mK for this tone.
-            chanmask: Mask value indicating if this tone is on-resonance (1),
-                off-resonance (0), or flagged as bad (-1).
-        """
-        return self['vdsets/tones']
-
-    def _set_table_field(
-        self, table_name: str, field_name: str, new_values: npt.NDArray
-    ):
-        """Utility function for setting table fields.
-
-        Setting values through virtual datasets doesn't work for tables, so this is the
-        work around.
-        """
-        i_tone = 0
-        for i_chan in range(self.n_chan):
-            channel_group = self.get_channel_group(i_chan)
-            n_tones = channel_group.attrs['n_tones']
-            channel_group[table_name][field_name] = new_values[
-                i_tone : i_tone + n_tones
-            ]
-            i_tone += n_tones
-
-    @property
-    def tone_counts(self) -> npt.NDArray:
-        """The number of tones for each channel."""
-        counts = [self.get_n_tones(i_chan) for i_chan in range(self.n_chan)]
-        return np.array(counts)
-
-    def get_channel_index_from_tone_index(self, tone_index: int) -> int:
-        """Get which channel `tone_index` is a part of."""
-        cumulative_counts = np.cumsum(self.tone_counts)
-        return np.searchsorted(cumulative_counts, tone_index, side='right')
-
-    @property
-    def baseband_freqs(self) -> npt.NDArray:
-        """The frequencies relative to baseband."""
-        return self.tones_table['baseband_freq']
-
-    def set_baseband_freqs(self, new_freqs: npt.NDArray):
-        """Set the frequencies relative to baseband."""
-        self._set_table_field('tones', 'baseband_freq', new_freqs)
-
-    def get_f_center(self, i_chan: int) -> float:
-        """Return the LO frequency for the specified channel."""
-        return self.get_channel_group(i_chan).attrs['f_center']
-
-    def detector_f(self) -> npt.NDArray:
-        """The absolute frequency of each tone."""
-        f = self.baseband_freqs
-        i_tone = 0
-        for channel_group in self.channels():
-            n_tones = channel_group.attrs['n_tones']
-            f[i_tone : i_tone + n_tones] += channel_group.attrs['f_center']
-            i_tone += n_tones
-        return f
-
-    @property
-    def tone_powers(self) -> npt.NDArray:
-        """The relative power level for each tone."""
-        return self.tones_table['power']
-
-    def set_tone_powers(self, new_powers: npt.NDArray):
-        """Set the relative power level for each tone."""
-        self._set_table_field('tones', 'power', new_powers)
-
-    @property
-    def chanmask(self) -> npt.NDArray:
-        """Mask indicating on/off resonance tones and bad resonators."""
-        return self.tones_table['chanmask']
-
-    def set_chanmask(self, new_chanmask: npt.NDArray):
-        """Update the chanmask."""
-        self._set_table_field('tones', 'chanmask', new_chanmask)
-
-    @property
-    def onres_ind(self) -> npt.NDArray:
-        """The indices of on-resonance tones."""
-        return np.argwhere(self.chanmask == 1).flatten().astype(int)
-
-    @property
-    def offres_ind(self) -> npt.NDArray:
-        """The indices of off-resonance tones."""
-        return np.argwhere(self.chanmask == 0).flatten().astype(int)
-
-    @property
-    def detector_pol(self) -> npt.NDArray:
-        """The polarization of each resonator."""
-        return self.tones_table['polarization']
-
-    def set_detector_pol(self, new_pols: npt.NDArray):
-        """Update detector_pol."""
-        self._set_table_field('tones', 'polarization', new_pols)
-
-    @property
-    def pol_ind_1(self) -> npt.NDArray:
-        """Which tones are polarization 1."""
-        return np.argwhere(self.detector_pol == 1).flatten()
-
-    @property
-    def pol_ind_2(self) -> npt.NDArray:
-        """Which tones are polarization 2."""
-        return np.argwhere(self.detector_pol == 2).flatten()  # noqa: PLR2004
-
-    @property
-    def detector_beam_ampl(self) -> npt.NDArray:
-        """The beam amplitude for each resonator."""
-        return self.tones_table['beam_amplitude']
-
-    def set_detector_beam_ampl(self, new_ampls: npt.NDArray):
-        """Update the detector_beam_ampl."""
-        self._set_table_field('tones', 'beam_amplitude', new_ampls)
-
-    @property
-    def detector_delta_x(self) -> npt.NDArray:
-        """The x position relative to the center of the focal plane."""
-        return self.tones_table['delta_x']
-
-    def set_detector_delta_x(self, new_delta_x: npt.NDArray):
-        """Update detector_delta_x."""
-        self._set_table_field('tones', 'delta_x', new_delta_x)
-
-    @property
-    def detector_delta_y(self) -> npt.NDArray:
-        """The y position relative to the center of the focal plane."""
-        return self.tones_table['delta_y']
-
-    def set_detector_delta_y(self, new_delta_y: npt.NDArray):
-        """Update detector_delta_y."""
-        self._set_table_field('tones', 'delta_y', new_delta_y)
-
-    @property
-    def dfoverf_per_mK(self) -> npt.NDArray:
-        """The change in df/f per mK for each resonator."""
-        return self.tones_table['dfoverf_per_mK']
-
-    def set_dfoverf_per_mK(self, new_dfoverf_per_mK: npt.NDArray):
-        """Update dfoverf_per_mK."""
-        self._set_table_field('tones', 'dfoverf_per_mK', new_dfoverf_per_mK)
-
-    @property
-    def carrier_amplitudes(self) -> h5py.Dataset:
-        """The median amplitude of the raw I and Q signals."""
-        return self['vdsets/carrier_amplitudes']
-
-    def carrier_amplitude_norm(self) -> float:
-        """The norm of the carrier amplitudes."""
-        amps = self.carrier_amplitudes[:]
-        z = amps[0] + amps[1] * 1j
-        return np.mean(np.abs(z))
-
-    #
-    # Calibration information
-    #
-    @property
-    def calibration_info(self) -> h5py.Dataset:
-        """Table containing calibration-relevant information.
-
-        Contains the keys:
-            adc_units_to_hz: The conversion factor from ADC units to Hz.
-            IQ_to_gain_phase_angle: The rotation angle from ADC units to gain/phase.
-            IQ_to_freq_diss_angle: The rotation angle from ADC units to frequency/
-                dissipation.
-            df_per_mK: The change in frequency per mK.
-        """
-        return self['vdsets/calibration_info']
-
-    @property
-    def adc_units_to_hz(self) -> npt.NDArray:
-        """The conversion factor from ADC units to Hz."""
-        return self.calibration_info['adc_units_to_hz']
-
-    def set_adc_units_to_hz(self, new_adc_units_to_hz: npt.NDArray):
-        """Update adc_units_to_hz."""
-        self._set_table_field(
-            'calibration_info', 'adc_units_to_hz', new_adc_units_to_hz
-        )
-
-    @property
-    def IQ_to_gain_phase_angle(self) -> npt.NDArray:
-        """The rotation angle from ADC units to gain/phase."""
-        return self.calibration_info['IQ_to_gain_phase_angle']
-
-    def set_IQ_to_gain_phase_angle(self, new_angle: npt.NDArray):
-        """Update IQ_to_gain_phase_angle."""
-        self._set_table_field('calibration_info', 'IQ_to_gain_phase_angle', new_angle)
-
-    @property
-    def IQ_to_freq_diss_angle(self) -> npt.NDArray:
-        """The rotation angle from ADC units to frequency/dissipation."""
-        return self.calibration_info['IQ_to_freq_diss_angle']
-
-    def set_IQ_to_freq_diss_angle(self, new_angle: npt.NDArray):
-        """Update IQ_to_freq_diss_angle."""
-        self._set_table_field('calibration_info', 'IQ_to_freq_diss_angle', new_angle)
-
-    @property
-    def df_per_mK(self) -> npt.NDArray:
-        """The change in frequency per mK."""
-        return self.calibration_info['df_per_mK']
-
-    def set_df_per_mK(self, new_df_per_mK: npt.NDArray):
-        """Update df_per_mK."""
-        self._set_table_field('calibration_info', 'df_per_mK', new_df_per_mK)
-
-
 class ConsolidatedData(DataStorage):
     """Class representing the data from the various sources consolidated into one file.
 
@@ -1336,6 +803,539 @@ class ConsolidatedData(DataStorage):
         pd = ProcessedData(pfile_path, mode=mode)
         pd.initialize_processed_data_fields()
         return pd
+
+
+class ProcessedData(DataStorage):
+    """Storage of downstream processed data."""
+
+    @typing.override
+    @staticmethod
+    def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
+        return get_processed_file_template(date, setnum, data_dir=data_dir)
+
+    def initialize_processed_data_fields(self):
+        """Initialize the datasets unique to the ProcessedData File.
+
+        Will create the following datasets for each channel:
+            * data_gain_phase (2, n_tones, n_samples): Detector data rotated to
+                gain/phase basis.
+            * data_freq_diss (2, n_tones, n_samples): Detector data rotated to
+                frequency/dissipation basis.
+            * data_mK (n_tones, n_samples): Calibrated detector data in mK units.
+            * carrier_amplitudes (2, n_tones): The median I/Q values for each tone.
+            * calibration_info (n_tones,): Structered datset containing various
+                information for creating the calibrated data. Contains:
+                * adc_units_to_hz: Conversion factor from ADC units (IQ data) to
+                    Hz (frequency/dissipation).
+                * IQ_to_gain_phase_angle: Angle in radians to rotate IQ basis to
+                    gain/phase.
+                * IQ_to_freq_diss_angle: Angle in radians to rotate IQ basis to
+                    frequency/dissipation.
+                * df_per_mK: Conversion factor to convert Hz to mK.
+        Also creates virtual datasets for each dataset, combined across channels.
+        """
+        n_samples = self['global_data'].attrs['n_samples']
+        for channel_group in self['channels'].values():
+            time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
+            n_tones = channel_group.attrs['n_tones']
+            data_IQ = time_ordered_data_group['data_IQ']
+            tones_table = channel_group['tones']
+
+            # Initialize caliibration-related datasets
+            data_gain_phase = time_ordered_data_group.create_dataset_like(
+                'data_gain_phase', data_IQ
+            )
+            data_freq_diss = time_ordered_data_group.create_dataset_like(
+                'data_freq_diss', data_IQ
+            )
+            mK_chunks = compute_chunk_shape((n_tones,), 8, max_chunk_size=n_samples)
+            data_mK = time_ordered_data_group.create_dataset(
+                'data_mK',
+                (n_tones, n_samples),
+                dtype=np.float64,
+                chunks=mK_chunks,
+            )
+            carrier_amplitudes = time_ordered_data_group.create_dataset(
+                'carrier_amplitudes', data=np.nanmedian(data_IQ[:], axis=-1)
+            )
+            calibration_info = channel_group.create_dataset(
+                'calibration_info',
+                shape=(n_tones,),
+                dtype=CALIBRATION_TABLE_DTYPE,
+            )
+
+            # Collect calibration information
+            sweep = LoSweepData(
+                tones_table['baseband_freq'],
+                channel_group.attrs['f_center'],
+                channel_group['lo_sweep'][:],
+                tones_table['chanmask'],
+                channel_group.attrs['tile_name'],
+            )
+            IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
+            calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
+            calibration_info['adc_units_to_hz'] = adc_units_to_hz
+
+            detector_f = tones_table['baseband_freq'] + channel_group.attrs['f_center']
+            df_per_mK = compute_df_per_mK(
+                tones_table['polarization'],
+                tones_table['beam_amplitude'],
+                detector_f,
+                tones_table['dfoverf_per_mK'],
+            )
+            calibration_info['df_per_mK'] = df_per_mK
+
+            # Rotate to Gain / Phase
+            IQ_to_gain_phase_angle = np.atan2(
+                carrier_amplitudes[0], carrier_amplitudes[1]
+            )
+            calibration_info['IQ_to_gain_phase_angle'] = IQ_to_gain_phase_angle
+            rotate_basis(
+                data_IQ,
+                data_gain_phase,
+                IQ_to_gain_phase_angle,
+            )
+
+            # Generate calibrated data
+            # First mean center IQ data
+            data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
+            generate_calibrated_data(
+                data_IQ,
+                data_freq_diss,
+                data_mK,
+                IQ_to_freq_diss_angle,
+                adc_units_to_hz,
+                df_per_mK,
+            )
+
+        # Make virtual datasets for the new stuff
+        total_tones = self['vdsets'].attrs['n_tones']
+        data_gain_phase_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
+        data_freq_diss_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
+        data_mK_layout = h5py.VirtualLayout((total_tones, n_samples), 'f8')
+        carrier_amplitudes_layout = h5py.VirtualLayout((2, total_tones), 'f8')
+        calibration_info_layout = h5py.VirtualLayout(
+            (total_tones,), CALIBRATION_TABLE_DTYPE
+        )
+
+        i_tone = 0
+        for channel_group in self['channels'].values():
+            n_tones = channel_group.attrs['n_tones']
+            this_data_group = channel_group['time_ordered_data']
+            data_gain_phase_layout[:, i_tone : i_tone + n_tones] = h5py.VirtualSource(
+                this_data_group['data_gain_phase']
+            )
+            data_freq_diss_layout[:, i_tone : i_tone + n_tones] = h5py.VirtualSource(
+                this_data_group['data_freq_diss']
+            )
+            data_mK_layout[i_tone : i_tone + n_tones] = h5py.VirtualSource(
+                this_data_group['data_mK']
+            )
+            carrier_amplitudes_layout[:, i_tone : i_tone + n_tones] = (
+                h5py.VirtualSource(this_data_group['carrier_amplitudes'])
+            )
+            calibration_info_layout[i_tone : i_tone + n_tones] = h5py.VirtualSource(
+                channel_group['calibration_info']
+            )
+            i_tone += n_tones
+
+        self['vdsets'].create_virtual_dataset('data_gain_phase', data_gain_phase_layout)
+        self['vdsets'].create_virtual_dataset('data_freq_diss', data_freq_diss_layout)
+        self['vdsets'].create_virtual_dataset('data_mK', data_mK_layout)
+        self['vdsets'].create_virtual_dataset(
+            'carrier_amplitudes', carrier_amplitudes_layout
+        )
+        self['vdsets'].create_virtual_dataset(
+            'calibration_info', calibration_info_layout
+        )
+
+    #
+    # Useful getter methods
+    #
+    def list_history(self) -> list[dict]:
+        """Return a list of each processing step."""
+        if not self.has('processing_history'):
+            return []
+        hist = self['processing_history']
+        return list(hist.keys())
+
+    def print_history(self, verbose: bool = False):
+        """Print the processing history for this file."""
+        if not self.has('processing_history'):
+            print('No history')  # noqa: T201
+            return
+
+        hist = self.file['processing_history']
+
+        for k in sorted(hist.keys()):
+            step = hist[k]
+            name = step.attrs.get('name', '?')
+            if verbose:
+                print(f'[{k}]:\n{json.dumps(dict(step.attrs), indent=4)}')  # noqa: T201
+            else:
+                params = json.loads(step.attrs.get('params', '{}'))
+
+                param_str = ', '.join(f'{k}={v}' for k, v in params.items())
+                print(f'[{k}] {name}({param_str})')  # noqa: T201
+
+    def channels(self) -> Iterator[h5py.Group]:
+        """Return an iterator over each channel group."""
+        yield from self['channels'].values()
+
+    def get_channel_group(self, i_chan: int) -> h5py.Group:
+        """Return the specified channel group."""
+        return self[f'channels/channel_{i_chan:03d}']
+
+    def get_channel_group_from_tile_name(self, tile_name: str) -> h5py.Group:
+        """Return the specified channel group by tile name."""
+        tile_names = []
+        for channel_group in self['channels'].values():
+            this_tile_name = channel_group.attrs['tile_name']
+            tile_names.append(this_tile_name)
+            if this_tile_name == tile_name:
+                return channel_group
+        msg = (
+            f'Unable to find channel with name "{tile_name}". Tile names found: '
+            f'{tile_names}'
+        )
+        raise KeyError(msg)
+
+    def get_from_channel(self, i_chan: int, obj_name: str) -> H5pyObject:
+        """Return the object from the specified channel group."""
+        return self.get_channel_group(i_chan)[obj_name]
+
+    def get_from_all_channels(self, obj_name: str) -> list[H5pyObject]:
+        """Return a list of `obj_name` from each channel group."""
+        return [channel_group[obj_name] for channel_group in self['channels'].values()]
+
+    def search_in_channel(
+        self, i_chan: int, name: str, full_name: bool = True, exact_match: bool = False
+    ) -> tuple[str, H5pyObject] | None:
+        """Search for the name in the specified channel group."""
+        return search(
+            self.get_channel_group(i_chan),
+            name,
+            full_name=full_name,
+            exact_match=exact_match,
+        )
+
+    def search_in_all_channels(
+        self, name: str, full_name: bool = True, exact_match: bool = False
+    ) -> list[tuple[str, H5pyObject]] | None:
+        """Search for the name in the each channel group."""
+        return [
+            search(channel_group, name, full_name=full_name, exact_match=exact_match)
+            for channel_group in self['channels'].values()
+        ]
+
+    def get_n_tones(self, i_chan: int) -> int:
+        """Return n_tones for the specified channel."""
+        return self.get_channel_group(i_chan).attrs['n_tones']
+
+    def get_chanmask(self, i_chan: int) -> npt.NDArray:
+        """Return the chanmask for the specified channel."""
+        return self.get_from_channel(i_chan, 'tones')['chanmask']
+
+    def get_onres_ind(self, i_chan: int) -> npt.NDArray:
+        """Return on-resonance indices for the specified channel."""
+        return np.argwhere(self.get_chanmask(i_chan) == 1).flatten()
+
+    def get_offres_ind(self, i_chan: int) -> npt.NDArray:
+        """Return off-resonance indices for the specified channel."""
+        return np.argwhere(self.get_chanmask(i_chan) == 0).flatten()
+
+    #
+    # Useful properties
+    #
+    @property
+    def n_chan(self) -> int:
+        """The nmuber of channels."""
+        return self['channels'].attrs['n_channels']
+
+    @property
+    def n_samples(self) -> int:
+        """The nmuber of samples collected."""
+        return self['vdsets'].attrs['n_samples']
+
+    @property
+    def n_tones(self) -> int:
+        """The total nmuber of tones."""
+        return self['vdsets'].attrs['n_tones']
+
+    @property
+    def fs(self) -> float:
+        """Return the averaged sampling rate across channels."""
+        return self['global_data'].attrs['fs']
+
+    @property
+    def virtual_datasets(self) -> h5py.Group:
+        """The virtual dataset group in the file."""
+        return self['vdsets']
+
+    # Time-ordered data
+    @property
+    def timestamp(self) -> h5py.Dataset:
+        """The timestamps for each data sample.."""
+        return self['global_data/timestamp']
+
+    @property
+    def optical_image(self) -> h5py.Dataset:
+        """The optical image."""
+        return self['global_data/optical_image']
+
+    @property
+    def optical_visibility(self) -> h5py.Dataset:
+        """The optical visibility at the time of data capture."""
+        return self['global_data/optical_visibility']
+
+    @property
+    def data_IQ(self) -> h5py.Dataset:
+        """The data in ADC units."""
+        return self['vdsets/data_IQ']
+
+    @property
+    def data_gain_phase(self) -> h5py.Dataset:
+        """The data in the gain/phase basis."""
+        return self['vdsets/data_gain_phase']
+
+    @property
+    def data_freq_diss(self) -> h5py.Dataset:
+        """The data in the frequency/dissipation basis."""
+        return self['vdsets/data_freq_diss']
+
+    @property
+    def data_mK(self) -> h5py.Dataset:
+        """The data in milikelvin."""
+        return self['vdsets/data_mK']
+
+    @property
+    def detector_az(self) -> h5py.Dataset:
+        """Azimuthal angle for each detector at each timestamp."""
+        return self['vdsets/detector_az']
+
+    @property
+    def detector_za(self) -> h5py.Dataset:
+        """Zenith angle for each detector at each timestamp."""
+        return self['vdsets/detector_za']
+
+    #
+    # Tone/detector properties
+    #
+    @property
+    def tones_table(self) -> h5py.Dataset:
+        """The table containing tone-specific values.
+
+        Contains the keys:
+            baseband_freq: The frequency of the tone relative to the baseband.
+            power: The relative power of this tone.
+            delta_x: The x position relative to the center of the focal plane.
+            delta_y: The y position relative to the center of the focal plane.
+            beam_amplitude: The beam amplitude for this resonator.
+            polarization: The polarization for this resonator.
+            dfoverf_per_mK: The change in df/f per mK for this tone.
+            chanmask: Mask value indicating if this tone is on-resonance (1),
+                off-resonance (0), or flagged as bad (-1).
+        """
+        return self['vdsets/tones']
+
+    def _set_table_field(
+        self, table_name: str, field_name: str, new_values: npt.NDArray
+    ):
+        """Utility function for setting table fields.
+
+        Setting values through virtual datasets doesn't work for tables, so this is the
+        work around.
+        """
+        i_tone = 0
+        for i_chan in range(self.n_chan):
+            channel_group = self.get_channel_group(i_chan)
+            n_tones = channel_group.attrs['n_tones']
+            channel_group[table_name][field_name] = new_values[
+                i_tone : i_tone + n_tones
+            ]
+            i_tone += n_tones
+
+    @property
+    def tone_counts(self) -> npt.NDArray:
+        """The number of tones for each channel."""
+        counts = [self.get_n_tones(i_chan) for i_chan in range(self.n_chan)]
+        return np.array(counts)
+
+    def get_channel_index_from_tone_index(self, tone_index: int) -> int:
+        """Get which channel `tone_index` is a part of."""
+        cumulative_counts = np.cumsum(self.tone_counts)
+        return np.searchsorted(cumulative_counts, tone_index, side='right')
+
+    @property
+    def baseband_freqs(self) -> npt.NDArray:
+        """The frequencies relative to baseband."""
+        return self.tones_table['baseband_freq']
+
+    def set_baseband_freqs(self, new_freqs: npt.NDArray):
+        """Set the frequencies relative to baseband."""
+        self._set_table_field('tones', 'baseband_freq', new_freqs)
+
+    def get_f_center(self, i_chan: int) -> float:
+        """Return the LO frequency for the specified channel."""
+        return self.get_channel_group(i_chan).attrs['f_center']
+
+    def detector_f(self) -> npt.NDArray:
+        """The absolute frequency of each tone."""
+        f = self.baseband_freqs
+        i_tone = 0
+        for channel_group in self.channels():
+            n_tones = channel_group.attrs['n_tones']
+            f[i_tone : i_tone + n_tones] += channel_group.attrs['f_center']
+            i_tone += n_tones
+        return f
+
+    @property
+    def tone_powers(self) -> npt.NDArray:
+        """The relative power level for each tone."""
+        return self.tones_table['power']
+
+    def set_tone_powers(self, new_powers: npt.NDArray):
+        """Set the relative power level for each tone."""
+        self._set_table_field('tones', 'power', new_powers)
+
+    @property
+    def chanmask(self) -> npt.NDArray:
+        """Mask indicating on/off resonance tones and bad resonators."""
+        return self.tones_table['chanmask']
+
+    def set_chanmask(self, new_chanmask: npt.NDArray):
+        """Update the chanmask."""
+        self._set_table_field('tones', 'chanmask', new_chanmask)
+
+    @property
+    def onres_ind(self) -> npt.NDArray:
+        """The indices of on-resonance tones."""
+        return np.argwhere(self.chanmask == 1).flatten().astype(int)
+
+    @property
+    def offres_ind(self) -> npt.NDArray:
+        """The indices of off-resonance tones."""
+        return np.argwhere(self.chanmask == 0).flatten().astype(int)
+
+    @property
+    def detector_pol(self) -> npt.NDArray:
+        """The polarization of each resonator."""
+        return self.tones_table['polarization']
+
+    def set_detector_pol(self, new_pols: npt.NDArray):
+        """Update detector_pol."""
+        self._set_table_field('tones', 'polarization', new_pols)
+
+    @property
+    def pol_ind_1(self) -> npt.NDArray:
+        """Which tones are polarization 1."""
+        return np.argwhere(self.detector_pol == 1).flatten()
+
+    @property
+    def pol_ind_2(self) -> npt.NDArray:
+        """Which tones are polarization 2."""
+        return np.argwhere(self.detector_pol == 2).flatten()  # noqa: PLR2004
+
+    @property
+    def detector_beam_ampl(self) -> npt.NDArray:
+        """The beam amplitude for each resonator."""
+        return self.tones_table['beam_amplitude']
+
+    def set_detector_beam_ampl(self, new_ampls: npt.NDArray):
+        """Update the detector_beam_ampl."""
+        self._set_table_field('tones', 'beam_amplitude', new_ampls)
+
+    @property
+    def detector_delta_x(self) -> npt.NDArray:
+        """The x position relative to the center of the focal plane."""
+        return self.tones_table['delta_x']
+
+    def set_detector_delta_x(self, new_delta_x: npt.NDArray):
+        """Update detector_delta_x."""
+        self._set_table_field('tones', 'delta_x', new_delta_x)
+
+    @property
+    def detector_delta_y(self) -> npt.NDArray:
+        """The y position relative to the center of the focal plane."""
+        return self.tones_table['delta_y']
+
+    def set_detector_delta_y(self, new_delta_y: npt.NDArray):
+        """Update detector_delta_y."""
+        self._set_table_field('tones', 'delta_y', new_delta_y)
+
+    @property
+    def dfoverf_per_mK(self) -> npt.NDArray:
+        """The change in df/f per mK for each resonator."""
+        return self.tones_table['dfoverf_per_mK']
+
+    def set_dfoverf_per_mK(self, new_dfoverf_per_mK: npt.NDArray):
+        """Update dfoverf_per_mK."""
+        self._set_table_field('tones', 'dfoverf_per_mK', new_dfoverf_per_mK)
+
+    @property
+    def carrier_amplitudes(self) -> h5py.Dataset:
+        """The median amplitude of the raw I and Q signals."""
+        return self['vdsets/carrier_amplitudes']
+
+    def carrier_amplitude_norm(self) -> float:
+        """The norm of the carrier amplitudes."""
+        amps = self.carrier_amplitudes[:]
+        z = amps[0] + amps[1] * 1j
+        return np.mean(np.abs(z))
+
+    #
+    # Calibration information
+    #
+    @property
+    def calibration_info(self) -> h5py.Dataset:
+        """Table containing calibration-relevant information.
+
+        Contains the keys:
+            adc_units_to_hz: The conversion factor from ADC units to Hz.
+            IQ_to_gain_phase_angle: The rotation angle from ADC units to gain/phase.
+            IQ_to_freq_diss_angle: The rotation angle from ADC units to frequency/
+                dissipation.
+            df_per_mK: The change in frequency per mK.
+        """
+        return self['vdsets/calibration_info']
+
+    @property
+    def adc_units_to_hz(self) -> npt.NDArray:
+        """The conversion factor from ADC units to Hz."""
+        return self.calibration_info['adc_units_to_hz']
+
+    def set_adc_units_to_hz(self, new_adc_units_to_hz: npt.NDArray):
+        """Update adc_units_to_hz."""
+        self._set_table_field(
+            'calibration_info', 'adc_units_to_hz', new_adc_units_to_hz
+        )
+
+    @property
+    def IQ_to_gain_phase_angle(self) -> npt.NDArray:
+        """The rotation angle from ADC units to gain/phase."""
+        return self.calibration_info['IQ_to_gain_phase_angle']
+
+    def set_IQ_to_gain_phase_angle(self, new_angle: npt.NDArray):
+        """Update IQ_to_gain_phase_angle."""
+        self._set_table_field('calibration_info', 'IQ_to_gain_phase_angle', new_angle)
+
+    @property
+    def IQ_to_freq_diss_angle(self) -> npt.NDArray:
+        """The rotation angle from ADC units to frequency/dissipation."""
+        return self.calibration_info['IQ_to_freq_diss_angle']
+
+    def set_IQ_to_freq_diss_angle(self, new_angle: npt.NDArray):
+        """Update IQ_to_freq_diss_angle."""
+        self._set_table_field('calibration_info', 'IQ_to_freq_diss_angle', new_angle)
+
+    @property
+    def df_per_mK(self) -> npt.NDArray:
+        """The change in frequency per mK."""
+        return self.calibration_info['df_per_mK']
+
+    def set_df_per_mK(self, new_df_per_mK: npt.NDArray):
+        """Update df_per_mK."""
+        self._set_table_field('calibration_info', 'df_per_mK', new_df_per_mK)
 
 
 if __name__ == '__main__':
