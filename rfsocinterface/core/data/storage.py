@@ -388,7 +388,7 @@ class ConsolidatedData(DataStorage):
         cdata.setnum = setnum
 
         # Intiialize temporary file for large datasets
-        temp_data_file = tempfile.TemporaryFile()
+        temp_data_file = tempfile.TemporaryFile()  # noqa: SIM115
         temp_data = h5py.File(temp_data_file, mode='w')
 
         # Create processing history
