@@ -63,13 +63,15 @@ def calc_packet_perf(file: str):
         nsamp = fd["dimension/n_sample"][0]
         indx: np.ndarray = fd["time_ordered_data/pkt_idx"][0:nsamp].astype(np.int64)
         ts: np.ndarray = fd["time_ordered_data/timestamp"][0:nsamp].astype(np.float64)
+        dtype_size_bytes = np.dtype(fd['time_ordered_data/adc_i'].dtype).itemsize
+        data_set_size_bytes = dtype_size_bytes * fd['time_ordered_data/adc_i'].size
+        data_size_mb = data_set_size_bytes * 1e-6
         load_time_start = time.perf_counter_ns()
         _ = fd["time_ordered_data/adc_i"][...]
-        _ = fd["time_ordered_data/adc_q"][...]
         load_time_end = time.perf_counter_ns()
-        print(f"Total load time: {nsamp} samples of "
-              f"adc i & q from time_ordered_data: "
-              f"{(load_time_end - load_time_start)/1e6:.2f} ms")
+        time_s = (load_time_end - load_time_start) / 1e9
+        print(f'Time to read: {time_s:.3f} seconds')
+        print(f'Read Throughput: {data_size_mb / time_s:.3f} MB/s')
         ts_delta = np.diff(ts)[1:]*1000
         indx_delta = np.diff(indx)
         mu = np.mean(ts_delta)
@@ -168,10 +170,6 @@ def calc_packet_perf(file: str):
         # plt.ylabel("Count", fontsize=18)
         # plt.savefig("hist_2.png")
         # plt.show()
-
-
-
-
 
 
 if __name__ == '__main__':
