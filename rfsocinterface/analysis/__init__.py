@@ -6,7 +6,6 @@ from rfsocinterface.analysis.beammap import (
 )
 from rfsocinterface.analysis.peak import (
     CheckFocus,
-    check_focus,
 )
 from rfsocinterface.analysis.psd import (
     ComputeNoisePSD,
@@ -23,7 +22,6 @@ __all__ = [
     'PlotBeamMap',
     'PlotPSD',
     'PsdBasis',
-    'check_focus',
     'plot_psd_dbc_hz',
     'plot_psd_df_over_f',
 ]

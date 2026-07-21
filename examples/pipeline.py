@@ -75,10 +75,10 @@ if __name__ == '__main__':
         # noise_removal,
         # compute_psd,
         # psd_plotter,
-        hp_filter,
-        lp_filter,
-        clean_tod,
-        bin_tod_to_map,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
+        # bin_tod_to_map,
         # plotter,
         # make_video,
         # find_fwhm,
@@ -90,8 +90,8 @@ if __name__ == '__main__':
     # setnum = 1023
     # date = '20260309'
     # setnum = 1010
-    date = '20260515'
-    setnum = 1007
+    date = '20260617'
+    setnum = 1005
     # date = '20260325'
     # setnum = 1002
     # date = '20260223'
@@ -99,66 +99,3 @@ if __name__ == '__main__':
 
 
     pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    # i_res = 282
-    # total_map = pdata['map/sum_map'][i_res] / pdata['map/hits_map'][i_res]
-    # plot_map(
-    #     total_map,
-    #     pdata['map/map_az'],
-    #     pdata['map/map_za'],
-    # )
-    # pdata = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum, mode='a')
-    # pipeline.run(pdata)
-
-    # pdb.set_trace()
-
-    # pdata = ProcessedData.load(date, setnum, mode='a')
-    pdb.set_trace()
-    map_val = pdata['map/map_val'][:]
-    map_az = pdata['map/map_az'][:]
-    map_za = pdata['map/map_za'][:]
-    extent = get_extent(map_az, map_za, dpix=pdata['map'].attrs['dpix'])
-    for i, i_res in enumerate(pdata.onres_ind):
-        # if i_res < 500:
-        #     continue
-        plot_map(map_val[i_res], map_az, map_za, extent, cb_label='Signal (Hz)', title=f'Resonator {i_res}')
-        if i > 0 and i % 15 == 0:
-            plt.show()
-            pdb.set_trace()
-    pdb.set_trace()
-
-    # pdata = ProcessedData.load(date, setnum, mode='a')
-    # target_res = 241
-    # # bad_resonators = [259, 748, 924]
-    # mean_za = np.nanmean(pdata.detector_za[:], axis=1)
-    # same_za = np.argwhere(np.isclose(mean_za, mean_za[target_res], atol=0.05)).flatten()
-    # same_za = same_za[pdata.chanmask[same_za] == 1]
-    # # same_za = same_za[pdata.detector_pol[same_za] == pdata.detector_pol[target_res]]
-    # pdb.set_trace()
-    # # same_za = same_za[~np.isin(same_za, bad_resonators)]
-    # check_focus(
-    #     pdata,
-    #     same_za,
-    #     primary_direction='az',
-    # )
-    # pdb.set_trace()
-
-    # pdata = ProcessedData.load(date, 1008, mode='a')
-    # pipeline.run(pdata)
-
-    # pdata = ProcessedData.load(date, 1009, mode='a')
-    # pipeline.run(pdata)
-
-    # plt.show()
-
-
-
-    # freq = pdata['psd/freq_diss/freq'][:]
-    # psd = pdata['psd/freq_diss/psd'][:]
-    # # convert to dBc/Hz
-    # psd_adc = psd * (pdata.detector_f()[np.newaxis, pdata.onres_ind, np.newaxis] * pdata.adc_units_to_hz[np.newaxis, pdata.onres_ind, np.newaxis]) ** 2
-    # psd_adc /= (pdata.carrier_amplitude_norm() ** 2)
-    # fig = plot_psd_dbc_hz(freq, psd_adc[0], label='Frequency', color='purple', add_legend=False, xlim=(0.1, 250), ylim=(-108, -68))
-    # ax = fig.get_axes()[0]
-    # plot_psd_dbc_hz(freq, psd_adc[1], ax=ax, label='Dissipation', color='o')
-    # plt.show()
