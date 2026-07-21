@@ -7,6 +7,7 @@ import json
 import logging
 import pdb
 import shutil
+import tempfile
 import typing
 from collections.abc import Iterator
 from importlib.metadata import version
@@ -373,7 +374,7 @@ class ConsolidatedData(DataStorage):
         else:
             vis = 0.0
 
-        # Initialize coalesced data file
+        # Initialize consolidated data file
         cfile_path = Path(
             get_consolidated_file_template(date, setnum, data_dir=data_dir)
         )
@@ -385,6 +386,10 @@ class ConsolidatedData(DataStorage):
         cdata = cls(cfile_path, mode='w')
         cdata.date = date
         cdata.setnum = setnum
+
+        # Intiialize temporary file for large datasets
+        temp_data_file = tempfile.TemporaryFile()
+        temp_data = h5py.File(temp_data_file, mode='w')
 
         # Create processing history
         processing_history = cdata.create_group('processing_history')
@@ -455,7 +460,7 @@ class ConsolidatedData(DataStorage):
             chunks=chunk_shape_1d_ds,
             dtype=np.float64,
         )
-        temp_timestamp = global_data_group.create_dataset(
+        temp_timestamp = temp_data.create_dataset(
             'temp_timestamp',
             shape=(total_samples,),
             chunks=chunk_shape_1d,
@@ -574,38 +579,7 @@ class ConsolidatedData(DataStorage):
                 compression='lzf',
                 shuffle=True,
             )
-            # Create temporary datasets for the pre-downsampled data
-            temp_interpolated_samples = time_ordered_data_group.create_dataset(
-                'temp_interpolated_samples',
-                shape=(0,),
-                maxshape=(None,),
-                dtype=np.uint32,
-            )
-            temp_data_IQ = time_ordered_data_group.create_dataset(
-                'temp_data_IQ',
-                shape=(2, n_tones, total_samples),
-                dtype=np.float64,
-                chunks=chunk_shape_3d,
-                compression='lzf',
-                shuffle=True,
-            )
             # Detector Positions
-            temp_detector_az = time_ordered_data_group.create_dataset(
-                'temp_detector_az',
-                shape=azel_shape,
-                chunks=chunk_shape_azel,
-                dtype=np.float64,
-                compression='lzf',
-                shuffle=True,
-            )
-            temp_detector_za = time_ordered_data_group.create_dataset(
-                'temp_detector_za',
-                shape=azel_shape,
-                chunks=chunk_shape_azel,
-                dtype=np.float64,
-                compression='lzf',
-                shuffle=True,
-            )
             detector_az = time_ordered_data_group.create_dataset(
                 'detector_az',
                 shape=azel_shape_ds,
@@ -618,6 +592,39 @@ class ConsolidatedData(DataStorage):
                 'detector_za',
                 shape=azel_shape_ds,
                 chunks=chunk_shape_azel_ds,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+
+            # Create temporary datasets for the pre-downsampled data
+            temp_group = temp_data.create_group(f'channel_{i_chan}')
+            temp_interpolated_samples = temp_group.create_dataset(
+                'temp_interpolated_samples',
+                shape=(0,),
+                maxshape=(None,),
+                dtype=np.uint32,
+            )
+            temp_data_IQ = temp_group.create_dataset(
+                'temp_data_IQ',
+                shape=(2, n_tones, total_samples),
+                dtype=np.float64,
+                chunks=chunk_shape_3d,
+                compression='lzf',
+                shuffle=True,
+            )
+            temp_detector_az = temp_group.create_dataset(
+                'temp_detector_az',
+                shape=azel_shape,
+                chunks=chunk_shape_azel,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+            temp_detector_za = temp_group.create_dataset(
+                'temp_detector_za',
+                shape=azel_shape,
+                chunks=chunk_shape_azel,
                 dtype=np.float64,
                 compression='lzf',
                 shuffle=True,
@@ -745,14 +752,9 @@ class ConsolidatedData(DataStorage):
                     use_filter=False,
                 )
 
-            # Delete temporary datasets
-            del time_ordered_data_group['temp_data_IQ']
-            del time_ordered_data_group['temp_interpolated_samples']
-            del time_ordered_data_group['temp_detector_az']
-            del time_ordered_data_group['temp_detector_za']
-
-        # Get rid of full timestamp now that data from all channels read
-        del global_data_group['temp_timestamp']
+        # Delete temporary datasets now that data from all channels read
+        temp_data.close()
+        temp_data_file.close()
 
         # Create virtual datasets
         vdsets = cdata.create_group('vdsets')
