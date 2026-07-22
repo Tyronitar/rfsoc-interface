@@ -459,8 +459,8 @@ class ConsolidatedData(DataStorage):
             this_channel_group.attrs['attenuator_settings'] = (
                 raw_data.attenuator_settings[:]
             )
-            n_tones = raw_data.n_tones[0]
             this_channel_group.attrs['n_tones'] = n_tones
+            this_channel_group.attrs['n_samples'] = n_samples_ds
 
             # Store the tone parameters
             tones_table = this_channel_group.create_dataset(
@@ -506,7 +506,6 @@ class ConsolidatedData(DataStorage):
             time_ordered_data_group = this_channel_group.create_group(
                 'time_ordered_data'
             )
-            time_ordered_data_group.attrs['n_samples'] = n_samples_ds
             timestamp = time_ordered_data_group.create_dataset(
                 'timestamp',
                 shape=(n_samples_ds,),
@@ -977,6 +976,14 @@ class ProcessedData(DataStorage):
         """Return n_tones for the specified channel."""
         return self.get_channel_group(i_chan).attrs['n_tones']
 
+    def get_n_samples(self, i_chan: int) -> int:
+        """The number of samples collected for the specified channel."""
+        return self.get_channel_group(i_chan).attrs['n_samples']
+
+    def get_fs(self, i_chan: int) -> float:
+        """The sampling rate for the specified channel."""
+        return self.get_channel_group(i_chan).attrs['fs']
+
     def get_chanmask(self, i_chan: int) -> npt.NDArray:
         """Return the chanmask for the specified channel."""
         return self.get_from_channel(i_chan, 'tones')['chanmask']
@@ -998,31 +1005,26 @@ class ProcessedData(DataStorage):
         return self['channels'].attrs['n_channels']
 
     @property
-    def n_samples(self) -> int:
-        """The nmuber of samples collected."""
-        return self['vdsets'].attrs['n_samples']
+    def n_samples(self) -> tuple[int, ...]:
+        """The nmuber of samples collected for each channel."""
+        return self['global_data'].attrs['n_samples']
 
     @property
-    def n_tones(self) -> int:
+    def n_tones(self) -> tuple[int, ...]:
+        """The nmuber of tones for each channel."""
+        return self['global_data'].attrs['n_tones']
+
+    @property
+    def total_tones(self) -> int:
         """The total nmuber of tones."""
-        return self['vdsets'].attrs['n_tones']
-
-    @property
-    def fs(self) -> float:
-        """Return the averaged sampling rate across channels."""
-        return self['global_data'].attrs['fs']
+        return self['global_data'].attrs['total_tones']
 
     @property
     def virtual_datasets(self) -> h5py.Group:
         """The virtual dataset group in the file."""
         return self['vdsets']
 
-    # Time-ordered data
-    @property
-    def timestamp(self) -> h5py.Dataset:
-        """The timestamps for each data sample.."""
-        return self['global_data/timestamp']
-
+    # Global data
     @property
     def optical_image(self) -> h5py.Dataset:
         """The optical image."""
@@ -1033,35 +1035,34 @@ class ProcessedData(DataStorage):
         """The optical visibility at the time of data capture."""
         return self['global_data/optical_visibility']
 
-    @property
-    def data_IQ(self) -> h5py.Dataset:
-        """The data in ADC units."""
-        return self['vdsets/data_IQ']
+    # Time-ordered data
+    def get_timestamp(self, i_chan: int) -> h5py.Dataset:
+        """Return the data timestamps for the specified channel."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/timestamp')
 
-    @property
-    def data_gain_phase(self) -> h5py.Dataset:
-        """The data in the gain/phase basis."""
-        return self['vdsets/data_gain_phase']
+    def get_data_IQ(self, i_chan: int) -> h5py.Dataset:
+        """Return the data for the specified channel in ADC units."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/data_IQ')
 
-    @property
-    def data_freq_diss(self) -> h5py.Dataset:
-        """The data in the frequency/dissipation basis."""
-        return self['vdsets/data_freq_diss']
+    def get_data_gain_phase(self, i_chan: int) -> h5py.Dataset:
+        """Return the data for the specified channel in the gain/phase basis."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/data_gain_phase')
 
-    @property
-    def data_mK(self) -> h5py.Dataset:
-        """The data in milikelvin."""
-        return self['vdsets/data_mK']
+    def get_data_freq_diss(self, i_chan: int) -> h5py.Dataset:
+        """Return the data for the specified channel in the freq/diss basis."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/data_freq_diss')
 
-    @property
-    def detector_az(self) -> h5py.Dataset:
-        """Azimuthal angle for each detector at each timestamp."""
-        return self['vdsets/detector_az']
+    def get_data_mK(self, i_chan: int) -> h5py.Dataset:
+        """Return the data for the specified channel in milikelvin."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/data_mK')
 
-    @property
-    def detector_za(self) -> h5py.Dataset:
-        """Zenith angle for each detector at each timestamp."""
-        return self['vdsets/detector_za']
+    def get_detector_az(self, i_chan: int) -> h5py.Dataset:
+        """Return the azimuthal angle of each detector at each timestamp."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+
+    def get_detector_za(self, i_chan: int) -> h5py.Dataset:
+        """Return the zenith angle of each detector at each timestamp."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/detector_za')
 
     #
     # Tone/detector properties
