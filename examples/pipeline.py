@@ -90,12 +90,14 @@ if __name__ == '__main__':
     # setnum = 1023
     # date = '20260309'
     # setnum = 1010
-    date = '20260617'
-    setnum = 1005
+    date = '20260320'
+    setnum = 1010
     # date = '20260325'
     # setnum = 1002
     # date = '20260223'
     # setnum = 1010  # 1009 - 1015
 
 
+    # ConsolidatedData.from_tod(date, setnum, downsampling_factor=ds_factor)
     pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_consolidated_data(date, setnum)

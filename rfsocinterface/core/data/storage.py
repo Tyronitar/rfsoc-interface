@@ -305,54 +305,7 @@ class ConsolidatedData(DataStorage):
         if nchan == 0:
             raise FileNotFoundError(f'No TOD files found for {date} set {setnum}')
 
-        # Get the n_tones and n_samples from all TOD files to determine array sizes
-        sample_counts = []
-        missed_sample_counts = []
-        missed_packets_list = []
-        tile_names = []
-        tone_counts = []
-        for file in todlist:
-            raw_data = RawDataFile(file, 'r')
-            if raw_data.lo_sweep is None:
-                msg = f'File "{file}" does not have an LO sweep. Cannot process data.'
-                _logger.error(msg)
-                raise KeyError(msg)
-            tone_counts.append(raw_data.n_tones[0])
-
-            # TODO: Make kidpy store the tile name in the file
-            # Temporary way to determine tile name from file names
-            this_file_stem = Path(file).stem
-            this_tile_name = this_file_stem[: this_file_stem.index('TOD')].split('_')[1]
-            tile_names.append(this_tile_name)
-
-            # Find the total number of samples accounting for missed packets
-            # NOTE: Temporary fix until n_sample is fixed in the raw files
-            # n_samples = f.n_sample[0]
-            n_samples = raw_data.adc_i.shape[-1]
-
-            if raw_data.pkt_idx is not None:
-                _logger.debug('ConsolidatedData: Using pkt_idx to find missed packets')
-                missed_packets = find_missed_packets_with_indices(raw_data.pkt_idx)
-            else:
-                missed_packets = find_missed_packets(raw_data.timestamp, n_samples)
-
-            n_missed = int(np.sum(missed_packets[:, 1]))
-            missed_sample_counts.append(n_missed)
-            sample_counts.append(n_samples)
-            missed_packets_list.append(missed_packets)
-
-            raw_data.fh.close()
-
-        # Normalize samle counts to the minimum across all channels
-        total_samples = min(np.add(sample_counts, missed_sample_counts))
-        n_samples_ds = int(np.ceil(total_samples / downsampling_factor))
-
-        # NOTE: I forsee a potnetial bug where we try to interpolate the data for channel
-        # say 2, which missed packet X, but channel 0 only had X - 1 total packets, so
-        # trying to operate on packet X would be out of bounds. For now, we will just
-        # limit the total samples to the minimum across all channels, and hope that this
-        # doesn't happen.
-
+        # Load telescope data
         if azel_exists:
             # pdb.set_trace()
             az_tel = azel_file['az_tel']
@@ -387,10 +340,6 @@ class ConsolidatedData(DataStorage):
         cdata.date = date
         cdata.setnum = setnum
 
-        # Intiialize temporary file for large datasets
-        temp_data_file = tempfile.TemporaryFile()  # noqa: SIM115
-        temp_data = h5py.File(temp_data_file, mode='w')
-
         # Create processing history
         processing_history = cdata.create_group('processing_history')
         step_0 = processing_history.create_group(get_step_group_name(0, 'consolidated'))
@@ -410,7 +359,6 @@ class ConsolidatedData(DataStorage):
 
         # Initialize global data group
         global_data_group = cdata.create_group('global_data')
-        global_data_group.attrs['n_samples'] = n_samples_ds
 
         if azel_exists:
             global_data_group.attrs['telescope_params'] = json.dumps(telescope_params)
@@ -451,51 +399,8 @@ class ConsolidatedData(DataStorage):
         else:
             global_data_group.create_dataset('optical_image', data=np.array([]))
         global_data_group.create_dataset('optical_visibility', data=vis)
-
-        chunk_shape_1d = compute_chunk_shape((), 8, max_chunk_size=total_samples)
-        chunk_shape_1d_ds = compute_chunk_shape((), 8, max_chunk_size=n_samples_ds)
-        timestamp = global_data_group.create_dataset(
-            'timestamp',
-            shape=(n_samples_ds,),
-            chunks=chunk_shape_1d_ds,
-            dtype=np.float64,
-        )
-        temp_timestamp = temp_data.create_dataset(
-            'temp_timestamp',
-            shape=(total_samples,),
-            chunks=chunk_shape_1d,
-            dtype=np.float64,
-        )
-        least_samples_channel = np.argmin(np.add(sample_counts, missed_sample_counts))
-
-        # Interpolate timestamp using the channel with the limiting number of samples
-        raw_data = RawDataFile(todlist[least_samples_channel], 'r')
-        # NOTE: Temporary fix until n_sample is fixed in the raw files
-        # n_samples = f.n_sample[0]
-        n_samples = raw_data.adc_i.shape[-1]
-        this_missed_packets = missed_packets_list[least_samples_channel]
-        if raw_data.pkt_idx is not None:
-            pkt_idx = raw_data.pkt_idx
-        else:
-            pkt_idx = np.arange(n_samples)
-            pkt_idx[this_missed_packets[:, 0]] += this_missed_packets[:, 1]
-        _logger.info('ConsolidatedData: Interpolating timestamp...')
-        interpolate_timestamp_streaming(
-            raw_data.timestamp,
-            temp_timestamp,
-            pkt_idx,
-        )
-        _logger.info('ConsolidatedData: Downsampling timestamp...')
-        chunked_downsample(
-            temp_timestamp,
-            timestamp,
-            downsampling_factor,
-            temp_timestamp.chunks[-1],
-            use_filter=False,
-        )
-        raw_data.close()
-        fs = 1 / (timestamp[1] - timestamp[0])
-        global_data_group.attrs['fs'] = fs
+        tone_counts = []
+        sample_counts = []
 
         # Intiialize group for storing data per-channel
         all_channels_group = cdata.create_group('channels')
@@ -503,16 +408,50 @@ class ConsolidatedData(DataStorage):
 
         # Get the data from each channel
         for i_chan, file in enumerate(todlist):
+            _logger.info(
+                f'ConsolidatedData: Consolidating data for channel {i_chan}...'
+            )
             raw_data = RawDataFile(file, 'r')
 
-            this_missed_packets = missed_packets_list[i_chan]
-            this_n_missed = missed_sample_counts[i_chan]
+            # Verify the LO sweep exists
+            if raw_data.lo_sweep is None:
+                msg = f'File "{file}" does not have an LO sweep. Cannot process data.'
+                _logger.error(msg)
+                raise KeyError(msg)
+
+            # TODO: Make kidpy store the tile name in the file
+            # NOTE: Temporary way to determine tile name from file names
+            this_file_stem = Path(file).stem
+            tile_name = this_file_stem[: this_file_stem.index('TOD')].split('_')[1]
+
+            # Find the relevant dimensions
+            n_tones = raw_data.n_tones[0]
+            # NOTE: Temporary fix until n_sample is fixed in the raw files
+            # n_samples = f.n_sample[0]
+            n_samples_raw = raw_data.adc_i.shape[-1]
+
+            # Find missed packets
+            if raw_data.pkt_idx is not None:
+                _logger.debug('ConsolidatedData: Using pkt_idx to find missed packets')
+                missed_packets = find_missed_packets_with_indices(raw_data.pkt_idx)
+            else:
+                _logger.debug(
+                    'ConsolidatedData: Finding missed packets from timestamps'
+                )
+                missed_packets = find_missed_packets(raw_data.timestamp, n_samples_raw)
+
+            n_missed = int(np.sum(missed_packets[:, 1]))
+            n_samples = n_samples_raw + n_missed
+            n_samples_ds = int(np.ceil(n_samples / downsampling_factor))
+
+            tone_counts.append(n_tones)
+            sample_counts.append(n_samples_ds)
 
             # Create the HDF5 group for this channel
             this_channel_group = all_channels_group.create_group(
                 get_channel_group_name(i_chan)
             )
-            this_channel_group.attrs['tile_name'] = tile_names[i_chan]
+            this_channel_group.attrs['tile_name'] = tile_name
             this_channel_group.attrs['f_center'] = raw_data.lo_freq[0]
             this_channel_group.attrs['detector_dx_dy_elevation_angle'] = (
                 raw_data.detector_dx_dy_elevation_angle[:]
@@ -546,10 +485,12 @@ class ConsolidatedData(DataStorage):
             this_channel_group.create_dataset('lo_sweep', data=raw_data.lo_sweep[:])
 
             # Compute the chunk sizes to use
-            azel_shape = (n_tones, total_samples) if azel_exists else (n_tones, 1)
+            chunk_shape_1d = compute_chunk_shape((), 8, max_chunk_size=n_samples)
+            chunk_shape_1d_ds = compute_chunk_shape((), 8, max_chunk_size=n_samples_ds)
+            azel_shape = (n_tones, n_samples) if azel_exists else (n_tones, 1)
             azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
             chunk_shape_3d = compute_chunk_shape(
-                (2, n_tones), 8, max_chunk_size=total_samples
+                (2, n_tones), 8, max_chunk_size=n_samples
             )
             chunk_shape_3d_ds = compute_chunk_shape(
                 (2, n_tones), 8, max_chunk_size=n_samples_ds
@@ -564,6 +505,13 @@ class ConsolidatedData(DataStorage):
             # Time ordered data
             time_ordered_data_group = this_channel_group.create_group(
                 'time_ordered_data'
+            )
+            time_ordered_data_group.attrs['n_samples'] = n_samples_ds
+            timestamp = time_ordered_data_group.create_dataset(
+                'timestamp',
+                shape=(n_samples_ds,),
+                chunks=chunk_shape_1d_ds,
+                dtype=np.float64,
             )
             interpolated_samples = time_ordered_data_group.create_dataset(
                 'interpolated_samples',
@@ -598,22 +546,29 @@ class ConsolidatedData(DataStorage):
             )
 
             # Create temporary datasets for the pre-downsampled data
-            temp_group = temp_data.create_group(f'channel_{i_chan}')
-            temp_interpolated_samples = temp_group.create_dataset(
+            temp_data_file = tempfile.TemporaryFile()  # noqa: SIM115
+            temp_data = h5py.File(temp_data_file, mode='w')
+            temp_timestamp = temp_data.create_dataset(
+                'temp_timestamp',
+                shape=(n_samples,),
+                chunks=chunk_shape_1d,
+                dtype=np.float64,
+            )
+            temp_interpolated_samples = temp_data.create_dataset(
                 'temp_interpolated_samples',
                 shape=(0,),
                 maxshape=(None,),
                 dtype=np.uint32,
             )
-            temp_data_IQ = temp_group.create_dataset(
+            temp_data_IQ = temp_data.create_dataset(
                 'temp_data_IQ',
-                shape=(2, n_tones, total_samples),
+                shape=(2, n_tones, n_samples),
                 dtype=np.float64,
                 chunks=chunk_shape_3d,
                 compression='lzf',
                 shuffle=True,
             )
-            temp_detector_az = temp_group.create_dataset(
+            temp_detector_az = temp_data.create_dataset(
                 'temp_detector_az',
                 shape=azel_shape,
                 chunks=chunk_shape_azel,
@@ -621,7 +576,7 @@ class ConsolidatedData(DataStorage):
                 compression='lzf',
                 shuffle=True,
             )
-            temp_detector_za = temp_group.create_dataset(
+            temp_detector_za = temp_data.create_dataset(
                 'temp_detector_za',
                 shape=azel_shape,
                 chunks=chunk_shape_azel,
@@ -630,16 +585,35 @@ class ConsolidatedData(DataStorage):
                 shuffle=True,
             )
 
+            # Get packet indices
             if raw_data.pkt_idx is not None:
                 pkt_idx = raw_data.pkt_idx
             else:
                 pkt_idx = np.arange(n_samples)
-                for sample, n_missed in this_missed_packets:
-                    pkt_idx[sample:] += n_missed
+                for sample, this_n_missed in missed_packets:
+                    pkt_idx[sample:] += this_n_missed
             valid_tone_index = np.arange(n_tones, dtype=int) + 0
 
+            # Interpolate timestamp so that it is equally spaced
+            _logger.info('ConsolidatedData: Interpolating timestamp...')
+            interpolate_timestamp_streaming(
+                raw_data.timestamp,
+                temp_timestamp,
+                pkt_idx,
+            )
+            _logger.info('ConsolidatedData: Downsampling timestamp...')
+            chunked_downsample(
+                temp_timestamp,
+                timestamp,
+                downsampling_factor,
+                temp_timestamp.chunks[-1],
+                use_filter=False,
+            )
+            fs = 1 / (timestamp[1] - timestamp[0])
+            this_channel_group.attrs['fs'] = fs
+
             # Interpolate missing IQ data
-            if this_n_missed > 0:
+            if n_missed > 0:
                 _logger.info('ConsolidatedData: Interpolating missing IQ data...')
                 interpolate_missing_data(
                     raw_data.adc_i,
@@ -648,7 +622,7 @@ class ConsolidatedData(DataStorage):
                     temp_data_IQ,
                     temp_interpolated_samples,
                     pkt_idx,
-                    this_missed_packets,
+                    missed_packets,
                     valid_tone_index,
                 )
 
@@ -752,43 +726,27 @@ class ConsolidatedData(DataStorage):
                     use_filter=False,
                 )
 
-        # Delete temporary datasets now that data from all channels read
-        temp_data.close()
-        temp_data_file.close()
+            # Delete temporary datasets
+            temp_data.close()
+            temp_data_file.close()
 
+        total_tones = np.sum(tone_counts)
+        global_data_group.attrs['n_samples'] = tuple(sample_counts)
+        global_data_group.attrs['n_tones'] = tuple(tone_counts)
+        global_data_group.attrs['total_tones'] = total_tones
         # Create virtual datasets
         vdsets = cdata.create_group('vdsets')
-        total_tones = sum(tone_counts)
-        vdsets.attrs['n_tones'] = total_tones
-        vdsets.attrs['n_samples'] = n_samples_ds
         channel_groups = all_channels_group.items()
-        data_IQ_layout = h5py.VirtualLayout((2, total_tones, n_samples_ds), 'f8')
-        azel_shape = (total_tones, n_samples_ds) if azel_exists else (total_tones, 1)
-        detector_az_layout = h5py.VirtualLayout(azel_shape, 'f8')
-        detector_za_layout = h5py.VirtualLayout(azel_shape, 'f8')
         tones_table_layout = h5py.VirtualLayout((total_tones,), TONES_TABLE_DTYPE)
 
         i_tone = 0
         for _, channel_group in channel_groups:
             n_tones = channel_group.attrs['n_tones']
-            this_data_group = channel_group['time_ordered_data']
-            data_IQ_layout[:, i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                this_data_group['data_IQ']
-            )
-            detector_az_layout[i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                this_data_group['detector_az']
-            )
-            detector_za_layout[i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                this_data_group['detector_za']
-            )
             tones_table_layout[i_tone : i_tone + n_tones] = h5py.VirtualSource(
                 channel_group['tones']
             )
             i_tone += n_tones
 
-        vdsets.create_virtual_dataset('data_IQ', data_IQ_layout)
-        vdsets.create_virtual_dataset('detector_az', detector_az_layout)
-        vdsets.create_virtual_dataset('detector_za', detector_za_layout)
         vdsets.create_virtual_dataset('tones', tones_table_layout)
 
         return cdata
@@ -836,10 +794,10 @@ class ProcessedData(DataStorage):
                 * df_per_mK: Conversion factor to convert Hz to mK.
         Also creates virtual datasets for each dataset, combined across channels.
         """
-        n_samples = self['global_data'].attrs['n_samples']
         for channel_group in self['channels'].values():
             time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
             n_tones = channel_group.attrs['n_tones']
+            n_samples = time_ordered_data_group.attrs['n_samples']
             data_IQ = time_ordered_data_group['data_IQ']
             tones_table = channel_group['tones']
 
@@ -911,10 +869,7 @@ class ProcessedData(DataStorage):
             )
 
         # Make virtual datasets for the new stuff
-        total_tones = self['vdsets'].attrs['n_tones']
-        data_gain_phase_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
-        data_freq_diss_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
-        data_mK_layout = h5py.VirtualLayout((total_tones, n_samples), 'f8')
+        total_tones = self['global_data'].attrs['total_tones']
         carrier_amplitudes_layout = h5py.VirtualLayout((2, total_tones), 'f8')
         calibration_info_layout = h5py.VirtualLayout(
             (total_tones,), CALIBRATION_TABLE_DTYPE
@@ -924,15 +879,6 @@ class ProcessedData(DataStorage):
         for channel_group in self['channels'].values():
             n_tones = channel_group.attrs['n_tones']
             this_data_group = channel_group['time_ordered_data']
-            data_gain_phase_layout[:, i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                this_data_group['data_gain_phase']
-            )
-            data_freq_diss_layout[:, i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                this_data_group['data_freq_diss']
-            )
-            data_mK_layout[i_tone : i_tone + n_tones] = h5py.VirtualSource(
-                this_data_group['data_mK']
-            )
             carrier_amplitudes_layout[:, i_tone : i_tone + n_tones] = (
                 h5py.VirtualSource(this_data_group['carrier_amplitudes'])
             )
@@ -941,9 +887,6 @@ class ProcessedData(DataStorage):
             )
             i_tone += n_tones
 
-        self['vdsets'].create_virtual_dataset('data_gain_phase', data_gain_phase_layout)
-        self['vdsets'].create_virtual_dataset('data_freq_diss', data_freq_diss_layout)
-        self['vdsets'].create_virtual_dataset('data_mK', data_mK_layout)
         self['vdsets'].create_virtual_dataset(
             'carrier_amplitudes', carrier_amplitudes_layout
         )
@@ -1342,13 +1285,13 @@ class ProcessedData(DataStorage):
 
 if __name__ == '__main__':
     # Telescope Testing
-    date = '20260320'
-    setnum = 1010
+    date = '20260617'
+    setnum = 1005
     # Lab Testing
     # date = '20260212'
     # setnum = 1003
 
-    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=8)
-    pd = cd.create_processed_data()
+    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=16)
+    # pd = cd.create_processed_data()
 
     pdb.set_trace()
