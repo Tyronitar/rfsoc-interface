@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import os
+import re
 import stat
 import typing
 import warnings
@@ -504,6 +505,39 @@ def search(
         return None
 
     return src.visititems(search_fn)
+
+
+def search_regex(
+    src: h5py.Group, pattern: str, full_name: bool = True, exact_match: bool = False
+) -> tuple[str, H5pyObject] | None:
+    """Search recursively through an HDF5 group for the specified name.
+
+    This function will return the first object found whose name matches `name`.
+    Returns `None` if no match is found.
+
+    Arguments:
+        src (h5py.Group): The group to search within.
+        pattern (str): The regex pattern to match.
+        full_name (bool): Whether to return the full name of the object. Defaults to
+            True.
+        exact_match (bool): Whether to only accept exact name matches. If False, this
+            function will succeed if an object is found whose name contains `name`.
+            Defaults to False.
+
+    Returns:
+        obj_name (str): The name of the found object.
+        obj (h5py.Group | h5py.Dataset): The object matching the search query.
+    """
+    regex = re.compile(pattern)
+    objects = []
+    def match_object(name: str, obj: H5pyObject):
+        if exact_match:
+            if regex.match(name):
+                objects.append((name, obj))
+        elif regex.search(name):
+            objects.append((name, obj))
+    src.visititems(match_object)
+    return objects
 
 
 #
