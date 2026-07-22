@@ -598,7 +598,7 @@ def plot_resonator_report(
         add_legend=True,
         show_flat_spectrum_level=True,
         xlim=(0.1, 244),
-        ylim=(1e-19, 1e-16),
+       
         axis_label_fontsize=20
     )
     figs.append(onres_fig)
@@ -620,7 +620,7 @@ def plot_resonator_report(
             add_legend=True,
             show_flat_spectrum_level=True,
             xlim = (0.1, 244),
-            ylim=(1e-19, 1e-16),
+            
         )
         figs.append(fig)
 
@@ -634,7 +634,7 @@ def plot_resonator_report(
             f0=f0,
             title=" - ".join(filter(None, (title, f"Resonator {tone}"))),
             add_legend=True,
-            ylim=(100, 1e5),
+           
             xlim = (0.1, 244)
 
         )
@@ -658,7 +658,7 @@ def plot_resonator_report(
         f0=f0,
         title=" - ".join(filter(None, (title, "Median SNqp - All Resonators"))),
         add_legend=True,
-        ylim=(100, 1e5),
+      
         xlim=(0.1, 244),
         show_error_band=True,
         input_is_snqp=True,

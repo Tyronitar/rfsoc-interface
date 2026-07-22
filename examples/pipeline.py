@@ -16,7 +16,7 @@ if __name__ == '__main__':
     #_logger = logging.getLogger('rfsocinterface')
     #_logger.handlers[0].setLevel(logging.INFO)
 
-    lp_filter_freq = 100
+    lp_filter_freq = 24
     hp_filter_freq = 0.001
     noise_removal_lp_filt_freq = 0 # Filter disabled if set to 0
     ds_factor = 1
@@ -36,8 +36,8 @@ if __name__ == '__main__':
     )
     noise_removal_onres = RemoveElectronicsNoise(
         template_selection_indices='onres',
-        lp_filt_freq=5,
-        fspace = True
+        lp_filt_freq=244,
+        fspace = False
         
     )
     noise_removal = RemoveElectronicsNoise()
@@ -91,17 +91,22 @@ if __name__ == '__main__':
     ])
 
 
-    date = '20260319'
-    #setnums = np.array([ 1011])
-
-    setnums = np.array([ 1023, 1025, 1027, 1028,1031, 1032])
+    date = '20260721'
+    setnums = np.array([1003])
 
     psd_fd_obj_list = []
 
 
 
     for setnum in setnums:
-        pdata = pipeline.from_consolidated_data(date, setnum)
+        # NOTE: If you run from_consolidated_data, but you haven't initialized it yet
+        # this will cause the error. Make sure to run `pipeline.from_tod` or
+        # `ConsolidatedData.from_tod` first to ensure that the file is initialized
+        # properly. After it's been run once, you can then use `pipeline.from_consolidated_data` 
+        # to run the pipeline starting  from the consolidated data without issues
+        # I'll fix this at some point so that the error is handled more gracefully
+        # pdata = pipeline.from_consolidated_data(date, setnum)
+        pdata = pipeline.from_tod(date, setnum)
         psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
         psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
 

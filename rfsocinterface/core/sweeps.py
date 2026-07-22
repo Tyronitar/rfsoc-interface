@@ -79,7 +79,7 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
 
     #smooth the data
     x = s21
-    s21 = savgol_filter(s21, 7, 3, mode='mirror')
+   # s21 = savgol_filter(s21, 7, 3, mode='mirror')
 
     #search for local minima
     if s21[center_ind] != min(s21):
@@ -94,14 +94,14 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
             else:
                 center_ind = lo_ind + min_ind
 
-    peaks = find_peaks(-s21, height=0.1)
+    peaks = find_peaks(-s21, height=0.01)
     if len(peaks[0]) != 0:
         prominances = peaks[1]['heights']
         highest_prom_index = np.argmax(prominances)
         #print(freq[peaks[0][highest_prom_index]])
         f0 = freq[peaks[0][highest_prom_index]]
     else:
-        f0 = freq[center_ind]
+        f0 = freq[np.argmin(s21)]
     
     return f0, 0, 0
    
@@ -118,12 +118,11 @@ def get_scraps_fit(
     I: npt.NDArray,
     Q: npt.NDArray,
     freq: npt.NDArray,
-    tone_list: npt.NDArray,
-    s21: npt.NDArray,
     power: npt.NDArray = None,
     temp: npt.NDArray = None,
     initial_guesses: dict = None,
 ):
+    
     data_dict = {
         'I': I,
         'Q': Q,
@@ -134,6 +133,9 @@ def get_scraps_fit(
     }
     N = len(freq)
     df = freq[1]-freq[0]
+    resObj = scr.makeResFromData(data_dict)
+
+
 
     resObj = scr.makeResFromData(data_dict)                                
     resObj.load_params(scr.cmplxIQ_params, fit_quadratic_phase = True, hardware = 'VNA')
@@ -165,8 +167,9 @@ def get_scraps_fit(
                     params[key].set(value=val)
 
     resObj.do_lmfit(scr.hanger_fit)
-
     return resObj
+     
+
 
 
 def create_resonator_mini_plot(
@@ -651,7 +654,7 @@ class LoSweepData:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             results = executor.map(
                 simple_derivative_fits,
-                (self.df for _ in range(self.n_good_tones)),
+                (self.df for _ in range(self.n_tones)),
                 self.freq[:, :],
                 self.detector_f[:],
                 self.s21[:, :],
@@ -661,16 +664,16 @@ class LoSweepData:
                 if self._fit_canceled:
                     return
 
-                i_res = self.onres_ind[i]
 
-                self.fit_f0[i_res] = fit_f0
-                self.fit_qi[i_res] = fit_qi
-                self.fit_qc[i_res] = fit_qc
+                self.fit_f0[i] = fit_f0
+                self.fit_qi[i] = fit_qi
+                self.fit_qc[i] = fit_qc
 
                 if callback is not None:
                     callback()
 
             self._fitted = True
+
 
     def plot(self, ncols: int=DEFAULT_NCOLS, callback: Callable | None=None, fig: Figure=None) -> Figure:
         """Plot the results of fitting the LO sweep.
@@ -1552,6 +1555,7 @@ class PowerSweepData(CompositeSweepData):
 
         defaults = []  # resonators that needed to use default values
         for i_onres, i_res in enumerate(self.onres_ind):
+            print(i_res)
             if self._fit_canceled:
                 return
 
