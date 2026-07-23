@@ -24,6 +24,7 @@ mpl.use('QtAgg')
 from rfsocinterface.core.data.utils import (
     generate_calibrated_data,
     get_channel_group_name,
+    get_channel_index_from_dset_name,
     get_step_group_name,
     rotate_basis,
 )
@@ -81,7 +82,6 @@ class DataRoutine:
             routine.
         requires (set): Set of dataset names required by this routine.
         produces (set): Set of dataset names produced by this routine.
-
     """
 
     name = 'base'
@@ -239,7 +239,7 @@ class CutoffFilter(DataRoutine):
         self,
         filter_freq: float,
         btype: str,
-        datasets: Sequence[str] = ['/vdsets/data_mK'],
+        datasets: Sequence[str] = ['.*/data_mK'],
     ):
         """Initialize the cutoff filter routine.
 
@@ -248,7 +248,7 @@ class CutoffFilter(DataRoutine):
             btype (str): The type of filter to apply. Must be one of 'low', 'high',
                 'bandpass', or 'bandstop'.
             datasets (Sequence[str], optional): List of dataset names to apply the
-                filter to. Defaults to ['/vdsets/data_mK'].
+                filter to. Defaults to ['.*/data_mK'], i.e. every data_mK array.
         """
         super().__init__(
             filter_freq=filter_freq,
@@ -258,7 +258,11 @@ class CutoffFilter(DataRoutine):
 
     @typing.override
     def inputs(self, pdata: ProcessedData):
-        return self.params['datasets']
+        dsets = []
+        for pattern in self.params['datasets']:
+            for name, _ in pdata.search_regex(pattern, full_name=True):
+                dsets.append(name)
+        return dsets
 
     def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         """Apply the cutoff filter to the specified datasets.
@@ -269,13 +273,22 @@ class CutoffFilter(DataRoutine):
         filter_freq = self.params['filter_freq']
         btype = self.params['btype']
         for input_name in inputs:
+            i_chan = get_channel_index_from_dset_name(input_name)
+            if i_chan is None:
+                msg = (
+                    'Could not identify the channel group for the '
+                    f'dataset {input_name}, and therfore unable to find the sampling '
+                    'rate `fs`.'
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', r'^Invalid value encountered in')
                 filt_sos = signal.butter(
                     BUTTER_ORDER,
                     filter_freq,
                     btype=btype,
-                    fs=pdata.fs,
+                    fs=pdata.get_fs(i_chan),
                     output='sos',
                     analog=False,
                 )
@@ -293,14 +306,14 @@ class LowPassFilter(CutoffFilter):
     def __init__(
         self,
         filter_freq: float,
-        datasets: Sequence[str] = ['/vdsets/data_mK'],
+        datasets: Sequence[str] = ['.*/data_mK'],
     ):
         """Initialize the LowPassFilter routine.
 
         Arguments:
             filter_freq (float): The cutoff frequency for the filter in Hz.
             datasets (Sequence[str], optional): List of dataset names to apply the
-                filter to. Defaults to ['/vdsets/data_mK'].
+                filter to. Defaults to ['.*/data_mK'], i.e. every data_mK array.
         """
         super().__init__(filter_freq, btype='lowpass', datasets=datasets)
 
@@ -314,14 +327,14 @@ class HighPassFilter(CutoffFilter):
     def __init__(
         self,
         filter_freq: float,
-        datasets: Sequence[str] = ['/vdsets/data_mK'],
+        datasets: Sequence[str] = ['.*/data_mK'],
     ):
         """Initialize the HighPassFilter routine.
 
         Arguments:
             filter_freq (float): The cutoff frequency for the filter in Hz.
             datasets (Sequence[str], optional): List of dataset names to apply the
-                filter to. Defaults to ['/vdsets/data_mK'].
+                filter to. Defaults to ['.*/data_mK'], i.e. every data_mK array.
         """
         super().__init__(filter_freq, btype='highpass', datasets=datasets)
 
