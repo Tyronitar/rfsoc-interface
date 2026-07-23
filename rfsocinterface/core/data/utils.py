@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Literal
 
 # import tables
@@ -67,6 +68,18 @@ def get_step_group_name(idx: int, name: str) -> str:
     """Return the properly formatted group name for a step in the processing history."""
     return f'{idx:04d}_{name}'
 
+
+def get_channel_index_from_dset_name(name: str) -> int | None:
+    """Return the index of the channel that contains the dataset, if any.
+
+    Returns:
+        (int | None): If the dataset is contained inside a channel group, the index of
+            that group. Otherwise, returns None.
+    """
+    res = re.search(r'(?<=channel_)\d', name)
+    if res:
+        return int(res[0])
+    return None
 
 #
 # Data Processing
@@ -521,3 +534,4 @@ def interpolate_telescope_position(
     _logger.info(f'Shifting telescope positions by {-median_offset} samples')
 
     return fixed_positions
+

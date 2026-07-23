@@ -56,6 +56,7 @@ from rfsocinterface.core.utils import (
     iterate_chunks,
     list_datasets,
     search,
+    search_regex,
 )
 
 _logger = logging.getLogger(__name__)
@@ -142,6 +143,12 @@ class DataStorage:
     ) -> tuple[str, H5pyObject] | None:
         """Search for a key in the file."""
         return search(self.file, name, full_name=full_name, exact_match=exact_match)
+
+    def search_regex(
+        self, name: str, full_name: bool = True, exact_match: bool = False
+    ) -> list[tuple[str, H5pyObject]]:
+        """Search for a regular expression in the file."""
+        return search_regex(self.file, name, full_name=full_name, exact_match=exact_match)
 
     def list_datasets(self, full_names: bool = False) -> list[tuple[str, h5py.Dataset]]:
         """Return a list of all datasets in the file."""
@@ -796,7 +803,7 @@ class ProcessedData(DataStorage):
         for channel_group in self['channels'].values():
             time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
             n_tones = channel_group.attrs['n_tones']
-            n_samples = time_ordered_data_group.attrs['n_samples']
+            n_samples = channel_group.attrs['n_samples']
             data_IQ = time_ordered_data_group['data_IQ']
             tones_table = channel_group['tones']
 
