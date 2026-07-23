@@ -508,21 +508,15 @@ def search(
         obj (h5py.Group | h5py.Dataset): The object matching the search query.
 
     """
-
-    def search_fn(obj_name: str, obj: H5pyObject):
-        success = name == obj.name if exact_match else name in obj.name
-        if success:
-            if full_name:
-                return obj.name, obj
-            return obj_name, obj
-        return None
-
-    return src.visititems(search_fn)
+    res = search_regex(src, name, full_name=full_name, exact_match=exact_match)
+    if res:
+        return res[0]
+    return None
 
 
 def search_regex(
     src: h5py.Group, pattern: str, full_name: bool = True, exact_match: bool = False
-) -> tuple[str, H5pyObject] | None:
+) -> tuple[tuple[str, H5pyObject], ...]:
     """Search recursively through an HDF5 group for the specified name.
 
     This function will return the first object found whose name matches `name`.
@@ -544,13 +538,14 @@ def search_regex(
     regex = re.compile(pattern)
     objects = []
     def match_object(name: str, obj: H5pyObject):
-        if exact_match:
-            if regex.match(name):
+        success = regex.match(obj.name) if exact_match else regex.search(obj.name)
+        if success:
+            if full_name:
+                objects.append((obj.name, obj))
+            else:
                 objects.append((name, obj))
-        elif regex.search(name):
-            objects.append((name, obj))
     src.visititems(match_object)
-    return objects
+    return tuple(objects)
 
 
 #
