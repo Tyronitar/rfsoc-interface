@@ -370,8 +370,12 @@ class BinTODIntoMap(DataRoutine):
         self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za
-        detector_az = [pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)]
-        detector_za = [pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)]
+        detector_az = [
+            pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
+        ]
+        detector_za = [
+            pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)
+        ]
 
         data = []
         match self.params['dataset']:
@@ -380,12 +384,9 @@ class BinTODIntoMap(DataRoutine):
             case 'data_freq':  # df / f
                 for i_chan in range(pdata.n_chan):
                     data.append(
-                        pdata.get_data_freq_diss(i_chan)[0] / \
-                            pdata.get_detector_f(i_chan)[:, np.newaxis]
+                        pdata.get_data_freq_diss(i_chan)[0]
+                        / pdata.get_detector_f(i_chan)[:, np.newaxis]
                     )
-                # dsets = pdata.get_from_all_channels('time_ordered_data/data_freq_diss')
-                # data = pdata.data_freq_diss[0] / pdata.detector_f()[:, np.newaxis]
-                # data = [dset[:] for dset in dsets]
 
         sum_map = pdata['map/sum_map'][:]
         hits_map = pdata['map/hits_map'][:]
@@ -409,7 +410,9 @@ class BinTODIntoMap(DataRoutine):
                     valid_freq = np.where(
                         (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
                     )
-                    i_tone_absolute = pdata.get_absolute_tone_index(i_chan, i_tone_relative)
+                    i_tone_absolute = pdata.get_absolute_tone_index(
+                        i_chan, i_tone_relative
+                    )
                     netd[i_tone_absolute] = np.sqrt(np.median(this_psd[valid_freq]))
 
         _logger.info(f'{self.name}: Done computing netd')

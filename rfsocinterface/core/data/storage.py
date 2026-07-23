@@ -1333,5 +1333,3 @@ if __name__ == '__main__':
 
     cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=16)
     # pd = cd.create_processed_data()
-
-    pdb.set_trace()
