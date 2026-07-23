@@ -145,10 +145,21 @@ class DataStorage:
         return search(self.file, name, full_name=full_name, exact_match=exact_match)
 
     def search_regex(
-        self, name: str, full_name: bool = True, exact_match: bool = False
-    ) -> list[tuple[str, H5pyObject]]:
+        self, pattern: str, full_name: bool = True, exact_match: bool = False
+    ) -> tuple[tuple[str, H5pyObject]]:
         """Search for a regular expression in the file."""
-        return search_regex(self.file, name, full_name=full_name, exact_match=exact_match)
+        return search_regex(
+            self.file, pattern, full_name=full_name, exact_match=exact_match
+        )
+
+    def search_regex_names(
+        self, pattern: str, full_name: bool = True, exact_match: bool = False
+    ) -> tuple[str]:
+        """Search the file and return the name of every match."""
+        res = search_regex(
+            self.file, pattern, full_name=full_name, exact_match=exact_match
+        )
+        return tuple(name for name, _ in res)
 
     def list_datasets(self, full_names: bool = False) -> list[tuple[str, h5py.Dataset]]:
         """Return a list of all datasets in the file."""

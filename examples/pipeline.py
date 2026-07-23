@@ -17,10 +17,10 @@ if __name__ == '__main__':
     lp_filter_freq = 15
     hp_filter_freq = 0.03
     noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
-    ds_factor = 16
+    ds_factor = 10
 
     dataset = 'data_freq'
-    datasets = ['/vdsets/data_freq_diss']
+    datasets = ['.*/data_freq_diss']
 
     find_fwhm = CheckFocus(
         'az',
@@ -72,12 +72,12 @@ if __name__ == '__main__':
     pipeline = Pipeline([
         # noise_removal_offres,
         # noise_removal_onres,
-        # noise_removal,
+        noise_removal,
         # compute_psd,
         # psd_plotter,
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
+        hp_filter,
+        lp_filter,
+        clean_tod,
         # bin_tod_to_map,
         # plotter,
         # make_video,
@@ -99,5 +99,5 @@ if __name__ == '__main__':
 
 
     # ConsolidatedData.from_tod(date, setnum, downsampling_factor=ds_factor)
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    # pdata = pipeline.from_consolidated_data(date, setnum)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_consolidated_data(date, setnum)

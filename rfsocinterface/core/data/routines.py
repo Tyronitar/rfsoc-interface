@@ -23,7 +23,6 @@ mpl.use('QtAgg')
 
 from rfsocinterface.core.data.utils import (
     generate_calibrated_data,
-    get_channel_group_name,
     get_channel_index_from_dset_name,
     get_step_group_name,
     rotate_basis,
@@ -260,8 +259,7 @@ class CutoffFilter(DataRoutine):
     def inputs(self, pdata: ProcessedData):
         dsets = []
         for pattern in self.params['datasets']:
-            for name, _ in pdata.search_regex(pattern, full_name=True):
-                dsets.append(name)
+            dsets.extend(pdata.search_regex_names(pattern, full_name=True))
         return dsets
 
     def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
@@ -519,20 +517,8 @@ class RemoveElectronicsNoise(DataRoutine):
     def inputs(self, pdata: ProcessedData):
         # Requires data_IQ, data_gain_phase, data_freq_diss, and data_mK
         # but there's no case where those wouldn't exist, so I'm not sure this matters
-        dsets = []
-        for i_chan in range(pdata.n_chan):
-            group_name = get_channel_group_name(i_chan)
-            group_name = f'/channels/{get_channel_group_name(i_chan)}/'
-            dsets.extend(
-                [
-                    group_name + 'time_ordered_data/data_IQ',
-                    group_name + 'time_ordered_data/data_gain_phase',
-                    group_name + 'time_ordered_data/data_freq_diss',
-                    group_name + 'time_ordered_data/data_mK',
-                    group_name + 'calibration_info',
-                ]
-            )
-        return dsets
+        pattern = r'channel_\d.*(/data_\w+)|(calibration_info)'
+        return list(pdata.search_regex_names(pattern))
 
     @typing.override
     def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
@@ -540,9 +526,9 @@ class RemoveElectronicsNoise(DataRoutine):
         lp_filt_freq = self.params['lp_filt_freq']
         template_selection_indices = self.params['template_selection_indices']
         max_modes = self.params['max_modes']
-        fs = pdata.fs
 
         for i_chan in range(pdata.n_chan):
+            fs = pdata.get_fs(i_chan)
             selection_indices = decode_tone_indices(
                 pdata, template_selection_indices, i_chan
             )
@@ -641,10 +627,7 @@ class CleanTOD(DataRoutine):
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
-        return [
-            f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}'
-            for i_chan in range(pdata.n_chan)
-        ]
+        return list(pdata.search_regex_names(dataset))
 
     @typing.override
     def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):

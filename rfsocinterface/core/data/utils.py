@@ -81,6 +81,7 @@ def get_channel_index_from_dset_name(name: str) -> int | None:
         return int(res[0])
     return None
 
+
 #
 # Data Processing
 #
@@ -534,4 +535,3 @@ def interpolate_telescope_position(
     _logger.info(f'Shifting telescope positions by {-median_offset} samples')
 
     return fixed_positions
-
