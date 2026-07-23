@@ -1,5 +1,4 @@
 """Data processing code for generating maps."""
-import pdb
 
 import logging
 import time
@@ -403,25 +402,16 @@ class BinTODIntoMap(DataRoutine):
             this_data = data[i_chan]
             fs = pdata.get_fs(i_chan)
             for i_tone_relative in range(pdata.get_n_tones(i_chan)):
-                this_freq, this_psd = signal.periodogram(
-                    this_data[i_tone_relative, :], fs, window=wind
-                )
-                valid_freq = np.where(
-                    (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
-                )
-                i_tone_absolute = pdata.get_absolute_tone_index(i_chan, i_tone_relative)
-                netd[i_tone_absolute] = np.sqrt(np.median(this_psd[valid_freq]))
+                if pdata.get_chanmask(i_chan)[i_tone_relative] == 1:
+                    this_freq, this_psd = signal.periodogram(
+                        this_data[i_tone_relative, :], fs, window=wind
+                    )
+                    valid_freq = np.where(
+                        (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
+                    )
+                    i_tone_absolute = pdata.get_absolute_tone_index(i_chan, i_tone_relative)
+                    netd[i_tone_absolute] = np.sqrt(np.median(this_psd[valid_freq]))
 
-        # for i_tone in np.where(chanmask == 1)[0]:
-        #     i_chan = pdata.get_channel_from_tone_index(i_tone)
-        #     wind = signal.get_window('hamming', pdata.n_samples)
-        #     this_freq, this_psd = signal.periodogram(
-        #         data[i_chan][i_tone, :], pdata.get_fs(i_chan), window=wind
-        #     )
-        #     valid_freq = np.where(
-        #         (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
-        #     )
-        #     netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
         _logger.info(f'{self.name}: Done computing netd')
 
         # Get rid of tones with bad weights

@@ -17,7 +17,7 @@ if __name__ == '__main__':
     lp_filter_freq = 15
     hp_filter_freq = 0.03
     noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
-    ds_factor = 10
+    ds_factor = 16
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
@@ -48,11 +48,11 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=True,
+        beam_map_mode=False,
         dataset=dataset,
         az_trim=0,
         za_trim=0,
-        dpix=0.03,
+        dpix=0.04,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
     make_video = MakeVideo(

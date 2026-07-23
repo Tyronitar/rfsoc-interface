@@ -5,7 +5,6 @@ from __future__ import annotations
 import glob
 import json
 import logging
-import pdb
 import shutil
 import tempfile
 import typing
@@ -1003,7 +1002,8 @@ class ProcessedData(DataStorage):
     def get_relative_tone_index(self, i_tone_absolute: int) -> int:
         """Return the index of the tone within its channel."""
         tone_cutoffs = np.cumsum((0, *self.n_tones))
-        return int(np.min(np.where((i_tone_absolute - tone_cutoffs) >= 0)))
+        diff = np.astype((i_tone_absolute - tone_cutoffs), int)
+        return np.min(diff[diff >= 0])
 
     def get_n_tones(self, i_chan: int) -> int:
         """Return n_tones for the specified channel."""
