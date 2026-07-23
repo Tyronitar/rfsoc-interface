@@ -990,6 +990,21 @@ class ProcessedData(DataStorage):
             for channel_group in self['channels'].values()
         ]
 
+    def get_absolute_tone_index(self, i_chan: int, i_tone_relative: int) -> int:
+        """Return the absolute tone index for the tone within the channel."""
+        tone_cutoffs = np.cumsum((0, *self.n_tones))
+        return int(tone_cutoffs[i_chan] + i_tone_relative)
+
+    def get_channel_from_tone_index(self, i_tone_absolute: int) -> int:
+        """Return the index of channel that contains the tone."""
+        tone_cutoffs = np.cumsum(self.n_tones) - 1
+        return int(np.where(tone_cutoffs <= i_tone_absolute)[0][-1])
+
+    def get_relative_tone_index(self, i_tone_absolute: int) -> int:
+        """Return the index of the tone within its channel."""
+        tone_cutoffs = np.cumsum((0, *self.n_tones))
+        return int(np.min(np.where((i_tone_absolute - tone_cutoffs) >= 0)))
+
     def get_n_tones(self, i_chan: int) -> int:
         """Return n_tones for the specified channel."""
         return self.get_channel_group(i_chan).attrs['n_tones']
@@ -1142,6 +1157,12 @@ class ProcessedData(DataStorage):
     def get_f_center(self, i_chan: int) -> float:
         """Return the LO frequency for the specified channel."""
         return self.get_channel_group(i_chan).attrs['f_center']
+
+    def get_detector_f(self, i_chan: int) -> npt.NDArray:
+        """Return the absolute frequency of the tones for the specified channel."""
+        channel_group = self.get_channel_group(i_chan)
+        tones_table = channel_group['tones']
+        return tones_table['baseband_freq'] + channel_group.attrs['f_center']
 
     def detector_f(self) -> npt.NDArray:
         """The absolute frequency of each tone."""

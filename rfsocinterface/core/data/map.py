@@ -1,4 +1,5 @@
 """Data processing code for generating maps."""
+import pdb
 
 import logging
 import time
@@ -130,18 +131,26 @@ def get_extent(
 
 
 def get_map_size(
-    detector_az: h5py.Dataset,
-    detector_za: h5py.Dataset,
+    pdata: ProcessedData,
     az_trim: float,
     za_trim: float,
     dpix: float = DEFAULT_MAP_DPIX,
     beam_map_mode: bool = False,
 ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
     """Determine map size based on detector positions and desired pixel size."""
-    max_az = np.nanmax(detector_az) - az_trim
-    min_az = np.nanmin(detector_az) + az_trim
-    max_za = np.nanmax(detector_za) - za_trim
-    min_za = np.nanmin(detector_za) + za_trim
+    max_az = max_za = -np.inf
+    min_az = min_za = np.inf
+    for i_chan in range(pdata.n_chan):
+        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+        max_az = max(np.nanmax(det_az), max_az)
+        min_az = min(np.nanmin(det_az), min_az)
+        max_za = max(np.nanmax(det_za), max_za)
+        min_za = min(np.nanmin(det_za), min_za)
+    max_az -= az_trim
+    min_az += az_trim
+    max_za -= za_trim
+    min_za += za_trim
     n_pix_x = int(np.ceil((max_az - min_az) / dpix))
     n_pix_y = int(np.ceil((max_za - min_za) / dpix))
     map_x = np.arange(n_pix_x) * dpix + min_az + dpix / 2.0
@@ -284,10 +293,7 @@ class BinTODIntoMap(DataRoutine):
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
-        return [
-            f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}'
-            for i_chan in range(pdata.n_chan)
-        ]
+        return list(pdata.search_regex_names(dataset))
 
     def _initialize_map_arrays(
         self,
@@ -301,7 +307,7 @@ class BinTODIntoMap(DataRoutine):
 
         Overwrites existing "map" group if it already exists.
         """
-        if pdata.has('map', exact_match=True):
+        if pdata.has('/map', exact_match=True):
             _logger.warning(
                 f'{self.name}: Map group already exists in the file; '
                 'overwriting datasets.'
@@ -334,7 +340,7 @@ class BinTODIntoMap(DataRoutine):
             chunks=(n_pix_x, n_pix_y),
             dtype=np.float64,
         )
-        map_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
+        map_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
         map_group.attrs['dpix'] = dpix
         map_group.attrs['units'] = (
             'mK' if self.params['dataset'] == 'data_mK' else 'df/f'
@@ -347,7 +353,7 @@ class BinTODIntoMap(DataRoutine):
                 i_chan, 'time_ordered_data/interpolated_samples'
             )
             good_samples[i_chan] = np.setdiff1d(
-                np.arange(pdata.n_samples), interpolated_samples
+                np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
             )
 
     @typing.override
@@ -355,25 +361,32 @@ class BinTODIntoMap(DataRoutine):
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
-            pdata.detector_az,
-            pdata.detector_za,
+            pdata,
             self.params['az_trim'],
             self.params['za_trim'],
             dpix,
             beam_map_mode=beam_map_mode,
         )
-        n_maps = N_POLARIZATION if not beam_map_mode else pdata.n_tones
+        n_maps = N_POLARIZATION if not beam_map_mode else pdata.total_tones
         self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za
-        detector_az = pdata.detector_az
-        detector_za = pdata.detector_za
+        detector_az = [pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)]
+        detector_za = [pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)]
 
+        data = []
         match self.params['dataset']:
             case 'data_mK':
-                data = pdata.data_mK[:]
+                data = [pdata.get_data_mK(i_chan)[:] for i_chan in range(pdata.n_chan)]
             case 'data_freq':  # df / f
-                data = pdata.data_freq_diss[0] / pdata.detector_f()[:, np.newaxis]
+                for i_chan in range(pdata.n_chan):
+                    data.append(
+                        pdata.get_data_freq_diss(i_chan)[0] / \
+                            pdata.get_detector_f(i_chan)[:, np.newaxis]
+                    )
+                # dsets = pdata.get_from_all_channels('time_ordered_data/data_freq_diss')
+                # data = pdata.data_freq_diss[0] / pdata.detector_f()[:, np.newaxis]
+                # data = [dset[:] for dset in dsets]
 
         sum_map = pdata['map/sum_map'][:]
         hits_map = pdata['map/hits_map'][:]
@@ -383,17 +396,32 @@ class BinTODIntoMap(DataRoutine):
 
         # Compute NETD values
         _logger.info(f'{self.name}: Computing netd...')
-        wind = signal.get_window('hamming', pdata.n_samples)
         hp_filter_freq = self.params['hp_filter_freq']
         lp_filter_freq = self.params['lp_filter_freq']
-        for i_tone in np.where(chanmask == 1)[0]:
-            this_freq, this_psd = signal.periodogram(
-                data[i_tone, :], pdata.fs, window=wind
-            )
-            valid_freq = np.where(
-                (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
-            )
-            netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
+        for i_chan in range(pdata.n_chan):
+            wind = signal.get_window('hamming', pdata.get_n_samples(i_chan))
+            this_data = data[i_chan]
+            fs = pdata.get_fs(i_chan)
+            for i_tone_relative in range(pdata.get_n_tones(i_chan)):
+                this_freq, this_psd = signal.periodogram(
+                    this_data[i_tone_relative, :], fs, window=wind
+                )
+                valid_freq = np.where(
+                    (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
+                )
+                i_tone_absolute = pdata.get_absolute_tone_index(i_chan, i_tone_relative)
+                netd[i_tone_absolute] = np.sqrt(np.median(this_psd[valid_freq]))
+
+        # for i_tone in np.where(chanmask == 1)[0]:
+        #     i_chan = pdata.get_channel_from_tone_index(i_tone)
+        #     wind = signal.get_window('hamming', pdata.n_samples)
+        #     this_freq, this_psd = signal.periodogram(
+        #         data[i_chan][i_tone, :], pdata.get_fs(i_chan), window=wind
+        #     )
+        #     valid_freq = np.where(
+        #         (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
+        #     )
+        #     netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
         _logger.info(f'{self.name}: Done computing netd')
 
         # Get rid of tones with bad weights
@@ -427,23 +455,25 @@ class BinTODIntoMap(DataRoutine):
 
         # Create map
         _logger.info(f'{self.name}: Creating map...')
-        for n_loop, i_tone in enumerate(tones_to_map):
+        for n_loop, i_tone_absolute in enumerate(tones_to_map):
             if n_loop == np.size(tones_to_map) // 2:
                 _logger.info(f'{self.name}: Halfway done creating map...')
             if beam_map_mode:
-                map_idx = i_tone
+                map_idx = i_tone_absolute
                 weight = 1.0
             else:
                 map_idx = (
-                    pdata.detector_pol[i_tone] - 1
+                    pdata.detector_pol[i_tone_absolute] - 1
                 )  # Polarization 1 -> Index 0, 2 -> 1, etc.
-                weight = 1.0 / netd[i_tone] ** 2.0
+                weight = 1.0 / netd[i_tone_absolute] ** 2.0
 
-            this_detector_az = detector_az[i_tone]
-            this_detector_za = detector_za[i_tone]
+            i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
+            i_chan = pdata.get_channel_index_from_tone_index(i_tone_absolute)
+            this_detector_az = detector_az[i_chan][i_tone_relative]
+            this_detector_za = detector_za[i_chan][i_tone_relative]
 
             # Get the good samples if they haven't been specified
-            this_clean_data = np.squeeze(data[i_tone])
+            this_clean_data = np.squeeze(data[i_chan][i_tone_absolute])
 
             # Get this detector's positions, need to account for rotation in EL based on
             # beammap taken at EL=89
@@ -453,7 +483,6 @@ class BinTODIntoMap(DataRoutine):
             y_ind = y_ind.astype('int64')
 
             # eliminate samples outside the map
-            i_chan = pdata.get_channel_index_from_tone_index(i_tone)
             good_samples = pdata['map/good_samples'][i_chan][:]
             valid_index = np.ndarray.flatten(
                 np.argwhere(
@@ -615,7 +644,7 @@ class PlotMap(DataRoutine):
             (bool): Whether new plotting datasets were created (True) or existing
                 datasets were used (False).
         """
-        if pdata.has('map/plotting', exact_match=True):
+        if pdata.has('/map/plotting', exact_match=True):
             if not self.params['overwrite']:
                 # Specified not to overwrite existing plotting datasets, so just
                 # plot the data without recomputing the maps.
@@ -728,7 +757,7 @@ class PlotMap(DataRoutine):
             np.sum(1.0 / netd_2[valid_netd_2] ** 2) / np.size(valid_netd_2)
         )
 
-        t0 = time.asctime(time.localtime(pdata.timestamp[0] - 7500))
+        t0 = time.asctime(time.localtime(pdata.get_timestamp(0)[0] - 7500))
         vis = pdata.optical_visibility[()]
 
         # TODO: Make figure size change based on the size of the map
