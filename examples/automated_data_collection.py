@@ -5,7 +5,9 @@ from rfsocinterface.core.settings import Settings
 
 from rfsocinterface.core.utils import get_filename, PERMISSIONS_USR_RW
 
+from kidpy3.data_handler import RawDataFile
 from kidpy3 import capture
+from kidpy3.udp2 import get_last_lo
 
 import json
 import time
@@ -18,9 +20,9 @@ settings = Settings()
 settings.load_settings()
 rfsoc = RFSOCWrapper(settings['rfsocs'][0])
 chan = 1
-tile_name='Be260114BL_1000_tones_3'
+tile_name='Be260114BL_100_tones_260721'
 tone_file = get_filename(file_type='tonelist', tile_name = tile_name, mkdir=True).with_suffix('.h5')
-rfsoc.load_params_file(1,'/data/params/params_tile_' + tile_name  + ".h5")
+rfsoc.load_params_file(1,'/data/params/params_tile_' + tile_name  + ".h5", upload_tones = False, set_freq = False, set_atten = False)
 
 def start_streaming(rfsoc, duration:int = 100, save_location:Path = None, chan: int = 0):
     # TODO: Do this in another thread
@@ -33,6 +35,7 @@ def start_streaming(rfsoc, duration:int = 100, save_location:Path = None, chan: 
     setnum = int(save_location.stem[-4:])
     #_logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
     capture(rfchans, time.sleep, duration)
+
 def run_Lo_sweep(rfsoc, step = 5e3, span = 200e3, tone_shift = 0, filename_suffix = None):
     print(step,span)
     sweep_file = (get_filename(file_type='lo',tile_name = tile_name, mkdir=True, filename_suffix=filename_suffix)).with_suffix('.h5')
@@ -52,8 +55,8 @@ def run_Lo_sweep(rfsoc, step = 5e3, span = 200e3, tone_shift = 0, filename_suffi
    
 def run_noise_data_collection(rfsoc,tile_name, set_tone_list = False):
     save_location = get_filename(file_type='tod',tile_name=tile_name, mkdir=True).with_suffix('.h5')
-    start_streaming(rfsoc,duration=102, save_location=save_location, chan=1)
+    start_streaming(rfsoc,duration=1, save_location=save_location, chan=1)
     
-#if __name__ == '__main__':
-#    run_Lo_sweep(rfsoc, step = 5e3, span = 200e3, filename_suffix = '230mK')
+if __name__ == '__main__':
+    run_noise_data_collection(rfsoc, tile_name=tile_name)
 

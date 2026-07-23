@@ -92,7 +92,7 @@ if __name__ == '__main__':
 
 
     date = '20260721'
-    setnums = np.array([1003])
+    setnums = np.array([1010])
 
     psd_fd_obj_list = []
 
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     figs = plot_resonator_report(psd_fd_avg, psd_freq, pdata.detector_f(),pdata.onres_ind, pdata.offres_ind,  pdata.adc_units_to_hz)
     
     
-    pdf_path = Path(date + 'output.pdf')
+    pdf_path = Path(date + setnums[-1] + 'output.pdf')
 
     with PdfPages(pdf_path) as pdf:
         for fig in figs:
