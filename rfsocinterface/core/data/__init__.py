@@ -19,13 +19,13 @@ from rfsocinterface.core.data.routines import (
     ProcessingStage,
     RemoveElectronicsNoise,
     compute_templates,
-    decode_tone_indices,
     register_routine,
 )
 from rfsocinterface.core.data.storage import (
     ConsolidatedData,
     DataStorage,
     ProcessedData,
+    decode_tone_indices,
 )
 from rfsocinterface.core.data.utils import (
     AZ_TRIM,

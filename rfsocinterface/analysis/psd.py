@@ -17,7 +17,7 @@ from rfsocinterface.core.data import (
     ProcessedData,
     register_routine,
 )
-from rfsocinterface.core.data.routines import decode_tone_indices
+from rfsocinterface.core.data.storage import decode_tone_indices
 from rfsocinterface.core.utils import (
     MetaEnum,
     ensure_path,
@@ -90,19 +90,13 @@ class ComputeNoisePSD(DataRoutine):
         dsets = []
         bases = self.params['bases']
         for basis in bases:
-            match basis:
-                case PsdBasis.IQ:
-                    dsets.append('/vdsets/data_IQ')
-                case PsdBasis.GAIN_PHASE:
-                    dsets.append('/vdsets/data_gain_phase')
-                    dsets.append('/vdsets/carrier_amplitudes')
-                case PsdBasis.FREQ_DISS:
-                    dsets.append('/vdsets/data_freq_diss')
-                    dsets.append('/vdsets/tones')
-                case _:
-                    raise ValueError(
-                        f'Cannot compute noise PSD for unknown basis "{basis}"'
-                    )
+            if basis in PsdBasis:
+                pattern = rf'channel_\d.*data_{basis}'
+                dsets.extend(pdata.search_regex_names(pattern))
+            else:
+                msg = f'Cannot compute noise PSD for unknown basis "{basis}"'
+                _logger.error(msg)
+                raise ValueError(msg)
         return dsets
 
     @typing.override
@@ -113,7 +107,6 @@ class ComputeNoisePSD(DataRoutine):
 
         psd_group = pdata['psd']
 
-        time = pdata.timestamp[:] - pdata.timestamp[0]
         bases = self.params['bases']
         cut_time = self.params['cut_time']
         nominal_block_length = self.params['nominal_block_length']
@@ -121,44 +114,64 @@ class ComputeNoisePSD(DataRoutine):
 
         outputs = []
 
+        shortest_channel = np.argmin(pdata.n_samples).flatten().item()
+
+        # Determine the number of blocks for computing the PSD
+        n_samples_to_cut = 0
+        if cut_time > 0:
+            n_samples_to_cut = np.round(
+                cut_time * pdata.get_fs(shortest_channel)
+            ).astype(int)
+        n_samples = pdata.n_samples[shortest_channel] - (2 * n_samples_to_cut)
+        n_samples_per_block = int(
+            2 ** np.ceil(np.log2(nominal_block_length * pdata.get_fs(shortest_channel)))
+        )
+        n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
+        if n_blocks == 0:
+            n_blocks = 1
+            n_samples_per_block = n_samples
+        n_freq = n_samples_per_block // 2 + 1
+
         for basis in bases:
-            match basis:
-                case PsdBasis.IQ:
-                    data = pdata.data_IQ[:]
-                case PsdBasis.GAIN_PHASE:
-                    data = pdata.data_gain_phase[:] / pdata.carrier_amplitude_norm()
-                case PsdBasis.FREQ_DISS:
-                    f = pdata.detector_f()
-                    f[pdata.offres_ind] = 1
-                    data = pdata.data_freq_diss[:] / f[np.newaxis, :, np.newaxis]
-                case _:
-                    raise ValueError(
-                        f'{self.name}: Cannot compute noise PSD for '
-                        f'unknown basis "{basis}"'
-                    )
-            if cut_time > 0:
-                n_samples_to_cut = np.round(cut_time * pdata.fs).astype(int)
-                data = data[..., n_samples_to_cut:-n_samples_to_cut]
-                time = time[n_samples_to_cut:-n_samples_to_cut]
+            freq = np.zeros(n_freq)
+            psd = np.zeros((2, selection_indices.size, n_freq))
+            i_tone = 0
+            for i_chan in range(pdata.n_chan):
+                this_selection_indices = decode_tone_indices(
+                    pdata, self.params['selection_indices'], i_chan=i_chan
+                )
+                match basis:
+                    case PsdBasis.IQ:
+                        data = pdata.get_data_IQ(i_chan)[:]
+                    case PsdBasis.GAIN_PHASE:
+                        data = pdata.get_data_gain_phase(i_chan)[
+                            :
+                        ] / pdata.get_carrier_amplitude_norm(i_chan)
+                    case PsdBasis.FREQ_DISS:
+                        f = pdata.get_detector_f(i_chan)
+                        f[pdata.get_offres_ind(i_chan)] = 1
+                        data = (
+                            pdata.get_data_freq_diss(i_chan)
+                            / f[np.newaxis, :, np.newaxis]
+                        )
+                    case _:
+                        raise ValueError(
+                            f'{self.name}: Cannot compute noise PSD for '
+                            f'unknown basis "{basis}"'
+                        )
 
-            # Determine the number of blocks for computing the PSD
-            n_samples = np.size(time)
-            n_samples_per_block = int(
-                2 ** np.ceil(np.log2(nominal_block_length * pdata.fs))
-            )
-            n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(
-                int
-            )
-            if n_blocks == 0:
-                n_blocks = 1
-                n_samples_per_block = n_samples
-
-            # Compute the PSD
-            freq, psd = signal.welch(
-                data[:, selection_indices],
-                pdata.fs,
-                nperseg=n_samples_per_block,
-            )
+                # Compute the PSD
+                data = data[
+                    ..., this_selection_indices, n_samples_to_cut:-n_samples_to_cut
+                ]
+                this_freq, this_psd = signal.welch(
+                    data,
+                    pdata.get_fs(i_chan),
+                    nperseg=n_samples_per_block,
+                )
+                freq[:] = this_freq
+                psd[i_tone : i_tone + this_selection_indices.size] = this_psd
+                i_tone += this_selection_indices.size
 
             if basis in psd_group:
                 del psd_group[basis]

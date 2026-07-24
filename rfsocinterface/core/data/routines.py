@@ -16,7 +16,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy import signal
 
-from rfsocinterface.core.data.storage import ProcessedData
+from rfsocinterface.core.data.storage import ProcessedData, decode_tone_indices
 from rfsocinterface.core.utils import PathJSONEncoder
 
 mpl.use('QtAgg')
@@ -413,61 +413,6 @@ def compute_templates(
 
     # subtract the mean again to be sure
     return np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
-
-
-def decode_tone_indices(
-    pdata: ProcessedData,
-    selection_indices: npt.NDArray | str,
-    i_chan: int | None = None,
-) -> npt.NDArray:
-    """Helper method for decoding the selected indices for routines.
-
-    Arguments:
-        pdata (ProcessedData): ProcessedData object containing the data.
-        selection_indices (npt.NDArray | str, optional): Either a string specifying the
-            type of tones to select or an array of indices to select. Possible string
-            values are:
-                - 'onres' or 'on_res' or 'on_resonance': Select on-resonance tones
-                - 'offres' or 'off_res' or 'off_resonance': Select off-resonance tones
-                - 'all': Select all tones
-        i_chan (int, optional): The channel index to select the tones for. If None,
-            will use the tone indices for all channels.
-
-    Returns:
-        (npt.NDArray): The indices of the tones to select.
-    """
-    if isinstance(selection_indices, str):
-        match selection_indices.lower():
-            case 'onres' | 'on_res' | 'on_resonance':
-                return (
-                    pdata.get_onres_ind(i_chan)
-                    if i_chan is not None
-                    else pdata.onres_ind
-                )
-            case 'offres' | 'off_res' | 'off_resonance':
-                return (
-                    pdata.get_offres_ind(i_chan)
-                    if i_chan is not None
-                    else pdata.offres_ind
-                )
-            case 'all':
-                return (
-                    np.arange(pdata.get_n_tones(i_chan), dtype=int)
-                    if i_chan is not None
-                    else np.arange(pdata.n_tones, dtype=int)
-                )
-            case _:
-                _logger.warning(
-                    f'Unkown index selection string: {selection_indices}; defaulting to'
-                    ' all tones'
-                )
-                return (
-                    np.arange(pdata.get_n_tones(i_chan), dtype=int)
-                    if i_chan is not None
-                    else np.arange(pdata.n_tones, dtype=int)
-                )
-    else:
-        return selection_indices
 
 
 @register_routine

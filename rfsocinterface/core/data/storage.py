@@ -985,6 +985,11 @@ class ProcessedData(DataStorage):
         tone_cutoffs = np.cumsum((0, *self.n_tones))
         return int(tone_cutoffs[i_chan] + i_tone_relative)
 
+    def get_absolute_tone_indices(self, i_chan: int) -> npt.NDArray[int]:
+        """Return the absolute tone indices for all tones within the channel."""
+        tone_cutoffs = np.cumsum((0, *self.n_tones))
+        return np.arange(tone_cutoffs[i_chan], tone_cutoffs[i_chan + 1])
+
     def get_channel_from_tone_index(self, i_tone_absolute: int) -> int:
         """Return the index of channel that contains the tone."""
         tone_cutoffs = np.cumsum(self.n_tones) - 1
@@ -1326,13 +1331,57 @@ class ProcessedData(DataStorage):
         self._set_table_field('calibration_info', 'df_per_mK', new_df_per_mK)
 
 
-if __name__ == '__main__':
-    # Telescope Testing
-    date = '20260617'
-    setnum = 1005
-    # Lab Testing
-    # date = '20260212'
-    # setnum = 1003
+def decode_tone_indices(
+    pdata: ProcessedData,
+    selection_indices: npt.NDArray | str,
+    i_chan: int | None = None,
+) -> npt.NDArray:
+    """Helper method for decoding the selected indices for routines.
 
-    cd = ConsolidatedData.from_tod(date, setnum, downsampling_factor=16)
+    Arguments:
+        pdata (ProcessedData): ProcessedData object containing the data.
+        selection_indices (npt.NDArray | str, optional): Either a string specifying the
+            type of tones to select or an array of indices to select. Possible string
+            values are:
+                - 'onres' or 'on_res' or 'on_resonance': Select on-resonance tones
+                - 'offres' or 'off_res' or 'off_resonance': Select off-resonance tones
+                - 'all': Select all tones
+        i_chan (int, optional): The channel index to select the tones for. If None,
+            will use the tone indices for all channels.
+
+    Returns:
+        (npt.NDArray): The indices of the tones to select.
+    """
+    if isinstance(selection_indices, str):
+        match selection_indices.lower():
+            case 'onres' | 'on_res' | 'on_resonance':
+                return (
+                    pdata.get_onres_ind(i_chan)
+                    if i_chan is not None
+                    else pdata.onres_ind
+                )
+            case 'offres' | 'off_res' | 'off_resonance':
+                return (
+                    pdata.get_offres_ind(i_chan)
+                    if i_chan is not None
+                    else pdata.offres_ind
+                )
+            case 'all':
+                return (
+                    np.arange(pdata.get_n_tones(i_chan), dtype=int)
+                    if i_chan is not None
+                    else np.arange(pdata.total_tones, dtype=int)
+                )
+            case _:
+                _logger.warning(
+                    f'Unkown index selection string: {selection_indices}; defaulting to'
+                    ' all tones'
+                )
+                return (
+                    np.arange(pdata.get_n_tones(i_chan), dtype=int)
+                    if i_chan is not None
+                    else np.arange(pdata.n_tones, dtype=int)
+                )
+    else:
+        return selection_indices
     # pd = cd.create_processed_data()

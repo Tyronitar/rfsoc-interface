@@ -16,8 +16,9 @@ if __name__ == '__main__':
 
     lp_filter_freq = 15
     hp_filter_freq = 0.03
-    noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
-    ds_factor = 16
+    noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
+    noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
+    ds_factor = 1
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
@@ -29,17 +30,17 @@ if __name__ == '__main__':
 
     noise_removal_offres = RemoveElectronicsNoise(
         template_selection_indices='offres',
-        lp_filt_freq=noise_removal_lp_filt_freq,
+        lp_filt_freq=noise_removal_lp_filt_freq_offres,
     )
     noise_removal_onres = RemoveElectronicsNoise(
         template_selection_indices='onres',
-        lp_filt_freq=noise_removal_lp_filt_freq,
+        lp_filt_freq=noise_removal_lp_filt_freq_onres,
     )
     noise_removal = RemoveElectronicsNoise()
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq, datasets=datasets)
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
     clean_tod = CleanTOD(dataset=dataset)
-    compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, cut_time=2, selection_indices='onres')
+    compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, cut_time=2, selection_indices='all')
     psd_plotter = PlotPSD(
         PsdBasis.GAIN_PHASE,
         PsdBasis.FREQ_DISS,
@@ -70,16 +71,16 @@ if __name__ == '__main__':
     plot_beammap = PlotBeamMap()
 
     pipeline = Pipeline([
-        # noise_removal_offres,
-        # noise_removal_onres,
+        noise_removal_offres,
+        noise_removal_onres,
         # noise_removal,
-        # compute_psd,
-        # psd_plotter,
-        hp_filter,
-        lp_filter,
-        clean_tod,
-        bin_tod_to_map,
-        plotter,
+        compute_psd,
+        psd_plotter,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
+        # bin_tod_to_map,
+        # plotter,
         # make_video,
         # find_fwhm,
         # analyze_beammap,
@@ -90,8 +91,8 @@ if __name__ == '__main__':
     # setnum = 1023
     # date = '20260309'
     # setnum = 1010
-    date = '20260320'
-    setnum = 1010
+    date = '20260319'
+    setnum = 1023
     # date = '20260325'
     # setnum = 1002
     # date = '20260223'
