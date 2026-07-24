@@ -983,6 +983,11 @@ class ProcessedData(DataStorage):
     def get_absolute_tone_index(self, i_chan: int, i_tone_relative: int) -> int:
         """Return the absolute tone index for the tone within the channel."""
         tone_cutoffs = np.cumsum((0, *self.n_tones))
+        if (
+            i_tone_relative < 0
+            or (tone_cutoffs[i_chan + 1] - tone_cutoffs[i_chan]) <= i_tone_relative
+        ):
+            return -1
         return int(tone_cutoffs[i_chan] + i_tone_relative)
 
     def get_absolute_tone_indices(self, i_chan: int) -> npt.NDArray[int]:
@@ -990,16 +995,34 @@ class ProcessedData(DataStorage):
         tone_cutoffs = np.cumsum((0, *self.n_tones))
         return np.arange(tone_cutoffs[i_chan], tone_cutoffs[i_chan + 1])
 
+    def split_to_relative_tone_indices(
+        self, indices: npt.NDArray[int]
+    ) -> list[list[int]]:
+        """Split a list of absolute tone indices into per-channel relative indices."""
+        bins = [[] for _ in range(self.n_chan)]
+        tone_cutoffs = np.cumsum((0, *self.n_tones))
+        bin_indices = np.digitize(indices, tone_cutoffs) - 1
+        for i, i_bin in enumerate(bin_indices):
+            i_tone_abs = indices[i]
+            i_tone_relative = i_tone_abs - tone_cutoffs[i_bin]
+            bins[i_bin].append(i_tone_relative)
+        return bins
+
     def get_channel_from_tone_index(self, i_tone_absolute: int) -> int:
         """Return the index of channel that contains the tone."""
-        tone_cutoffs = np.cumsum(self.n_tones) - 1
+        tone_cutoffs = np.cumsum((0, *self.n_tones)) - 1
+        if i_tone_absolute < 0 or self.total_tones <= i_tone_absolute:
+            return -1
         return int(np.where(tone_cutoffs <= i_tone_absolute)[0][-1])
 
-    def get_relative_tone_index(self, i_tone_absolute: int) -> int:
+    def get_relative_tone_index(self, i_tone_absolute: int) -> tuple[int, int]:
         """Return the index of the tone within its channel."""
         tone_cutoffs = np.cumsum((0, *self.n_tones))
+        if i_tone_absolute < 0 or i_tone_absolute >= tone_cutoffs[-1]:
+            return -1, -1
         diff = np.astype((i_tone_absolute - tone_cutoffs), int)
-        return np.min(diff[diff >= 0])
+        i_tone_relative = np.min(diff[diff >= 0]).item()
+        return np.where(diff == i_tone_relative)[0].item(), i_tone_relative
 
     def get_n_tones(self, i_chan: int) -> int:
         """Return n_tones for the specified channel."""
