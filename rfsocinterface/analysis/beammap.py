@@ -71,7 +71,7 @@ class AnalyzeBeamMap(DataRoutine):
     """
 
     name = 'AnalyzeBeamMap'
-    version = '1.0.0'
+    version = '1.0.1'
 
     requires: ClassVar[set[str]] = {
         '/map/map_val',
