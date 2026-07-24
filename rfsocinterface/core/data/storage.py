@@ -1439,7 +1439,7 @@ class ProcessedData(DataStorage):
 
     def get_lo_sweep(self, i_chan: int) -> LoSweepData:
         """Return the LO sweep for the specified channel."""
-        group =  self.get_channel_group(i_chan)
+        group = self.get_channel_group(i_chan)
         return LoSweepData(
             group['tones']['baseband_freq'],
             group.attrs['f_center'],
