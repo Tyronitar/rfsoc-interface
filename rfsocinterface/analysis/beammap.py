@@ -138,9 +138,15 @@ class AnalyzeBeamMap(DataRoutine):
             )
             del pdata['beammap']
         beammap_group = pdata.create_group('beammap')
-        beammap_group.create_dataset('az_center', (pdata.total_tones,), dtype=np.float64)
-        beammap_group.create_dataset('za_center', (pdata.total_tones,), dtype=np.float64)
-        beammap_group.create_dataset('amplitude', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset(
+            'az_center', (pdata.total_tones,), dtype=np.float64
+        )
+        beammap_group.create_dataset(
+            'za_center', (pdata.total_tones,), dtype=np.float64
+        )
+        beammap_group.create_dataset(
+            'amplitude', (pdata.total_tones,), dtype=np.float64
+        )
         beammap_group.create_dataset('snr', (pdata.total_tones,), dtype=np.float64)
         beammap_group.create_dataset('chisq', (pdata.total_tones,), dtype=np.float64)
         beammap_group.create_dataset('fwhm_az', (pdata.total_tones,), dtype=np.float64)
