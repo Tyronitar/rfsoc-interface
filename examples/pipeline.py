@@ -10,6 +10,8 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from pathlib import Path
 
+from rfsocinterface.core.data.routines import RemoveCosmicRays
+
 
 if __name__ == '__main__':
     #logging.config.fileConfig('rfsocinterface/logging.conf')
@@ -31,7 +33,7 @@ if __name__ == '__main__':
 
     noise_removal_offres = RemoveElectronicsNoise(
         template_selection_indices='offres',
-        lp_filt_freq=244,
+        lp_filt_freq = 10,
         fspace = False
     )
     noise_removal_onres = RemoveElectronicsNoise(
@@ -40,6 +42,7 @@ if __name__ == '__main__':
         fspace = False
         
     )
+    cosmic_ray_removal = RemoveCosmicRays()
     noise_removal = RemoveElectronicsNoise()
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq, datasets=datasets)
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
@@ -74,6 +77,7 @@ if __name__ == '__main__':
     plot_beammap = PlotBeamMap()
 
     pipeline = Pipeline([
+        #cosmic_ray_removal,
         noise_removal_offres,
         noise_removal_onres,
         #noise_removal,
@@ -91,8 +95,8 @@ if __name__ == '__main__':
     ])
 
 
-    date = '20260721'
-    setnums = np.array([1010])
+    date = '20260724'
+    setnums = np.array([1004])
 
     psd_fd_obj_list = []
 
@@ -117,7 +121,7 @@ if __name__ == '__main__':
     figs = plot_resonator_report(psd_fd_avg, psd_freq, pdata.detector_f(),pdata.onres_ind, pdata.offres_ind,  pdata.adc_units_to_hz)
     
     
-    pdf_path = Path(date + setnums[-1] + 'output.pdf')
+    pdf_path = Path(date+ 'output.pdf')
 
     with PdfPages(pdf_path) as pdf:
         for fig in figs:

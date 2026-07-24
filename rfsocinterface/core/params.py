@@ -534,7 +534,6 @@ class RFSoCParameters:
             new_tile_name,
             chanmask=new_chanmask,
             baseband_freqs=new_baseband_freqs,
-            tone_powers=tone_powers_frac,
             detector_delta_x=new_detdx,
             detector_delta_y=new_detdy,
             detector_beam_ampl=new_det_beam_ampl,
@@ -542,7 +541,7 @@ class RFSoCParameters:
             dfoverf_per_mK=new_dfoverf_per_mK,
             params_dir=params_dir,
         )
-        
+
     def add_off_resonance_tones_greedy(
         self,
         new_tile_name: str,

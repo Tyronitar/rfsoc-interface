@@ -559,7 +559,7 @@ class RemoveElectronicsNoise(DataRoutine):
 
             for i_mode in range(n_modes):
                 clean_gain_phase -= np.mean(clean_gain_phase, axis=-1, keepdims=True)
-                numerator = np.einsum('ijk,ik->ij', clean_gain_phase, templates[:, i_mode])  # 2 x N_tones
+                numerator = np.einsum('ijk,ik->ij', clean_gain_phase/np.std(clean_gain_phase, axis=-1, keepdims=True), templates[:, i_mode])  # 2 x N_tones
                 corr = numerator / denominator[:, i_mode:i_mode+1]  # 2 x N_tones
                 clean_gain_phase[:] = clean_gain_phase - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
             

@@ -387,7 +387,7 @@ class TempSweepDataAnalyzer:
         fit_results_h5: str = None,
         plot: bool = True,
         output_plot_filename: str | None = None,
-        alpha_threshold: float = -0.3
+        alpha_threshold: float = -0.1
 
     ):
         if output_plot_filename is None:
@@ -801,8 +801,8 @@ class TempSweepDataAnalyzer:
 
         fig._resonator_textboxes = text_boxes
         fig._resonator_f0_values = f0_values
-        #plt.show()
-        plt.close()
+        plt.show()
+        #plt.close()
         return fig, f0_values
 
     def _draw_resonator_data(self, ax_mag, ax_phase, i_res, colors, f0_values, results):

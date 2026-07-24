@@ -70,7 +70,7 @@ NEW_LO_SWEEP_FORMAT_DATE = '20260612'  # For backwards compatibility
 CompositeSweepDataType = TypeVar('CompositeSweepDataType', bound='CompositeSweepData')
 
 
-def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
+def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, dff_bound:float = 1e-5):
 
     #set up some preliminary values that we'll need
     n_freq = np.size(freq)
@@ -79,49 +79,46 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
 
     #smooth the data
     x = s21
-   # s21 = savgol_filter(s21, 7, 3, mode='mirror')
-
+    s21 = savgol_filter(s21, 7, 3, mode='mirror')
+    s21_deriv = savgol_filter(s21, 7, 3, deriv=2)
     #search for local minima
-    if s21[center_ind] != min(s21):
-       keepgoing = True
-       while keepgoing:
-            lo_ind = int(max(center_ind-1,0))
-            hi_ind = int(min(center_ind+2,n_freq))
-            # min_ind = np.argwhere(s21[lo_ind:hi_ind] == min(s21[lo_ind:hi_ind])).flatten()[0]
-            min_ind = np.argmin(s21[lo_ind:hi_ind])
-            if min_ind == (center_ind - lo_ind):
-                keepgoing = False
-            else:
-                center_ind = lo_ind + min_ind
+    s21_peaks = find_peaks(s21_deriv, height = 0.001)[0]
+    if center_ind!=np.argmin(s21) and len(s21_peaks)>0:
 
-    peaks = find_peaks(-s21, height=0.01)
-    if len(peaks[0]) != 0:
-        prominances = peaks[1]['heights']
-        highest_prom_index = np.argmax(prominances)
-        #print(freq[peaks[0][highest_prom_index]])
-        f0 = freq[peaks[0][highest_prom_index]]
-    else:
-        f0 = freq[np.argmin(s21)]
-    
+        sorted_peaks = np.argsort(abs(freq[s21_peaks]-freq[center_ind]))[0]
+        center_ind = s21_peaks[sorted_peaks]
+    f0 = freq[center_ind]
+
     return f0, 0, 0
+
    
 
 
-def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
+def fit_resonance(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, scraps_fit = False):
     fit_f0 = simple_derivative_fits(df, freq, tone_list, s21)
     fit_qi = 0.0
     fit_qc = 0.0
     return fit_f0, fit_qc, fit_qi
 
 
-def get_scraps_fit(
-    I: npt.NDArray,
-    Q: npt.NDArray,
-    freq: npt.NDArray,
-    power: npt.NDArray = None,
-    temp: npt.NDArray = None,
-    initial_guesses: dict = None,
-):
+def fit_resonance_scraps(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray,I, Q, allowed_variance: float = 1e-4):
+    N = len(freq)
+    df = freq[1]-freq[0]
+
+    f0_guess, _, _ = fit_resonance(df, freq, freq[N//2], s21)
+    vary = True
+    allowed_variance = allowed_variance*f0_guess
+    initial_guesses = {
+        'f0': {'value': f0_guess, 'vary': vary, 'min': f0_guess - allowed_variance, 'max': f0_guess + allowed_variance},
+    }
+    resObj= get_scraps_fit(I, Q, freq, s21, initial_guesses=initial_guesses)
+    f0 = resObj.params['f0'].value
+    qi = resObj.params['qi'].value
+    qc = resObj.params['qc'].value
+    return f0, qi, qc
+    
+
+def get_scraps_fit(I: npt.NDArray,Q: npt.NDArray,freq: npt.NDArray,power: npt.NDArray = None,temp: npt.NDArray = None,initial_guesses: dict = None,):
     
     data_dict = {
         'I': I,
@@ -131,11 +128,11 @@ def get_scraps_fit(
         'pwr': power,
         'temp': temp
     }
+
+
     N = len(freq)
+
     df = freq[1]-freq[0]
-    resObj = scr.makeResFromData(data_dict)
-
-
 
     resObj = scr.makeResFromData(data_dict)                                
     resObj.load_params(scr.cmplxIQ_params, fit_quadratic_phase = True, hardware = 'VNA')
@@ -658,12 +655,12 @@ class LoSweepData:
                 self.freq[:, :],
                 self.detector_f[:],
                 self.s21[:, :],
+
             )
 
             for i, (fit_f0, fit_qi, fit_qc) in enumerate(results):
                 if self._fit_canceled:
                     return
-
 
                 self.fit_f0[i] = fit_f0
                 self.fit_qi[i] = fit_qi
@@ -721,8 +718,18 @@ class LoSweepData:
         
         self._plotted = True
         return fig
-
-    def freq_direction(self, fit_order: int=3, deriv_length: int=5) -> tuple[npt.NDArray, npt.NDArray]:
+    
+    def _fit_circle(self,x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
+        """
+        Algebraic (Kasa) least-squares circle fit to points (x, y).
+        Returns (xc, yc, r): center and radius of the best-fit circle.
+        """
+        A = np.column_stack([2 * x, 2 * y, np.ones_like(x)])
+        b = x**2 + y**2
+        (xc, yc, c), *_ = np.linalg.lstsq(A, b, rcond=None)
+        r = np.sqrt(c + xc**2 + yc**2)
+        return xc, yc, r
+    def freq_direction(self, fit_order: int=3, deriv_length: int=10, plot = False)-> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.n_tones))
         mid_ind = self.nfreq // 2
         edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
@@ -730,13 +737,48 @@ class LoSweepData:
         freq_val = self.freq[:, ind_val] - self.detector_f[:, np.newaxis]
 
         for i_tone in range(0, self.n_tones):
-            fit_I = Polynomial.fit(freq_val[i_tone], self.data_I[i_tone, edge_indices[0]:edge_indices[1]], fit_order)
-            fit_I_deriv = fit_I.deriv()
-            dIQ_df[0, i_tone] = fit_I_deriv(freq_val[i_tone, deriv_length])
-            fit_Q = Polynomial.fit(freq_val[i_tone], self.data_Q[i_tone, edge_indices[0]:edge_indices[1]], fit_order)
-            fit_Q_deriv = fit_Q.deriv()
-            dIQ_df[1, i_tone] = fit_Q_deriv(freq_val[i_tone, deriv_length])
+            I_window = self.data_I[i_tone, edge_indices[0]:edge_indices[1]]
+            Q_window = self.data_Q[i_tone, edge_indices[0]:edge_indices[1]]
 
+            xc, yc, r_fit = self._fit_circle(I_window, Q_window)
+
+            fit_I  = Polynomial.fit(freq_val[i_tone], I_window, fit_order)
+            fit_Q  = Polynomial.fit(freq_val[i_tone], Q_window, fit_order)
+            dI_df  = fit_I.deriv()(freq_val[i_tone, deriv_length])
+            dQ_df  = fit_Q.deriv()(freq_val[i_tone, deriv_length])
+            speed  = np.hypot(dI_df, dQ_df)
+            I0, Q0       = self.data_I[i_tone, mid_ind], self.data_Q[i_tone, mid_ind]
+            rad_I, rad_Q = I0 - xc, Q0 - yc
+            tangent      = np.array([-rad_Q, rad_I])
+            norm         = np.linalg.norm(tangent)
+            if norm == 0:
+                # Degenerate circle fit (shouldn't normally happen); fall back to
+                # the raw polynomial-derivative direction for this tone.
+                tangent = np.array([dI_df, dQ_df])
+                norm    = np.linalg.norm(tangent)
+            tangent /= norm
+
+            if tangent[0] * dI_df + tangent[1] * dQ_df < 0:
+                tangent = -tangent
+
+            dIQ_df[0, i_tone] = speed * tangent[0]
+            dIQ_df[1, i_tone] = speed * tangent[1]
+
+            if i_tone in self.onres_ind and plot:
+                plt.scatter(self.data_I[i_tone, :], self.data_Q[i_tone, :], color='red', label='data')
+
+                theta = np.linspace(0, 2 * np.pi, 200)
+                plt.plot(xc + r_fit * np.cos(theta), yc + r_fit * np.sin(theta),
+                        'b--', lw=1, alpha=0.6, label='circle fit')
+
+                length = 0.1 * (self.data_I[i_tone, mid_ind] - self.data_I[i_tone, 0])
+                plt.quiver(I0, Q0, length * tangent[0], length * tangent[1],
+                            scale=0.01, width=0.0005, color='red')
+                plt.legend(fontsize=8)
+                plt.gca().set_aspect('equal')
+                plt.show()
+
+            
         # Q in y direction, I in x direction
         # NOTE: This is the angle (counter-clockwise) from the I-axis to the freq-axis
         # Negative because we're rotating the coordinate axes, not the point
@@ -885,7 +927,6 @@ class LoSweepData:
                 pdf.savefig(fig)
                 # plt.show()
                 plt.close(fig)
-                # pdb.set_trace()
         self._plotted = True
 
     def generate_new_params_file(self, tile_name: str, old_params: RFSoCParameters | None=None, plot: bool=False):

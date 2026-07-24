@@ -35,6 +35,8 @@ def start_streaming(rfsoc, duration:int = 100, save_location:Path = None, chan: 
     setnum = int(save_location.stem[-4:])
     #_logger.debug(f'Streaming {duration} seconds of data for chans: {[chan.tile_name for chan in rfchans]}')
     capture(rfchans, time.sleep, duration)
+    rfsoc.append_global_data([rfsoc], [chan], rfchans)
+
 
 def run_Lo_sweep(rfsoc, step = 5e3, span = 200e3, tone_shift = 0, filename_suffix = None):
     print(step,span)
