@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     find_fwhm = CheckFocus(
         'az',
-        [241],
+        [20],
     )
 
     noise_removal_offres = RemoveElectronicsNoise(
@@ -71,18 +71,18 @@ if __name__ == '__main__':
     plot_beammap = PlotBeamMap()
 
     pipeline = Pipeline([
-        noise_removal_offres,
-        noise_removal_onres,
+        # noise_removal_offres,
+        # noise_removal_onres,
         # noise_removal,
-        compute_psd,
-        psd_plotter,
+        # compute_psd,
+        # psd_plotter,
         # hp_filter,
         # lp_filter,
         # clean_tod,
         # bin_tod_to_map,
         # plotter,
         # make_video,
-        # find_fwhm,
+        find_fwhm,
         # analyze_beammap,
         # plot_beammap,
     ])

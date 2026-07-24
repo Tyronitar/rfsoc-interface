@@ -1004,7 +1004,7 @@ class ProcessedData(DataStorage):
         bin_indices = np.digitize(indices, tone_cutoffs) - 1
         for i, i_bin in enumerate(bin_indices):
             i_tone_abs = indices[i]
-            i_tone_relative = i_tone_abs - tone_cutoffs[i_bin]
+            i_tone_relative = int(i_tone_abs - tone_cutoffs[i_bin])
             bins[i_bin].append(i_tone_relative)
         return bins
 

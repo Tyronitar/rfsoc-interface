@@ -460,8 +460,7 @@ class BinTODIntoMap(DataRoutine):
                 )  # Polarization 1 -> Index 0, 2 -> 1, etc.
                 weight = 1.0 / netd[i_tone_absolute] ** 2.0
 
-            i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
-            i_chan = pdata.get_channel_index_from_tone_index(i_tone_absolute)
+            i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
             this_detector_az = detector_az[i_chan][i_tone_relative]
             this_detector_za = detector_za[i_chan][i_tone_relative]
 
