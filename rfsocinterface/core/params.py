@@ -589,7 +589,7 @@ class RFSoCParameters:
         plt.stem(
             detector_f[onres_ind], tone_powers[onres_ind],
             linefmt='b', markerfmt='none', basefmt='none',
-            label='On-resonance Tones',
+            label=f'On-resonance Tones (n = {onres_ind.size})',
         )
         if offres_ind.size > 0:
             # Increase 0 off-res tone powers so they're visible in the plot
@@ -598,13 +598,13 @@ class RFSoCParameters:
             plt.stem(
                 detector_f[offres_ind], tone_powers[offres_ind],
                 linefmt='orange', markerfmt='none', basefmt='none',
-                label='Off-resonance Tones',
+                label=f'Off-resonance Tones (n = {offres_ind.size})',
             )
         if bad_ind.size > 0:
             plt.stem(
                 detector_f[bad_ind], tone_powers[bad_ind],
                 linefmt='red', markerfmt='none', basefmt='none',
-                label='Bad Resonances',
+                label=f'Bad Resonances (n = {bad_ind.size})',
             )
         plt.xlabel('Frequency (MHz)')
         plt.ylabel('Tone Power')

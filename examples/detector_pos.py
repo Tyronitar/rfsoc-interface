@@ -23,8 +23,8 @@ if __name__ == '__main__':
         'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
     )
     new_tile_names = (
-        'Device_aSi1_Channel2_telescope_275mK_20260714',
-        'Device_aSi2_Channel3_telescope_275mK_20260714'
+        'Device_aSi1_Channel2_telescope_275mK_20260724',
+        'Device_aSi2_Channel3_telescope_275mK_20260724'
     )
     setnums = (
         (1001, 1004),
@@ -160,6 +160,12 @@ if __name__ == '__main__':
             np.argwhere(detector_pols[0] == 0).flatten(), old_tile_2_params.offres_ind)
         new_tile_2_params.chanmask[bad_res_tile_2] = -1
         new_tile_2_params.focal_plane_center_za = focal_center[1]
+        fig1 = new_tile_2_params.plot_tones(show=False)
+        new_tile_2_params.flag_collided_resonances()
+        fig2 = new_tile_2_params.plot_tones(show=False)
+        fig1.savefig('tile_2_no_collisions.pdf')
+        fig2.savefig('tile_2_with_collisions.pdf')
+        plt.show()
 
     with RFSoCParameters.load(tile_names[1], mode='r') as old_tile_3_params, \
             old_tile_3_params.copy_and_update(new_tile_names[1]) as new_tile_3_params:
@@ -171,3 +177,9 @@ if __name__ == '__main__':
             np.argwhere(detector_pols[1] == 0).flatten(), old_tile_3_params.offres_ind)
         new_tile_3_params.chanmask[bad_res_tile_3] = -1
         new_tile_3_params.focal_plane_center_za = focal_center[1]
+        fig1 = new_tile_3_params.plot_tones(show=False)
+        new_tile_3_params.flag_collided_resonances()
+        fig2 = new_tile_3_params.plot_tones(show=False)
+        fig1.savefig('tile_3_no_collisions.pdf')
+        fig2.savefig('tile_3_with_collisions.pdf')
+        plt.show()
