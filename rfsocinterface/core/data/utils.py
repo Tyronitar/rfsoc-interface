@@ -53,6 +53,7 @@ TONES_TABLE_DTYPE = [
 
 CALIBRATION_TABLE_DTYPE = [
     ('adc_units_to_hz', 'f8'),
+    ('carrier_amplitudes', 'f8', (2,)),
     ('IQ_to_gain_phase_angle', 'f8'),
     ('IQ_to_freq_diss_angle', 'f8'),
     ('df_per_mK', 'f8'),

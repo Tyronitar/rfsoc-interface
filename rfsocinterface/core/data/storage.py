@@ -831,14 +831,13 @@ class ProcessedData(DataStorage):
                 dtype=np.float64,
                 chunks=mK_chunks,
             )
-            carrier_amplitudes = time_ordered_data_group.create_dataset(
-                'carrier_amplitudes', data=np.nanmedian(data_IQ[:], axis=-1)
-            )
             calibration_info = channel_group.create_dataset(
                 'calibration_info',
                 shape=(n_tones,),
                 dtype=CALIBRATION_TABLE_DTYPE,
             )
+            carrier_amplitudes = np.nanmedian(data_IQ[:], axis=-1)
+            calibration_info['carrier_amplitudes'] = carrier_amplitudes.T
 
             # Collect calibration information
             sweep = LoSweepData(
@@ -886,7 +885,6 @@ class ProcessedData(DataStorage):
 
         # Make virtual datasets for the new stuff
         total_tones = self['global_data'].attrs['total_tones']
-        carrier_amplitudes_layout = h5py.VirtualLayout((2, total_tones), 'f8')
         calibration_info_layout = h5py.VirtualLayout(
             (total_tones,), CALIBRATION_TABLE_DTYPE
         )
@@ -894,18 +892,11 @@ class ProcessedData(DataStorage):
         i_tone = 0
         for channel_group in self['channels'].values():
             n_tones = channel_group.attrs['n_tones']
-            this_data_group = channel_group['time_ordered_data']
-            carrier_amplitudes_layout[:, i_tone : i_tone + n_tones] = (
-                h5py.VirtualSource(this_data_group['carrier_amplitudes'])
-            )
             calibration_info_layout[i_tone : i_tone + n_tones] = h5py.VirtualSource(
                 channel_group['calibration_info']
             )
             i_tone += n_tones
 
-        self['vdsets'].create_virtual_dataset(
-            'carrier_amplitudes', carrier_amplitudes_layout
-        )
         self['vdsets'].create_virtual_dataset(
             'calibration_info', calibration_info_layout
         )
@@ -1257,17 +1248,6 @@ class ProcessedData(DataStorage):
         """Update dfoverf_per_mK."""
         self._set_table_field('tones', 'dfoverf_per_mK', new_dfoverf_per_mK)
 
-    @property
-    def carrier_amplitudes(self) -> h5py.Dataset:
-        """The median amplitude of the raw I and Q signals."""
-        return self['vdsets/carrier_amplitudes']
-
-    def carrier_amplitude_norm(self) -> float:
-        """The norm of the carrier amplitudes."""
-        amps = self.carrier_amplitudes[:]
-        z = amps[0] + amps[1] * 1j
-        return np.mean(np.abs(z))
-
     #
     # Calibration information
     #
@@ -1277,6 +1257,8 @@ class ProcessedData(DataStorage):
 
         Contains the keys:
             adc_units_to_hz: The conversion factor from ADC units to Hz.
+            calibration_info: The median amplitude of the raw I and Q signals. Has shape
+                (2, n_tones).
             IQ_to_gain_phase_angle: The rotation angle from ADC units to gain/phase.
             IQ_to_freq_diss_angle: The rotation angle from ADC units to frequency/
                 dissipation.
@@ -1294,6 +1276,27 @@ class ProcessedData(DataStorage):
         self._set_table_field(
             'calibration_info', 'adc_units_to_hz', new_adc_units_to_hz
         )
+
+    @property
+    def carrier_amplitudes(self) -> npt.NDArray:
+        """The median amplitude of the raw I and Q signals."""
+        return self.calibration_info['carrier_amplitudes']
+
+    def get_carrier_amplitudes(self, i_chan: int) -> npt.NDArray:
+        """The median amplitude of the raw I and Q signals for the channel."""
+        return self.get_from_channel(i_chan, 'calibration_info')['carrier_amplitudes']
+
+    def carrier_amplitude_norm(self) -> float:
+        """The norm of the carrier amplitudes."""
+        amps = self.carrier_amplitudes[:]
+        z = amps[:, 0] + amps[:, 1] * 1j
+        return np.mean(np.abs(z))
+
+    def get_carrier_amplitude_norm(self, i_chan: int) -> float:
+        """The norm of the carrier amplitudes for the channel."""
+        amps = self.get_carrier_amplitudes(i_chan)
+        z = amps[:, 0] + amps[:, 1] * 1j
+        return np.mean(np.abs(z))
 
     @property
     def IQ_to_gain_phase_angle(self) -> npt.NDArray:
