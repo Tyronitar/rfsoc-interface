@@ -161,7 +161,7 @@ if __name__ == '__main__':
         new_tile_2_params.chanmask[bad_res_tile_2] = -1
         new_tile_2_params.focal_plane_center_za = focal_center[1]
         fig1 = new_tile_2_params.plot_tones(show=False)
-        new_tile_2_params.flag_collided_resonances()
+        new_tile_2_params.flag_collided_resonances(collision_threshold=1/25000)
         fig2 = new_tile_2_params.plot_tones(show=False)
         fig1.savefig('tile_2_no_collisions.pdf')
         fig2.savefig('tile_2_with_collisions.pdf')
@@ -178,7 +178,7 @@ if __name__ == '__main__':
         new_tile_3_params.chanmask[bad_res_tile_3] = -1
         new_tile_3_params.focal_plane_center_za = focal_center[1]
         fig1 = new_tile_3_params.plot_tones(show=False)
-        new_tile_3_params.flag_collided_resonances()
+        new_tile_3_params.flag_collided_resonances(collision_threshold=1/25000)
         fig2 = new_tile_3_params.plot_tones(show=False)
         fig1.savefig('tile_3_no_collisions.pdf')
         fig2.savefig('tile_3_with_collisions.pdf')
