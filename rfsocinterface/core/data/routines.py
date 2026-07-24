@@ -232,7 +232,7 @@ class CutoffFilter(DataRoutine):
     """
 
     name = 'CutoffFilter'
-    version = '1.0.0'
+    version = '1.1.0'
 
     def __init__(
         self,
@@ -480,7 +480,7 @@ class RemoveElectronicsNoise(DataRoutine):
     """
 
     name = 'RemoveElectronicsNoise'
-    version = '1.0.0'
+    version = '1.1.0'
 
     def __init__(
         self,
@@ -604,7 +604,7 @@ class CleanTOD(DataRoutine):
     """Routine to remove common-mode signals from the time-ordered data."""
 
     name = 'CleanTOD'
-    version = '1.0.0'
+    version = '1.1.0'
 
     def __init__(self, dataset: Literal['data_mK', 'data_freq'] = 'data_mK'):
         """Initialize the CleanTOD routine.
