@@ -138,13 +138,13 @@ class AnalyzeBeamMap(DataRoutine):
             )
             del pdata['beammap']
         beammap_group = pdata.create_group('beammap')
-        beammap_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('az_center', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('za_center', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('amplitude', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('snr', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('chisq', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('fwhm_az', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('fwhm_za', (pdata.total_tones,), dtype=np.float64)
 
     @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
@@ -366,7 +366,7 @@ class PlotBeamMap(DataRoutine):
 
         # Which tones to use
         tones_to_plot = (
-            np.arange(pdata.n_tones, dtype=int)
+            np.arange(pdata.total_tones, dtype=int)
             if self.params['show_all']
             else pdata.onres_ind
         )
