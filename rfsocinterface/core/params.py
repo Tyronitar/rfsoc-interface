@@ -496,7 +496,7 @@ class RFSoCParameters:
                 params_dir=params_dir,
             )
 
-        self.chanmask[:] = collided_ind
+        self.chanmask[:] = new_chanmask
         return None
 
     def add_off_resonance_tones(
