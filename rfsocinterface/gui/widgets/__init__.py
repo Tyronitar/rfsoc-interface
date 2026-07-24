@@ -1,36 +1,38 @@
+"""Sub package containing various Qt6 widgets."""
+
 from rfsocinterface.gui.widgets.canvas import (
-    ScrollableCanvas,
-    ResonatorCanvas,
     DiagnosticsCanvas,
+    ResonatorCanvas,
+    ScrollableCanvas,
     ToolbarCanvas,
 )
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from rfsocinterface.gui.widgets.controller import Controller
 from rfsocinterface.gui.widgets.divider import HLine, VLine
 from rfsocinterface.gui.widgets.drag_and_drop import (
-    DragTargetIndicator,
-    DragItem,
     ClickableDragItem,
-    DragWidget,
     ClickableDragWidget,
-    MultiSectionDragWidget,
     ClickableMultiSectionDragWidget,
+    DragItem,
+    DragTargetIndicator,
+    DragWidget,
+    MultiSectionDragWidget,
 )
 from rfsocinterface.gui.widgets.file_select import (
     FileSelectWidget,
     FileUploadWidget,
 )
 from rfsocinterface.gui.widgets.function import (
-    FunctionWidget,
-    FunctionDragItem,
     DragFunctionWidget,
+    FunctionDragItem,
+    FunctionWidget,
     MultiSectionDragFunctionWidget,
 )
 from rfsocinterface.gui.widgets.icon_label import (
+    ERROR_ICON_CODE,
     IconLabel,
     highlight_error_line_edit,
-    verify_lineEdit,
-    ERROR_ICON_CODE
+    verify_line_edit,
 )
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from rfsocinterface.gui.widgets.progress_bar import (
@@ -40,56 +42,57 @@ from rfsocinterface.gui.widgets.progress_bar import (
 from rfsocinterface.gui.widgets.save_location import SaveLocationWidget
 from rfsocinterface.gui.widgets.section import Section
 from rfsocinterface.gui.widgets.spinner import (
-    WaitingSpinner,
-    StickyWaitingSpinner,
     STANDARD_STICKY_SPINNER_SETTINGS,
+    StickyWaitingSpinner,
+    WaitingSpinner,
 )
 from rfsocinterface.gui.widgets.utils import (
-    get_lineEdit_text,
-    PathValidator,
-    layout_widgets,
-    get_total_height,
-    get_num_value,
     ArgumentType,
+    PathValidator,
+    get_line_edit_text,
+    get_num_value,
+    get_total_height,
+    layout_widgets,
 )
 
 __all__ = [
-    'ScrollableCanvas',
-    'ResonatorCanvas',
-    'DiagnosticsCanvas',
+    'ERROR_ICON_CODE',
+    'STANDARD_STICKY_SPINNER_SETTINGS',
+    'ArgumentType',
     'CheckableComboBox',
-    'Controller',
-    'HLine',
-    'VLine',
-    'DragTargetIndicator',
-    'DragItem',
     'ClickableDragItem',
-    'DragWidget',
     'ClickableDragWidget',
-    'MultiSectionDragWidget',
+    'ClickableLineEdit',
     'ClickableMultiSectionDragWidget',
+    'Controller',
+    'DiagnosticsCanvas',
+    'DragFunctionWidget',
+    'DragItem',
+    'DragTargetIndicator',
+    'DragWidget',
     'FileSelectWidget',
     'FileUploadWidget',
-    'FunctionWidget',
     'FunctionDragItem',
-    'DragFunctionWidget',
-    'MultiSectionDragFunctionWidget',
+    'FunctionWidget',
+    'HLine',
     'IconLabel',
-    'highlight_error_line_edit',
-    'verify_lineEdit',
-    'ERROR_ICON_CODE',
-    'ClickableLineEdit',
     'IncrementalProgressDialog',
-    'make_progress_dialog_incrementer',
-    'SaveLocationWidget',
-    'Section',
-    'get_lineEdit_text',
+    'MultiSectionDragFunctionWidget',
+    'MultiSectionDragWidget',
     'PathValidator',
-    'layout_widgets',
-    'get_total_height',
-    'get_num_value',
-    'ArgumentType',
-    'WaitingSpinner',
+    'ResonatorCanvas',
+    'SaveLocationWidget',
+    'ScrollableCanvas',
+    'Section',
     'StickyWaitingSpinner',
-    'STANDARD_STICKY_SPINNER_SETTINGS',
+    'ToolbarCanvas',
+    'VLine',
+    'WaitingSpinner',
+    'get_line_edit_text',
+    'get_num_value',
+    'get_total_height',
+    'highlight_error_line_edit',
+    'layout_widgets',
+    'make_progress_dialog_incrementer',
+    'verify_line_edit',
 ]

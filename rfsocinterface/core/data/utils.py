@@ -1,28 +1,21 @@
 """Core functionality relating to data loading and processing."""
 
-
 from __future__ import annotations
-import pdb
-import time
+
 import logging
-from itertools import chain, batched
-import typing
 from typing import Literal
 
 # import tables
 import h5py
+
 # from tables.link import ExternalLink
 import numpy as np
 import numpy.typing as npt
 from numpy.polynomial import polynomial as poly
-from scipy.interpolate import make_interp_spline
-from numpy.polynomial import Polynomial
-from scipy.stats import linregress
-from scipy import signal
 
 from rfsocinterface.core.utils import (
-    build_interp_map,
     argclosest,
+    build_interp_map,
 )
 
 _logger = logging.getLogger(__name__)
@@ -32,7 +25,7 @@ OPTCAM_OFFSET_AZ_PIX = 74
 OPTCAM_OFFSET_ZA_PIX = 49
 DEFAULT_MAP_DPIX = 0.03
 OPTCAM_HEIGHT_PIXELS = 1944
-OPTCAM_WIDTH_PIXELS = 2592 
+OPTCAM_WIDTH_PIXELS = 2592
 # DATA_DIRECTORY = 'reference_data'  # For testing with local data files
 
 N_POLARIZATION = 2
@@ -42,8 +35,8 @@ AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
 # RFSOC_TIME_OFFSET_AZ = -12e-3 # -12 ms, empirically determined
-RFSOC_TIME_OFFSET_AZ = 0 # -12 ms, empirically determined
-RFSOC_TIME_OFFSET_ZA = -3e-3 # -3 ms, empirically determined
+RFSOC_TIME_OFFSET_AZ = 0  # -12 ms, empirically determined
+RFSOC_TIME_OFFSET_ZA = -3e-3  # -3 ms, empirically determined
 
 
 TONES_TABLE_DTYPE = [
@@ -64,89 +57,26 @@ CALIBRATION_TABLE_DTYPE = [
     ('df_per_mK', 'f8'),
 ]
 
+
 def get_channel_group_name(idx: int) -> str:
-    """Return the properly formatted group name for the channel with index `idx`"""
+    """Return the properly formatted group name for the channel with index `idx`."""
     return f'channel_{idx:03d}'
 
 
 def get_step_group_name(idx: int, name: str) -> str:
-    """Return the properly formatted group name for a step in the processing history or checkpoints."""
+    """Return the properly formatted group name for a step in the processing history."""
     return f'{idx:04d}_{name}'
 
-
-#
-# Outlier Removal and Flagging
-#
-
-def iteratively_reject_outliers(data: npt.ArrayLike, sigma: float=2, axis: None | int | tuple[int, ...]=None):
-    """Repeatedly perform outlier rejection until there are no more outliers.
-
-    Args:
-        data (npt.ArrayLike): Input data (expected to be 1 dimensional)
-        sigma (float, optional): The standard deviation cutoff for outliers. Defaults
-            to 2.
-        axis (None or int or tuple of ints, optional): The axis or axes to perform the
-            outlier rejection along. Deafults to None.
-
-    Returns:
-        (npt.NDArray, npt.NDArray, npt.NDArray): `data` with the outliers removed,
-        indices in `data` of the inliers, and indices in `data` of the outliers .
-    """
-    ind = np.arange(np.size(data))
-    # ind = np.ones_like(data, dtype=int)
-    # ind = get_all_indices(data)
-    if np.ndim(data) != 1:
-        data = np.flatten(data)
-    while True:
-        good_data, good_ind = reject_outliers(data[ind], sigma=sigma, axis=axis)
-        if np.size(ind) == np.size(good_ind):
-            break
-        ind = ind[good_ind]
-    return data[ind], ind, np.setdiff1d(np.arange(np.size(data)), ind)
-
-
-def flag(data: npt.NDArray, fs: float, sigma: float=2):
-    """Flag data outliers."""
-    first_dimension, n_chan, _ = data.shape
-    n_flag = np.zeros((first_dimension, n_chan))
-
-    filt_cut = 1. / (0.5 * fs)
-    b, a = signal.butter(5, filt_cut, btype='high', analog=False)
-    hpf_data = signal.filtfilt(b, a, data)
-    for i_complex in range(first_dimension):
-        for i_res in range(n_chan):
-            inliers, _, _ = iteratively_reject_outliers(hpf_data[i_complex, i_res, :], sigma=sigma)
-            n_flag[i_complex, i_res] = hpf_data.shape[-1] - np.size(inliers)
-    return n_flag, np.std(hpf_data, axis=-1)
-
-
-def flag_outliers(data: npt.NDArray, fs: float, chanmask: npt.NDArray, sigma: float=2) -> npt.NDArray:
-    good_channels = np.where(chanmask == 1)[0]
-    n_flag, timestream_rms = flag(data[:, good_channels], fs, sigma=sigma)
-    med_flag = np.median(n_flag)
-    chanmask[np.where(np.any(n_flag > 2. * med_flag, axis=0))] = -1
-    _, _, bad_indices_0 = iteratively_reject_outliers(timestream_rms[0], sigma=sigma)
-    if np.ndim(timestream_rms) == 3:
-        _, _, bad_indices_1 = iteratively_reject_outliers(timestream_rms[1], sigma=sigma)
-        bad_indices = np.union1d(bad_indices_0, bad_indices_1)
-    else:
-        bad_indices = bad_indices_0
-    chanmask[bad_indices] = -1
-    return chanmask
-
-
-def reject_outliers(data: npt.NDArray, sigma: float=2, axis: None | int | tuple[int, ...]=None):
-    """Return the data without outliers and the rejected indices."""
-    d = np.abs(data - np.median(data, axis=axis))
-    std = np.std(data, axis=axis)
-    ind = np.where(d < sigma * std)
-    return data[ind], ind
 
 #
 # Data Processing
 #
 
-def compute_df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, detector_f, dfoverf_per_mK):
+
+def compute_df_per_mK(
+    beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, detector_f, dfoverf_per_mK
+):
+    """Compute df / mK for the detectors."""
     valid_index = np.ndarray.flatten(np.argwhere(beam_pol[:] >= 1))
     valid_amp = detector_beam_amp[valid_index]
 
@@ -162,17 +92,20 @@ def compute_df_per_mK(beam_pol: npt.NDArray, detector_beam_amp: npt.NDArray, det
 
 # TODO: Optimize this for chunked data
 def rotate_basis(
-        in_data: h5py.Dataset,
-        out_data: h5py.Dataset,
-        rotation_angle: npt.NDArray,
+    in_data: h5py.Dataset,
+    out_data: h5py.Dataset,
+    rotation_angle: npt.NDArray,
 ):
     """Compute change of basis, rotating with the specified angle."""
+    out_data[0] = (
+        np.cos(rotation_angle)[:, np.newaxis] * in_data[0]
+        - np.sin(rotation_angle)[:, np.newaxis] * in_data[1]
+    )
 
-    out_data[0] = np.cos(rotation_angle)[:, np.newaxis] * in_data[0] - \
-        np.sin(rotation_angle)[:, np.newaxis] * in_data[1]
-
-    out_data[1] = np.sin(rotation_angle)[:, np.newaxis] * in_data[0] + \
-        np.cos(rotation_angle)[:, np.newaxis] * in_data[1]
+    out_data[1] = (
+        np.sin(rotation_angle)[:, np.newaxis] * in_data[0]
+        + np.cos(rotation_angle)[:, np.newaxis] * in_data[1]
+    )
 
 
 # TODO: Optimize this for chunked data
@@ -184,7 +117,7 @@ def generate_calibrated_data(
     adc_units_to_hz: npt.NDArray,
     df_per_mK: npt.NDArray,
 ):
-        
+    """Create data_freq_diss and data_mK from data_IQ."""
     # now use the derivatives to convert to a frequency shift
     # need to optimally weight the data based on the response
     # in each direction (assuming the noise is identical in I and Q)
@@ -201,12 +134,23 @@ def generate_calibrated_data(
             df_per_mK[:, np.newaxis],
         )
 
+
 #
 # Code for recitifying the timestamp
 #
 def find_missed_packets_with_indices(
-        packet_idx: h5py.Dataset,
+    packet_idx: h5py.Dataset,
 ) -> npt.NDArray:
+    """Determine which packets were missed using `pkt_idx` in the TOD file.
+
+    Arguments:
+        packet_idx (h5py.Dataset): The index for each data packet.
+
+    Returns:
+        (npt.NDArray): A 2D array consisting of indices where packets were missed and
+            how many packets were missed. E.g. A list [0, 11, ...] would yield
+            [[1, 10]].
+    """
     missed_packets = np.empty((0, 2), dtype=int)
 
     for i in range(1, packet_idx.size):
@@ -221,9 +165,10 @@ def find_missed_packets_with_indices(
 def find_missed_packets(
     raw_timestamp: h5py.Dataset,
     n_samples: int,
-    window_size: int=5,
-    sigma: float=3.0,
+    window_size: int = 5,
+    sigma: float = 3.0,
 ) -> npt.NDArray:
+    """Determine which packets were missed using based on the timestamp."""
     dtime = np.diff(raw_timestamp)
     med_dtime = np.median(dtime)
     std_dtime = np.std(dtime)
@@ -236,29 +181,35 @@ def find_missed_packets(
         if dtime_idx in bad_samples:
             window_min_idx = max(0, i - window_size)
             window_max_idx = min(n_samples, i + window_size)
-            window = raw_timestamp[window_min_idx:window_max_idx + 1]
+            window = raw_timestamp[window_min_idx : window_max_idx + 1]
             window_dtime = np.ptp(window)
             # Expected number of samples in time elapsed between start and end of window
             # In theory, this is 1 less than the number of actual samples in the window
             # i.e. (2 * window_size)
-            expected_samples = int(window_dtime // med_dtime)  
+            expected_samples = int(window_dtime // med_dtime)
             actual_samples = window_max_idx - window_min_idx
             # A packet was potentially missed
             if expected_samples > actual_samples:
                 packets_missed = expected_samples - actual_samples + 1
 
                 # Look in a larger window to avoid spurious problems
-                # Look outside the window by number of supposed missed packets to 
+                # Look outside the window by number of supposed missed packets to
                 # verfiy that they were actually missed
                 large_window_min_idx = max(0, i - window_size)
                 large_window_max_idx = min(n_samples, i + window_size + packets_missed)
-                large_window = raw_timestamp[large_window_min_idx:large_window_max_idx + 1]
+                large_window = raw_timestamp[
+                    large_window_min_idx : large_window_max_idx + 1
+                ]
                 large_window_dtime = np.ptp(large_window)
                 large_expected_samples = int(large_window_dtime // med_dtime)
                 large_actual_samples = large_window_max_idx - large_window_min_idx
-                large_window_packets_missed = large_expected_samples - large_actual_samples + 1
+                large_window_packets_missed = (
+                    large_expected_samples - large_actual_samples + 1
+                )
                 if large_expected_samples > large_actual_samples:
-                    missed_packets = np.vstack([missed_packets, [i, large_window_packets_missed]])
+                    missed_packets = np.vstack(
+                        [missed_packets, [i, large_window_packets_missed]]
+                    )
         i += 1
 
     _logger.debug(f'{np.sum(missed_packets[:, 1])} missed packets')
@@ -272,9 +223,10 @@ def interpolate_timestamp_streaming(
     packet_indices: h5py.Dataset,
     ds_factor: int = 1,
     chunk_size: int = 4096,
-    time_offset: float = 0.0
+    time_offset: float = 0.0,
 ):
-    """
+    """Generate an equally spaced timestamp.
+
     Compute a linear fit of raw_timestamp vs packet_indices and generate
     an equally spaced new timestamp dataset in chunks.
 
@@ -293,8 +245,7 @@ def interpolate_timestamp_streaming(
     time_offset : float
         Optional offset to add to output timestamps
     """
-
-    N = raw_timestamp.shape[0]
+    n = raw_timestamp.shape[0]
 
     # Accumulators for linear regression
     sum_x = 0.0
@@ -304,8 +255,8 @@ def interpolate_timestamp_streaming(
     n_total = 0
 
     # --- Step 1: Streaming linear regression ---
-    for start in range(0, N, chunk_size):
-        stop = min(start + chunk_size, N)
+    for start in range(0, n, chunk_size):
+        stop = min(start + chunk_size, n)
 
         # Read chunks as plain numpy arrays
         x_chunk = np.uint64(packet_indices[start:stop])
@@ -317,23 +268,23 @@ def interpolate_timestamp_streaming(
         x_chunk_shifted = x_chunk - x0
 
         # Accumulate sums using dot products (memory-efficient)
-        sum_x  += x_chunk_shifted.sum()
-        sum_y  += y_chunk.sum()
+        sum_x += x_chunk_shifted.sum()
+        sum_y += y_chunk.sum()
         sum_x2 += np.dot(x_chunk_shifted, x_chunk_shifted)
         sum_xy += np.dot(x_chunk_shifted, y_chunk)
         n_total += x_chunk_shifted.size
 
     # Compute slope (a) and intercept (b)
-    denom = n_total * sum_x2 - sum_x ** 2
+    denom = n_total * sum_x2 - sum_x**2
     if denom == 0:
-        raise ValueError("Degenerate packet_indices, cannot compute regression.")
+        raise ValueError('Degenerate packet_indices, cannot compute regression.')
     a = (n_total * sum_xy - sum_x * sum_y) / denom
     b = (sum_y - a * sum_x) / n_total
 
     # --- Step 2: Generate new timestamps in chunks ---
-    M = new_timestamp.shape[0]
-    for start in range(0, M, chunk_size):
-        stop = min(start + chunk_size, M)
+    m = new_timestamp.shape[0]
+    for start in range(0, m, chunk_size):
+        stop = min(start + chunk_size, m)
 
         # Generate the equally spaced packet index positions
         indices = np.arange(start * ds_factor, stop * ds_factor, dtype=np.float64)
@@ -344,7 +295,7 @@ def interpolate_timestamp_streaming(
         # Write directly to HDF5
         new_timestamp[start:stop] = new_chunk
 
-    
+
 def interpolate_missing_data(
     input_data_I: h5py.Dataset,
     input_data_Q: h5py.Dataset,
@@ -356,8 +307,7 @@ def interpolate_missing_data(
     missed_packets: npt.NDArray,
     valid_tone_index: npt.NDArray,
 ):
-    total_missed_packets = np.sum(missed_packets[:, 1])
-    n_tones = np.size(valid_tone_index)
+    """Interpolate data for missing packets in IQ data."""
     n_samples = input_data_I.shape[-1]
 
     # count = 0
@@ -374,22 +324,26 @@ def interpolate_missing_data(
         times = timestamp[window_packet_indices]
         i_data = input_data_I[:, window][valid_tone_index, :]
         q_data = input_data_Q[:, window][valid_tone_index, :]
-        fit_I = poly.polyfit(times - times[0], i_data.T, 4)
-        fit_Q = poly.polyfit(times - times[0], q_data.T, 4)
+        fit_i = poly.polyfit(times - times[0], i_data.T, 4)
+        fit_q = poly.polyfit(times - times[0], q_data.T, 4)
 
         # Interpolate data between sample i-1 and i
         dtime = (timestamp[index] - timestamp[prev_index]) / this_missed_packets
         missing_packet_start_t = timestamp[prev_index] + dtime
         current_t = timestamp[index]
-        missed_packet_t = np.linspace(missing_packet_start_t, current_t, this_missed_packets, endpoint=False) 
-        new_data_I = poly.polyval(missed_packet_t - times[0], fit_I)
-        new_data_Q = poly.polyval(missed_packet_t - times[0], fit_Q)
+        missed_packet_t = np.linspace(
+            missing_packet_start_t, current_t, this_missed_packets, endpoint=False
+        )
+        new_data_I = poly.polyval(missed_packet_t - times[0], fit_i)
+        new_data_Q = poly.polyval(missed_packet_t - times[0], fit_q)
         new_data = np.stack((new_data_I, new_data_Q))
 
         this_interpolated_indices = list(range(prev_index + 1, index))
 
         old_size = output_indices_dset.size
-        output_indices_dset.resize(old_size + np.size(this_interpolated_indices), axis=0)
+        output_indices_dset.resize(
+            old_size + np.size(this_interpolated_indices), axis=0
+        )
         output_indices_dset[old_size:] = this_interpolated_indices
         output_dset[..., this_interpolated_indices] = new_data
         output_pps_dset[this_interpolated_indices] = 0
@@ -402,19 +356,18 @@ def get_detector_positions_no_interp(
     output_detector_za: h5py.Dataset,
     dx: npt.NDArray,
     dy: npt.NDArray,
-    elevation_angle: float
+    elevation_angle: float,
 ) -> npt.NDArray:
+    """Compute the detector positions without interpolation."""
     chunk_size = output_detector_az.chunks[-1]
     n_samples = az_tel.size
 
     for start in range(0, n_samples, chunk_size):
-
         stop = min(start + chunk_size, n_samples)
 
         # telescope interpolation
         az = az_tel[start:stop]
         za = za_tel[start:stop]
-
 
         # rotation angle
         ang = np.deg2rad(elevation_angle - za)
@@ -423,17 +376,11 @@ def get_detector_positions_no_interp(
         sin_ang = np.sin(ang)
 
         output_detector_az[:, start:stop] = (
-            np.outer(dx[:], cos_ang)
-            - np.outer(dy[:], sin_ang)
-            + az
+            np.outer(dx[:], cos_ang) - np.outer(dy[:], sin_ang) + az
         )
         output_detector_za[:, start:stop] = (
-            np.outer(dy[:], cos_ang)
-            + np.outer(dx[:], sin_ang)
-            + za
+            np.outer(dy[:], cos_ang) + np.outer(dx[:], sin_ang) + za
         )
-
-
 
 
 # TODO: Update this to the new data processing scheme
@@ -446,8 +393,9 @@ def get_detector_positions(
     output_detector_za: h5py.Dataset,
     dx: npt.NDArray,
     dy: npt.NDArray,
-    elevation_angle: float
+    elevation_angle: float,
 ) -> npt.NDArray:
+    """Compute the detector positions using interpolation."""
     x = timestamp[:]
     xp = tel_timestamp[:]
 
@@ -457,7 +405,6 @@ def get_detector_positions(
     n_samples = timestamp.size
 
     for start in range(0, n_samples, chunk_size):
-
         stop = min(start + chunk_size, n_samples)
 
         idx_chunk = idx[start:stop]
@@ -478,14 +425,10 @@ def get_detector_positions(
         sin_ang = np.sin(ang)
 
         output_detector_az[:, start:stop] = (
-            np.outer(dx[:], cos_ang)
-            - np.outer(dy[:], sin_ang)
-            + az
+            np.outer(dx[:], cos_ang) - np.outer(dy[:], sin_ang) + az
         )
         output_detector_za[:, start:stop] = (
-            np.outer(dy[:], cos_ang)
-            + np.outer(dx[:], sin_ang)
-            + za
+            np.outer(dy[:], cos_ang) + np.outer(dx[:], sin_ang) + za
         )
 
 
@@ -495,24 +438,29 @@ def interpolate_telescope_position(
     tel_position: npt.NDArray,
     pps_position: npt.NDArray,
     data_pps: npt.NDArray,
-    search_radius: int=100,
-    direction: Literal['az', 'za']='az',
+    search_radius: int = 100,
+    direction: Literal['az', 'za'] = 'az',
 ) -> npt.NDArray:
-
+    """Interpolate and align the telescope positions."""
     # Find the telescope positions and timestamps corresponding to the PPS pulses
-    pps_tel_idx = np.where(np.diff(pps_position) != 0)[0] + 1  # Indices where the pps changes
+    pps_tel_idx = (
+        np.where(np.diff(pps_position) != 0)[0] + 1
+    )  # Indices where the pps changes
     pps_tel_pos = pps_position[pps_tel_idx]
     pps_times_tel = telescope_timestamp[pps_tel_idx]
 
     if pps_tel_idx.size == 0:
         # The telescoep never mvoed in this direction, so aligning the times doesn't
         # matter. Just upsample the positions.
-        _logger.info(f'Doing simple interpolation for detector positions in {direction.upper()} direction.')
+        _logger.info(
+            f'Doing simple interpolation for detector positions in {direction.upper()} '
+            'direction.'
+        )
         return np.interp(data_timestamp, telescope_timestamp, tel_position)
     _logger.info(f'Using PPS for detector positions in {direction.upper()} direction.')
 
     # Upsample the telescope positions ignoring the positions when the pulse is receivd,
-    # since the extra commands slow the loop 
+    # since the extra commands slow the loop
     interpolated_tel_pos = np.interp(
         data_timestamp,
         np.delete(telescope_timestamp, pps_tel_idx),
@@ -533,53 +481,52 @@ def interpolate_telescope_position(
     for i in range(len(pps_tel_idx)):
         closest_index = argclosest(pps_times_data, pps_times_tel[i])
         sample = pps_samples_data[closest_index]
-        pps_samples_tel[i] = argclosest(interpolated_tel_pos[sample-search_radius:sample+search_radius+1], pps_tel_pos[i]) + sample - search_radius
+        pps_samples_tel[i] = (
+            argclosest(
+                interpolated_tel_pos[
+                    sample - search_radius : sample + search_radius + 1
+                ],
+                pps_tel_pos[i],
+            )
+            + sample
+            - search_radius
+        )
 
-
-    # The first pps pulse that was receied in both the raw data and the telescope data 
-    start_idx = argclosest(pps_samples_data, pps_samples_tel[0])
-
-    # Find the median offset between the two sets of PPS samples, and shift the 
+    # Find the median offset between the two sets of PPS samples, and shift the
     # interpolated telescope positions by this amount to sync them up.
     pps_offset = np.zeros(pps_samples_tel.shape, dtype=int)
     for i, pps_tel_sample in enumerate(pps_samples_tel):
         closest_data_sample = argclosest(pps_samples_data, pps_tel_sample)
         pps_offset[i] = pps_tel_sample - pps_samples_data[closest_data_sample]
-    # pps_offset = pps_samples_tel - pps_samples_data[start_idx:start_idx+len(pps_samples_tel)]
+
     # Shift by empirically determined offset
     sample_rate = 1 / (data_timestamp[1] - data_timestamp[0])
     if direction == 'az':
         additional_offset = RFSOC_TIME_OFFSET_AZ * sample_rate
     else:
         additional_offset = RFSOC_TIME_OFFSET_ZA * sample_rate
-    median_offset = np.round(np.median(pps_offset.astype(float) + additional_offset)).astype(int)
+    median_offset = np.round(
+        np.median(pps_offset.astype(float) + additional_offset)
+    ).astype(int)
 
-    # If the median offset is positive, that means the telescope data is lagging behind 
-    # the RFSoC, so we shift to the left. If it's negative, the telescope data is ahead 
-    # of the RFSoC, so we shift to the right. Hence the negative sign. 
+    # If the median offset is positive, that means the telescope data is lagging behind
+    # the RFSoC, so we shift to the left. If it's negative, the telescope data is ahead
+    # of the RFSoC, so we shift to the right. Hence the negative sign.
     fixed_positions = np.roll(interpolated_tel_pos, -median_offset)
-    
+
     # Fill the array with nans where we shifted away from
     if median_offset < 0:
         fixed_positions[:-median_offset] = np.nan
     else:
         fixed_positions[-median_offset:] = np.nan
-    
-    _logger.info(f'interpolate_telescope_position: Shifting telescope positions by {-median_offset} samples')
-    pdb.set_trace()
+
+    _logger.info(
+        f'interpolate_telescope_position: Shifting telescope positions by '
+        f'{-median_offset} samples'
+    )
 
     return fixed_positions
 
-def add_unique_sorted(l1: list, l2: list, item_1: list, item_2: list):
-    # Find the insertion point where the item should go
-    index = bisect.bisect_left(sorted_list, item)
-    
-    # If the index is within bounds and the item matches, it is a duplicate
-    if index < len(sorted_list) and sorted_list[index] == item:
-        return  # Skip adding
-        
-    # Otherwise, insert it at the correct sorted position
-    sorted_list.insert(index, item)
 
 def new_interp_tele_posistion(
     data_timestamp: npt.NDArray,
@@ -587,28 +534,32 @@ def new_interp_tele_posistion(
     tel_position: npt.NDArray,
     pps_position: npt.NDArray,
     data_pps: npt.NDArray,
-    search_radius: int=100,
-    fit_radius: int=200,
-    direction: Literal['az', 'za']='az',
+    search_radius: int = 100,
+    fit_radius: int = 200,
+    direction: Literal['az', 'za'] = 'az',
 ) -> npt.NDArray:
-    import matplotlib.pyplot  as plt
-    import bisect
+    """Interpolate and align the telescope positions."""
     n_samples = data_timestamp.size
     # Find the telescope positions and timestamps corresponding to the PPS pulses
-    pps_tel_idx = np.where(np.diff(pps_position) != 0)[0] + 1  # Indices where the pps changes
+    pps_tel_idx = (
+        np.where(np.diff(pps_position) != 0)[0] + 1
+    )  # Indices where the pps changes
     pps_tel_pos = pps_position[pps_tel_idx]
     pps_times_tel = telescope_timestamp[pps_tel_idx]
 
     # pdb.set_trace()
     if pps_tel_idx.size <= 1:
-        # The telescope didn't move enough in this direction, so aligning the times doesn't
-        # work. Just upsample the positions.
-        _logger.info(f'Doing simple interpolation for detector positions in {direction.upper()} direction.')
+        # The telescope didn't move enough in this direction, so aligning the times
+        # doesn't work. Just upsample the positions.
+        _logger.info(
+            f'Doing simple interpolation for detector positions in '
+            f'{direction.upper()} direction.'
+        )
         return np.interp(data_timestamp, telescope_timestamp, tel_position)
     _logger.info(f'Using PPS for detector positions in {direction.upper()} direction.')
 
     # Upsample the telescope positions ignoring the positions when the pulse is receivd,
-    # since the extra commands slow the loop 
+    # since the extra commands slow the loop
     interpolated_tel_pos = np.interp(
         data_timestamp,
         np.delete(telescope_timestamp, pps_tel_idx),
@@ -629,16 +580,25 @@ def new_interp_tele_posistion(
     for i in range(len(pps_tel_idx)):
         closest_index = argclosest(pps_times_data, pps_times_tel[i])
         sample = pps_samples_data[closest_index]
-        pps_samples_tel[i] = argclosest(interpolated_tel_pos[sample-search_radius:sample+search_radius+1], pps_tel_pos[i]) + sample - search_radius
+        pps_samples_tel[i] = (
+            argclosest(
+                interpolated_tel_pos[
+                    sample - search_radius : sample + search_radius + 1
+                ],
+                pps_tel_pos[i],
+            )
+            + sample
+            - search_radius
+        )
 
-    # Find the offset between the two sets of PPS samples, and shift the 
+    # Find the offset between the two sets of PPS samples, and shift the
     # interpolated telescope positions by this amount to sync them up.
     pps_offset = np.zeros(pps_samples_tel.shape, dtype=int)
     for i, pps_tel_sample in enumerate(pps_samples_tel):
         closest_data_sample = argclosest(pps_samples_data, pps_tel_sample)
         pps_offset[i] = pps_tel_sample - pps_samples_data[closest_data_sample]
 
-    final_tel_pos = np.full(n_samples, np.nan)
+    np.full(n_samples, np.nan)
     sample_boundaries = ((pps_samples_tel[1:] + pps_samples_tel[:-1]) / 2).astype(int)
     xp = []
     fp = []
@@ -650,7 +610,7 @@ def new_interp_tele_posistion(
             i_tel_stop = min(sample_boundaries[i_tel_pps], pps_sample + fit_radius + 1)
             i_fit_start = max(0, i_tel_start - max_shift)
             i_fit_stop = min(sample_boundaries[i_tel_pps], i_tel_stop + max_shift)
-        elif i_tel_pps == pps_samples_tel.size -  1:
+        elif i_tel_pps == pps_samples_tel.size - 1:
             i_tel_start = max(sample_boundaries[i_tel_pps - 1], pps_sample - fit_radius)
             i_tel_stop = min(n_samples, pps_sample + fit_radius + 1)
             i_fit_start = max(sample_boundaries[i_tel_pps - 1], i_tel_start - max_shift)
@@ -664,7 +624,6 @@ def new_interp_tele_posistion(
         # i_fit_stop = min(n_samples, i_tel_stop + max_shift)
         this_timestamp = data_timestamp[i_tel_start:i_tel_stop]
         possible_tel_pos = interpolated_tel_pos[i_fit_start:i_fit_stop]
-        n_pos = possible_tel_pos.size
         n_times = this_timestamp.size
         if this_pps_offset < 0:
             this_tel_pos = possible_tel_pos[0:-max_shift]

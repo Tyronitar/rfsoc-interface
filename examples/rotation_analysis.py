@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication
 from rfsocinterface.analysis.noise_blob import plot_angle_in_blob
 from rfsocinterface.core.data import *
 from rfsocinterface.core.sweeps import *
-from rfsocinterface.core.utils import create_axis_formatter, BAD_RESONANCE_COLOR, mean_histogram, std_histogram
+from rfsocinterface.core.utils import create_axis_formatter, BAD_RESONANCE_COLOR
 from rfsocinterface.gui.lodiagnostics import DiagnosticsDialog
 
 

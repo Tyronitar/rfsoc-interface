@@ -3,26 +3,23 @@
 import functools
 import time
 from collections.abc import Callable
+from numbers import Number
 from typing import Any
 
-from numbers import Number
-
-import numpy as np
 import h5py
+import numpy as np
 import pytest
 
-
-
-
 __all__ = [
-    'assert_equal',
     'assert_close',
+    'assert_equal',
+    'assert_equal_dict',
+    'assert_greater_than',
+    'assert_less_than',
     'catch_exits',
     'sleep_and_raise',
-    'assert_equal_dict',
-    'assert_less_than',
-    'assert_greater_than',
 ]
+
 
 def check_equal_dict(result: dict, expected: dict) -> bool:
     """Return whether two dictionaries are equal."""
@@ -32,6 +29,7 @@ def check_equal_dict(result: dict, expected: dict) -> bool:
         return False
         # assert False
     return all(list(vals))
+
 
 def assert_equal_dict(result: dict, expected: dict) -> None:
     """Return whether two dictionaries are equal."""
