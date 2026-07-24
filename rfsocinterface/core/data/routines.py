@@ -559,7 +559,7 @@ class RemoveElectronicsNoise(DataRoutine):
 
             for i_mode in range(n_modes):
                 clean_gain_phase -= np.mean(clean_gain_phase, axis=-1, keepdims=True)
-                numerator = np.einsum('ijk,ik->ij', clean_gain_phase/np.std(clean_gain_phase, axis=-1, keepdims=True), templates[:, i_mode])  # 2 x N_tones
+                numerator = np.einsum('ijk,ik->ij', clean_gain_phase, templates[:, i_mode])  # 2 x N_tones
                 corr = numerator / denominator[:, i_mode:i_mode+1]  # 2 x N_tones
                 clean_gain_phase[:] = clean_gain_phase - np.einsum('ij,ikl->ijl', corr, templates[:, i_mode:i_mode+1])  # 2 x N_tones x N_samples
             
@@ -690,16 +690,32 @@ class RemoveCosmicRays(DataRoutine):
         return ['/vdsets/data_IQ']
     
     def run(self, pdata: ProcessedData, inputs: list=None):
+        for i_chan in range(pdata.n_chan):
+            threshold = self.params['std_threshold']
+            n_blocks = self.params['num_processing_blocks']
+            data_IQ = pdata.data_IQ
 
-        threshold = self.params['std_threshold']
-        n_blocks = self.params['num_processing_blocks']
-        data_IQ = pdata.data_IQ
-
-        z_I, z_Q = get_z_arrays(data_IQ[:], n_blocks)
-        glitch_mask_I = np.array(z_I) > threshold
-        glitch_mask_Q = np.array(z_Q) > threshold
-        interpolate_CR_packets(data_IQ, glitch_mask_I, glitch_mask_Q)
-
+            z_I, z_Q = get_z_arrays(data_IQ[:], n_blocks)
+            glitch_mask_I = np.array(z_I) > threshold
+            glitch_mask_Q = np.array(z_Q) > threshold
+            interpolate_CR_packets(data_IQ, glitch_mask_I, glitch_mask_Q)
+            data_gain_phase = pdata.get_from_channel(i_chan, 'time_ordered_data/data_gain_phase')
+            calibration_info = pdata.get_from_channel(i_chan, 'calibration_info')
+            rotate_basis(
+                data_IQ,
+                data_gain_phase,
+                calibration_info['IQ_to_gain_phase_angle'],
+            )
+            data_freq_diss = pdata.get_from_channel(i_chan, 'time_ordered_data/data_freq_diss')
+            data_mK = pdata.get_from_channel(i_chan, 'time_ordered_data/data_mK')
+            generate_calibrated_data(
+                data_IQ,
+                data_freq_diss,
+                data_mK,
+                calibration_info['IQ_to_freq_diss_angle'],
+                calibration_info['adc_units_to_hz'],
+                calibration_info['df_per_mK'],
+            )
         return inputs
 
 

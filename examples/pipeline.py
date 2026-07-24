@@ -34,12 +34,12 @@ if __name__ == '__main__':
     noise_removal_offres = RemoveElectronicsNoise(
         template_selection_indices='offres',
         lp_filt_freq = 10,
-        fspace = False
+        fspace = True
     )
     noise_removal_onres = RemoveElectronicsNoise(
         template_selection_indices='onres',
         lp_filt_freq=244,
-        fspace = False
+        fspace = True
         
     )
     cosmic_ray_removal = RemoveCosmicRays()
@@ -77,7 +77,7 @@ if __name__ == '__main__':
     plot_beammap = PlotBeamMap()
 
     pipeline = Pipeline([
-        #cosmic_ray_removal,
+        cosmic_ray_removal,
         noise_removal_offres,
         noise_removal_onres,
         #noise_removal,
