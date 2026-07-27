@@ -1419,11 +1419,3 @@ class PowerSweepDialog(QDialog):
     def reject(self) -> None:
         self._cleanup_pdf_viewer()
         super().reject()
-
-if __name__ == '__main__':
-    from PySide6.QtWidgets import QApplication
-    app = QApplication()
-    sweep_path = '/data/20260521/20260521_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_LO_Sweep_hour16p0300.h5'
-    dial = DiagnosticsDialog.from_h5(sweep_path)
-    dial.show()
-    app.exec()
