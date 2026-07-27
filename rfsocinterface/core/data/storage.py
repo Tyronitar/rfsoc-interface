@@ -1051,6 +1051,22 @@ class ProcessedData(DataStorage):
             self.get_chanmask(i_chan) == ChanmaskValue.OFF_RESONANCE
         ).flatten()
 
+    def get_bad_ind(self, i_chan: int) -> npt.NDArray:
+        """Return bad resonance indices for the specified channel."""
+        return np.argwhere(self.get_chanmask(i_chan) < 0).flatten()
+
+    def get_collided_ind(self, i_chan: int) -> npt.NDArray:
+        """Return collided resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.COLLIDED
+        ).flatten()
+
+    def get_misc_bad_ind(self, i_chan: int) -> npt.NDArray:
+        """Return miscellaneous bad resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.MISC_BAD
+        ).flatten()
+
     #
     # Useful properties
     #
@@ -1216,7 +1232,7 @@ class ProcessedData(DataStorage):
 
     @property
     def onres_ind(self) -> npt.NDArray:
-        """The indices of on-resonance tones."""
+        """Indices of on-resonance tones."""
         return (
             np.argwhere(self.chanmask == ChanmaskValue.ON_RESONANCE)
             .flatten()
@@ -1225,11 +1241,30 @@ class ProcessedData(DataStorage):
 
     @property
     def offres_ind(self) -> npt.NDArray:
-        """The indices of off-resonance tones."""
+        """Indices of off-resonance tones."""
         return (
             np.argwhere(self.chanmask == ChanmaskValue.OFF_RESONANCE)
             .flatten()
             .astype(int)
+        )
+
+    @property
+    def bad_ind(self) -> npt.NDArray:
+        """Indices of bad resonances (i.e. negative chanmask values)."""
+        return np.argwhere(self.chanmask < 0).flatten().astype(int)
+
+    @property
+    def collided_ind(self) -> npt.NDArray:
+        """Indices of collided resonances."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.COLLIDED).flatten().astype(int)
+        )
+
+    @property
+    def misc_bad_ind(self) -> npt.NDArray:
+        """Indices of bad resonances not marked otherwise."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.MISC_BAD).flatten().astype(int)
         )
 
     @property
