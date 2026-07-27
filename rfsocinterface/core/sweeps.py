@@ -28,12 +28,14 @@ from scipy.signal import savgol_filter
 from rfsocinterface.core.params import RFSoCParameters
 from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
+    COLLIDED_RESONANCE_COLOR,
     DEFAULT_DATA_DIRECTORY,
     FLAGGED_RESONANCE_COLOR,
     MAX_ATTENUATION,
     OFF_RESONANCE_COLOR,
     ON_RESONANCE_COLOR,
     PERMISSIONS_ALL_FULL,
+    ChanmaskValue,
     convert_path,
     ensure_path,
     get_current_lo_sweep_hour_string,
@@ -122,13 +124,16 @@ def create_resonator_mini_plot(
         alignment='center',
         edgecolor='black',
     )  # Add a label showing the resonator number
-    if chanmask == 1:
-        if flagged:
-            ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
-    elif chanmask == 0:
-        ax.set_facecolor(OFF_RESONANCE_COLOR)
-    else:
-        ax.set_facecolor(BAD_RESONANCE_COLOR)
+    match chanmask:
+        case ChanmaskValue.ON_RESONANCE:
+            if flagged:
+                ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
+        case ChanmaskValue.OFF_RESONANCE:
+            ax.set_facecolor(OFF_RESONANCE_COLOR)
+        case ChanmaskValue.COLLIDED:
+            ax.set_facecolor(COLLIDED_RESONANCE_COLOR)
+        case _:
+            ax.set_facecolor(BAD_RESONANCE_COLOR)
 
 
 class LoSweep:
@@ -416,13 +421,16 @@ class ResonatorData:
             alignment='center',
             edgecolor='black',
         )  # Add a label showing the resonator number
-        if self.chanmask == 1:
-            if self.flagged:
-                ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
-        elif self.chanmask == 0:
-            ax.set_facecolor(OFF_RESONANCE_COLOR)
-        else:
-            ax.set_facecolor(BAD_RESONANCE_COLOR)
+        match self.chanmask:
+            case ChanmaskValue.ON_RESONANCE:
+                if self.flagged:
+                    ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
+            case ChanmaskValue.OFF_RESONANCE:
+                ax.set_facecolor(OFF_RESONANCE_COLOR)
+            case ChanmaskValue.COLLIDED:
+                ax.set_facecolor(COLLIDED_RESONANCE_COLOR)
+            case _:
+                ax.set_facecolor(BAD_RESONANCE_COLOR)
 
         return fig
 
@@ -454,7 +462,7 @@ class ResonatorData:
     @property
     def is_onres(self) -> bool:
         """bool: Whether this resonator is on-resonance."""
-        return self.data.chanmask[self.idx] == 1
+        return self.data.chanmask[self.idx] == ChanmaskValue.ON_RESONANCE
 
     @property
     def freq_ratio(self) -> float:
@@ -727,13 +735,28 @@ class LoSweepData:
 
     @property
     def onres_ind(self) -> npt.NDArray:
-        """The indices of frequencies that are on-resonance."""
-        return np.argwhere(self.chanmask == 1).flatten()
+        """Indices of on-resonance tones."""
+        return np.argwhere(self.chanmask == ChanmaskValue.ON_RESONANCE).flatten()
 
     @property
     def offres_ind(self) -> npt.NDArray:
-        """The indices of frequencies that are off-resonance."""
-        return np.argwhere(self.chanmask == 0).flatten()
+        """Indices of off-resonance tones."""
+        return np.argwhere(self.chanmask == ChanmaskValue.OFF_RESONANCE).flatten()
+
+    @property
+    def bad_ind(self) -> npt.NDArray:
+        """Indices of bad resonances (i.e. negative chanmask values)."""
+        return np.argwhere(self.chanmask < 0).flatten()
+
+    @property
+    def collided_ind(self) -> npt.NDArray:
+        """Indices of collided resonances."""
+        return np.argwhere(self.chanmask == ChanmaskValue.COLLIDED).flatten()
+
+    @property
+    def misc_bad_ind(self) -> npt.NDArray:
+        """Indices of bad resonances not marked otherwise."""
+        return np.argwhere(self.chanmask == ChanmaskValue.MISC_BAD).flatten()
 
     @property
     def data_I(self) -> npt.NDArray:
@@ -1316,13 +1339,28 @@ class CompositeSweepData:
 
     @property
     def onres_ind(self) -> npt.NDArray:
-        """The indices of frequencies that are on-resonance."""
-        return np.argwhere(self.chanmask == 1).flatten()
+        """Indices of on-resonance tones."""
+        return np.argwhere(self.chanmask == ChanmaskValue.ON_RESONANCE).flatten()
 
     @property
     def offres_ind(self) -> npt.NDArray:
-        """The indices of frequencies that are off-resonance."""
-        return np.argwhere(self.chanmask == 0).flatten()
+        """Indices of off-resonance tones."""
+        return np.argwhere(self.chanmask == ChanmaskValue.OFF_RESONANCE).flatten()
+
+    @property
+    def bad_ind(self) -> npt.NDArray:
+        """Indices of bad resonances (i.e. negative chanmask values)."""
+        return np.argwhere(self.chanmask < 0).flatten()
+
+    @property
+    def collided_ind(self) -> npt.NDArray:
+        """Indices of collided resonances."""
+        return np.argwhere(self.chanmask == ChanmaskValue.COLLIDED).flatten()
+
+    @property
+    def misc_bad_ind(self) -> npt.NDArray:
+        """Indices of bad resonances not marked otherwise."""
+        return np.argwhere(self.chanmask == ChanmaskValue.MISC_BAD).flatten()
 
     @property
     def combined_sweep_array(self) -> npt.NDArray:
