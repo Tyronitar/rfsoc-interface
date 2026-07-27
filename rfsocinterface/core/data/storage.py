@@ -40,6 +40,7 @@ from rfsocinterface.core.sweeps import LoSweepData
 from rfsocinterface.core.utils import (
     DEFAULT_DATA_DIRECTORY,
     PERMISSIONS_ALL_FULL,
+    ChanmaskValue,
     H5pyObject,
     PathLike,
     chunked_downsample,
@@ -1040,11 +1041,15 @@ class ProcessedData(DataStorage):
 
     def get_onres_ind(self, i_chan: int) -> npt.NDArray:
         """Return on-resonance indices for the specified channel."""
-        return np.argwhere(self.get_chanmask(i_chan) == 1).flatten()
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.ON_RESONANCE
+        ).flatten()
 
     def get_offres_ind(self, i_chan: int) -> npt.NDArray:
         """Return off-resonance indices for the specified channel."""
-        return np.argwhere(self.get_chanmask(i_chan) == 0).flatten()
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.OFF_RESONANCE
+        ).flatten()
 
     #
     # Useful properties
@@ -1212,12 +1217,20 @@ class ProcessedData(DataStorage):
     @property
     def onres_ind(self) -> npt.NDArray:
         """The indices of on-resonance tones."""
-        return np.argwhere(self.chanmask == 1).flatten().astype(int)
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.ON_RESONANCE)
+            .flatten()
+            .astype(int)
+        )
 
     @property
     def offres_ind(self) -> npt.NDArray:
         """The indices of off-resonance tones."""
-        return np.argwhere(self.chanmask == 0).flatten().astype(int)
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.OFF_RESONANCE)
+            .flatten()
+            .astype(int)
+        )
 
     @property
     def detector_pol(self) -> npt.NDArray:
