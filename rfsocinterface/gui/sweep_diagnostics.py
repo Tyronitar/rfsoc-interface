@@ -59,6 +59,7 @@ from rfsocinterface.core.utils import (
     FLAGGED_RESONANCE_COLOR,
     OFF_RESONANCE_COLOR,
     ON_RESONANCE_COLOR,
+    ChanmaskValue,
     P,
     convert_path,
     ensure_path,
@@ -211,9 +212,9 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
     def set_chanmask(self, val: int):
         """Set the chanmask to the specified value."""
         match val:
-            case 1:
+            case ChanmaskValue.ON_RESONANCE:
                 self.onres_radioButton.click()
-            case 0:
+            case ChanmaskValue.OFF_RESONANCE:
                 self.offres_radioButton.click()
             case _:
                 self.bad_res_radioButton.click()
@@ -284,16 +285,16 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
         """Change the chanmask value for this resonator."""
         match button:
             case self.onres_radioButton:
-                self.current_chanmask = 1
+                self.current_chanmask = ChanmaskValue.ON_RESONANCE
                 if self.resonator.flagged:
                     self.axes.set_facecolor(FLAGGED_RESONANCE_COLOR)
                 else:
                     self.axes.set_facecolor(ON_RESONANCE_COLOR)
             case self.offres_radioButton:
-                self.current_chanmask = 0
+                self.current_chanmask = ChanmaskValue.OFF_RESONANCE
                 self.axes.set_facecolor(OFF_RESONANCE_COLOR)
             case self.bad_res_radioButton:
-                self.current_chanmask = -1
+                self.current_chanmask = ChanmaskValue.MISC_BAD
                 self.axes.set_facecolor(BAD_RESONANCE_COLOR)
         self.figure_canvas.draw_idle()
 
