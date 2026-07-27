@@ -657,6 +657,9 @@ class LoSweepData:
                 fit_qc = f['global_data/fit_qc'][:]
                 f_center = f['global_data/lo_freq'][()]
                 tile_name = ''
+
+                date = None
+                hour = None
             else:
                 tone_list = f['baseband_freqs'][:]
                 data = f['lo_sweep'][:]
