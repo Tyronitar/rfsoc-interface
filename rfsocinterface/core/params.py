@@ -351,12 +351,12 @@ class RFSoCParameters:
 
     @property
     def onres_ind(self) -> npt.NDArray:
-        """Indices of on-resonance tones (i.e. chanmask = 1)."""
+        """Indices of on-resonance tones."""
         return np.argwhere(self.chanmask[:] == ChanmaskValue.ON_RESONANCE).flatten()
 
     @property
     def offres_ind(self) -> npt.NDArray:
-        """Indices of off-resonance tones (i.e. chanmask = 0)."""
+        """Indices of off-resonance tones."""
         return np.argwhere(self.chanmask[:] == ChanmaskValue.OFF_RESONANCE).flatten()
 
     @property
@@ -366,13 +366,13 @@ class RFSoCParameters:
 
     @property
     def collided_ind(self) -> npt.NDArray:
-        """Indices of collided resonances (i.e. chanmask = -2)."""
+        """Indices of collided resonances."""
         return np.argwhere(self.chanmask[:] == ChanmaskValue.COLLIDED).flatten()
 
     @property
     def misc_bad_ind(self) -> npt.NDArray:
-        """Indices of bad resonances not marked otherwise (i.e. chanmask = -1)."""
-        return np.argwhere(self.chanmask[:] < ChanmaskValue.MISC_BAD).flatten()
+        """Indices of bad resonances not marked otherwise."""
+        return np.argwhere(self.chanmask[:] == ChanmaskValue.MISC_BAD).flatten()
 
     @property
     def baseband_freqs(self) -> h5py.Dataset:
