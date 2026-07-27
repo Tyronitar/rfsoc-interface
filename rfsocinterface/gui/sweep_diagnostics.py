@@ -55,6 +55,7 @@ from rfsocinterface.core.sweeps import (
 )
 from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
+    COLLIDED_RESONANCE_COLOR,
     DEFAULT_PARAMS_DIRECTORY,
     FLAGGED_RESONANCE_COLOR,
     OFF_RESONANCE_COLOR,
@@ -293,6 +294,9 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             case self.offres_radioButton:
                 self.current_chanmask = ChanmaskValue.OFF_RESONANCE
                 self.axes.set_facecolor(OFF_RESONANCE_COLOR)
+            case self.collided_res_radioButton:
+                self.current_chanmask = ChanmaskValue.COLLIDED
+                self.axes.set_facecolor(COLLIDED_RESONANCE_COLOR)
             case self.bad_res_radioButton:
                 self.current_chanmask = ChanmaskValue.MISC_BAD
                 self.axes.set_facecolor(BAD_RESONANCE_COLOR)
@@ -1415,3 +1419,11 @@ class PowerSweepDialog(QDialog):
     def reject(self) -> None:
         self._cleanup_pdf_viewer()
         super().reject()
+
+if __name__ == '__main__':
+    from PySide6.QtWidgets import QApplication
+    app = QApplication()
+    sweep_path = '/data/20260521/20260521_Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power_LO_Sweep_hour16p0300.h5'
+    dial = DiagnosticsDialog.from_h5(sweep_path)
+    dial.show()
+    app.exec()

@@ -28,6 +28,7 @@ from scipy.signal import savgol_filter
 from rfsocinterface.core.params import RFSoCParameters
 from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
+    COLLIDED_RESONANCE_COLOR,
     DEFAULT_DATA_DIRECTORY,
     FLAGGED_RESONANCE_COLOR,
     MAX_ATTENUATION,
@@ -129,6 +130,8 @@ def create_resonator_mini_plot(
                 ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
         case ChanmaskValue.OFF_RESONANCE:
             ax.set_facecolor(OFF_RESONANCE_COLOR)
+        case ChanmaskValue.COLLIDED:
+            ax.set_facecolor(COLLIDED_RESONANCE_COLOR)
         case _:
             ax.set_facecolor(BAD_RESONANCE_COLOR)
 
@@ -424,6 +427,8 @@ class ResonatorData:
                     ax.set_facecolor(FLAGGED_RESONANCE_COLOR)
             case ChanmaskValue.OFF_RESONANCE:
                 ax.set_facecolor(OFF_RESONANCE_COLOR)
+            case ChanmaskValue.COLLIDED:
+                ax.set_facecolor(COLLIDED_RESONANCE_COLOR)
             case _:
                 ax.set_facecolor(BAD_RESONANCE_COLOR)
 
