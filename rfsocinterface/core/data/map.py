@@ -14,6 +14,7 @@ import numpy as np
 import numpy.typing as npt
 from matplotlib import animation
 from matplotlib.figure import Figure
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy import signal
 from scipy.spatial.distance import cdist
 
@@ -45,46 +46,61 @@ def plot_map(
     map_data: npt.NDArray,
     map_x: npt.NDArray,
     map_y: npt.NDArray,
-    extent: tuple[float, float, float, float],
+    ax: plt.Axes | None = None,
+    extent: tuple[float, float, float, float] | None = None,
     max_abs: float | None = None,
+    vmin: float | None = None,
+    vmax: float | None = None,
     flagged_map: npt.NDArray = None,
     contour_levels: npt.NDArray = None,
-    cb_shrink: float = 0.95,
     cb_label: str = 'Signal (mK)',
     cmap: str = 'Greys_r',
     title: str = '',
     add_x_label: bool = True,
-) -> Figure:
+    dpix: float | None = DEFAULT_MAP_DPIX,
+) -> Figure | None:
     """Create a plot for a map."""
     xlim = min(map_x), max(map_x)
     ylim = max(map_y), min(map_y)
+    if extent is None:
+        extent = get_extent(map_x, map_y, dpix=dpix)
 
     if max_abs is None:
         max_abs = np.nanmax(np.abs(map_data))
 
-    fig = plt.figure()
-    plt.imshow(
+    fig = None
+    if ax is None:
+        fig = plt.figure()
+        ax = plt.gca()
+    im = ax.imshow(
         np.flip(np.transpose(map_data[::-1]), 1),
         aspect='equal',
         extent=extent,
-        vmin=-max_abs,
-        vmax=max_abs,
+        vmin=vmin if vmin is not None else -max_abs,
+        vmax=vmax if vmax is not None else max_abs,
         cmap=cmap,
     )
-    cb = plt.colorbar(shrink=cb_shrink)
+    # Color bar
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    cb = plt.colorbar(im, cax=cax)
     cb.set_label(cb_label, rotation=270, labelpad=15)
+
+    # cb = plt.colorbar(im, shrink=cb_shrink)
+    # cb.set_label(cb_label, rotation=270, labelpad=15)
     if flagged_map:
-        plt.contour(
+        ax.contour(
             np.flip(np.flip(np.transpose(flagged_map[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
             colors='red',
         )
-    plt.title(title)
+    ax.set_title(title)
     if add_x_label:
-        plt.xlabel('Azimuth (degrees)')
-    plt.ylabel('ZA (degrees)')
-    plt.xlim(xlim), plt.ylim(ylim)
+        ax.set_xlabel('Azimuth (degrees)')
+    ax.set_ylabel('ZA (degrees)')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
 
     return fig
 
