@@ -489,6 +489,8 @@ class RFSoCParameters:
         bb_freqs = self.baseband_freqs[:]
         shift1 = np.abs(bb_freqs - np.roll(bb_freqs, 1))
         shift2 = np.abs(np.roll(bb_freqs, -1) - bb_freqs)
+        shift1 = np.where(np.roll(self.chanmask[:], 1) == 1, shift1, np.inf)
+        shift2 = np.where(np.roll(self.chanmask[:], -1) == 1, shift2, np.inf)
         nearest_res = np.abs(np.minimum(shift1, shift2) / self.detector_f)
         collided_ind = np.argwhere(
             (nearest_res < collision_threshold)
