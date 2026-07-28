@@ -4,11 +4,69 @@ from matplotlib.backends.backend_pdf import PdfPages
 import pdb
 import numpy as np
 
-from rfsocinterface.core.data import ProcessedData
+from rfsocinterface.core.data import ProcessedData, plot_map, get_extent
 from rfsocinterface.core.params import RFSoCParameters
-from rfsocinterface.core.utils import get_params_file_template
+from rfsocinterface.core.utils import get_params_file_template, create_axis_formatter
 from rfsocinterface.analysis.beammap import combine_polarized_beammaps
 
+collision_threshold = 1/10000
+
+
+def plot_collided_resonances(
+    hpol_data: ProcessedData,
+    vpol_data: ProcessedData,
+    params: RFSoCParameters,
+    tile_name: str,
+):
+    map_az_hpol = hpol_data['map/map_az']
+    map_za_hpol = hpol_data['map/map_za']
+    map_az_vpol = vpol_data['map/map_az']
+    map_za_vpol = vpol_data['map/map_za']
+    detector_f = hpol_data.detector_f()
+    sweep = hpol_data.get_lo_sweep(0)
+    split_indices = np.where(np.diff(params.collided_ind) != 1)[0] + 1
+    chunks = np.split(params.collided_ind, split_indices)
+    file_name = f'{tile_name}_collisions_{collision_threshold:.2e}'.replace('.', '_') + '.pdf'
+    with PdfPages(file_name) as pdf:
+        for neighborhood in chunks:
+            n_res = neighborhood.size
+            # neighborhood = list(range(max(i_res - 1, 0), min(i_res + 3, params.n_tones)))
+            # neighborhood = list(range(max(i_res - 1, 0), min(i_res + 3, params.n_tones)))
+            fig, axes = plt.subplots(3, n_res, figsize=(5 * n_res, 9))
+            for i, i_res in enumerate(neighborhood):
+                polarization = params.detector_pol[i_res]
+                title = (
+                    f'Tone {i_res}, {"H" if polarization == 1 else "V"}-Pol\n'
+                    rf'($f_0$={detector_f[i_res] * 1e-6:.3f} MHz)'
+                )
+                plot_map(
+                    hpol_data['map/map_val'][i_res],
+                    map_az_hpol,
+                    map_za_hpol,
+                    ax=axes[0, i],
+                    dpix=0.03,
+                    cmap='jet',
+                    title=title + '\n\nH-Pol',
+                )
+
+                plot_map(
+                    vpol_data['map/map_val'][i_res],
+                    map_az_vpol,
+                    map_za_vpol,
+                    ax=axes[1, i],
+                    dpix=0.03,
+                    cmap='jet',
+                    title='V-Pol',
+                )
+                axes[2, i].plot(sweep.freq[i_res], sweep.s21[i_res])
+                axes[2, i].set_title(rf'LO Sweep $S_{{21}}$ for Detector {i_res}')
+                axes[2, i].xaxis.set_major_formatter(create_axis_formatter(3))
+                axes[2, i].set_xlabel('Frequency (MHz)')
+                axes[2, i].set_ylabel(r'$S_{21}$')
+                axes[2, i].axvline(sweep.fit_f0[i_res], color='red')
+            fig.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
 
 if __name__ == '__main__':
     # params_file = h5py.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260304.h5')
@@ -150,6 +208,7 @@ if __name__ == '__main__':
     detdx_3 =  focal_center[0] - tile_3_az_centers
     detdy_3 =  focal_center[1] - tile_3_za_centers
 
+
     with RFSoCParameters.load(tile_names[0], mode='r') as old_tile_2_params, \
             old_tile_2_params.copy_and_update(new_tile_names[0]) as new_tile_2_params:
         new_tile_2_params.detector_delta_x[good_inds[0]] = detdx_2
@@ -160,12 +219,16 @@ if __name__ == '__main__':
             np.argwhere(detector_pols[0] == 0).flatten(), old_tile_2_params.offres_ind)
         new_tile_2_params.chanmask[bad_res_tile_2] = -1
         new_tile_2_params.focal_plane_center_za = focal_center[1]
-        fig1 = new_tile_2_params.plot_tones(show=False)
-        new_tile_2_params.flag_collided_resonances(collision_threshold=1/25000)
-        fig2 = new_tile_2_params.plot_tones(show=False)
-        fig1.savefig('tile_2_no_collisions.pdf')
-        fig2.savefig('tile_2_with_collisions.pdf')
-        plt.show()
+        new_tile_2_params.flag_collided_resonances(collision_threshold=collision_threshold)
+        print(f'Tile 2 # of collided resonances: {new_tile_2_params.collided_ind.size}')
+        this_setnums = setnums[0]
+        hpol_setnum = this_setnums[0]
+        vpol_setnum = this_setnums[1]
+        hpol_data = ProcessedData.load(date, hpol_setnum)
+        vpol_data = ProcessedData.load(date, vpol_setnum)
+        plot_collided_resonances(hpol_data, vpol_data, new_tile_2_params, new_tile_names[0])
+        # new_tile_2_params.plot_tones(show=True)
+        # plt.show()
 
     with RFSoCParameters.load(tile_names[1], mode='r') as old_tile_3_params, \
             old_tile_3_params.copy_and_update(new_tile_names[1]) as new_tile_3_params:
@@ -177,9 +240,13 @@ if __name__ == '__main__':
             np.argwhere(detector_pols[1] == 0).flatten(), old_tile_3_params.offres_ind)
         new_tile_3_params.chanmask[bad_res_tile_3] = -1
         new_tile_3_params.focal_plane_center_za = focal_center[1]
-        fig1 = new_tile_3_params.plot_tones(show=False)
-        new_tile_3_params.flag_collided_resonances(collision_threshold=1/25000)
-        fig2 = new_tile_3_params.plot_tones(show=False)
-        fig1.savefig('tile_3_no_collisions.pdf')
-        fig2.savefig('tile_3_with_collisions.pdf')
-        plt.show()
+        new_tile_3_params.flag_collided_resonances(collision_threshold=collision_threshold)
+        print(f'Tile 3 # of collided resonances: {new_tile_3_params.collided_ind.size}')
+        this_setnums = setnums[1]
+        hpol_setnum = this_setnums[0]
+        vpol_setnum = this_setnums[1]
+        hpol_data = ProcessedData.load(date, hpol_setnum)
+        vpol_data = ProcessedData.load(date, vpol_setnum)
+        plot_collided_resonances(hpol_data, vpol_data, new_tile_3_params, new_tile_names[1])
+        # new_tile_3_params.plot_tones(show=True)
+        # plt.show()
