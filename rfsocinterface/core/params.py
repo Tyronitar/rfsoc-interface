@@ -15,7 +15,9 @@ from matplotlib.figure import Figure
 from packaging.version import Version
 
 from rfsocinterface.core.utils import (
+    BAD_RESONANCE_COLOR,
     DEFAULT_PARAMS_DIRECTORY,
+    OFF_RESONANCE_COLOR,
     PERMISSIONS_ALL_FULL,
     ChanmaskValue,
     PathLike,
@@ -489,8 +491,12 @@ class RFSoCParameters:
         bb_freqs = self.baseband_freqs[:]
         shift1 = np.abs(bb_freqs - np.roll(bb_freqs, 1))
         shift2 = np.abs(np.roll(bb_freqs, -1) - bb_freqs)
-        shift1 = np.where(np.roll(self.chanmask[:], 1) == 1, shift1, np.inf)
-        shift2 = np.where(np.roll(self.chanmask[:], -1) == 1, shift2, np.inf)
+        shift1 = np.where(
+            np.roll(self.chanmask[:], 1) == ChanmaskValue.ON_RESONANCE, shift1, np.inf
+        )
+        shift2 = np.where(
+            np.roll(self.chanmask[:], -1) == ChanmaskValue.ON_RESONANCE, shift2, np.inf
+        )
         nearest_res = np.abs(np.minimum(shift1, shift2) / self.detector_f)
         collided_ind = np.argwhere(
             (nearest_res < collision_threshold)
@@ -498,7 +504,7 @@ class RFSoCParameters:
                 self.chanmask[:] == 1
             )  # Only care about on-resonance tones for collisions
         )
-        new_chanmask[collided_ind] = -1
+        new_chanmask[collided_ind] = ChanmaskValue.COLLIDED
 
         _logger.info(f'Found {collided_ind.size} collided resonances')
 
@@ -639,7 +645,8 @@ class RFSoCParameters:
         """Create a stem plot showing all tones, chanmask values, and power levels."""
         detector_f = self.detector_f[:]
         tone_powers = self.tone_powers[:]
-        bad_ind = self.bad_ind
+        misc_bad_ind = self.misc_bad_ind
+        collided_ind = self.collided_ind
         onres_ind = self.onres_ind
         offres_ind = self.offres_ind
 
@@ -659,19 +666,28 @@ class RFSoCParameters:
             plt.stem(
                 detector_f[offres_ind],
                 tone_powers[offres_ind],
-                linefmt='orange',
+                linefmt=OFF_RESONANCE_COLOR,
                 markerfmt='none',
                 basefmt='none',
                 label=f'Off-resonance Tones (n = {offres_ind.size})',
             )
-        if bad_ind.size > 0:
+        if collided_ind.size > 0:
             plt.stem(
-                detector_f[bad_ind],
-                tone_powers[bad_ind],
-                linefmt='red',
+                detector_f[collided_ind],
+                tone_powers[collided_ind],
+                linefmt='red',  # TODO: Use the actual color
                 markerfmt='none',
                 basefmt='none',
-                label=f'Bad Resonances (n = {bad_ind.size})',
+                label=f'Collided Resonances (n = {collided_ind.size})',
+            )
+        if misc_bad_ind.size > 0:
+            plt.stem(
+                detector_f[misc_bad_ind],
+                tone_powers[misc_bad_ind],
+                linefmt=BAD_RESONANCE_COLOR,
+                markerfmt='none',
+                basefmt='none',
+                label=f'Other Bad Resonances (n = {misc_bad_ind.size})',
             )
         plt.xlabel('Frequency (MHz)')
         plt.ylabel('Tone Power')
