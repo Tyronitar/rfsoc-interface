@@ -3,7 +3,7 @@ import logging
 import numpy as np
 
 from rfsocinterface.core.params import RFSoCParameters
-
+import pdb
 _logger = logging.getLogger(__name__)
 
 
@@ -88,31 +88,22 @@ def balance_tone_powers_with_offres_budget(
 
 
 if __name__ == '__main__':
-    tone_powers_db = np.array([-1.,  2.,  0.,  6.,  0.,  1., 10.,  8.,  8., 10., -4., -1.,  2.,
-       -4.,  6.,  4.,  2.,  0., -1.,  1.,  0., 10.,  6., -4., -1.,  2.,
-        2.,  2.,  0., -1.,  8.,  6., -8., -6., -4., -8.,  2.,  1.,  2.,
-        0., 10.,  0., -8., 10., -4., -6.,  6., 10., 10.,  0.,  0.,  0.,
-        0.,  0.,  0.,  0., 10., -1.,  0.,  0.,  0., 10.,  0.,  0.,  0.,
-        0.,  0.,  0.,  0., -4.,  0.,  6.,  0.,  0.,  0., 10.,  0.,  0.,
-        0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0.,  0., 10.,  6.,
-        0., -2.,  0.,  0.,  0.,  0.,  0.,  0., 10.])
-    #tone_powers_db-=np.max(tone_powers_db)
 
-    filename = '/data/params/params_tile_Be260114BL_100_tones_260721.h5'
+
+    filename = '/data/params/params_tile_Be260114BL_1000_tones_2.h5'
     params = RFSoCParameters(filename)
 
     onres_ind      = params.onres_ind
     offres_ind     = params.offres_ind
     bb_freqs_onres = params.baseband_freqs[onres_ind]
 
-    tone_powers_frac, extra_attenuation_db = balance_tone_powers_with_offres_budget(
-        tone_powers_db, onres_ind, offres_ind
-    )
-    print(np.round(extra_attenuation_db))
+
+
 
     f_center = params.f_center
+    pdb.set_trace()
     new_params = RFSoCParameters.new_file(
-        'Be260114BL_tones_260717', len(bb_freqs_onres), f_center=f_center
+        'Be260114BL_tones_100_tones_970_260727', len(bb_freqs_onres), f_center=f_center
     )
     new_params.baseband_freqs[:] = bb_freqs_onres
     new_params.rfin  = 15
@@ -120,9 +111,9 @@ if __name__ == '__main__':
     new_params.add_off_resonance_tones_greedy(
         new_tile_name='Be260114BL_100_tones_260721_adjusted_powers',
         n_offres=100 - len(bb_freqs_onres),
-        f_min=170e6,
-        f_max=670e6,
+        f_min=670e6,
+        f_max=1170e6,
         q=1/1000.,
         delta_offres_min=1e6,
-        tone_powers_frac=tone_powers_frac,
+        tone_powers_frac=np.ones(100),
     )

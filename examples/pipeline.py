@@ -77,7 +77,6 @@ if __name__ == '__main__':
     plot_beammap = PlotBeamMap()
 
     pipeline = Pipeline([
-        cosmic_ray_removal,
         noise_removal_offres,
         noise_removal_onres,
         #noise_removal,
@@ -95,8 +94,8 @@ if __name__ == '__main__':
     ])
 
 
-    date = '20260724'
-    setnums = np.array([1004])
+    date = '20260729'
+    setnums = np.array([1003])
 
     psd_fd_obj_list = []
 

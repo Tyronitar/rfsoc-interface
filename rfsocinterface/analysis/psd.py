@@ -559,7 +559,6 @@ def plot_resonator_report(
 
     # On-resonance tones
 
-    onres_ind = np.delete(onres_ind,14)
     onres_psd = psd[:, onres_ind]
 
     offres_psd = psd[:, offres_ind]
