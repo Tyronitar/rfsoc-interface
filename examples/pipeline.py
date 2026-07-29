@@ -33,12 +33,12 @@ if __name__ == '__main__':
 
     noise_removal_offres = RemoveElectronicsNoise(
         template_selection_indices='offres',
-        lp_filt_freq = 10,
+        lp_filt_freq = 244,
         fspace = True
     )
     noise_removal_onres = RemoveElectronicsNoise(
         template_selection_indices='onres',
-        lp_filt_freq=244,
+        lp_filt_freq=10,
         fspace = True
         
     )
