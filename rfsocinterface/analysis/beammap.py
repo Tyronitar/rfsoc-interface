@@ -23,6 +23,7 @@ from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     DEFAULT_DATA_DIRECTORY,
     OFF_RESONANCE_COLOR,
+    gauss_2d,
     get_beammap_pdf_template,
     mutual_nearest_pairs_between_groups,
 )
@@ -30,26 +31,8 @@ from rfsocinterface.core.utils import (
 _logger = logging.getLogger(__name__)
 
 
-def gauss_2d(
-    xy_coords: tuple[npt.NDArray, npt.NDArray],
-    amp: float,
-    x0: float,
-    y0: float,
-    fwhm_x: float,
-    fwhm_y: float,
-    offset: float,
-) -> npt.NDArray:
-    """Create a 2D Gaussian."""
-    (x, y) = xy_coords
-    sigma_x = fwhm_x / (2 * np.sqrt(2 * np.log(2)))
-    sigma_y = fwhm_y / (2 * np.sqrt(2 * np.log(2)))
-    return offset + amp * np.exp(
-        -((x - x0) ** 2) / (2.0 * sigma_x**2) - (y - y0) ** 2 / (2.0 * sigma_y**2)
-    )
-
-
 def find_gaussian_beams(
-    pdata: ProcessedData,
+    tone_indices: npt.NDArray,
     # Input Datasets
     az: h5py.Dataset,
     za: h5py.Dataset,
@@ -62,6 +45,7 @@ def find_gaussian_beams(
     chisq: h5py.Dataset,
     fwhm_az: h5py.Dataset,
     fwhm_za: h5py.Dataset,
+    offset: h5py.Dataset,
     # Fit Parameters
     initial_fwhm: float = 0.1,
     min_fwhm: float = 0.01,
@@ -74,8 +58,8 @@ def find_gaussian_beams(
 ):
     """Fit a Gaussian to find the beam in the maps for each resonance."""
     _logger.info(f'{caller_name}: Analyzing beam map...')
-    n_tones = pdata.onres_ind.size
-    for i, i_res in enumerate(pdata.onres_ind):
+    n_tones = tone_indices.size
+    for i, i_res in enumerate(tone_indices):
         if i == n_tones // 2:
             _logger.info(f'{caller_name}: Halfway done analyzing beam map...')
         this_val = np.ndarray.flatten(map_val[i_res])
@@ -159,6 +143,7 @@ def find_gaussian_beams(
         amplitude[i_res] = popt[0]
         fwhm_az[i_res] = np.abs(popt[3])
         fwhm_za[i_res] = np.abs(popt[4])
+        offset[i_res] = popt[5]
         snr[i_res] = popt[0] / np.sqrt(pcov[0, 0])
         chisq[i_res] = np.sum(
             (
@@ -179,7 +164,7 @@ def find_gaussian_beams(
             )
             / (np.size(this_val) - 5.0)
         )
-        _logger.info(f'{caller_name}: Finished analyzing beam map.')
+    _logger.info(f'{caller_name}: Finished analyzing beam map.')
 
 
 @register_routine
@@ -203,10 +188,12 @@ class AnalyzeBeamMap(DataRoutine):
         gaussian in azimuth.
     - /beammap/fwhm_za: 1D array of length n_tones containing the FWHM of the fitted
         gaussian in zenith angle.
+    - /beammap/offset: 1D array of length n_tones containing the additive offset to the
+        Gaussian.
     """
 
     name = 'AnalyzeBeamMap'
-    version = '1.0.0'
+    version = '1.1.0'
 
     requires: ClassVar[set[str]] = {
         '/map/map_val',
@@ -222,6 +209,7 @@ class AnalyzeBeamMap(DataRoutine):
         '/beammap/chisq',
         '/beammap/fwhm_az',
         '/beammap/fwhm_za',
+        '/beammap/offset',
     }
 
     def __init__(
@@ -280,13 +268,14 @@ class AnalyzeBeamMap(DataRoutine):
         beammap_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
 
     @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
         self._initialize_datasets(pdata)
 
         find_gaussian_beams(
-            pdata,
+            pdata.onres_ind,
             pdata['map/map_az'][:][:, np.newaxis],
             pdata['map/map_za'][:][np.newaxis, :],
             pdata['map/map_val'][:],
@@ -297,6 +286,7 @@ class AnalyzeBeamMap(DataRoutine):
             pdata['beammap/chisq'],
             pdata['beammap/fwhm_az'],
             pdata['beammap/fwhm_za'],
+            pdata['beammap/offset'],
             initial_fwhm=self.params['initial_fwhm'],
             min_fwhm=self.params['min_fwhm'],
             max_fwhm=self.params['max_fwhm'],

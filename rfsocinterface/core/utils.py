@@ -1321,3 +1321,21 @@ def mutual_nearest_pairs_between_groups(
     distances = distance_a_to_b[keep]
 
     return pairs, distances
+
+
+def gauss_2d(
+    xy_coords: tuple[npt.NDArray, npt.NDArray],
+    amp: float,
+    x0: float,
+    y0: float,
+    fwhm_x: float,
+    fwhm_y: float,
+    offset: float,
+) -> npt.NDArray:
+    """Create a 2D Gaussian."""
+    (x, y) = xy_coords
+    sigma_x = fwhm_x / (2 * np.sqrt(2 * np.log(2)))
+    sigma_y = fwhm_y / (2 * np.sqrt(2 * np.log(2)))
+    return offset + amp * np.exp(
+        -((x - x0) ** 2) / (2.0 * sigma_x**2) - (y - y0) ** 2 / (2.0 * sigma_y**2)
+    )
