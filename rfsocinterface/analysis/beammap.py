@@ -4,6 +4,7 @@ import logging
 import typing
 from typing import ClassVar
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -45,6 +46,140 @@ def gauss_2d(
     return offset + amp * np.exp(
         -((x - x0) ** 2) / (2.0 * sigma_x**2) - (y - y0) ** 2 / (2.0 * sigma_y**2)
     )
+
+
+def find_gaussian_beams(
+    pdata: ProcessedData,
+    # Input Datasets
+    az: h5py.Dataset,
+    za: h5py.Dataset,
+    map_val: h5py.Dataset,
+    # Output Datasets
+    az_center: h5py.Dataset,
+    za_center: h5py.Dataset,
+    amplitude: h5py.Dataset,
+    snr: h5py.Dataset,
+    chisq: h5py.Dataset,
+    fwhm_az: h5py.Dataset,
+    fwhm_za: h5py.Dataset,
+    # Fit Parameters
+    initial_fwhm: float = 0.1,
+    min_fwhm: float = 0.01,
+    max_fwhm: float = 1.0,
+    az_bounds_offset: float = 0.2,
+    za_bounds_offset: float = 0.2,
+    max_radius: float = 0.1,
+    maxfev: int = 10000,
+    caller_name: str = 'find_gaussian_beams',
+):
+    """Fit a Gaussian to find the beam in the maps for each resonance."""
+    _logger.info(f'{caller_name}: Analyzing beam map...')
+    n_tones = pdata.onres_ind.size
+    for i, i_res in enumerate(pdata.onres_ind):
+        if i == n_tones // 2:
+            _logger.info(f'{caller_name}: Halfway done analyzing beam map...')
+        this_val = np.ndarray.flatten(map_val[i_res])
+        this_val[np.isnan(this_val)] = 0
+
+        max_index = np.argwhere(this_val == np.max(this_val))
+        az_idx, za_idx = np.unravel_index(max_index[0], map_val[i_res].shape)
+        az_max = az[az_idx, :]
+        za_max = za[:, za_idx]
+        separation = np.sqrt((az - az_max[0]) ** 2 + (za - za_max[0]) ** 2)
+        index = np.argwhere(separation < max_radius)
+        flat_index = np.ravel_multi_index(
+            (index[:, 0], index[:, 1]), map_val[i_res].shape
+        )
+
+        az_center[i_res] = np.sum(
+            az[index[:, 0]].squeeze() * this_val[flat_index]
+        ) / np.sum(this_val[flat_index])
+        za_center[i_res] = np.sum(
+            za[:, index[:, 1]].squeeze() * this_val[flat_index]
+        ) / np.sum(this_val[flat_index])
+        amplitude[i_res] = np.max(this_val[index])
+
+        this_az = np.ndarray.flatten(az[index[:, 0], :])
+        this_za = np.ndarray.flatten(za[:, index[:, 1]])
+        this_val = this_val[flat_index]
+        sigma_z = np.full(
+            int(np.size(this_val)),
+            (np.percentile(this_val, 84) - np.percentile(this_val, 16)) * 0.5,
+        )
+        start_params = (
+            np.max(this_val),
+            az_center[i_res],
+            za_center[i_res],
+            initial_fwhm,
+            initial_fwhm,
+            np.median(this_val),
+        )
+        bounds = (
+            # Lower bounds
+            (
+                0.0,
+                az_center[i_res] - az_bounds_offset,
+                za_center[i_res] - za_bounds_offset,
+                min_fwhm,
+                min_fwhm,
+                -np.max(np.abs(this_val)),
+            ),
+            # Upper bounds
+            (
+                10.0 * np.max(this_val),
+                az_center[i_res] + az_bounds_offset,
+                za_center[i_res] + za_bounds_offset,
+                max_fwhm,
+                max_fwhm,
+                np.max(np.abs(this_val)),
+            ),
+        )
+        try:
+            popt, pcov = curve_fit(
+                gauss_2d,
+                (this_az, this_za),
+                this_val,
+                p0=start_params,
+                sigma=sigma_z,
+                absolute_sigma=True,
+                maxfev=maxfev,
+                bounds=bounds,
+            )
+        except RuntimeError:
+            _logger.warning(
+                f'{caller_name}: Fit for tone {i_res} failed.'
+                'Setting all values to zero.'
+            )
+            popt = np.zeros(6)
+            pcov = np.zeros((6, 6))
+            continue
+
+        az_center[i_res] = popt[1]
+        za_center[i_res] = popt[2]
+        amplitude[i_res] = popt[0]
+        fwhm_az[i_res] = np.abs(popt[3])
+        fwhm_za[i_res] = np.abs(popt[4])
+        snr[i_res] = popt[0] / np.sqrt(pcov[0, 0])
+        chisq[i_res] = np.sum(
+            (
+                (
+                    this_val
+                    - gauss_2d(
+                        (this_az, this_za),
+                        popt[0],
+                        popt[1],
+                        popt[2],
+                        popt[3],
+                        popt[4],
+                        popt[5],
+                    )
+                )
+                ** 2
+                / sigma_z**2
+            )
+            / (np.size(this_val) - 5.0)
+        )
+        _logger.info(f'{caller_name}: Finished analyzing beam map.')
 
 
 @register_routine
@@ -150,132 +285,27 @@ class AnalyzeBeamMap(DataRoutine):
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
         self._initialize_datasets(pdata)
 
-        az = pdata['map/map_az'][:][:, np.newaxis]
-        za = pdata['map/map_za'][:][np.newaxis, :]
-        map_val = pdata['map/map_val'][:]
-
-        az_center = pdata['beammap/az_center']
-        za_center = pdata['beammap/za_center']
-        amplitude = pdata['beammap/amplitude']
-        snr = pdata['beammap/snr']
-        chisq = pdata['beammap/chisq']
-        fwhm_az = pdata['beammap/fwhm_az']
-        fwhm_za = pdata['beammap/fwhm_za']
-
-        initial_fwhm = self.params['initial_fwhm']
-        min_fwhm = self.params['min_fwhm']
-        max_fwhm = self.params['max_fwhm']
-        az_bounds_offset = self.params['az_bounds_offset']
-        za_bounds_offset = self.params['za_bounds_offset']
-        maxfev = self.params['maxfev']
-        max_radius = self.params['max_radius']
-
-        n_tones = pdata.onres_ind.size
-        _logger.info(f'{self.name}: Analyzing beam map...')
-        for i, i_res in enumerate(pdata.onres_ind):
-            if i == n_tones // 2:
-                _logger.info(f'{self.name}: Halfway done analyzing beam map...')
-            this_val = np.ndarray.flatten(map_val[i_res])
-            this_val[np.isnan(this_val)] = 0
-
-            max_index = np.argwhere(this_val == np.max(this_val))
-            az_idx, za_idx = np.unravel_index(max_index[0], map_val[i_res].shape)
-            az_max = az[az_idx, :]
-            za_max = za[:, za_idx]
-            separation = np.sqrt((az - az_max[0]) ** 2 + (za - za_max[0]) ** 2)
-            index = np.argwhere(separation < max_radius)
-            flat_index = np.ravel_multi_index(
-                (index[:, 0], index[:, 1]), map_val[i_res].shape
-            )
-
-            az_center[i_res] = np.sum(
-                az[index[:, 0]].squeeze() * this_val[flat_index]
-            ) / np.sum(this_val[flat_index])
-            za_center[i_res] = np.sum(
-                za[:, index[:, 1]].squeeze() * this_val[flat_index]
-            ) / np.sum(this_val[flat_index])
-            amplitude[i_res] = np.max(this_val[index])
-
-            this_az = np.ndarray.flatten(az[index[:, 0], :])
-            this_za = np.ndarray.flatten(za[:, index[:, 1]])
-            this_val = this_val[flat_index]
-            sigma_z = np.full(
-                int(np.size(this_val)),
-                (np.percentile(this_val, 84) - np.percentile(this_val, 16)) * 0.5,
-            )
-            start_params = (
-                np.max(this_val),
-                az_center[i_res],
-                za_center[i_res],
-                initial_fwhm,
-                initial_fwhm,
-                np.median(this_val),
-            )
-            bounds = (
-                # Lower bounds
-                (
-                    0.0,
-                    az_center[i_res] - az_bounds_offset,
-                    za_center[i_res] - za_bounds_offset,
-                    min_fwhm,
-                    min_fwhm,
-                    -np.max(np.abs(this_val)),
-                ),
-                # Uppwer bounds
-                (
-                    10.0 * np.max(this_val),
-                    az_center[i_res] + az_bounds_offset,
-                    za_center[i_res] + za_bounds_offset,
-                    max_fwhm,
-                    max_fwhm,
-                    np.max(np.abs(this_val)),
-                ),
-            )
-            try:
-                popt, pcov = curve_fit(
-                    gauss_2d,
-                    (this_az, this_za),
-                    this_val,
-                    p0=start_params,
-                    sigma=sigma_z,
-                    absolute_sigma=True,
-                    maxfev=maxfev,
-                    bounds=bounds,
-                )
-            except RuntimeError:
-                _logger.warning(
-                    f'{self.name}: Fit for tone {i_res} failed.'
-                    'Setting all values to zero.'
-                )
-                popt = np.zeros(6)
-                pcov = np.zeros((6, 6))
-                continue
-
-            az_center[i_res] = popt[1]
-            za_center[i_res] = popt[2]
-            amplitude[i_res] = popt[0]
-            fwhm_az[i_res] = np.abs(popt[3])
-            fwhm_za[i_res] = np.abs(popt[4])
-            snr[i_res] = popt[0] / np.sqrt(pcov[0, 0])
-            chisq[i_res] = np.sum(
-                (
-                    (
-                        this_val
-                        - gauss_2d(
-                            (this_az, this_za),
-                            popt[0],
-                            popt[1],
-                            popt[2],
-                            popt[3],
-                            popt[4],
-                            popt[5],
-                        )
-                    )
-                    ** 2
-                    / sigma_z**2
-                )
-                / (np.size(this_val) - 5.0)
-            )
+        find_gaussian_beams(
+            pdata,
+            pdata['map/map_az'][:][:, np.newaxis],
+            pdata['map/map_za'][:][np.newaxis, :],
+            pdata['map/map_val'][:],
+            pdata['beammap/az_center'],
+            pdata['beammap/za_center'],
+            pdata['beammap/amplitude'],
+            pdata['beammap/snr'],
+            pdata['beammap/chisq'],
+            pdata['beammap/fwhm_az'],
+            pdata['beammap/fwhm_za'],
+            initial_fwhm=self.params['initial_fwhm'],
+            min_fwhm=self.params['min_fwhm'],
+            max_fwhm=self.params['max_fwhm'],
+            az_bounds_offset=self.params['az_bounds_offset'],
+            za_bounds_offset=self.params['za_bounds_offset'],
+            max_radius=self.params['max_radius'],
+            maxfev=self.params['maxfev'],
+            caller_name=self.name,
+        )
 
         return list(self.produces)
 
