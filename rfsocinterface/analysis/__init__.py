@@ -1,5 +1,8 @@
 """Subpackage for all data analysis tools."""
 
+from rfsocinterface.analysis.bad_resonances import (
+    FindDoubleResonances,
+)
 from rfsocinterface.analysis.beammap import (
     AnalyzeBeamMap,
     PlotBeamMap,
@@ -19,6 +22,7 @@ __all__ = [
     'AnalyzeBeamMap',
     'CheckFocus',
     'ComputeNoisePSD',
+    'FindDoubleResonances',
     'PlotBeamMap',
     'PlotPSD',
     'PsdBasis',

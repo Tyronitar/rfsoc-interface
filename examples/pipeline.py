@@ -72,6 +72,7 @@ if __name__ == '__main__':
 
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap()
+    find_doubles = FindDoubleResonances()
 
     pipeline = Pipeline([
         # noise_removal_offres,
@@ -86,8 +87,9 @@ if __name__ == '__main__':
         # plotter,
         # make_video,
         # find_fwhm,
-        analyze_beammap,
+        # analyze_beammap,
         # plot_beammap,
+        find_doubles,
     ])
 
     date = '20260617'
