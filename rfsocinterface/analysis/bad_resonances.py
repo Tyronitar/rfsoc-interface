@@ -101,15 +101,25 @@ class FindDoubleResonances(DataRoutine):
         map_shape = pdata['map/map_val'].shape
         dr_group.create_dataset('residual_map_val', map_shape, dtype=np.float64)
 
-        dr_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
-        dr_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
-        dr_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
-        dr_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
-        dr_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
-        dr_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
-        dr_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
-        dr_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
+        pos_group = dr_group.create_group('positive')
+        pos_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
+        pos_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
+        pos_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
+        pos_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
+        pos_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
+        pos_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
+        pos_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
+        pos_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
 
+        neg_group = dr_group.create_group('negative')
+        neg_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
+        neg_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
+        neg_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
+        neg_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
+        neg_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
+        neg_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
+        neg_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
+        neg_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
 
     @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
@@ -157,28 +167,61 @@ class FindDoubleResonances(DataRoutine):
                 #     pdb.set_trace()
 
         tone_indices = np.array(tone_indices)
-        new_az_center = pdata['beammap/double_resonances/az_center']
-        new_za_center = pdata['beammap/double_resonances/za_center']
-        new_amplitude = pdata['beammap/double_resonances/amplitude']
-        new_snr = pdata['beammap/double_resonances/snr']
-        new_chisq = pdata['beammap/double_resonances/chisq']
-        new_fwhm_az = pdata['beammap/double_resonances/fwhm_az']
-        new_fwhm_za = pdata['beammap/double_resonances/fwhm_za']
-        new_offset = pdata['beammap/double_resonances/offset']
-        # Find any second sources
+        new_az_center_pos = pdata['beammap/double_resonances/positive/az_center']
+        new_za_center_pos = pdata['beammap/double_resonances/positive/za_center']
+        new_amplitude_pos = pdata['beammap/double_resonances/positive/amplitude']
+        new_snr_pos = pdata['beammap/double_resonances/positive/snr']
+        new_chisq_pos = pdata['beammap/double_resonances/positive/chisq']
+        new_fwhm_az_pos = pdata['beammap/double_resonances/positive/fwhm_az']
+        new_fwhm_za_pos = pdata['beammap/double_resonances/positive/fwhm_za']
+        new_offset_pos = pdata['beammap/double_resonances/positive/offset']
+
+        new_az_center_neg = pdata['beammap/double_resonances/negative/az_center']
+        new_za_center_neg = pdata['beammap/double_resonances/negative/za_center']
+        new_amplitude_neg = pdata['beammap/double_resonances/negative/amplitude']
+        new_snr_neg = pdata['beammap/double_resonances/negative/snr']
+        new_chisq_neg = pdata['beammap/double_resonances/negative/chisq']
+        new_fwhm_az_neg = pdata['beammap/double_resonances/negative/fwhm_az']
+        new_fwhm_za_neg = pdata['beammap/double_resonances/negative/fwhm_za']
+        new_offset_neg = pdata['beammap/double_resonances/negative/offset']
+
+        # Find any second sources in the positive residual map
         find_gaussian_beams(
             tone_indices,
             pdata['map/map_az'][:][:, np.newaxis],
             pdata['map/map_za'][:][np.newaxis, :],
             residual_map_val[:],
-            new_az_center,
-            new_za_center,
-            new_amplitude,
-            new_snr,
-            new_chisq,
-            new_fwhm_az,
-            new_fwhm_za,
-            new_offset,
+            new_az_center_pos,
+            new_za_center_pos,
+            new_amplitude_pos,
+            new_snr_pos,
+            new_chisq_pos,
+            new_fwhm_az_pos,
+            new_fwhm_za_pos,
+            new_offset_pos,
+            initial_fwhm=self.params['initial_fwhm'],
+            min_fwhm=self.params['min_fwhm'],
+            max_fwhm=self.params['max_fwhm'],
+            az_bounds_offset=self.params['az_bounds_offset'],
+            za_bounds_offset=self.params['za_bounds_offset'],
+            max_radius=self.params['max_radius'],
+            maxfev=self.params['maxfev'],
+            caller_name=self.name,
+        )
+        # Find any second sources in the negative residual map
+        find_gaussian_beams(
+            tone_indices,
+            pdata['map/map_az'][:][:, np.newaxis],
+            pdata['map/map_za'][:][np.newaxis, :],
+            -1 * residual_map_val[:],
+            new_az_center_neg,
+            new_za_center_neg,
+            new_amplitude_neg,
+            new_snr_neg,
+            new_chisq_neg,
+            new_fwhm_az_neg,
+            new_fwhm_za_neg,
+            new_offset_neg,
             initial_fwhm=self.params['initial_fwhm'],
             min_fwhm=self.params['min_fwhm'],
             max_fwhm=self.params['max_fwhm'],
@@ -190,11 +233,69 @@ class FindDoubleResonances(DataRoutine):
         )
 
         extent = get_extent(np.squeeze(map_az), np.squeeze(map_za), dpix=0.03)
-        # Compare amplitudes
-        amp_ratio =  new_amplitude[tone_indices] / amplitude[tone_indices]
+
+        # identify double resonances
+
+        amp_ratio_pos =  new_amplitude_pos[:] / amplitude[:]
+        amp_ratio_neg =  new_amplitude_neg[:] / amplitude[:]
+
+        snr_ratio_pos = new_snr_pos[:] / snr[:]
+        snr_ratio_neg = new_snr_neg[:] / snr[:]
+
+        chisq_med = np.median(chisq[pdata.onres_ind])
+        chisq_std = np.std(chisq[pdata.onres_ind])
+        # remove outliers and recompute std
+        onres_chisq = chisq[pdata.onres_ind]
+        filt_chisq = onres_chisq[((onres_chisq - chisq_med) / chisq_std) <= 3]
+        filt_chisq = filt_chisq[filt_chisq <= 0.05]
+        chisq_med = np.median(filt_chisq)
+        chisq_std = np.std(filt_chisq)
+        delta_sigma_chisq_pos = np.abs(new_chisq_pos - chisq_med) / chisq_std
+        delta_sigma_chisq_neg = np.abs(new_chisq_neg - chisq_med) / chisq_std
+
+        fwhm_az_med = np.median(fwhm_az[pdata.onres_ind])
+        fwhm_az_std = np.std(fwhm_az[pdata.onres_ind])
+        fwhm_za_med = np.median(fwhm_za[pdata.onres_ind])
+        fwhm_za_std = np.std(fwhm_za[pdata.onres_ind])
+
+        delta_sigma_fwhm_az_pos = np.abs(new_fwhm_az_pos - fwhm_az_med) / fwhm_az_std
+        delta_sigma_fwhm_za_pos = np.abs(new_fwhm_za_pos - fwhm_za_med) / fwhm_za_std
+        delta_sigma_fwhm_az_neg = np.abs(new_fwhm_az_neg - fwhm_az_med) / fwhm_az_std
+        delta_sigma_fwhm_za_neg = np.abs(new_fwhm_za_neg - fwhm_za_med) / fwhm_za_std
+        delta_sigma_fwhm_threshold = 1.5
+        delta_sigma_chisq_threshold = 3
+        snr_threshold = 0.5
+        amplitude_threshold = 0.2
+
+        is_double_pos = (
+            (amp_ratio_pos >= amplitude_threshold) &
+            (snr_ratio_pos >= snr_threshold) &
+            (delta_sigma_fwhm_az_pos <= delta_sigma_fwhm_threshold) &
+            (delta_sigma_fwhm_za_pos <= delta_sigma_fwhm_threshold) &
+            (delta_sigma_chisq_pos <= delta_sigma_chisq_threshold)
+        )
+
+        is_double_neg = (
+            (amp_ratio_neg >= amplitude_threshold) &
+            (snr_ratio_neg >= snr_threshold) &
+            (delta_sigma_fwhm_az_neg <= delta_sigma_fwhm_threshold) &
+            (delta_sigma_fwhm_za_neg <= delta_sigma_fwhm_threshold) &
+            (delta_sigma_chisq_neg <= delta_sigma_chisq_threshold)
+        )
+        is_double = np.logical_or(is_double_pos, is_double_neg)
+        # is_double = np.logical_and(is_double, amplitude >= 5e-7)  # Minimum amplitude
+
+
+        # tone_indices = np.array([
+        #     154, 155, 156, 172, 181, 182, 186, 187, 293, 348, 350, 515, 516, 543, 544, 
+        #     545, 552, 553, 705, 804, 806, 847,
+        # ])
         bbox_pad = 0.3
-        with PdfPages('double_resonances.pdf') as pdf:
+        _logger.info(f'{self.name}: Plotting results...')
+        with PdfPages('double_resonances_pos_neg.pdf') as pdf:
             for i, i_res in enumerate(tone_indices):
+                if i == tone_indices.size // 2:
+                    _logger.info(f'{self.name}: Halfway done plotting results...')
                 old_plot_data = np.flip(np.transpose(map_val[i_res][::-1]), 1)
                 old_med = np.nanmedian(old_plot_data)
                 old_plot_data -= old_med
@@ -202,19 +303,33 @@ class FindDoubleResonances(DataRoutine):
                 old_plot_data /= old_max
                 vmin = np.min(old_plot_data)
                 vmax = np.max(old_plot_data)
-                fig, axes = plt.subplots(1, 2, sharey=True, figsize=(12, 6), layout='compressed')
+                fig, axes = plt.subplots(1, 3, sharey=True, figsize=(16, 6), layout='compressed')
+                if is_double[i_res]:
+                    fig.set_facecolor('orange')
 
-                fig.suptitle(rf'Resonator {i_res} - $\frac{{A_{{res}}}}{{A_0}}$ = {amp_ratio[i]:.3f}')
+                fig.suptitle(f'Resonator {i_res}')
                 axes[0].set_title('Original Map')
                 im = axes[0].imshow(old_plot_data, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
                 axes[0].plot(az_center[i_res], za_center[i_res], marker='+', color='white', markersize=10, mew=2)
 
                 new_plot_data = np.flip(np.transpose(residual_map_val[i_res][::-1]), 1)
-                new_plot_data -= old_med
-                new_plot_data /= old_max
+                new_plot_data_pos = new_plot_data - old_med
+                new_plot_data_pos /= old_max
+
                 axes[1].set_title('Residual Map')
-                axes[1].imshow(new_plot_data, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
-                axes[1].plot(new_az_center[i_res], new_za_center[i_res], marker='+', color='white', markersize=10, mew=2)
+                axes[1].imshow(new_plot_data_pos, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
+                axes[1].plot(new_az_center_pos[i_res], new_za_center_pos[i_res], marker='+', color='white', markersize=10, mew=2)
+
+                if is_double_pos[i_res]:
+                    axes[1].set_facecolor('orange')
+
+                new_plot_data_neg =  old_med - new_plot_data
+                new_plot_data_neg /= old_max
+
+                axes[2].set_title('Residual Map (Inverted)')
+                axes[2].imshow(new_plot_data_neg, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
+                axes[2].plot(new_az_center_neg[i_res], new_za_center_neg[i_res], marker='+', color='white', markersize=10, mew=2)
+
 
                 # divider = make_axes_locatable(axes[1])
                 # cax = divider.append_axes('right', size='5%', pad=0.05)
@@ -231,7 +346,7 @@ class FindDoubleResonances(DataRoutine):
                     f'az_center = {az_center[i_res]:.2f}    '
                     f'za_center = {za_center[i_res]:.2f}\n',
                     loc='upper center',
-                    bbox_to_anchor=(0.5, -0.1),
+                    bbox_to_anchor=(0.5, -0.2),
                     bbox_transform=axes[0].transAxes,
                     pad=bbox_pad,
                     borderpad=0,
@@ -245,15 +360,20 @@ class FindDoubleResonances(DataRoutine):
                 axes[0].add_artist(t)
 
                 t1 = AnchoredText(
-                    f'Amplitude = {new_amplitude[i_res] * 1e5:2f}    '
-                    f'chisq = {new_chisq[i_res]:.3f}    '
-                    f'snr = {new_snr[i_res]:.3f}\n'
-                    f'fwhm_az = {new_fwhm_az[i_res]:.2f}    '
-                    f'fwhm_za = {new_fwhm_za[i_res]:.2f}\n'
-                    f'az_center = {new_az_center[i_res]:.2f}    '
-                    f'za_center = {new_za_center[i_res]:.2f}\n',
+                    f'Amplitude = {new_amplitude_pos[i_res] * 1e5:2f}    '
+                    f'chisq = {new_chisq_pos[i_res]:.3f}    '
+                    f'snr = {new_snr_pos[i_res]:.3f}\n'
+                    f'fwhm_az = {new_fwhm_az_pos[i_res]:.2f}    '
+                    f'fwhm_za = {new_fwhm_za_pos[i_res]:.2f}\n'
+                    f'az_center = {new_az_center_pos[i_res]:.2f}    '
+                    f'za_center = {new_za_center_pos[i_res]:.2f}\n\n'
+                    f'Amplitude ratio = {amp_ratio_pos[i_res]:.2f}    '
+                    f'SNR ratio = {snr_ratio_pos[i_res]:.2f}\n'
+                    rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_pos[i_res]:.2f}    '
+                    rf'$\delta\sigma_{{az}}$ = {delta_sigma_fwhm_az_pos[i_res]:.2f}    '
+                    rf'$\delta\sigma_{{za}}$ = {delta_sigma_fwhm_za_pos[i_res]:.2f}',
                     loc='upper center',
-                    bbox_to_anchor=(0.5, -0.1),
+                    bbox_to_anchor=(0.5, -0.2),
                     bbox_transform=axes[1].transAxes,
                     pad=bbox_pad,
                     borderpad=0,
@@ -262,16 +382,45 @@ class FindDoubleResonances(DataRoutine):
                         'horizontalalignment': 'center',
                     },
                 )
+                if is_double[i_res] and is_double_pos[i_res]:
+                    t1.patch.set_facecolor('red')
                 axes[1].add_artist(t1)
+
+                t2 = AnchoredText(
+                    f'Amplitude = {new_amplitude_neg[i_res] * 1e5:2f}    '
+                    f'chisq = {new_chisq_neg[i_res]:.3f}    '
+                    f'snr = {new_snr_neg[i_res]:.3f}\n'
+                    f'fwhm_az = {new_fwhm_az_neg[i_res]:.2f}    '
+                    f'fwhm_za = {new_fwhm_za_neg[i_res]:.2f}\n'
+                    f'az_center = {new_az_center_neg[i_res]:.2f}    '
+                    f'za_center = {new_za_center_neg[i_res]:.2f}\n\n'
+                    f'Amplitude ratio = {amp_ratio_neg[i_res]:.2f}    '
+                    f'SNR ratio = {snr_ratio_neg[i_res]:.2f}\n'
+                    rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_neg[i_res]:.2f}    '
+                    rf'$\delta\sigma_{{az}}$ = {delta_sigma_fwhm_az_neg[i_res]:.2f}    '
+                    rf'$\delta\sigma_{{za}}$ = {delta_sigma_fwhm_za_neg[i_res]:.2f}',
+                    loc='upper center',
+                    bbox_to_anchor=(0.5, -0.2),
+                    bbox_transform=axes[2].transAxes,
+                    pad=bbox_pad,
+                    borderpad=0,
+                    prop={
+                        # color='white',
+                        'horizontalalignment': 'center',
+                    },
+                )
+                if is_double[i_res] and is_double_neg[i_res]:
+                    t2.patch.set_facecolor('red')
+                axes[2].add_artist(t2)
 
                 axes[0].set_xlabel('X Position (deg)')
                 axes[1].set_xlabel('X Position (deg)')
+                axes[2].set_xlabel('X Position (deg)')
                 axes[0].set_ylabel('Y Position (deg)')
                 # fig.subplots_adjust(bottom=0.18)
                 # fig.tight_layout()
 
                 pdf.savefig(fig)
                 plt.close(fig)
-        pdb.set_trace()
 
         return list(self.produces)
