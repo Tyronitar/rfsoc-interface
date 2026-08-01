@@ -77,7 +77,17 @@ class Pipeline:
         for name, params in config.items():
             self.add_routine(name, **params)
 
-    def run(self, pdata: ProcessedData):
-        """Run this pipeline on a processed data object."""
+    def validate(self, n_inputs: int) -> None:
+        """Validates the number of inputs for all routines."""
         for routine in self.routines:
-            routine.apply(pdata)
+            count = 1 if routine.map_over_inputs else n_inputs
+            routine.validate_input_count(count)
+
+    def run(self, *pdata: ProcessedData):
+        """Run this pipeline on processed data objects."""
+        if not pdata:
+            raise ValueError('Pipeline requires at least one ProcessedData object.')
+        self.validate(len(pdata))
+
+        for routine in self.routines:
+            routine.apply(*pdata)

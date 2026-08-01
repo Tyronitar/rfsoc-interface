@@ -8,7 +8,7 @@ import logging
 import time
 import typing
 import warnings
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import ClassVar, Literal, TypeVar
 
 import matplotlib as mpl
@@ -81,12 +81,22 @@ class DataRoutine:
             routine.
         requires (set): Set of dataset names required by this routine.
         produces (set): Set of dataset names produced by this routine.
-
+        min_inputs (int): The minimum number of inputs the routine can take. Defaults to
+            1.
+        max_inputs (int | None): The maximum number of inputs the routine can take. If
+            None, the routine can take an arbitray amount of inputs. Defaults to 1.
+        map_over_inputs (bool): Whether to apply the routine to each input ProcessedData
+            individually. Defaults to True.
     """
 
     name = 'base'
     version = '0.0.0'
     record_checkpoint = False  # override per routine if desired
+
+    # Multi-input support
+    min_inputs = 1
+    max_inputs = 1
+    map_over_inputs = True
 
     requires: ClassVar[set] = set()
     produces: ClassVar[set] = set()
@@ -95,54 +105,165 @@ class DataRoutine:
         """Initialize a DataRoutine."""
         self.params = params
 
-    def validate_inputs(self, pdata: ProcessedData, inputs: list):
+    @classmethod
+    def validate_input_count(cls, count: int) -> None:
+        """Validate the number of inputs."""
+        if count < cls.min_inputs:
+            raise ValueError(
+                f'{cls.__name__} requires at least '
+                f'{cls.min_inputs} input dataset(s); received {count}.'
+            )
+
+        if cls.max_inputs is not None and count > cls.max_inputs:
+            raise ValueError(
+                f'{cls.__name__} accepts at most '
+                f'{cls.max_inputs} input dataset(s); received {count}.'
+            )
+
+    def _normalize_resolved_inputs(
+        self,
+        pdata: tuple[ProcessedData, ...],
+        resolved: Sequence[str] | Sequence[list[str]] | Mapping[str, Sequence[str]],
+    ) -> tuple[tuple[str, ProcessedData, list[str]], ...]:
+        """Convert supported inputs() return formats into a normalized form.
+
+        The resulting format is:
+            (
+                (input_role, processed_data, dataset_paths),
+                ...
+            )
+        """
+        # Backward-compatible single-input format:
+        # ["/data_IQ", "/timestamp"]
+        if len(pdata) == 1 and self._is_dataset_path_list(resolved):
+            return (('input', pdata[0], list(resolved)),)
+
+        # Multi-input positional format:
+        # (
+        #     ["/data_IQ"],
+        #     ["/data_IQ"],
+        # )
+        if (
+            isinstance(resolved, Sequence)
+            and not isinstance(resolved, (str, bytes))
+            and len(resolved) == len(pdata)
+            and all(self._is_dataset_path_list(paths) for paths in resolved)
+        ):
+            return tuple(
+                (f'input_{index}', data, list(paths))
+                for index, (data, paths) in enumerate(zip(pdata, resolved, strict=True))
+            )
+
+        # Multi-input named format:
+        # {
+        #     "reference": ["/data_IQ"],
+        #     "candidate": ["/data_IQ"],
+        # }
+        if isinstance(resolved, Mapping):
+            if len(resolved) != len(pdata):
+                raise ValueError(
+                    f'{type(self).__name__}.resolve_inputs() returned '
+                    f'{len(resolved)} input roles for {len(pdata)} data files.'
+                )
+
+            return tuple(
+                (role, data, list(paths))
+                for (role, paths), data in zip(resolved.items(), pdata, strict=True)
+            )
+
+        raise TypeError(
+            f'Unsupported result from {type(self).__name__}.resolve_inputs(): '
+            f'{resolved!r}'
+        )
+
+    @staticmethod
+    def _is_dataset_path_list(value) -> bool:
+        return (
+            isinstance(value, Sequence)
+            and not isinstance(value, (str, bytes))
+            and all(isinstance(path, str) for path in value)
+        )
+
+    def validate_inputs(
+        self,
+        normalized_inputs: tuple[tuple[str, ProcessedData, list[str]], ...],
+    ) -> None:
         """Validate that the required datasets are present in the ProcessedData.
 
         Raises:
-            RuntimeError: If any required datasets are missing from the ProcessedData.
+            ValueError: If any required datasets are missing.
         """
-        missing = set(inputs) - set(pdata.list_dataset_names(full_names=True))
+        missing = []
+
+        for role, data, paths in normalized_inputs:
+            missing.extend(f'{role}: {path}' for path in paths if path not in data)
+
         if missing:
-            raise RuntimeError(f'Missing required datsets: {missing}')
+            msg = f'{self.name} is missing required datasets: , '.join(missing)
+            _logger.error(msg)
+            raise ValueError(msg)
 
     # ---- main entry point ----
-    def apply(self, pdata: ProcessedData):
-        """Apply the routine to the given ProcessedData.
+    def apply(self, *pdata: ProcessedData):
+        """Apply this routine to the input(s).
+
+        Serves as the main entry point to the routine's execution. Handles, how
+        the routine should be applied depending on the number of inputs and the
+        routine's mapping behavior.
+        """
+        if not pdata:
+            raise ValueError(f'{self.name} requires at least one ProcessedData object.')
+
+        if self.map_over_inputs:
+            return tuple(self._apply_once(pd) for pd in pdata)
+
+        return self._apply_once(*pdata)
+
+    def _apply_once(self, *pdata: ProcessedData):
+        """Apply the routine to the given ProcessedData objects.
 
         This method handles the common workflow of validating inputs, running the
         computation, logging metadata, and recording checkpoints. The actual computation
         should be implemented in the run() method of the subclass.
 
         """
+        _logger.debug(f'{self.name}: Validating inputs...')
+        self.validate_input_count(len(pdata))  # Validate number of input datasets
+
+        # Check that all datasets have the fields they should
+        inputs = self.inputs(*pdata)
+        normalized_inputs = self._normalize_resolved_inputs(pdata, inputs)
+        self.validate_inputs(normalized_inputs)
+        _logger.debug(f'{self.name}: Finished validating inputs.')
+
+        # shapes_before = self._get_shapes(pdata, inputs)
+
+        # Run actual computation
         _logger.info(f'{self.name}: Applying routine...')
         t0 = time.time()
 
-        inputs = self.inputs(pdata)
-        self.validate_inputs(pdata, inputs)
-        shapes_before = self._get_shapes(pdata, inputs)
-
-        # ---- run actual computation ----
-        outputs = self.run(pdata, inputs=inputs)
+        outputs = self.run(*pdata, inputs=inputs)
 
         runtime = time.time() - t0
         timestamp = datetime.datetime.now(datetime.UTC).isoformat()
+        _logger.info(f'{self.name}: Finished applying routine.')
 
-        shapes_after = self._get_shapes(pdata, outputs)
+        # shapes_after = self._get_shapes(pdata, outputs)
 
+        # Log metadata in the data file(s)
+        _logger.debug(f'{self.name}: Logging metadata...')
         meta = self._get_metadata(
             timestamp,
             inputs,
             outputs,
-            shapes_before,
-            shapes_after,
+            # shapes_before,
+            # shapes_after,
             runtime,
         )
-
-        self._log_step(pdata, meta)
-
+        self._log_step(meta, *pdata)
+        _logger.debug(f'{self.name}: Finished logging metadata.')
         if self.record_checkpoint:
-            self._checkpoint(pdata)
-        _logger.info(f'{self.name}: Finished applying routine.')
+            self._checkpoint(*pdata)
 
         return outputs
 
@@ -153,7 +274,9 @@ class DataRoutine:
             f'DataRoutine [{type(self).__name__}] is missing a run method'
         )
 
-    def inputs(self, pdata: ProcessedData):  # noqa: ARG002
+    def inputs(
+        self, *pdata: ProcessedData
+    ) -> Sequence[str] | Sequence[list[str]] | Mapping[str, Sequence[str]]:
         """Return a list of dataset names required by this routine."""
         if self.requires:
             return list(self.requires)
@@ -168,40 +291,42 @@ class DataRoutine:
                 shapes[name] = pdata[name].shape
         return shapes
 
-    def _log_step(self, pdata: ProcessedData, meta: str):
+    def _log_step(self, meta: str, *pdata: ProcessedData):
         """Append to the 'processing_history' group of the ProcessedData."""
-        hist = pdata.file.require_group('processing_history')
+        for pd in pdata:
+            hist = pd.file.require_group('processing_history')
 
-        step_idx = len(hist)
-        step_name = get_step_group_name(step_idx, self.name)
+            step_idx = len(hist)
+            step_name = get_step_group_name(step_idx, self.name)
 
-        step_group = hist.create_group(step_name)
+            step_group = hist.create_group(step_name)
 
-        for k, v in meta.items():
-            if isinstance(v, dict | list):
-                step_group.attrs[k] = json.dumps(v, cls=PathJSONEncoder)
-            else:
-                step_group.attrs[k] = v
+            for k, v in meta.items():
+                if isinstance(v, dict | list):
+                    step_group.attrs[k] = json.dumps(v, cls=PathJSONEncoder)
+                else:
+                    step_group.attrs[k] = v
 
-    def _checkpoint(self, pdata: ProcessedData):
+    def _checkpoint(self, *pdata: ProcessedData):
         """Save a checkpoint of the current state of the ProcessedData."""
-        chk_group = pdata.file.require_group('checkpoints')
-        name = get_step_group_name(len(chk_group), self.name)
+        for pd in pdata:
+            chk_group = pd.file.require_group('checkpoints')
+            name = get_step_group_name(len(chk_group), self.name)
 
-        g = chk_group.create_group(name)
+            g = chk_group.create_group(name)
 
-        # naive: copy all datasets (you can refine later)
-        for key, item in pdata.file.items():
-            if isinstance(item, type(pdata.file['/'])):  # dataset
-                pdata.file.copy(item, g, name=key)
+            # naive: copy all datasets (you can refine later)
+            for key, item in pd.file.items():
+                if isinstance(item, type(pd.file['/'])):  # dataset
+                    pd.file.copy(item, g, name=key)
 
     def _get_metadata(
         self,
         timestamp: float,
         inputs: Sequence[str],
         outputs: Sequence[str],
-        shapes_before: Sequence[tuple],
-        shapes_after: Sequence[tuple],
+        # shapes_before: Sequence[tuple],
+        # shapes_after: Sequence[tuple],
         runtime: float,
     ) -> dict:
         """Helper method to construct the metadata dictionary for history logging."""
@@ -212,8 +337,8 @@ class DataRoutine:
             'params': self.params,
             'inputs': inputs,
             'outputs': outputs,
-            'shape_before': shapes_before,
-            'shape_after': shapes_after,
+            # 'shape_before': shapes_before,
+            # 'shape_after': shapes_after,
             'code_version': get_git_hash(),
             'runtime_sec': runtime,
         }
