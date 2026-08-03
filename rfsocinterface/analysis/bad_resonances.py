@@ -47,7 +47,10 @@ class FindDoubleResonances(DataRoutine):
 
     def __init__(
         self,
-        ratio_threshold: float = 0.5,
+        delta_sigma_fwhm_threshold: float= 1.5,
+        delta_sigma_chisq_threshold: float = 3,
+        snr_threshold: float = 0.5,
+        amplitude_threshold: float = 0.2,
         initial_fwhm: float = 0.1,
         min_fwhm: float = 0.01,
         max_fwhm: float = 1.0,
@@ -55,6 +58,7 @@ class FindDoubleResonances(DataRoutine):
         za_bounds_offset: float = 0.2,
         max_radius: float = 0.1,
         maxfev: int = 10000,
+        plot: bool = False,
     ):
         """Initialize the FindDoubleResonances routine.
 
@@ -76,7 +80,10 @@ class FindDoubleResonances(DataRoutine):
                 abandoning the fit. Defaults to 10000.
         """
         super().__init__(
-            ratio_threshold=ratio_threshold,
+            delta_sigma_fwhm_threshold=delta_sigma_fwhm_threshold,
+            delta_sigma_chisq_threshold=delta_sigma_chisq_threshold,
+            snr_threshold=snr_threshold,
+            amplitude_threshold=amplitude_threshold,
             initial_fwhm=initial_fwhm,
             min_fwhm=min_fwhm,
             max_fwhm=max_fwhm,
@@ -84,6 +91,7 @@ class FindDoubleResonances(DataRoutine):
             za_bounds_offset=abs(za_bounds_offset),
             max_radius=max_radius,
             maxfev=maxfev,
+            plot=plot,
         )
 
     @typing.override
@@ -110,6 +118,7 @@ class FindDoubleResonances(DataRoutine):
         pos_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
         pos_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
         pos_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
+        pos_group.create_dataset('is_double', (pdata.n_tones,), dtype=np.bool)
 
         neg_group = dr_group.create_group('negative')
         neg_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
@@ -120,6 +129,7 @@ class FindDoubleResonances(DataRoutine):
         neg_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
         neg_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
         neg_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
+        neg_group.create_dataset('is_double', (pdata.n_tones,), dtype=np.bool)
 
     @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
@@ -262,10 +272,10 @@ class FindDoubleResonances(DataRoutine):
         delta_sigma_fwhm_za_pos = np.abs(new_fwhm_za_pos - fwhm_za_med) / fwhm_za_std
         delta_sigma_fwhm_az_neg = np.abs(new_fwhm_az_neg - fwhm_az_med) / fwhm_az_std
         delta_sigma_fwhm_za_neg = np.abs(new_fwhm_za_neg - fwhm_za_med) / fwhm_za_std
-        delta_sigma_fwhm_threshold = 1.5
-        delta_sigma_chisq_threshold = 3
-        snr_threshold = 0.5
-        amplitude_threshold = 0.2
+        delta_sigma_fwhm_threshold = self.params['delta_sigma_fwhm_threshold']
+        delta_sigma_chisq_threshold = self.params['delta_sigma_chisq_threshold']
+        snr_threshold = self.params['snr_threshold']
+        amplitude_threshold = self.params['amplitude_threshold']
 
         is_double_pos = (
             (amp_ratio_pos >= amplitude_threshold) &
@@ -274,6 +284,7 @@ class FindDoubleResonances(DataRoutine):
             (delta_sigma_fwhm_za_pos <= delta_sigma_fwhm_threshold) &
             (delta_sigma_chisq_pos <= delta_sigma_chisq_threshold)
         )
+        pdata['/beammap/double_resonances/positive/is_double'][:] = is_double_pos
 
         is_double_neg = (
             (amp_ratio_neg >= amplitude_threshold) &
@@ -282,6 +293,7 @@ class FindDoubleResonances(DataRoutine):
             (delta_sigma_fwhm_za_neg <= delta_sigma_fwhm_threshold) &
             (delta_sigma_chisq_neg <= delta_sigma_chisq_threshold)
         )
+        pdata['/beammap/double_resonances/negative/is_double'][:] = is_double_neg
         is_double = np.logical_or(is_double_pos, is_double_neg)
         # is_double = np.logical_and(is_double, amplitude >= 5e-7)  # Minimum amplitude
 
@@ -290,137 +302,138 @@ class FindDoubleResonances(DataRoutine):
         #     154, 155, 156, 172, 181, 182, 186, 187, 293, 348, 350, 515, 516, 543, 544, 
         #     545, 552, 553, 705, 804, 806, 847,
         # ])
-        bbox_pad = 0.3
-        _logger.info(f'{self.name}: Plotting results...')
-        with PdfPages('double_resonances_pos_neg.pdf') as pdf:
-            for i, i_res in enumerate(tone_indices):
-                if i == tone_indices.size // 2:
-                    _logger.info(f'{self.name}: Halfway done plotting results...')
-                old_plot_data = np.flip(np.transpose(map_val[i_res][::-1]), 1)
-                old_med = np.nanmedian(old_plot_data)
-                old_plot_data -= old_med
-                old_max = np.nanmax(old_plot_data)
-                old_plot_data /= old_max
-                vmin = np.min(old_plot_data)
-                vmax = np.max(old_plot_data)
-                fig, axes = plt.subplots(1, 3, sharey=True, figsize=(16, 6), layout='compressed')
-                if is_double[i_res]:
-                    fig.set_facecolor('orange')
+        if self.params['plot']:
+            bbox_pad = 0.3
+            _logger.info(f'{self.name}: Plotting results...')
+            with PdfPages(f'{pdata.folder}/{pdata.file_stub}_double_resonances.pdf') as pdf:
+                for i, i_res in enumerate(tone_indices):
+                    if i == tone_indices.size // 2:
+                        _logger.info(f'{self.name}: Halfway done plotting results...')
+                    old_plot_data = np.flip(np.transpose(map_val[i_res][::-1]), 1)
+                    old_med = np.nanmedian(old_plot_data)
+                    old_plot_data -= old_med
+                    old_max = np.nanmax(old_plot_data)
+                    old_plot_data /= old_max
+                    vmin = np.min(old_plot_data)
+                    vmax = np.max(old_plot_data)
+                    fig, axes = plt.subplots(1, 3, sharey=True, figsize=(16, 6), layout='compressed')
+                    if is_double[i_res]:
+                        fig.set_facecolor('orange')
 
-                fig.suptitle(f'Resonator {i_res}')
-                axes[0].set_title('Original Map')
-                im = axes[0].imshow(old_plot_data, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
-                axes[0].plot(az_center[i_res], za_center[i_res], marker='+', color='white', markersize=10, mew=2)
+                    fig.suptitle(f'Resonator {i_res}')
+                    axes[0].set_title('Original Map')
+                    im = axes[0].imshow(old_plot_data, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
+                    axes[0].plot(az_center[i_res], za_center[i_res], marker='+', color='white', markersize=10, mew=2)
 
-                new_plot_data = np.flip(np.transpose(residual_map_val[i_res][::-1]), 1)
-                new_plot_data_pos = new_plot_data - old_med
-                new_plot_data_pos /= old_max
+                    new_plot_data = np.flip(np.transpose(residual_map_val[i_res][::-1]), 1)
+                    new_plot_data_pos = new_plot_data - old_med
+                    new_plot_data_pos /= old_max
 
-                axes[1].set_title('Residual Map')
-                axes[1].imshow(new_plot_data_pos, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
-                axes[1].plot(new_az_center_pos[i_res], new_za_center_pos[i_res], marker='+', color='white', markersize=10, mew=2)
+                    axes[1].set_title('Residual Map')
+                    axes[1].imshow(new_plot_data_pos, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
+                    axes[1].plot(new_az_center_pos[i_res], new_za_center_pos[i_res], marker='+', color='white', markersize=10, mew=2)
 
-                if is_double_pos[i_res]:
-                    axes[1].set_facecolor('orange')
+                    if is_double_pos[i_res]:
+                        axes[1].set_facecolor('orange')
 
-                new_plot_data_neg =  old_med - new_plot_data
-                new_plot_data_neg /= old_max
+                    new_plot_data_neg =  old_med - new_plot_data
+                    new_plot_data_neg /= old_max
 
-                axes[2].set_title('Residual Map (Inverted)')
-                axes[2].imshow(new_plot_data_neg, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
-                axes[2].plot(new_az_center_neg[i_res], new_za_center_neg[i_res], marker='+', color='white', markersize=10, mew=2)
+                    axes[2].set_title('Residual Map (Inverted)')
+                    axes[2].imshow(new_plot_data_neg, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
+                    axes[2].plot(new_az_center_neg[i_res], new_za_center_neg[i_res], marker='+', color='white', markersize=10, mew=2)
 
 
-                # divider = make_axes_locatable(axes[1])
-                # cax = divider.append_axes('right', size='5%', pad=0.05)
-                # cb = fig.colorbar(im, cax=cax)
-                cb = fig.colorbar(im, ax=axes)
-                cb.set_label(f'Normalized signal ({pdata["map"].attrs["units"]})', rotation=270, labelpad=15)
+                    # divider = make_axes_locatable(axes[1])
+                    # cax = divider.append_axes('right', size='5%', pad=0.05)
+                    # cb = fig.colorbar(im, cax=cax)
+                    cb = fig.colorbar(im, ax=axes)
+                    cb.set_label(f'Normalized signal ({pdata["map"].attrs["units"]})', rotation=270, labelpad=15)
 
-                t = AnchoredText(
-                    f'Amplitude = {amplitude[i_res] * 1e5:2f}    '
-                    f'chisq = {chisq[i_res]:.3f}    '
-                    f'snr = {snr[i_res]:.3f}\n'
-                    f'fwhm_az = {fwhm_az[i_res]:.2f}    '
-                    f'fwhm_za = {fwhm_za[i_res]:.2f}\n'
-                    f'az_center = {az_center[i_res]:.2f}    '
-                    f'za_center = {za_center[i_res]:.2f}\n',
-                    loc='upper center',
-                    bbox_to_anchor=(0.5, -0.2),
-                    bbox_transform=axes[0].transAxes,
-                    pad=bbox_pad,
-                    borderpad=0,
-                    prop={
-                        # color='white',
-                        'horizontalalignment': 'center',
-                    },
-                )
-                # t.patch.set_alpha(0.25)
-                # t.patch.set_color('black')
-                axes[0].add_artist(t)
+                    t = AnchoredText(
+                        f'Amplitude = {amplitude[i_res] * 1e5:2f}    '
+                        f'chisq = {chisq[i_res]:.3f}    '
+                        f'snr = {snr[i_res]:.3f}\n'
+                        f'fwhm_az = {fwhm_az[i_res]:.2f}    '
+                        f'fwhm_za = {fwhm_za[i_res]:.2f}\n'
+                        f'az_center = {az_center[i_res]:.2f}    '
+                        f'za_center = {za_center[i_res]:.2f}\n',
+                        loc='upper center',
+                        bbox_to_anchor=(0.5, -0.2),
+                        bbox_transform=axes[0].transAxes,
+                        pad=bbox_pad,
+                        borderpad=0,
+                        prop={
+                            # color='white',
+                            'horizontalalignment': 'center',
+                        },
+                    )
+                    # t.patch.set_alpha(0.25)
+                    # t.patch.set_color('black')
+                    axes[0].add_artist(t)
 
-                t1 = AnchoredText(
-                    f'Amplitude = {new_amplitude_pos[i_res] * 1e5:2f}    '
-                    f'chisq = {new_chisq_pos[i_res]:.3f}    '
-                    f'snr = {new_snr_pos[i_res]:.3f}\n'
-                    f'fwhm_az = {new_fwhm_az_pos[i_res]:.2f}    '
-                    f'fwhm_za = {new_fwhm_za_pos[i_res]:.2f}\n'
-                    f'az_center = {new_az_center_pos[i_res]:.2f}    '
-                    f'za_center = {new_za_center_pos[i_res]:.2f}\n\n'
-                    f'Amplitude ratio = {amp_ratio_pos[i_res]:.2f}    '
-                    f'SNR ratio = {snr_ratio_pos[i_res]:.2f}\n'
-                    rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_pos[i_res]:.2f}    '
-                    rf'$\delta\sigma_{{az}}$ = {delta_sigma_fwhm_az_pos[i_res]:.2f}    '
-                    rf'$\delta\sigma_{{za}}$ = {delta_sigma_fwhm_za_pos[i_res]:.2f}',
-                    loc='upper center',
-                    bbox_to_anchor=(0.5, -0.2),
-                    bbox_transform=axes[1].transAxes,
-                    pad=bbox_pad,
-                    borderpad=0,
-                    prop={
-                        # color='white',
-                        'horizontalalignment': 'center',
-                    },
-                )
-                if is_double[i_res] and is_double_pos[i_res]:
-                    t1.patch.set_facecolor('red')
-                axes[1].add_artist(t1)
+                    t1 = AnchoredText(
+                        f'Amplitude = {new_amplitude_pos[i_res] * 1e5:2f}    '
+                        f'chisq = {new_chisq_pos[i_res]:.3f}    '
+                        f'snr = {new_snr_pos[i_res]:.3f}\n'
+                        f'fwhm_az = {new_fwhm_az_pos[i_res]:.2f}    '
+                        f'fwhm_za = {new_fwhm_za_pos[i_res]:.2f}\n'
+                        f'az_center = {new_az_center_pos[i_res]:.2f}    '
+                        f'za_center = {new_za_center_pos[i_res]:.2f}\n\n'
+                        f'Amplitude ratio = {amp_ratio_pos[i_res]:.2f}    '
+                        f'SNR ratio = {snr_ratio_pos[i_res]:.2f}\n'
+                        rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_pos[i_res]:.2f}    '
+                        rf'$\delta\sigma_{{az}}$ = {delta_sigma_fwhm_az_pos[i_res]:.2f}    '
+                        rf'$\delta\sigma_{{za}}$ = {delta_sigma_fwhm_za_pos[i_res]:.2f}',
+                        loc='upper center',
+                        bbox_to_anchor=(0.5, -0.2),
+                        bbox_transform=axes[1].transAxes,
+                        pad=bbox_pad,
+                        borderpad=0,
+                        prop={
+                            # color='white',
+                            'horizontalalignment': 'center',
+                        },
+                    )
+                    if is_double[i_res] and is_double_pos[i_res]:
+                        t1.patch.set_facecolor('red')
+                    axes[1].add_artist(t1)
 
-                t2 = AnchoredText(
-                    f'Amplitude = {new_amplitude_neg[i_res] * 1e5:2f}    '
-                    f'chisq = {new_chisq_neg[i_res]:.3f}    '
-                    f'snr = {new_snr_neg[i_res]:.3f}\n'
-                    f'fwhm_az = {new_fwhm_az_neg[i_res]:.2f}    '
-                    f'fwhm_za = {new_fwhm_za_neg[i_res]:.2f}\n'
-                    f'az_center = {new_az_center_neg[i_res]:.2f}    '
-                    f'za_center = {new_za_center_neg[i_res]:.2f}\n\n'
-                    f'Amplitude ratio = {amp_ratio_neg[i_res]:.2f}    '
-                    f'SNR ratio = {snr_ratio_neg[i_res]:.2f}\n'
-                    rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_neg[i_res]:.2f}    '
-                    rf'$\delta\sigma_{{az}}$ = {delta_sigma_fwhm_az_neg[i_res]:.2f}    '
-                    rf'$\delta\sigma_{{za}}$ = {delta_sigma_fwhm_za_neg[i_res]:.2f}',
-                    loc='upper center',
-                    bbox_to_anchor=(0.5, -0.2),
-                    bbox_transform=axes[2].transAxes,
-                    pad=bbox_pad,
-                    borderpad=0,
-                    prop={
-                        # color='white',
-                        'horizontalalignment': 'center',
-                    },
-                )
-                if is_double[i_res] and is_double_neg[i_res]:
-                    t2.patch.set_facecolor('red')
-                axes[2].add_artist(t2)
+                    t2 = AnchoredText(
+                        f'Amplitude = {new_amplitude_neg[i_res] * 1e5:2f}    '
+                        f'chisq = {new_chisq_neg[i_res]:.3f}    '
+                        f'snr = {new_snr_neg[i_res]:.3f}\n'
+                        f'fwhm_az = {new_fwhm_az_neg[i_res]:.2f}    '
+                        f'fwhm_za = {new_fwhm_za_neg[i_res]:.2f}\n'
+                        f'az_center = {new_az_center_neg[i_res]:.2f}    '
+                        f'za_center = {new_za_center_neg[i_res]:.2f}\n\n'
+                        f'Amplitude ratio = {amp_ratio_neg[i_res]:.2f}    '
+                        f'SNR ratio = {snr_ratio_neg[i_res]:.2f}\n'
+                        rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_neg[i_res]:.2f}    '
+                        rf'$\delta\sigma_{{az}}$ = {delta_sigma_fwhm_az_neg[i_res]:.2f}    '
+                        rf'$\delta\sigma_{{za}}$ = {delta_sigma_fwhm_za_neg[i_res]:.2f}',
+                        loc='upper center',
+                        bbox_to_anchor=(0.5, -0.2),
+                        bbox_transform=axes[2].transAxes,
+                        pad=bbox_pad,
+                        borderpad=0,
+                        prop={
+                            # color='white',
+                            'horizontalalignment': 'center',
+                        },
+                    )
+                    if is_double[i_res] and is_double_neg[i_res]:
+                        t2.patch.set_facecolor('red')
+                    axes[2].add_artist(t2)
 
-                axes[0].set_xlabel('X Position (deg)')
-                axes[1].set_xlabel('X Position (deg)')
-                axes[2].set_xlabel('X Position (deg)')
-                axes[0].set_ylabel('Y Position (deg)')
-                # fig.subplots_adjust(bottom=0.18)
-                # fig.tight_layout()
+                    axes[0].set_xlabel('X Position (deg)')
+                    axes[1].set_xlabel('X Position (deg)')
+                    axes[2].set_xlabel('X Position (deg)')
+                    axes[0].set_ylabel('Y Position (deg)')
+                    # fig.subplots_adjust(bottom=0.18)
+                    # fig.tight_layout()
 
-                pdf.savefig(fig)
-                plt.close(fig)
+                    pdf.savefig(fig)
+                    plt.close(fig)
 
         return list(self.produces)
