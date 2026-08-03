@@ -99,11 +99,10 @@ if __name__ == '__main__':
 
 
     # Run the pipeline using one of the following:
-    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, results = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
 
-    # pdata = pipeline.from_consolidated_data(date, setnum)
+    # pdata, results = pipeline.from_consolidated_data(date, setnum)
 
     pdata = ProcessedData.load(date, setnum, mode='a')
-    pipeline.run(pdata)
-    pdata.print_history(verbose=True)
+    results = pipeline.run(pdata)
 

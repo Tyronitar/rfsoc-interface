@@ -24,7 +24,7 @@ class Pipeline:
 
     def from_tod(
         self, date: str, setnum: int, downsampling_factor: int = 1, use_pps: bool = True
-    ) -> ProcessedData:
+    ) -> tuple[ProcessedData, tuple[RoutineResult | tuple[RoutineResult, ...], ...]]:
         """Run a pipeline starting from the TOD files for the desired data set."""
         _logger.info(f'Pipeline: Running pipeline on TOD {date}_set{setnum}')
         cd = ConsolidatedData.from_tod(
@@ -32,10 +32,12 @@ class Pipeline:
         )
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
-        self.run(pd)
-        return pd
+        results = self.run(pd)
+        return pd, results
 
-    def from_consolidated_data(self, date: str, setnum: int) -> ProcessedData:
+    def from_consolidated_data(
+        self, date: str, setnum: int
+    ) -> tuple[ProcessedData, tuple[RoutineResult | tuple[RoutineResult, ...], ...]]:
         """Run a pipeline starting from a consolidated file."""
         _logger.info(
             f'Pipeline: Running pipeline from ConsolidatedData {date}_set{setnum}'
@@ -43,8 +45,8 @@ class Pipeline:
         cd = ConsolidatedData.load(date, setnum)
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
-        self.run(pd)
-        return pd
+        results = self.run(pd)
+        return pd, results
 
     def add_routine(self, name: str, **params):
         """Instatiate a DataRoutine and add it to this pipeline.
@@ -89,7 +91,7 @@ class Pipeline:
 
     def run(
         self, *pdata: ProcessedData
-    ) -> tuple[RoutineResult | tuple[RoutineResult, ...]]:
+    ) -> tuple[RoutineResult | tuple[RoutineResult, ...], ...]:
         """Run this pipeline on one or more processed data objects."""
         if not pdata:
             raise ValueError('Pipeline requires at least one ProcessedData object.')
