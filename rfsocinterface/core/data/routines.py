@@ -289,7 +289,7 @@ class DataRoutine:
                     )
 
     # ---- main entry point ----
-    def apply(self, *pdata: ProcessedData):
+    def apply(self, *pdata: ProcessedData) -> RoutineResult | tuple[RoutineResult, ...]:
         """Apply this routine to the input(s).
 
         Serves as the main entry point to the routine's execution. Handles, how

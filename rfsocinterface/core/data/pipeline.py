@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
-from rfsocinterface.core.data.routines import ROUTINE_REGISTRY, DataRoutine
+from rfsocinterface.core.data.routines import (
+    ROUTINE_REGISTRY,
+    DataRoutine,
+    RoutineResult,
+)
 from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
 
 _logger = logging.getLogger(__name__)
@@ -21,7 +25,7 @@ class Pipeline:
     def from_tod(
         self, date: str, setnum: int, downsampling_factor: int = 1, use_pps: bool = True
     ) -> ProcessedData:
-        """Run a pipeline starting from the TOD files."""
+        """Run a pipeline starting from the TOD files for the desired data set."""
         _logger.info(f'Pipeline: Running pipeline on TOD {date}_set{setnum}')
         cd = ConsolidatedData.from_tod(
             date, setnum, downsampling_factor=downsampling_factor, use_pps=use_pps
@@ -32,7 +36,7 @@ class Pipeline:
         return pd
 
     def from_consolidated_data(self, date: str, setnum: int) -> ProcessedData:
-        """Run a pipeline starting from the consolidated file."""
+        """Run a pipeline starting from a consolidated file."""
         _logger.info(
             f'Pipeline: Running pipeline from ConsolidatedData {date}_set{setnum}'
         )
@@ -83,11 +87,17 @@ class Pipeline:
             count = 1 if routine.map_over_inputs else n_inputs
             routine.validate_input_count(count)
 
-    def run(self, *pdata: ProcessedData):
-        """Run this pipeline on processed data objects."""
+    def run(self, *pdata: ProcessedData) -> tuple[RoutineResult]:
+        """Run this pipeline on one or more processed data objects."""
         if not pdata:
             raise ValueError('Pipeline requires at least one ProcessedData object.')
         self.validate(len(pdata))
 
-        for routine in self.routines:
-            routine.apply(*pdata)
+        try:
+            results = tuple(routine.apply(*pdata) for routine in self.routines)
+        except Exception as e:
+            msg = f'Error occurred during pipeline execution: {e}'
+            _logger.exception(msg)
+            raise
+        else:
+            return results
