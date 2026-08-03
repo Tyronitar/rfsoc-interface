@@ -77,6 +77,7 @@ class RoutineResult:
     # Return values
     values: dict[str, Any] = field(default_factory=dict)
 
+
 """
 Possible formats for the result of `routine.inputs`:
 1. Mapping[str, Sequence[Collection[str]]: Map of input names to a
@@ -93,17 +94,17 @@ Possible formats for the result of `routine.inputs`:
     e.g. ('/path/to/dset1', '/path/to/dset2', ...)
 """
 type RoutineInputs = (
-Sequence[str] | Sequence[Collection[str]] | Mapping[str, Collection[str]]
+    Sequence[str] | Sequence[Collection[str]] | Mapping[str, Collection[str]]
 )
 
 """
 Format for normalized routine inputs:
 (
-    (input_role, processed_data, dataset_paths),
+    input_role: (processed_data, dataset_paths),
     ...,
 )
 """
-type NormalizedRoutineInputs = tuple[tuple[str, ProcessedData, tuple[str]], ...]
+type NormalizedRoutineInputs = dict[str, tuple[ProcessedData, tuple[str]]]
 
 
 class DataRoutine:
@@ -114,10 +115,8 @@ class DataRoutine:
         version (str): Version of the routine.
         record_checkpoint (bool): Whether to record a checkpoint after applying this
             routine.
-        requires (dict[str, set[str]]): Set of datasets required by this routine, for
-            each input.
-        produces (dict[str, set[str]]): Set of datasets produced by this routine, for
-            each input.
+        requires (set[str]): Set of datasets required by this routine.
+        produces (set[str]): Set of datasets produced by this routine.
         min_inputs (int): The minimum number of inputs the routine can take. Defaults to
             1.
         max_inputs (int | None): The maximum number of inputs the routine can take. If
@@ -126,17 +125,17 @@ class DataRoutine:
             individually. Defaults to True.
     """
 
-    name = 'base'
-    version = '0.0.0'
-    record_checkpoint = False  # override per routine if desired
+    name: ClassVar[str] = 'base'
+    version: ClassVar[str] = '0.0.0'
+    record_checkpoint: ClassVar[bool] = False  # override per routine if desired
 
     # Multi-input support
-    min_inputs = 1
-    max_inputs = 1
-    map_over_inputs = True
+    min_inputs: ClassVar[int] = 1
+    max_inputs: ClassVar[int] = 1
+    map_over_inputs: ClassVar[bool] = True
 
-    requires: ClassVar[dict[str, set[str]]] = {}
-    produces: ClassVar[dict[str, set[str]]] = {}
+    requires: ClassVar[set[str]] = set()
+    produces: ClassVar[set[str]] = set()
 
     def __init__(self, **params):
         """Initialize a DataRoutine."""
@@ -173,7 +172,7 @@ class DataRoutine:
         # Backward-compatible single-input format:
         # ["/data_IQ", "/timestamp"]
         if len(pdata) == 1 and self._is_dataset_path_list(resolved):
-            return (('input', pdata[0], tuple(resolved)),)
+            return {'input': (pdata[0], tuple(resolved))}
 
         # Multi-input positional format:
         # (
@@ -186,10 +185,10 @@ class DataRoutine:
             and len(resolved) == len(pdata)
             and all(self._is_dataset_path_list(paths) for paths in resolved)
         ):
-            return tuple(
-                (f'input_{index}', data, tuple(paths))
+            return {
+                f'input_{index}': (data, tuple(paths))
                 for index, (data, paths) in enumerate(zip(pdata, resolved, strict=True))
-            )
+            }
 
         # Multi-input named format:
         # {
@@ -203,15 +202,38 @@ class DataRoutine:
                     f'{len(resolved)} input roles for {len(pdata)} data files.'
                 )
 
-            return tuple(
-                (role, data, tuple(paths))
+            return {
+                role: (data, tuple(paths))
                 for (role, paths), data in zip(resolved.items(), pdata, strict=True)
-            )
+            }
 
         raise TypeError(
             f'Unsupported result from {type(self).__name__}.resolve_inputs(): '
             f'{resolved!r}'
         )
+
+    def _normalize_routine_outputs(
+        self,
+        output: RoutineResult | Collection[str] | None,
+    ) -> RoutineResult:
+        if isinstance(output, RoutineResult):
+            return output
+
+        # For backwards compatibility
+        if output is None:
+            return RoutineResult()
+        if isinstance(output, Collection):
+            # Didn't specify types of changes before, so just assume modified
+            return RoutineResult(
+                modified={'input': output},
+            )
+
+        msg = (
+            f'{type(self).__name__}.run() must return RoutineResult, Collection[str], '
+            f'or None, got {type(output).__name__}.'
+        )
+        _logger.error(msg)
+        raise TypeError(msg)
 
     @staticmethod
     def _is_dataset_path_list(value) -> bool:
@@ -232,13 +254,39 @@ class DataRoutine:
         """
         missing = []
 
-        for role, data, paths in normalized_inputs:
+        for role, (data, paths) in normalized_inputs.items():
             missing.extend(f'{role}: {path}' for path in paths if path not in data)
 
         if missing:
-            msg = f'{self.name} is missing required datasets: , '.join(missing)
+            msg = f'{self.name} is missing required datasets: ' + ', '.join(missing)
             _logger.error(msg)
             raise ValueError(msg)
+
+    def validate_result(
+        self,
+        inputs: NormalizedRoutineInputs,
+        result: RoutineResult,
+    ) -> None:
+        """Validate the routine's output."""
+        for role, paths in result.created.items():
+            data = inputs[role][0]
+
+            for path in paths:
+                if path not in data:
+                    raise RuntimeError(
+                        f'{type(self).__name__} reported creating {path!r} '
+                        f'in role {role!r}, but the path does not exist.'
+                    )
+
+        for role, paths in result.modified.items():
+            data = inputs[role][0]
+
+            for path in paths:
+                if path not in data:
+                    raise RuntimeError(
+                        f'{type(self).__name__} reported modifying {path!r} '
+                        f'in role {role!r}, but the path does not exist.'
+                    )
 
     # ---- main entry point ----
     def apply(self, *pdata: ProcessedData):
@@ -256,7 +304,7 @@ class DataRoutine:
 
         return self._apply_once(*pdata)
 
-    def _apply_once(self, *pdata: ProcessedData):
+    def _apply_once(self, *pdata: ProcessedData) -> RoutineResult:
         """Apply the routine to the given ProcessedData objects.
 
         This method handles the common workflow of validating inputs, running the
@@ -273,49 +321,47 @@ class DataRoutine:
         self.validate_inputs(normalized_inputs)
         _logger.debug(f'{self.name}: Finished validating inputs.')
 
-        # shapes_before = self._get_shapes(pdata, inputs)
-
         # Run actual computation
         _logger.info(f'{self.name}: Applying routine...')
         t0 = time.time()
-
-        outputs = self.run(*pdata, inputs=inputs)
-
+        output = self.run(*pdata, inputs=inputs)
         runtime = time.time() - t0
         timestamp = datetime.datetime.now(datetime.UTC).isoformat()
-        _logger.info(f'{self.name}: Finished applying routine.')
 
-        # shapes_after = self._get_shapes(pdata, outputs)
+        # Validate the result
+        _logger.debug(f'{self.name}: Validating result...')
+        result = self._normalize_routine_outputs(output)
+        self.validate_result(normalized_inputs, result)
+        _logger.debug(f'{self.name}: Finished validating result...')
 
         # Log metadata in the data file(s)
         _logger.debug(f'{self.name}: Logging metadata...')
-        meta = self._get_metadata(
-            timestamp,
-            inputs,
-            outputs,
-            # shapes_before,
-            # shapes_after,
-            runtime,
-        )
-        self._log_step(meta, *pdata)
+        self.record_history(normalized_inputs, result, timestamp, runtime)
         _logger.debug(f'{self.name}: Finished logging metadata.')
+
+        # Record checkpoint if desired
+        _logger.debug(f'{self.name}: Recording checkpoint...')
         if self.record_checkpoint:
             self._checkpoint(*pdata)
+        _logger.debug(f'{self.name}: Finished recording checkpoint.')
 
-        return outputs
+        _logger.info(
+            f'{self.name}: Finished applying routine in {runtime:.2f} seconds.'
+        )
+        return result
 
     # ---- to be implemented by subclasses ----
     def run(
-        self, pdata: ProcessedData, inputs: NormalizedRoutineInputs,
-    ) -> RoutineResult:
+        self,
+        pdata: ProcessedData,
+        inputs: RoutineInputs,
+    ) -> RoutineResult | Collection[str] | None:
         """Run this data routine."""
         raise NotImplementedError(
             f'DataRoutine [{type(self).__name__}] is missing a run method'
         )
 
-    def inputs(
-        self, *pdata: ProcessedData
-    ) -> RoutineInputs:
+    def inputs(self, *pdata: ProcessedData) -> RoutineInputs:
         """Return the names of datasets required for this routine.
 
         Default behavior is to return the `requires` class variable. Overwrite in
@@ -326,29 +372,38 @@ class DataRoutine:
         return self.requires
 
     # ---- helpers ----
-    def _get_shapes(self, pdata, dataset_names):
-        """Helper method to get the shapes of the input and output datasets."""
-        shapes = {}
-        for name in dataset_names:
-            if name in pdata.file:
-                shapes[name] = pdata[name].shape
-        return shapes
+    def record_history(
+        self,
+        normalized_inputs: NormalizedRoutineInputs,
+        result: RoutineResult,
+        timestamp: float,
+        runtime: float,
+    ):
+        """Record metadata to the input data files."""
+        for role, (pdata, dsets)  in normalized_inputs.items():
+            meta = self._get_metadata(
+                role,
+                dsets,
+                result,
+                timestamp,
+                runtime,
+            )
+            self._log_step(meta, pdata)
 
-    def _log_step(self, meta: str, *pdata: ProcessedData):
+    def _log_step(self, meta: str, pdata: ProcessedData):
         """Append to the 'processing_history' group of the ProcessedData."""
-        for pd in pdata:
-            hist = pd.file.require_group('processing_history')
+        hist = pdata.file.require_group('processing_history')
 
-            step_idx = len(hist)
-            step_name = get_step_group_name(step_idx, self.name)
+        step_idx = len(hist)
+        step_name = get_step_group_name(step_idx, self.name)
 
-            step_group = hist.create_group(step_name)
+        step_group = hist.create_group(step_name)
 
-            for k, v in meta.items():
-                if isinstance(v, dict | list):
-                    step_group.attrs[k] = json.dumps(v, cls=PathJSONEncoder)
-                else:
-                    step_group.attrs[k] = v
+        for k, v in meta.items():
+            if isinstance(v, Mapping | Sequence):
+                step_group.attrs[k] = json.dumps(v, cls=PathJSONEncoder)
+            else:
+                step_group.attrs[k] = v
 
     def _checkpoint(self, *pdata: ProcessedData):
         """Save a checkpoint of the current state of the ProcessedData."""
@@ -365,26 +420,32 @@ class DataRoutine:
 
     def _get_metadata(
         self,
+        role: str,
+        inputs: Collection[str],
+        result: RoutineResult,
         timestamp: float,
-        inputs: Sequence[str],
-        outputs: Sequence[str],
-        # shapes_before: Sequence[tuple],
-        # shapes_after: Sequence[tuple],
         runtime: float,
     ) -> dict:
         """Helper method to construct the metadata dictionary for history logging."""
-        return {
+        meta = {
             'name': self.name,
             'version': self.version,
             'timestamp': timestamp,
             'params': self.params,
             'inputs': inputs,
-            'outputs': outputs,
-            # 'shape_before': shapes_before,
-            # 'shape_after': shapes_after,
             'code_version': get_git_hash(),
             'runtime_sec': runtime,
         }
+        modified = result.modified.get(role, {})
+        if modified:
+            meta['modified'] = modified
+        created = result.created.get(role, {})
+        if created:
+            meta['created'] = created
+        deleted = result.deleted.get(role, {})
+        if deleted:
+            meta['deleted'] = deleted
+        return meta
 
 
 def register_routine[DataRoutineType: 'DataRoutine'](
@@ -443,7 +504,7 @@ class CutoffFilter(DataRoutine):
     def inputs(self, pdata: ProcessedData):
         return self.params['datasets']
 
-    def run(self, pdata: ProcessedData, inputs: NormalizedRoutineInputs):
+    def run(self, pdata: ProcessedData, inputs: list[str]):
         """Apply the cutoff filter to the specified datasets.
 
         Applies a Butterworth filter with the specified cutoff frequency and type to
@@ -451,8 +512,7 @@ class CutoffFilter(DataRoutine):
         """
         filter_freq = self.params['filter_freq']
         btype = self.params['btype']
-        dsets = inputs[0][2]
-        for dset_name in dsets:
+        for dset_name in inputs:
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', r'^Invalid value encountered in')
                 filt_sos = signal.butter(
@@ -466,9 +526,7 @@ class CutoffFilter(DataRoutine):
                 dset = pdata[dset_name]
                 dset[:] = signal.sosfiltfilt(filt_sos, dset)
 
-        return RoutineResult(
-            modified={'input': dsets}
-        )
+        return RoutineResult(modified={'input': inputs})
 
 
 @register_routine
@@ -709,7 +767,7 @@ class RemoveElectronicsNoise(DataRoutine):
         return dsets
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+    def run(self, pdata: ProcessedData, inputs: list[str]):
         eigenmodes = []  # The actual number of modes we use for each channel
         lp_filt_freq = self.params['lp_filt_freq']
         template_selection_indices = self.params['template_selection_indices']
@@ -784,7 +842,9 @@ class RemoveElectronicsNoise(DataRoutine):
             )
 
         self.params['eigenmodes'] = eigenmodes
-        return inputs
+        return RoutineResult(
+            modified={'input': inputs},
+        )
 
 
 @register_routine
@@ -811,7 +871,7 @@ class CleanTOD(DataRoutine):
         super().__init__(dataset=dataset)
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def inputs(self, pdata: ProcessedData) -> list[str]:
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
@@ -821,7 +881,7 @@ class CleanTOD(DataRoutine):
         ]
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+    def run(self, pdata: ProcessedData, inputs: list[str]):
         for i_chan, dset in enumerate(inputs):
             data = pdata[dset]
             good_tones = pdata.get_onres_ind(i_chan)
@@ -844,4 +904,4 @@ class CleanTOD(DataRoutine):
             ) / np.sum(np.multiply(template, template))
             data[array_slice] = data[array_slice] - np.outer(template_corr, template)
 
-        return inputs
+        return RoutineResult(modified={'input': inputs})

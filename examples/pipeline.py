@@ -78,8 +78,8 @@ if __name__ == '__main__':
         hp_filter,
         lp_filter,
         clean_tod,
-        bin_tod_to_map,
-        plotter,
+        # bin_tod_to_map,
+        # plotter,
         # make_video,
         # find_fwhm,
         # analyze_beammap,
@@ -105,4 +105,5 @@ if __name__ == '__main__':
 
     # pdata = ProcessedData.load(date, setnum, mode='a')
     # pipeline.run(pdata)
+    # pdata.print_history(verbose=True)
 
