@@ -8,8 +8,9 @@ import logging
 import time
 import typing
 import warnings
-from collections.abc import Mapping, Sequence
-from typing import ClassVar, Literal, TypeVar
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, ClassVar, Literal, TypeVar
 
 import matplotlib as mpl
 import numpy as np
@@ -56,19 +57,53 @@ class ProcessingStage:
     POST_PROCESSING = 'post_processing'
 
 
-def register_routine[DataRoutineType: 'DataRoutine'](
-    cls: type[DataRoutineType],
-) -> type[DataRoutineType]:
-    """Class decorator for registering a DataRoutine class in the ROUTINE_REGISTRY."""
-    if not issubclass(cls, DataRoutine):
-        _logger.warning(
-            f'Failed to register class {cls.__name__} as a DataRoutine; it does not'
-            ' inherit from DataRoutine.'
-        )
-        return None
-    ROUTINE_REGISTRY[cls.name] = cls
-    _logger.debug(f'Registered data routine: {cls.__name__}')
-    return cls
+@dataclass
+class RoutineResult:
+    """Structure representing the output of a data routine.
+
+    Each field represents a map of input names to object paths within the input file.
+
+    Attributes:
+        modified (dict[str, list[str]]): Pre-existing objects that have been altered.
+        created (dict[str, list[str]]): Newly created objects.
+        deleted (dict[str, list[str]]): Objects that have been removed from the file.
+        values (dict[str, Any]): In-memory results returned from the routine.
+    """
+
+    # Meta data
+    modified: dict[str, Collection[str]] = field(default_factory=dict)
+    created: dict[str, Collection[str]] = field(default_factory=dict)
+    deleted: dict[str, Collection[str]] = field(default_factory=dict)
+    # Return values
+    values: dict[str, Any] = field(default_factory=dict)
+
+"""
+Possible formats for the result of `routine.inputs`:
+1. Mapping[str, Sequence[Collection[str]]: Map of input names to a
+    collection of datasets needed for each input.
+    e.g. {
+        "reference": {"/path/to/dset", ...},
+        "candidate": {"/path/to/dset", ...},
+    }
+2. Sequence[Collection[str]]: A collection of datasets needed for each input
+    in positional order. Prefer format 1 if possible.
+    e.g. (["/path/to/dset", ...], ["/path/to/dset", ...])
+3. Collection[str]: A collection of datasets for the single input to the
+    routine. Included for backwards compatibility.
+    e.g. ('/path/to/dset1', '/path/to/dset2', ...)
+"""
+type RoutineInputs = (
+Sequence[str] | Sequence[Collection[str]] | Mapping[str, Collection[str]]
+)
+
+"""
+Format for normalized routine inputs:
+(
+    (input_role, processed_data, dataset_paths),
+    ...,
+)
+"""
+type NormalizedRoutineInputs = tuple[tuple[str, ProcessedData, tuple[str]], ...]
 
 
 class DataRoutine:
@@ -79,8 +114,10 @@ class DataRoutine:
         version (str): Version of the routine.
         record_checkpoint (bool): Whether to record a checkpoint after applying this
             routine.
-        requires (set): Set of dataset names required by this routine.
-        produces (set): Set of dataset names produced by this routine.
+        requires (dict[str, set[str]]): Set of datasets required by this routine, for
+            each input.
+        produces (dict[str, set[str]]): Set of datasets produced by this routine, for
+            each input.
         min_inputs (int): The minimum number of inputs the routine can take. Defaults to
             1.
         max_inputs (int | None): The maximum number of inputs the routine can take. If
@@ -98,8 +135,8 @@ class DataRoutine:
     max_inputs = 1
     map_over_inputs = True
 
-    requires: ClassVar[set] = set()
-    produces: ClassVar[set] = set()
+    requires: ClassVar[dict[str, set[str]]] = {}
+    produces: ClassVar[dict[str, set[str]]] = {}
 
     def __init__(self, **params):
         """Initialize a DataRoutine."""
@@ -123,8 +160,8 @@ class DataRoutine:
     def _normalize_resolved_inputs(
         self,
         pdata: tuple[ProcessedData, ...],
-        resolved: Sequence[str] | Sequence[list[str]] | Mapping[str, Sequence[str]],
-    ) -> tuple[tuple[str, ProcessedData, list[str]], ...]:
+        resolved: RoutineInputs,
+    ) -> NormalizedRoutineInputs:
         """Convert supported inputs() return formats into a normalized form.
 
         The resulting format is:
@@ -136,7 +173,7 @@ class DataRoutine:
         # Backward-compatible single-input format:
         # ["/data_IQ", "/timestamp"]
         if len(pdata) == 1 and self._is_dataset_path_list(resolved):
-            return (('input', pdata[0], list(resolved)),)
+            return (('input', pdata[0], tuple(resolved)),)
 
         # Multi-input positional format:
         # (
@@ -144,13 +181,13 @@ class DataRoutine:
         #     ["/data_IQ"],
         # )
         if (
-            isinstance(resolved, Sequence)
+            isinstance(resolved, Collection)
             and not isinstance(resolved, (str, bytes))
             and len(resolved) == len(pdata)
             and all(self._is_dataset_path_list(paths) for paths in resolved)
         ):
             return tuple(
-                (f'input_{index}', data, list(paths))
+                (f'input_{index}', data, tuple(paths))
                 for index, (data, paths) in enumerate(zip(pdata, resolved, strict=True))
             )
 
@@ -167,7 +204,7 @@ class DataRoutine:
                 )
 
             return tuple(
-                (role, data, list(paths))
+                (role, data, tuple(paths))
                 for (role, paths), data in zip(resolved.items(), pdata, strict=True)
             )
 
@@ -179,14 +216,14 @@ class DataRoutine:
     @staticmethod
     def _is_dataset_path_list(value) -> bool:
         return (
-            isinstance(value, Sequence)
+            isinstance(value, Collection)
             and not isinstance(value, (str, bytes))
             and all(isinstance(path, str) for path in value)
         )
 
     def validate_inputs(
         self,
-        normalized_inputs: tuple[tuple[str, ProcessedData, list[str]], ...],
+        normalized_inputs: NormalizedRoutineInputs,
     ) -> None:
         """Validate that the required datasets are present in the ProcessedData.
 
@@ -268,7 +305,9 @@ class DataRoutine:
         return outputs
 
     # ---- to be implemented by subclasses ----
-    def run(self, pdata: ProcessedData, inputs: Sequence):
+    def run(
+        self, pdata: ProcessedData, inputs: NormalizedRoutineInputs,
+    ) -> RoutineResult:
         """Run this data routine."""
         raise NotImplementedError(
             f'DataRoutine [{type(self).__name__}] is missing a run method'
@@ -276,11 +315,15 @@ class DataRoutine:
 
     def inputs(
         self, *pdata: ProcessedData
-    ) -> Sequence[str] | Sequence[list[str]] | Mapping[str, Sequence[str]]:
-        """Return a list of dataset names required by this routine."""
-        if self.requires:
-            return list(self.requires)
-        raise NotImplementedError
+    ) -> RoutineInputs:
+        """Return the names of datasets required for this routine.
+
+        Default behavior is to return the `requires` class variable. Overwrite in
+        subclass if different behavior is desired.
+
+        Output must conform to formats described in `RoutineInputs`.
+        """
+        return self.requires
 
     # ---- helpers ----
     def _get_shapes(self, pdata, dataset_names):
@@ -344,6 +387,21 @@ class DataRoutine:
         }
 
 
+def register_routine[DataRoutineType: 'DataRoutine'](
+    cls: type[DataRoutineType],
+) -> type[DataRoutineType]:
+    """Class decorator for registering a DataRoutine class in the ROUTINE_REGISTRY."""
+    if not issubclass(cls, DataRoutine):
+        _logger.warning(
+            f'Failed to register class {cls.__name__} as a DataRoutine; it does not'
+            ' inherit from DataRoutine.'
+        )
+        return None
+    ROUTINE_REGISTRY[cls.name] = cls
+    _logger.debug(f'Registered data routine: {cls.__name__}')
+    return cls
+
+
 #
 # Begin Data Routine Catlog
 #
@@ -385,7 +443,7 @@ class CutoffFilter(DataRoutine):
     def inputs(self, pdata: ProcessedData):
         return self.params['datasets']
 
-    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+    def run(self, pdata: ProcessedData, inputs: NormalizedRoutineInputs):
         """Apply the cutoff filter to the specified datasets.
 
         Applies a Butterworth filter with the specified cutoff frequency and type to
@@ -393,7 +451,8 @@ class CutoffFilter(DataRoutine):
         """
         filter_freq = self.params['filter_freq']
         btype = self.params['btype']
-        for input_name in inputs:
+        dsets = inputs[0][2]
+        for dset_name in dsets:
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', r'^Invalid value encountered in')
                 filt_sos = signal.butter(
@@ -404,9 +463,12 @@ class CutoffFilter(DataRoutine):
                     output='sos',
                     analog=False,
                 )
-                dset = pdata[input_name]
+                dset = pdata[dset_name]
                 dset[:] = signal.sosfiltfilt(filt_sos, dset)
-        return inputs
+
+        return RoutineResult(
+            modified={'input': dsets}
+        )
 
 
 @register_routine
