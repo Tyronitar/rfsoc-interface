@@ -100,20 +100,23 @@ if __name__ == '__main__':
 
 
 
-    f_center = params.f_center
-    pdb.set_trace()
+    f_center = 5.775e8
+
+    onres_tones = np.array([353.022, 410.37,415.43, 440.99, 492.09, 493.177, 505.869,527.28, 605.495, 608.65, 626.461,646.21169,646.844, 724.273 , 750.330, 767.65,800.259  ])*1e6
+   
+    bb_freqs_onres = onres_tones-f_center
     new_params = RFSoCParameters.new_file(
-        'Be260114BL_tones_100_tones_970_260727', len(bb_freqs_onres), f_center=f_center
+        'FTS_Tone_List_Be260114BL_tones_260729', len(bb_freqs_onres), f_center=f_center
     )
     new_params.baseband_freqs[:] = bb_freqs_onres
     new_params.rfin  = 15
     new_params.rfout = 15 
     new_params.add_off_resonance_tones_greedy(
-        new_tile_name='Be260114BL_100_tones_260721_adjusted_powers',
+        new_tile_name='FTS_Tone_List_Be260114BL_100_tones_260729',
         n_offres=100 - len(bb_freqs_onres),
-        f_min=670e6,
-        f_max=1170e6,
+        f_min=3.5e8,
+        f_max=8.0e8,
         q=1/1000.,
         delta_offres_min=1e6,
-        tone_powers_frac=np.ones(100),
+        tone_powers_frac = np.ones(100)
     )

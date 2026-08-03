@@ -70,7 +70,7 @@ NEW_LO_SWEEP_FORMAT_DATE = '20260612'  # For backwards compatibility
 CompositeSweepDataType = TypeVar('CompositeSweepDataType', bound='CompositeSweepData')
 
 
-def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray, dff_bound:float = 1e-5):
+def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
 
     #set up some preliminary values that we'll need
     n_freq = np.size(freq)
@@ -80,15 +80,29 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
     #smooth the data
     x = s21
     s21 = savgol_filter(s21, 7, 3, mode='mirror')
-    s21_deriv = savgol_filter(s21, 7, 3, deriv=2)
+
     #search for local minima
-    s21_peaks = find_peaks(s21_deriv, height = 0.001)[0]
-    if center_ind!=np.argmin(s21) and len(s21_peaks)>0:
+    if s21[center_ind] != min(s21):
+       keepgoing = True
+       while keepgoing:
+            lo_ind = int(max(center_ind-1,0))
+            hi_ind = int(min(center_ind+2,n_freq))
+            # min_ind = np.argwhere(s21[lo_ind:hi_ind] == min(s21[lo_ind:hi_ind])).flatten()[0]
+            min_ind = np.argmin(s21[lo_ind:hi_ind])
+            if min_ind == (center_ind - lo_ind):
+                keepgoing = False
+            else:
+                center_ind = lo_ind + min_ind
 
-        sorted_peaks = np.argsort(abs(freq[s21_peaks]-freq[center_ind]))[0]
-        center_ind = s21_peaks[sorted_peaks]
-    f0 = freq[center_ind]
-
+    peaks = find_peaks(-s21, height=0.1)
+    if len(peaks[0]) != 0:
+        prominances = peaks[1]['heights']
+        highest_prom_index = np.argmax(prominances)
+        #print(freq[peaks[0][highest_prom_index]])
+        f0 = freq[peaks[0][highest_prom_index]]
+    else:
+        f0 = freq[center_ind]
+    
     return f0, 0, 0
 
    

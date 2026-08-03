@@ -21,6 +21,8 @@ from rfsocinterface.core.sweeps import LoSweep, LoSweepData
 from rfsocinterface.core.utils import get_filename, PERMISSIONS_USR_RW
 import time
 import numpy as np
+from rfsocinterface.core.data import *
+from rfsocinterface.analysis import *
 import h5py
 import pdb
 _logger = logging.getLogger(__name__)
@@ -120,7 +122,7 @@ class AutomatedDataCollector:
         _logger.info('Completed data streaming')
 
         self.append_global_data(rfsocs, channels, rfchans)
-        return save_file
+        return save_file, date, setnum
 
     @staticmethod
     def _on_capture_progress(remaining: float):
@@ -169,13 +171,52 @@ def run_noise_data_collection(
     chan: int = 1,
     duration: int = 10,
     force: bool = False,
+    process_data = False
 ):
     """Collect `duration` seconds of noise (TOD) data for one channel, headless."""
     collector = AutomatedDataCollector([(rfsoc, chan)])
-    save_file = collector.start_streaming(duration=duration, force=force)
+    save_file, date, setnum = collector.start_streaming(duration=duration, force=force)
+    if process_data:
+        process_noise_data(date, setnum, str(save_file))
+        save_file = '/data/' +f'{date}/' + f'{date}_set{setnum}_consolidated_data.h5'
+        return save_file
     return save_file
 
-def remote_data_collection(chan = 1, tile_name: str = 'Be260114BL_100_tones_260721', duration: int = 10):
+def process_noise_data(date, setnum, save_file: str, lp_filter_freq: float = 244, hp_filter_freq: float = 0.001,ds_factor: int = 1, remove_electronics_noise = True):
+
+    dataset = 'data_freq'
+    datasets = ['/vdsets/data_freq_diss']
+
+    find_fwhm = FindFWHM(
+        'az',
+        [241],
+    )
+
+    noise_removal_offres = RemoveElectronicsNoise(
+        template_selection_indices='offres',
+        lp_filt_freq = 10,
+        fspace = True
+    )
+
+  
+    noise_removal = RemoveElectronicsNoise()
+    lp_filter = LowPassFilter(filter_freq=lp_filter_freq, datasets=datasets)
+    hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
+    clean_tod = CleanTOD(dataset=dataset)
+
+    pipeline = Pipeline([
+        noise_removal_offres,
+        hp_filter,
+        lp_filter,
+        clean_tod,
+    ])
+    pdata = pipeline.from_tod(date, setnum)
+
+
+
+
+
+def remote_data_collection(chan = 1, tile_name: str = 'Be260114BL_100_tones_260721', duration: int = 10, process_data: bool = False):
     settings = Settings()
     settings.load_settings()
 
@@ -191,5 +232,7 @@ def remote_data_collection(chan = 1, tile_name: str = 'Be260114BL_100_tones_2607
         set_atten=False,
     )
 
-    save_file = run_noise_data_collection(rfsoc, tile_name=tile_name, chan=chan, duration=duration)
+    save_file = run_noise_data_collection(rfsoc, tile_name=tile_name, chan=chan, duration=duration, process_data=process_data)
     return str(save_file)
+
+

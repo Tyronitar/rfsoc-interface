@@ -90,12 +90,12 @@ if __name__ == '__main__':
         # make_video,
         # find_fwhm,
         # analyze_beammap,
-        # plot_beammap,
+        #plot_beammap,
     ])
 
 
-    date = '20260729'
-    setnums = np.array([1003])
+    date = '20260727'
+    setnums = np.array([1002])
 
     psd_fd_obj_list = []
 
