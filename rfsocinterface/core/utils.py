@@ -8,7 +8,7 @@ import os
 import stat
 import typing
 import warnings
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from datetime import datetime
@@ -195,13 +195,15 @@ def ensure_path(
     return decorator
 
 
-class PathJSONEncoder(json.JSONEncoder):
-    """JSON encoder that converts Path objects to strings."""
+class MetadataJSONEncoder(json.JSONEncoder):
+    """JSON encoder that converts Path objects to strings and iterables to lists."""
 
     @typing.override
     def default(self, obj):
         if isinstance(obj, Path):
             return str(obj)
+        if not isinstance(obj, str | bytes) and isinstance(obj, Iterable | Collection):
+            return list(obj)
         return super().default(obj)
 
 

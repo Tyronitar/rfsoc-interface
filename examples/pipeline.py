@@ -78,8 +78,8 @@ if __name__ == '__main__':
         hp_filter,
         lp_filter,
         clean_tod,
-        # bin_tod_to_map,
-        # plotter,
+        bin_tod_to_map,
+        plotter,
         # make_video,
         # find_fwhm,
         # analyze_beammap,
@@ -101,9 +101,9 @@ if __name__ == '__main__':
     # Run the pipeline using one of the following:
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
 
-    pdata = pipeline.from_consolidated_data(date, setnum)
+    # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    # pdata = ProcessedData.load(date, setnum, mode='a')
-    # pipeline.run(pdata)
-    # pdata.print_history(verbose=True)
+    pdata = ProcessedData.load(date, setnum, mode='a')
+    pipeline.run(pdata)
+    pdata.print_history(verbose=True)
 

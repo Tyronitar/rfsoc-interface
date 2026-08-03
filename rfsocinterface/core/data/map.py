@@ -17,7 +17,11 @@ from matplotlib.figure import Figure
 from scipy import signal
 from scipy.spatial.distance import cdist
 
-from rfsocinterface.core.data.routines import DataRoutine, register_routine
+from rfsocinterface.core.data.routines import (
+    DataRoutine,
+    RoutineResult,
+    register_routine,
+)
 from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.data.utils import (
     DEFAULT_MAP_DPIX,
@@ -206,6 +210,7 @@ class BinTODIntoMap(DataRoutine):
     version = '2.1.0'
 
     produces: ClassVar[set] = {
+        '/map/',
         '/map/netd',
         '/map/hits_map',
         '/map/sum_map',
@@ -351,7 +356,7 @@ class BinTODIntoMap(DataRoutine):
             )
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+    def run(self, pdata: ProcessedData, inputs: list[str]):
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
@@ -501,7 +506,10 @@ class BinTODIntoMap(DataRoutine):
         pdata['map/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating map.')
 
-        return [*list(self.produces), '/vdsets/chanmask']
+        return RoutineResult(
+            modified={'input': ('/vdsets/tones',)},
+            created={'input': self.produces},
+        )
 
 
 @register_routine
@@ -524,6 +532,7 @@ class PlotMap(DataRoutine):
     version = '2.1.0'
 
     requires: ClassVar[set] = {
+        '/map',
         '/map/map_az',
         '/map/map_za',
         '/map/netd',
@@ -533,6 +542,7 @@ class PlotMap(DataRoutine):
     }
 
     produces: ClassVar[set] = {
+        '/map/plotting',
         '/map/plotting/flagged_map_1',
         '/map/plotting/flagged_map_2',
         '/map/plotting/flagged_total_map',
@@ -589,18 +599,21 @@ class PlotMap(DataRoutine):
 
     @typing.override
     def inputs(self, pdata: ProcessedData):
-        return list(self.requires)
+        return self.requires
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+    def run(self, pdata: ProcessedData, inputs: list[str]):
         reset_arrays = self._intialize_arrays(pdata)
         if reset_arrays:
             self._get_combined_map(pdata)
-        self.plot(pdata)
+        fig = self.plot(pdata)
 
-        if reset_arrays:
-            return list(self.produces)
-        return []
+        created = {'input': self.produces} if reset_arrays else {}
+        values = {'input': fig} if fig is not None else {}
+        return RoutineResult(
+            created=created,
+            values=values,
+        )
 
     def _intialize_arrays(self, pdata: ProcessedData) -> bool:
         """Initialize the plotting datasets in the ProcessedData object.
@@ -675,7 +688,7 @@ class PlotMap(DataRoutine):
         pdata.create_dataset('/map/plotting/flagged_total_map', data=flagged_map_3)
         pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
 
-    def plot(self, pdata: ProcessedData):
+    def plot(self, pdata: ProcessedData) -> Figure | None:
         """Plot the maps using matplotlib.
 
         Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical
@@ -836,6 +849,7 @@ class PlotMap(DataRoutine):
 
         if not self.params['keep_figure_open']:
             plt.close(fig)
+        return fig
 
 
 @ensure_path('savefile')
@@ -935,6 +949,7 @@ class MakeVideo(DataRoutine):
     version = '1.1.0'
 
     produces: ClassVar[set] = {
+        '/video',
         '/video/netd',
         '/video/hits_map',
         '/video/sum_map',
@@ -1307,9 +1322,9 @@ class MakeVideo(DataRoutine):
         pdata['video/hits_map'][:] = hits_map
         pdata['video/sum_map'][:] = sum_map
         with np.errstate(divide='ignore', invalid='ignore'):
-            pdata['video/map_val'] = sum_map / hits_map
+            pdata['video/map_val'][:] = sum_map / hits_map
             total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
-        pdata['video/total_map'] = total_map
+        pdata['video/total_map'][:] = total_map
         pdata['video/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating maps.')
 
@@ -1339,16 +1354,16 @@ class MakeVideo(DataRoutine):
     @typing.override
     def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         if self.params['overwrite']:
-            self._compute_new_maps()
-        else:
-            # Use existing datasets and just make the video
-            map_az = pdata['video/map_az'][:]
-            map_za = pdata['video/map_za'][:]
-            optical_video = pdata['video/cropped_optical_video'][:]
+            self._compute_new_maps(pdata)
 
-            total_map = pdata['video/total_map'][:]
-            block_size_s = pdata['video'].attrs['block_size_s']
-            dpix = pdata['video'].attrs['dpix']
+        # Use existing datasets and make the video
+        map_az = pdata['video/map_az'][:]
+        map_za = pdata['video/map_za'][:]
+        optical_video = pdata['video/cropped_optical_video'][:]
+
+        total_map = pdata['video/total_map'][:]
+        block_size_s = pdata['video'].attrs['block_size_s']
+        dpix = pdata['video'].attrs['dpix']
 
         # Animation
         if self.params['plot']:
@@ -1366,4 +1381,9 @@ class MakeVideo(DataRoutine):
                 show=self.params['show'],
                 savefile=savefile,
             )
-        return list(self.produces)
+        modified = {'input': self.produces} if not self.params['overwrite'] else {}
+        created = {'input': self.produces} if self.params['overwrite'] else {}
+        return RoutineResult(
+            modified=modified,
+            created=created,
+        )

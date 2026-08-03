@@ -18,7 +18,7 @@ import numpy.typing as npt
 from scipy import signal
 
 from rfsocinterface.core.data.storage import ProcessedData
-from rfsocinterface.core.utils import PathJSONEncoder
+from rfsocinterface.core.utils import MetadataJSONEncoder
 
 mpl.use('QtAgg')
 
@@ -380,7 +380,7 @@ class DataRoutine:
         runtime: float,
     ):
         """Record metadata to the input data files."""
-        for role, (pdata, dsets)  in normalized_inputs.items():
+        for role, (pdata, dsets) in normalized_inputs.items():
             meta = self._get_metadata(
                 role,
                 dsets,
@@ -400,8 +400,8 @@ class DataRoutine:
         step_group = hist.create_group(step_name)
 
         for k, v in meta.items():
-            if isinstance(v, Mapping | Sequence):
-                step_group.attrs[k] = json.dumps(v, cls=PathJSONEncoder)
+            if isinstance(v, Mapping | Collection):
+                step_group.attrs[k] = json.dumps(v, cls=MetadataJSONEncoder)
             else:
                 step_group.attrs[k] = v
 
