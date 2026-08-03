@@ -87,7 +87,9 @@ class Pipeline:
             count = 1 if routine.map_over_inputs else n_inputs
             routine.validate_input_count(count)
 
-    def run(self, *pdata: ProcessedData) -> tuple[RoutineResult]:
+    def run(
+        self, *pdata: ProcessedData
+    ) -> tuple[RoutineResult | tuple[RoutineResult, ...]]:
         """Run this pipeline on one or more processed data objects."""
         if not pdata:
             raise ValueError('Pipeline requires at least one ProcessedData object.')
