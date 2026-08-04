@@ -1,15 +1,16 @@
 import h5py
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.patches as patches
 import pdb
 import numpy as np
 
 from rfsocinterface.core.data import ProcessedData, plot_map, get_extent
 from rfsocinterface.core.params import RFSoCParameters
-from rfsocinterface.core.utils import get_params_file_template, create_axis_formatter
+from rfsocinterface.core.utils import get_params_file_template, create_axis_formatter, ChanmaskValue, COLLIDED_RESONANCE_COLOR, DOUBLE_RESONANCE_COLOR, BAD_RESONANCE_COLOR
 from rfsocinterface.analysis.beammap import combine_polarized_beammaps
 
-collision_threshold = 1/10000
+collision_threshold = 5e-5
 
 
 def plot_collided_resonances(
@@ -24,8 +25,9 @@ def plot_collided_resonances(
     map_za_vpol = vpol_data['map/map_za']
     detector_f = hpol_data.detector_f()
     sweep = hpol_data.get_lo_sweep(0)
-    split_indices = np.where(np.diff(params.collided_ind) != 1)[0] + 1
-    chunks = np.split(params.collided_ind, split_indices)
+    indices = params.bad_ind
+    split_indices = np.where(np.diff(indices) != 1)[0] + 1
+    chunks = np.split(indices, split_indices)
     file_name = f'{tile_name}_collisions_{collision_threshold:.2e}'.replace('.', '_') + '.pdf'
     with PdfPages(file_name) as pdf:
         for neighborhood in chunks:
@@ -33,27 +35,51 @@ def plot_collided_resonances(
             # neighborhood = list(range(max(i_res - 1, 0), min(i_res + 3, params.n_tones)))
             # neighborhood = list(range(max(i_res - 1, 0), min(i_res + 3, params.n_tones)))
             fig, axes = plt.subplots(3, n_res, figsize=(5 * n_res, 9))
+            if n_res == 1:
+                axes = axes[..., np.newaxis]
             for i, i_res in enumerate(neighborhood):
+                chanmask_val = params.chanmask[i_res]
                 polarization = params.detector_pol[i_res]
+                s = ''
+                match chanmask_val:
+                    case ChanmaskValue.DOUBLE_RESONANCE:
+                        s = 'Double Resonance'
+                    case ChanmaskValue.COLLIDED:
+                        s = 'Collided Resonance'
+                    case ChanmaskValue.LOW_RESPONSE:
+                        s = 'Low Response'
+                    case _:
+                        s = 'Other'
                 title = (
-                    f'Tone {i_res}, {"H" if polarization == 1 else "V"}-Pol\n'
+                    f'Tone {i_res}, {"H" if polarization == 1 else "V"}-Pol '
+                    f'({s})\n'
                     rf'($f_0$={detector_f[i_res] * 1e-6:.3f} MHz)'
                 )
+                map_val_hpol = hpol_data['map/map_val'][i_res]
+                map_val_hpol -= np.nanmedian(map_val_hpol)
+                map_val_hpol /= np.max(map_val_hpol)
                 plot_map(
-                    hpol_data['map/map_val'][i_res],
+                    map_val_hpol,
                     map_az_hpol,
                     map_za_hpol,
                     ax=axes[0, i],
+                    vmax=np.max(map_val_hpol),
+                    vmin=np.min(map_val_hpol),
                     dpix=0.03,
                     cmap='jet',
                     title=title + '\n\nH-Pol',
                 )
 
+                map_val_vpol = vpol_data['map/map_val'][i_res]
+                map_val_vpol -= np.nanmedian(map_val_vpol)
+                map_val_vpol /= np.max(map_val_vpol)
                 plot_map(
-                    vpol_data['map/map_val'][i_res],
+                    map_val_vpol,
                     map_az_vpol,
                     map_za_vpol,
                     ax=axes[1, i],
+                    vmax=np.max(map_val_vpol),
+                    vmin=np.min(map_val_vpol),
                     dpix=0.03,
                     cmap='jet',
                     title='V-Pol',
@@ -64,7 +90,43 @@ def plot_collided_resonances(
                 axes[2, i].set_xlabel('Frequency (MHz)')
                 axes[2, i].set_ylabel(r'$S_{21}$')
                 axes[2, i].axvline(sweep.fit_f0[i_res], color='red')
+
+
             fig.tight_layout()
+            for i, i_res in enumerate(neighborhood):
+                chanmask_val = params.chanmask[i_res]
+                match chanmask_val:
+                    case ChanmaskValue.DOUBLE_RESONANCE:
+                        facecolor = DOUBLE_RESONANCE_COLOR
+                    case ChanmaskValue.COLLIDED:
+                        facecolor = COLLIDED_RESONANCE_COLOR
+                    case ChanmaskValue.LOW_RESPONSE:
+                        facecolor = BAD_RESONANCE_COLOR
+                    case _:
+                        facecolor = BAD_RESONANCE_COLOR
+
+                # Change color of column to reflect chanmask value
+                # Get position of the first and last axes in the first column
+                bbox_top = axes[0, i].get_position()
+                bbox_bot = axes[-1, i].get_position()
+
+                # Define rectangle coordinates covering the first column vertically
+                x0 = bbox_top.x0
+                y0 = bbox_bot.y0
+                width = bbox_top.width
+                height = bbox_top.y1 - bbox_bot.y0
+
+                rect = patches.Rectangle(
+                    (x0, y0),
+                    width,
+                    height,
+                    transform=fig.transFigure,
+                    facecolor=facecolor,
+                    edgecolor='none',
+                    zorder=-1,
+                )
+                fig.add_artist(rect)
+
             pdf.savefig(fig)
             plt.close(fig)
 
@@ -90,8 +152,10 @@ if __name__ == '__main__':
     )
 
     bad_resonators = (
-        (256, 292, 342, 364, 580, 791),
-        (74, 87, 95, 288, 320, 416, 667, 755),
+        # (256, 292, 342, 364, 580, 791),
+        # (74, 87, 95, 288, 320, 416, 667, 755),
+        None,
+        None,
     )
     focal_plane_centers = (
         'top left',
@@ -111,6 +175,7 @@ if __name__ == '__main__':
     detector_pols = []
     beam_ampls = []
     good_inds = []
+    chanmasks = []
 
     pdf = PdfPages('detector_positions.pdf')
     plt.figure(figsize=(10, 10))
@@ -127,7 +192,7 @@ if __name__ == '__main__':
         good_inds.append(good_ind)
         sweep = hpol_data.get_lo_sweep(0)
         angle, units, dIQ_df = sweep.freq_direction()
-        az_center, za_center, detector_pol, beam_ampl = combine_polarized_beammaps(
+        az_center, za_center, detector_pol, beam_ampl, new_chanmask = combine_polarized_beammaps(
             hpol_data,
             vpol_data,
             tile_name + '_with_detector_pol',
@@ -138,9 +203,10 @@ if __name__ == '__main__':
         za_centers.append(za_center)
         detector_pols.append(detector_pol)
         beam_ampls.append(beam_ampl)
+        chanmasks.append(new_chanmask)
 
-        hpol = np.argwhere(detector_pol == 1).flatten().astype(int)
-        vpol = np.argwhere(detector_pol == 2).flatten().astype(int)
+        hpol = np.argwhere((detector_pol == 1) & (new_chanmask == 1)).flatten().astype(int)
+        vpol = np.argwhere((detector_pol == 2) & (new_chanmask == 1)).flatten().astype(int)
         marker = markers[i_tile]
         plt.scatter(az_center[vpol], za_center[vpol], marker=marker, color=colors[i_tile][0], label=f'Tile {i_tile + 2} V-Pol (N = {vpol.size})')
         # for i_pol in pol2:
@@ -215,13 +281,22 @@ if __name__ == '__main__':
         new_tile_2_params.detector_delta_y[good_inds[0]] = detdy_2
         new_tile_2_params.detector_pol[:] = detector_pols[0]
         new_tile_2_params.detector_beam_ampl[:] = beam_ampls[0]
-        bad_res_tile_2 = np.setdiff1d(
-            np.argwhere(detector_pols[0] == 0).flatten(), old_tile_2_params.offres_ind)
-        new_tile_2_params.chanmask[bad_res_tile_2] = -1
+        new_tile_2_params.chanmask[:] = chanmasks[0]
+        # bad_res_tile_2 = np.setdiff1d(
+        #     np.argwhere(detector_pols[0] == 0).flatten(), old_tile_2_params.offres_ind)
+        # new_tile_2_params.chanmask[bad_res_tile_2] = -1
         new_tile_2_params.focal_plane_center_za = focal_center[1]
         new_tile_2_params.flag_collided_resonances(collision_threshold=collision_threshold)
-        print(f'Tile 2 # of collided resonances: {new_tile_2_params.collided_ind.size}')
-        this_setnums = setnums[0]
+        print(
+            'Tile 2 tone breakdown:\n'
+            f'\tOn-resonance: {new_tile_2_params.onres_ind.size}\n'
+            f'\tOff-resonance: {new_tile_2_params.offres_ind.size}\n'
+            f'\tLow response: {new_tile_2_params.low_response_ind.size}\n'
+            f'\tDouble resonance: {new_tile_2_params.double_ind.size}\n'
+            f'\tCollided resonance: {new_tile_2_params.collided_ind.size}\n'
+            f'\tOther: {new_tile_2_params.misc_bad_ind.size}\n'
+        )
+        this_setnums = setnums[-1]
         hpol_setnum = this_setnums[0]
         vpol_setnum = this_setnums[1]
         hpol_data = ProcessedData.load(date, hpol_setnum)
@@ -236,12 +311,21 @@ if __name__ == '__main__':
         new_tile_3_params.detector_delta_y[good_inds[1]] = detdy_3
         new_tile_3_params.detector_pol[:] = detector_pols[1]
         new_tile_3_params.detector_beam_ampl[:] = beam_ampls[1]
-        bad_res_tile_3 = np.setdiff1d(
-            np.argwhere(detector_pols[1] == 0).flatten(), old_tile_3_params.offres_ind)
-        new_tile_3_params.chanmask[bad_res_tile_3] = -1
+        new_tile_3_params.chanmask[:] = chanmasks[1]
+        # bad_res_tile_3 = np.setdiff1d(
+        #     np.argwhere(detector_pols[1] == 0).flatten(), old_tile_3_params.offres_ind)
+        # new_tile_3_params.chanmask[bad_res_tile_3] = -1
         new_tile_3_params.focal_plane_center_za = focal_center[1]
         new_tile_3_params.flag_collided_resonances(collision_threshold=collision_threshold)
-        print(f'Tile 3 # of collided resonances: {new_tile_3_params.collided_ind.size}')
+        print(
+            'Tile 3 tone breakdown:\n'
+            f'\tOn-resonance: {new_tile_3_params.onres_ind.size}\n'
+            f'\tOff-resonance: {new_tile_3_params.offres_ind.size}\n'
+            f'\tLow response: {new_tile_3_params.low_response_ind.size}\n'
+            f'\tDouble resonance: {new_tile_3_params.double_ind.size}\n'
+            f'\tCollided resonance: {new_tile_3_params.collided_ind.size}\n'
+            f'\tOther: {new_tile_3_params.misc_bad_ind.size}\n'
+        )
         this_setnums = setnums[1]
         hpol_setnum = this_setnums[0]
         vpol_setnum = this_setnums[1]

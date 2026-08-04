@@ -51,6 +51,7 @@ class FindDoubleResonances(DataRoutine):
         delta_sigma_chisq_threshold: float = 3,
         snr_threshold: float = 0.5,
         amplitude_threshold: float = 0.2,
+        delta_sigma_fwhm_ratio_threshold: float = 1.5,
         initial_fwhm: float = 0.1,
         min_fwhm: float = 0.01,
         max_fwhm: float = 1.0,
@@ -82,6 +83,7 @@ class FindDoubleResonances(DataRoutine):
         super().__init__(
             delta_sigma_fwhm_threshold=delta_sigma_fwhm_threshold,
             delta_sigma_chisq_threshold=delta_sigma_chisq_threshold,
+            delta_sigma_fwhm_ratio_threshold=delta_sigma_fwhm_ratio_threshold,
             snr_threshold=snr_threshold,
             amplitude_threshold=amplitude_threshold,
             initial_fwhm=initial_fwhm,
@@ -114,6 +116,7 @@ class FindDoubleResonances(DataRoutine):
         pos_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
         pos_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
         pos_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
+        pos_group.create_dataset('new_snr', (pdata.n_tones,), dtype=np.float64)
         pos_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
         pos_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
         pos_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
@@ -125,6 +128,7 @@ class FindDoubleResonances(DataRoutine):
         neg_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
         neg_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
         neg_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
+        neg_group.create_dataset('new_snr', (pdata.n_tones,), dtype=np.float64)
         neg_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
         neg_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
         neg_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
@@ -145,6 +149,7 @@ class FindDoubleResonances(DataRoutine):
         fwhm_za = pdata['/beammap/fwhm_za'][:]
         chisq = pdata['/beammap/chisq'][:]
         snr = pdata['/beammap/snr'][:]
+        new_snr = pdata['/beammap/new_snr'][:]
         offset = pdata['/beammap/offset'][:]
 
         residual_map_val = pdata['beammap/double_resonances/residual_map_val']
@@ -176,11 +181,13 @@ class FindDoubleResonances(DataRoutine):
                 #     plt.show()
                 #     pdb.set_trace()
 
+
         tone_indices = np.array(tone_indices)
         new_az_center_pos = pdata['beammap/double_resonances/positive/az_center']
         new_za_center_pos = pdata['beammap/double_resonances/positive/za_center']
         new_amplitude_pos = pdata['beammap/double_resonances/positive/amplitude']
         new_snr_pos = pdata['beammap/double_resonances/positive/snr']
+        new_new_snr_pos = pdata['beammap/double_resonances/positive/new_snr']
         new_chisq_pos = pdata['beammap/double_resonances/positive/chisq']
         new_fwhm_az_pos = pdata['beammap/double_resonances/positive/fwhm_az']
         new_fwhm_za_pos = pdata['beammap/double_resonances/positive/fwhm_za']
@@ -190,6 +197,7 @@ class FindDoubleResonances(DataRoutine):
         new_za_center_neg = pdata['beammap/double_resonances/negative/za_center']
         new_amplitude_neg = pdata['beammap/double_resonances/negative/amplitude']
         new_snr_neg = pdata['beammap/double_resonances/negative/snr']
+        new_new_snr_neg = pdata['beammap/double_resonances/negative/new_snr']
         new_chisq_neg = pdata['beammap/double_resonances/negative/chisq']
         new_fwhm_az_neg = pdata['beammap/double_resonances/negative/fwhm_az']
         new_fwhm_za_neg = pdata['beammap/double_resonances/negative/fwhm_za']
@@ -205,6 +213,7 @@ class FindDoubleResonances(DataRoutine):
             new_za_center_pos,
             new_amplitude_pos,
             new_snr_pos,
+            new_new_snr_pos,
             new_chisq_pos,
             new_fwhm_az_pos,
             new_fwhm_za_pos,
@@ -228,6 +237,7 @@ class FindDoubleResonances(DataRoutine):
             new_za_center_neg,
             new_amplitude_neg,
             new_snr_neg,
+            new_new_snr_neg,
             new_chisq_neg,
             new_fwhm_az_neg,
             new_fwhm_za_neg,
@@ -252,6 +262,38 @@ class FindDoubleResonances(DataRoutine):
         snr_ratio_pos = new_snr_pos[:] / snr[:]
         snr_ratio_neg = new_snr_neg[:] / snr[:]
 
+        new_snr_ratio_pos = new_new_snr_pos[:] / new_snr[:]
+        new_snr_ratio_neg = new_new_snr_neg[:] / new_snr[:]
+
+        amp_weight = 0.75
+
+        amp_matrix = np.hstack([amplitude[:, np.newaxis], np.ones((amplitude.size, 1))])
+        idx = tone_indices[np.isfinite(amplitude[tone_indices])]
+        idx = idx[~np.isnan(amplitude[idx])]
+        idx = idx[np.isfinite(snr[idx])]
+        idx = idx[~np.isnan(snr[idx])]
+        beta, ssr, rank, s = np.linalg.lstsq(amp_matrix[idx], snr[idx])
+        expected_snr = amp_matrix.dot(beta)
+        resid = snr - expected_snr
+        squared_resid = resid ** 2
+        squared_resid_med = np.nanmedian(squared_resid[idx])
+        squared_resid_std = np.nanstd(squared_resid[idx])
+
+        amp_matrix_pos = np.hstack([new_amplitude_pos[:][:, np.newaxis], np.ones((new_amplitude_pos.size, 1))])
+        expected_snr_pos = amp_matrix_pos.dot(beta)
+        resid_pos = new_snr_pos - expected_snr_pos
+        squared_resid_pos = resid_pos ** 2
+
+        amp_matrix_neg = np.hstack([new_amplitude_neg[:][:, np.newaxis], np.ones((new_amplitude_neg.size, 1))])
+        expected_snr_neg = amp_matrix_neg.dot(beta)
+        resid_neg = new_snr_neg - expected_snr_neg
+        squared_resid_neg = resid_neg ** 2
+
+        # _, bins, _ = plt.hist(squared_resid_pos[~np.isnan(squared_resid_pos) & np.isfinite(squared_resid_pos)], bins=20)
+        # plt.hist(squared_resid_neg[~np.isnan(squared_resid_neg) & np.isfinite(squared_resid_neg)], bins=bins)
+        # plt.show()
+        # pdb.set_trace()
+
         chisq_med = np.median(chisq[pdata.onres_ind])
         chisq_std = np.std(chisq[pdata.onres_ind])
         # remove outliers and recompute std
@@ -268,29 +310,62 @@ class FindDoubleResonances(DataRoutine):
         fwhm_za_med = np.median(fwhm_za[pdata.onres_ind])
         fwhm_za_std = np.std(fwhm_za[pdata.onres_ind])
 
+        fwhm_ratio_pos = new_fwhm_az_pos[:] / new_fwhm_za_pos[:]
+        fwhm_ratio_neg = new_fwhm_az_neg[:] / new_fwhm_za_neg[:]
+        fwhm_ratio_med = np.nanmedian(fwhm_az[pdata.onres_ind] / fwhm_za[pdata.onres_ind])
+        fwhm_ratio_std = np.nanstd(fwhm_az[pdata.onres_ind] / fwhm_za[pdata.onres_ind])
+
         delta_sigma_fwhm_az_pos = np.abs(new_fwhm_az_pos - fwhm_az_med) / fwhm_az_std
         delta_sigma_fwhm_za_pos = np.abs(new_fwhm_za_pos - fwhm_za_med) / fwhm_za_std
+        delta_sigma_fwhm_ratio_pos = np.abs(fwhm_ratio_pos - fwhm_ratio_med) / fwhm_ratio_std
+        delta_sigma_resid_pos = np.abs(squared_resid_pos - squared_resid_med) / squared_resid_std
         delta_sigma_fwhm_az_neg = np.abs(new_fwhm_az_neg - fwhm_az_med) / fwhm_az_std
         delta_sigma_fwhm_za_neg = np.abs(new_fwhm_za_neg - fwhm_za_med) / fwhm_za_std
+        delta_sigma_fwhm_ratio_neg = np.abs(fwhm_ratio_neg - fwhm_ratio_med) / fwhm_ratio_std
+        delta_sigma_resid_neg = np.abs(squared_resid_neg - squared_resid_med) / squared_resid_std
+
         delta_sigma_fwhm_threshold = self.params['delta_sigma_fwhm_threshold']
+        delta_sigma_fwhm_ratio_threshold = self.params['delta_sigma_fwhm_ratio_threshold']
         delta_sigma_chisq_threshold = self.params['delta_sigma_chisq_threshold']
         snr_threshold = self.params['snr_threshold']
         amplitude_threshold = self.params['amplitude_threshold']
 
         is_double_pos = (
+            # Only care about tones we're already considering
+            np.isin(np.arange(pdata.n_tones, dtype=int), tone_indices) &
+            # Amplitude is relatively large
             (amp_ratio_pos >= amplitude_threshold) &
+            # SNR is similar in magnitude
             (snr_ratio_pos >= snr_threshold) &
+            (new_snr_ratio_pos >= 0.2) &
+            # # Source has a relative SNR proportional to the relative amplitude
+            # (delta_sigma_resid_pos <= 1) &
+            # Make sure the source isn't too large
             (delta_sigma_fwhm_az_pos <= delta_sigma_fwhm_threshold) &
             (delta_sigma_fwhm_za_pos <= delta_sigma_fwhm_threshold) &
+            # Make sure the source is approximately circular
+            (delta_sigma_fwhm_ratio_pos <= delta_sigma_fwhm_ratio_threshold) &
+            # Check chi squared
             (delta_sigma_chisq_pos <= delta_sigma_chisq_threshold)
         )
         pdata['/beammap/double_resonances/positive/is_double'][:] = is_double_pos
 
         is_double_neg = (
+            # Only care about tones we're already considering
+            np.isin(np.arange(pdata.n_tones, dtype=int), tone_indices) &
+            # Amplitude is relatively large
             (amp_ratio_neg >= amplitude_threshold) &
+            # SNR is similar in magnitude
             (snr_ratio_neg >= snr_threshold) &
+            (new_snr_ratio_neg >= 0.2) &
+            # # Source has a relative SNR proportional to the relative amplitude
+            # (delta_sigma_resid_neg <= 1) &
+            # Make sure the source isn't too large
             (delta_sigma_fwhm_az_neg <= delta_sigma_fwhm_threshold) &
             (delta_sigma_fwhm_za_neg <= delta_sigma_fwhm_threshold) &
+            # Make sure the source is approximately circular
+            (delta_sigma_fwhm_ratio_neg <= delta_sigma_fwhm_ratio_threshold) &
+            # Check chi squared
             (delta_sigma_chisq_neg <= delta_sigma_chisq_threshold)
         )
         pdata['/beammap/double_resonances/negative/is_double'][:] = is_double_neg
@@ -357,7 +432,8 @@ class FindDoubleResonances(DataRoutine):
                         f'fwhm_az = {fwhm_az[i_res]:.2f}    '
                         f'fwhm_za = {fwhm_za[i_res]:.2f}\n'
                         f'az_center = {az_center[i_res]:.2f}    '
-                        f'za_center = {za_center[i_res]:.2f}\n',
+                        f'za_center = {za_center[i_res]:.2f}\n'
+                        f'new snr = {new_snr[i_res]:.3f}\n',
                         loc='upper center',
                         bbox_to_anchor=(0.5, -0.2),
                         bbox_transform=axes[0].transAxes,
@@ -380,6 +456,8 @@ class FindDoubleResonances(DataRoutine):
                         f'fwhm_za = {new_fwhm_za_pos[i_res]:.2f}\n'
                         f'az_center = {new_az_center_pos[i_res]:.2f}    '
                         f'za_center = {new_za_center_pos[i_res]:.2f}\n\n'
+                        f'new snr = {new_new_snr_pos[i_res]:.3f}    '
+                        f'new snr ratio = {new_snr_ratio_pos[i_res]:.3f}\n'
                         f'Amplitude ratio = {amp_ratio_pos[i_res]:.2f}    '
                         f'SNR ratio = {snr_ratio_pos[i_res]:.2f}\n'
                         rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_pos[i_res]:.2f}    '
@@ -407,6 +485,8 @@ class FindDoubleResonances(DataRoutine):
                         f'fwhm_za = {new_fwhm_za_neg[i_res]:.2f}\n'
                         f'az_center = {new_az_center_neg[i_res]:.2f}    '
                         f'za_center = {new_za_center_neg[i_res]:.2f}\n\n'
+                        f'new snr = {new_new_snr_neg[i_res]:.3f}    '
+                        f'new snr ratio = {new_snr_ratio_neg[i_res]:.3f}\n'
                         f'Amplitude ratio = {amp_ratio_neg[i_res]:.2f}    '
                         f'SNR ratio = {snr_ratio_neg[i_res]:.2f}\n'
                         rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_neg[i_res]:.2f}    '

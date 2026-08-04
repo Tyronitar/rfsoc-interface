@@ -23,6 +23,7 @@ from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     DEFAULT_DATA_DIRECTORY,
     OFF_RESONANCE_COLOR,
+    ChanmaskValue,
     gauss_2d,
     get_beammap_pdf_template,
     mutual_nearest_pairs_between_groups,
@@ -42,6 +43,7 @@ def find_gaussian_beams(
     za_center: h5py.Dataset,
     amplitude: h5py.Dataset,
     snr: h5py.Dataset,
+    new_snr: h5py.Dataset,
     chisq: h5py.Dataset,
     fwhm_az: h5py.Dataset,
     fwhm_za: h5py.Dataset,
@@ -59,6 +61,8 @@ def find_gaussian_beams(
     """Fit a Gaussian to find the beam in the maps for each resonance."""
     _logger.info(f'{caller_name}: Analyzing beam map...')
     n_tones = tone_indices.size
+    map_az = az[:][:, np.newaxis]
+    map_za = za[:][np.newaxis, :]
     for i, i_res in enumerate(tone_indices):
         if i == n_tones // 2:
             _logger.info(f'{caller_name}: Halfway done analyzing beam map...')
@@ -164,6 +168,9 @@ def find_gaussian_beams(
             )
             / (np.size(this_val) - 5.0)
         )
+        this_gaussian = gauss_2d((this_az, this_za), *popt)
+        residual_map = map_val[i_res] - gauss_2d((map_az, map_za), *popt)
+        new_snr[i_res] = (this_gaussian ** 2).mean() / (residual_map ** 2).mean()
     _logger.info(f'{caller_name}: Finished analyzing beam map.')
 
 
@@ -206,6 +213,7 @@ class AnalyzeBeamMap(DataRoutine):
         '/beammap/za_center',
         '/beammap/amplitude',
         '/beammap/snr',
+        '/beammap/new_snr',
         '/beammap/chisq',
         '/beammap/fwhm_az',
         '/beammap/fwhm_za',
@@ -265,6 +273,7 @@ class AnalyzeBeamMap(DataRoutine):
         beammap_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset('new_snr', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
         beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
@@ -283,6 +292,7 @@ class AnalyzeBeamMap(DataRoutine):
             pdata['beammap/za_center'],
             pdata['beammap/amplitude'],
             pdata['beammap/snr'],
+            pdata['beammap/new_snr'],
             pdata['beammap/chisq'],
             pdata['beammap/fwhm_az'],
             pdata['beammap/fwhm_za'],
@@ -583,56 +593,136 @@ def combine_polarized_beammaps(
     amplitude_normalization_percentile: float = 75,  # noqa: ARG001
     pdf_filename: str | None = None,  # noqa: ARG001
 ):
+    import pdb
     """Determines various tile parameters from two beam maps of opposite polarizations.
 
     Creates a new params_file with detector_delta_x, detector_delta_y,
         detector_beam_ampl, and detector_pol.
     """
+    chanmask = pol1_data.chanmask
     good_ind = pol1_data.onres_ind
     if bad_resonators is not None:
         good_ind = np.setdiff1d(good_ind, bad_resonators)
+        chanmask[np.array(bad_resonators)] = -1
     old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']  # noqa: F841
-    chanmask = pol1_data.chanmask
+    is_good_ind = np.isin(np.arange(chanmask.size, dtype=int), good_ind)
 
     az_center_pol1 = pol1_data['beammap/az_center'][:]
     za_center_pol1 = pol1_data['beammap/za_center'][:]
     amplitude_pol1 = pol1_data['beammap/amplitude'][:]
     # chisq_pol1 = pol1_data['beammap/chisq'][:]
-    # fwhm_az_pol1 = pol1_data['beammap/fwhm_az'][:]
-    # fwhm_za_pol1 = pol1_data['beammap/fwhm_za'][:]
+    fwhm_az_pol1 = pol1_data['beammap/fwhm_az'][:]
+    fwhm_za_pol1 = pol1_data['beammap/fwhm_za'][:]
+    snr_pol1 = pol1_data['beammap/snr'][:]
+
 
     az_center_pol2 = pol2_data['beammap/az_center'][:]
     za_center_pol2 = pol2_data['beammap/za_center'][:]
     amplitude_pol2 = pol2_data['beammap/amplitude'][:]
     # chisq_pol2 = pol2_data['beammap/chisq'][:]
-    # fwhm_az_pol2 = pol2_data['beammap/fwhm_az'][:]
-    # fwhm_za_pol2 = pol2_data['beammap/fwhm_za'][:]
+    fwhm_az_pol2 = pol2_data['beammap/fwhm_az'][:]
+    fwhm_za_pol2 = pol2_data['beammap/fwhm_za'][:]
+    snr_pol2 = pol2_data['beammap/snr'][:]
 
-    # Normalize amplitudes
-    # sorted_amp_pol1 = np.argsort(amplitude_pol1)
-    # sorted_amp_pol2 = np.argsort(amplitude_pol2)
-    # amplitude_pol1 /= np.percentile(
-    #     amplitude_pol1[onres_ind], amplitude_normalization_percentile)
-    # amplitude_pol2 /= np.percentile(
-    #     amplitude_pol2[onres_ind], amplitude_normalization_percentile)
+    # Find distribution of ampltidues
+    good_amp = np.concatenate((amplitude_pol1[good_ind], amplitude_pol2[good_ind]))
+    good_amp = np.where(amplitude_pol1 > amplitude_pol2, amplitude_pol1, amplitude_pol2)
+    bad_amp = np.where(amplitude_pol1 < amplitude_pol2, amplitude_pol1, amplitude_pol2)
+    bad_amp = bad_amp[good_ind]
+    good_amp = good_amp[good_ind]
+    good_amp_ratio = bad_amp / good_amp
+    amp_ratio_med = np.median(good_amp_ratio)
+    amp_ratio_std = np.std(good_amp_ratio)
+    # plt.hist(good_amp_ratio, bins=20)
+    # plt.show()
+    # pdb.set_trace()
+    bad_amp = bad_amp[bad_amp > 0]
+    good_amp = good_amp[good_amp > 0]  # Ignore failed fits and bad tones
+    amp_med = np.median(good_amp)
+    amp_std = np.std(good_amp)
+    good_amp = good_amp[np.abs(good_amp - amp_med) <= 2 * amp_std]  # Ignore failed fits and bad tones
+    # min_valid_amp = amp_med - 2 * amp_std  # 2 standard deviations below the mean
+    min_valid_amp = good_amp.min()
+    amp_pol1_norm = amplitude_pol1 / good_amp.max()
+    amp_pol2_norm = amplitude_pol2 / good_amp.max()
+    # _, bins, _ = plt.hist(good_amp, bins=20)
+    # plt.hist(bad_amp, bins=bins)
+    # plt.show()
+
 
     # Correct for shifts in source position
     az_center = np.zeros(chanmask.size)
     za_center = np.zeros(chanmask.size)
     detector_pol = np.zeros(chanmask.size, dtype=np.int8)
     beam_ampl = np.zeros(chanmask.size)
+    amp_ratio = np.zeros(chanmask.size)
 
-    for i_res in good_ind:
-        if amplitude_pol1[i_res] > amplitude_pol2[i_res]:
-            detector_pol[i_res] = 1
-            az_center[i_res] = az_center_pol1[i_res]
-            za_center[i_res] = za_center_pol1[i_res]
-            beam_ampl[i_res] = amplitude_pol1[i_res]
-        else:
-            detector_pol[i_res] = 2
-            az_center[i_res] = az_center_pol2[i_res]
-            za_center[i_res] = za_center_pol2[i_res]
-            beam_ampl[i_res] = amplitude_pol2[i_res]
+    # Determine polarization
+    # pol2_ind = np.argwhere(is_good_ind & (amplitude_pol1 > amplitude_pol2)).flatten()
+    # pol2_ind = np.argwhere(is_good_ind & (amplitude_pol1 <= amplitude_pol2)).flatten()
+
+    # detector_pol[pol1_ind] = 1
+    # az_center[pol1_ind] = az_center_pol1[pol1_ind]
+    # za_center[pol1_ind] = za_center_pol1[pol1_ind]
+    # beam_ampl[pol1_ind] = amplitude_pol1[pol1_ind]
+    # amp_ratio[pol1_ind] = amplitude_pol2[pol1_ind] / amplitude_pol1[pol1_ind]
+
+    # detector_pol[pol2_ind] = 2
+    # az_center[pol2_ind] = az_center_pol2[pol2_ind]
+    # za_center[pol2_ind] = za_center_pol2[pol2_ind]
+    # beam_ampl[pol2_ind] = amplitude_pol2[pol2_ind]
+    # amp_ratio[pol2_ind] = amplitude_pol2[pol2_ind] / amplitude_pol2[pol2_ind]
+
+    detector_pol = np.where(amplitude_pol1 > amplitude_pol2, 1, 2)
+    az_center = np.where(amplitude_pol1 > amplitude_pol2, az_center_pol1, az_center_pol2)
+    za_center = np.where(amplitude_pol1 > amplitude_pol2, za_center_pol1, za_center_pol2)
+    beam_ampl = np.where(amplitude_pol1 > amplitude_pol2, amplitude_pol1, amplitude_pol2)
+    snr = np.where(amplitude_pol1 > amplitude_pol2, snr_pol1, snr_pol2)
+    amp_ratio = np.where(detector_pol == 1, amplitude_pol2 / amplitude_pol1, amplitude_pol1 / amplitude_pol2)
+    fwhm_ratio = np.where(
+        detector_pol == 1, fwhm_az_pol1 / fwhm_za_pol1, fwhm_az_pol2 / fwhm_za_pol2)
+
+    good_amp = beam_ampl[good_ind]
+    good_amp = good_amp[good_amp > 0]
+    amp_med = np.median(good_amp)
+    amp_std = np.std(good_amp)
+
+    # amp2snr = beam_ampl / snr
+    # plt.figure()
+    # plt.hist(amp2snr[good_ind])
+    # plt.show()
+    # pdb.set_trace()
+
+    # Flag detectors with a low response
+    chanmask[(beam_ampl < min_valid_amp) & (chanmask == 1)] = ChanmaskValue.LOW_RESPONSE
+
+    # Stricter cut for finding residual sources
+    good_amp = good_amp[np.abs(good_amp - amp_med) <= 2 * amp_std]
+    min_valid_amp = good_amp.min()
+
+    # Find double resonances
+    is_double_pos_pol1 = pol1_data['beammap/double_resonances/positive/is_double'][:]
+    amp_pos_pol1 = pol1_data['beammap/double_resonances/positive/amplitude'][:]
+    is_double_neg_pol1 = pol1_data['beammap/double_resonances/negative/is_double'][:]
+    amp_neg_pol1 = pol1_data['beammap/double_resonances/positive/amplitude'][:]
+    is_double_pol1 = (is_double_pos_pol1 & (amp_pos_pol1 > min_valid_amp)) | (is_double_neg_pol1 & (amp_neg_pol1 > min_valid_amp))
+
+    is_double_pos_pol2 = pol2_data['beammap/double_resonances/positive/is_double'][:]
+    amp_pos_pol2 = pol2_data['beammap/double_resonances/positive/amplitude'][:]
+    is_double_neg_pol2 = pol2_data['beammap/double_resonances/negative/is_double'][:]
+    amp_neg_pol2 = pol2_data['beammap/double_resonances/positive/amplitude'][:]
+    is_double_pol2 = (is_double_pos_pol2 & (amp_pos_pol2 > min_valid_amp)) | (is_double_neg_pol2 & (amp_neg_pol2 > min_valid_amp))
+
+    is_multi_pol_double = np.zeros(chanmask.size, dtype=np.bool)
+    is_multi_pol_double[(amp_ratio - amp_ratio_med) >  2 * amp_ratio_std] = True
+
+
+    # is_double = (is_double_pol1 & (detector_pol == 1)) & (is_double_pol2 & (detector_pol == 2))
+    is_double = np.where(detector_pol == 1, is_double_pol1, is_double_pol2)
+    is_double_all = is_multi_pol_double | is_double
+    is_double_all = is_double_all & is_good_ind
+    is_double_all = is_double_all & (chanmask == 1)
+    chanmask[is_double_all] = ChanmaskValue.DOUBLE_RESONANCE
 
     # TODO: Update params file
 
@@ -684,4 +774,4 @@ def combine_polarized_beammaps(
         points[i, :] = mean_point
         points[j, :] = mean_point
 
-    return az_center, za_center, detector_pol, beam_ampl
+    return az_center, za_center, detector_pol, beam_ampl, chanmask

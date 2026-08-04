@@ -72,7 +72,7 @@ if __name__ == '__main__':
 
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap()
-    find_doubles = FindDoubleResonances(amplitude_threshold=0.15)
+    find_doubles = FindDoubleResonances()
 
     pipeline = Pipeline([
         # noise_removal_offres,
@@ -98,8 +98,15 @@ if __name__ == '__main__':
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    for setnum in (1001, 1004):
+    for setnum in (1001, 1004, 1005, 1006):
+    # for setnum in (1005, 1006):
         pdata = ProcessedData.load(date, setnum, mode='a')
+        # new_snr = pdata['beammap/new_snr'][:]
+        # good_new_snr = new_snr[pdata.onres_ind]
+        # good_new_snr = good_new_snr[10 < good_new_snr]
+        # plt.hist(good_new_snr, bins=20)
+        # plt.show()
+        # pdb.set_trace()
         pipeline.run(pdata)
 
     pdb.set_trace()
