@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from datetime import datetime
-from enum import EnumMeta, StrEnum
+from enum import EnumMeta, IntEnum, StrEnum
 from functools import partial
 from multiprocessing.connection import Connection
 from pathlib import Path
@@ -79,12 +79,25 @@ DEFAULT_CHUNK_SIZE = 100
 AMBER_HEX = '#ffbf00'
 ON_RESONANCE_COLOR = 'white'
 OFF_RESONANCE_COLOR = 'sandybrown'
+COLLIDED_RESONANCE_COLOR = 'plum'
+DOUBLE_RESONANCE_COLOR = 'pink'
 BAD_RESONANCE_COLOR = 'lightgray'
 FLAGGED_RESONANCE_COLOR = 'yellow'
 SELECTED_RESONANCE_COLOR = 'dodgerblue'
 EDITED_RESONANCE_COLOR = 'limegreen'
 
 MAX_ATTENUATION = 31.75
+
+
+class ChanmaskValue(IntEnum):
+    """Values for different chanmask descriptors."""
+
+    ON_RESONANCE = 1
+    OFF_RESONANCE = 0
+    MISC_BAD = -1
+    COLLIDED = -2
+    DOUBLE_RESONANCE = -3
+    LOW_RESPONSE = -4
 
 
 class TabName(StrEnum):
