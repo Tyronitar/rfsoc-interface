@@ -143,8 +143,8 @@ if __name__ == '__main__':
         'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
     )
     new_tile_names = (
-        'Device_aSi1_Channel2_telescope_275mK_20260724',
-        'Device_aSi2_Channel3_telescope_275mK_20260724'
+        'Device_aSi1_Channel2_telescope_275mK_20260804',
+        'Device_aSi2_Channel3_telescope_275mK_20260804'
     )
     setnums = (
         (1001, 1004),
