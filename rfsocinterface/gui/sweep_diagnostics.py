@@ -57,6 +57,7 @@ from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     COLLIDED_RESONANCE_COLOR,
     DEFAULT_PARAMS_DIRECTORY,
+    DOUBLE_RESONANCE_COLOR,
     FLAGGED_RESONANCE_COLOR,
     OFF_RESONANCE_COLOR,
     ON_RESONANCE_COLOR,
@@ -217,6 +218,12 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
                 self.onres_radioButton.click()
             case ChanmaskValue.OFF_RESONANCE:
                 self.offres_radioButton.click()
+            case ChanmaskValue.COLLIDED:
+                self.collided_res_radioButton.click()
+            case ChanmaskValue.DOUBLE_RESONANCE:
+                self.double_res_radioButton.click()
+            case ChanmaskValue.LOW_RESPONSE:
+                self.low_response_radioButton.click()
             case _:
                 self.bad_res_radioButton.click()
 
@@ -297,7 +304,10 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
             case self.collided_res_radioButton:
                 self.current_chanmask = ChanmaskValue.COLLIDED
                 self.axes.set_facecolor(COLLIDED_RESONANCE_COLOR)
-            case self.bad_res_radioButton:
+            case self.double_res_radioButton:
+                self.current_chanmask = ChanmaskValue.DOUBLE_RESONANCE
+                self.axes.set_facecolor(DOUBLE_RESONANCE_COLOR)
+            case self.bad_res_radioButton | self.low_response_radioButton:
                 self.current_chanmask = ChanmaskValue.MISC_BAD
                 self.axes.set_facecolor(BAD_RESONANCE_COLOR)
         self.figure_canvas.draw_idle()

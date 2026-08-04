@@ -409,6 +409,16 @@ class RFSoCParameters:
         return np.argwhere(self.chanmask[:] == ChanmaskValue.COLLIDED).flatten()
 
     @property
+    def double_ind(self) -> npt.NDArray:
+        """Indices of double resonances."""
+        return np.argwhere(self.chanmask[:] == ChanmaskValue.DOUBLE_RESONANCE).flatten()
+
+    @property
+    def low_response_ind(self) -> npt.NDArray:
+        """Indices of resonances with a low response."""
+        return np.argwhere(self.chanmask[:] == ChanmaskValue.LOW_RESPONSE).flatten()
+
+    @property
     def misc_bad_ind(self) -> npt.NDArray:
         """Indices of bad resonances not marked otherwise."""
         return np.argwhere(self.chanmask[:] == ChanmaskValue.MISC_BAD).flatten()
