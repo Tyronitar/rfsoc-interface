@@ -204,18 +204,21 @@ class DataCollectionMainWidget(MainWidget):
         rfsocs = []
         channels = []
         rfchans = []
+        files = []
         for rfsoc, chan in chans:
             rfsocs.append(rfsoc)
             channels.append(chan)
             rfchan = rfsoc.get_channel(chan)
             save_location = self.save_location_widget.get_chosen_save_location(
                 chan_name=rfchan.tile_name,
-                touch_file=True,
-                mode=PERMISSIONS_ALL_FULL,
+                touch_file=False,
                 mkdir=True,
             )
+            files.append(save_location)
             rfchan.raw_filename = str(save_location)
             rfchans.extend(rfsoc.setup_capture(save_location, [chan]))
+        for file in files:
+            file.touch(mode=PERMISSIONS_ALL_FULL, exist_ok=True)
         date = save_location.stem[:8]
         setnum = int(save_location.stem[-4:])
         return rfsocs, channels, rfchans, date, setnum
