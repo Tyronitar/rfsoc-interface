@@ -30,6 +30,7 @@ from vmbpy import (
     VmbSystem,
 )
 
+from rfsocinterface.core.utils import quit_function
 _logger = logging.getLogger(__name__)
 _camera_logger = logging.getLogger('rfsocinterface.cameraControl')
 
@@ -139,6 +140,9 @@ class FrameProducer(threading.Thread):
             try_put_frame(self.frame_queue, cam, frame_cpy)
 
         cam.queue_frame(frame)
+
+    def stop(self):
+        self.killswitch.set()
 
     # def setup_camera(self):
     #     set_nearest_value(self.cam, 'Height', FRAME_HEIGHT)
@@ -347,32 +351,32 @@ class CameraController:
         _logger.debug('All camera FrameProducer threads joined.')
         self.send('done')
 
-    # def send(self, command: str, *args):
-    #     """Send a command to the telescope client."""
-    #     _camera_logger.debug(f'CAMERA sending command "{command}" with data {args}')
-    #     self.connection.send([command, *args])
-    #     _camera_logger.debug(f'CAMERA sent command "{command}" with data {args}')
+    def send(self, command: str, *args):
+        """Send a command to the telescope client."""
+        _camera_logger.debug(f'CAMERA sending command "{command}" with data {args}')
+        self.connection.send([command, *args])
+        _camera_logger.debug(f'CAMERA sent command "{command}" with data {args}')
 
-    # def send(self, command: str, *args, timeout: float = None):
-    #     """Send a command to the main process."""
-    #     if timeout:
-    #         timer = threading.Timer(
-    #             timeout,
-    #             quit_function,
-    #         )
-    #         timer.start()
-    #         try:
-    #             self.connection.send([command, *args])
-    #             _camera_logger.debug(
-    #                 f'CAMERA sent command "{command}" with data {args}'
-    #             )
-    #         except KeyboardInterrupt:
-    #             _camera_logger.error(f'CAMERA timed out sending command "{command}"')
-    #         finally:
-    #             timer.cancel()
-    #     else:
-    #         self.connection.send([command, *args])
-    #         _camera_logger.debug(f'CAMERA sent command "{command}" with data {args}')
+    def send(self, command: str, *args, timeout: float = None):
+        """Send a command to the main process."""
+        if timeout:
+            timer = threading.Timer(
+                timeout,
+                quit_function,
+            )
+            timer.start()
+            try:
+                self.connection.send([command, *args])
+                _camera_logger.debug(
+                    f'CAMERA sent command "{command}" with data {args}'
+                )
+            except KeyboardInterrupt:
+                _camera_logger.error(f'CAMERA timed out sending command "{command}"')
+            finally:
+                timer.cancel()
+        else:
+            self.connection.send([command, *args])
+            _camera_logger.debug(f'CAMERA sent command "{command}" with data {args}')
 
     def set_feature(self, cam: Camera | str, feature_name: str, val: Any):
         """Set the feature for the camera."""
@@ -533,8 +537,8 @@ class CameraController:
 
         except KeyboardInterrupt:
             self.alive = False
-
-        _logger.debug('Frame consumer loop terminated')
+        finally:
+            _logger.debug('Frame consumer loop terminated')
 
 
 if __name__ == '__main__':

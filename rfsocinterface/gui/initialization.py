@@ -22,7 +22,6 @@ from rfsocinterface.core.utils import (
     TabName,
 )
 from rfsocinterface.gui.main_widget import MainWidget
-from rfsocinterface.gui.main_window import MainWindow
 from rfsocinterface.gui.uic.channel_settings_ui import Ui_ChannelSettingsWidget
 from rfsocinterface.gui.uic.initialization_ui import Ui_InitializationTabWidget
 from rfsocinterface.gui.uic.rfsoc_advanced_settings_ui import (

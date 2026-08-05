@@ -23,6 +23,11 @@ from typing import (
     TypeVar,
 )
 
+try:
+    import thread  # type: ignore
+except ImportError:
+    import _thread as thread
+
 import git
 import h5py
 import matplotlib as mpl
@@ -1324,3 +1329,7 @@ def mutual_nearest_pairs_between_groups(
     distances = distance_a_to_b[keep]
 
     return pairs, distances
+
+def quit_function():
+    """Quit/interrupt a thread."""
+    thread.interrupt_main()  # raises KeyboardInterrupt
