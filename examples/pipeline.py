@@ -49,11 +49,11 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=True,
+        beam_map_mode=False,
         dataset=dataset,
         # az_trim=0,
         # za_trim=0,
-        dpix=0.03,
+        dpix=0.04,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
     make_video = MakeVideo(
@@ -76,31 +76,23 @@ if __name__ == '__main__':
         # noise_removal,
         # compute_psd,
         # psd_plotter,
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
-        # bin_tod_to_map,
+        hp_filter,
+        lp_filter,
+        clean_tod,
+        bin_tod_to_map,
         # plotter,
         # make_video,
         # find_fwhm,
         # analyze_beammap,
-        plot_beammap,
+        # plot_beammap,
     ])
 
-    # date = '20260319'
-    # setnum = 1023
-    # date = '20260309'
-    # setnum = 1010
-    date = '20260617'
+    date = '20260805'
     setnum = 1005
-    # date = '20260325'
-    # setnum = 1002
-    # date = '20260223'
-    # setnum = 1010  # 1009 - 1015
 
 
     # ConsolidatedData.from_tod(date, setnum, downsampling_factor=ds_factor)
-    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
-    pdata = ProcessedData.load(date, setnum)
-    pipeline.run(pdata)
+    # pdata = ProcessedData.load(date, setnum)
+    # pipeline.run(pdata)

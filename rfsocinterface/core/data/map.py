@@ -32,6 +32,7 @@ from rfsocinterface.core.data.utils import (
 from rfsocinterface.core.utils import (
     GAUSSIAN_SIGMA,
     PERMISSIONS_ALL_FULL,
+    ChanmaskValue,
     add_colorbar_outside,
     argclosest,
     ensure_path,
@@ -403,7 +404,10 @@ class BinTODIntoMap(DataRoutine):
             this_data = data[i_chan]
             fs = pdata.get_fs(i_chan)
             for i_tone_relative in range(pdata.get_n_tones(i_chan)):
-                if pdata.get_chanmask(i_chan)[i_tone_relative] == 1:
+                if (
+                    pdata.get_chanmask(i_chan)[i_tone_relative]
+                    == ChanmaskValue.ON_RESONANCE
+                ):
                     this_freq, this_psd = signal.periodogram(
                         this_data[i_tone_relative, :], fs, window=wind
                     )
@@ -442,9 +446,11 @@ class BinTODIntoMap(DataRoutine):
             netd[chanmask != 1] = 0
 
         if beam_map_mode:
-            tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
+            tones_to_map = np.argwhere(
+                pdata.chanmask != ChanmaskValue.OFF_RESONANCE
+            ).flatten()
         else:
-            tones_to_map = np.argwhere(chanmask == 1).flatten()
+            tones_to_map = np.argwhere(chanmask == ChanmaskValue.ON_RESONANCE).flatten()
 
         # Create map
         _logger.info(f'{self.name}: Creating map...')
@@ -465,7 +471,7 @@ class BinTODIntoMap(DataRoutine):
             this_detector_za = detector_za[i_chan][i_tone_relative]
 
             # Get the good samples if they haven't been specified
-            this_clean_data = np.squeeze(data[i_chan][i_tone_absolute])
+            this_clean_data = np.squeeze(data[i_chan][i_tone_relative])
 
             # Get this detector's positions, need to account for rotation in EL based on
             # beammap taken at EL=89
@@ -847,7 +853,7 @@ class PlotMap(DataRoutine):
                     pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
                 )
             if not self.params['savefile'].exists():
-                self.paramsp['savefile'].parent.mkdir(
+                self.params['savefile'].parent.mkdir(
                     mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
                 )
                 self.params['savefile'].touch(PERMISSIONS_ALL_FULL)
