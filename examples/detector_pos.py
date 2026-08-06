@@ -189,7 +189,6 @@ if __name__ == '__main__':
         hpol_data = ProcessedData.load(date, hpol_setnum)
         vpol_data = ProcessedData.load(date, vpol_setnum)
         good_ind = np.setdiff1d(hpol_data.onres_ind, bad_resonators[i_tile])
-        good_inds.append(good_ind)
         sweep = hpol_data.get_lo_sweep(0)
         angle, units, dIQ_df = sweep.freq_direction()
         az_center, za_center, detector_pol, beam_ampl, new_chanmask = combine_polarized_beammaps(
@@ -199,6 +198,7 @@ if __name__ == '__main__':
             bad_resonators=bad_resonators[i_tile],
             focal_plane_center=focal_plane_centers[i_tile]
         )
+        good_inds.append(np.argwhere(new_chanmask == ChanmaskValue.ON_RESONANCE).flatten())
         az_centers.append(az_center)
         za_centers.append(za_center)
         detector_pols.append(detector_pol)
@@ -296,14 +296,12 @@ if __name__ == '__main__':
             f'\tCollided resonance: {new_tile_2_params.collided_ind.size}\n'
             f'\tOther: {new_tile_2_params.misc_bad_ind.size}\n'
         )
-        this_setnums = setnums[-1]
-        hpol_setnum = this_setnums[0]
-        vpol_setnum = this_setnums[1]
-        hpol_data = ProcessedData.load(date, hpol_setnum)
-        vpol_data = ProcessedData.load(date, vpol_setnum)
-        plot_collided_resonances(hpol_data, vpol_data, new_tile_2_params, new_tile_names[0])
-        # new_tile_2_params.plot_tones(show=True)
-        # plt.show()
+        # this_setnums = setnums[-1]
+        # hpol_setnum = this_setnums[0]
+        # vpol_setnum = this_setnums[1]
+        # hpol_data = ProcessedData.load(date, hpol_setnum)
+        # vpol_data = ProcessedData.load(date, vpol_setnum)
+        # plot_collided_resonances(hpol_data, vpol_data, new_tile_2_params, new_tile_names[0])
 
     with RFSoCParameters.load(tile_names[1], mode='r') as old_tile_3_params, \
             old_tile_3_params.copy_and_update(new_tile_names[1]) as new_tile_3_params:
@@ -326,11 +324,9 @@ if __name__ == '__main__':
             f'\tCollided resonance: {new_tile_3_params.collided_ind.size}\n'
             f'\tOther: {new_tile_3_params.misc_bad_ind.size}\n'
         )
-        this_setnums = setnums[1]
-        hpol_setnum = this_setnums[0]
-        vpol_setnum = this_setnums[1]
-        hpol_data = ProcessedData.load(date, hpol_setnum)
-        vpol_data = ProcessedData.load(date, vpol_setnum)
-        plot_collided_resonances(hpol_data, vpol_data, new_tile_3_params, new_tile_names[1])
-        # new_tile_3_params.plot_tones(show=True)
-        # plt.show()
+        # this_setnums = setnums[1]
+        # hpol_setnum = this_setnums[0]
+        # vpol_setnum = this_setnums[1]
+        # hpol_data = ProcessedData.load(date, hpol_setnum)
+        # vpol_data = ProcessedData.load(date, vpol_setnum)
+        # plot_collided_resonances(hpol_data, vpol_data, new_tile_3_params, new_tile_names[1])
