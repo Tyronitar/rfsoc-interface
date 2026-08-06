@@ -102,7 +102,7 @@ class ComputeNoisePSD(DataRoutine):
     @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None) -> list[str]:
         # Initialize PSD group in the file if needed
-        if not pdata.has('psd', exact_match=True):
+        if not pdata.has('/psd', exact_match=True):
             psd_group = pdata.create_group('psd')
 
         psd_group = pdata['psd']
@@ -170,7 +170,7 @@ class ComputeNoisePSD(DataRoutine):
                     nperseg=n_samples_per_block,
                 )
                 freq[:] = this_freq
-                psd[i_tone : i_tone + this_selection_indices.size] = this_psd
+                psd[:, i_tone : i_tone + this_selection_indices.size] = this_psd
                 i_tone += this_selection_indices.size
 
             if basis in psd_group:
