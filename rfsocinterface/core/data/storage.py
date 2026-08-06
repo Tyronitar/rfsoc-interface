@@ -31,8 +31,7 @@ from rfsocinterface.core.data.utils import (
     get_detector_positions_no_interp,
     get_step_group_name,
     interpolate_missing_data,
-    interpolate_telescope_position,
-    new_interp_tele_posistion,
+    interpolate_telescope_positions,
     interpolate_timestamp_streaming,
     rotate_basis,
 )
@@ -489,9 +488,17 @@ class ConsolidatedData(DataStorage):
             tones_table['baseband_freq'] = raw_data.baseband_freqs[:]
             tones_table['power'] = raw_data.tone_powers[:]
             # if i_chan == 0:
-            #     params = h5py.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260804.h5', 'r')
+            #     params = h5py.File(
+            #         '/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_'
+            #         '20260804.h5',
+            #         'r',
+            #     )
             # else:
-            #     params = h5py.File('/data/params/params_tile_Device_aSi2_Channel3_telescope_275mK_20260804.h5', 'r')
+            #     params = h5py.File(
+            #         '/data/params/params_tile_Device_aSi2_Channel3_telescope_275mK_'
+            #         '20260804.h5',
+            #         'r',
+            #     )
             # tones_table['delta_x'] = params['detector_delta_x'][:]
             # tones_table['delta_y'] = params['detector_delta_y'][:]
             # tones_table['beam_amplitude'] = params['detector_beam_ampl'][:]
@@ -695,7 +702,7 @@ class ConsolidatedData(DataStorage):
                     and az_pps_tel is not None
                     and za_pps_tel is not None
                 ):
-                    corrected_az_tel = new_interp_tele_posistion(
+                    corrected_az_tel = interpolate_telescope_positions(
                         temp_timestamp,
                         timestamp_tel[:],
                         az_tel[:],
@@ -703,7 +710,7 @@ class ConsolidatedData(DataStorage):
                         temp_pps[:],
                         direction='az',
                     )
-                    corrected_za_tel = new_interp_tele_posistion(
+                    corrected_za_tel = interpolate_telescope_positions(
                         temp_timestamp,
                         timestamp_tel[:],
                         za_tel[:],
