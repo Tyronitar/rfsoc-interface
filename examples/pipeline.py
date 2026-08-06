@@ -51,8 +51,8 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filter_freq,
         beam_map_mode=False,
         dataset=dataset,
-        az_trim=0,
-        za_trim=0,
+        # az_trim=0,
+        # za_trim=0,
         dpix=0.04,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
@@ -92,8 +92,8 @@ if __name__ == '__main__':
 
 
     # ConsolidatedData.from_tod(date, setnum, downsampling_factor=ds_factor)
-    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    pdata = pipeline.from_consolidated_data(date, setnum)
+    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_consolidated_data(date, setnum)
     # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
     pdb.set_trace()

@@ -173,7 +173,7 @@ def find_missed_packets_with_indices(
         if this_missed_packets > 0:
             missed_packets = np.vstack([missed_packets, [i, this_missed_packets]])
 
-    _logger.debug(f'{np.sum(missed_packets[:, 1])} missed packets')
+    _logger.debug(f'find_missed_packets: {np.sum(missed_packets[:, 1])} missed packets')
     return missed_packets
 
 
@@ -316,6 +316,7 @@ def interpolate_missing_data(
     input_data_Q: h5py.Dataset,
     timestamp: h5py.Dataset,
     output_dset: h5py.Dataset,
+    output_pps_dset: h5py.Dataset,
     output_indices_dset: h5py.Dataset,
     packet_indices: h5py.Dataset,
     missed_packets: npt.NDArray,
@@ -360,6 +361,7 @@ def interpolate_missing_data(
         )
         output_indices_dset[old_size:] = this_interpolated_indices
         output_dset[..., this_interpolated_indices] = new_data
+        output_pps_dset[this_interpolated_indices] = 0
 
 
 def get_detector_positions_no_interp(
@@ -390,9 +392,11 @@ def get_detector_positions_no_interp(
 
         output_detector_az[:, start:stop] = (
             np.outer(dx[:], cos_ang) - np.outer(dy[:], sin_ang) + az
+            # az - (np.outer(dx[:], cos_ang) - np.outer(dy[:], sin_ang))
         )
         output_detector_za[:, start:stop] = (
             np.outer(dy[:], cos_ang) + np.outer(dx[:], sin_ang) + za
+            # za - (np.outer(dy[:], cos_ang) + np.outer(dx[:], sin_ang))
         )
 
 
@@ -536,3 +540,119 @@ def interpolate_telescope_position(
     _logger.info(f'Shifting telescope positions by {-median_offset} samples')
 
     return fixed_positions
+
+    _logger.info(
+        f'interpolate_telescope_position: Shifting telescope positions by '
+        f'{-median_offset} samples'
+    )
+
+    return fixed_positions
+
+
+def new_interp_tele_posistion(
+    data_timestamp: npt.NDArray,
+    telescope_timestamp: npt.NDArray,
+    tel_position: npt.NDArray,
+    pps_position: npt.NDArray,
+    data_pps: npt.NDArray,
+    search_radius: int = 100,
+    fit_radius: int = 200,
+    direction: Literal['az', 'za'] = 'az',
+) -> npt.NDArray:
+    """Interpolate and align the telescope positions."""
+    n_samples = data_timestamp.size
+    # Find the telescope positions and timestamps corresponding to the PPS pulses
+    pps_tel_idx = (
+        np.where(np.diff(pps_position) != 0)[0] + 1
+    )  # Indices where the pps changes
+    pps_tel_pos = pps_position[pps_tel_idx]
+    pps_times_tel = telescope_timestamp[pps_tel_idx]
+
+    # pdb.set_trace()
+    if pps_tel_idx.size <= 1:
+        # The telescope didn't move enough in this direction, so aligning the times
+        # doesn't work. Just upsample the positions.
+        _logger.info(
+            f'Doing simple interpolation for detector positions in '
+            f'{direction.upper()} direction.'
+        )
+        return np.interp(data_timestamp, telescope_timestamp, tel_position, left=np.nan, right=np.nan)
+    _logger.info(f'Using PPS for detector positions in {direction.upper()} direction.')
+
+    # Upsample the telescope positions ignoring the positions when the pulse is receivd,
+    # since the extra commands slow the loop
+    interpolated_tel_pos = np.interp(
+        data_timestamp,
+        np.delete(telescope_timestamp, pps_tel_idx),
+        np.delete(tel_position, pps_tel_idx),
+    )
+
+    # Now shift the upsampled positions so that the PPS is synced between the
+    # raw data and the telescope data.
+
+    pps_samples_tel = np.zeros(pps_tel_idx.shape, dtype=int)
+
+    # Find timestamps in the raw data corresponding to the PPS pulses
+    pps_samples_data = np.where(data_pps == 1)[0]
+    pps_times_data = data_timestamp[pps_samples_data]
+
+    # Correlate the two timestamps to find which samples in the interpolated telescope
+    # positions correspond to each pulse
+    for i in range(len(pps_tel_idx)):
+        closest_index = argclosest(pps_times_data, pps_times_tel[i])
+        sample = pps_samples_data[closest_index]
+        pps_samples_tel[i] = (
+            argclosest(
+                interpolated_tel_pos[
+                    sample - search_radius : sample + search_radius + 1
+                ],
+                pps_tel_pos[i],
+            )
+            + sample
+            - search_radius
+        )
+
+    # Find the offset between the two sets of PPS samples, and shift the
+    # interpolated telescope positions by this amount to sync them up.
+    pps_offset = np.zeros(pps_samples_tel.shape, dtype=int)
+    for i, pps_tel_sample in enumerate(pps_samples_tel):
+        closest_data_sample = argclosest(pps_samples_data, pps_tel_sample)
+        pps_offset[i] = pps_tel_sample - pps_samples_data[closest_data_sample]
+
+    np.full(n_samples, np.nan)
+    sample_boundaries = ((pps_samples_tel[1:] + pps_samples_tel[:-1]) / 2).astype(int)
+    xp = []
+    fp = []
+    for i_tel_pps, this_pps_offset in enumerate(pps_offset):
+        pps_sample = pps_samples_tel[i_tel_pps]
+        max_shift = np.abs(this_pps_offset)
+        if i_tel_pps == 0:
+            i_tel_start = max(0, pps_sample - fit_radius)
+            i_tel_stop = min(sample_boundaries[i_tel_pps], pps_sample + fit_radius + 1)
+            i_fit_start = max(0, i_tel_start - max_shift)
+            i_fit_stop = min(sample_boundaries[i_tel_pps], i_tel_stop + max_shift)
+        elif i_tel_pps == pps_samples_tel.size - 1:
+            i_tel_start = max(sample_boundaries[i_tel_pps - 1], pps_sample - fit_radius)
+            i_tel_stop = min(n_samples, pps_sample + fit_radius + 1)
+            i_fit_start = max(sample_boundaries[i_tel_pps - 1], i_tel_start - max_shift)
+            i_fit_stop = min(n_samples, i_tel_stop + max_shift)
+        else:
+            i_tel_start = max(sample_boundaries[i_tel_pps - 1], pps_sample - fit_radius)
+            i_tel_stop = min(sample_boundaries[i_tel_pps], pps_sample + fit_radius + 1)
+            i_fit_start = max(sample_boundaries[i_tel_pps - 1], i_tel_start - max_shift)
+            i_fit_stop = min(sample_boundaries[i_tel_pps], i_tel_stop + max_shift)
+        # i_fit_start = max(0, i_tel_start - max_shift)
+        # i_fit_stop = min(n_samples, i_tel_stop + max_shift)
+        this_timestamp = data_timestamp[i_tel_start:i_tel_stop]
+        possible_tel_pos = interpolated_tel_pos[i_fit_start:i_fit_stop]
+        n_times = this_timestamp.size
+        if this_pps_offset < 0:
+            this_tel_pos = possible_tel_pos[0:-max_shift]
+        else:
+            this_tel_pos = possible_tel_pos[max_shift:]
+        min_length = min(n_times, this_tel_pos.size)
+        this_tel_pos = this_tel_pos[:min_length]
+        this_timestamp = this_timestamp[:min_length]
+        xp.extend(this_timestamp)
+        fp.extend(this_tel_pos)
+    return np.interp(data_timestamp, xp, fp, left=np.nan, right=np.nan)

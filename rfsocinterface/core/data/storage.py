@@ -32,6 +32,7 @@ from rfsocinterface.core.data.utils import (
     get_step_group_name,
     interpolate_missing_data,
     interpolate_telescope_position,
+    new_interp_tele_posistion,
     interpolate_timestamp_streaming,
     rotate_basis,
 )
@@ -487,22 +488,22 @@ class ConsolidatedData(DataStorage):
 
             tones_table['baseband_freq'] = raw_data.baseband_freqs[:]
             tones_table['power'] = raw_data.tone_powers[:]
-            if i_chan == 0:
-                params = h5py.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260804.h5', 'r')
-            else:
-                params = h5py.File('/data/params/params_tile_Device_aSi2_Channel3_telescope_275mK_20260804.h5', 'r')
-            tones_table['delta_x'] = params['detector_delta_x'][:]
-            tones_table['delta_y'] = params['detector_delta_y'][:]
-            tones_table['beam_amplitude'] = params['detector_beam_ampl'][:]
-            tones_table['polarization'] = params['detector_pol'][:]
-            chanmask = params['chanmask'][:]
-            params.close()
-            # tones_table['delta_x'] = raw_data.detector_delta_x[:]
-            # tones_table['delta_y'] = raw_data.detector_delta_y[:]
-            # tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
-            # tones_table['polarization'] = raw_data.detector_pol[:]
-            # tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
-            # chanmask = raw_data.chanmask[:]
+            # if i_chan == 0:
+            #     params = h5py.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260804.h5', 'r')
+            # else:
+            #     params = h5py.File('/data/params/params_tile_Device_aSi2_Channel3_telescope_275mK_20260804.h5', 'r')
+            # tones_table['delta_x'] = params['detector_delta_x'][:]
+            # tones_table['delta_y'] = params['detector_delta_y'][:]
+            # tones_table['beam_amplitude'] = params['detector_beam_ampl'][:]
+            # tones_table['polarization'] = params['detector_pol'][:]
+            # chanmask = params['chanmask'][:]
+            # params.close()
+            tones_table['delta_x'] = raw_data.detector_delta_x[:]
+            tones_table['delta_y'] = raw_data.detector_delta_y[:]
+            tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
+            tones_table['polarization'] = raw_data.detector_pol[:]
+            tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
+            chanmask = raw_data.chanmask[:]
             # Flag tones with no polarization
             no_pol = tones_table['polarization'] < 1
             on_res = chanmask == ChanmaskValue.ON_RESONANCE
@@ -595,6 +596,12 @@ class ConsolidatedData(DataStorage):
                 compression='lzf',
                 shuffle=True,
             )
+            temp_pps = temp_data.create_dataset(
+                'temp_pps',
+                shape=(n_samples,),
+                dtype=np.uint8,
+                chunks=chunk_shape_1d,
+            )
             temp_detector_az = temp_data.create_dataset(
                 'temp_detector_az',
                 shape=azel_shape,
@@ -647,11 +654,19 @@ class ConsolidatedData(DataStorage):
                     raw_data.adc_q,
                     temp_timestamp,
                     temp_data_IQ,
+                    temp_pps,
                     temp_interpolated_samples,
                     pkt_idx,
                     missed_packets,
                     valid_tone_index,
                 )
+            if raw_data.pps is not None:
+                _logger.info('ConsolidatedData: Copying pps dataset...')
+                for chunk_start, chunk_end, chunk in iterate_chunks(
+                    raw_data.pps, chunk_size=4096
+                ):
+                    sample_indices = pkt_idx[chunk_start:chunk_end] - pkt_idx[0]
+                    temp_pps[sample_indices] = chunk
 
             _logger.info('ConsolidatedData: Copying Raw IQ data...')
             chunk_shape_read_adc = compute_chunk_shape(
@@ -671,29 +686,32 @@ class ConsolidatedData(DataStorage):
 
             # Detector Positions
             if azel_exists:
-                _logger.info('ConsolidatedData: Computing detector positions...')
+                _logger.info(
+                    'ConsolidatedData: Correlating telescope pointing information...'
+                )
                 if (
                     use_pps
                     and raw_data.pps is not None
                     and az_pps_tel is not None
                     and za_pps_tel is not None
                 ):
-                    corrected_az_tel = interpolate_telescope_position(
+                    corrected_az_tel = new_interp_tele_posistion(
                         temp_timestamp,
                         timestamp_tel[:],
                         az_tel[:],
                         az_pps_tel[:],
-                        raw_data.pps[:],
+                        temp_pps[:],
                         direction='az',
                     )
-                    corrected_za_tel = interpolate_telescope_position(
+                    corrected_za_tel = new_interp_tele_posistion(
                         temp_timestamp,
                         timestamp_tel[:],
                         za_tel[:],
                         za_pps_tel[:],
-                        raw_data.pps[:],
+                        temp_pps[:],
                         direction='za',
                     )
+                    _logger.info('ConsolidatedData: Computing detector positions...')
                     get_detector_positions_no_interp(
                         corrected_az_tel,
                         corrected_za_tel,
