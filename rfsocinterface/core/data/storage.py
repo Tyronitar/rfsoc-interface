@@ -487,16 +487,26 @@ class ConsolidatedData(DataStorage):
 
             tones_table['baseband_freq'] = raw_data.baseband_freqs[:]
             tones_table['power'] = raw_data.tone_powers[:]
-            tones_table['delta_x'] = raw_data.detector_delta_x[:]
-            tones_table['delta_y'] = raw_data.detector_delta_y[:]
-            tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
-            tones_table['polarization'] = raw_data.detector_pol[:]
-            tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
-            chanmask = raw_data.chanmask[:]
-            off_res = np.argwhere(chanmask == 0).flatten()
-            no_pol = np.argwhere(tones_table['polarization'] < 1).flatten()
-            chanmask[no_pol] = -1
-            chanmask[off_res] = 0  # Preserve off-resonance indices
+            if i_chan == 0:
+                params = h5py.File('/data/params/params_tile_Device_aSi1_Channel2_telescope_275mK_20260804.h5', 'r')
+            else:
+                params = h5py.File('/data/params/params_tile_Device_aSi2_Channel3_telescope_275mK_20260804.h5', 'r')
+            tones_table['delta_x'] = params['detector_delta_x'][:]
+            tones_table['delta_y'] = params['detector_delta_y'][:]
+            tones_table['beam_amplitude'] = params['detector_beam_ampl'][:]
+            tones_table['polarization'] = params['detector_pol'][:]
+            chanmask = params['chanmask'][:]
+            params.close()
+            # tones_table['delta_x'] = raw_data.detector_delta_x[:]
+            # tones_table['delta_y'] = raw_data.detector_delta_y[:]
+            # tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
+            # tones_table['polarization'] = raw_data.detector_pol[:]
+            # tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
+            # chanmask = raw_data.chanmask[:]
+            # Flag tones with no polarization
+            no_pol = tones_table['polarization'] < 1
+            on_res = chanmask == ChanmaskValue.ON_RESONANCE
+            chanmask[no_pol & on_res] = ChanmaskValue.MISC_BAD
             tones_table['chanmask'] = chanmask
 
             # Copy LO sweep

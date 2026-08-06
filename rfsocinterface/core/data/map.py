@@ -451,6 +451,7 @@ class BinTODIntoMap(DataRoutine):
             ).flatten()
         else:
             tones_to_map = np.argwhere(chanmask == ChanmaskValue.ON_RESONANCE).flatten()
+            # tones_to_map = tones_to_map[tones_to_map >= pdata.get_n_tones(0)]
 
         # Create map
         _logger.info(f'{self.name}: Creating map...')
