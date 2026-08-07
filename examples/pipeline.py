@@ -42,7 +42,7 @@ if __name__ == '__main__':
     compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, cut_time=2, selection_indices='onres')
     psd_plotter = PlotPSD(
         PsdBasis.GAIN_PHASE,
-        PsdBasis.FREQ_DISS,
+        # PsdBasis.FREQ_DISS,
         show=True,
     )
     bin_tod_to_map = BinTODIntoMap(
@@ -101,8 +101,10 @@ if __name__ == '__main__':
     # Run the pipeline using one of the following:
     # pdata, results = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
 
-    # pdata, results = pipeline.from_consolidated_data(date, setnum)
+    pdata, results = pipeline.from_consolidated_data(date, setnum)
 
-    pdata = ProcessedData.load(date, setnum, mode='a')
-    results = pipeline.run(pdata)
+    # pdata = ProcessedData.load(date, setnum, mode='a')
+    # results = pipeline.run(pdata)
+
+    pdb.set_trace()
 
