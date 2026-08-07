@@ -285,7 +285,7 @@ class BinTODIntoMap(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def _inputs(self, pdata: ProcessedData):
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
@@ -356,7 +356,7 @@ class BinTODIntoMap(DataRoutine):
             )
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
@@ -598,15 +598,15 @@ class PlotMap(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def _inputs(self, pdata: ProcessedData):
         return self.requires
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         reset_arrays = self._intialize_arrays(pdata)
         if reset_arrays:
             self._get_combined_map(pdata)
-        fig = self.plot(pdata)
+        fig = self._plot(pdata)
 
         created = {'input': self.produces} if reset_arrays else {}
         values = {'input': fig} if fig is not None else {}
@@ -688,7 +688,7 @@ class PlotMap(DataRoutine):
         pdata.create_dataset('/map/plotting/flagged_total_map', data=flagged_map_3)
         pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
 
-    def plot(self, pdata: ProcessedData) -> Figure | None:
+    def _plot(self, pdata: ProcessedData) -> Figure | None:
         """Plot the maps using matplotlib.
 
         Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical
@@ -1050,7 +1050,7 @@ class MakeVideo(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def _inputs(self, pdata: ProcessedData):
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
@@ -1352,7 +1352,7 @@ class MakeVideo(DataRoutine):
         optical_video[:] = optical_video[:] * 2
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+    def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         if self.params['overwrite']:
             self._compute_new_maps(pdata)
 

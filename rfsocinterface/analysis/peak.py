@@ -18,7 +18,7 @@ from rfsocinterface.core.data import (
     RoutineResult,
     register_routine,
 )
-from rfsocinterface.core.utils import sigma_to_fwhm
+from rfsocinterface.core.utils import mean_histogram, sigma_to_fwhm, std_histogram
 
 _logger = logging.getLogger(__name__)
 
@@ -35,22 +35,6 @@ def loss_function(
     """Compare the expected Gaussian to the expected result."""
     model_vals = gaussian_profile(parameters, x_vals)
     return y_vals - model_vals
-
-
-def mean_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
-    """Compute a weighted mean using historgram frequencies as weights."""
-    return np.average(val, weights=freq)
-
-
-def var_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
-    """Compute variance using historgram frequencies as weights."""
-    dev = freq * (val - mean_histogram(val, freq)) ** 2
-    return dev.sum() / freq.sum()
-
-
-def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
-    """Compute standard deviation using historgram frequencies as weights."""
-    return np.sqrt(var_histogram(val, freq))
 
 
 @register_routine
@@ -102,7 +86,7 @@ class CheckFocus(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def _inputs(self, pdata: ProcessedData):
         dset = (
             '/vdsets/data_mK'
             if self.params['dataset'] == 'data_mK'
@@ -134,7 +118,7 @@ class CheckFocus(DataRoutine):
         return True
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         created_new = self._initialize_arrays(pdata)
         primary_direction = self.params['primary_direction']
         resonators = self.params['resonators']

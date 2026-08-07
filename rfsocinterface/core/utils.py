@@ -1158,3 +1158,19 @@ def load_dict_or_defaults(
 def quit_function():
     """Quit/interrupt a thread."""
     thread.interrupt_main()  # raises KeyboardInterrupt
+
+
+def mean_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    """Compute a weighted mean using historgram frequencies as weights."""
+    return np.average(val, weights=freq)
+
+
+def var_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    """Compute variance using historgram frequencies as weights."""
+    dev = freq * (val - mean_histogram(val, freq)) ** 2
+    return dev.sum() / freq.sum()
+
+
+def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    """Compute standard deviation using historgram frequencies as weights."""
+    return np.sqrt(var_histogram(val, freq))

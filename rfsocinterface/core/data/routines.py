@@ -316,7 +316,7 @@ class DataRoutine:
         self.validate_input_count(len(pdata))  # Validate number of input datasets
 
         # Check that all datasets have the fields they should
-        inputs = self.inputs(*pdata)
+        inputs = self._inputs(*pdata)
         normalized_inputs = self._normalize_resolved_inputs(pdata, inputs)
         self.validate_inputs(normalized_inputs)
         _logger.debug(f'{self.name}: Finished validating inputs.')
@@ -324,7 +324,7 @@ class DataRoutine:
         # Run actual computation
         _logger.info(f'{self.name}: Applying routine...')
         t0 = time.time()
-        output = self.run(*pdata, inputs=inputs)
+        output = self._run(*pdata, inputs=inputs)
         runtime = time.time() - t0
         timestamp = datetime.datetime.now(datetime.UTC).isoformat()
 
@@ -336,7 +336,7 @@ class DataRoutine:
 
         # Log metadata in the data file(s)
         _logger.debug(f'{self.name}: Logging metadata...')
-        self.record_history(normalized_inputs, result, timestamp, runtime)
+        self._record_history(normalized_inputs, result, timestamp, runtime)
         _logger.debug(f'{self.name}: Finished logging metadata.')
 
         # Record checkpoint if desired
@@ -351,17 +351,20 @@ class DataRoutine:
         return result
 
     # ---- to be implemented by subclasses ----
-    def run(
+    def _run(
         self,
         pdata: ProcessedData,
         inputs: RoutineInputs,
     ) -> RoutineResult | Collection[str] | None:
-        """Run this data routine."""
+        """Run this data routine.
+
+        Note, `inputs` will have the same format returned from `self.inputs`.
+        """
         raise NotImplementedError(
             f'DataRoutine [{type(self).__name__}] is missing a run method'
         )
 
-    def inputs(self, *pdata: ProcessedData) -> RoutineInputs:
+    def _inputs(self, *pdata: ProcessedData) -> RoutineInputs:
         """Return the names of datasets required for this routine.
 
         Default behavior is to return the `requires` class variable. Overwrite in
@@ -372,7 +375,7 @@ class DataRoutine:
         return self.requires
 
     # ---- helpers ----
-    def record_history(
+    def _record_history(
         self,
         normalized_inputs: NormalizedRoutineInputs,
         result: RoutineResult,
@@ -501,10 +504,10 @@ class CutoffFilter(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def _inputs(self, pdata: ProcessedData):
         return self.params['datasets']
 
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         """Apply the cutoff filter to the specified datasets.
 
         Applies a Butterworth filter with the specified cutoff frequency and type to
@@ -576,7 +579,7 @@ class HighPassFilter(CutoffFilter):
 #
 
 
-def compute_templates(
+def _compute_templates(
     data: npt.NDArray,
     max_modes: int = 30,
     low_sigma: float = 1.5,
@@ -748,7 +751,7 @@ class RemoveElectronicsNoise(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def _inputs(self, pdata: ProcessedData):
         # Requires data_IQ, data_gain_phase, data_freq_diss, and data_mK
         # but there's no case where those wouldn't exist, so I'm not sure this matters
         dsets = []
@@ -767,7 +770,7 @@ class RemoveElectronicsNoise(DataRoutine):
         return dsets
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         eigenmodes = []  # The actual number of modes we use for each channel
         lp_filt_freq = self.params['lp_filt_freq']
         template_selection_indices = self.params['template_selection_indices']
@@ -796,7 +799,7 @@ class RemoveElectronicsNoise(DataRoutine):
                 data_lp = signal.sosfiltfilt(filt_sos, clean_gain_phase)
             else:
                 data_lp = clean_gain_phase[:]
-            templates = compute_templates(
+            templates = _compute_templates(
                 data_lp[:, selection_indices], max_modes=max_modes
             )  # 2 x N_modes x N_samples
 
@@ -871,7 +874,7 @@ class CleanTOD(DataRoutine):
         super().__init__(dataset=dataset)
 
     @typing.override
-    def inputs(self, pdata: ProcessedData) -> list[str]:
+    def _inputs(self, pdata: ProcessedData) -> list[str]:
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
@@ -881,7 +884,7 @@ class CleanTOD(DataRoutine):
         ]
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         for i_chan, dset in enumerate(inputs):
             data = pdata[dset]
             good_tones = pdata.get_onres_ind(i_chan)

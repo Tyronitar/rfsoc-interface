@@ -87,7 +87,7 @@ class ComputeNoisePSD(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData) -> list[str]:
+    def _inputs(self, pdata: ProcessedData) -> list[str]:
         inputs = []
         bases = self.params['bases']
         for basis in bases:
@@ -107,7 +107,7 @@ class ComputeNoisePSD(DataRoutine):
         return inputs
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         created = []
         modified = []
         # Initialize PSD group in the file if needed
@@ -602,7 +602,7 @@ class PlotPSD(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData) -> list[str]:
+    def _inputs(self, pdata: ProcessedData) -> list[str]:
         inputs = []
         bases = self.params['bases']
         for basis in bases:
@@ -616,7 +616,7 @@ class PlotPSD(DataRoutine):
         return inputs
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         bases = self.params['bases']
         title = self.params['title']
         show_error_band = self.params['show_error_band']

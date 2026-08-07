@@ -130,7 +130,7 @@ class AnalyzeBeamMap(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def _inputs(self, pdata: ProcessedData):
         return list(self.requires)
 
     def _initialize_datasets(self, pdata: ProcessedData):
@@ -150,7 +150,7 @@ class AnalyzeBeamMap(DataRoutine):
         beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         self._initialize_datasets(pdata)
 
         az = pdata['map/map_az'][:][:, np.newaxis]
@@ -349,11 +349,11 @@ class PlotBeamMap(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def _inputs(self, pdata: ProcessedData):
         return list(self.requires)
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         # Load necessary datasets
         az_center = pdata['beammap/az_center'][:]
         za_center = pdata['beammap/za_center'][:]
