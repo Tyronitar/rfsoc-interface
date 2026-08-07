@@ -1061,6 +1061,18 @@ class ProcessedData(DataStorage):
             self.get_chanmask(i_chan) == ChanmaskValue.COLLIDED
         ).flatten()
 
+    def get_double_ind(self, i_chan: int) -> npt.NDArray:
+        """Return double resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.DOUBLE_RESONANCE
+        ).flatten()
+
+    def get_low_response_ind(self, i_chan: int) -> npt.NDArray:
+        """Return collided resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.LOW_RESPONSE
+        ).flatten()
+
     def get_misc_bad_ind(self, i_chan: int) -> npt.NDArray:
         """Return miscellaneous bad resonance indices for the specified channel."""
         return np.argwhere(
@@ -1258,6 +1270,24 @@ class ProcessedData(DataStorage):
         """Indices of collided resonances."""
         return (
             np.argwhere(self.chanmask == ChanmaskValue.COLLIDED).flatten().astype(int)
+        )
+
+    @property
+    def double_ind(self) -> npt.NDArray:
+        """Indices of double resonances."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.DOUBLE_RESONANCE)
+            .flatten()
+            .astype(int)
+        )
+
+    @property
+    def low_response_ind(self) -> npt.NDArray:
+        """Indices of resonances with a low response."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.LOW_RESPONSE)
+            .flatten()
+            .astype(int)
         )
 
     @property

@@ -30,6 +30,7 @@ from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     COLLIDED_RESONANCE_COLOR,
     DEFAULT_DATA_DIRECTORY,
+    DOUBLE_RESONANCE_COLOR,
     FLAGGED_RESONANCE_COLOR,
     MAX_ATTENUATION,
     OFF_RESONANCE_COLOR,
@@ -132,6 +133,8 @@ def create_resonator_mini_plot(
             ax.set_facecolor(OFF_RESONANCE_COLOR)
         case ChanmaskValue.COLLIDED:
             ax.set_facecolor(COLLIDED_RESONANCE_COLOR)
+        case ChanmaskValue.DOUBLE_RESONANCE:
+            ax.set_facecolor(DOUBLE_RESONANCE_COLOR)
         case _:
             ax.set_facecolor(BAD_RESONANCE_COLOR)
 
@@ -429,6 +432,8 @@ class ResonatorData:
                 ax.set_facecolor(OFF_RESONANCE_COLOR)
             case ChanmaskValue.COLLIDED:
                 ax.set_facecolor(COLLIDED_RESONANCE_COLOR)
+            case ChanmaskValue.DOUBLE_RESONANCE:
+                ax.set_facecolor(DOUBLE_RESONANCE_COLOR)
             case _:
                 ax.set_facecolor(BAD_RESONANCE_COLOR)
 
@@ -748,6 +753,16 @@ class LoSweepData:
     def collided_ind(self) -> npt.NDArray:
         """Indices of collided resonances."""
         return np.argwhere(self.chanmask == ChanmaskValue.COLLIDED).flatten()
+
+    @property
+    def double_ind(self) -> npt.NDArray:
+        """Indices of double resonances."""
+        return np.argwhere(self.chanmask == ChanmaskValue.DOUBLE_RESONANCE).flatten()
+
+    @property
+    def low_response_ind(self) -> npt.NDArray:
+        """Indices of resonances with a low response."""
+        return np.argwhere(self.chanmask == ChanmaskValue.LOW_RESPONSE).flatten()
 
     @property
     def misc_bad_ind(self) -> npt.NDArray:
@@ -1352,6 +1367,16 @@ class CompositeSweepData:
     def collided_ind(self) -> npt.NDArray:
         """Indices of collided resonances."""
         return np.argwhere(self.chanmask == ChanmaskValue.COLLIDED).flatten()
+
+    @property
+    def double_ind(self) -> npt.NDArray:
+        """Indices of double resonances."""
+        return np.argwhere(self.chanmask == ChanmaskValue.DOUBLE_RESONANCE).flatten()
+
+    @property
+    def low_response_ind(self) -> npt.NDArray:
+        """Indices of resonances with a low response."""
+        return np.argwhere(self.chanmask == ChanmaskValue.LOW_RESPONSE).flatten()
 
     @property
     def misc_bad_ind(self) -> npt.NDArray:

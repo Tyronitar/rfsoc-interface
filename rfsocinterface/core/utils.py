@@ -78,7 +78,8 @@ DEFAULT_CHUNK_SIZE = 100
 AMBER_HEX = '#ffbf00'
 ON_RESONANCE_COLOR = 'white'
 OFF_RESONANCE_COLOR = 'sandybrown'
-COLLIDED_RESONANCE_COLOR = 'lightgray'
+COLLIDED_RESONANCE_COLOR = 'plum'
+DOUBLE_RESONANCE_COLOR = 'pink'
 BAD_RESONANCE_COLOR = 'lightgray'
 FLAGGED_RESONANCE_COLOR = 'yellow'
 SELECTED_RESONANCE_COLOR = 'dodgerblue'
@@ -94,6 +95,8 @@ class ChanmaskValue(IntEnum):
     OFF_RESONANCE = 0
     MISC_BAD = -1
     COLLIDED = -2
+    DOUBLE_RESONANCE = -3
+    LOW_RESPONSE = -4
 
 
 class TabName(StrEnum):

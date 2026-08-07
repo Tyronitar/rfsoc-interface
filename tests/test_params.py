@@ -44,7 +44,7 @@ def test_initialize_params(tmpdir):
         ('tile_number', int, 1, 0, 20),
         ('chan_number', int, 1, 0, 20),
         ('ifslice_number', int, 1, 0, 20),
-        ('chanmask', np.int8, -1, -1, 2),
+        ('chanmask', np.int8, -1, -4, 2),
         ('baseband_freqs', np.float64, -1, None, None),
         ('tone_powers', np.float64, -1, None, None),
         ('detector_delta_x', np.float64, -1, None, None),
