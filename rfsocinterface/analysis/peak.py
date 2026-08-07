@@ -72,6 +72,7 @@ class CheckFocus(DataRoutine):
         fit_radius_deg: float = 0.5,
         fractional_difference_threshold: float = 0.5,
         dataset: Literal['data_mK', 'data_freq'] = 'data_mK',
+        overwrite: bool = True,
     ):
         """Initialize the CheckFocus routine.
 
@@ -86,6 +87,8 @@ class CheckFocus(DataRoutine):
                 Defaults to 0.5.
             dataset (str, optional): The name of the dataset to clean. Must be either
                 'data_mK' or 'data_freq'. Defaults to 'data_mK'.
+            overwrite (bool, optional): Whether to overwrite existing plotting datasets
+                in the HDF5 file. Defaults to True.
         """
         super().__init__(
             primary_direction=primary_direction,
@@ -93,6 +96,7 @@ class CheckFocus(DataRoutine):
             fit_radius_deg=fit_radius_deg,
             fractional_difference_threshold=fractional_difference_threshold,
             dataset=dataset,
+            overwrite=overwrite,
         )
 
     @typing.override
@@ -109,23 +113,30 @@ class CheckFocus(DataRoutine):
 
     def _initialize_arrays(self, pdata: ProcessedData):
         """Initialize the new arrays in the processed data file."""
-        if pdata.has('focus', exact_match=True):
+        if pdata.has('/focus', exact_match=True):
+            if not self.params['overwrite']:
+                _logger.info(
+                    f'{self.name}: "focus" group already exists in the file; '
+                    'using existing datasets.'
+                )
+                return
             _logger.info(
-                f'{self.name}: CheckFocus group already exists in the file. '
-                'Using existing datasets.'
+                f'{self.name}: "focus" group group already exists in the file; '
+                'overwriting datasets.'
             )
-            return
+            del pdata['focus']
         focus_group = pdata.create_group('focus')
-        focus_group.create_dataset('fwhms', shape=(pdata.n_tones,), dtype=np.float64)
+        focus_group.create_dataset('fwhms', shape=(pdata.total_tones,), dtype=np.float64)
         focus_group.create_dataset(
-            'amplitudes', shape=(pdata.n_tones,), dtype=np.float64
+            'amplitudes', shape=(pdata.total_tones,), dtype=np.float64
         )
         focus_group.create_dataset(
-            'good_resonators', shape=(pdata.n_tones,), dtype=np.uint8
+            'good_resonators', shape=(pdata.total_tones,), dtype=np.uint8
         )
 
     @typing.override
     def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
+        self._initialize_arrays(pdata)
         primary_direction = self.params['primary_direction']
         resonators = self.params['resonators']
         fit_radius_deg = self.params['fit_radius_deg']
@@ -263,11 +274,12 @@ class CheckFocus(DataRoutine):
                         fwhms.append(fwhm_mean)
                         good_resonators.append(i_res_abs)
 
-                    time = pdata.timestamp[:] - pdata.timestamp[0]
+                    timestamp = pdata.get_timestamp(i_chan)[:]
+                    time = timestamp - timestamp[0]
                     fig = plt.figure(figsize=(8, 5))
                     plt.title(
                         f'Detector {i_res_abs} Peak Finding '
-                        '(Polarization {pdata.detector_pol[i_res]})'
+                        f'(Polarization {pdata.detector_pol[i_res_abs]})'
                     )
                     plt.plot(
                         telescope_pos[:], data_segment, label='Full Trace', color='b'

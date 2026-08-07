@@ -647,9 +647,14 @@ class PlotMap(DataRoutine):
             if not self.params['overwrite']:
                 # Specified not to overwrite existing plotting datasets, so just
                 # plot the data without recomputing the maps.
+                _logger.info(
+                    f'{self.name}: "map/plotting" group already exists in the file; '
+                    'using existing datasets.'
+                )
                 return False
             _logger.info(
-                'Plotting group already exists in the file; overwriting datasets.'
+                f'{self.name}: "map/plotting" group already exists in the file; '
+                'overwriting datasets.'
             )
             del pdata['map/plotting']
         pdata['map'].create_group('plotting')
