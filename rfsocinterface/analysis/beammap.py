@@ -15,6 +15,7 @@ from scipy.optimize import curve_fit
 from rfsocinterface.core.data import (
     DataRoutine,
     ProcessedData,
+    RoutineResult,
     get_extent,
     register_routine,
 )
@@ -74,12 +75,14 @@ class AnalyzeBeamMap(DataRoutine):
     version = '1.0.0'
 
     requires: ClassVar[set[str]] = {
+        '/map',
         '/map/map_val',
         '/map/map_az',
         '/map/map_za',
     }
 
     produces: ClassVar[set[str]] = {
+        '/beammap',
         '/beammap/az_center',
         '/beammap/za_center',
         '/beammap/amplitude',
@@ -277,7 +280,7 @@ class AnalyzeBeamMap(DataRoutine):
                 / (np.size(this_val) - 5.0)
             )
 
-        return list(self.produces)
+        return RoutineResult(created={'input': self.produces})
 
 
 @register_routine
@@ -288,9 +291,11 @@ class PlotBeamMap(DataRoutine):
     version = '1.1.0'
 
     requires: ClassVar[set[str]] = {
+        '/map',
         '/map/map_val',
         '/map/map_az',
         '/map/map_za',
+        '/beammap',
         '/beammap/az_center',
         '/beammap/za_center',
         '/beammap/amplitude',
@@ -551,7 +556,7 @@ class PlotBeamMap(DataRoutine):
             plt.close()
 
         pdf.close()
-        return []
+        return RoutineResult()
 
 
 def combine_polarized_beammaps(
