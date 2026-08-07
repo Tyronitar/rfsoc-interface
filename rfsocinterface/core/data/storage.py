@@ -262,7 +262,7 @@ class DataStorage:
 
     @property
     def file_stub(self) -> str:
-        """The file stub (i.e. <date>_set<setnum>)."""
+        """The file stub (i.e. [date]_set[setnum])."""
         return get_file_stub(self.date, self.setnum)
 
     @property
@@ -449,6 +449,7 @@ class ConsolidatedData(DataStorage):
             n_samples_raw = raw_data.adc_i.shape[-1]
 
             # Find missed packets
+            _logger.info('ConsolidatedData: Finding missed packets...')
             if raw_data.pkt_idx is not None:
                 _logger.debug('ConsolidatedData: Using pkt_idx to find missed packets')
                 missed_packets = find_missed_packets_with_indices(raw_data.pkt_idx)
@@ -466,6 +467,7 @@ class ConsolidatedData(DataStorage):
             sample_counts.append(n_samples_ds)
 
             # Create the HDF5 group for this channel
+            _logger.info('ConsolidatedData: Initializing HDF5 group in file...')
             this_channel_group = all_channels_group.create_group(
                 get_channel_group_name(i_chan)
             )
@@ -627,6 +629,7 @@ class ConsolidatedData(DataStorage):
             )
 
             # Get packet indices
+            _logger.info('ConsolidatedData: Determining packet indices...')
             if raw_data.pkt_idx is not None:
                 pkt_idx = raw_data.pkt_idx
             else:
@@ -693,15 +696,16 @@ class ConsolidatedData(DataStorage):
 
             # Detector Positions
             if azel_exists:
-                _logger.info(
-                    'ConsolidatedData: Correlating telescope pointing information...'
-                )
                 if (
                     use_pps
                     and raw_data.pps is not None
                     and az_pps_tel is not None
                     and za_pps_tel is not None
                 ):
+                    _logger.info(
+                        'ConsolidatedData: Correlating telescope '
+                        'pointing information...'
+                    )
                     corrected_az_tel = interpolate_telescope_positions(
                         temp_timestamp,
                         timestamp_tel[:],
@@ -729,6 +733,7 @@ class ConsolidatedData(DataStorage):
                         this_channel_group.attrs['detector_dx_dy_elevation_angle'],
                     )
                 else:
+                    _logger.info('ConsolidatedData: Computing detector positions...')
                     get_detector_positions(
                         temp_timestamp,
                         timestamp_tel[:],
@@ -781,6 +786,9 @@ class ConsolidatedData(DataStorage):
             # Delete temporary datasets
             temp_data.close()
             temp_data_file.close()
+            _logger.info(
+                f'ConsolidatedData: Finished consolidating data for channel {i_chan}.'
+            )
 
         total_tones = np.sum(tone_counts)
         global_data_group.attrs['n_samples'] = tuple(sample_counts)
@@ -801,10 +809,15 @@ class ConsolidatedData(DataStorage):
 
         vdsets.create_virtual_dataset('tones', tones_table_layout)
 
+        _logger.info(
+            f'ConsolidatedData: Finished consolidating data for {date}_set{setnum}.'
+        )
+
         return cdata
 
     def create_processed_data(self, mode: str = 'a') -> ProcessedData:
         """Create the processed data from this consolidated data."""
+        _logger.info('ConsolidatedData: Creating processed data file...')
         pfile_path = Path(self.processed_file_template)
         self.close()
         shutil.copy2(self.filename, pfile_path)
@@ -846,7 +859,13 @@ class ProcessedData(DataStorage):
                 * df_per_mK: Conversion factor to convert Hz to mK.
         Also creates virtual datasets for each dataset, combined across channels.
         """
-        for channel_group in self['channels'].values():
+        _logger.info(
+            f'ProcessedData: Initializing processed data fields for {self.file_stub}...'
+        )
+        for i_chan, channel_group in enumerate(self['channels'].values()):
+            _logger.info(
+                f'ProcessedData: Creating procesed data for channel {i_chan}...'
+            )
             time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
             n_tones = channel_group.attrs['n_tones']
             n_samples = channel_group.attrs['n_samples']
@@ -876,6 +895,7 @@ class ProcessedData(DataStorage):
             calibration_info['carrier_amplitudes'] = carrier_amplitudes.T
 
             # Collect calibration information
+            _logger.info('ProcessedData: Determining parameters from LO sweep...')
             sweep = LoSweepData(
                 tones_table['baseband_freq'],
                 channel_group.attrs['f_center'],
@@ -887,6 +907,7 @@ class ProcessedData(DataStorage):
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
             calibration_info['adc_units_to_hz'] = adc_units_to_hz
 
+            _logger.info('ProcessedData: Computing df/f per mK...')
             detector_f = tones_table['baseband_freq'] + channel_group.attrs['f_center']
             df_per_mK = compute_df_per_mK(
                 tones_table['polarization'],
@@ -897,6 +918,7 @@ class ProcessedData(DataStorage):
             calibration_info['df_per_mK'] = df_per_mK
 
             # Rotate to Gain / Phase
+            _logger.info('ProcessedData: Rotating to gain/phase basis...')
             IQ_to_gain_phase_angle = np.atan2(
                 carrier_amplitudes[0], carrier_amplitudes[1]
             )
@@ -909,6 +931,7 @@ class ProcessedData(DataStorage):
 
             # Generate calibrated data
             # First mean center IQ data
+            _logger.info('ProcessedData: Generating calibrated data...')
             data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
             generate_calibrated_data(
                 data_IQ,
@@ -936,6 +959,7 @@ class ProcessedData(DataStorage):
         self['vdsets'].create_virtual_dataset(
             'calibration_info', calibration_info_layout
         )
+        _logger.info('ProcessedData: Finished initializing processed data fields.')
 
     #
     # Useful getter methods

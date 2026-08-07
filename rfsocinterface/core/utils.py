@@ -983,7 +983,7 @@ def get_consolidated_file_template(
 
 
 def get_file_stub(date: str, setnum: int) -> str:
-    """Get the file stub for filenames (i.e. "<date>_set<setnum>")."""
+    """Get the file stub for filenames (i.e. "[date]_set[setnum]")."""
     return f'{date}_set{setnum}'
 
 
