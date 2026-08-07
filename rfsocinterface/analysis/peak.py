@@ -126,7 +126,9 @@ class CheckFocus(DataRoutine):
             )
             del pdata['focus']
         focus_group = pdata.create_group('focus')
-        focus_group.create_dataset('fwhms', shape=(pdata.total_tones,), dtype=np.float64)
+        focus_group.create_dataset(
+            'fwhms', shape=(pdata.total_tones,), dtype=np.float64
+        )
         focus_group.create_dataset(
             'amplitudes', shape=(pdata.total_tones,), dtype=np.float64
         )
