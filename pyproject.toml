@@ -2,7 +2,7 @@
 
 [tool.poetry]
 name = "rfsocinterface"
-version = "0.3.0"
+version = "0.4.0"
 description = "A user-friendly GUI for configuring and monitoring MKID readout software"
 authors = ["Nia McNichols <niamcnichols@gmail.com>"]
 readme = "README.md"
