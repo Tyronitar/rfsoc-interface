@@ -12,7 +12,12 @@ import numpy.typing as npt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.optimize import least_squares
 
-from rfsocinterface.core.data import DataRoutine, ProcessedData, register_routine
+from rfsocinterface.core.data import (
+    DataRoutine,
+    ProcessedData,
+    RoutineResult,
+    register_routine,
+)
 from rfsocinterface.core.utils import sigma_to_fwhm
 
 _logger = logging.getLogger(__name__)
@@ -60,6 +65,7 @@ class CheckFocus(DataRoutine):
     version = '1.0.0'
 
     produces: ClassVar[set] = {
+        '/focus',
         '/focus/fwhms',
         '/focus/amplitudes',
         '/focus/good_resonators',
@@ -109,14 +115,14 @@ class CheckFocus(DataRoutine):
             '/global_data/timestamp',
         ]
 
-    def _initialize_arrays(self, pdata: ProcessedData):
+    def _initialize_arrays(self, pdata: ProcessedData) -> bool:
         """Initialize the new arrays in the processed data file."""
         if pdata.has('focus', exact_match=True):
             _logger.info(
                 f'{self.name}: CheckFocus group already exists in the file. '
                 'Using existing datasets.'
             )
-            return
+            return False
         focus_group = pdata.create_group('focus')
         focus_group.create_dataset('fwhms', shape=(pdata.n_tones,), dtype=np.float64)
         focus_group.create_dataset(
@@ -125,9 +131,11 @@ class CheckFocus(DataRoutine):
         focus_group.create_dataset(
             'good_resonators', shape=(pdata.n_tones,), dtype=np.uint8
         )
+        return True
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
+    def run(self, pdata: ProcessedData, inputs: list[str]):
+        created_new = self._initialize_arrays(pdata)
         primary_direction = self.params['primary_direction']
         resonators = self.params['resonators']
         fit_radius_deg = self.params['fit_radius_deg']
@@ -352,7 +360,9 @@ class CheckFocus(DataRoutine):
                 fwhms, amplitudes, good_resonators, pdf, pdata
             )
 
-        return ['/focus/fwhms', '/focus/amplitudes', '/focus/good_resonators']
+        if created_new:
+            return RoutineResult(created={'input': self.produces})
+        return RoutineResult(modified={'input': self.produces})
 
     def _plot_summary_statistics(
         self,

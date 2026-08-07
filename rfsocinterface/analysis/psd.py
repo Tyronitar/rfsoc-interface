@@ -179,10 +179,7 @@ class ComputeNoisePSD(DataRoutine):
             )
             output.append(indices.name)
 
-        return RoutineResult(
-            created={'input': created},
-            modified={'input': modified}
-        )
+        return RoutineResult(created={'input': created}, modified={'input': modified})
 
 
 def decode_color_string(color: str) -> tuple[str, str]:
