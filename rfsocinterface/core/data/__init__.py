@@ -21,7 +21,6 @@ from rfsocinterface.core.data.routines import (
     RemoveElectronicsNoise,
     RoutineInputs,
     RoutineResult,
-    _compute_templates,
     decode_tone_indices,
     register_routine,
 )
@@ -82,7 +81,6 @@ __all__ = [
     'RemoveElectronicsNoise',
     'RoutineInputs',
     'RoutineResult',
-    '_compute_templates',
     'decode_tone_indices',
     'generate_calibrated_data',
     'get_channel_group_name',
