@@ -80,10 +80,10 @@ if __name__ == '__main__':
         # noise_removal,
         # compute_psd,
         # psd_plotter,
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
-        # bin_tod_to_map,
+        hp_filter,
+        lp_filter,
+        clean_tod,
+        bin_tod_to_map,
         # plotter,
         # make_video,
         # find_fwhm,
@@ -93,21 +93,21 @@ if __name__ == '__main__':
     ])
 
     date = '20260617'
-    # setnum = 1006
+    setnum = 1005
 
-    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    for setnum in (1001, 1004, 1005, 1006):
-    # for setnum in (1005, 1006):
-        pdata = ProcessedData.load(date, setnum, mode='a')
-        # new_snr = pdata['beammap/new_snr'][:]
-        # good_new_snr = new_snr[pdata.onres_ind]
-        # good_new_snr = good_new_snr[10 < good_new_snr]
-        # plt.hist(good_new_snr, bins=20)
-        # plt.show()
-        # pdb.set_trace()
-        pipeline.run(pdata)
+    # for setnum in (1001, 1004, 1005, 1006):
+    # # for setnum in (1005, 1006):
+    #     pdata = ProcessedData.load(date, setnum, mode='a')
+    #     # new_snr = pdata['beammap/new_snr'][:]
+    #     # good_new_snr = new_snr[pdata.onres_ind]
+    #     # good_new_snr = good_new_snr[10 < good_new_snr]
+    #     # plt.hist(good_new_snr, bins=20)
+    #     # plt.show()
+    #     # pdb.set_trace()
+    #     pipeline.run(pdata)
 
     pdb.set_trace()
     # map_val = pdata['map/map_val'][:]

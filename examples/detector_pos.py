@@ -143,8 +143,8 @@ if __name__ == '__main__':
         'Device_aSi2_Channel3_telescope_275mK_20260511_with_offres_and_max_power'
     )
     new_tile_names = (
-        'Device_aSi1_Channel2_telescope_275mK_20260804',
-        'Device_aSi2_Channel3_telescope_275mK_20260804'
+        'Device_aSi1_Channel2_telescope_275mK_20260810',
+        'Device_aSi2_Channel3_telescope_275mK_20260810'
     )
     setnums = (
         (1001, 1004),
@@ -287,14 +287,24 @@ if __name__ == '__main__':
         # new_tile_2_params.chanmask[bad_res_tile_2] = -1
         new_tile_2_params.focal_plane_center_za = focal_center[1]
         new_tile_2_params.flag_collided_resonances(collision_threshold=collision_threshold)
+        n_tones = new_tile_2_params.n_tones
+        n_on_res = new_tile_2_params.onres_ind.size
+        n_off_res = new_tile_2_params.offres_ind.size
+        n_low = new_tile_2_params.low_response_ind.size
+        n_double = new_tile_2_params.double_ind.size
+        n_coll = new_tile_2_params.collided_ind.size
+        n_bad = new_tile_2_params.bad_ind.size
+        n_misc = new_tile_2_params.misc_bad_ind.size
         print(
             'Tile 2 tone breakdown:\n'
-            f'\tOn-resonance: {new_tile_2_params.onres_ind.size}\n'
-            f'\tOff-resonance: {new_tile_2_params.offres_ind.size}\n'
-            f'\tLow response: {new_tile_2_params.low_response_ind.size}\n'
-            f'\tDouble resonance: {new_tile_2_params.double_ind.size}\n'
-            f'\tCollided resonance: {new_tile_2_params.collided_ind.size}\n'
-            f'\tOther: {new_tile_2_params.misc_bad_ind.size}\n'
+            f'\tTotal tones: {n_tones}\n'
+            f'\tOn-resonance: {n_on_res} ({n_on_res / n_tones * 100:.2f}%)\n'
+            f'\tOff-resonance: {n_off_res} ({n_off_res / n_tones * 100:.2f}%)\n'
+            f'\tTotal Flagged resonances: {n_bad} ({n_bad / n_tones * 100:.2f}%)\n'
+            f'\t\tLow response: {n_low} ({n_low / n_tones * 100:.2f}%)\n'
+            f'\t\tDouble resonance: {n_double} ({n_double / n_tones * 100:.2f}%)\n'
+            f'\t\tCollided resonance: {n_coll} ({n_coll / n_tones * 100:.2f}%)\n'
+            f'\t\tOther: {n_misc} ({n_misc / n_tones * 100:.2f}%)\n'
         )
         # this_setnums = setnums[-1]
         # hpol_setnum = this_setnums[0]
@@ -315,14 +325,24 @@ if __name__ == '__main__':
         # new_tile_3_params.chanmask[bad_res_tile_3] = -1
         new_tile_3_params.focal_plane_center_za = focal_center[1]
         new_tile_3_params.flag_collided_resonances(collision_threshold=collision_threshold)
+        n_tones = new_tile_3_params.n_tones
+        n_on_res = new_tile_3_params.onres_ind.size
+        n_off_res = new_tile_3_params.offres_ind.size
+        n_low = new_tile_3_params.low_response_ind.size
+        n_double = new_tile_3_params.double_ind.size
+        n_coll = new_tile_3_params.collided_ind.size
+        n_bad = new_tile_3_params.bad_ind.size
+        n_misc = new_tile_3_params.misc_bad_ind.size
         print(
             'Tile 3 tone breakdown:\n'
-            f'\tOn-resonance: {new_tile_3_params.onres_ind.size}\n'
-            f'\tOff-resonance: {new_tile_3_params.offres_ind.size}\n'
-            f'\tLow response: {new_tile_3_params.low_response_ind.size}\n'
-            f'\tDouble resonance: {new_tile_3_params.double_ind.size}\n'
-            f'\tCollided resonance: {new_tile_3_params.collided_ind.size}\n'
-            f'\tOther: {new_tile_3_params.misc_bad_ind.size}\n'
+            f'\tTotal tones: {n_tones}\n'
+            f'\tOn-resonance: {n_on_res} ({n_on_res / n_tones * 100:.2f}%)\n'
+            f'\tOff-resonance: {n_off_res} ({n_off_res / n_tones * 100:.2f}%)\n'
+            f'\tTotal Flagged resonances: {n_bad} ({n_bad / n_tones * 100:.2f}%)\n'
+            f'\t\tLow response: {n_low} ({n_low / n_tones * 100:.2f}%)\n'
+            f'\t\tDouble resonance: {n_double} ({n_double / n_tones * 100:.2f}%)\n'
+            f'\t\tCollided resonance: {n_coll} ({n_coll / n_tones * 100:.2f}%)\n'
+            f'\t\tOther: {n_misc} ({n_misc / n_tones * 100:.2f}%)\n'
         )
         # this_setnums = setnums[1]
         # hpol_setnum = this_setnums[0]
