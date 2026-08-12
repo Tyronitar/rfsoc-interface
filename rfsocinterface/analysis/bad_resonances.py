@@ -10,6 +10,7 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from tqdm.contrib import tenumerate
 
 from rfsocinterface.analysis.beammap import find_gaussian_beams
 from rfsocinterface.core.data import DataRoutine, ProcessedData, get_extent
@@ -381,7 +382,7 @@ class FindDoubleResonances(DataRoutine):
             bbox_pad = 0.3
             _logger.info(f'{self.name}: Plotting results...')
             with PdfPages(f'{pdata.folder}/{pdata.file_stub}_double_resonances.pdf') as pdf:
-                for i, i_res in enumerate(tone_indices):
+                for i, i_res in tenumerate(tone_indices):
                     if i == tone_indices.size // 2:
                         _logger.info(f'{self.name}: Halfway done plotting results...')
                     old_plot_data = np.flip(np.transpose(map_val[i_res][::-1]), 1)

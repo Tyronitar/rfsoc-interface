@@ -72,7 +72,7 @@ if __name__ == '__main__':
 
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap()
-    find_doubles = FindDoubleResonances()
+    find_doubles = FindDoubleResonances(plot=True)
 
     pipeline = Pipeline([
         # noise_removal_offres,
@@ -80,22 +80,22 @@ if __name__ == '__main__':
         # noise_removal,
         # compute_psd,
         # psd_plotter,
-        hp_filter,
-        lp_filter,
-        clean_tod,
-        bin_tod_to_map,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
+        # bin_tod_to_map,
         # plotter,
         # make_video,
         # find_fwhm,
-        analyze_beammap,
+        # analyze_beammap,
         # plot_beammap,
         find_doubles,
     ])
 
     date = '20260617'
-    setnum = 1005
+    setnum = 1006
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
     # for setnum in (1001, 1004, 1005, 1006):
@@ -109,7 +109,16 @@ if __name__ == '__main__':
     #     # pdb.set_trace()
     #     pipeline.run(pdata)
 
-    pdb.set_trace()
+    for setnum in (1001, 1004, 1005, 1006):
+    # for setnum in (1004, 1005, 1006):
+        pdata = ProcessedData.load(date, setnum, mode='r')
+        doubles_pos = pdata['beammap/double_resonances/positive/is_double'][:]
+        doubles_neg = pdata['beammap/double_resonances/negative/is_double'][:]
+        detector_f = pdata.detector_f()
+        plt.hist(pdata['beammap/fwhm_az'][onres_ind], bins=20)
+        plt.show()
+        pdb.set_trace()
+        # find_doubles.run(pdata)
     # map_val = pdata['map/map_val'][:]
     # map_az = pdata['map/map_az'][:]
     # map_za = pdata['map/map_za'][:]

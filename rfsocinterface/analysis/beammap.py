@@ -724,6 +724,40 @@ def combine_polarized_beammaps(
     is_double_all = is_double_all & (chanmask == 1)
     chanmask[is_double_all] = ChanmaskValue.DOUBLE_RESONANCE
 
+    detector_f = pol1_data.detector_f()
+    original_chanmask = pol1_data.chanmask[:]
+    is_single = chanmask == ChanmaskValue.ON_RESONANCE
+
+    bb_freqs = pol1_data.baseband_freqs[:]
+    shift1 = np.abs(bb_freqs - np.roll(bb_freqs, 1))
+    shift2 = np.abs(np.roll(bb_freqs, -1) - bb_freqs)
+    shift1 = np.where(
+        np.roll(original_chanmask, 1) == ChanmaskValue.ON_RESONANCE, shift1, np.inf
+    )
+    shift2 = np.where(
+        np.roll(original_chanmask, -1) == ChanmaskValue.ON_RESONANCE, shift2, np.inf
+    )
+    nearest_res = np.abs(np.minimum(shift1, shift2) / detector_f)
+
+    nearest_res_single = nearest_res[is_single & (np.isfinite(nearest_res))]
+    nearest_res_double = nearest_res[is_double_all & (np.isfinite(nearest_res))]
+
+    plt.figure()
+    plt.hist(
+        (nearest_res_single, nearest_res_double),
+        bins=np.linspace(0, 0.005, 50),
+        color=('blue', 'orange'),
+        label=('Normal resonances', 'Double resonances'),
+        stacked=True,
+    )
+    plt.legend()
+    plt.title('Resonance Flagging by Distance from Nearest Neighbor')
+    plt.xlabel('Fractional difference from nearest neighbor')
+    plt.ylabel('Frequency')
+    plt.show()
+    pdb.set_trace()
+
+
     # TODO: Update params file
 
     # # Get positions relative to the center of the tile

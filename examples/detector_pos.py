@@ -178,8 +178,8 @@ if __name__ == '__main__':
     chanmasks = []
 
     pdf = PdfPages('detector_positions.pdf')
-    plt.figure(figsize=(10, 10))
-    plt.title(f'Detector Positions and Polarizations')
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    fig.suptitle(f'Detector Positions and Polarizations')
 
     for i_tile in range(2):
         tile_name = tile_names[i_tile]
@@ -208,10 +208,10 @@ if __name__ == '__main__':
         hpol = np.argwhere((detector_pol == 1) & (new_chanmask == 1)).flatten().astype(int)
         vpol = np.argwhere((detector_pol == 2) & (new_chanmask == 1)).flatten().astype(int)
         marker = markers[i_tile]
-        plt.scatter(az_center[vpol], za_center[vpol], marker=marker, color=colors[i_tile][0], label=f'Tile {i_tile + 2} V-Pol (N = {vpol.size})')
+        ax.scatter(az_center[vpol], za_center[vpol], marker=marker, color=colors[i_tile][0], label=f'Tile {i_tile + 2} V-Pol (N = {vpol.size})')
         # for i_pol in pol2:
         #     plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='blue', fontsize=20.)
-        plt.scatter(az_center[hpol], za_center[hpol], marker=marker, color=colors[i_tile][1], label=f'Tile {i_tile + 2} H-Pol (N = {hpol.size})')
+        ax.scatter(az_center[hpol], za_center[hpol], marker=marker, color=colors[i_tile][1], label=f'Tile {i_tile + 2} H-Pol (N = {hpol.size})')
         # for i_pol in pol1:
         #     plt.text(az_center[i_pol], za_center[i_pol], f'{i_pol}', color='red', fontsize=20.)
     tile_2_az_centers = az_centers[0][good_inds[0]]
@@ -253,17 +253,17 @@ if __name__ == '__main__':
     # focal_center_za += za_shift
     # focal_center_az += az_shift
 
-    plt.scatter(focal_center[0], focal_center[1], marker='o', color='black', label=f'Focal Plane Center (AZ = {focal_center[0]:.2f}, ZA = {focal_center[1]:.2f})')
+    ax.scatter(focal_center[0], focal_center[1], marker='o', color='black', label=f'Focal Plane Center (AZ = {focal_center[0]:.2f}, ZA = {focal_center[1]:.2f})')
     # plt.scatter(tile_2_az_centers[top_left_tile_2_idx], tile_2_za_centers[top_left_tile_2_idx], marker='o', color='red')
     # plt.scatter(true_top_right[0], true_top_right[1], marker='o', color='orange')
     # plt.scatter(focal_center[0] + az_shift, focal_center[1] + za_shift, marker='o', color='purple', label=f'Focal Plane Center with offset')
-    plt.xlabel('AZ Position (deg)')
-    plt.ylabel('ZA Position (deg)')
+    ax.set_xlabel('AZ Position (deg)')
+    ax.set_ylabel('ZA Position (deg)')
     # plt.scatter(center_az, center_za, marker='o', color='black', label='Focal Plane Center')
-    plt.gca().invert_yaxis()
-    plt.gca().set_aspect('equal')
-    plt.legend()
-    plt.tight_layout()
+    ax.invert_yaxis()
+    ax.set_aspect('equal')
+    fig.legend()
+    fig.tight_layout()
     pdf.savefig()
     plt.show()
     pdf.close()
