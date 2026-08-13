@@ -17,21 +17,17 @@ jobs:
         run: |
             sudo apt update && sudo apt install -y libegl1-mesa-dev
 
+      - name: Install poetry
+        uses: abatilo/actions-poetry@v2
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
             python-version: ${{ matrix.python-version }}
             cache: 'poetry'
 
-      - name: Install poetry
-        uses: abatilo/actions-poetry@v2
-
-      - name: Setup a local virtual environment (if no poetry.toml file)
-        run: |
-          poetry config virtualenvs.in-project true
-
       - name: Install the project dependencies
-        run: poetry install --no-interaction
+        run: poetry install
     
       - name: Make UI files
         run: make all
