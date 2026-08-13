@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
-from rfsocinterface.core.data.routines import ROUTINE_REGISTRY, DataRoutine
+from rfsocinterface.core.data.routines import (
+    ROUTINE_REGISTRY,
+    DataRoutine,
+    RoutineResult,
+)
 from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
 
 _logger = logging.getLogger(__name__)
@@ -20,8 +24,8 @@ class Pipeline:
 
     def from_tod(
         self, date: str, setnum: int, downsampling_factor: int = 1, use_pps: bool = True
-    ) -> ProcessedData:
-        """Run a pipeline starting from the TOD files."""
+    ) -> tuple[ProcessedData, tuple[RoutineResult | tuple[RoutineResult, ...], ...]]:
+        """Run a pipeline starting from the TOD files for the desired data set."""
         _logger.info(f'Pipeline: Running pipeline on TOD {date}_set{setnum}')
         cd = ConsolidatedData.from_tod(
             date, setnum, downsampling_factor=downsampling_factor, use_pps=use_pps
@@ -29,11 +33,13 @@ class Pipeline:
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
         cd.close()
-        self.run(pd)
-        return pd
+        results = self.run(pd)
+        return pd, results
 
-    def from_consolidated_data(self, date: str, setnum: int) -> ProcessedData:
-        """Run a pipeline starting from the consolidated file."""
+    def from_consolidated_data(
+        self, date: str, setnum: int
+    ) -> tuple[ProcessedData, tuple[RoutineResult | tuple[RoutineResult, ...], ...]]:
+        """Run a pipeline starting from a consolidated file."""
         _logger.info(
             f'Pipeline: Running pipeline from ConsolidatedData {date}_set{setnum}'
         )
@@ -41,8 +47,8 @@ class Pipeline:
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
         cd.close()
-        self.run(pd)
-        return pd
+        results = self.run(pd)
+        return pd, results
 
     def add_routine(self, name: str, **params):
         """Instatiate a DataRoutine and add it to this pipeline.
@@ -79,7 +85,25 @@ class Pipeline:
         for name, params in config.items():
             self.add_routine(name, **params)
 
-    def run(self, pdata: ProcessedData):
-        """Run this pipeline on a processed data object."""
+    def validate(self, n_inputs: int) -> None:
+        """Validates the number of inputs for all routines."""
         for routine in self.routines:
-            routine.apply(pdata)
+            count = 1 if routine.map_over_inputs else n_inputs
+            routine.validate_input_count(count)
+
+    def run(
+        self, *pdata: ProcessedData
+    ) -> tuple[RoutineResult | tuple[RoutineResult, ...], ...]:
+        """Run this pipeline on one or more processed data objects."""
+        if not pdata:
+            raise ValueError('Pipeline requires at least one ProcessedData object.')
+        self.validate(len(pdata))
+
+        try:
+            results = tuple(routine.apply(*pdata) for routine in self.routines)
+        except Exception as e:
+            msg = f'Error occurred during pipeline execution: {e}'
+            _logger.exception(msg)
+            raise
+        else:
+            return results

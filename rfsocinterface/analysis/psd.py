@@ -15,6 +15,7 @@ from scipy import signal
 from rfsocinterface.core.data import (
     DataRoutine,
     ProcessedData,
+    RoutineResult,
     register_routine,
 )
 from rfsocinterface.core.data.storage import decode_tone_indices
@@ -86,26 +87,30 @@ class ComputeNoisePSD(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData) -> list[str]:
-        dsets = []
+    def _inputs(self, pdata: ProcessedData) -> list[str]:
+        inputs = []
         bases = self.params['bases']
         for basis in bases:
             if basis in PsdBasis:
                 pattern = rf'channel_\d.*data_{basis}'
-                dsets.extend(pdata.search_regex_names(pattern))
+                inputs.extend(pdata.search_regex_names(pattern))
             else:
                 msg = f'Cannot compute noise PSD for unknown basis "{basis}"'
                 _logger.error(msg)
                 raise ValueError(msg)
-        return dsets
+        return inputs 
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str] | None = None) -> list[str]:
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
+        created = []
+        modified = []
         # Initialize PSD group in the file if needed
         if not pdata.has('/psd', exact_match=True):
             psd_group = pdata.create_group('psd')
-
-        psd_group = pdata['psd']
+            created.append(psd_group.name)
+        else:
+            psd_group = pdata['psd']
+            modified.append('psd')
 
         bases = self.params['bases']
         cut_time = self.params['cut_time']
@@ -175,17 +180,21 @@ class ComputeNoisePSD(DataRoutine):
 
             if basis in psd_group:
                 del psd_group[basis]
+                output = modified
+            else:
+                output = created
             basis_group = psd_group.create_group(basis)
+            output.append(basis_group.name)
             psd_dset = basis_group.create_dataset('psd', data=psd)
-            outputs.append(psd_dset.name)
+            output.append(psd_dset.name)
             freq_dset = basis_group.create_dataset('freq', data=freq)
-            outputs.append(freq_dset.name)
+            output.append(freq_dset.name)
             indices = basis_group.create_dataset(
                 'selection_indices', data=selection_indices, dtype=int
             )
-            outputs.append(indices.name)
+            output.append(indices.name)
 
-        return outputs
+        return RoutineResult(created={'input': created}, modified={'input': modified})
 
 
 def decode_color_string(color: str) -> tuple[str, str]:
@@ -565,7 +574,7 @@ class PlotPSD(DataRoutine):
     """
 
     name = 'PlotPSD'
-    version = '1.1.0'
+    version = '1.2.0'
 
     @ensure_path('savefile')
     def __init__(
@@ -608,20 +617,21 @@ class PlotPSD(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData) -> list[str]:
-        dsets = []
+    def _inputs(self, pdata: ProcessedData) -> list[str]:
+        inputs = []
         bases = self.params['bases']
         for basis in bases:
             if basis not in PsdBasis:
                 raise ValueError(f'{self.name}: Unknown PSD basis "{basis}"')
-            dsets.append(f'/psd/{basis}/psd')
-            dsets.append(f'/psd/{basis}/freq')
+            inputs.append(f'psd/{basis}')
+            inputs.append(f'/psd/{basis}/psd')
+            inputs.append(f'/psd/{basis}/freq')
             if basis == PsdBasis.FREQ_DISS:
-                dsets.append(f'/psd/{basis}/selection_indices')
-        return dsets
+                inputs.append(f'/psd/{basis}/selection_indices')
+        return inputs
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str] | None = None) -> list[str]:
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         bases = self.params['bases']
         title = self.params['title']
         show_error_band = self.params['show_error_band']
@@ -650,6 +660,7 @@ class PlotPSD(DataRoutine):
                             basis_group['freq'][:],
                             basis_group['psd'][0],
                             title=titles[0],
+                            label=subtitles[0],
                             show_error_band=show_error_band,
                             error_band_min_percentile=error_band_min_percentile,
                             error_band_max_percentile=error_band_max_percentile,
@@ -658,6 +669,7 @@ class PlotPSD(DataRoutine):
                             basis_group['freq'][:],
                             basis_group['psd'][1],
                             title=titles[1],
+                            label=subtitles[1],
                             show_error_band=show_error_band,
                             error_band_min_percentile=error_band_min_percentile,
                             error_band_max_percentile=error_band_max_percentile,
@@ -666,6 +678,7 @@ class PlotPSD(DataRoutine):
                             basis_group['freq'][:],
                             np.mean(basis_group['psd'], axis=0),
                             title=titles[2],
+                            label=subtitles[2],
                             show_error_band=show_error_band,
                             error_band_min_percentile=error_band_min_percentile,
                             error_band_max_percentile=error_band_max_percentile,
@@ -735,4 +748,4 @@ class PlotPSD(DataRoutine):
                             )
                             pdf.savefig(fig)
                             plt.close(fig)
-        return []
+        return RoutineResult()
