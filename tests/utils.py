@@ -131,13 +131,18 @@ class MultiInputRoutine(DataRoutine):
 # ruff: disable[ARG002]
 
 
-class SetValueRoutine(DataRoutine):
-    def __init__(self, val: float):
+class CreateValueRoutine(DataRoutine):
+    def __init__(self, val: int):
         super().__init__(val=val)
 
     def _run(self, pdata, inputs):
-        pdata.data_gain_phase[:] = self.params['val']
-        return RoutineResult(modified={'input': ['data_gain_phase']})
+        if 'test' not in pdata:
+            test_group = pdata.create_group('test')
+        else:
+            test_group = pdata['test']
+        val = self.params['val']
+        test_group.create_dataset(f'val_{val}', data=val)
+        return RoutineResult(created={'input': [f'test/val_{val}']})
 
 
 class MultiInputDefaultInputsRoutine(DataRoutine):

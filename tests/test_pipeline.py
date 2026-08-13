@@ -2,9 +2,10 @@
 
 import pytest
 
-from rfsocinterface.core.data import ProcessedData, RoutineResult
+from rfsocinterface.core.data import Pipeline, ProcessedData, RoutineResult
 from tests.utils import (
     ArbitraryArgumentRoutine,
+    CreateValueRoutine,
     ListInputsRoutine,
     MultiInputDefaultInputsRoutine,
     MultiInputRoutine,
@@ -190,3 +191,24 @@ def test_run_not_implemented():
     """Test that using a routine that doesn't override _run fails."""
     with pytest.raises(TypeError, match="Can't instantiate abstract class"):
         NoRunRoutine()
+
+
+@pytest.mark.parametrize(
+    'n_routines',
+    [0, 1, 2, 3],
+)
+def test_pipeline(make_fake_data, n_routines):
+    """Test that a pipeline works properly."""
+    fake_data = make_fake_data('test.h5')
+    pdata = ProcessedData.from_h5py(fake_data)
+
+    pipeline = Pipeline([CreateValueRoutine(i) for i in range(n_routines)])
+    pipeline.run(pdata)
+
+    if n_routines > 0:
+        assert pdata.has('/test', exact_match=True)
+        for i in range(n_routines):
+            assert pdata.has(f'/test/val_{i}', exact_match=True)
+            assert_equal(pdata[f'/test/val_{i}'][()], i)
+    else:
+        assert 'test' not in pdata
