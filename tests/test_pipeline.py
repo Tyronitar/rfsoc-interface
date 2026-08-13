@@ -25,7 +25,6 @@ def test_mapped_inputs(make_fake_data):
         pdata.append(ProcessedData.from_h5py(fake_data))
     routine = SingleInputRoutine()
     result = routine.apply(*pdata)
-    print(result)
 
     for i, pd in enumerate(pdata):
         assert pd.has('/tests/result', exact_match=True)

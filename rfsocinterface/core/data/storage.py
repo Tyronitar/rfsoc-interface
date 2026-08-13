@@ -70,7 +70,7 @@ class DataStorage:
     """
 
     @ensure_path(1)
-    def __init__(self, filename: Path, open_file: bool=True, mode: str = 'a'):
+    def __init__(self, filename: Path, open_file: bool = True, mode: str = 'a'):
         """Initialize a DataStorage Object."""
         self.filename = filename
         self.file = None
@@ -245,12 +245,16 @@ class DataStorage:
     @property
     def consolidated_file_template(self) -> str:
         """The consolidated data filename for this data's date and setnum."""
-        return get_consolidated_file_template(self.date, self.setnum, data_dir=self.data_dir)
+        return get_consolidated_file_template(
+            self.date, self.setnum, data_dir=self.data_dir
+        )
 
     @property
     def processed_file_template(self) -> str:
         """The processed data filename for this data's date and setnum."""
-        return get_processed_file_template(self.date, self.setnum, data_dir=self.data_dir)
+        return get_processed_file_template(
+            self.date, self.setnum, data_dir=self.data_dir
+        )
 
     @property
     def file_stub(self) -> str:
@@ -310,7 +314,9 @@ class ConsolidatedData(DataStorage):
         optcam_exists = optcam_template.exists()
         if not optcam_exists:
             # Try old file naming format
-            optcam_template = Path(get_optcam_template(date, setnum, old=True, data_dir=data_dir))
+            optcam_template = Path(
+                get_optcam_template(date, setnum, old=True, data_dir=data_dir)
+            )
             optcam_exists = optcam_template.exists()
 
         if azel_exists:

@@ -539,6 +539,7 @@ def search_regex(
     """
     regex = re.compile(pattern)
     objects = []
+
     def match_object(name: str, obj: H5pyObject):
         success = regex.match(obj.name) if exact_match else regex.search(obj.name)
         if success:
@@ -546,6 +547,7 @@ def search_regex(
                 objects.append((obj.name, obj))
             else:
                 objects.append((name, obj))
+
     src.visititems(match_object)
     return tuple(objects)
 
