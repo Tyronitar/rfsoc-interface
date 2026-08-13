@@ -2,11 +2,18 @@
 
 import functools
 import time
+import typing
 from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 import pytest
+
+from rfsocinterface.core.data import (
+    DataRoutine,
+    ProcessedData,
+    RoutineResult,
+)
 
 __all__ = [
     'assert_close',
@@ -54,3 +61,68 @@ def sleep_and_raise(n: int):
     """Sleep for some time and the raise an error."""
     time.sleep(n)
     raise RuntimeError('expected raise')
+
+
+class SingleInputRoutine(DataRoutine):
+    @typing.override
+    def _run(self, pdata, inputs):
+        test_group = pdata.create_group('tests')
+        res = test_group.create_dataset('result', shape=(2, 10), dtype=np.float64)
+        res[:] = np.random.default_rng(2).random((2, 10))
+        pdata.data_gain_phase[:] = 0
+        pdata.data_gain_phase[:] = 0
+        del pdata['vdsets/data_IQ']
+
+        return RoutineResult(
+            created={'input': ('tests', 'tests/result')},
+            modified={'input': ('vdsets/data_gain_phase',)},
+            deleted={'input': ('vdsets/data_IQ',)},
+            value=res[:],
+        )
+
+
+class MultiInputRoutine(DataRoutine):
+    max_inputs = 2
+    map_over_inputs = False
+
+    @typing.override
+    def _inputs(self, x: ProcessedData, y: ProcessedData):
+        return {
+            'x': {'data_IQ', 'data_gain_phase'},
+            'y': {'data_IQ', 'data_gain_phase'},
+        }
+
+    @typing.override
+    def _run(self, x: ProcessedData, y: ProcessedData, inputs):
+        test_group_x = x.create_group('tests')
+        res_x = test_group_x.create_dataset('result', shape=(2, 10), dtype=np.float64)
+        res_x[:] = np.random.default_rng(2).random((2, 10))
+        x.data_gain_phase[:] = 0
+        x.data_gain_phase[:] = 0
+        del x['vdsets/data_IQ']
+
+        test_group_y = y.create_group('tests')
+        res_y = test_group_y.create_dataset('result', shape=(2, 10), dtype=np.float64)
+        res_y[:] = res_x[:] / 2
+        y.data_IQ[:] = 0
+        y.data_IQ[:] = 0
+        del y['vdsets/data_gain_phase']
+
+        return RoutineResult(
+            created={
+                'x': ('tests', 'tests/result'),
+                'y': ('tests', 'tests/result'),
+            },
+            modified={
+                'x': ('data_gain_phase',),
+                'y': ('data_IQ',),
+            },
+            deleted={
+                'x': ('data_IQ',),
+                'y': ('data_gain_phase',),
+            },
+            value={
+                'x': res_x[:],
+                'y': res_y[:],
+            },
+        )
