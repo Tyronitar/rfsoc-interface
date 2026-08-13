@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import h5py
 import numpy as np
@@ -40,3 +41,14 @@ def make_fake_data(tmp_path) -> Callable[[None], h5py.File]:
         return temp_hdf5_file
 
     return _make_fake_data
+
+
+@pytest.fixture
+def make_function_mock() -> Callable[[Callable], Mock]:
+    """Factory for creating mocks that track specific funtions."""
+
+    def _make_return_value_mock(func: Callable) -> Mock:
+        path = f'{func.__module__}.{func.__qualname__}'
+        return patch(path, wraps=func)
+
+    return _make_return_value_mock

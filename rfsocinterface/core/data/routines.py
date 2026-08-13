@@ -164,10 +164,10 @@ class DataRoutine:
         """Convert supported inputs() return formats into a normalized form.
 
         The resulting format is:
-            (
-                (input_role, processed_data, dataset_paths),
+            {
+                input_role: (processed_data, dataset_paths),
                 ...
-            )
+            }
         """
         # Backward-compatible single-input format:
         # ["/data_IQ", "/timestamp"]

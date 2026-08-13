@@ -131,6 +131,15 @@ class MultiInputRoutine(DataRoutine):
 # ruff: disable[ARG002]
 
 
+class SetValueRoutine(DataRoutine):
+    def __init__(self, val: float):
+        super().__init__(val=val)
+
+    def _run(self, pdata, inputs):
+        pdata.data_gain_phase[:] = self.params['val']
+        return RoutineResult(modified={'input': ['data_gain_phase']})
+
+
 class MultiInputDefaultInputsRoutine(DataRoutine):
     max_inputs = 2
     map_over_inputs = False
@@ -148,9 +157,61 @@ class SingleInputDefaultInputsRoutine(DataRoutine):
         return RoutineResult()
 
 
-class NoReturnRoutine(DataRoutine):
+class ReturnNoneRoutine(DataRoutine):
     def _run(self, pdata, inputs):
         return None
+
+
+class ReturnCollectionRoutine(DataRoutine):
+    def _run(self, pdata, inputs):
+        return []
+
+
+class ListInputsRoutine(DataRoutine):
+    def _inputs(self, pdata):
+        self.expected_inputs = {'input': (pdata, ('data_IQ', 'data_gain_phase'))}
+        return ['data_IQ', 'data_gain_phase']
+
+    def _run(self, pdata, inputs):
+        return RoutineResult()
+
+
+class PositionalInputsRoutine(DataRoutine):
+    min_inputs = 2
+    max_inputs = 2
+    map_over_inputs = False
+
+    def _inputs(self, *pdata):
+        self.expected_inputs = {
+            'input_0': (pdata[0], ('data_IQ', 'data_gain_phase')),
+            'input_1': (pdata[1], ('data_IQ', 'data_gain_phase')),
+        }
+        return (
+            ['data_IQ', 'data_gain_phase'],
+            ['data_IQ', 'data_gain_phase'],
+        )
+
+    def _run(self, *pdata, inputs):
+        return RoutineResult()
+
+
+class NamedInputsRoutine(DataRoutine):
+    min_inputs = 2
+    max_inputs = 2
+    map_over_inputs = False
+
+    def _inputs(self, pdata_x, pdata_y):
+        self.expected_inputs = {
+            'pdata_x': (pdata_x, ('data_IQ', 'data_gain_phase')),
+            'pdata_y': (pdata_y, ('data_IQ', 'data_gain_phase')),
+        }
+        return {
+            'pdata_x': ['data_IQ', 'data_gain_phase'],
+            'pdata_y': ['data_IQ', 'data_gain_phase'],
+        }
+
+    def _run(self, pdata_x, pdata_y, inputs):
+        return RoutineResult()
 
 
 class ArbitraryArgumentRoutine(DataRoutine):
