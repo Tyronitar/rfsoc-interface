@@ -91,14 +91,13 @@ class CheckFocus(DataRoutine):
 
     @typing.override
     def _inputs(self, pdata: ProcessedData):
-        dset = (
-            '/vdsets/data_mK'
-            if self.params['dataset'] == 'data_mK'
-            else '/vdsets/data_freq_diss'
-        )
         direction = self.params['primary_direction']
-        dsets.extend(dset for dset in pdata.search_regex_names(f'detector_{direction}'))
-        return dsets
+        inputs = []
+        datasets = pdata.search_regex_names(self.params['dataset'])
+        inputs.extend(datasets)
+        detector_pos = list(pdata.search_regex_names(f'detector_{direction}'))
+        inputs.extend(detector_pos)
+        return inputs
 
     def _initialize_arrays(self, pdata: ProcessedData) -> bool:
         """Initialize the new arrays in the processed data file."""
@@ -108,7 +107,7 @@ class CheckFocus(DataRoutine):
                     f'{self.name}: "focus" group already exists in the file; '
                     'using existing datasets.'
                 )
-                return
+                return None
             _logger.info(
                 f'{self.name}: "focus" group group already exists in the file; '
                 'overwriting datasets.'

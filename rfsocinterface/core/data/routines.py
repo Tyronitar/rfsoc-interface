@@ -18,10 +18,6 @@ import numpy.typing as npt
 from scipy import signal
 
 from rfsocinterface.core.data.storage import ProcessedData, decode_tone_indices
-from rfsocinterface.core.utils import PathJSONEncoder
-
-mpl.use('QtAgg')
-
 from rfsocinterface.core.data.utils import (
     generate_calibrated_data,
     get_channel_index_from_dset_name,

@@ -28,7 +28,6 @@ from rfsocinterface.core.data.storage import (
     ConsolidatedData,
     DataStorage,
     ProcessedData,
-    decode_tone_indices,
 )
 from rfsocinterface.core.data.utils import (
     AZ_TRIM,

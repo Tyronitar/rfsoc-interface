@@ -98,7 +98,7 @@ class ComputeNoisePSD(DataRoutine):
                 msg = f'Cannot compute noise PSD for unknown basis "{basis}"'
                 _logger.error(msg)
                 raise ValueError(msg)
-        return inputs 
+        return inputs
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: list[str]):
@@ -116,8 +116,6 @@ class ComputeNoisePSD(DataRoutine):
         cut_time = self.params['cut_time']
         nominal_block_length = self.params['nominal_block_length']
         selection_indices = decode_tone_indices(pdata, self.params['selection_indices'])
-
-        outputs = []
 
         shortest_channel = np.argmin(pdata.n_samples).flatten().item()
 
