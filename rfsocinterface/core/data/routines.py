@@ -375,6 +375,8 @@ class DataRoutine:
 
         Output must conform to formats described in `RoutineInputs`.
         """
+        if self.max_inputs is not None and self.max_inputs > 1:
+            return [self.requires.copy() for _ in range(len(pdata))]
         return self.requires
 
     # ---- helpers ----

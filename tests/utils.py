@@ -126,3 +126,38 @@ class MultiInputRoutine(DataRoutine):
                 'y': res_y[:],
             },
         )
+
+
+# ruff: disable[ARG002]
+
+
+class MultiInputDefaultInputsRoutine(DataRoutine):
+    max_inputs = 2
+    map_over_inputs = False
+
+    def _run(self, *pdata, inputs):
+        return RoutineResult()
+
+
+class NoRunRoutine(DataRoutine):
+    pass
+
+
+class SingleInputDefaultInputsRoutine(DataRoutine):
+    def _run(self, pdata, inputs):
+        return RoutineResult()
+
+
+class NoReturnRoutine(DataRoutine):
+    def _run(self, pdata, inputs):
+        return None
+
+
+class ArbitraryArgumentRoutine(DataRoutine):
+    max_inputs = None
+
+    def _run(self, *pdata, inputs):
+        return RoutineResult()
+
+
+# ruff: enable[ARG002]
