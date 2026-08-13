@@ -8,6 +8,7 @@ import logging
 import time
 import typing
 import warnings
+from abc import ABC, abstractmethod
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal, TypeVar
@@ -107,7 +108,7 @@ Format for normalized routine inputs:
 type NormalizedRoutineInputs = dict[str, tuple[ProcessedData, tuple[str]]]
 
 
-class DataRoutine:
+class DataRoutine(ABC):
     """Base class for data processing routines.
 
     Attributes:
@@ -354,6 +355,7 @@ class DataRoutine:
         return result.value
 
     # ---- to be implemented by subclasses ----
+    @abstractmethod
     def _run(
         self,
         pdata: ProcessedData,

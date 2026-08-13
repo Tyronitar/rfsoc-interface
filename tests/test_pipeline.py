@@ -186,10 +186,7 @@ def test_no_inputs_fails():
         routine.apply()
 
 
-def test_run_not_implemented(make_fake_data):
+def test_run_not_implemented():
     """Test that using a routine that doesn't override _run fails."""
-    fake_data = make_fake_data('test.h5')
-    pdata = ProcessedData.from_h5py(fake_data)
-    routine = NoRunRoutine()
-    with pytest.raises(NotImplementedError, match='missing a run method'):
-        routine.apply(pdata)
+    with pytest.raises(TypeError, match="Can't instantiate abstract class"):
+        NoRunRoutine()
