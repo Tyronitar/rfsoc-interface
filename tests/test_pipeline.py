@@ -178,13 +178,28 @@ def test_arbitrary_multi_input_routine(make_fake_data, n_inputs):
     routine.apply(*pdata)
 
 
-def test_no_inputs_fails():
-    """Test that applying the routine with no inputs fails."""
-    routine = ArbitraryArgumentRoutine()
+def test_wrong_number_of_inputs(make_fake_data):
+    """Test that applying the routine with the wrong number of inputs fails."""
+    routine = PositionalInputsRoutine()
+    fake_data_x = make_fake_data('test_x.h5')
+    pdata_x = ProcessedData.from_h5py(fake_data_x)
+    fake_data_y = make_fake_data('test_y.h5')
+    pdata_y = ProcessedData.from_h5py(fake_data_y)
+    fake_data_z = make_fake_data('test_z.h5')
+    pdata_z = ProcessedData.from_h5py(fake_data_z)
+
     with pytest.raises(
         ValueError, match='base requires at least one ProcessedData object'
     ):
         routine.apply()
+
+    with pytest.raises(ValueError, match=r'requires at least 2 input dataset\(s\)'):
+        routine.apply(pdata_x)
+
+    routine.apply(pdata_x, pdata_y)
+
+    with pytest.raises(ValueError, match=r'accepts at most 2 input dataset\(s\)'):
+        routine.apply(pdata_x, pdata_y, pdata_z)
 
 
 def test_run_not_implemented():
