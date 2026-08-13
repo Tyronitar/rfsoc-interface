@@ -612,7 +612,7 @@ class PlotMap(DataRoutine):
         values = {'input': fig} if fig is not None else {}
         return RoutineResult(
             created=created,
-            values=values,
+            value=values,
         )
 
     def _intialize_arrays(self, pdata: ProcessedData) -> bool:

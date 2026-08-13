@@ -75,7 +75,7 @@ class RoutineResult:
     created: dict[str, Collection[str]] = field(default_factory=dict)
     deleted: dict[str, Collection[str]] = field(default_factory=dict)
     # Return values
-    values: dict[str, Any] = field(default_factory=dict)
+    value: Any = None
 
 
 """
@@ -289,7 +289,7 @@ class DataRoutine:
                     )
 
     # ---- main entry point ----
-    def apply(self, *pdata: ProcessedData) -> RoutineResult | tuple[RoutineResult, ...]:
+    def apply(self, *pdata: ProcessedData) -> Any:
         """Apply this routine to the input(s).
 
         Serves as the main entry point to the routine's execution. Handles, how
@@ -299,12 +299,15 @@ class DataRoutine:
         if not pdata:
             raise ValueError(f'{self.name} requires at least one ProcessedData object.')
 
-        if self.map_over_inputs:
-            return tuple(self._apply_once(pd) for pd in pdata)
+        if self.map_over_inputs and len(pdata) > 1:
+            outputs = tuple(self._apply_once(pd) for pd in pdata)
+            if all(x is None for x in outputs):
+                return None
+            return outputs
 
         return self._apply_once(*pdata)
 
-    def _apply_once(self, *pdata: ProcessedData) -> RoutineResult:
+    def _apply_once(self, *pdata: ProcessedData) -> Any:
         """Apply the routine to the given ProcessedData objects.
 
         This method handles the common workflow of validating inputs, running the
@@ -348,7 +351,7 @@ class DataRoutine:
         _logger.info(
             f'{self.name}: Finished applying routine in {runtime:.2f} seconds.'
         )
-        return result
+        return result.value
 
     # ---- to be implemented by subclasses ----
     def _run(
