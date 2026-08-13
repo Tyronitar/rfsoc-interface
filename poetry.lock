@@ -1021,8 +1021,8 @@ tqdm = ">=4.67.1,<5.0.0"
 [package.source]
 type = "git"
 url = "https://github.com/ASU-Astronomical-Instrumentation/readout.git"
-reference = "dualchan-dev-core"
-resolved_reference = "432a11572ddd89b13a36bddcdab07a4b182c3af6"
+reference = "main"
+resolved_reference = "00f1383c73a24aa3c67c69751d7faf0129c64b27"
 
 [[package]]
 name = "kiwisolver"
@@ -3173,4 +3173,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "5677bb4eca9aa6d3baaf13282ef11406117acc8ade9041eb355459b062e9ff8a"
+content-hash = "c67092af6dd7b6e11561a3ff24f00d11feadc1cd34963f62cd3598ad2c377f73"
