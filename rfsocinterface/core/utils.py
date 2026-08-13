@@ -9,7 +9,7 @@ import re
 import stat
 import typing
 import warnings
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from datetime import datetime
@@ -199,13 +199,15 @@ def ensure_path(
     return decorator
 
 
-class PathJSONEncoder(json.JSONEncoder):
-    """JSON encoder that converts Path objects to strings."""
+class MetadataJSONEncoder(json.JSONEncoder):
+    """JSON encoder that converts Path objects to strings and iterables to lists."""
 
     @typing.override
     def default(self, obj):
         if isinstance(obj, Path):
             return str(obj)
+        if not isinstance(obj, str | bytes) and isinstance(obj, Iterable | Collection):
+            return list(obj)
         return super().default(obj)
 
 
@@ -537,6 +539,7 @@ def search_regex(
     """
     regex = re.compile(pattern)
     objects = []
+
     def match_object(name: str, obj: H5pyObject):
         success = regex.match(obj.name) if exact_match else regex.search(obj.name)
         if success:
@@ -544,6 +547,7 @@ def search_regex(
                 objects.append((obj.name, obj))
             else:
                 objects.append((name, obj))
+
     src.visititems(match_object)
     return tuple(objects)
 
@@ -1188,3 +1192,19 @@ def load_dict_or_defaults(
 def quit_function():
     """Quit/interrupt a thread."""
     thread.interrupt_main()  # raises KeyboardInterrupt
+
+
+def mean_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    """Compute a weighted mean using historgram frequencies as weights."""
+    return np.average(val, weights=freq)
+
+
+def var_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    """Compute variance using historgram frequencies as weights."""
+    dev = freq * (val - mean_histogram(val, freq)) ** 2
+    return dev.sum() / freq.sum()
+
+
+def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
+    """Compute standard deviation using historgram frequencies as weights."""
+    return np.sqrt(var_histogram(val, freq))

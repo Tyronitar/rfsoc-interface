@@ -17,7 +17,7 @@ if __name__ == '__main__':
     lp_filter_freq = 15
     hp_filter_freq = 0.03
     noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
-    ds_factor = 16
+    ds_factor = 6
 
     dataset = 'data_freq'
     datasets = ['/vdsets/data_freq_diss']
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, cut_time=2, selection_indices='onres')
     psd_plotter = PlotPSD(
         PsdBasis.GAIN_PHASE,
-        PsdBasis.FREQ_DISS,
+        # PsdBasis.FREQ_DISS,
         show=True,
     )
     bin_tod_to_map = BinTODIntoMap(
@@ -98,4 +98,13 @@ if __name__ == '__main__':
     # setnum = 1010  # 1009 - 1015
 
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # Run the pipeline using one of the following:
+    # pdata, results = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+
+    pdata, results = pipeline.from_consolidated_data(date, setnum)
+
+    # pdata = ProcessedData.load(date, setnum, mode='a')
+    # results = pipeline.run(pdata)
+
+    pdb.set_trace()
+
