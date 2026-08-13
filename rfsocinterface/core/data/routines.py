@@ -13,23 +13,18 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal, TypeVar
 
-import matplotlib as mpl
 import numpy as np
 import numpy.typing as npt
 from scipy import signal
 
 from rfsocinterface.core.data.storage import ProcessedData
-from rfsocinterface.core.utils import MetadataJSONEncoder
-
-mpl.use('QtAgg')
-
 from rfsocinterface.core.data.utils import (
     generate_calibrated_data,
     get_channel_group_name,
     get_step_group_name,
     rotate_basis,
 )
-from rfsocinterface.core.utils import BUTTER_ORDER, get_git_hash
+from rfsocinterface.core.utils import BUTTER_ORDER, MetadataJSONEncoder, get_git_hash
 
 __all__ = (
     'ROUTINE_REGISTRY',
