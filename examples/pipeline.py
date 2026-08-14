@@ -17,7 +17,7 @@ if __name__ == '__main__':
     lp_filter_freq = 15
     hp_filter_freq = 0.03
     noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
-    ds_factor = 16
+    ds_factor = 6
 
     # dataset = 'data_mK'
     # datasets = ['/vdsets/data_mK']
@@ -51,12 +51,12 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=False,
+        beam_map_mode=True,
         dataset=dataset,
-        # az_trim=0,
-        # za_trim=0,
-        # dpix=0.04,
+        az_trim=0,
+        za_trim=0,
         dpix=0.03,
+        # dpix=0.03,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
     make_video = MakeVideo(
@@ -83,21 +83,22 @@ if __name__ == '__main__':
         lp_filter,
         clean_tod,
         bin_tod_to_map,
-        plotter,
+        # plotter,
         # make_video,
         # find_fwhm,
         analyze_beammap,
         plot_beammap,
     ])
 
-    date = '20260617'
-    setnum = 1005
+    date = '20260805'
+    setnum = 1008
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    # pdata = pipeline.from_consolidated_data(date, setnum)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_consolidated_data(date, setnum)
 
     # pdata = ProcessedData.load(date, setnum, mode='a')
     # pipeline.run(pdata)
+    
 
     # pdb.set_trace()
     # map_val = pdata['map/map_val'][:]
@@ -114,16 +115,13 @@ if __name__ == '__main__':
     # pdb.set_trace()
 
     # pdata = ProcessedData.load(date, setnum, mode='a')
-    # target_res = 241
+    # target_res = 282
     # # bad_resonators = [259, 748, 924]
     # mean_za = np.nanmean(pdata.detector_za[:], axis=1)
     # same_za = np.argwhere(np.isclose(mean_za, mean_za[target_res], atol=0.05)).flatten()
     # same_za = same_za[pdata.chanmask[same_za] == 1]
     # # same_za = same_za[pdata.detector_pol[same_za] == pdata.detector_pol[target_res]]
     # # same_za = same_za[~np.isin(same_za, bad_resonators)]
-    # check_focus(
-    #     pdata,
-    #     same_za,
-    #     primary_direction='az',
-    #     dataset=dataset,
-    # )
+    # check_focus = CheckFocus(resonators=same_za, dataset=dataset)
+    # check_focus.run(pdata)
+    # pdb.set_trace()

@@ -842,7 +842,7 @@ class PlotMap(DataRoutine):
                     pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
                 )
             if not self.params['savefile'].exists():
-                self.paramsp['savefile'].parent.mkdir(
+                self.params['savefile'].parent.mkdir(
                     mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
                 )
                 self.params['savefile'].touch(PERMISSIONS_ALL_FULL)

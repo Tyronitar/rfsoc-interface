@@ -565,10 +565,10 @@ class ConsolidatedData(DataStorage):
 
             tones_table['baseband_freq'] = raw_data.baseband_freqs[:]
             tones_table['power'] = raw_data.tone_powers[:]
-            # tones_table['delta_x'] = raw_data.detector_delta_x[:]
-            # tones_table['delta_y'] = raw_data.detector_delta_y[:]
-            tones_table['delta_x'] = np.zeros(n_tones)
-            tones_table['delta_y'] = np.zeros(n_tones)
+            tones_table['delta_x'] = raw_data.detector_delta_x[:]
+            tones_table['delta_y'] = raw_data.detector_delta_y[:]
+            # tones_table['delta_x'] = np.zeros(n_tones)
+            # tones_table['delta_y'] = np.zeros(n_tones)
             tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
             tones_table['polarization'] = raw_data.detector_pol[:]
             tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
