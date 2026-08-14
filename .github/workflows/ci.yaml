@@ -15,7 +15,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-            sudo apt update && sudo apt install -y libegl1-mesa-dev
+            sudo apt install -y libegl1-mesa-dev
 
       - name: Install Python
         uses: actions/setup-python@v4
@@ -23,14 +23,15 @@ jobs:
             python-version: ${{ matrix.python-version }}
 
       - name: Install poetry
-        uses: abatilo/actions-poetry@v2
+        uses: abatilo/actions-poetry@v4
+      
       - name: Setup a local virtual environment (if no poetry.toml file)
         run: |
           poetry config virtualenvs.create true --local
           poetry config virtualenvs.in-project true --local
 
-      - uses: actions/cache@v3
-        name: Define a cache for the virtual environment based on the dependencies lock file
+      - name: Define a cache for the virtual environment based on the dependencies lock file
+        uses: actions/cache@v3
         with:
           path: ./.venv
           key: venv-${{ hashFiles('poetry.lock') }}

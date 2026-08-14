@@ -15,6 +15,7 @@ from scipy.optimize import curve_fit
 from rfsocinterface.core.data import (
     DataRoutine,
     ProcessedData,
+    RoutineResult,
     get_extent,
     register_routine,
 )
@@ -71,15 +72,17 @@ class AnalyzeBeamMap(DataRoutine):
     """
 
     name = 'AnalyzeBeamMap'
-    version = '1.0.0'
+    version = '1.1.0'
 
     requires: ClassVar[set[str]] = {
+        '/map',
         '/map/map_val',
         '/map/map_az',
         '/map/map_za',
     }
 
     produces: ClassVar[set[str]] = {
+        '/beammap',
         '/beammap/az_center',
         '/beammap/za_center',
         '/beammap/amplitude',
@@ -127,7 +130,7 @@ class AnalyzeBeamMap(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata):
+    def _inputs(self, pdata: ProcessedData):
         return list(self.requires)
 
     def _initialize_datasets(self, pdata: ProcessedData):
@@ -147,7 +150,7 @@ class AnalyzeBeamMap(DataRoutine):
         beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         self._initialize_datasets(pdata)
 
         az = pdata['map/map_az'][:][:, np.newaxis]
@@ -277,7 +280,7 @@ class AnalyzeBeamMap(DataRoutine):
                 / (np.size(this_val) - 5.0)
             )
 
-        return list(self.produces)
+        return RoutineResult(created={'input': self.produces})
 
 
 @register_routine
@@ -285,12 +288,14 @@ class PlotBeamMap(DataRoutine):
     """Plot a beam map, post-analysis."""
 
     name = 'PlotBeamMap'
-    version = '1.1.0'
+    version = '1.2.0'
 
     requires: ClassVar[set[str]] = {
+        '/map',
         '/map/map_val',
         '/map/map_az',
         '/map/map_za',
+        '/beammap',
         '/beammap/az_center',
         '/beammap/za_center',
         '/beammap/amplitude',
@@ -344,11 +349,11 @@ class PlotBeamMap(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata: ProcessedData):
+    def _inputs(self, pdata: ProcessedData):
         return list(self.requires)
 
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         # Load necessary datasets
         az_center = pdata['beammap/az_center'][:]
         za_center = pdata['beammap/za_center'][:]
@@ -357,7 +362,7 @@ class PlotBeamMap(DataRoutine):
         chisq = pdata['beammap/chisq'][:]
         fwhm_az = pdata['beammap/fwhm_az'][:]
         fwhm_za = pdata['beammap/fwhm_za'][:]
-        map_val = pdata['map/map_val']
+        map_val = pdata['map/map_val'][:]
         dpix = pdata['map'].attrs['dpix']
         units = pdata['map'].attrs.get('units', 'mK')
         extent = get_extent(pdata['map/map_az'][:], pdata['map/map_za'][:], dpix=dpix)
@@ -551,7 +556,7 @@ class PlotBeamMap(DataRoutine):
             plt.close()
 
         pdf.close()
-        return []
+        return RoutineResult()
 
 
 def combine_polarized_beammaps(

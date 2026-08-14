@@ -70,12 +70,13 @@ class DataStorage:
     """
 
     @ensure_path(1)
-    def __init__(self, filename: Path, mode: str = 'a'):
+    def __init__(self, filename: Path, open_file: bool = True, mode: str = 'a'):
         """Initialize a DataStorage Object."""
         self.filename = filename
         self.file = None
         self.mode = None
-        self.open(mode=mode)
+        if open_file:
+            self.open(mode=mode)
 
     @overload
     @classmethod
@@ -140,6 +141,14 @@ class DataStorage:
             f'Got {args}.'
         )
 
+    @classmethod
+    def from_h5py(cls, file: h5py.File) -> DataStorage:
+        """Create an object from an existing h5py file object."""
+        data = cls(file.filename, open_file=False)
+        data.file = file
+        data.mode = file.mode
+        return data
+
     def open(self, mode: str = 'r'):
         """Open the file in the specified mode."""
         self.file = h5py.File(self.filename, mode=mode)
@@ -170,7 +179,7 @@ class DataStorage:
 
     def __contains__(self, key: str) -> bool:
         """Whether an key is present in the file."""
-        return key in self.file
+        return self.has(key)
 
     def search(
         self, name: str, full_name: bool = True, exact_match: bool = False
@@ -255,27 +264,31 @@ class DataStorage:
     @property
     def tod_template(self) -> str:
         """The TOD filename for this data's date and setnum."""
-        return get_tod_template(self.date, self.setnum)
+        return get_tod_template(self.date, self.setnum, data_dir=self.data_dir)
 
     @property
     def azel_template(self) -> str:
         """The AZEL filename for this data's date and setnum."""
-        return get_azel_template(self.date, self.setnum)
+        return get_azel_template(self.date, self.setnum, data_dir=self.data_dir)
 
     @property
     def optcam_template(self) -> str:
         """The optcam filename for this data's date and setnum."""
-        return get_optcam_template(self.date, self.setnum)
+        return get_optcam_template(self.date, self.setnum, data_dir=self.data_dir)
 
     @property
     def consolidated_file_template(self) -> str:
         """The consolidated data filename for this data's date and setnum."""
-        return get_consolidated_file_template(self.date, self.setnum)
+        return get_consolidated_file_template(
+            self.date, self.setnum, data_dir=self.data_dir
+        )
 
     @property
     def processed_file_template(self) -> str:
         """The processed data filename for this data's date and setnum."""
-        return get_processed_file_template(self.date, self.setnum)
+        return get_processed_file_template(
+            self.date, self.setnum, data_dir=self.data_dir
+        )
 
     @property
     def file_stub(self) -> str:
@@ -286,6 +299,16 @@ class DataStorage:
     def folder(self) -> Path:
         """The folder this data is stored in."""
         return Path(self.filename).parent
+
+    @property
+    def data_dir(self) -> Path:
+        """The grandparent folder where this data is stored.
+
+        This is the folder where subfolders for collections dates are created.
+        Typically, this is "/data", and the subfolders would have the name
+        "/data/[date]".
+        """
+        return Path(self.filename).parent.parent
 
     def __enter__(self):
         """Load the data file."""
@@ -317,15 +340,17 @@ class ConsolidatedData(DataStorage):
         use_pps: bool = True,
     ) -> ConsolidatedData:
         """Consolidate the data for the specified data set."""
-        todtemplate = get_tod_template(date, setnum)
-        tele_template = Path(get_azel_template(date, setnum))
-        optcam_template = Path(get_optcam_template(date, setnum))
+        todtemplate = get_tod_template(date, setnum, data_dir=data_dir)
+        tele_template = Path(get_azel_template(date, setnum, data_dir=data_dir))
+        optcam_template = Path(get_optcam_template(date, setnum, data_dir=data_dir))
 
         azel_exists = tele_template.exists()
         optcam_exists = optcam_template.exists()
         if not optcam_exists:
             # Try old file naming format
-            optcam_template = Path(get_optcam_template(date, setnum, old=True))
+            optcam_template = Path(
+                get_optcam_template(date, setnum, old=True, data_dir=data_dir)
+            )
             optcam_exists = optcam_template.exists()
 
         if azel_exists:

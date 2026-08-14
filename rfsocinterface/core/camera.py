@@ -31,6 +31,7 @@ from vmbpy import (
 )
 
 from rfsocinterface.core.utils import quit_function
+
 _logger = logging.getLogger(__name__)
 _camera_logger = logging.getLogger('rfsocinterface.cameraControl')
 
@@ -142,6 +143,7 @@ class FrameProducer(threading.Thread):
         cam.queue_frame(frame)
 
     def stop(self):
+        """Triegger the killswitch to stop the thread."""
         self.killswitch.set()
 
     # def setup_camera(self):
@@ -351,13 +353,7 @@ class CameraController:
         _logger.debug('All camera FrameProducer threads joined.')
         self.send('done')
 
-    def send(self, command: str, *args):
-        """Send a command to the telescope client."""
-        _camera_logger.debug(f'CAMERA sending command "{command}" with data {args}')
-        self.connection.send([command, *args])
-        _camera_logger.debug(f'CAMERA sent command "{command}" with data {args}')
-
-    def send(self, command: str, *args, timeout: float = None):
+    def send(self, command: str, *args, timeout: float | None = None):
         """Send a command to the main process."""
         if timeout:
             timer = threading.Timer(
@@ -371,7 +367,7 @@ class CameraController:
                     f'CAMERA sent command "{command}" with data {args}'
                 )
             except KeyboardInterrupt:
-                _camera_logger.error(f'CAMERA timed out sending command "{command}"')
+                _camera_logger.error(f'CAMERA timed out sending command "{command}"') # noqa: TRY400
             finally:
                 timer.cancel()
         else:

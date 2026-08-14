@@ -45,7 +45,7 @@ if __name__ == '__main__':
     compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, cut_time=2, selection_indices='onres')
     psd_plotter = PlotPSD(
         PsdBasis.GAIN_PHASE,
-        PsdBasis.FREQ_DISS,
+        # PsdBasis.FREQ_DISS,
         show=True,
     )
     bin_tod_to_map = BinTODIntoMap(
