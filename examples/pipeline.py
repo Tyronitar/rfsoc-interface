@@ -19,7 +19,7 @@ if __name__ == '__main__':
     hp_filter_freq = 0.03
     noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
-    ds_factor = 16
+    ds_factor = 6
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
@@ -50,11 +50,11 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=True,
+        beam_map_mode=False,
         dataset=dataset,
         # az_trim=0,
         # za_trim=0,
-        dpix=0.03,
+        dpix=0.04,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
     make_video = MakeVideo(
@@ -77,36 +77,36 @@ if __name__ == '__main__':
         # noise_removal,
         # compute_psd,
         # psd_plotter,
-        hp_filter,
-        lp_filter,
-        clean_tod,
-        bin_tod_to_map,
-        # plotter,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
+        # bin_tod_to_map,
+        plotter,
         # make_video,
         # find_fwhm,
-        analyze_beammap,
-        plot_beammap,
+        # analyze_beammap,
+        # plot_beammap,
     ])
 
-    date = '20260617'
-    setnum = 1005
+    date = '20260814'
+    setnum = 1001
 
 
-    # ConsolidatedData.from_tod(date, setnum, downsampling_factor=ds_factor)
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
+
     pdata = ProcessedData.load(date, setnum)
-    # pipeline.run(pdata)
-    params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
-    det_dy = params.detector_delta_y[:]
-    i_res = 676
-    same_za = np.argwhere(np.abs(det_dy - det_dy[i_res]) < 0.05).flatten()
-    same_za = same_za[params.detector_pol[same_za] == params.detector_pol[i_res]]
-    same_za = same_za.tolist()
-    find_fwhm = CheckFocus(
-        'az',
-        resonators=same_za,
-        dataset=dataset,
-    )
-    find_fwhm.apply(pdata)
+    pipeline.run(pdata)
+    # params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
+    # det_dy = params.detector_delta_y[:]
+    # i_res = 676
+    # same_za = np.argwhere(np.abs(det_dy - det_dy[i_res]) < 0.05).flatten()
+    # same_za = same_za[params.detector_pol[same_za] == params.detector_pol[i_res]]
+    # same_za = same_za.tolist()
+    # find_fwhm = CheckFocus(
+    #     'az',
+    #     resonators=same_za,
+    #     dataset=dataset,
+    # )
+    # find_fwhm.apply(pdata)
 

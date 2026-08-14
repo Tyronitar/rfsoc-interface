@@ -21,13 +21,47 @@ from rfsocinterface.core.utils import (
 
 _logger = logging.getLogger(__name__)
 
-OPTCAM_PIX_SIZE_DEGREES = 0.0104
+
+    
+# OPTCAM_SENSOR_SIZE = (5.76, 4.29)  # mm, (width, height)
+OPTCAM_PIX_SIZE_DEGREES = 0.0025
 OPTCAM_OFFSET_AZ_PIX = 74
 OPTCAM_OFFSET_ZA_PIX = 49
 DEFAULT_MAP_DPIX = 0.03
 OPTCAM_HEIGHT_PIXELS = 1944
 OPTCAM_WIDTH_PIXELS = 2592
 # DATA_DIRECTORY = 'reference_data'  # For testing with local data files
+
+# def get_optical_camera_pixel_scale(
+#     focal_length: float,
+# ) -> tuple[float, float]:
+#     """Return the pixel scale of the optical camera in degrees."""
+#     """Determining Optical camera pixel scale.
+#         Camera Attributes:
+#             * Aspect ratio 4/3
+#             * Sensor size 5.76mm by 4.29mm
+#             * Horizontal crop factor is 6.25
+#             * Vertical crop factor is 5.59
+#             * total pixel count 2592 (H) × 1944 (V)
+
+#         Formula for FOV (in radians) is 2 * arctan(0.5 * sensor_size / focal_length)
+
+#         12 mm Lens Attributes:
+#             * Focal length = 12mm
+#             * Effective horizontal focal length = 75 mm
+#             * Effective vertical focal length = 67 mm
+#             * Horizontal FOV = 27.0 degrees
+#             * Vertical FOV = 20.4 degrees
+#             * Horizontal pixel size = 0.0104 degrees
+#             * Vertical pixel size = 0.0104 degrees
+
+#         50 mm Lens Attributes:
+#             * Focal length = 50mm
+#             * Horizontal FOV = 6.6 degrees
+#             * Vertical FOV = 4.9 degrees
+#             * Horizontal pixel size = 0.0025 degrees
+#             * Vertical pixel size = 0.0025 degrees
+# """
 
 N_POLARIZATION = 2
 
