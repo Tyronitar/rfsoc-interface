@@ -316,12 +316,12 @@ class RFSoCWrapper:
     def get_rfin(self, channel: int) -> float:
         """Get rfin for the specified channel."""
         rfchan = self.get_channel(channel)
-        return rfchan.attenuator_settings[0]
+        return rfchan.attenuator_settings[1]
 
     def get_rfout(self, channel: int) -> float:
         """Get rfout for the specified channel."""
         rfchan = self.get_channel(channel)
-        return rfchan.attenuator_settings[1]
+        return rfchan.attenuator_settings[0]
 
     def set_atten(self, addr: int, value: float) -> bool:
         """Set the attenuation for the specified address."""
