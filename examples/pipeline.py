@@ -52,8 +52,8 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filter_freq,
         beam_map_mode=False,
         dataset=dataset,
-        # az_trim=0,
-        # za_trim=0,
+        az_trim=0,
+        za_trim=0,
         dpix=0.04,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
@@ -89,13 +89,14 @@ if __name__ == '__main__':
     ])
 
     date = '20260814'
-    setnum = 1001
+    setnum = 1003
 
 
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
     pdata = ProcessedData.load(date, setnum)
+    # pdb.set_trace()
     pipeline.run(pdata)
     # params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
     # det_dy = params.detector_delta_y[:]

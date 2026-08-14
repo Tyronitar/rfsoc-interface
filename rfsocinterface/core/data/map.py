@@ -119,7 +119,15 @@ def get_scaled_optical_image(
         opt_center_za - int(opt_npix_za / 2),
         opt_center_za + int(opt_npix_za / 2),
     )
-    return optical_image[za_range, az_range]
+    az_padding = (max(0, 0 - az_range.start), max(0, az_range.stop - optcam_width_pixels))
+    za_padding = (max(0, 0 - za_range.start), max(0, za_range.stop - optcam_height_pixels))
+    im = np.pad(
+        optical_image,
+        (za_padding, az_padding, (0, 0))
+    )
+    fixed_az_range = slice(max(0, az_range.start), max(az_range.stop, az_range.stop + az_padding[1]))
+    fixed_za_range = slice(max(0, za_range.start), max(za_range.stop, za_range.stop + za_padding[1]))
+    return im[fixed_za_range, fixed_az_range]
 
 
 def get_extent(
@@ -159,8 +167,6 @@ def get_map_size(
     n_pix_y = int(np.ceil((max_za - min_za) / dpix))
     map_x = np.arange(n_pix_x) * dpix + min_az + dpix / 2.0
     map_y = np.arange(n_pix_y) * dpix + min_za + dpix / 2.0
-    if not beam_map_mode:
-        map_y += 0.1  # 0.1 accounts for assymmetry in array
 
     return n_pix_x, n_pix_y, map_x, map_y
 
