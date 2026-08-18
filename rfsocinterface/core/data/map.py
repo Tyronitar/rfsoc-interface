@@ -161,7 +161,9 @@ def get_map_size(
     min_az = min_za = np.inf
     for i_chan in range(pdata.n_chan):
         det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+        det_az = det_az[pdata.get_onres_ind(i_chan)]
         det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+        det_za = det_za[pdata.get_onres_ind(i_chan)]
         max_az = max(np.nanmax(det_az), max_az)
         min_az = min(np.nanmin(det_az), min_az)
         max_za = max(np.nanmax(det_za), max_za)

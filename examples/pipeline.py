@@ -52,7 +52,7 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filter_freq,
         beam_map_mode=False,
         dataset=dataset,
-        az_trim=0,
+        az_trim=3,
         za_trim=0,
         dpix=0.04,
         r0=0,
