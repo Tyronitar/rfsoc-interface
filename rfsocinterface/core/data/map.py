@@ -119,14 +119,21 @@ def get_scaled_optical_image(
         opt_center_za - int(opt_npix_za / 2),
         opt_center_za + int(opt_npix_za / 2),
     )
-    az_padding = (max(0, 0 - az_range.start), max(0, az_range.stop - optcam_width_pixels))
-    za_padding = (max(0, 0 - za_range.start), max(0, za_range.stop - optcam_height_pixels))
-    im = np.pad(
-        optical_image,
-        (za_padding, az_padding, (0, 0))
+    az_padding = (
+        max(0, 0 - az_range.start),
+        max(0, az_range.stop - optcam_width_pixels),
     )
-    fixed_az_range = slice(max(0, az_range.start), max(az_range.stop, az_range.stop + az_padding[1]))
-    fixed_za_range = slice(max(0, za_range.start), max(za_range.stop, za_range.stop + za_padding[1]))
+    za_padding = (
+        max(0, 0 - za_range.start),
+        max(0, za_range.stop - optcam_height_pixels),
+    )
+    im = np.pad(optical_image, (za_padding, az_padding, (0, 0)))
+    fixed_az_range = slice(
+        max(0, az_range.start), max(az_range.stop, az_range.stop + az_padding[1])
+    )
+    fixed_za_range = slice(
+        max(0, za_range.start), max(za_range.stop, za_range.stop + za_padding[1])
+    )
     return im[fixed_za_range, fixed_az_range]
 
 
@@ -269,7 +276,7 @@ class BinTODIntoMap(DataRoutine):
             dpix (float, optional): The pixel size of the map in degrees. Defaults to
                 0.03 degrees.
             r0 (float, optional): The radius of the kernel used for smoothing the map,
-                in degrees. Defaults to 0.15 degrees.
+                in degrees. If 0, no kernel will be applied. Defaults to 0.15 degrees.
             sigma (float, optional): The standard deviation of the Gaussian kernel used
                 for smoothing the map, in degrees. Defaults to 0.087/2.3 degrees, which
                 corresponds to a FWHM of 0.087 degrees (the approximate beam size of
@@ -519,14 +526,16 @@ class BinTODIntoMap(DataRoutine):
 
         # Create kernel and convolve with map to get more accurate values for pixels
         # with few hits.
-        kernel = compute_map_kernel(
-            r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
-        )
-        for map_idx in range(n_maps):
-            sum_map[map_idx] = signal.convolve2d(sum_map[map_idx], kernel, mode='same')
-            hits_map[map_idx] = signal.convolve2d(
-                hits_map[map_idx], kernel, mode='same'
-            )
+        r0 = self.params['r0']
+        if r0 > 0:
+            kernel = compute_map_kernel(r0=r0, dpix=dpix, sigma=self.params['sigma'])
+            for map_idx in range(n_maps):
+                sum_map[map_idx] = signal.convolve2d(
+                    sum_map[map_idx], kernel, mode='same'
+                )
+                hits_map[map_idx] = signal.convolve2d(
+                    hits_map[map_idx], kernel, mode='same'
+                )
 
         if not beam_map_mode:
             pdata.set_chanmask(chanmask)

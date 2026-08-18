@@ -22,7 +22,6 @@ from rfsocinterface.core.utils import (
 _logger = logging.getLogger(__name__)
 
 
-    
 # OPTCAM_SENSOR_SIZE = (5.76, 4.29)  # mm, (width, height)
 OPTCAM_PIX_SIZE_DEGREES = 0.0025
 OPTCAM_OFFSET_AZ_PIX = 444
