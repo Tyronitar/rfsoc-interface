@@ -798,7 +798,7 @@ class PlotMap(DataRoutine):
         # aspect_ratio = (this_ylim[0] - this_ylim[1]) / (this_xlim[1] - this_xlim[0])
         # fig_height = 7.5
         # fig_width = fig_height / aspect_ratio
-        fig, axes = plt.subplots(4, 1, figsize=(15, 7.5), sharex=True)
+        fig, axes = plt.subplots(4, 1, figsize=(15, 7.5), sharex=True, sharey=True)
         fig.suptitle(
             f'{pdata.file_stub}\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
             f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
