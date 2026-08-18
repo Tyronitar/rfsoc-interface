@@ -588,6 +588,107 @@ class PlotBeamMap(DataRoutine):
         pdf.close()
         return RoutineResult()
 
+class CombinePolarizedBeamMaps(DataRoutine):
+    """Routine for combining beam maps collected with orthogonal polarizations."""
+    name = 'CombinePolarizedBeamMaps'
+    version = '1.0.0'
+
+    min_inputs = 2
+    max_inputs = 2
+    map_over_inputs = False
+
+    requires: ClassVar[set[str]] = {
+        '/map/map_val',
+        '/map/map_az',
+        '/map/map_za',
+        '/beammap',
+        '/beammap/az_center',
+        '/beammap/za_center',
+        '/beammap/amplitude',
+        '/beammap/snr',
+        '/beammap/chisq',
+        '/beammap/fwhm_az',
+        '/beammap/fwhm_za',
+    }
+
+    # TODO: Should this routine create a new processed data object? It would have all
+    # the same datasets, but values correspond to the correct polarization?
+    produces: ClassVar[set[str]] = {
+        '/polarized_beammap',
+        '/polarized_beammap/detector_pol',
+        '/polarized_beammap/chanmask',
+        '/polarized_beammap/residual',
+        # Following datasets have size 2 dimension 0, for analysis on the residual and
+        # inverted maps respectively.
+        # TODO: Update `find_gaussian_beams` to use `axis_slice` when assigning values
+        '/polarized_beammap/residual/is_collided',
+        '/polarized_beammap/residual/map_val',
+        '/polarized_beammap/residual/amplitude',
+        '/polarized_beammap/residual/snr',
+        '/polarized_beammap/residual/chisq',
+        '/polarized_beammap/residual/fwhm_az',
+        '/polarized_beammap/residual/fwhm_za',
+        '/polarized_beammap/residual/offset',
+    }
+
+    def _inputs(self, vpol_data: ProcessedData, hpol_data: ProcessedData):
+        return {
+            'vpol_data': self.requires.copy(),
+            'hpol_data': self.requires.copy(),
+        }
+
+    def _run(self, vpol_data: ProcessedData, hpol_data: ProcessedData, inputs):
+        """Combine beammaps with orthogonal polarizations.
+
+        The order of operations is as follows:
+            1. Determine polarization based on amplitudes
+            2. Flag detectors with low response
+            3. Find collided resonances
+                a. Make residual and inverted residual maps
+                b. Find beams in residual maps
+                c. Check that new beams are valid
+                    * Approximately circular
+                    * High amplitude relative to original beam
+                    * High SNR relative to original beam
+                    * Similar FWHM to "good" beams of the same polarization
+                    * New beams are in similar positions to neighboring resonances
+                        * Also track which neighbor was the one for diagnostics
+                    * NOTE: Track which metrics it passes / fails. Maybe have levels of
+                        flagging. More passes = more likely a true collision. Gradient
+                        in plots to signify intensity / likelihood.
+        """
+        raise NotImplementedError
+
+
+# TODO: Implement this
+class PlotPolarizedBeamMaps(DataRoutine):
+    """Routine for plotting polarized beam maps that have been combined.
+
+    Makes diagnostics plots that show the following for each detector:
+        * Map values for both polarizations (with actual polarization indicated somehow)
+        * Residual maps
+        * Statisitcs for all maps (ampltidue, SNR, etc.)
+        * Overlay closest neighbor resonance beam positions?
+    Also generates summary plots:
+        * Histograms of the following values, with colors denoting flagged or not:
+            * Fractional difference from nearest neighbor
+            * Ampltidue ratio
+            * SNR ratio
+        * Scatter plot FWHM vs distance from optical center of telescope
+            * Color denoting flagged or not
+        * Histogram of distance from optical center of telescope
+            * Color denoting flagged or not
+    """
+
+
+# TODO: Implement this. When plotting
+class MakePolarizedBeamMapParameters(DataRoutine):
+    """Routine for creating a new parameters file based on combined polarized beammaps.
+
+    Responsible for finding detector positions relative to the focal plane, and plotting
+    the positions for diagnostics.
+    """
+
 
 def combine_polarized_beammaps(
     pol1_data: ProcessedData,
