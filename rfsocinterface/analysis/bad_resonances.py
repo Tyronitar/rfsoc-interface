@@ -1,7 +1,6 @@
 """Code for identifying bad resonances."""
 
 import logging
-import pdb
 import typing
 from typing import ClassVar
 
@@ -9,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm.contrib import tenumerate
 
 from rfsocinterface.analysis.beammap import find_gaussian_beams
@@ -48,7 +46,7 @@ class FindDoubleResonances(DataRoutine):
 
     def __init__(
         self,
-        delta_sigma_fwhm_threshold: float= 1.5,
+        delta_sigma_fwhm_threshold: float = 1.5,
         delta_sigma_chisq_threshold: float = 3,
         snr_threshold: float = 0.5,
         amplitude_threshold: float = 0.2,
@@ -182,7 +180,6 @@ class FindDoubleResonances(DataRoutine):
                 #     plt.show()
                 #     pdb.set_trace()
 
-
         tone_indices = np.array(tone_indices)
         new_az_center_pos = pdata['beammap/double_resonances/positive/az_center']
         new_za_center_pos = pdata['beammap/double_resonances/positive/za_center']
@@ -257,8 +254,8 @@ class FindDoubleResonances(DataRoutine):
 
         # identify double resonances
 
-        amp_ratio_pos =  new_amplitude_pos[:] / amplitude[:]
-        amp_ratio_neg =  new_amplitude_neg[:] / amplitude[:]
+        amp_ratio_pos = new_amplitude_pos[:] / amplitude[:]
+        amp_ratio_neg = new_amplitude_neg[:] / amplitude[:]
 
         snr_ratio_pos = new_snr_pos[:] / snr[:]
         snr_ratio_neg = new_snr_neg[:] / snr[:]
@@ -276,19 +273,23 @@ class FindDoubleResonances(DataRoutine):
         beta, ssr, rank, s = np.linalg.lstsq(amp_matrix[idx], snr[idx])
         expected_snr = amp_matrix.dot(beta)
         resid = snr - expected_snr
-        squared_resid = resid ** 2
+        squared_resid = resid**2
         squared_resid_med = np.nanmedian(squared_resid[idx])
         squared_resid_std = np.nanstd(squared_resid[idx])
 
-        amp_matrix_pos = np.hstack([new_amplitude_pos[:][:, np.newaxis], np.ones((new_amplitude_pos.size, 1))])
+        amp_matrix_pos = np.hstack(
+            [new_amplitude_pos[:][:, np.newaxis], np.ones((new_amplitude_pos.size, 1))]
+        )
         expected_snr_pos = amp_matrix_pos.dot(beta)
         resid_pos = new_snr_pos - expected_snr_pos
-        squared_resid_pos = resid_pos ** 2
+        squared_resid_pos = resid_pos**2
 
-        amp_matrix_neg = np.hstack([new_amplitude_neg[:][:, np.newaxis], np.ones((new_amplitude_neg.size, 1))])
+        amp_matrix_neg = np.hstack(
+            [new_amplitude_neg[:][:, np.newaxis], np.ones((new_amplitude_neg.size, 1))]
+        )
         expected_snr_neg = amp_matrix_neg.dot(beta)
         resid_neg = new_snr_neg - expected_snr_neg
-        squared_resid_neg = resid_neg ** 2
+        squared_resid_neg = resid_neg**2
 
         # _, bins, _ = plt.hist(squared_resid_pos[~np.isnan(squared_resid_pos) & np.isfinite(squared_resid_pos)], bins=20)
         # plt.hist(squared_resid_neg[~np.isnan(squared_resid_neg) & np.isfinite(squared_resid_neg)], bins=bins)
@@ -313,39 +314,56 @@ class FindDoubleResonances(DataRoutine):
 
         fwhm_ratio_pos = new_fwhm_az_pos[:] / new_fwhm_za_pos[:]
         fwhm_ratio_neg = new_fwhm_az_neg[:] / new_fwhm_za_neg[:]
-        fwhm_ratio_med = np.nanmedian(fwhm_az[pdata.onres_ind] / fwhm_za[pdata.onres_ind])
+        fwhm_ratio_med = np.nanmedian(
+            fwhm_az[pdata.onres_ind] / fwhm_za[pdata.onres_ind]
+        )
         fwhm_ratio_std = np.nanstd(fwhm_az[pdata.onres_ind] / fwhm_za[pdata.onres_ind])
 
         delta_sigma_fwhm_az_pos = np.abs(new_fwhm_az_pos - fwhm_az_med) / fwhm_az_std
         delta_sigma_fwhm_za_pos = np.abs(new_fwhm_za_pos - fwhm_za_med) / fwhm_za_std
-        delta_sigma_fwhm_ratio_pos = np.abs(fwhm_ratio_pos - fwhm_ratio_med) / fwhm_ratio_std
-        delta_sigma_resid_pos = np.abs(squared_resid_pos - squared_resid_med) / squared_resid_std
+        delta_sigma_fwhm_ratio_pos = (
+            np.abs(fwhm_ratio_pos - fwhm_ratio_med) / fwhm_ratio_std
+        )
+        delta_sigma_resid_pos = (
+            np.abs(squared_resid_pos - squared_resid_med) / squared_resid_std
+        )
         delta_sigma_fwhm_az_neg = np.abs(new_fwhm_az_neg - fwhm_az_med) / fwhm_az_std
         delta_sigma_fwhm_za_neg = np.abs(new_fwhm_za_neg - fwhm_za_med) / fwhm_za_std
-        delta_sigma_fwhm_ratio_neg = np.abs(fwhm_ratio_neg - fwhm_ratio_med) / fwhm_ratio_std
-        delta_sigma_resid_neg = np.abs(squared_resid_neg - squared_resid_med) / squared_resid_std
+        delta_sigma_fwhm_ratio_neg = (
+            np.abs(fwhm_ratio_neg - fwhm_ratio_med) / fwhm_ratio_std
+        )
+        delta_sigma_resid_neg = (
+            np.abs(squared_resid_neg - squared_resid_med) / squared_resid_std
+        )
 
         delta_sigma_fwhm_threshold = self.params['delta_sigma_fwhm_threshold']
-        delta_sigma_fwhm_ratio_threshold = self.params['delta_sigma_fwhm_ratio_threshold']
+        delta_sigma_fwhm_ratio_threshold = self.params[
+            'delta_sigma_fwhm_ratio_threshold'
+        ]
         delta_sigma_chisq_threshold = self.params['delta_sigma_chisq_threshold']
         snr_threshold = self.params['snr_threshold']
         amplitude_threshold = self.params['amplitude_threshold']
 
         is_double_pos = (
             # Only care about tones we're already considering
-            np.isin(np.arange(pdata.n_tones, dtype=int), tone_indices) &
+            np.isin(np.arange(pdata.n_tones, dtype=int), tone_indices)
+            &
             # Amplitude is relatively large
-            (amp_ratio_pos >= amplitude_threshold) &
+            (amp_ratio_pos >= amplitude_threshold)
+            &
             # SNR is similar in magnitude
-            (snr_ratio_pos >= snr_threshold) &
-            (new_snr_ratio_pos >= 0.2) &
+            (snr_ratio_pos >= snr_threshold)
+            & (new_snr_ratio_pos >= 0.2)
+            &
             # # Source has a relative SNR proportional to the relative amplitude
             # (delta_sigma_resid_pos <= 1) &
             # Make sure the source isn't too large
-            (delta_sigma_fwhm_az_pos <= delta_sigma_fwhm_threshold) &
-            (delta_sigma_fwhm_za_pos <= delta_sigma_fwhm_threshold) &
+            (delta_sigma_fwhm_az_pos <= delta_sigma_fwhm_threshold)
+            & (delta_sigma_fwhm_za_pos <= delta_sigma_fwhm_threshold)
+            &
             # Make sure the source is approximately circular
-            (delta_sigma_fwhm_ratio_pos <= delta_sigma_fwhm_ratio_threshold) &
+            (delta_sigma_fwhm_ratio_pos <= delta_sigma_fwhm_ratio_threshold)
+            &
             # Check chi squared
             (delta_sigma_chisq_pos <= delta_sigma_chisq_threshold)
         )
@@ -353,19 +371,24 @@ class FindDoubleResonances(DataRoutine):
 
         is_double_neg = (
             # Only care about tones we're already considering
-            np.isin(np.arange(pdata.n_tones, dtype=int), tone_indices) &
+            np.isin(np.arange(pdata.n_tones, dtype=int), tone_indices)
+            &
             # Amplitude is relatively large
-            (amp_ratio_neg >= amplitude_threshold) &
+            (amp_ratio_neg >= amplitude_threshold)
+            &
             # SNR is similar in magnitude
-            (snr_ratio_neg >= snr_threshold) &
-            (new_snr_ratio_neg >= 0.2) &
+            (snr_ratio_neg >= snr_threshold)
+            & (new_snr_ratio_neg >= 0.2)
+            &
             # # Source has a relative SNR proportional to the relative amplitude
             # (delta_sigma_resid_neg <= 1) &
             # Make sure the source isn't too large
-            (delta_sigma_fwhm_az_neg <= delta_sigma_fwhm_threshold) &
-            (delta_sigma_fwhm_za_neg <= delta_sigma_fwhm_threshold) &
+            (delta_sigma_fwhm_az_neg <= delta_sigma_fwhm_threshold)
+            & (delta_sigma_fwhm_za_neg <= delta_sigma_fwhm_threshold)
+            &
             # Make sure the source is approximately circular
-            (delta_sigma_fwhm_ratio_neg <= delta_sigma_fwhm_ratio_threshold) &
+            (delta_sigma_fwhm_ratio_neg <= delta_sigma_fwhm_ratio_threshold)
+            &
             # Check chi squared
             (delta_sigma_chisq_neg <= delta_sigma_chisq_threshold)
         )
@@ -373,15 +396,16 @@ class FindDoubleResonances(DataRoutine):
         is_double = np.logical_or(is_double_pos, is_double_neg)
         # is_double = np.logical_and(is_double, amplitude >= 5e-7)  # Minimum amplitude
 
-
         # tone_indices = np.array([
-        #     154, 155, 156, 172, 181, 182, 186, 187, 293, 348, 350, 515, 516, 543, 544, 
+        #     154, 155, 156, 172, 181, 182, 186, 187, 293, 348, 350, 515, 516, 543, 544,
         #     545, 552, 553, 705, 804, 806, 847,
         # ])
         if self.params['plot']:
             bbox_pad = 0.3
             _logger.info(f'{self.name}: Plotting results...')
-            with PdfPages(f'{pdata.folder}/{pdata.file_stub}_double_resonances.pdf') as pdf:
+            with PdfPages(
+                f'{pdata.folder}/{pdata.file_stub}_double_resonances.pdf'
+            ) as pdf:
                 for i, i_res in tenumerate(tone_indices):
                     if i == tone_indices.size // 2:
                         _logger.info(f'{self.name}: Halfway done plotting results...')
@@ -392,39 +416,88 @@ class FindDoubleResonances(DataRoutine):
                     old_plot_data /= old_max
                     vmin = np.min(old_plot_data)
                     vmax = np.max(old_plot_data)
-                    fig, axes = plt.subplots(1, 3, sharey=True, figsize=(16, 6), layout='compressed')
+                    fig, axes = plt.subplots(
+                        1, 3, sharey=True, figsize=(16, 6), layout='compressed'
+                    )
                     if is_double[i_res]:
                         fig.set_facecolor('orange')
 
                     fig.suptitle(f'Resonator {i_res}')
                     axes[0].set_title('Original Map')
-                    im = axes[0].imshow(old_plot_data, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
-                    axes[0].plot(az_center[i_res], za_center[i_res], marker='+', color='white', markersize=10, mew=2)
+                    im = axes[0].imshow(
+                        old_plot_data,
+                        vmin=vmin,
+                        vmax=vmax,
+                        extent=extent,
+                        aspect='equal',
+                        cmap='jet',
+                    )
+                    axes[0].plot(
+                        az_center[i_res],
+                        za_center[i_res],
+                        marker='+',
+                        color='white',
+                        markersize=10,
+                        mew=2,
+                    )
 
-                    new_plot_data = np.flip(np.transpose(residual_map_val[i_res][::-1]), 1)
+                    new_plot_data = np.flip(
+                        np.transpose(residual_map_val[i_res][::-1]), 1
+                    )
                     new_plot_data_pos = new_plot_data - old_med
                     new_plot_data_pos /= old_max
 
                     axes[1].set_title('Residual Map')
-                    axes[1].imshow(new_plot_data_pos, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
-                    axes[1].plot(new_az_center_pos[i_res], new_za_center_pos[i_res], marker='+', color='white', markersize=10, mew=2)
+                    axes[1].imshow(
+                        new_plot_data_pos,
+                        vmin=vmin,
+                        vmax=vmax,
+                        extent=extent,
+                        aspect='equal',
+                        cmap='jet',
+                    )
+                    axes[1].plot(
+                        new_az_center_pos[i_res],
+                        new_za_center_pos[i_res],
+                        marker='+',
+                        color='white',
+                        markersize=10,
+                        mew=2,
+                    )
 
                     if is_double_pos[i_res]:
                         axes[1].set_facecolor('orange')
 
-                    new_plot_data_neg =  old_med - new_plot_data
+                    new_plot_data_neg = old_med - new_plot_data
                     new_plot_data_neg /= old_max
 
                     axes[2].set_title('Residual Map (Inverted)')
-                    axes[2].imshow(new_plot_data_neg, vmin=vmin, vmax=vmax, extent=extent, aspect='equal', cmap='jet')
-                    axes[2].plot(new_az_center_neg[i_res], new_za_center_neg[i_res], marker='+', color='white', markersize=10, mew=2)
-
+                    axes[2].imshow(
+                        new_plot_data_neg,
+                        vmin=vmin,
+                        vmax=vmax,
+                        extent=extent,
+                        aspect='equal',
+                        cmap='jet',
+                    )
+                    axes[2].plot(
+                        new_az_center_neg[i_res],
+                        new_za_center_neg[i_res],
+                        marker='+',
+                        color='white',
+                        markersize=10,
+                        mew=2,
+                    )
 
                     # divider = make_axes_locatable(axes[1])
                     # cax = divider.append_axes('right', size='5%', pad=0.05)
                     # cb = fig.colorbar(im, cax=cax)
                     cb = fig.colorbar(im, ax=axes)
-                    cb.set_label(f'Normalized signal ({pdata["map"].attrs["units"]})', rotation=270, labelpad=15)
+                    cb.set_label(
+                        f'Normalized signal ({pdata["map"].attrs["units"]})',
+                        rotation=270,
+                        labelpad=15,
+                    )
 
                     t = AnchoredText(
                         f'Amplitude = {amplitude[i_res] * 1e5:2f}    '

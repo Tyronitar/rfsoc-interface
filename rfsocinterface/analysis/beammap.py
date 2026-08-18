@@ -171,7 +171,7 @@ def find_gaussian_beams(
         )
         this_gaussian = gauss_2d((this_az, this_za), *popt)
         residual_map = map_val[i_res] - gauss_2d((map_az, map_za), *popt)
-        new_snr[i_res] = (this_gaussian ** 2).mean() / (residual_map ** 2).mean()
+        new_snr[i_res] = (this_gaussian**2).mean() / (residual_map**2).mean()
     _logger.info(f'{caller_name}: Finished analyzing beam map.')
 
 
@@ -599,6 +599,7 @@ def combine_polarized_beammaps(
     pdf_filename: str | None = None,  # noqa: ARG001
 ):
     import pdb
+
     """Determines various tile parameters from two beam maps of opposite polarizations.
 
     Creates a new params_file with detector_delta_x, detector_delta_y,
@@ -619,7 +620,6 @@ def combine_polarized_beammaps(
     fwhm_az_pol1 = pol1_data['beammap/fwhm_az'][:]
     fwhm_za_pol1 = pol1_data['beammap/fwhm_za'][:]
     snr_pol1 = pol1_data['beammap/snr'][:]
-
 
     az_center_pol2 = pol2_data['beammap/az_center'][:]
     za_center_pol2 = pol2_data['beammap/za_center'][:]
@@ -645,7 +645,9 @@ def combine_polarized_beammaps(
     good_amp = good_amp[good_amp > 0]  # Ignore failed fits and bad tones
     amp_med = np.median(good_amp)
     amp_std = np.std(good_amp)
-    good_amp = good_amp[np.abs(good_amp - amp_med) <= 2 * amp_std]  # Ignore failed fits and bad tones
+    good_amp = good_amp[
+        np.abs(good_amp - amp_med) <= 2 * amp_std
+    ]  # Ignore failed fits and bad tones
     # min_valid_amp = amp_med - 2 * amp_std  # 2 standard deviations below the mean
     min_valid_amp = good_amp.min()
     amp_pol1_norm = amplitude_pol1 / good_amp.max()
@@ -653,7 +655,6 @@ def combine_polarized_beammaps(
     # _, bins, _ = plt.hist(good_amp, bins=20)
     # plt.hist(bad_amp, bins=bins)
     # plt.show()
-
 
     # Correct for shifts in source position
     az_center = np.zeros(chanmask.size)
@@ -679,13 +680,24 @@ def combine_polarized_beammaps(
     # amp_ratio[pol2_ind] = amplitude_pol2[pol2_ind] / amplitude_pol2[pol2_ind]
 
     detector_pol = np.where(amplitude_pol1 > amplitude_pol2, 1, 2)
-    az_center = np.where(amplitude_pol1 > amplitude_pol2, az_center_pol1, az_center_pol2)
-    za_center = np.where(amplitude_pol1 > amplitude_pol2, za_center_pol1, za_center_pol2)
-    beam_ampl = np.where(amplitude_pol1 > amplitude_pol2, amplitude_pol1, amplitude_pol2)
+    az_center = np.where(
+        amplitude_pol1 > amplitude_pol2, az_center_pol1, az_center_pol2
+    )
+    za_center = np.where(
+        amplitude_pol1 > amplitude_pol2, za_center_pol1, za_center_pol2
+    )
+    beam_ampl = np.where(
+        amplitude_pol1 > amplitude_pol2, amplitude_pol1, amplitude_pol2
+    )
     snr = np.where(amplitude_pol1 > amplitude_pol2, snr_pol1, snr_pol2)
-    amp_ratio = np.where(detector_pol == 1, amplitude_pol2 / amplitude_pol1, amplitude_pol1 / amplitude_pol2)
+    amp_ratio = np.where(
+        detector_pol == 1,
+        amplitude_pol2 / amplitude_pol1,
+        amplitude_pol1 / amplitude_pol2,
+    )
     fwhm_ratio = np.where(
-        detector_pol == 1, fwhm_az_pol1 / fwhm_za_pol1, fwhm_az_pol2 / fwhm_za_pol2)
+        detector_pol == 1, fwhm_az_pol1 / fwhm_za_pol1, fwhm_az_pol2 / fwhm_za_pol2
+    )
 
     good_amp = beam_ampl[good_ind]
     good_amp = good_amp[good_amp > 0]
@@ -710,17 +722,20 @@ def combine_polarized_beammaps(
     amp_pos_pol1 = pol1_data['beammap/double_resonances/positive/amplitude'][:]
     is_double_neg_pol1 = pol1_data['beammap/double_resonances/negative/is_double'][:]
     amp_neg_pol1 = pol1_data['beammap/double_resonances/positive/amplitude'][:]
-    is_double_pol1 = (is_double_pos_pol1 & (amp_pos_pol1 > min_valid_amp)) | (is_double_neg_pol1 & (amp_neg_pol1 > min_valid_amp))
+    is_double_pol1 = (is_double_pos_pol1 & (amp_pos_pol1 > min_valid_amp)) | (
+        is_double_neg_pol1 & (amp_neg_pol1 > min_valid_amp)
+    )
 
     is_double_pos_pol2 = pol2_data['beammap/double_resonances/positive/is_double'][:]
     amp_pos_pol2 = pol2_data['beammap/double_resonances/positive/amplitude'][:]
     is_double_neg_pol2 = pol2_data['beammap/double_resonances/negative/is_double'][:]
     amp_neg_pol2 = pol2_data['beammap/double_resonances/positive/amplitude'][:]
-    is_double_pol2 = (is_double_pos_pol2 & (amp_pos_pol2 > min_valid_amp)) | (is_double_neg_pol2 & (amp_neg_pol2 > min_valid_amp))
+    is_double_pol2 = (is_double_pos_pol2 & (amp_pos_pol2 > min_valid_amp)) | (
+        is_double_neg_pol2 & (amp_neg_pol2 > min_valid_amp)
+    )
 
     is_multi_pol_double = np.zeros(chanmask.size, dtype=np.bool)
-    is_multi_pol_double[(amp_ratio - amp_ratio_med) >  2 * amp_ratio_std] = True
-
+    is_multi_pol_double[(amp_ratio - amp_ratio_med) > 2 * amp_ratio_std] = True
 
     # is_double = (is_double_pol1 & (detector_pol == 1)) & (is_double_pol2 & (detector_pol == 2))
     is_double = np.where(detector_pol == 1, is_double_pol1, is_double_pol2)
@@ -761,7 +776,6 @@ def combine_polarized_beammaps(
     plt.ylabel('Frequency')
     plt.show()
     pdb.set_trace()
-
 
     # TODO: Update params file
 
