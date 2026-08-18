@@ -9,7 +9,7 @@ from rfsocinterface.core.utils import (
     GLOBAL_SETTINGS_PATH,
     PERMISSIONS_ALL_FULL,
     USER_SETTINGS_PATH,
-    PathJSONEncoder,
+    MetadataJSONEncoder,
     ensure_path,
 )
 
@@ -123,7 +123,7 @@ class Settings(dict):
         """Save settings to file."""
         self._path = user_settings_path
         with self._path.expanduser().open('w') as f:
-            json.dump(self, f, indent=4, cls=PathJSONEncoder)
+            json.dump(self, f, indent=4, cls=MetadataJSONEncoder)
         _logger.info(f'Saved settings to {self._path.expanduser()}')
 
     def __str__(self):
