@@ -41,7 +41,7 @@ OPTCAM_WIDTH_PIXELS = 2592
 #             * Sensor size 5.76mm by 4.29mm
 #             * Horizontal crop factor is 6.25
 #             * Vertical crop factor is 5.59
-#             * total pixel count 2592 (H) × 1944 (V)
+#             * total pixel count 2592 (H) x 1944 (V)
 
 #         Formula for FOV (in radians) is 2 * arctan(0.5 * sensor_size / focal_length)
 

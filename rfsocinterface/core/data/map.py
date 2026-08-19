@@ -138,14 +138,16 @@ def get_scaled_optical_image(
 
 
 def get_extent(
-    map_az: npt.NDArray, map_za: npt.NDArray, dpix: float = DEFAULT_MAP_DPIX
+    map_az: npt.NDArray,
+    map_za: npt.NDArray,
+    dpix: float = DEFAULT_MAP_DPIX,  # noqa: ARG001
 ) -> tuple[float, float, float, float]:
     """Get the extent of the map for plotting."""
     return (
-        min(map_az) - dpix / 2.0,
-        max(map_az) + dpix / 2,
-        max(map_za) + dpix / 2.0,
-        min(map_za) - dpix / 2.0,
+        min(map_az),
+        max(map_az),
+        max(map_za),
+        min(map_za),
     )
 
 
@@ -154,9 +156,28 @@ def get_map_size(
     az_trim: float,
     za_trim: float,
     dpix: float = DEFAULT_MAP_DPIX,
-    beam_map_mode: bool = False,
+    beam_map_mode: bool = False,  # noqa: ARG001
 ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
     """Determine map size based on detector positions and desired pixel size."""
+    abs_max_az = abs_max_za = -np.inf
+    abs_min_az = abs_min_za = np.inf
+    for i_chan in range(pdata.n_chan):
+        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+        det_az = det_az[pdata.get_onres_ind(i_chan)]
+        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+        det_za = det_za[pdata.get_onres_ind(i_chan)]
+        abs_max_az = max(np.nanmax(det_az), abs_max_az)
+        abs_min_az = min(np.nanmin(det_az), abs_min_az)
+        abs_max_za = max(np.nanmax(det_za), abs_max_za)
+        abs_min_za = min(np.nanmin(det_za), abs_min_za)
+    abs_max_az -= az_trim
+    abs_min_az += az_trim
+    abs_max_za -= za_trim
+    abs_min_za += za_trim
+
+    # Refine the bounds accounting for the trim
+    # We only count azimuth where the zenith angle is within the cropped bounds and vice
+    # versa.
     max_az = max_za = -np.inf
     min_az = min_za = np.inf
     for i_chan in range(pdata.n_chan):
@@ -164,14 +185,19 @@ def get_map_size(
         det_az = det_az[pdata.get_onres_ind(i_chan)]
         det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
         det_za = det_za[pdata.get_onres_ind(i_chan)]
+        good_idx = tuple(
+            np.argwhere(
+                ((abs_min_az <= det_az) & (det_az <= abs_max_az))
+                & ((abs_min_za <= det_za) & (det_za <= abs_max_za))
+            ).T
+        )
+        det_az = det_az[good_idx]
+        det_za = det_za[good_idx]
         max_az = max(np.nanmax(det_az), max_az)
         min_az = min(np.nanmin(det_az), min_az)
         max_za = max(np.nanmax(det_za), max_za)
         min_za = min(np.nanmin(det_za), min_za)
-    max_az -= az_trim
-    min_az += az_trim
-    max_za -= za_trim
-    min_za += za_trim
+
     n_pix_x = int(np.ceil((max_az - min_az) / dpix))
     n_pix_y = int(np.ceil((max_za - min_za) / dpix))
     map_x = np.arange(n_pix_x) * dpix + min_az + dpix / 2.0
@@ -497,9 +523,9 @@ class BinTODIntoMap(DataRoutine):
             # Get this detector's positions, need to account for rotation in EL based on
             # beammap taken at EL=89
             x_ind = np.squeeze(np.round((this_detector_az - map_az[0]) / dpix))
-            x_ind = x_ind.astype('int64')
+            x_ind = np.nan_to_num(x_ind, -1).astype('int')
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
-            y_ind = y_ind.astype('int64')
+            y_ind = np.nan_to_num(y_ind, -1).astype('int')
 
             # eliminate samples outside the map
             good_samples = pdata['map/good_samples'][i_chan][:]
@@ -811,7 +837,7 @@ class PlotMap(DataRoutine):
 
         # Vertical polarization
         im = axes[0].imshow(
-            np.flip(np.transpose(map_val[0][::-1]), 1),
+            np.transpose(map_val[0]),
             extent=extent,
             aspect='equal',
             vmin=-max_abs,
@@ -829,7 +855,7 @@ class PlotMap(DataRoutine):
 
         # Horizontal polarization
         im = axes[1].imshow(
-            np.flip(np.transpose(map_val[1][::-1]), 1),
+            np.transpose(map_val[1]),
             extent=extent,
             aspect='equal',
             vmin=-max_abs,
@@ -847,7 +873,7 @@ class PlotMap(DataRoutine):
 
         # Total signal
         im = axes[2].imshow(
-            np.flip(np.transpose(total_map[::-1]), 1),
+            np.transpose(total_map),
             extent=extent,
             aspect='equal',
             vmin=-max_abs,

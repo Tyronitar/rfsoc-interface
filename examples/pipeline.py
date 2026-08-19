@@ -81,7 +81,7 @@ if __name__ == '__main__':
         # hp_filter,
         # lp_filter,
         # clean_tod,
-        # bin_tod_to_map,
+        bin_tod_to_map,
         plotter,
         # make_video,
         # find_fwhm,
