@@ -23,12 +23,14 @@ _logger = logging.getLogger(__name__)
 
 
 # OPTCAM_SENSOR_SIZE = (5.76, 4.29)  # mm, (width, height)
-OPTCAM_PIX_SIZE_DEGREES = 0.0025
-OPTCAM_OFFSET_AZ_PIX = 444
-OPTCAM_OFFSET_ZA_PIX = 68
-DEFAULT_MAP_DPIX = 0.03
+OPTCAM_DPIX = 0.0025  # Degrees / pixel
+OPTCAM_OFFSET_AZ_PIX = 289
+OPTCAM_OFFSET_ZA_PIX = -16
+DEFAULT_MAP_DPIX = 0.03  # Degrees / pixel
 OPTCAM_HEIGHT_PIXELS = 1944
 OPTCAM_WIDTH_PIXELS = 2592
+
+SKIPR_PSF_SIGMA = 0.087 / 2.3  # Degrees
 # DATA_DIRECTORY = 'reference_data'  # For testing with local data files
 
 # def get_optical_camera_pixel_scale(

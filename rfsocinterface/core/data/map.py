@@ -15,6 +15,7 @@ import numpy.typing as npt
 from matplotlib import animation
 from matplotlib.figure import Figure
 from scipy import signal
+from scipy.ndimage import gaussian_filter as apply_gaussian_blur
 from scipy.spatial.distance import cdist
 
 from rfsocinterface.core.data.routines import (
@@ -26,11 +27,12 @@ from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.data.utils import (
     DEFAULT_MAP_DPIX,
     N_POLARIZATION,
+    OPTCAM_DPIX,
     OPTCAM_HEIGHT_PIXELS,
     OPTCAM_OFFSET_AZ_PIX,
     OPTCAM_OFFSET_ZA_PIX,
-    OPTCAM_PIX_SIZE_DEGREES,
     OPTCAM_WIDTH_PIXELS,
+    SKIPR_PSF_SIGMA,
     get_channel_group_name,
 )
 from rfsocinterface.core.utils import (
@@ -99,7 +101,7 @@ def get_scaled_optical_image(
     optical_image: npt.NDArray,
     map_az: npt.NDArray,
     map_za: npt.NDArray,
-    optcam_pix_size_degrees: float = OPTCAM_PIX_SIZE_DEGREES,
+    optcam_pix_size_degrees: float = OPTCAM_DPIX,
     optcam_offset_az_pix: float = OPTCAM_OFFSET_AZ_PIX,
     optcam_offset_za_pix: float = OPTCAM_OFFSET_ZA_PIX,
     optcam_height_pixels: int = OPTCAM_HEIGHT_PIXELS,
@@ -209,7 +211,7 @@ def get_map_size(
 def compute_map_kernel(
     r0: float = 0.15,
     dpix: float = DEFAULT_MAP_DPIX,
-    sigma: float = 0.087 / 2.3,
+    sigma: float = SKIPR_PSF_SIGMA,
 ) -> npt.NDArray:
     """Compute a Gaussian kernel for smoothing the map.
 
@@ -824,7 +826,7 @@ class PlotMap(DataRoutine):
         # aspect_ratio = (this_ylim[0] - this_ylim[1]) / (this_xlim[1] - this_xlim[0])
         # fig_height = 7.5
         # fig_width = fig_height / aspect_ratio
-        fig, axes = plt.subplots(4, 1, figsize=(15, 7.5), sharex=True, sharey=True)
+        fig, axes = plt.subplots(5, 1, figsize=(15, 7.5), sharex=True, sharey=True)
         fig.suptitle(
             f'{pdata.file_stub}\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
             f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
@@ -894,7 +896,7 @@ class PlotMap(DataRoutine):
             dpix, pdata.optical_image, map_az, map_za
         )
         opt_vmax = 255.0
-        opt_vmin = -255  # NOTE: Shouldn't this be 0?
+        opt_vmin = 0  # NOTE: Shouldn't this be 0?
         im = axes[3].imshow(
             optical_image,
             extent=extent,
@@ -905,6 +907,23 @@ class PlotMap(DataRoutine):
         cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[3])
         cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
         axes[3].set_xlabel('Azimuth (degrees)')
+
+        # Blurred optical image
+        sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
+        blurred_optical_image = apply_gaussian_blur(
+            optical_image,
+            (sigma, sigma, 0),
+        )
+        im = axes[4].imshow(
+            blurred_optical_image,
+            extent=extent,
+            aspect='equal',
+            vmin=opt_vmin,
+            vmax=opt_vmax,
+        )
+        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[4])
+        cb.set_label('Blurred Optical Signal (rgb)', rotation=270, labelpad=15)
+        axes[4].set_xlabel('Azimuth (degrees)')
 
         fig.subplots_adjust(wspace=0, hspace=0)
 
