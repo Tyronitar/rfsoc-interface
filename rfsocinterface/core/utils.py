@@ -24,6 +24,10 @@ from typing import (
     TypeVar,
 )
 
+from matplotlib.colorbar import Colorbar
+from matplotlib.image import AxesImage
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 try:
     import thread  # type: ignore
 except ImportError:
@@ -1208,3 +1212,32 @@ def var_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
 def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
     """Compute standard deviation using historgram frequencies as weights."""
     return np.sqrt(var_histogram(val, freq))
+
+
+def add_colorbar(
+    fig: Figure,
+    ax: plt.Axes,
+    im: AxesImage,
+    label: str,
+    position: Literal['right', 'left', 'bottom', 'top'] = 'right',
+    size: str | float = '2.5%',
+    pad: str | float = 0.05,
+    label_rotation: float = 90,
+    labelpad: float = 15,
+    horizontal_alignment: Literal['left', 'center', 'right'] = 'left',
+    vertical_alignment: Literal[
+        'bottom', 'baseline', 'center', 'center_baseline', 'top'
+    ] = 'top',
+    offset_position: tuple[float, float] = (1.05, 0),
+) -> Colorbar:
+    """Split an axes into two and append a colorbar to the side."""
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes(position, size=size, pad=pad)
+    cb = fig.colorbar(im, cax=cax)
+    cb.set_label(label, rotation=label_rotation, labelpad=labelpad)
+    offset_text = cb.ax.yaxis.get_offset_text()
+    offset_text.set_horizontalalignment(horizontal_alignment)
+    offset_text.set_verticalalignment(vertical_alignment)
+    cb.ax.yaxis.get_offset_text().set_position(offset_position)
+    cb.update_ticks()
+    return cb

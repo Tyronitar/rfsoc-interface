@@ -39,6 +39,7 @@ from rfsocinterface.core.utils import (
     GAUSSIAN_SIGMA,
     PERMISSIONS_ALL_FULL,
     ChanmaskValue,
+    add_colorbar,
     add_colorbar_outside,
     argclosest,
     ensure_path,
@@ -627,7 +628,6 @@ class PlotMap(DataRoutine):
         self,
         gaussian_sigma: float = GAUSSIAN_SIGMA,
         valid_covariance_threshold: float = 0.5,
-        cb_shrink: float = 0.95,
         max_abs_threshold: float = 0.75,
         save_plot: bool = True,
         savefile: Path | None = None,
@@ -643,8 +643,6 @@ class PlotMap(DataRoutine):
             valid_covariance_threshold (float, optional): The threshold for determining
                 whether a pixel is flagged based on the covariance of the maps. Defaults
                 to 0.5.
-            cb_shrink (float, optional): The shrink factor for the colorbar in the plot.
-                Defaults to 0.95.
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
             save_plot (bool, optional): Whether to save the plot as a PNG file. Defaults
@@ -661,7 +659,6 @@ class PlotMap(DataRoutine):
         super().__init__(
             gaussian_sigma=gaussian_sigma,
             valid_covariance_threshold=valid_covariance_threshold,
-            cb_shrink=cb_shrink,
             max_abs_threshold=max_abs_threshold,
             save_plot=save_plot,
             savefile=savefile,
@@ -805,7 +802,6 @@ class PlotMap(DataRoutine):
         valid_netd_1 = np.argwhere(netd_1 > 0)
         valid_netd_2 = np.argwhere(netd_2 > 0)
 
-        cb_shrink = self.params['cb_shrink']
         max_abs_threshold = self.params['max_abs_threshold']
         this_xlim = min(map_az), max(map_az)
         this_ylim = max(map_za), min(map_za)
@@ -826,7 +822,7 @@ class PlotMap(DataRoutine):
         # aspect_ratio = (this_ylim[0] - this_ylim[1]) / (this_xlim[1] - this_xlim[0])
         # fig_height = 7.5
         # fig_width = fig_height / aspect_ratio
-        fig, axes = plt.subplots(5, 1, figsize=(15, 7.5), sharex=True, sharey=True)
+        fig, axes = plt.subplots(5, 1, figsize=(15, 9), sharex=True, sharey=True)
         fig.suptitle(
             f'{pdata.file_stub}\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
             f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
@@ -846,8 +842,7 @@ class PlotMap(DataRoutine):
             vmax=max_abs,
             cmap='Blues_r',
         )
-        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[0])
-        cb.set_label(f'V-Pol Signal ({units})', rotation=270, labelpad=15)
+        add_colorbar(fig, axes[0], im, f'V-Pol Signal ({units})')
         axes[0].contour(
             np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -864,8 +859,7 @@ class PlotMap(DataRoutine):
             vmax=max_abs,
             cmap='Reds_r',
         )
-        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[1])
-        cb.set_label(f'H-Pol Signal ({units})', rotation=270, labelpad=15)
+        add_colorbar(fig, axes[1], im, f'H-Pol Signal ({units})')
         axes[1].contour(
             np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -882,8 +876,7 @@ class PlotMap(DataRoutine):
             vmax=max_abs,
             cmap='Greys_r',
         )
-        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[2])
-        cb.set_label(f'Total Signal ({units})', rotation=270, labelpad=15)
+        add_colorbar(fig, axes[2], im, f'Total Signal ({units})')
         axes[2].contour(
             np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -904,9 +897,7 @@ class PlotMap(DataRoutine):
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[3])
-        cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
-        axes[3].set_xlabel('Azimuth (degrees)')
+        add_colorbar(fig, axes[3], im, 'Optical Signal (rgb)')
 
         # Blurred optical image
         sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
@@ -921,10 +912,10 @@ class PlotMap(DataRoutine):
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[4])
-        cb.set_label('Blurred Optical Signal (rgb)', rotation=270, labelpad=15)
-        axes[4].set_xlabel('Azimuth (degrees)')
+        add_colorbar(fig, axes[4], im, 'Blurred\nOptical Signal (rgb)')
 
+        axes[-1].set_xlabel('Azimuth (degrees)')
+        fig.tight_layout()
         fig.subplots_adjust(wspace=0, hspace=0)
 
         if self.params['save_plot']:
