@@ -341,7 +341,7 @@ def get_current_lo_sweep_hour_string() -> str:
         + float(datetime.now().strftime('%M')) / 60.0
         + float(datetime.now().strftime('%S')) / 3600.0
     )
-    return f'hour{hour:04.4f}'.replace('.', 'p')
+    return f'hour{hour:07.4f}'.replace('.', 'p')
 
 
 @ensure_path('data_dir')
