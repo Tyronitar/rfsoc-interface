@@ -1189,6 +1189,11 @@ class ProcessedData(DataStorage):
         return self['global_data'].attrs['total_tones']
 
     @property
+    def fs(self) -> tuple[float, ...]:
+        """Sampling rate for each channel."""
+        return tuple(self.get_fs(i_chan) for i_chan in range(self.n_chan))
+
+    @property
     def virtual_datasets(self) -> h5py.Group:
         """The virtual dataset group in the file."""
         return self['vdsets']

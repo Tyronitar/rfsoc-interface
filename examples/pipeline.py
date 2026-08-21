@@ -52,7 +52,7 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filter_freq,
         beam_map_mode=False,
         dataset=dataset,
-        az_trim=3,
+        az_trim=0,
         za_trim=0,
         dpix=0.04,
         r0=0,
@@ -61,10 +61,12 @@ if __name__ == '__main__':
     make_video = MakeVideo(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
+        dataset=dataset,
         block_size_s=0.1,
         dpix=0.08,
         az_trim=0,
         za_trim=0,
+        # overwrite=False,
         # show=True,
         # savefile='test.gif',
     )
@@ -78,10 +80,10 @@ if __name__ == '__main__':
         # noise_removal,
         # compute_psd,
         # psd_plotter,
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
-        # bin_tod_to_map,
+        hp_filter,
+        lp_filter,
+        clean_tod,
+        bin_tod_to_map,
         plotter,
         # make_video,
         # find_fwhm,
@@ -93,12 +95,11 @@ if __name__ == '__main__':
     setnum = 1003
 
 
-    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    pdata = ProcessedData.load(date, setnum)
-    # pdb.set_trace()
-    pipeline.run(pdata)
+    # pdata = ProcessedData.load(date, setnum)
+    # pipeline.run(pdata)
     # params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
     # det_dy = params.detector_delta_y[:]
     # i_res = 676
