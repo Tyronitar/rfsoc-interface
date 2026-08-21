@@ -1522,6 +1522,12 @@ class ProcessedData(DataStorage):
         """The conversion factor from ADC units to Hz."""
         return self.calibration_info['adc_units_to_hz']
 
+    def get_adc_units_to_hz(self, i_chan: int) -> npt.NDArray:
+        """Return the conversion factor from ADC units to Hz."""
+        return self.calibration_info['adc_units_to_hz'][
+            self.get_absolute_tone_indices(i_chan)
+        ]
+
     def set_adc_units_to_hz(self, new_adc_units_to_hz: npt.NDArray):
         """Update adc_units_to_hz."""
         self._set_table_field(
@@ -1554,6 +1560,12 @@ class ProcessedData(DataStorage):
         """The rotation angle from ADC units to gain/phase."""
         return self.calibration_info['IQ_to_gain_phase_angle']
 
+    def get_IQ_to_gain_phase_angle(self, i_chan: int) -> npt.NDArray:
+        """Return the rotation angle from ADC units to gain/phase."""
+        return self.calibration_info['IQ_to_gain_phase_angle'][
+            self.get_absolute_tone_indices(i_chan)
+        ]
+
     def set_IQ_to_gain_phase_angle(self, new_angle: npt.NDArray):
         """Update IQ_to_gain_phase_angle."""
         self._set_table_field('calibration_info', 'IQ_to_gain_phase_angle', new_angle)
@@ -1563,6 +1575,12 @@ class ProcessedData(DataStorage):
         """The rotation angle from ADC units to frequency/dissipation."""
         return self.calibration_info['IQ_to_freq_diss_angle']
 
+    def get_IQ_to_freq_diss_angle(self, i_chan: int) -> npt.NDArray:
+        """Return the rotation angle from ADC units to frequency/dissipation."""
+        return self.calibration_info['IQ_to_freq_diss_angle'][
+            self.get_absolute_tone_indices(i_chan)
+        ]
+
     def set_IQ_to_freq_diss_angle(self, new_angle: npt.NDArray):
         """Update IQ_to_freq_diss_angle."""
         self._set_table_field('calibration_info', 'IQ_to_freq_diss_angle', new_angle)
@@ -1571,6 +1589,12 @@ class ProcessedData(DataStorage):
     def df_per_mK(self) -> npt.NDArray:
         """The change in frequency per mK."""
         return self.calibration_info['df_per_mK']
+
+    def get_df_per_mK(self, i_chan: int) -> npt.NDArray:
+        """Return the change in frequency per mK."""
+        return self.calibration_info['df_per_mK'][
+            self.get_absolute_tone_indices(i_chan)
+        ]
 
     def set_df_per_mK(self, new_df_per_mK: npt.NDArray):
         """Update df_per_mK."""
