@@ -343,7 +343,7 @@ class ConsolidatedData(DataStorage):
             optcam_file = h5py.File(optcam_template, 'r')
 
         # Find TOD files
-        todlist = glob.glob(todtemplate)
+        todlist = sorted(glob.glob(todtemplate))
         nchan = len(todlist)
         if nchan == 0:
             raise FileNotFoundError(f'No TOD files found for {date} set {setnum}')
@@ -465,7 +465,14 @@ class ConsolidatedData(DataStorage):
             # TODO: Make kidpy store the tile name in the file
             # NOTE: Temporary way to determine tile name from file names
             this_file_stem = Path(file).stem
-            tile_name = this_file_stem[: this_file_stem.index('TOD')].split('_')[1]
+            tile_name = '_'.join(
+                filter(
+                    None, this_file_stem[: this_file_stem.index('TOD')].split('_')[1:]
+                )
+            )
+            _logger.debug(
+                f'ConsolidatedData: Tile name for channel {i_chan} is "{tile_name}"'
+            )
 
             # Find the relevant dimensions
             n_tones = raw_data.n_tones[0]
@@ -1065,6 +1072,18 @@ class ProcessedData(DataStorage):
             for channel_group in self['channels'].values()
         ]
 
+    @property
+    def tile_names(self) -> tuple[str]:
+        """The name for each tile."""
+        return tuple(
+            self.get_channel_group(i_chan).attrs['tile_name']
+            for i_chan in range(self.n_chan)
+        )
+
+    def get_tile_name(self, i_chan: int) -> tuple[str]:
+        """Get the tile name of the specifeid channel."""
+        return self.tile_names[i_chan]
+
     def get_absolute_tone_index(self, i_chan: int, i_tone_relative: int) -> int:
         """Return the absolute tone index for the tone within the channel."""
         tone_cutoffs = np.cumsum((0, *self.n_tones))
@@ -1078,7 +1097,7 @@ class ProcessedData(DataStorage):
     def get_absolute_tone_indices(self, i_chan: int) -> npt.NDArray[int]:
         """Return the absolute tone indices for all tones within the channel."""
         tone_cutoffs = np.cumsum((0, *self.n_tones))
-        return np.arange(tone_cutoffs[i_chan], tone_cutoffs[i_chan + 1])
+        return np.arange(tone_cutoffs[i_chan], tone_cutoffs[i_chan + 1], dtype=int)
 
     def split_to_relative_tone_indices(
         self, indices: npt.NDArray[int]
@@ -1291,6 +1310,10 @@ class ProcessedData(DataStorage):
         """The frequencies relative to baseband."""
         return self.tones_table['baseband_freq']
 
+    def get_baseband_freqs(self, i_chan: int) -> npt.NDArray:
+        """Return the baseband frequencies for the specifeid channel."""
+        return self.baseband_freqs[self.get_absolute_tone_indices(i_chan)]
+
     def set_baseband_freqs(self, new_freqs: npt.NDArray):
         """Set the frequencies relative to baseband."""
         self._set_table_field('tones', 'baseband_freq', new_freqs)
@@ -1314,6 +1337,17 @@ class ProcessedData(DataStorage):
             f[i_tone : i_tone + n_tones] += channel_group.attrs['f_center']
             i_tone += n_tones
         return f
+
+    def get_lo_sweep(self, i_chan: int) -> LoSweepData:
+        """Get the LO sweep for the specified channel."""
+        sweep_data = self.get_from_channel(i_chan, 'lo_sweep')[:]
+        return LoSweepData(
+            self.get_baseband_freqs(i_chan),
+            self.get_f_center(i_chan),
+            sweep_data,
+            self.get_chanmask(i_chan),
+            self.get_tile_name(i_chan),
+        )
 
     @property
     def tone_powers(self) -> npt.NDArray:
