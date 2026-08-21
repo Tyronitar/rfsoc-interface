@@ -7,123 +7,112 @@ from kidpy3 import RawDataFile
 from scipy.signal import decimate
 
 
+from PySide6.QtWidgets import QApplication
+from kidpy3 import RawDataFile
+
+from rfsocinterface.core.data import ProcessedData
 from rfsocinterface.core.sweeps import LoSweepData
-from rfsocinterface.core.data.storage import ProcessedData 
+from rfsocinterface.gui.sweep_diagnostics import DiagnosticsDialog
 
 
 if __name__ == '__main__':
 
-    # actual_sweep = LoSweepData.from_h5('/data/20250902/20250902_Device_aSi1_Channel2_LO_Sweep_hour12p0617_high_res.h5')
-    # sweep_off = LoSweepData.from_h5('/data/20250902/20250902_Device_aSi1_Channel2_LO_Sweep_hour12p6392.h5')
-    # sweep_on = LoSweepData.from_h5('/data/20250902/20250902_Device_aSi1_Channel2_LO_Sweep_hour12p6572.h5')
-    # setnum = 1006
-    # date = '20250902'
+    tile2_sweep_file1 = '/data/20260820/20260820_Device_aSi1_Channel2_telescope_275mK_20260804_LO_Sweep_hour9p4725_high_res.h5'
+    tile2_sweep_file2 = '/data/20260820/20260820_Device_aSi1_Channel2_telescope_275mK_20260804_LO_Sweep_hour10p6600_high_res.h5 '
 
-    # actual_sweep = LoSweepData.from_h5('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour11p6619_high_res.h5')
-    actual_sweep = LoSweepData.load('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour13p3533_high_res.h5')
-    sweep_off = LoSweepData.load('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour13p7597.h5')
-    sweep_on = LoSweepData.load('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_LO_Sweep_hour13p7733.h5')
-    setnum = 1008
-    date = '20250912'
+    tile3_sweep_file1 = '/data/20260820/20260820_Device_aSi2_Channel3_telescope_275mK_20260804_LO_Sweep_hour9p5714_high_res.h5'
+    tile3_sweep_file2 = '/data/20260820/20260820_Device_aSi2_Channel3_telescope_275mK_20260804_LO_Sweep_hour10p6600_high_res.h5'
 
-    fig, axes = plt.subplots(2, 3)
-    i_res = 249
-    pd = ProcessedData.from_tod(
-        date,
-        setnum,
-        do_electronics_noise_removal=False,
-        beam_map_mode=False,
-        ds_factor=10,
-        max_modes=2,
-    )
-    # raw_data = RawDataFile('/data/20250912/20250912_Device_aSi1_Channel2_telescope_275mK_TOD_set1008.h5', 'r')
-    # raw_data = RawDataFile('/data/20250902/20250912_Device_aSi1_Channel2_TOD_set1008.h5', 'r')
-
-    angle_off, units_off = sweep_off.freq_direction()
-    angle_on, units_on = sweep_on.freq_direction()
-    print(f'Theta ON = {angle_on[i_res]}')
-    print(f'Theta OFF = {angle_off[i_res]}')
-    print(f'Rotation angle = {pd.IQ_to_freq_diss_angle[i_res]}')
-    df_dI_off = 1 / (np.cos(angle_off[:]) * units_off[:])
-    df_dQ_off = 1 / (np.sin(angle_off[:]) * units_off[:])
-    df_dI_on = 1 / (np.cos(angle_on[:]) * units_on[:])
-    df_dQ_on = 1 / (np.sin(angle_on[:]) * units_on[:])
-
-    # LO Sweep - I
-    axes[0, 0].plot(sweep_off.data_I[i_res],label='I - Source OFF')
-    axes[0, 0].plot(sweep_on.data_I[i_res],label='I - Source ON')
-    axes[0, 0].plot(actual_sweep.data_I[i_res],label=f'I - Set {setnum}')
-    axes[0, 0].axvline(10, color='red', linestyle='dashed')
-    # axes[0, 0].plot(np.real(raw_data.lo_sweep[1, i_res]),label=f'I - Set {setnum} raw')
-    axes[0, 0].legend()
-    axes[0, 0].set_title(f'Resonator {i_res} - LO Sweep I Data') 
-    axes[0, 0].annotate(rf'$\cos{{\theta}} = {np.cos(pd.IQ_to_freq_diss_angle[i_res]):.3f}$', (.05, .7), xycoords='axes fraction')
-    axes[0, 0].annotate(f'dIdf OFF = {1 / df_dI_off[i_res]:.3f}', (.05, .65), xycoords='axes fraction')
-    axes[0, 0].annotate(f'dIdf ON = {1 / df_dI_on[i_res]:.3f}', (.05, .60), xycoords='axes fraction')
-
-    # I data
-    axes[0, 1].plot(pd.data_I[i_res])
-    # axes[0, 1].plot(decimate(raw_data.adc_i[i_res + 8], 10))
-    axes[0, 1].set_title(f'Resonator {i_res} - Data I')
-
-    # Frequency shift - I
-    # axes[0, 2].plot(pd.data_I[i_res] * df_dI_off[i_res] / 1e3)
-    # axes[0, 2].set_ylabel('Frequency Shift (KHz)')
-    # axes[0, 2].set_title('Frequency Shift - I Data')
-
-    axes[0, 2].plot(sweep_off.data_I[i_res], sweep_off.data_Q[i_res])
-
-    axes[1, 0].plot(sweep_off.data_Q[i_res],label='Q - Source OFF')
-    axes[1, 0].plot(sweep_on.data_Q[i_res],label='Q - Source ON')
-    axes[1, 0].plot(actual_sweep.data_Q[i_res],label=f'Q - Set {setnum}')
-    axes[1, 0].axvline(10, color='red', linestyle='dashed')
-    # axes[1, 0].plot(np.imag(raw_data.lo_sweep[1, i_res]),label=f'Q - Set {setnum} raw')
-    axes[1, 0].legend()
-    axes[1, 0].set_title(f'Resonator {i_res} - LO Sweep Q Data')
-    axes[1, 0].annotate(rf'$\sin{{\theta}} = {np.sin(pd.IQ_to_freq_diss_angle[i_res]):.3f}$', (.05, .7), xycoords='axes fraction')
-    axes[1, 0].annotate(f'dQdf OFF = {1 / df_dQ_off[i_res]:.3f}', (.05, .65), xycoords='axes fraction')
-    axes[1, 0].annotate(f'dQdf ON = {1 / df_dQ_on[i_res]:.3f}', (.05, .60), xycoords='axes fraction')
-
-    axes[1, 1].plot(pd.data_Q[i_res])
-    # axes[1, 1].plot(decimate(raw_data.adc_q[i_res + 8], 10))
-    axes[1, 1].set_title(f'Resonator {i_res} - Data Q')
-
-    # Frequency shift - Q
-    axes[1, 2].plot(pd.data_Q[i_res] * df_dQ_off[i_res] / 1e3)
-    axes[1, 2].set_ylabel('Frequency Shift (KHz)')
-    axes[1, 2].set_title('Frequency Shift - Q Data')
-    plt.show()
-    pd.close()
-    exit()
-
-    # pd = ProcessedData.from_file('20250805', 1002)
-    # raw_data = tables.File('/data/20250805/20250805_devrfsoc_rfsoc2_TOD_set1002.h5', 'r')
-
-    # dI_df = np.cos(pd.IQ_to_freq_diss_angle[:]) * pd.adc_units_to_hz[:]
-    # dQ_df = np.sin(pd.IQ_to_freq_diss_angle[:]) * pd.adc_units_to_hz[:]
-    # valid_tone_index = np.arange(pd.n_tones, dtype=int) + BAD_RFSOC_TONE_START_INDEX
-    # raw_data_I = raw_data.root.time_ordered_data.adc_i
-    # raw_data_Q = raw_data.root.time_ordered_data.adc_q
-    # # plt.plot(raw_data_I[valid_tone_index[idx]])
-    # # plt.plot(raw_data_I[valid_tone_index[241], :1000]); plt.xlim(475, 525); plt.show()
+    # tile2_tod = RawDataFile('/data/20260820/20260820_Device_aSi1_Channel2_telescope_275mK_20260804_TOD_set1005.h5', 'a')
+    # tile3_tod = RawDataFile('/data/20260820/20260820_Device_aSi2_Channel3_telescope_275mK_20260804_TOD_set1005.h5', 'a')
+    # tile2_sweep = LoSweepData.load(tile2_sweep_file2)
+    # tile3_sweep = LoSweepData.load(tile3_sweep_file2)
+    # tile2_tod.lo_sweep[:] = tile2_sweep.data[:]
+    # tile3_tod.lo_sweep[:] = tile3_sweep.data[:]
     # pdb.set_trace()
 
-    # angle_off, units_off = sweep_off.freq_direction()
-    # angle_on, units_on = sweep_on.freq_direction()
-    # dI_df_off = np.cos(angle_off[:]) * units_off[:]
-    # dQ_df_off = np.sin(angle_off[:]) * units_off[:]
-    # dI_df_on = np.cos(angle_on[:]) * units_on[:]
-    # dQ_df_on = np.sin(angle_on[:]) * units_on[:]
-    # print(f'dIQ_df with source OFF: {(dI_df_off[idx], dQ_df_off[idx])}')
-    # print(f'dIQ_df with source ON: {(dI_df_on[idx], dQ_df_on[idx])}')
-    # fig, axes = plt.subplots(1, 2)
-    # axes[0].plot(sweep_off.data_I[idx], label='OFF')
-    # axes[0].plot(sweep_on.data_I[idx], label='ON')
-    # axes[0].title('Data I')
-    # axes[0].legend()
-    # axes[1].plot(sweep_off.data_Q[idx], label='OFF')
-    # axes[1].plot(sweep_on.data_Q[idx], label='ON')
-    # axes[1].title('Data Q')
-    # axes[1].legend()
-    # plt.show()
+    # tile2_sweep1 = LoSweepData.load(tile2_sweep_file1)
+    # tile2_sweep2 = LoSweepData.load(tile2_sweep_file2)
+    # tile3_sweep1 = LoSweepData.load(tile3_sweep_file1)
+    # tile3_sweep2 = LoSweepData.load(tile3_sweep_file2)
+
+    date = '20260820'
+    pd1 = ProcessedData.load(date, 1004)
+    pd2 = ProcessedData.load(date, 1005)
+
+    tile2_sweep1 = pd1.get_lo_sweep(0)
+    tile2_sweep2 = pd2.get_lo_sweep(0)
+    tile3_sweep1 = pd1.get_lo_sweep(1)
+    tile3_sweep2 = pd2.get_lo_sweep(1)
+
+    # tile2_msr = LoSweepData.load_most_recent(pd2.get_tile_name(0), date=date)
+    # tile3_msr = LoSweepData.load_most_recent(pd2.get_tile_name(1), date=date)
     # pdb.set_trace()
+
+    # app = QApplication()
+    # tile2_dial1 = DiagnosticsDialog.from_h5(tile2_sweep_file1)
+    # tile2_dial1.set_window_name('Tile 2 - Lo Sweep 1')
+    # tile2_dial2 = DiagnosticsDialog.from_h5(tile2_sweep_file2)
+    # tile2_dial2.set_window_name('Tile 2 - Lo Sweep 2')
+    # tile3_dial1 = DiagnosticsDialog.from_h5(tile3_sweep_file1)
+    # tile3_dial2 = DiagnosticsDialog.from_h5(tile3_sweep_file2)
+    # tile2_sweep1 = tile2_dial1.sweep_data
+    # tile2_sweep2 = tile2_dial2.sweep_data
+    # tile3_sweep1 = tile3_dial1.sweep_data
+    # tile3_sweep2 = tile3_dial2.sweep_data
+
+    # tile2_dial1.show()
+    # tile2_dial2.show()
+    # tile3_dial1.show()
+    # tile3_dial2.show()
+    # app.exec()
+    # pdb.set_trace()
+
+    sweep1_ = (tile2_sweep1, tile3_sweep1)
+    sweep1_files = (tile2_sweep_file1, tile3_sweep_file1)
+    sweep2_ = (tile2_sweep2, tile3_sweep2)
+    sweep2_files = (tile2_sweep_file2, tile3_sweep_file2)
+
+    sweep1_angles = []
+    sweep2_angles = []
+    sweep1_units = []
+    sweep2_units = []
+
+    for i in range(2):
+        sweep1 = sweep1_[i]
+        sweep2 = sweep2_[i]
+        sweep1_ff = LoSweepData.load(sweep1_files[i])
+        sweep2_ff = LoSweepData.load(sweep2_files[i])
+
+        sweep1_angle, sweep1_unit = sweep1.freq_direction()
+        sweep2_angle, sweep2_unit = sweep2.freq_direction()
+        sweep1_ff_angle, sweep1_ff_unit = sweep1_ff.freq_direction()
+        sweep2_ff_angle, sweep2_ff_unit = sweep2_ff.freq_direction()
+
+        sweep1_angles.append(sweep1_angle)
+        sweep1_units.append(sweep1_unit)
+        sweep2_angles.append(sweep2_angle)
+        sweep2_units.append(sweep2_unit)
+
+        plt.figure()
+        plt.suptitle(f'Tile {i + 2} LO sweeps - Difference in $dI/df$')
+        n_tones = sweep2.n_tones
+        # n_tones = 50
+        # tones = np.arange(50, 50 + n_tones)
+        tones = np.arange(n_tones)
+        diff = sweep2_angle - sweep1_angle
+        diff_ff = sweep2_ff_angle - sweep1_ff_angle
+        colors = np.where(diff >= 0, 'green', 'red')
+        plt.vlines(
+            tones,
+            sweep1_angle[tones],
+            sweep2_angle[tones],
+            colors=colors[tones],
+        )
+        plt.scatter(tones, sweep1_angle[tones], color='blue', label='Sweep 1')
+        plt.scatter(tones, sweep2_angle[tones], color='orange', label='Sweep 2')
+        plt.legend()
+        plt.show()
+        pdb.set_trace()
+
+    pdb.set_trace()
