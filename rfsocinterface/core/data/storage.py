@@ -957,7 +957,7 @@ class ProcessedData(DataStorage):
                 tones_table['chanmask'],
                 channel_group.attrs['tile_name'],
             )
-            IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
+            IQ_to_freq_diss_angle, adc_units_to_hz, _ = sweep.freq_direction()
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
             calibration_info['adc_units_to_hz'] = adc_units_to_hz
 

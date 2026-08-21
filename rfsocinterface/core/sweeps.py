@@ -901,7 +901,7 @@ class LoSweepData:
 
     def freq_direction(
         self, fit_order: int = 3, deriv_length: int = 5
-    ) -> tuple[npt.NDArray, npt.NDArray]:
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """Compute dIQ/df and the proper conversion factors from IQ to freq/diss."""
         dIQ_df = np.zeros((2, self.n_tones))
         mid_ind = self.nfreq // 2
@@ -939,7 +939,7 @@ class LoSweepData:
                 f'Computed frequency direction:\n\ttheta = {rotation_angle}\n\t'
                 'adc_units_to_hz = {adc_units_to_hz}'
             )
-        return rotation_angle, adc_units_to_hz
+        return rotation_angle, adc_units_to_hz, dIQ_df
 
     def plot_full_trace(
         self, fig: Figure = None, callback: Callable | None = None
