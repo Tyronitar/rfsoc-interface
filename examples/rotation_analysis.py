@@ -123,7 +123,7 @@ if __name__ == '__main__':
     #     plt.show()
     #     pdb.set_trace()
 
-    with PdfPages('sweep_results.pdf') as pdf:
+    with PdfPages(f'sweep_results_{pdata.file_stub}.pdf') as pdf:
         for i_res in good_res:
             fig, axes = plt.subplots(1, 3, figsize=(12, 4))
             # if i_res in pos_res:

@@ -19,7 +19,7 @@ if __name__ == '__main__':
     hp_filter_freq = 0.03
     noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
-    ds_factor = 12
+    ds_factor = 5
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
@@ -41,10 +41,15 @@ if __name__ == '__main__':
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq, datasets=datasets)
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
     clean_tod = CleanTOD(dataset=dataset)
-    compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, cut_time=2, selection_indices='all')
+    compute_psd = ComputeNoisePSD(
+        # PsdBasis.GAIN_PHASE,
+        PsdBasis.FREQ_DISS,
+        cut_time=2,
+        selection_indices='all',
+    )
     psd_plotter = PlotPSD(
-        PsdBasis.GAIN_PHASE,
-        # PsdBasis.FREQ_DISS,
+        # PsdBasis.GAIN_PHASE,
+        PsdBasis.FREQ_DISS,
         show=True,
     )
     bin_tod_to_map = BinTODIntoMap(
@@ -91,14 +96,15 @@ if __name__ == '__main__':
         # plot_beammap,
     ])
 
-    date = '20260820'
-    setnum = 1004
+    date = '20260805'
+    setnum = 1005
 
 
     pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
     # pdata = ProcessedData.load(date, setnum)
+    # pdb.set_trace()
     # pipeline.run(pdata)
     # params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
     # det_dy = params.detector_delta_y[:]

@@ -264,7 +264,8 @@ def plot_psd_df_over_f(
     figure_kwargs: dict | None = None,
     freq_color: str = 'b',
     diss_color: str = 'o',
-    offres_color: str = 'r',
+    offres_freq_color: str = 'purple',
+    offres_diss_color: str = 'r',
     title_fontsize: int = 16,
     axis_label_fontsize: int = 16,
     legend_fontsize: int = 14,
@@ -352,6 +353,7 @@ def plot_psd_df_over_f(
     med_color_diss, fill_color_diss = decode_color_string(diss_color)
     med_colors = [med_color_freq, med_color_diss]
     fill_colors = [fill_color_freq, fill_color_diss]
+    offres_colors = [offres_freq_color, offres_diss_color]
 
     super_labels = ['Frequency', 'Dissipation']
     labels = [
@@ -411,7 +413,7 @@ def plot_psd_df_over_f(
                 freq,
                 offres_median[j],
                 linestyle='dashed',
-                color=offres_color,
+                color=offres_colors[j],
                 label=f'Off-Resonance {super_labels[j]} Median',
             )
 
