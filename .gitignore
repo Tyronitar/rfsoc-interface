@@ -167,9 +167,41 @@ cython_debug/
 # IDE
 .vscode/
 
+# Profiling files
+
+*.bin
+*.html
+
 # Data files
 *.npy
+*.npz
 *.h5
+*.h5.*
+data/
+!rfsocinterface/core/*
+!Default_tone_list.npy
+
+# Profiling Files
+*.bin
+*.html
+*.prof
+*.out
 
 # Plots
 *.pdf
+*.png
+*.gif
+*.mp4
+
+# Configuration Files
+*.yml
+*.yaml
+*.json
+!*example*.json
+
+
+# Extra UI files
+ui_resources/*.py
+
+# Keep testing data files
+!tests/test_data/**

@@ -1,3 +1,9 @@
 """A user-friendly GUI for configuring and monitoring MKID readout software."""
 
-__version__ = '0.1.0'
+import os
+
+__version__ = '1.0.0'
+
+os.umask(
+    0
+)  # Set user file-creation mask to 0 so files are created with permissions we set
