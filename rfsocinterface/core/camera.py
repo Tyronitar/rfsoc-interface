@@ -367,7 +367,7 @@ class CameraController:
                     f'CAMERA sent command "{command}" with data {args}'
                 )
             except KeyboardInterrupt:
-                _camera_logger.error(f'CAMERA timed out sending command "{command}"') # noqa: TRY400
+                _camera_logger.error(f'CAMERA timed out sending command "{command}"')  # noqa: TRY400
             finally:
                 timer.cancel()
         else:
