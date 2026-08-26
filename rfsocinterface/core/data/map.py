@@ -16,6 +16,7 @@ from matplotlib import animation
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy import signal
+from scipy.ndimage import gaussian_filter as apply_gaussian_blur
 from scipy.spatial.distance import cdist
 
 from rfsocinterface.core.data.routines import (
@@ -27,16 +28,19 @@ from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.data.utils import (
     DEFAULT_MAP_DPIX,
     N_POLARIZATION,
+    OPTCAM_DPIX,
     OPTCAM_HEIGHT_PIXELS,
     OPTCAM_OFFSET_AZ_PIX,
     OPTCAM_OFFSET_ZA_PIX,
-    OPTCAM_PIX_SIZE_DEGREES,
     OPTCAM_WIDTH_PIXELS,
+    SKIPR_PSF_SIGMA,
     get_channel_group_name,
 )
 from rfsocinterface.core.utils import (
     GAUSSIAN_SIGMA,
     PERMISSIONS_ALL_FULL,
+    ChanmaskValue,
+    add_colorbar,
     add_colorbar_outside,
     argclosest,
     ensure_path,
@@ -114,7 +118,7 @@ def get_scaled_optical_image(
     optical_image: npt.NDArray,
     map_az: npt.NDArray,
     map_za: npt.NDArray,
-    optcam_pix_size_degrees: float = OPTCAM_PIX_SIZE_DEGREES,
+    optcam_pix_size_degrees: float = OPTCAM_DPIX,
     optcam_offset_az_pix: float = OPTCAM_OFFSET_AZ_PIX,
     optcam_offset_za_pix: float = OPTCAM_OFFSET_ZA_PIX,
     optcam_height_pixels: int = OPTCAM_HEIGHT_PIXELS,
@@ -134,40 +138,89 @@ def get_scaled_optical_image(
         opt_center_za - int(opt_npix_za / 2),
         opt_center_za + int(opt_npix_za / 2),
     )
-    return optical_image[za_range, az_range]
+    az_padding = (
+        max(0, 0 - az_range.start),
+        max(0, az_range.stop - optcam_width_pixels),
+    )
+    za_padding = (
+        max(0, 0 - za_range.start),
+        max(0, za_range.stop - optcam_height_pixels),
+    )
+    im = np.pad(optical_image, (za_padding, az_padding, (0, 0)))
+    fixed_az_range = slice(
+        max(0, az_range.start), max(az_range.stop, az_range.stop + az_padding[1])
+    )
+    fixed_za_range = slice(
+        max(0, za_range.start), max(za_range.stop, za_range.stop + za_padding[1])
+    )
+    return im[fixed_za_range, fixed_az_range]
 
 
 def get_extent(
-    map_az: npt.NDArray, map_za: npt.NDArray, dpix: float = DEFAULT_MAP_DPIX
+    map_az: npt.NDArray,
+    map_za: npt.NDArray,
+    dpix: float = DEFAULT_MAP_DPIX,  # noqa: ARG001
 ) -> tuple[float, float, float, float]:
     """Get the extent of the map for plotting."""
     return (
-        min(map_az) - dpix / 2.0,
-        max(map_az) + dpix / 2,
-        max(map_za) + dpix / 2.0,
-        min(map_za) - dpix / 2.0,
+        min(map_az),
+        max(map_az),
+        max(map_za),
+        min(map_za),
     )
 
 
 def get_map_size(
-    detector_az: h5py.Dataset,
-    detector_za: h5py.Dataset,
+    pdata: ProcessedData,
     az_trim: float,
     za_trim: float,
     dpix: float = DEFAULT_MAP_DPIX,
-    beam_map_mode: bool = False,
+    beam_map_mode: bool = False,  # noqa: ARG001
 ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
     """Determine map size based on detector positions and desired pixel size."""
-    max_az = np.nanmax(detector_az) - az_trim
-    min_az = np.nanmin(detector_az) + az_trim
-    max_za = np.nanmax(detector_za) - za_trim
-    min_za = np.nanmin(detector_za) + za_trim
+    abs_max_az = abs_max_za = -np.inf
+    abs_min_az = abs_min_za = np.inf
+    for i_chan in range(pdata.n_chan):
+        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+        det_az = det_az[pdata.get_onres_ind(i_chan)]
+        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+        det_za = det_za[pdata.get_onres_ind(i_chan)]
+        abs_max_az = max(np.nanmax(det_az), abs_max_az)
+        abs_min_az = min(np.nanmin(det_az), abs_min_az)
+        abs_max_za = max(np.nanmax(det_za), abs_max_za)
+        abs_min_za = min(np.nanmin(det_za), abs_min_za)
+    abs_max_az -= az_trim
+    abs_min_az += az_trim
+    abs_max_za -= za_trim
+    abs_min_za += za_trim
+
+    # Refine the bounds accounting for the trim
+    # We only count azimuth where the zenith angle is within the cropped bounds and vice
+    # versa.
+    max_az = max_za = -np.inf
+    min_az = min_za = np.inf
+    for i_chan in range(pdata.n_chan):
+        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+        det_az = det_az[pdata.get_onres_ind(i_chan)]
+        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+        det_za = det_za[pdata.get_onres_ind(i_chan)]
+        good_idx = tuple(
+            np.argwhere(
+                ((abs_min_az <= det_az) & (det_az <= abs_max_az))
+                & ((abs_min_za <= det_za) & (det_za <= abs_max_za))
+            ).T
+        )
+        det_az = det_az[good_idx]
+        det_za = det_za[good_idx]
+        max_az = max(np.nanmax(det_az), max_az)
+        min_az = min(np.nanmin(det_az), min_az)
+        max_za = max(np.nanmax(det_za), max_za)
+        min_za = min(np.nanmin(det_za), min_za)
+
     n_pix_x = int(np.ceil((max_az - min_az) / dpix))
     n_pix_y = int(np.ceil((max_za - min_za) / dpix))
     map_x = np.arange(n_pix_x) * dpix + min_az + dpix / 2.0
     map_y = np.arange(n_pix_y) * dpix + min_za + dpix / 2.0
-    if not beam_map_mode:
-        map_y += 0.1  # 0.1 accounts for assymmetry in array
 
     return n_pix_x, n_pix_y, map_x, map_y
 
@@ -175,7 +228,7 @@ def get_map_size(
 def compute_map_kernel(
     r0: float = 0.15,
     dpix: float = DEFAULT_MAP_DPIX,
-    sigma: float = 0.087 / 2.3,
+    sigma: float = SKIPR_PSF_SIGMA,
 ) -> npt.NDArray:
     """Compute a Gaussian kernel for smoothing the map.
 
@@ -223,7 +276,7 @@ class BinTODIntoMap(DataRoutine):
     """
 
     name = 'BinTODIntoMap'
-    version = '2.2.0'
+    version = '3.0.0'
 
     produces: ClassVar[set] = {
         '/map/',
@@ -270,7 +323,7 @@ class BinTODIntoMap(DataRoutine):
             dpix (float, optional): The pixel size of the map in degrees. Defaults to
                 0.03 degrees.
             r0 (float, optional): The radius of the kernel used for smoothing the map,
-                in degrees. Defaults to 0.15 degrees.
+                in degrees. If 0, no kernel will be applied. Defaults to 0.15 degrees.
             sigma (float, optional): The standard deviation of the Gaussian kernel used
                 for smoothing the map, in degrees. Defaults to 0.087/2.3 degrees, which
                 corresponds to a FWHM of 0.087 degrees (the approximate beam size of
@@ -305,10 +358,7 @@ class BinTODIntoMap(DataRoutine):
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
-        return [
-            f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}'
-            for i_chan in range(pdata.n_chan)
-        ]
+        return list(pdata.search_regex_names(dataset))
 
     def _initialize_map_arrays(
         self,
@@ -322,7 +372,7 @@ class BinTODIntoMap(DataRoutine):
 
         Overwrites existing "map" group if it already exists.
         """
-        if pdata.has('map', exact_match=True):
+        if pdata.has('/map', exact_match=True):
             _logger.warning(
                 f'{self.name}: Map group already exists in the file; '
                 'overwriting datasets.'
@@ -355,7 +405,7 @@ class BinTODIntoMap(DataRoutine):
             chunks=(n_pix_x, n_pix_y),
             dtype=np.float64,
         )
-        map_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
+        map_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
         map_group.attrs['dpix'] = dpix
         map_group.attrs['units'] = (
             'mK' if self.params['dataset'] == 'data_mK' else 'df/f'
@@ -368,7 +418,7 @@ class BinTODIntoMap(DataRoutine):
                 i_chan, 'time_ordered_data/interpolated_samples'
             )
             good_samples[i_chan] = np.setdiff1d(
-                np.arange(pdata.n_samples), interpolated_samples
+                np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
             )
 
     @typing.override
@@ -376,25 +426,33 @@ class BinTODIntoMap(DataRoutine):
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
-            pdata.detector_az,
-            pdata.detector_za,
+            pdata,
             self.params['az_trim'],
             self.params['za_trim'],
             dpix,
             beam_map_mode=beam_map_mode,
         )
-        n_maps = N_POLARIZATION if not beam_map_mode else pdata.n_tones
+        n_maps = N_POLARIZATION if not beam_map_mode else pdata.total_tones
         self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za
-        detector_az = pdata.detector_az
-        detector_za = pdata.detector_za
+        detector_az = [
+            pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
+        ]
+        detector_za = [
+            pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)
+        ]
 
+        data = []
         match self.params['dataset']:
             case 'data_mK':
-                data = pdata.data_mK[:]
+                data = [pdata.get_data_mK(i_chan)[:] for i_chan in range(pdata.n_chan)]
             case 'data_freq':  # df / f
-                data = pdata.data_freq_diss[0] / pdata.detector_f()[:, np.newaxis]
+                for i_chan in range(pdata.n_chan):
+                    data.append(
+                        pdata.get_data_freq_diss(i_chan)[0]
+                        / pdata.get_detector_f(i_chan)[:, np.newaxis]
+                    )
 
         sum_map = pdata['map/sum_map'][:]
         hits_map = pdata['map/hits_map'][:]
@@ -404,17 +462,28 @@ class BinTODIntoMap(DataRoutine):
 
         # Compute NETD values
         _logger.info(f'{self.name}: Computing netd...')
-        wind = signal.get_window('hamming', pdata.n_samples)
         hp_filter_freq = self.params['hp_filter_freq']
         lp_filter_freq = self.params['lp_filter_freq']
-        for i_tone in np.where(chanmask == 1)[0]:
-            this_freq, this_psd = signal.periodogram(
-                data[i_tone, :], pdata.fs, window=wind
-            )
-            valid_freq = np.where(
-                (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
-            )
-            netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
+        for i_chan in range(pdata.n_chan):
+            wind = signal.get_window('hamming', pdata.get_n_samples(i_chan))
+            this_data = data[i_chan]
+            fs = pdata.get_fs(i_chan)
+            for i_tone_relative in range(pdata.get_n_tones(i_chan)):
+                if (
+                    pdata.get_chanmask(i_chan)[i_tone_relative]
+                    == ChanmaskValue.ON_RESONANCE
+                ):
+                    this_freq, this_psd = signal.periodogram(
+                        this_data[i_tone_relative, :], fs, window=wind
+                    )
+                    valid_freq = np.where(
+                        (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
+                    )
+                    i_tone_absolute = pdata.get_absolute_tone_index(
+                        i_chan, i_tone_relative
+                    )
+                    netd[i_tone_absolute] = np.sqrt(np.median(this_psd[valid_freq]))
+
         _logger.info(f'{self.name}: Done computing netd')
 
         # Get rid of tones with bad weights
@@ -442,39 +511,42 @@ class BinTODIntoMap(DataRoutine):
             netd[chanmask != 1] = 0
 
         if beam_map_mode:
-            tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
+            tones_to_map = np.argwhere(
+                pdata.chanmask != ChanmaskValue.OFF_RESONANCE
+            ).flatten()
         else:
-            tones_to_map = np.argwhere(chanmask == 1).flatten()
+            tones_to_map = np.argwhere(chanmask == ChanmaskValue.ON_RESONANCE).flatten()
+            # tones_to_map = tones_to_map[tones_to_map >= pdata.get_n_tones(0)]
 
         # Create map
         _logger.info(f'{self.name}: Creating map...')
-        for n_loop, i_tone in enumerate(tones_to_map):
+        for n_loop, i_tone_absolute in enumerate(tones_to_map):
             if n_loop == np.size(tones_to_map) // 2:
                 _logger.info(f'{self.name}: Halfway done creating map...')
             if beam_map_mode:
-                map_idx = i_tone
+                map_idx = i_tone_absolute
                 weight = 1.0
             else:
                 map_idx = (
-                    pdata.detector_pol[i_tone] - 1
+                    pdata.detector_pol[i_tone_absolute] - 1
                 )  # Polarization 1 -> Index 0, 2 -> 1, etc.
-                weight = 1.0 / netd[i_tone] ** 2.0
+                weight = 1.0 / netd[i_tone_absolute] ** 2.0
 
-            this_detector_az = detector_az[i_tone]
-            this_detector_za = detector_za[i_tone]
+            i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
+            this_detector_az = detector_az[i_chan][i_tone_relative]
+            this_detector_za = detector_za[i_chan][i_tone_relative]
 
             # Get the good samples if they haven't been specified
-            this_clean_data = np.squeeze(data[i_tone])
+            this_clean_data = np.squeeze(data[i_chan][i_tone_relative])
 
             # Get this detector's positions, need to account for rotation in EL based on
             # beammap taken at EL=89
             x_ind = np.squeeze(np.round((this_detector_az - map_az[0]) / dpix))
-            x_ind = x_ind.astype('int64')
+            x_ind = np.nan_to_num(x_ind, -1).astype('int')
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
-            y_ind = y_ind.astype('int64')
+            y_ind = np.nan_to_num(y_ind, -1).astype('int')
 
             # eliminate samples outside the map
-            i_chan = pdata.get_channel_index_from_tone_index(i_tone)
             good_samples = pdata['map/good_samples'][i_chan][:]
             valid_index = np.ndarray.flatten(
                 np.argwhere(
@@ -501,14 +573,16 @@ class BinTODIntoMap(DataRoutine):
 
         # Create kernel and convolve with map to get more accurate values for pixels
         # with few hits.
-        kernel = compute_map_kernel(
-            r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
-        )
-        for map_idx in range(n_maps):
-            sum_map[map_idx] = signal.convolve2d(sum_map[map_idx], kernel, mode='same')
-            hits_map[map_idx] = signal.convolve2d(
-                hits_map[map_idx], kernel, mode='same'
-            )
+        r0 = self.params['r0']
+        if r0 > 0:
+            kernel = compute_map_kernel(r0=r0, dpix=dpix, sigma=self.params['sigma'])
+            for map_idx in range(n_maps):
+                sum_map[map_idx] = signal.convolve2d(
+                    sum_map[map_idx], kernel, mode='same'
+                )
+                hits_map[map_idx] = signal.convolve2d(
+                    hits_map[map_idx], kernel, mode='same'
+                )
 
         if not beam_map_mode:
             pdata.set_chanmask(chanmask)
@@ -545,7 +619,7 @@ class PlotMap(DataRoutine):
     """
 
     name = 'PlotMap'
-    version = '2.2.0'
+    version = '3.0.0'
 
     requires: ClassVar[set] = {
         '/map',
@@ -570,7 +644,6 @@ class PlotMap(DataRoutine):
         self,
         gaussian_sigma: float = GAUSSIAN_SIGMA,
         valid_covariance_threshold: float = 0.5,
-        cb_shrink: float = 0.95,
         max_abs_threshold: float = 0.75,
         save_plot: bool = True,
         savefile: Path | None = None,
@@ -586,8 +659,6 @@ class PlotMap(DataRoutine):
             valid_covariance_threshold (float, optional): The threshold for determining
                 whether a pixel is flagged based on the covariance of the maps. Defaults
                 to 0.5.
-            cb_shrink (float, optional): The shrink factor for the colorbar in the plot.
-                Defaults to 0.95.
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
             save_plot (bool, optional): Whether to save the plot as a PNG file. Defaults
@@ -604,7 +675,6 @@ class PlotMap(DataRoutine):
         super().__init__(
             gaussian_sigma=gaussian_sigma,
             valid_covariance_threshold=valid_covariance_threshold,
-            cb_shrink=cb_shrink,
             max_abs_threshold=max_abs_threshold,
             save_plot=save_plot,
             savefile=savefile,
@@ -644,13 +714,18 @@ class PlotMap(DataRoutine):
             (bool): Whether new plotting datasets were created (True) or existing
                 datasets were used (False).
         """
-        if pdata.has('map/plotting', exact_match=True):
+        if pdata.has('/map/plotting', exact_match=True):
             if not self.params['overwrite']:
                 # Specified not to overwrite existing plotting datasets, so just
                 # plot the data without recomputing the maps.
+                _logger.info(
+                    f'{self.name}: "map/plotting" group already exists in the file; '
+                    'using existing datasets.'
+                )
                 return False
             _logger.info(
-                'Plotting group already exists in the file; overwriting datasets.'
+                f'{self.name}: "map/plotting" group already exists in the file; '
+                'overwriting datasets.'
             )
             del pdata['map/plotting']
         pdata['map'].create_group('plotting')
@@ -743,7 +818,6 @@ class PlotMap(DataRoutine):
         valid_netd_1 = np.argwhere(netd_1 > 0)
         valid_netd_2 = np.argwhere(netd_2 > 0)
 
-        cb_shrink = self.params['cb_shrink']
         max_abs_threshold = self.params['max_abs_threshold']
         this_xlim = min(map_az), max(map_az)
         this_ylim = max(map_za), min(map_za)
@@ -757,14 +831,14 @@ class PlotMap(DataRoutine):
             np.sum(1.0 / netd_2[valid_netd_2] ** 2) / np.size(valid_netd_2)
         )
 
-        t0 = time.asctime(time.localtime(pdata.timestamp[0] - 7500))
+        t0 = time.asctime(time.localtime(pdata.get_timestamp(0)[0] - 7500))
         vis = pdata.optical_visibility[()]
 
         # TODO: Make figure size change based on the size of the map
         # aspect_ratio = (this_ylim[0] - this_ylim[1]) / (this_xlim[1] - this_xlim[0])
         # fig_height = 7.5
         # fig_width = fig_height / aspect_ratio
-        fig, axes = plt.subplots(4, 1, figsize=(15, 7.5), sharex=True)
+        fig, axes = plt.subplots(5, 1, figsize=(15, 9), sharex=True, sharey=True)
         fig.suptitle(
             f'{pdata.file_stub}\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
             f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
@@ -777,15 +851,14 @@ class PlotMap(DataRoutine):
 
         # Vertical polarization
         im = axes[0].imshow(
-            np.flip(np.transpose(map_val[0][::-1]), 1),
+            np.transpose(map_val[0]),
             extent=extent,
             aspect='equal',
             vmin=-max_abs,
             vmax=max_abs,
             cmap='Blues_r',
         )
-        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[0])
-        cb.set_label(f'V-Pol Signal ({units})', rotation=270, labelpad=15)
+        add_colorbar(fig, axes[0], im, f'V-Pol Signal ({units})')
         axes[0].contour(
             np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -795,15 +868,14 @@ class PlotMap(DataRoutine):
 
         # Horizontal polarization
         im = axes[1].imshow(
-            np.flip(np.transpose(map_val[1][::-1]), 1),
+            np.transpose(map_val[1]),
             extent=extent,
             aspect='equal',
             vmin=-max_abs,
             vmax=max_abs,
             cmap='Reds_r',
         )
-        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[1])
-        cb.set_label(f'H-Pol Signal ({units})', rotation=270, labelpad=15)
+        add_colorbar(fig, axes[1], im, f'H-Pol Signal ({units})')
         axes[1].contour(
             np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -813,15 +885,14 @@ class PlotMap(DataRoutine):
 
         # Total signal
         im = axes[2].imshow(
-            np.flip(np.transpose(total_map[::-1]), 1),
+            np.transpose(total_map),
             extent=extent,
             aspect='equal',
             vmin=-max_abs,
             vmax=max_abs,
             cmap='Greys_r',
         )
-        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[2])
-        cb.set_label(f'Total Signal ({units})', rotation=270, labelpad=15)
+        add_colorbar(fig, axes[2], im, f'Total Signal ({units})')
         axes[2].contour(
             np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -834,7 +905,7 @@ class PlotMap(DataRoutine):
             dpix, pdata.optical_image, map_az, map_za
         )
         opt_vmax = 255.0
-        opt_vmin = -255  # NOTE: Shouldn't this be 0?
+        opt_vmin = 0  # NOTE: Shouldn't this be 0?
         im = axes[3].imshow(
             optical_image,
             extent=extent,
@@ -842,10 +913,25 @@ class PlotMap(DataRoutine):
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        cb = fig.colorbar(im, shrink=cb_shrink, ax=axes[3])
-        cb.set_label('Optical Signal (rgb)', rotation=270, labelpad=15)
-        axes[3].set_xlabel('Azimuth (degrees)')
+        add_colorbar(fig, axes[3], im, 'Optical Signal (rgb)')
 
+        # Blurred optical image
+        sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
+        blurred_optical_image = apply_gaussian_blur(
+            optical_image,
+            (sigma, sigma, 0),
+        )
+        im = axes[4].imshow(
+            blurred_optical_image,
+            extent=extent,
+            aspect='equal',
+            vmin=opt_vmin,
+            vmax=opt_vmax,
+        )
+        add_colorbar(fig, axes[4], im, 'Blurred\nOptical Signal (rgb)')
+
+        axes[-1].set_xlabel('Azimuth (degrees)')
+        fig.tight_layout()
         fig.subplots_adjust(wspace=0, hspace=0)
 
         if self.params['save_plot']:
@@ -855,7 +941,7 @@ class PlotMap(DataRoutine):
                     pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
                 )
             if not self.params['savefile'].exists():
-                self.paramsp['savefile'].parent.mkdir(
+                self.params['savefile'].parent.mkdir(
                     mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
                 )
                 self.params['savefile'].touch(PERMISSIONS_ALL_FULL)
@@ -901,8 +987,8 @@ def animate_video(
     max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
     vmax = max_abs
     vmin = -max_abs
-    vmax = 500
-    vmin = -500
+    # vmax = 500
+    # vmin = -500
 
     fig, axes = plt.subplots(2, 1, figsize=(5, 10), sharex=True)
     im_mm = axes[0].imshow(
@@ -962,7 +1048,7 @@ class MakeVideo(DataRoutine):
     """
 
     name = 'MakeVideo'
-    version = '1.2.0'
+    version = '2.0.0'
 
     produces: ClassVar[set] = {
         '/video',
@@ -1093,7 +1179,7 @@ class MakeVideo(DataRoutine):
         If the 'video' group already exists, it will overwrite it and create new
         datasets.
         """
-        if pdata.has('video', exact_match=True):
+        if pdata.has('/video', exact_match=True):
             _logger.warning(
                 f'{self.name}: Video group already exists in the file; '
                 'overwriting datasets.'
@@ -1102,7 +1188,7 @@ class MakeVideo(DataRoutine):
         video_group = pdata.create_group('video')
         video_group.create_dataset('map_az', shape=(n_pix_x,), dtype=np.float64)
         video_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
-        video_group.create_dataset('netd', shape=(pdata.n_tones,), dtype=np.float64)
+        video_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
         video_group.create_dataset(
             'sum_map',
             shape=(n_blocks, n_maps, n_pix_x, n_pix_y),
@@ -1143,24 +1229,26 @@ class MakeVideo(DataRoutine):
                 i_chan, 'time_ordered_data/interpolated_samples'
             )
             good_samples[i_chan] = np.setdiff1d(
-                np.arange(pdata.n_samples), interpolated_samples
+                np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
             )
 
     def _compute_new_maps(self, pdata: ProcessedData):  # noqa: PLR0912, PLR0915
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         block_size_s = self.params['block_size_s']
-        blocks = np.arange(0, pdata.n_samples, int(pdata.fs * block_size_s))
+        least_samples_chan = np.argmin(pdata.n_samples)
+        n_samples = pdata.get_n_samples(least_samples_chan)
+        fs = pdata.get_fs(least_samples_chan)
+        blocks = np.arange(0, n_samples, int(fs * block_size_s))
         n_blocks = blocks.size - 1
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
-            pdata.detector_az,
-            pdata.detector_za,
+            pdata,
             self.params['az_trim'],
             self.params['za_trim'],
             dpix,
             beam_map_mode=beam_map_mode,
         )
-        n_maps = N_POLARIZATION if not beam_map_mode else self.n_tones
+        n_maps = N_POLARIZATION if not beam_map_mode else pdata.total_tones
 
         # Determine optical video dimenmsions before intiializing arryas
         if np.size(pdata.optical_image) == 0:
@@ -1206,15 +1294,24 @@ class MakeVideo(DataRoutine):
         )
         pdata['video/map_az'][:] = map_az
         pdata['video/map_za'][:] = map_za
-        detector_az = pdata.detector_az
-        detector_za = pdata.detector_za
+        detector_az = [
+            pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
+        ]
+        detector_za = [
+            pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)
+        ]
         optical_video = pdata['video/cropped_optical_video']
 
+        data = []
         match self.params['dataset']:
             case 'data_mK':
-                data = pdata.data_mK[:]
-            case 'data_freq':
-                data = pdata.data_freq_diss[0]
+                data = [pdata.get_data_mK(i_chan)[:] for i_chan in range(pdata.n_chan)]
+            case 'data_freq':  # df / f
+                for i_chan in range(pdata.n_chan):
+                    data.append(
+                        pdata.get_data_freq_diss(i_chan)[0]
+                        / pdata.get_detector_f(i_chan)[:, np.newaxis]
+                    )
 
         sum_map = pdata['video/sum_map'][:]
         hits_map = pdata['video/hits_map'][:]
@@ -1224,17 +1321,28 @@ class MakeVideo(DataRoutine):
 
         # Compute NETD values
         _logger.info(f'{self.name}: Computing netd...')
-        wind = signal.get_window('hamming', pdata.n_samples)
         hp_filter_freq = self.params['hp_filter_freq']
         lp_filter_freq = self.params['lp_filter_freq']
-        for i_tone in np.where(chanmask == 1)[0]:
-            this_freq, this_psd = signal.periodogram(
-                data[i_tone, :], pdata.fs, window=wind
-            )
-            valid_freq = np.where(
-                (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
-            )
-            netd[i_tone] = np.sqrt(np.median(this_psd[valid_freq]))
+        for i_chan in range(pdata.n_chan):
+            wind = signal.get_window('hamming', pdata.get_n_samples(i_chan))
+            this_data = data[i_chan]
+            fs = pdata.get_fs(i_chan)
+            for i_tone_relative in range(pdata.get_n_tones(i_chan)):
+                if (
+                    pdata.get_chanmask(i_chan)[i_tone_relative]
+                    == ChanmaskValue.ON_RESONANCE
+                ):
+                    this_freq, this_psd = signal.periodogram(
+                        this_data[i_tone_relative, :], fs, window=wind
+                    )
+                    valid_freq = np.where(
+                        (this_freq > hp_filter_freq) & (this_freq < lp_filter_freq)
+                    )
+                    i_tone_absolute = pdata.get_absolute_tone_index(
+                        i_chan, i_tone_relative
+                    )
+                    netd[i_tone_absolute] = np.sqrt(np.median(this_psd[valid_freq]))
+
         _logger.info(f'{self.name}: Done computing netd')
 
         # Get rid of tones with bad weights
@@ -1261,39 +1369,41 @@ class MakeVideo(DataRoutine):
         netd[chanmask != 1] = 0
 
         if beam_map_mode:
-            tones_to_map = np.argwhere(pdata.chanmask != 0).flatten()
+            tones_to_map = np.argwhere(
+                pdata.chanmask != ChanmaskValue.OFF_RESONANCE
+            ).flatten()
         else:
-            tones_to_map = np.argwhere(chanmask == 1).flatten()
+            tones_to_map = np.argwhere(chanmask == ChanmaskValue.ON_RESONANCE).flatten()
 
         # Create map
         _logger.info(f'{self.name}: Creating map...')
-        for n_loop, i_tone in enumerate(tones_to_map):
+        for n_loop, i_tone_absolute in enumerate(tones_to_map):
             if n_loop == np.size(tones_to_map) // 2:
                 _logger.info(f'{self.name}: Halfway done creating map...')
             if beam_map_mode:
-                map_idx = i_tone
+                map_idx = i_tone_absolute
                 weight = 1.0
             else:
                 map_idx = (
-                    pdata.detector_pol[i_tone] - 1
+                    pdata.detector_pol[i_tone_absolute] - 1
                 )  # Polarization 1 -> Index 0, 2 -> 1, etc.
-                weight = 1.0 / netd[i_tone] ** 2.0
+                weight = 1.0 / netd[i_tone_absolute] ** 2.0
 
-            this_detector_az = detector_az[i_tone]
-            this_detector_za = detector_za[i_tone]
+            i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
+            this_detector_az = detector_az[i_chan][i_tone_relative]
+            this_detector_za = detector_za[i_chan][i_tone_relative]
 
             # Get the good samples if they haven't been specified
-            this_clean_data = np.squeeze(data[i_tone])
+            this_clean_data = np.squeeze(data[i_chan][i_tone_relative])
 
             # Get this detector's positions, need to account for rotation in EL based on
             # beammap taken at EL=89
             x_ind = np.squeeze(np.round((this_detector_az - map_az[0]) / dpix))
-            x_ind = x_ind.astype('int64')
+            x_ind = np.nan_to_num(x_ind, -1).astype('int')
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
-            y_ind = y_ind.astype('int64')
+            y_ind = np.nan_to_num(y_ind, -1).astype('int')
 
             # eliminate samples outside the map
-            i_chan = pdata.get_channel_index_from_tone_index(i_tone)
             good_samples = pdata['video/good_samples'][i_chan][:]
             valid_index = np.ndarray.flatten(
                 np.argwhere(
@@ -1345,6 +1455,7 @@ class MakeVideo(DataRoutine):
         _logger.info(f'{self.name}: Done creating maps.')
 
         # Optical Video processing
+        timestamp = pdata.get_timestamp(least_samples_chan)[:]
         if pdata.has('global_data/optical_video_timestamp', exact_match=True):
             _logger.info(f'{self.name}: Synchronizing mm and optical videos...')
             optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
@@ -1354,7 +1465,7 @@ class MakeVideo(DataRoutine):
             video_timestamp = np.zeros(n_blocks)
             for i_block, block_end in enumerate(blocks[1:]):
                 block_slice = slice(blocks[i_block], block_end)
-                timestamp_block = pdata.timestamp[block_slice]
+                timestamp_block = timestamp[block_slice]
                 this_timestamp = np.mean(timestamp_block)
                 video_timestamp[i_block] = this_timestamp
                 closest_optical_frame = argclosest(optical_timestamp, this_timestamp)

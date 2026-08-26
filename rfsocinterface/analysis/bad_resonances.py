@@ -44,7 +44,7 @@ class FindDoubleResonances(DataRoutine):
         '/beammap/double_resonance/fwhm_za',
     }
 
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         delta_sigma_fwhm_threshold: float = 1.5,
         delta_sigma_chisq_threshold: float = 3,
@@ -134,8 +134,9 @@ class FindDoubleResonances(DataRoutine):
         neg_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
         neg_group.create_dataset('is_double', (pdata.n_tones,), dtype=np.bool)
 
+    # ruff: disable[PLR2004, F841]
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str] | None = None):
+    def run(self, pdata: ProcessedData, inputs: list[str] | None = None):  # noqa: PLR0915
         self._initialize_datasets(pdata)
 
         map_az = pdata['map/map_az'][:][:, np.newaxis]
@@ -175,7 +176,8 @@ class FindDoubleResonances(DataRoutine):
                 #     fig, axes = plt.subplots(1, 3)
                 #     fig.suptitle(f'Resonator {i_res}')
                 #     axes[0].imshow(np.flip(np.transpose(map_val[i_res][::-1]), 1))
-                #     axes[1].imshow(np.flip(np.transpose(residual_map_val[i_res][::-1]), 1))
+                #     axes[1].imshow(
+                #         np.flip(np.transpose(residual_map_val[i_res][::-1]), 1))
                 #     axes[2].imshow(np.flip(np.transpose(gaussian[::-1]), 1))
                 #     plt.show()
                 #     pdb.set_trace()
@@ -270,7 +272,7 @@ class FindDoubleResonances(DataRoutine):
         idx = idx[~np.isnan(amplitude[idx])]
         idx = idx[np.isfinite(snr[idx])]
         idx = idx[~np.isnan(snr[idx])]
-        beta, ssr, rank, s = np.linalg.lstsq(amp_matrix[idx], snr[idx])
+        beta, _ssr, _rank, _s = np.linalg.lstsq(amp_matrix[idx], snr[idx])
         expected_snr = amp_matrix.dot(beta)
         resid = snr - expected_snr
         squared_resid = resid**2
@@ -290,11 +292,6 @@ class FindDoubleResonances(DataRoutine):
         expected_snr_neg = amp_matrix_neg.dot(beta)
         resid_neg = new_snr_neg - expected_snr_neg
         squared_resid_neg = resid_neg**2
-
-        # _, bins, _ = plt.hist(squared_resid_pos[~np.isnan(squared_resid_pos) & np.isfinite(squared_resid_pos)], bins=20)
-        # plt.hist(squared_resid_neg[~np.isnan(squared_resid_neg) & np.isfinite(squared_resid_neg)], bins=bins)
-        # plt.show()
-        # pdb.set_trace()
 
         chisq_med = np.median(chisq[pdata.onres_ind])
         chisq_std = np.std(chisq[pdata.onres_ind])
@@ -534,9 +531,12 @@ class FindDoubleResonances(DataRoutine):
                         f'new snr ratio = {new_snr_ratio_pos[i_res]:.3f}\n'
                         f'Amplitude ratio = {amp_ratio_pos[i_res]:.2f}    '
                         f'SNR ratio = {snr_ratio_pos[i_res]:.2f}\n'
-                        rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_pos[i_res]:.2f}    '
-                        rf'$\delta\sigma_{{az}}$ = {delta_sigma_fwhm_az_pos[i_res]:.2f}    '
-                        rf'$\delta\sigma_{{za}}$ = {delta_sigma_fwhm_za_pos[i_res]:.2f}',
+                        r'$\delta\sigma_{{\chi^2}}$ = '
+                        f'{delta_sigma_chisq_pos[i_res]:.2f}    '
+                        r'$\delta\sigma_{{az}}$ = '
+                        f'{delta_sigma_fwhm_az_pos[i_res]:.2f}    '
+                        r'$\delta\sigma_{{za}}$ = '
+                        f'{delta_sigma_fwhm_za_pos[i_res]:.2f}',
                         loc='upper center',
                         bbox_to_anchor=(0.5, -0.2),
                         bbox_transform=axes[1].transAxes,
@@ -563,9 +563,12 @@ class FindDoubleResonances(DataRoutine):
                         f'new snr ratio = {new_snr_ratio_neg[i_res]:.3f}\n'
                         f'Amplitude ratio = {amp_ratio_neg[i_res]:.2f}    '
                         f'SNR ratio = {snr_ratio_neg[i_res]:.2f}\n'
-                        rf'$\delta\sigma_{{\chi^2}}$ = {delta_sigma_chisq_neg[i_res]:.2f}    '
-                        rf'$\delta\sigma_{{az}}$ = {delta_sigma_fwhm_az_neg[i_res]:.2f}    '
-                        rf'$\delta\sigma_{{za}}$ = {delta_sigma_fwhm_za_neg[i_res]:.2f}',
+                        r'$\delta\sigma_{{\chi^2}}$ ='
+                        f' {delta_sigma_chisq_neg[i_res]:.2f}    '
+                        r'$\delta\sigma_{{az}}$ = '
+                        f'{delta_sigma_fwhm_az_neg[i_res]:.2f}    '
+                        r'$\delta\sigma_{{za}}$ = '
+                        f'{delta_sigma_fwhm_za_neg[i_res]:.2f}',
                         loc='upper center',
                         bbox_to_anchor=(0.5, -0.2),
                         bbox_transform=axes[2].transAxes,
@@ -591,3 +594,5 @@ class FindDoubleResonances(DataRoutine):
                     plt.close(fig)
 
         return list(self.produces)
+
+    # ruff: enable[PLR2004, F841]

@@ -18,7 +18,7 @@ from rfsocinterface.core.data import (
     RoutineResult,
     register_routine,
 )
-from rfsocinterface.core.data.routines import decode_tone_indices
+from rfsocinterface.core.data.storage import decode_tone_indices
 from rfsocinterface.core.utils import (
     MetaEnum,
     ensure_path,
@@ -54,7 +54,7 @@ class ComputeNoisePSD(DataRoutine):
     """
 
     name = 'ComputeNoisePSD'
-    version = '1.1.0'
+    version = '2.0.0'
 
     def __init__(
         self,
@@ -91,19 +91,13 @@ class ComputeNoisePSD(DataRoutine):
         inputs = []
         bases = self.params['bases']
         for basis in bases:
-            match basis:
-                case PsdBasis.IQ:
-                    inputs.append('/vdsets/data_IQ')
-                case PsdBasis.GAIN_PHASE:
-                    inputs.append('/vdsets/data_gain_phase')
-                    inputs.append('/vdsets/carrier_amplitudes')
-                case PsdBasis.FREQ_DISS:
-                    inputs.append('/vdsets/data_freq_diss')
-                    inputs.append('/vdsets/tones')
-                case _:
-                    raise ValueError(
-                        f'Cannot compute noise PSD for unknown basis "{basis}"'
-                    )
+            if basis in PsdBasis:
+                pattern = rf'channel_\d.*data_{basis}'
+                inputs.extend(pdata.search_regex_names(pattern))
+            else:
+                msg = f'Cannot compute noise PSD for unknown basis "{basis}"'
+                _logger.error(msg)
+                raise ValueError(msg)
         return inputs
 
     @typing.override
@@ -111,57 +105,76 @@ class ComputeNoisePSD(DataRoutine):
         created = []
         modified = []
         # Initialize PSD group in the file if needed
-        if not pdata.has('psd', exact_match=True):
+        if not pdata.has('/psd', exact_match=True):
             psd_group = pdata.create_group('psd')
             created.append(psd_group.name)
         else:
             psd_group = pdata['psd']
             modified.append('psd')
 
-        time = pdata.timestamp[:] - pdata.timestamp[0]
         bases = self.params['bases']
         cut_time = self.params['cut_time']
         nominal_block_length = self.params['nominal_block_length']
         selection_indices = decode_tone_indices(pdata, self.params['selection_indices'])
 
+        shortest_channel = np.argmin(pdata.n_samples).flatten().item()
+
+        # Determine the number of blocks for computing the PSD
+        n_samples_to_cut = 0
+        if cut_time > 0:
+            n_samples_to_cut = np.round(
+                cut_time * pdata.get_fs(shortest_channel)
+            ).astype(int)
+        n_samples = pdata.n_samples[shortest_channel] - (2 * n_samples_to_cut)
+        n_samples_per_block = int(
+            2 ** np.ceil(np.log2(nominal_block_length * pdata.get_fs(shortest_channel)))
+        )
+        n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(int)
+        if n_blocks == 0:
+            n_blocks = 1
+            n_samples_per_block = n_samples
+        n_freq = n_samples_per_block // 2 + 1
+
         for basis in bases:
-            match basis:
-                case PsdBasis.IQ:
-                    data = pdata.data_IQ[:]
-                case PsdBasis.GAIN_PHASE:
-                    data = pdata.data_gain_phase[:] / pdata.carrier_amplitude_norm()
-                case PsdBasis.FREQ_DISS:
-                    f = pdata.detector_f()
-                    f[pdata.offres_ind] = 1
-                    data = pdata.data_freq_diss[:] / f[np.newaxis, :, np.newaxis]
-                case _:
-                    raise ValueError(
-                        f'{self.name}: Cannot compute noise PSD for '
-                        f'unknown basis "{basis}"'
-                    )
-            if cut_time > 0:
-                n_samples_to_cut = np.round(cut_time * pdata.fs).astype(int)
-                data = data[..., n_samples_to_cut:-n_samples_to_cut]
-                time = time[n_samples_to_cut:-n_samples_to_cut]
+            freq = np.zeros(n_freq)
+            psd = np.zeros((2, selection_indices.size, n_freq))
+            i_tone = 0
+            for i_chan in range(pdata.n_chan):
+                this_selection_indices = decode_tone_indices(
+                    pdata, self.params['selection_indices'], i_chan=i_chan
+                )
+                match basis:
+                    case PsdBasis.IQ:
+                        data = pdata.get_data_IQ(i_chan)[:]
+                    case PsdBasis.GAIN_PHASE:
+                        data = pdata.get_data_gain_phase(i_chan)[
+                            :
+                        ] / pdata.get_carrier_amplitude_norm(i_chan)
+                    case PsdBasis.FREQ_DISS:
+                        f = pdata.get_detector_f(i_chan)
+                        f[pdata.get_offres_ind(i_chan)] = 1
+                        data = (
+                            pdata.get_data_freq_diss(i_chan)
+                            / f[np.newaxis, :, np.newaxis]
+                        )
+                    case _:
+                        raise ValueError(
+                            f'{self.name}: Cannot compute noise PSD for '
+                            f'unknown basis "{basis}"'
+                        )
 
-            # Determine the number of blocks for computing the PSD
-            n_samples = np.size(time)
-            n_samples_per_block = int(
-                2 ** np.ceil(np.log2(nominal_block_length * pdata.fs))
-            )
-            n_blocks = np.floor(float(n_samples) / float(n_samples_per_block)).astype(
-                int
-            )
-            if n_blocks == 0:
-                n_blocks = 1
-                n_samples_per_block = n_samples
-
-            # Compute the PSD
-            freq, psd = signal.welch(
-                data[:, selection_indices],
-                pdata.fs,
-                nperseg=n_samples_per_block,
-            )
+                # Compute the PSD
+                data = data[
+                    ..., this_selection_indices, n_samples_to_cut:-n_samples_to_cut
+                ]
+                this_freq, this_psd = signal.welch(
+                    data,
+                    pdata.get_fs(i_chan),
+                    nperseg=n_samples_per_block,
+                )
+                freq[:] = this_freq
+                psd[:, i_tone : i_tone + this_selection_indices.size] = this_psd
+                i_tone += this_selection_indices.size
 
             if basis in psd_group:
                 del psd_group[basis]
@@ -251,7 +264,8 @@ def plot_psd_df_over_f(
     figure_kwargs: dict | None = None,
     freq_color: str = 'b',
     diss_color: str = 'o',
-    offres_color: str = 'r',
+    offres_freq_color: str = 'purple',
+    offres_diss_color: str = 'r',
     title_fontsize: int = 16,
     axis_label_fontsize: int = 16,
     legend_fontsize: int = 14,
@@ -296,8 +310,10 @@ def plot_psd_df_over_f(
             (blue).
         diss_color (str, optional): Color to use for the dissipation PSD. Defaults to
             'o' (orange).
-        offres_color (str, optional): Color to use for the off-resonance median PSD.
-            Defaults to 'r' (red).
+        offres_freq_color (str, optional): Color to use for the off-resonance median PSD
+            in the frequency direction. Defaults to 'purple'.
+        offres_diss_color (str, optional): Color to use for the off-resonance median PSD
+            in the dissipation direction. Defaults to 'r' (red).
         title_fontsize (int, optional): Font size for the plot title. Defaults to 16.
         axis_label_fontsize (int, optional): Font size for the axis labels. Defaults to
             16.
@@ -339,6 +355,7 @@ def plot_psd_df_over_f(
     med_color_diss, fill_color_diss = decode_color_string(diss_color)
     med_colors = [med_color_freq, med_color_diss]
     fill_colors = [fill_color_freq, fill_color_diss]
+    offres_colors = [offres_freq_color, offres_diss_color]
 
     super_labels = ['Frequency', 'Dissipation']
     labels = [
@@ -398,7 +415,7 @@ def plot_psd_df_over_f(
                 freq,
                 offres_median[j],
                 linestyle='dashed',
-                color=offres_color,
+                color=offres_colors[j],
                 label=f'Off-Resonance {super_labels[j]} Median',
             )
 
@@ -559,7 +576,7 @@ class PlotPSD(DataRoutine):
     """
 
     name = 'PlotPSD'
-    version = '1.2.0'
+    version = '1.3.0'
 
     @ensure_path('savefile')
     def __init__(
@@ -711,22 +728,32 @@ class PlotPSD(DataRoutine):
                         plt.close(onres_fig)
 
                         # Plot individual tones
-                        for i, i_tone in enumerate(tones):
-                            f0 = detector_f[i_tone]
+                        for i, i_tone_absolute in enumerate(tones):
+                            f0 = detector_f[i_tone_absolute]
                             if offres_median is not None:
                                 this_offres_median = (
                                     offres_median
-                                    / (pdata.adc_units_to_hz[i_tone] * f0) ** 2
+                                    / (pdata.adc_units_to_hz[i_tone_absolute] * f0) ** 2
                                 )
                             else:
                                 this_offres_median = None
+                            i_chan, i_tone_relative = pdata.get_relative_tone_index(
+                                i_tone_absolute
+                            )
+                            tile_name = pdata.get_tile_name(i_chan)
                             fig = plot_psd_df_over_f(
                                 freq,
                                 psd[:, i],
-                                f0=detector_f[i_tone],
+                                f0=detector_f[i_tone_absolute],
                                 offres_median=this_offres_median,
                                 title=' - '.join(
-                                    filter(None, (title, f'Resonator {i_tone}'))
+                                    filter(
+                                        None,
+                                        (
+                                            title,
+                                            f'{tile_name} - Tone {i_tone_relative}',
+                                        ),
+                                    )
                                 ),
                                 add_legend=True,
                                 show_flat_spectrum_level=True,

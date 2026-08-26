@@ -17,10 +17,10 @@ import numpy as np
 import numpy.typing as npt
 from scipy import signal
 
-from rfsocinterface.core.data.storage import ProcessedData
+from rfsocinterface.core.data.storage import ProcessedData, decode_tone_indices
 from rfsocinterface.core.data.utils import (
     generate_calibrated_data,
-    get_channel_group_name,
+    get_channel_index_from_dset_name,
     get_step_group_name,
     rotate_basis,
 )
@@ -482,13 +482,13 @@ class CutoffFilter(DataRoutine):
     """
 
     name = 'CutoffFilter'
-    version = '1.1.0'
+    version = '2.0.0'
 
     def __init__(
         self,
         filter_freq: float,
         btype: str,
-        datasets: Sequence[str] = ['/vdsets/data_mK'],
+        datasets: Sequence[str] = ['.*/data_mK'],
     ):
         """Initialize the cutoff filter routine.
 
@@ -497,7 +497,7 @@ class CutoffFilter(DataRoutine):
             btype (str): The type of filter to apply. Must be one of 'low', 'high',
                 'bandpass', or 'bandstop'.
             datasets (Sequence[str], optional): List of dataset names to apply the
-                filter to. Defaults to ['/vdsets/data_mK'].
+                filter to. Defaults to ['.*/data_mK'], i.e. every data_mK array.
         """
         super().__init__(
             filter_freq=filter_freq,
@@ -507,7 +507,10 @@ class CutoffFilter(DataRoutine):
 
     @typing.override
     def _inputs(self, pdata: ProcessedData):
-        return self.params['datasets']
+        dsets = []
+        for pattern in self.params['datasets']:
+            dsets.extend(pdata.search_regex_names(pattern, full_name=True))
+        return dsets
 
     def _run(self, pdata: ProcessedData, inputs: list[str]):
         """Apply the cutoff filter to the specified datasets.
@@ -518,13 +521,22 @@ class CutoffFilter(DataRoutine):
         filter_freq = self.params['filter_freq']
         btype = self.params['btype']
         for dset_name in inputs:
+            i_chan = get_channel_index_from_dset_name(dset_name)
+            if i_chan is None:
+                msg = (
+                    'Could not identify the channel group for the '
+                    f'dataset {dset_name}, and therfore unable to find the sampling '
+                    'rate `fs`.'
+                )
+                _logger.error(msg)
+                raise ValueError(msg)
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', r'^Invalid value encountered in')
                 filt_sos = signal.butter(
                     BUTTER_ORDER,
                     filter_freq,
                     btype=btype,
-                    fs=pdata.fs,
+                    fs=pdata.get_fs(i_chan),
                     output='sos',
                     analog=False,
                 )
@@ -543,14 +555,14 @@ class LowPassFilter(CutoffFilter):
     def __init__(
         self,
         filter_freq: float,
-        datasets: Sequence[str] = ['/vdsets/data_mK'],
+        datasets: Sequence[str] = ['.*/data_mK'],
     ):
         """Initialize the LowPassFilter routine.
 
         Arguments:
             filter_freq (float): The cutoff frequency for the filter in Hz.
             datasets (Sequence[str], optional): List of dataset names to apply the
-                filter to. Defaults to ['/vdsets/data_mK'].
+                filter to. Defaults to ['.*/data_mK'], i.e. every data_mK array.
         """
         super().__init__(filter_freq, btype='lowpass', datasets=datasets)
 
@@ -564,14 +576,14 @@ class HighPassFilter(CutoffFilter):
     def __init__(
         self,
         filter_freq: float,
-        datasets: Sequence[str] = ['/vdsets/data_mK'],
+        datasets: Sequence[str] = ['.*/data_mK'],
     ):
         """Initialize the HighPassFilter routine.
 
         Arguments:
             filter_freq (float): The cutoff frequency for the filter in Hz.
             datasets (Sequence[str], optional): List of dataset names to apply the
-                filter to. Defaults to ['/vdsets/data_mK'].
+                filter to. Defaults to ['.*/data_mK'], i.e. every data_mK array.
         """
         super().__init__(filter_freq, btype='highpass', datasets=datasets)
 
@@ -654,61 +666,6 @@ def _compute_templates(
     return np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
 
 
-def decode_tone_indices(
-    pdata: ProcessedData,
-    selection_indices: npt.NDArray | str,
-    i_chan: int | None = None,
-) -> npt.NDArray:
-    """Helper method for decoding the selected indices for routines.
-
-    Arguments:
-        pdata (ProcessedData): ProcessedData object containing the data.
-        selection_indices (npt.NDArray | str, optional): Either a string specifying the
-            type of tones to select or an array of indices to select. Possible string
-            values are:
-                - 'onres' or 'on_res' or 'on_resonance': Select on-resonance tones
-                - 'offres' or 'off_res' or 'off_resonance': Select off-resonance tones
-                - 'all': Select all tones
-        i_chan (int, optional): The channel index to select the tones for. If None,
-            will use the tone indices for all channels.
-
-    Returns:
-        (npt.NDArray): The indices of the tones to select.
-    """
-    if isinstance(selection_indices, str):
-        match selection_indices.lower():
-            case 'onres' | 'on_res' | 'on_resonance':
-                return (
-                    pdata.get_onres_ind(i_chan)
-                    if i_chan is not None
-                    else pdata.onres_ind
-                )
-            case 'offres' | 'off_res' | 'off_resonance':
-                return (
-                    pdata.get_offres_ind(i_chan)
-                    if i_chan is not None
-                    else pdata.offres_ind
-                )
-            case 'all':
-                return (
-                    np.arange(pdata.get_n_tones(i_chan), dtype=int)
-                    if i_chan is not None
-                    else np.arange(pdata.n_tones, dtype=int)
-                )
-            case _:
-                _logger.warning(
-                    f'Unkown index selection string: {selection_indices}; defaulting to'
-                    ' all tones'
-                )
-                return (
-                    np.arange(pdata.get_n_tones(i_chan), dtype=int)
-                    if i_chan is not None
-                    else np.arange(pdata.n_tones, dtype=int)
-                )
-    else:
-        return selection_indices
-
-
 @register_routine
 class RemoveElectronicsNoise(DataRoutine):
     """Routine to remove correlated electronics noise.
@@ -719,7 +676,7 @@ class RemoveElectronicsNoise(DataRoutine):
     """
 
     name = 'RemoveElectronicsNoise'
-    version = '1.1.0'
+    version = '2.0.0'
 
     def __init__(
         self,
@@ -756,20 +713,8 @@ class RemoveElectronicsNoise(DataRoutine):
     def _inputs(self, pdata: ProcessedData):
         # Requires data_IQ, data_gain_phase, data_freq_diss, and data_mK
         # but there's no case where those wouldn't exist, so I'm not sure this matters
-        dsets = []
-        for i_chan in range(pdata.n_chan):
-            group_name = get_channel_group_name(i_chan)
-            group_name = f'/channels/{get_channel_group_name(i_chan)}/'
-            dsets.extend(
-                [
-                    group_name + 'time_ordered_data/data_IQ',
-                    group_name + 'time_ordered_data/data_gain_phase',
-                    group_name + 'time_ordered_data/data_freq_diss',
-                    group_name + 'time_ordered_data/data_mK',
-                    group_name + 'calibration_info',
-                ]
-            )
-        return dsets
+        pattern = r'channel_\d.*(/data_\w+)|(calibration_info)'
+        return list(pdata.search_regex_names(pattern))
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: list[str]):
@@ -777,9 +722,9 @@ class RemoveElectronicsNoise(DataRoutine):
         lp_filt_freq = self.params['lp_filt_freq']
         template_selection_indices = self.params['template_selection_indices']
         max_modes = self.params['max_modes']
-        fs = pdata.fs
 
         for i_chan in range(pdata.n_chan):
+            fs = pdata.get_fs(i_chan)
             selection_indices = decode_tone_indices(
                 pdata, template_selection_indices, i_chan
             )
@@ -857,7 +802,7 @@ class CleanTOD(DataRoutine):
     """Routine to remove common-mode signals from the time-ordered data."""
 
     name = 'CleanTOD'
-    version = '1.1.0'
+    version = '1.2.0'
 
     def __init__(self, dataset: Literal['data_mK', 'data_freq'] = 'data_mK'):
         """Initialize the CleanTOD routine.
@@ -880,10 +825,7 @@ class CleanTOD(DataRoutine):
         dataset = self.params['dataset']
         if dataset == 'data_freq':
             dataset = 'data_freq_diss'
-        return [
-            f'/channels/{get_channel_group_name(i_chan)}/time_ordered_data/{dataset}'
-            for i_chan in range(pdata.n_chan)
-        ]
+        return list(pdata.search_regex_names(dataset))
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: list[str]):

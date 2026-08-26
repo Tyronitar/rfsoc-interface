@@ -63,20 +63,24 @@ def sleep_and_raise(n: int):
     raise RuntimeError('expected raise')
 
 
+# ruff: disable[ARG002]
+
+
 class SingleInputRoutine(DataRoutine):
     @typing.override
     def _run(self, pdata, inputs):
         test_group = pdata.create_group('tests')
         res = test_group.create_dataset('result', shape=(2, 10), dtype=np.float64)
         res[:] = np.random.default_rng(2).random((2, 10))
-        pdata.data_gain_phase[:] = 0
-        pdata.data_gain_phase[:] = 0
-        del pdata['vdsets/data_IQ']
+        pdata.get_data_gain_phase(0)[:] = 0
+        del pdata['channels/channel_000/time_ordered_data/data_IQ']
 
         return RoutineResult(
             created={'input': ('tests', 'tests/result')},
-            modified={'input': ('vdsets/data_gain_phase',)},
-            deleted={'input': ('vdsets/data_IQ',)},
+            modified={
+                'input': ('channels/channel_000/time_ordered_data/data_gain_phase',)
+            },
+            deleted={'input': ('channels/channel_000/time_ordered_data/data_IQ',)},
             value=res[:],
         )
 
@@ -88,8 +92,14 @@ class MultiInputRoutine(DataRoutine):
     @typing.override
     def _inputs(self, x: ProcessedData, y: ProcessedData):
         return {
-            'x': {'data_IQ', 'data_gain_phase'},
-            'y': {'data_IQ', 'data_gain_phase'},
+            'x': {
+                'channels/channel_000/time_ordered_data/data_IQ',
+                'channels/channel_000/time_ordered_data/data_gain_phase',
+            },
+            'y': {
+                'channels/channel_000/time_ordered_data/data_IQ',
+                'channels/channel_000/time_ordered_data/data_gain_phase',
+            },
         }
 
     @typing.override
@@ -97,16 +107,16 @@ class MultiInputRoutine(DataRoutine):
         test_group_x = x.create_group('tests')
         res_x = test_group_x.create_dataset('result', shape=(2, 10), dtype=np.float64)
         res_x[:] = np.random.default_rng(2).random((2, 10))
-        x.data_gain_phase[:] = 0
-        x.data_gain_phase[:] = 0
-        del x['vdsets/data_IQ']
+        x.get_data_gain_phase(0)[:] = 0
+        x.get_data_gain_phase(0)[:] = 0
+        del x['channels/channel_000/time_ordered_data/data_IQ']
 
         test_group_y = y.create_group('tests')
         res_y = test_group_y.create_dataset('result', shape=(2, 10), dtype=np.float64)
         res_y[:] = res_x[:] / 2
-        y.data_IQ[:] = 0
-        y.data_IQ[:] = 0
-        del y['vdsets/data_gain_phase']
+        y.get_data_IQ(0)[:] = 0
+        y.get_data_IQ(0)[:] = 0
+        del y['channels/channel_000/time_ordered_data/data_gain_phase']
 
         return RoutineResult(
             created={
@@ -114,21 +124,18 @@ class MultiInputRoutine(DataRoutine):
                 'y': ('tests', 'tests/result'),
             },
             modified={
-                'x': ('data_gain_phase',),
-                'y': ('data_IQ',),
+                'x': ('channels/channel_000/time_ordered_data/data_gain_phase',),
+                'y': ('channels/channel_000/time_ordered_data/data_IQ',),
             },
             deleted={
-                'x': ('data_IQ',),
-                'y': ('data_gain_phase',),
+                'x': ('channels/channel_000/time_ordered_data/data_IQ',),
+                'y': ('channels/channel_000/time_ordered_data/data_gain_phase',),
             },
             value={
                 'x': res_x[:],
                 'y': res_y[:],
             },
         )
-
-
-# ruff: disable[ARG002]
 
 
 class CreateValueRoutine(DataRoutine):
@@ -174,8 +181,19 @@ class ReturnCollectionRoutine(DataRoutine):
 
 class ListInputsRoutine(DataRoutine):
     def _inputs(self, pdata):
-        self.expected_inputs = {'input': (pdata, ('data_IQ', 'data_gain_phase'))}
-        return ['data_IQ', 'data_gain_phase']
+        self.expected_inputs = {
+            'input': (
+                pdata,
+                (
+                    'channels/channel_000/time_ordered_data/data_IQ',
+                    'channels/channel_000/time_ordered_data/data_gain_phase',
+                ),
+            )
+        }
+        return [
+            'channels/channel_000/time_ordered_data/data_IQ',
+            'channels/channel_000/time_ordered_data/data_gain_phase',
+        ]
 
     def _run(self, pdata, inputs):
         return RoutineResult()
@@ -188,12 +206,30 @@ class PositionalInputsRoutine(DataRoutine):
 
     def _inputs(self, *pdata):
         self.expected_inputs = {
-            'input_0': (pdata[0], ('data_IQ', 'data_gain_phase')),
-            'input_1': (pdata[1], ('data_IQ', 'data_gain_phase')),
+            'input_0': (
+                pdata[0],
+                (
+                    'channels/channel_000/time_ordered_data/data_IQ',
+                    'channels/channel_000/time_ordered_data/data_gain_phase',
+                ),
+            ),
+            'input_1': (
+                pdata[1],
+                (
+                    'channels/channel_000/time_ordered_data/data_IQ',
+                    'channels/channel_000/time_ordered_data/data_gain_phase',
+                ),
+            ),
         }
         return (
-            ['data_IQ', 'data_gain_phase'],
-            ['data_IQ', 'data_gain_phase'],
+            [
+                'channels/channel_000/time_ordered_data/data_IQ',
+                'channels/channel_000/time_ordered_data/data_gain_phase',
+            ],
+            [
+                'channels/channel_000/time_ordered_data/data_IQ',
+                'channels/channel_000/time_ordered_data/data_gain_phase',
+            ],
         )
 
     def _run(self, *pdata, inputs):
@@ -207,12 +243,30 @@ class NamedInputsRoutine(DataRoutine):
 
     def _inputs(self, pdata_x, pdata_y):
         self.expected_inputs = {
-            'pdata_x': (pdata_x, ('data_IQ', 'data_gain_phase')),
-            'pdata_y': (pdata_y, ('data_IQ', 'data_gain_phase')),
+            'pdata_x': (
+                pdata_x,
+                (
+                    'channels/channel_000/time_ordered_data/data_IQ',
+                    'channels/channel_000/time_ordered_data/data_gain_phase',
+                ),
+            ),
+            'pdata_y': (
+                pdata_y,
+                (
+                    'channels/channel_000/time_ordered_data/data_IQ',
+                    'channels/channel_000/time_ordered_data/data_gain_phase',
+                ),
+            ),
         }
         return {
-            'pdata_x': ['data_IQ', 'data_gain_phase'],
-            'pdata_y': ['data_IQ', 'data_gain_phase'],
+            'pdata_x': [
+                'channels/channel_000/time_ordered_data/data_IQ',
+                'channels/channel_000/time_ordered_data/data_gain_phase',
+            ],
+            'pdata_y': [
+                'channels/channel_000/time_ordered_data/data_IQ',
+                'channels/channel_000/time_ordered_data/data_gain_phase',
+            ],
         }
 
     def _run(self, pdata_x, pdata_y, inputs):

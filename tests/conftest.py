@@ -8,6 +8,8 @@ import h5py
 import numpy as np
 import pytest
 
+from rfsocinterface.core.data import get_channel_group_name
+
 FIXTURE_DIRECTORY = Path(__file__).parent.resolve() / 'test_data'
 
 TOD_FILE = pytest.mark.datafiles(
@@ -29,9 +31,13 @@ def make_fake_data(tmp_path) -> Callable[[None], h5py.File]:
         temp_hdf5_file = h5py.File(
             tmp_path / file_name, driver='core', backing_store=False, mode='w'
         )
-        vdsets = temp_hdf5_file.create_group('vdsets')
-        data_IQ = vdsets.create_dataset('data_IQ', shape=(2, 10, 100), dtype=np.float64)
-        data_gain_phase = vdsets.create_dataset(
+        channel_group = temp_hdf5_file.create_group('channels')
+        channel_0 = channel_group.create_group(get_channel_group_name(0))
+        time_data = channel_0.create_group('time_ordered_data')
+        data_IQ = time_data.create_dataset(
+            'data_IQ', shape=(2, 10, 100), dtype=np.float64
+        )
+        data_gain_phase = time_data.create_dataset(
             'data_gain_phase', shape=(2, 10, 100), dtype=np.float64
         )
         data_IQ[:] = np.random.default_rng(0).random((2, 10, 100))

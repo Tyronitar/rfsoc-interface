@@ -201,7 +201,7 @@ class AnalyzeBeamMap(DataRoutine):
     """
 
     name = 'AnalyzeBeamMap'
-    version = '1.1.0'
+    version = '2.0.0'
 
     requires: ClassVar[set[str]] = {
         '/map',
@@ -272,15 +272,21 @@ class AnalyzeBeamMap(DataRoutine):
             )
             del pdata['beammap']
         beammap_group = pdata.create_group('beammap')
-        beammap_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('new_snr', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
-        beammap_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
+        beammap_group.create_dataset(
+            'az_center', (pdata.total_tones,), dtype=np.float64
+        )
+        beammap_group.create_dataset(
+            'za_center', (pdata.total_tones,), dtype=np.float64
+        )
+        beammap_group.create_dataset(
+            'amplitude', (pdata.total_tones,), dtype=np.float64
+        )
+        beammap_group.create_dataset('snr', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('new_snr', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('chisq', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('fwhm_az', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('fwhm_za', (pdata.total_tones,), dtype=np.float64)
+        beammap_group.create_dataset('offset', (pdata.total_tones,), dtype=np.float64)
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: list[str]):
@@ -318,7 +324,7 @@ class PlotBeamMap(DataRoutine):
     """Plot a beam map, post-analysis."""
 
     name = 'PlotBeamMap'
-    version = '1.2.0'
+    version = '2.0.0'
 
     requires: ClassVar[set[str]] = {
         '/map',
@@ -401,7 +407,7 @@ class PlotBeamMap(DataRoutine):
 
         # Which tones to use
         tones_to_plot = (
-            np.arange(pdata.n_tones, dtype=int)
+            np.arange(pdata.total_tones, dtype=int)
             if self.params['show_all']
             else pdata.onres_ind
         )
@@ -449,11 +455,11 @@ class PlotBeamMap(DataRoutine):
         for ax in axes.flatten():
             ax.set_axis_off()
         i_subplot = 1
-        for i_loop, i_res in enumerate(tones_to_plot):
+        for i_loop, i_tone_absolute in enumerate(tones_to_plot):
             if i_loop == tones_to_plot.size // 2:
                 _logger.info(f'{self.name}: Halfway done creating grid pages...')
             ax = axes.flatten()[i_subplot - 1]
-            plot_data = np.flip(np.transpose(map_val[i_res][::-1]), 1)
+            plot_data = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
             ax.imshow(
                 plot_data,
                 extent=extent,
@@ -463,9 +469,11 @@ class PlotBeamMap(DataRoutine):
             )
 
             # Draw a rectangle around the subplot indicating off-resonance / bad tones
-            if chanmask[i_res] != 1:
+            if chanmask[i_tone_absolute] != 1:
                 line_color = (
-                    OFF_RESONANCE_COLOR if chanmask[i_res] == 0 else BAD_RESONANCE_COLOR
+                    OFF_RESONANCE_COLOR
+                    if chanmask[i_tone_absolute] == 0
+                    else BAD_RESONANCE_COLOR
                 )
                 auto_axis = ax.axis()
                 rec = plt.Rectangle(
@@ -495,13 +503,13 @@ class PlotBeamMap(DataRoutine):
 
         # Create individul plots for each tone
         _logger.info(f'{self.name}: Creating individual resonance plots...')
-        for i_loop, i_res in enumerate(tones_to_plot):
+        for i_loop, i_tone_absolute in enumerate(tones_to_plot):
             if i_loop == tones_to_plot.size // 2:
                 _logger.info(f'{self.name}: Halfway done creating individual plots...')
 
             fig, ax = plt.subplots()
 
-            data_to_plot = np.flip(np.transpose(map_val[i_res][::-1]), 1)
+            data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
             data_to_plot -= np.nanmedian(data_to_plot)
             data_to_plot /= np.nanmax(data_to_plot)
             # data_to_plot = 10 * np.log10(np.abs(data_to_plot))
@@ -525,8 +533,8 @@ class PlotBeamMap(DataRoutine):
 
             # Center of bright source
             ax.plot(
-                az_center[i_res],
-                za_center[i_res],
+                az_center[i_tone_absolute],
+                za_center[i_tone_absolute],
                 marker='+',
                 color='white',
                 markersize=10,
@@ -534,16 +542,16 @@ class PlotBeamMap(DataRoutine):
             )
 
             # Stats
-            if chanmask[i_res] != 0:
+            if chanmask[i_tone_absolute] != 0:
                 bbox_pad = 0.3
                 t = AnchoredText(
-                    f'Amplitude = {amplitude[i_res] * 1e5:2f}    '
-                    f'chisq = {chisq[i_res]:.3f}    '
-                    f'snr = {snr[i_res]:.3f}\n'
-                    f'fwhm_az = {fwhm_az[i_res]:.2f}    '
-                    f'fwhm_za = {fwhm_za[i_res]:.2f}\n'
-                    f'az_center = {az_center[i_res]:.2f}    '
-                    f'za_center = {za_center[i_res]:.2f}\n',
+                    f'Amplitude = {amplitude[i_tone_absolute] * 1e5:2f}    '
+                    f'chisq = {chisq[i_tone_absolute]:.3f}    '
+                    f'snr = {snr[i_tone_absolute]:.3f}\n'
+                    f'fwhm_az = {fwhm_az[i_tone_absolute]:.2f}    '
+                    f'fwhm_za = {fwhm_za[i_tone_absolute]:.2f}\n'
+                    f'az_center = {az_center[i_tone_absolute]:.2f}    '
+                    f'za_center = {za_center[i_tone_absolute]:.2f}\n',
                     loc='upper center',
                     bbox_to_anchor=(0.5, 0.15),
                     bbox_transform=fig.transFigure,
@@ -558,11 +566,16 @@ class PlotBeamMap(DataRoutine):
                 # t.patch.set_color('black')
                 ax.add_artist(t)
 
-            title = rf'Tone {i_res} ($f_0$={detector_f[i_res] * 1e-6:.3f} MHz)'
+            i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
+            tile_name = pdata.get_tile_name(i_chan)
+            title = (
+                f'{tile_name} - Tone {i_tone_relative} '
+                f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
+            )
 
             # Indicate in plot title and face color if off-resonance / bad tone
-            if chanmask[i_res] != 1:
-                if chanmask[i_res] == 0:
+            if chanmask[i_tone_absolute] != 1:
+                if chanmask[i_tone_absolute] == 0:
                     title += ' (Off-resonance)'
                     facecolor = OFF_RESONANCE_COLOR
                 else:
@@ -588,8 +601,10 @@ class PlotBeamMap(DataRoutine):
         pdf.close()
         return RoutineResult()
 
+
 class CombinePolarizedBeamMaps(DataRoutine):
     """Routine for combining beam maps collected with orthogonal polarizations."""
+
     name = 'CombinePolarizedBeamMaps'
     version = '1.0.0'
 
@@ -631,6 +646,7 @@ class CombinePolarizedBeamMaps(DataRoutine):
         '/polarized_beammap/residual/offset',
     }
 
+    @typing.overload
     def _inputs(self, vpol_data: ProcessedData, hpol_data: ProcessedData):
         return {
             'vpol_data': self.requires.copy(),
@@ -690,7 +706,8 @@ class MakePolarizedBeamMapParameters(DataRoutine):
     """
 
 
-def combine_polarized_beammaps(
+# ruff: disable[F841, PLR2004]
+def combine_polarized_beammaps(  # noqa: PLR0915
     pol1_data: ProcessedData,
     pol2_data: ProcessedData,
     new_tile_name: str,  # noqa: ARG001
@@ -699,8 +716,6 @@ def combine_polarized_beammaps(
     amplitude_normalization_percentile: float = 75,  # noqa: ARG001
     pdf_filename: str | None = None,  # noqa: ARG001
 ):
-    import pdb
-
     """Determines various tile parameters from two beam maps of opposite polarizations.
 
     Creates a new params_file with detector_delta_x, detector_delta_y,
@@ -711,7 +726,7 @@ def combine_polarized_beammaps(
     if bad_resonators is not None:
         good_ind = np.setdiff1d(good_ind, bad_resonators)
         chanmask[np.array(bad_resonators)] = -1
-    old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']  # noqa: F841
+    old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']
     is_good_ind = np.isin(np.arange(chanmask.size, dtype=int), good_ind)
 
     az_center_pol1 = pol1_data['beammap/az_center'][:]
@@ -838,7 +853,9 @@ def combine_polarized_beammaps(
     is_multi_pol_double = np.zeros(chanmask.size, dtype=np.bool)
     is_multi_pol_double[(amp_ratio - amp_ratio_med) > 2 * amp_ratio_std] = True
 
-    # is_double = (is_double_pol1 & (detector_pol == 1)) & (is_double_pol2 & (detector_pol == 2))
+    is_double = (is_double_pol1 & (detector_pol == 1)) & (
+        is_double_pol2 & (detector_pol == 2)
+    )
     is_double = np.where(detector_pol == 1, is_double_pol1, is_double_pol2)
     is_double_all = is_multi_pol_double | is_double
     is_double_all = is_double_all & is_good_ind
@@ -876,7 +893,6 @@ def combine_polarized_beammaps(
     plt.xlabel('Fractional difference from nearest neighbor')
     plt.ylabel('Frequency')
     plt.show()
-    pdb.set_trace()
 
     # TODO: Update params file
 
@@ -907,7 +923,7 @@ def combine_polarized_beammaps(
 
     # Find pairs of points and use the median position
     pol1 = np.argwhere(detector_pol[good_ind] == 1).flatten()
-    pol2 = np.argwhere(detector_pol[good_ind] == 2).flatten()  # noqa: PLR2004
+    pol2 = np.argwhere(detector_pol[good_ind] == 2).flatten()
 
     points = np.column_stack([az_center, za_center])[good_ind]
     pairs, _dist = mutual_nearest_pairs_between_groups(points, pol1, pol2, r=0.05)
@@ -929,3 +945,6 @@ def combine_polarized_beammaps(
         points[j, :] = mean_point
 
     return az_center, za_center, detector_pol, beam_ampl, chanmask
+
+
+# ruff: enable[F841, PLR2004]
