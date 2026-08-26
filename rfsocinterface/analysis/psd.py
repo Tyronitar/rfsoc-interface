@@ -310,8 +310,10 @@ def plot_psd_df_over_f(
             (blue).
         diss_color (str, optional): Color to use for the dissipation PSD. Defaults to
             'o' (orange).
-        offres_color (str, optional): Color to use for the off-resonance median PSD.
-            Defaults to 'r' (red).
+        offres_freq_color (str, optional): Color to use for the off-resonance median PSD
+            in the frequency direction. Defaults to 'purple'.
+        offres_diss_color (str, optional): Color to use for the off-resonance median PSD
+            in the dissipation direction. Defaults to 'r' (red).
         title_fontsize (int, optional): Font size for the plot title. Defaults to 16.
         axis_label_fontsize (int, optional): Font size for the axis labels. Defaults to
             16.
