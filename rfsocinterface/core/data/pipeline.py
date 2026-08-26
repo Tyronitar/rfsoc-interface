@@ -32,6 +32,7 @@ class Pipeline:
         )
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
+        cd.close()
         results = self.run(pd)
         return pd, results
 
@@ -45,6 +46,7 @@ class Pipeline:
         cd = ConsolidatedData.load(date, setnum)
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
+        cd.close()
         results = self.run(pd)
         return pd, results
 

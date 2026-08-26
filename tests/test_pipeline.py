@@ -29,7 +29,8 @@ def test_single_input_routine(make_fake_data):
 
     assert pdata.has('/tests/result', exact_match=True)
     assert 'data_IQ' not in pdata
-    assert_equal(pdata.data_gain_phase[:], 0)
+    assert 'data_gain_phase' in pdata
+    assert_equal(pdata.get_data_gain_phase(0)[:], 0)
     assert_equal(pdata['tests/result'][:], result)
 
 
@@ -45,7 +46,8 @@ def test_mapped_inputs(make_fake_data):
     for i, pd in enumerate(pdata):
         assert pd.has('/tests/result', exact_match=True)
         assert 'data_IQ' not in pd
-        assert_equal(pd.data_gain_phase[:], 0)
+        assert 'data_gain_phase' in pd
+        assert_equal(pd.get_data_gain_phase(0)[:], 0)
         assert_equal(pd['tests/result'][:], result[i])
 
 
@@ -65,12 +67,14 @@ def test_multi_input_routine(make_fake_data):
 
     assert pdata_x.has('/tests/result', exact_match=True)
     assert 'data_IQ' not in pdata_x
-    assert_equal(pdata_x.data_gain_phase[:], 0)
+    assert 'data_gain_phase' in pdata_x
+    assert_equal(pdata_x.get_data_gain_phase(0)[:], 0)
     assert_equal(pdata_x['tests/result'][:], res_x)
 
     assert pdata_y.has('/tests/result', exact_match=True)
+    assert 'data_IQ' in pdata_y
     assert 'data_gain_phase' not in pdata_y
-    assert_equal(pdata_y.data_IQ[:], 0)
+    assert_equal(pdata_y.get_data_IQ(0)[:], 0)
     assert_equal(pdata_y['tests/result'][:], res_y)
 
     assert_equal(res_y, res_x / 2)

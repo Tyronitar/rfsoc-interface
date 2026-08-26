@@ -46,7 +46,7 @@ class CheckFocus(DataRoutine):
     """
 
     name = 'CheckFocus'
-    version = '1.1.0'
+    version = '2.0.0'
 
     produces: ClassVar[set] = {
         '/focus',
@@ -62,6 +62,7 @@ class CheckFocus(DataRoutine):
         fit_radius_deg: float = 0.5,
         fractional_difference_threshold: float = 0.5,
         dataset: Literal['data_mK', 'data_freq'] = 'data_mK',
+        overwrite: bool = True,
     ):
         """Initialize the CheckFocus routine.
 
@@ -76,6 +77,8 @@ class CheckFocus(DataRoutine):
                 Defaults to 0.5.
             dataset (str, optional): The name of the dataset to clean. Must be either
                 'data_mK' or 'data_freq'. Defaults to 'data_mK'.
+            overwrite (bool, optional): Whether to overwrite existing plotting datasets
+                in the HDF5 file. Defaults to True.
         """
         super().__init__(
             primary_direction=primary_direction,
@@ -83,37 +86,43 @@ class CheckFocus(DataRoutine):
             fit_radius_deg=fit_radius_deg,
             fractional_difference_threshold=fractional_difference_threshold,
             dataset=dataset,
+            overwrite=overwrite,
         )
 
     @typing.override
     def _inputs(self, pdata: ProcessedData):
-        dset = (
-            '/vdsets/data_mK'
-            if self.params['dataset'] == 'data_mK'
-            else '/vdsets/data_freq_diss'
-        )
         direction = self.params['primary_direction']
-        return [
-            f'/vdsets/detector_{direction}',
-            dset,
-            '/global_data/timestamp',
-        ]
+        inputs = []
+        datasets = pdata.search_regex_names(self.params['dataset'])
+        inputs.extend(datasets)
+        detector_pos = list(pdata.search_regex_names(f'detector_{direction}'))
+        inputs.extend(detector_pos)
+        return inputs
 
     def _initialize_arrays(self, pdata: ProcessedData) -> bool:
         """Initialize the new arrays in the processed data file."""
-        if pdata.has('focus', exact_match=True):
+        if pdata.has('/focus', exact_match=True):
+            if not self.params['overwrite']:
+                _logger.info(
+                    f'{self.name}: "focus" group already exists in the file; '
+                    'using existing datasets.'
+                )
+                return None
             _logger.info(
-                f'{self.name}: CheckFocus group already exists in the file. '
-                'Using existing datasets.'
+                f'{self.name}: "focus" group group already exists in the file; '
+                'overwriting datasets.'
             )
+            del pdata['focus']
             return False
         focus_group = pdata.create_group('focus')
-        focus_group.create_dataset('fwhms', shape=(pdata.n_tones,), dtype=np.float64)
         focus_group.create_dataset(
-            'amplitudes', shape=(pdata.n_tones,), dtype=np.float64
+            'fwhms', shape=(pdata.total_tones,), dtype=np.float64
         )
         focus_group.create_dataset(
-            'good_resonators', shape=(pdata.n_tones,), dtype=np.uint8
+            'amplitudes', shape=(pdata.total_tones,), dtype=np.float64
+        )
+        focus_group.create_dataset(
+            'good_resonators', shape=(pdata.total_tones,), dtype=np.uint8
         )
         return True
 
@@ -124,216 +133,243 @@ class CheckFocus(DataRoutine):
         resonators = self.params['resonators']
         fit_radius_deg = self.params['fit_radius_deg']
         dataset = self.params['dataset']
-        data = (
-            pdata.data_mK[:]
-            if dataset == 'data_mK'
-            else pdata.data_freq_diss[0] / pdata.detector_f()[:, np.newaxis]
-        )
         units = 'mK' if dataset == 'data_mK' else 'df/f'
         fractional_difference_threshold = self.params['fractional_difference_threshold']
+        relative_tone_indices = pdata.split_to_relative_tone_indices(resonators)
+        all_data = [
+            pdata.get_data_mK(i_chan)[:]
+            if dataset == 'data_mK'
+            else pdata.get_data_freq_diss(i_chan)[0]
+            / pdata.get_detector_f(i_chan)[:, np.newaxis]
+            for i_chan in range(pdata.n_chan)
+            if relative_tone_indices[i_chan]
+        ]
+        tel_pos = [
+            pdata.get_detector_az(i_chan)[:]
+            if primary_direction.lower() == 'az'
+            else pdata.get_detector_za(i_chan)[:]
+            for i_chan in range(pdata.n_chan)
+            if relative_tone_indices[i_chan]
+        ]
 
         amplitudes = []
         fwhms = []
         good_resonators = []
         with PdfPages(f'peaks_{pdata.file_stub}.pdf') as pdf:
-            for i_res in resonators:
-                _logger.info(f'{self.name}: Analyzing resonator {i_res}...')
-                data = pdata.data_mK[i_res]
-                telescope_pos = (
-                    pdata.detector_az[i_res]
-                    if primary_direction.lower() == 'az'
-                    else pdata.detector_za[i_res]
-                )
+            for i_chan in range(pdata.n_chan):
+                tile_name = pdata.get_tile_name(i_chan)
+                for i_tone_relative in relative_tone_indices[i_chan]:
+                    i_res_abs = pdata.get_absolute_tone_index(i_chan, i_tone_relative)
+                    _logger.info(f'{self.name}: Analyzing resonator {i_res_abs}...')
+                    data = all_data[i_chan][i_tone_relative]
+                    telescope_pos = tel_pos[i_chan][i_tone_relative]
 
-                first_good_sample = np.argwhere(~np.isnan(telescope_pos))[0]
-                last_good_sample = np.argwhere(~np.isnan(telescope_pos))[-1]
-                relative_pos = np.abs(telescope_pos - telescope_pos[first_good_sample])
-                samples_0 = np.argmax(
-                    (relative_pos >= fit_radius_deg) & ~np.isnan(telescope_pos)
-                )
-                relative_pos = np.abs(telescope_pos - telescope_pos[last_good_sample])
-                samples_1 = np.where(
-                    (relative_pos >= fit_radius_deg) & ~np.isnan(telescope_pos)
-                )[0][-1]
-                samples = slice(samples_0, samples_1)
-                telescope_pos = telescope_pos[samples]
+                    first_good_sample = np.argwhere(~np.isnan(telescope_pos))[0]
+                    last_good_sample = np.argwhere(~np.isnan(telescope_pos))[-1]
+                    relative_pos = np.abs(
+                        telescope_pos - telescope_pos[first_good_sample]
+                    )
+                    samples_0 = np.argmax(
+                        (relative_pos >= fit_radius_deg) & ~np.isnan(telescope_pos)
+                    )
+                    relative_pos = np.abs(
+                        telescope_pos - telescope_pos[last_good_sample]
+                    )
+                    samples_1 = np.where(
+                        (relative_pos >= fit_radius_deg) & ~np.isnan(telescope_pos)
+                    )[0][-1]
+                    samples = slice(samples_0, samples_1)
+                    telescope_pos = telescope_pos[samples]
 
-                # diff = telescope_pos - np.roll(telescope_pos, 1)
-                # turn_point = np.nanargmax(diff)
-                turn_point = np.nanargmax(telescope_pos)
-                left_indices = np.arange(0, turn_point)
-                right_indices = np.arange(turn_point, len(telescope_pos))
+                    # diff = telescope_pos - np.roll(telescope_pos, 1)
+                    # turn_point = np.nanargmax(diff)
+                    turn_point = np.nanargmax(telescope_pos)
+                    left_indices = np.arange(0, turn_point)
+                    right_indices = np.arange(turn_point, len(telescope_pos))
 
-                data_segment = data[i_res, samples]
-                right_peak_idx = right_indices[np.argmax(data_segment[right_indices])]
-                left_peak_idx = left_indices[np.argmax(data_segment[left_indices])]
+                    data_segment = data[samples]
+                    right_peak_idx = right_indices[
+                        np.argmax(data_segment[right_indices])
+                    ]
+                    left_peak_idx = left_indices[np.argmax(data_segment[left_indices])]
 
-                right_fit_ind = np.argwhere(
-                    np.isclose(telescope_pos, telescope_pos[right_peak_idx], atol=0.5)
-                ).flatten()
-                right_fit_ind = right_fit_ind[
-                    np.isclose(right_fit_ind, right_peak_idx, atol=100)
-                ]
-                left_fit_ind = np.argwhere(
-                    np.isclose(telescope_pos, telescope_pos[left_peak_idx], atol=0.5)
-                ).flatten()
-                left_fit_ind = left_fit_ind[
-                    np.isclose(left_fit_ind, left_peak_idx, atol=100)
-                ]
+                    right_fit_ind = np.argwhere(
+                        np.isclose(
+                            telescope_pos, telescope_pos[right_peak_idx], atol=0.5
+                        )
+                    ).flatten()
+                    right_fit_ind = right_fit_ind[
+                        np.isclose(right_fit_ind, right_peak_idx, atol=100)
+                    ]
+                    left_fit_ind = np.argwhere(
+                        np.isclose(
+                            telescope_pos, telescope_pos[left_peak_idx], atol=0.5
+                        )
+                    ).flatten()
+                    left_fit_ind = left_fit_ind[
+                        np.isclose(left_fit_ind, left_peak_idx, atol=100)
+                    ]
 
-                amplitude_guess = np.max(data[i_res])
-                x0 = [
-                    amplitude_guess / 100,
-                    amplitude_guess,
-                    telescope_pos[right_peak_idx],
-                    0.1 / (2 * np.sqrt(2 * np.log(2))),
-                ]
-                res_right = least_squares(
-                    loss_function,
-                    x0,
-                    args=(telescope_pos[right_fit_ind], data_segment[right_fit_ind]),
-                    bounds=(
-                        [-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))],
-                        [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))],
-                    ),
-                )
+                    amplitude_guess = np.max(data)
+                    x0 = [
+                        amplitude_guess / 100,
+                        amplitude_guess,
+                        telescope_pos[right_peak_idx],
+                        0.1 / (2 * np.sqrt(2 * np.log(2))),
+                    ]
+                    res_right = least_squares(
+                        loss_function,
+                        x0,
+                        args=(
+                            telescope_pos[right_fit_ind],
+                            data_segment[right_fit_ind],
+                        ),
+                        bounds=(
+                            [-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))],
+                            [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))],
+                        ),
+                    )
 
-                amplitude_right = res_right.x[1]
-                fwhm_right = np.abs(sigma_to_fwhm(res_right.x[3]))
-                right_az_0 = res_right.x[2]
+                    amplitude_right = res_right.x[1]
+                    fwhm_right = np.abs(sigma_to_fwhm(res_right.x[3]))
+                    right_az_0 = res_right.x[2]
 
-                x0 = [
-                    amplitude_guess / 100,
-                    amplitude_guess,
-                    telescope_pos[left_peak_idx],
-                    0.1 / (2 * np.sqrt(2 * np.log(2))),
-                ]
-                res_left = least_squares(
-                    loss_function,
-                    x0,
-                    args=(telescope_pos[left_fit_ind], data_segment[left_fit_ind]),
-                    bounds=(
-                        [-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))],
-                        [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))],
-                    ),
-                )
+                    x0 = [
+                        amplitude_guess / 100,
+                        amplitude_guess,
+                        telescope_pos[left_peak_idx],
+                        0.1 / (2 * np.sqrt(2 * np.log(2))),
+                    ]
+                    res_left = least_squares(
+                        loss_function,
+                        x0,
+                        args=(telescope_pos[left_fit_ind], data_segment[left_fit_ind]),
+                        bounds=(
+                            [-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))],
+                            [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))],
+                        ),
+                    )
 
-                amplitude_left = res_left.x[1]
-                fwhm_left = np.abs(sigma_to_fwhm(res_left.x[3]))
-                left_az_0 = res_left.x[2]
+                    amplitude_left = res_left.x[1]
+                    fwhm_left = np.abs(sigma_to_fwhm(res_left.x[3]))
+                    left_az_0 = res_left.x[2]
 
-                # if left and right agree...
-                amplitude_mean = np.mean([amplitude_left, amplitude_right])
-                fwhm_mean = np.mean([fwhm_left, fwhm_right])
-                if (
-                    np.abs(amplitude_left - amplitude_right) / amplitude_mean
-                    < fractional_difference_threshold
-                    and np.abs(fwhm_left - fwhm_right) / fwhm_mean
-                    < fractional_difference_threshold
-                ):
-                    amplitudes.append(amplitude_mean)
-                    fwhms.append(fwhm_mean)
-                    good_resonators.append(i_res)
+                    # if left and right agree...
+                    amplitude_mean = np.mean([amplitude_left, amplitude_right])
+                    fwhm_mean = np.mean([fwhm_left, fwhm_right])
+                    if (
+                        np.abs(amplitude_left - amplitude_right) / amplitude_mean
+                        < fractional_difference_threshold
+                        and np.abs(fwhm_left - fwhm_right) / fwhm_mean
+                        < fractional_difference_threshold
+                    ):
+                        amplitudes.append(amplitude_mean)
+                        fwhms.append(fwhm_mean)
+                        good_resonators.append(i_res_abs)
 
-                time = pdata.timestamp[:] - pdata.timestamp[0]
-                fig = plt.figure(figsize=(8, 5))
-                plt.title(
-                    f'Detector {i_res} Peak Finding '
-                    '(Polarization {pdata.detector_pol[i_res]})'
-                )
-                plt.plot(telescope_pos[:], data_segment, label='Full Trace', color='b')
-                plt.plot(
-                    telescope_pos[right_fit_ind],
-                    data_segment[right_fit_ind],
-                    label=(
-                        f'Right (${{{primary_direction.upper()}}}_0$ = '
-                        f'{right_az_0:.3f})'
-                    ),
-                    color='orange',
-                )
-                right_gaussian = gaussian_profile(
-                    res_right.x, telescope_pos[right_fit_ind]
-                )
-                plt.plot(
-                    telescope_pos[right_fit_ind],
-                    right_gaussian,
-                    linestyle='--',
-                    color='orange',
-                )
-                right_patch = mpatches.Patch(
-                    color='orange',
-                    label=(
-                        f'Amplitude = {amplitude_right:.3e} {units}, '
-                        f'FWHM = {fwhm_right:.3f} deg'
-                    ),
-                )
+                    timestamp = pdata.get_timestamp(i_chan)[:]
+                    time = timestamp - timestamp[0]
+                    fig = plt.figure(figsize=(8, 5))
+                    plt.title(
+                        f'{tile_name} - Tone {i_tone_relative} Peak Finding '
+                        f'(Polarization {pdata.detector_pol[i_res_abs]})'
+                    )
+                    plt.plot(
+                        telescope_pos[:], data_segment, label='Full Trace', color='b'
+                    )
+                    plt.plot(
+                        telescope_pos[right_fit_ind],
+                        data_segment[right_fit_ind],
+                        label=(
+                            f'Right (${{{primary_direction.upper()}}}_0$ = '
+                            f'{right_az_0:.3f})'
+                        ),
+                        color='orange',
+                    )
+                    right_gaussian = gaussian_profile(
+                        res_right.x, telescope_pos[right_fit_ind]
+                    )
+                    plt.plot(
+                        telescope_pos[right_fit_ind],
+                        right_gaussian,
+                        linestyle='--',
+                        color='orange',
+                    )
+                    right_patch = mpatches.Patch(
+                        color='orange',
+                        label=(
+                            f'Amplitude = {amplitude_right:.3e} {units}, '
+                            f'FWHM = {fwhm_right:.3f} deg'
+                        ),
+                    )
 
-                plt.plot(
-                    telescope_pos[left_fit_ind],
-                    data_segment[left_fit_ind],
-                    label=(
-                        f'Left (${{{primary_direction.upper()}}}_0$ = {left_az_0:.3f})',
-                    ),
-                    color='green',
-                )
-                left_gaussian = gaussian_profile(
-                    res_left.x, telescope_pos[left_fit_ind]
-                )
-                plt.plot(
-                    telescope_pos[left_fit_ind],
-                    left_gaussian,
-                    linestyle='--',
-                    color='green',
-                )
-                left_patch = mpatches.Patch(
-                    color='green',
-                    label=(
-                        f'Amplitude = {amplitude_left:.3e} {units}, '
-                        f'FWHM = {fwhm_left:.3f} deg'
-                    ),
-                )
+                    plt.plot(
+                        telescope_pos[left_fit_ind],
+                        data_segment[left_fit_ind],
+                        label=(
+                            f'Left (${{{primary_direction.upper()}}}_0$ = '
+                            f'{left_az_0:.3f})',
+                        ),
+                        color='green',
+                    )
+                    left_gaussian = gaussian_profile(
+                        res_left.x, telescope_pos[left_fit_ind]
+                    )
+                    plt.plot(
+                        telescope_pos[left_fit_ind],
+                        left_gaussian,
+                        linestyle='--',
+                        color='green',
+                    )
+                    left_patch = mpatches.Patch(
+                        color='green',
+                        label=(
+                            f'Amplitude = {amplitude_left:.3e} {units}, '
+                            f'FWHM = {fwhm_left:.3f} deg'
+                        ),
+                    )
 
-                scan_rate = (
-                    telescope_pos[right_peak_idx + 10]
-                    - telescope_pos[right_peak_idx - 10]
-                ) / (time[right_peak_idx + 10] - time[right_peak_idx - 10])
-                time_delay = (
-                    (left_az_0 - right_az_0) / scan_rate / 2
-                )  # Amount RFSoC is behind the telescope
-                plt.plot([], [], label=f'Time Delay = {time_delay:.3f}s')
-                plt.legend(
-                    loc='lower center',
-                    bbox_transform=fig.transFigure,
-                    bbox_to_anchor=(0.5, 0.0),
-                    ncol=3,
-                )
-                handles = plt.gca().get_legend_handles_labels()[0]
-                handles.append(right_patch)
-                handles.append(left_patch)
-                handles = [handles[i] for i in [0, 3, 1, 2, 4, 5]]
-                plt.legend(
-                    loc='lower center',
-                    bbox_transform=fig.transFigure,
-                    bbox_to_anchor=(0.5, 0.0),
-                    ncol=3,
-                    handles=handles,
-                    fontsize=8,
-                )
-                plt.xlim(
-                    telescope_pos[max(0, right_peak_idx - 50)],
-                    telescope_pos[min(right_peak_idx + 50, len(telescope_pos) - 1)],
-                )
-                plt.xlabel(
-                    f'{
-                        "Azimuth"
-                        if primary_direction.lower() == "az"
-                        else "Zenith Angle"
-                    } (degrees)'
-                )
-                plt.ylabel(f'Detector Response ({units})')
-                plt.tight_layout(rect=[0, 0.15, 1, 1])
-                pdf.savefig(fig)
-                plt.close(fig)
+                    scan_rate = (
+                        telescope_pos[right_peak_idx + 10]
+                        - telescope_pos[right_peak_idx - 10]
+                    ) / (time[right_peak_idx + 10] - time[right_peak_idx - 10])
+                    time_delay = (
+                        (left_az_0 - right_az_0) / scan_rate / 2
+                    )  # Amount RFSoC is behind the telescope
+                    plt.plot([], [], label=f'Time Delay = {time_delay:.3f}s')
+                    plt.legend(
+                        loc='lower center',
+                        bbox_transform=fig.transFigure,
+                        bbox_to_anchor=(0.5, 0.0),
+                        ncol=3,
+                    )
+                    handles = plt.gca().get_legend_handles_labels()[0]
+                    handles.append(right_patch)
+                    handles.append(left_patch)
+                    handles = [handles[i] for i in [0, 3, 1, 2, 4, 5]]
+                    plt.legend(
+                        loc='lower center',
+                        bbox_transform=fig.transFigure,
+                        bbox_to_anchor=(0.5, 0.0),
+                        ncol=3,
+                        handles=handles,
+                        fontsize=8,
+                    )
+                    plt.xlim(
+                        telescope_pos[max(0, right_peak_idx - 50)],
+                        telescope_pos[min(right_peak_idx + 50, len(telescope_pos) - 1)],
+                    )
+                    plt.xlabel(
+                        f'{
+                            "Azimuth"
+                            if primary_direction.lower() == "az"
+                            else "Zenith Angle"
+                        } (degrees)'
+                    )
+                    plt.ylabel(f'Detector Response ({units})')
+                    plt.tight_layout(rect=[0, 0.15, 1, 1])
+                    pdf.savefig(fig)
+                    plt.close(fig)
 
             amplitudes = np.array(amplitudes)
             fwhms = np.array(fwhms)

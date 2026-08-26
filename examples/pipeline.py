@@ -3,6 +3,7 @@ import logging.config
 
 from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis
 from rfsocinterface.core.data import *
+from rfsocinterface.core.params import RFSoCParameters
 from rfsocinterface.analysis import *
 import pdb
 import matplotlib.pyplot as plt
@@ -16,33 +17,39 @@ if __name__ == '__main__':
 
     lp_filter_freq = 15
     hp_filter_freq = 0.03
-    noise_removal_lp_filt_freq = 0  # Filter disabled if set to 0
-    ds_factor = 6
+    noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
+    noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
+    ds_factor = 5
 
     dataset = 'data_freq'
-    datasets = ['/vdsets/data_freq_diss']
+    datasets = ['.*/data_freq_diss']
 
     find_fwhm = CheckFocus(
         'az',
-        [241],
+        [20],
     )
 
     noise_removal_offres = RemoveElectronicsNoise(
         template_selection_indices='offres',
-        lp_filt_freq=noise_removal_lp_filt_freq,
+        lp_filt_freq=noise_removal_lp_filt_freq_offres,
     )
     noise_removal_onres = RemoveElectronicsNoise(
         template_selection_indices='onres',
-        lp_filt_freq=noise_removal_lp_filt_freq,
+        lp_filt_freq=noise_removal_lp_filt_freq_onres,
     )
     noise_removal = RemoveElectronicsNoise()
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq, datasets=datasets)
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
     clean_tod = CleanTOD(dataset=dataset)
-    compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, cut_time=2, selection_indices='onres')
+    compute_psd = ComputeNoisePSD(
+        # PsdBasis.GAIN_PHASE,
+        PsdBasis.FREQ_DISS,
+        cut_time=2,
+        selection_indices='all',
+    )
     psd_plotter = PlotPSD(
-        PsdBasis.GAIN_PHASE,
-        # PsdBasis.FREQ_DISS,
+        # PsdBasis.GAIN_PHASE,
+        PsdBasis.FREQ_DISS,
         show=True,
     )
     bin_tod_to_map = BinTODIntoMap(
@@ -53,15 +60,18 @@ if __name__ == '__main__':
         az_trim=0,
         za_trim=0,
         dpix=0.04,
+        r0=0,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
     make_video = MakeVideo(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
+        dataset=dataset,
         block_size_s=0.1,
         dpix=0.08,
         az_trim=0,
         za_trim=0,
+        # overwrite=False,
         # show=True,
         # savefile='test.gif',
     )
@@ -86,25 +96,26 @@ if __name__ == '__main__':
         # plot_beammap,
     ])
 
-    # date = '20260319'
-    # setnum = 1023
-    # date = '20260309'
-    # setnum = 1010
-    date = '20260320'
-    setnum = 1010
-    # date = '20260325'
-    # setnum = 1002
-    # date = '20260223'
-    # setnum = 1010  # 1009 - 1015
+    date = '20260805'
+    setnum = 1005
 
 
-    # Run the pipeline using one of the following:
-    # pdata, results = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    pdata, results = pipeline.from_consolidated_data(date, setnum)
-
-    # pdata = ProcessedData.load(date, setnum, mode='a')
-    # results = pipeline.run(pdata)
-
-    pdb.set_trace()
+    # pdata = ProcessedData.load(date, setnum)
+    # pdb.set_trace()
+    # pipeline.run(pdata)
+    # params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
+    # det_dy = params.detector_delta_y[:]
+    # i_res = 676
+    # same_za = np.argwhere(np.abs(det_dy - det_dy[i_res]) < 0.05).flatten()
+    # same_za = same_za[params.detector_pol[same_za] == params.detector_pol[i_res]]
+    # same_za = same_za.tolist()
+    # find_fwhm = CheckFocus(
+    #     'az',
+    #     resonators=same_za,
+    #     dataset=dataset,
+    # )
+    # find_fwhm.apply(pdata)
 
