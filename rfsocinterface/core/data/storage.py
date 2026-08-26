@@ -1142,7 +1142,7 @@ class ProcessedData(DataStorage):
         return int(np.where(tone_cutoffs <= i_tone_absolute)[0][-1])
 
     def get_relative_tone_index(self, i_tone_absolute: int) -> tuple[int, int]:
-        """Return the index of the tone within its channel."""
+        """Return the channel and index of the tone within its channel."""
         tone_cutoffs = np.cumsum((0, *self.n_tones))
         if i_tone_absolute < 0 or i_tone_absolute >= tone_cutoffs[-1]:
             return -1, -1
@@ -1654,4 +1654,3 @@ def decode_tone_indices(
                 )
     else:
         return selection_indices
-    # pd = cd.create_processed_data()

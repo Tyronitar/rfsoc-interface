@@ -157,11 +157,12 @@ class CheckFocus(DataRoutine):
         good_resonators = []
         with PdfPages(f'peaks_{pdata.file_stub}.pdf') as pdf:
             for i_chan in range(pdata.n_chan):
-                for i_res_rel in relative_tone_indices[i_chan]:
-                    i_res_abs = pdata.get_absolute_tone_index(i_chan, i_res_rel)
+                tile_name = pdata.get_tile_name(i_chan)
+                for i_tone_relative in relative_tone_indices[i_chan]:
+                    i_res_abs = pdata.get_absolute_tone_index(i_chan, i_tone_relative)
                     _logger.info(f'{self.name}: Analyzing resonator {i_res_abs}...')
-                    data = all_data[i_chan][i_res_rel]
-                    telescope_pos = tel_pos[i_chan][i_res_rel]
+                    data = all_data[i_chan][i_tone_relative]
+                    telescope_pos = tel_pos[i_chan][i_tone_relative]
 
                     first_good_sample = np.argwhere(~np.isnan(telescope_pos))[0]
                     last_good_sample = np.argwhere(~np.isnan(telescope_pos))[-1]
@@ -270,7 +271,7 @@ class CheckFocus(DataRoutine):
                     time = timestamp - timestamp[0]
                     fig = plt.figure(figsize=(8, 5))
                     plt.title(
-                        f'Detector {i_res_abs} Peak Finding '
+                        f'{tile_name} - Tone {i_tone_relative} Peak Finding '
                         f'(Polarization {pdata.detector_pol[i_res_abs]})'
                     )
                     plt.plot(

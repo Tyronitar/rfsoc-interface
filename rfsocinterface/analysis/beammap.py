@@ -359,7 +359,7 @@ class PlotBeamMap(DataRoutine):
         return list(self.requires)
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):  # noqa: PLR0915
         # Load necessary datasets
         az_center = pdata['beammap/az_center'][:]
         za_center = pdata['beammap/za_center'][:]
@@ -425,11 +425,11 @@ class PlotBeamMap(DataRoutine):
         for ax in axes.flatten():
             ax.set_axis_off()
         i_subplot = 1
-        for i_loop, i_res in enumerate(tones_to_plot):
+        for i_loop, i_tone_absolute in enumerate(tones_to_plot):
             if i_loop == tones_to_plot.size // 2:
                 _logger.info(f'{self.name}: Halfway done creating grid pages...')
             ax = axes.flatten()[i_subplot - 1]
-            plot_data = np.flip(np.transpose(map_val[i_res][::-1]), 1)
+            plot_data = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
             ax.imshow(
                 plot_data,
                 extent=extent,
@@ -439,9 +439,11 @@ class PlotBeamMap(DataRoutine):
             )
 
             # Draw a rectangle around the subplot indicating off-resonance / bad tones
-            if chanmask[i_res] != 1:
+            if chanmask[i_tone_absolute] != 1:
                 line_color = (
-                    OFF_RESONANCE_COLOR if chanmask[i_res] == 0 else BAD_RESONANCE_COLOR
+                    OFF_RESONANCE_COLOR
+                    if chanmask[i_tone_absolute] == 0
+                    else BAD_RESONANCE_COLOR
                 )
                 auto_axis = ax.axis()
                 rec = plt.Rectangle(
@@ -471,13 +473,13 @@ class PlotBeamMap(DataRoutine):
 
         # Create individul plots for each tone
         _logger.info(f'{self.name}: Creating individual resonance plots...')
-        for i_loop, i_res in enumerate(tones_to_plot):
+        for i_loop, i_tone_absolute in enumerate(tones_to_plot):
             if i_loop == tones_to_plot.size // 2:
                 _logger.info(f'{self.name}: Halfway done creating individual plots...')
 
             fig, ax = plt.subplots()
 
-            data_to_plot = np.flip(np.transpose(map_val[i_res][::-1]), 1)
+            data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
             data_to_plot -= np.nanmedian(data_to_plot)
             data_to_plot /= np.nanmax(data_to_plot)
             # data_to_plot = 10 * np.log10(np.abs(data_to_plot))
@@ -501,8 +503,8 @@ class PlotBeamMap(DataRoutine):
 
             # Center of bright source
             ax.plot(
-                az_center[i_res],
-                za_center[i_res],
+                az_center[i_tone_absolute],
+                za_center[i_tone_absolute],
                 marker='+',
                 color='white',
                 markersize=10,
@@ -510,16 +512,16 @@ class PlotBeamMap(DataRoutine):
             )
 
             # Stats
-            if chanmask[i_res] != 0:
+            if chanmask[i_tone_absolute] != 0:
                 bbox_pad = 0.3
                 t = AnchoredText(
-                    f'Amplitude = {amplitude[i_res] * 1e5:2f}    '
-                    f'chisq = {chisq[i_res]:.3f}    '
-                    f'snr = {snr[i_res]:.3f}\n'
-                    f'fwhm_az = {fwhm_az[i_res]:.2f}    '
-                    f'fwhm_za = {fwhm_za[i_res]:.2f}\n'
-                    f'az_center = {az_center[i_res]:.2f}    '
-                    f'za_center = {za_center[i_res]:.2f}\n',
+                    f'Amplitude = {amplitude[i_tone_absolute] * 1e5:2f}    '
+                    f'chisq = {chisq[i_tone_absolute]:.3f}    '
+                    f'snr = {snr[i_tone_absolute]:.3f}\n'
+                    f'fwhm_az = {fwhm_az[i_tone_absolute]:.2f}    '
+                    f'fwhm_za = {fwhm_za[i_tone_absolute]:.2f}\n'
+                    f'az_center = {az_center[i_tone_absolute]:.2f}    '
+                    f'za_center = {za_center[i_tone_absolute]:.2f}\n',
                     loc='upper center',
                     bbox_to_anchor=(0.5, 0.15),
                     bbox_transform=fig.transFigure,
@@ -534,11 +536,16 @@ class PlotBeamMap(DataRoutine):
                 # t.patch.set_color('black')
                 ax.add_artist(t)
 
-            title = rf'Tone {i_res} ($f_0$={detector_f[i_res] * 1e-6:.3f} MHz)'
+            i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
+            tile_name = pdata.get_tile_name(i_chan)
+            title = (
+                f'{tile_name} - Tone {i_tone_relative} '
+                f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
+            )
 
             # Indicate in plot title and face color if off-resonance / bad tone
-            if chanmask[i_res] != 1:
-                if chanmask[i_res] == 0:
+            if chanmask[i_tone_absolute] != 1:
+                if chanmask[i_tone_absolute] == 0:
                     title += ' (Off-resonance)'
                     facecolor = OFF_RESONANCE_COLOR
                 else:

@@ -728,22 +728,32 @@ class PlotPSD(DataRoutine):
                         plt.close(onres_fig)
 
                         # Plot individual tones
-                        for i, i_tone in enumerate(tones):
-                            f0 = detector_f[i_tone]
+                        for i, i_tone_absolute in enumerate(tones):
+                            f0 = detector_f[i_tone_absolute]
                             if offres_median is not None:
                                 this_offres_median = (
                                     offres_median
-                                    / (pdata.adc_units_to_hz[i_tone] * f0) ** 2
+                                    / (pdata.adc_units_to_hz[i_tone_absolute] * f0) ** 2
                                 )
                             else:
                                 this_offres_median = None
+                            i_chan, i_tone_relative = pdata.get_relative_tone_index(
+                                i_tone_absolute
+                            )
+                            tile_name = pdata.get_tile_name(i_chan)
                             fig = plot_psd_df_over_f(
                                 freq,
                                 psd[:, i],
-                                f0=detector_f[i_tone],
+                                f0=detector_f[i_tone_absolute],
                                 offres_median=this_offres_median,
                                 title=' - '.join(
-                                    filter(None, (title, f'Resonator {i_tone}'))
+                                    filter(
+                                        None,
+                                        (
+                                            title,
+                                            f'{tile_name} - Tone {i_tone_relative}',
+                                        ),
+                                    )
                                 ),
                                 add_legend=True,
                                 show_flat_spectrum_level=True,
