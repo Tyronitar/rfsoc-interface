@@ -54,7 +54,7 @@ class ComputeNoisePSD(DataRoutine):
     """
 
     name = 'ComputeNoisePSD'
-    version = '1.1.0'
+    version = '2.0.0'
 
     def __init__(
         self,
@@ -576,7 +576,7 @@ class PlotPSD(DataRoutine):
     """
 
     name = 'PlotPSD'
-    version = '1.2.0'
+    version = '1.3.0'
 
     @ensure_path('savefile')
     def __init__(

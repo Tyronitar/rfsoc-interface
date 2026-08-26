@@ -46,7 +46,7 @@ class CheckFocus(DataRoutine):
     """
 
     name = 'CheckFocus'
-    version = '1.1.1'
+    version = '2.0.0'
 
     produces: ClassVar[set] = {
         '/focus',
