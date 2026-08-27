@@ -1,6 +1,7 @@
 """Beam map analysis routines."""
 
 import logging
+import pdb
 import typing
 from typing import ClassVar
 
@@ -26,6 +27,7 @@ from rfsocinterface.core.utils import (
     OFF_RESONANCE_COLOR,
     ChanmaskValue,
     gauss_2d,
+    get_axis_index,
     get_beammap_pdf_template,
     mutual_nearest_pairs_between_groups,
 )
@@ -58,6 +60,7 @@ def find_gaussian_beams(
     max_radius: float = 0.1,
     maxfev: int = 10000,
     caller_name: str = 'find_gaussian_beams',
+    axis_index: tuple[tuple[int], ...] | None = None,
 ):
     """Fit a Gaussian to find the beam in the maps for each resonance."""
     _logger.info(f'{caller_name}: Analyzing beam map...')
@@ -65,6 +68,15 @@ def find_gaussian_beams(
     map_az = az[:][:, np.newaxis]
     map_za = za[:][np.newaxis, :]
     for i, i_res in enumerate(tone_indices):
+        if axis_index is not None:
+            this_slice = list(axis_index)
+            this_slice[0] = i_res
+            assign_slice = tuple(this_slice)
+        else:
+            assign_slice = get_axis_index(
+                amplitude,
+                i_res,
+            )
         if i == n_tones // 2:
             _logger.info(f'{caller_name}: Halfway done analyzing beam map...')
         this_val = np.ndarray.flatten(map_val[i_res])
@@ -80,13 +92,13 @@ def find_gaussian_beams(
             (index[:, 0], index[:, 1]), map_val[i_res].shape
         )
 
-        az_center[i_res] = np.sum(
+        az_center[assign_slice] = np.sum(
             az[index[:, 0]].squeeze() * this_val[flat_index]
         ) / np.sum(this_val[flat_index])
-        za_center[i_res] = np.sum(
+        za_center[assign_slice] = np.sum(
             za[:, index[:, 1]].squeeze() * this_val[flat_index]
         ) / np.sum(this_val[flat_index])
-        amplitude[i_res] = np.max(this_val[index])
+        amplitude[assign_slice] = np.max(this_val[index])
 
         this_az = np.ndarray.flatten(az[index[:, 0], :])
         this_za = np.ndarray.flatten(za[:, index[:, 1]])
@@ -97,8 +109,8 @@ def find_gaussian_beams(
         )
         start_params = (
             np.max(this_val),
-            az_center[i_res],
-            za_center[i_res],
+            az_center[assign_slice],
+            za_center[assign_slice],
             initial_fwhm,
             initial_fwhm,
             np.median(this_val),
@@ -107,8 +119,8 @@ def find_gaussian_beams(
             # Lower bounds
             (
                 0.0,
-                az_center[i_res] - az_bounds_offset,
-                za_center[i_res] - za_bounds_offset,
+                az_center[assign_slice] - az_bounds_offset,
+                za_center[assign_slice] - za_bounds_offset,
                 min_fwhm,
                 min_fwhm,
                 -np.max(np.abs(this_val)),
@@ -116,8 +128,8 @@ def find_gaussian_beams(
             # Upper bounds
             (
                 10.0 * np.max(this_val),
-                az_center[i_res] + az_bounds_offset,
-                za_center[i_res] + za_bounds_offset,
+                az_center[assign_slice] + az_bounds_offset,
+                za_center[assign_slice] + za_bounds_offset,
                 max_fwhm,
                 max_fwhm,
                 np.max(np.abs(this_val)),
@@ -143,14 +155,14 @@ def find_gaussian_beams(
             pcov = np.zeros((6, 6))
             continue
 
-        az_center[i_res] = popt[1]
-        za_center[i_res] = popt[2]
-        amplitude[i_res] = popt[0]
-        fwhm_az[i_res] = np.abs(popt[3])
-        fwhm_za[i_res] = np.abs(popt[4])
-        offset[i_res] = popt[5]
-        snr[i_res] = popt[0] / np.sqrt(pcov[0, 0])
-        chisq[i_res] = np.sum(
+        az_center[assign_slice] = popt[1]
+        za_center[assign_slice] = popt[2]
+        amplitude[assign_slice] = popt[0]
+        fwhm_az[assign_slice] = np.abs(popt[3])
+        fwhm_za[assign_slice] = np.abs(popt[4])
+        offset[assign_slice] = popt[5]
+        snr[assign_slice] = popt[0] / np.sqrt(pcov[0, 0])
+        chisq[assign_slice] = np.sum(
             (
                 (
                     this_val
@@ -171,7 +183,7 @@ def find_gaussian_beams(
         )
         this_gaussian = gauss_2d((this_az, this_za), *popt)
         residual_map = map_val[i_res] - gauss_2d((map_az, map_za), *popt)
-        new_snr[i_res] = (this_gaussian**2).mean() / (residual_map**2).mean()
+        new_snr[assign_slice] = (this_gaussian**2).mean() / (residual_map**2).mean()
     _logger.info(f'{caller_name}: Finished analyzing beam map.')
 
 
@@ -265,7 +277,7 @@ class AnalyzeBeamMap(DataRoutine):
         return list(self.requires)
 
     def _initialize_datasets(self, pdata: ProcessedData):
-        if pdata.has('beammap', exact_match=True):
+        if pdata.has('/beammap', exact_match=True):
             _logger.warning(
                 f'{self.name}: Beam Map group already exists in the file; '
                 'overwriting datasets.'
@@ -602,6 +614,7 @@ class PlotBeamMap(DataRoutine):
         return RoutineResult()
 
 
+@register_routine
 class CombinePolarizedBeamMaps(DataRoutine):
     """Routine for combining beam maps collected with orthogonal polarizations."""
 
@@ -633,11 +646,11 @@ class CombinePolarizedBeamMaps(DataRoutine):
         '/polarized_beammap/detector_pol',
         '/polarized_beammap/chanmask',
         '/polarized_beammap/residual',
+        '/polarized_beammap/residual/map_val',
         # Following datasets have size 2 dimension 0, for analysis on the residual and
         # inverted maps respectively.
         # TODO: Update `find_gaussian_beams` to use `axis_slice` when assigning values
         '/polarized_beammap/residual/is_collided',
-        '/polarized_beammap/residual/map_val',
         '/polarized_beammap/residual/amplitude',
         '/polarized_beammap/residual/snr',
         '/polarized_beammap/residual/chisq',
@@ -646,6 +659,57 @@ class CombinePolarizedBeamMaps(DataRoutine):
         '/polarized_beammap/residual/offset',
     }
 
+    def __init__(  # noqa: D417
+        self,
+        delta_sigma_fwhm_threshold: float = 1.5,
+        delta_sigma_chisq_threshold: float = 3,
+        snr_threshold: float = 0.5,
+        amplitude_threshold: float = 0.2,
+        delta_sigma_fwhm_ratio_threshold: float = 1.5,
+        initial_fwhm: float = 0.1,
+        min_fwhm: float = 0.01,
+        max_fwhm: float = 1.0,
+        az_bounds_offset: float = 0.2,
+        za_bounds_offset: float = 0.2,
+        max_radius: float = 0.1,
+        maxfev: int = 10000,
+        plot: bool = False,
+    ):
+        """Initialize the CombinePolarizedBeamMaps routine.
+
+        Arguments:
+            ratio_threshold (float, optional): The minimum ratio of second resonance
+                to original to flag as a double resonance. Defaults to 0.5.
+            initial_fwhm (float, optional): The initial guess for FWHM for the fit.
+                Defaults to 0.1.
+            min_fwhm (float, optional): The minimum FWHM for the fit. Defaults to 0.01.
+            max_fwhm (float, optional): The maximum FWHM for the fit. Defaults to 1.
+            az_bounds_offset (float, optional): Relative offset to use when determining
+                the bounds of the center of the Gaussian in azimuth. Defaults to 0.2.
+            za_bounds_offset (float, optional): Relative offset to use when determining
+                the bounds of the center of the Gaussian in zenith angle. Defaults to
+                0.2.
+            max_radius (float, optional): The maximum radius to use when determining the
+                location of the bright source in teh map. Defaults to 0.1.
+            maxfev (int, optional): Maximum function evaluations to try before
+                abandoning the fit. Defaults to 10000.
+        """
+        super().__init__(
+            delta_sigma_fwhm_threshold=delta_sigma_fwhm_threshold,
+            delta_sigma_chisq_threshold=delta_sigma_chisq_threshold,
+            delta_sigma_fwhm_ratio_threshold=delta_sigma_fwhm_ratio_threshold,
+            snr_threshold=snr_threshold,
+            amplitude_threshold=amplitude_threshold,
+            initial_fwhm=initial_fwhm,
+            min_fwhm=min_fwhm,
+            max_fwhm=max_fwhm,
+            az_bounds_offset=abs(az_bounds_offset),
+            za_bounds_offset=abs(za_bounds_offset),
+            max_radius=max_radius,
+            maxfev=maxfev,
+            plot=plot,
+        )
+
     @typing.overload
     def _inputs(self, vpol_data: ProcessedData, hpol_data: ProcessedData):
         return {
@@ -653,6 +717,7 @@ class CombinePolarizedBeamMaps(DataRoutine):
             'hpol_data': self.requires.copy(),
         }
 
+    @typing.override
     def _run(self, vpol_data: ProcessedData, hpol_data: ProcessedData, inputs):
         """Combine beammaps with orthogonal polarizations.
 
@@ -673,7 +738,134 @@ class CombinePolarizedBeamMaps(DataRoutine):
                         flagging. More passes = more likely a true collision. Gradient
                         in plots to signify intensity / likelihood.
         """
-        raise NotImplementedError
+        # Load relevant datasets
+        map_val_pol1 = vpol_data['map/map_val'][:]
+        map_az_pol1 = vpol_data['map/map_az'][:][:, np.newaxis]
+        map_za_pol1 = vpol_data['map/map_za'][:][np.newaxis, :]
+        # residual_map_val_pol1 = vpol_data['polarized_beammap/residual/map_val']
+        residual_map_val_pol1 = np.zeros_like(map_val_pol1)
+        map_val_pol2 = hpol_data['map/map_val'][:]
+        map_az_pol2 = hpol_data['map/map_az'][:][:, np.newaxis]
+        map_za_pol2 = hpol_data['map/map_za'][:][np.newaxis, :]
+        # residual_map_val_pol2 = hpol_data['polarized_beammap/residual/map_val']
+        residual_map_val_pol2 = np.zeros_like(map_val_pol2)
+
+        map_val = (map_val_pol1, map_val_pol2)
+        map_az = (map_az_pol1, map_az_pol2)
+        map_za = (map_za_pol1, map_za_pol2)
+        residual_map_val = (residual_map_val_pol1, residual_map_val_pol2)
+
+        az_center_pol1 = vpol_data['beammap/az_center'][:]
+        za_center_pol1 = vpol_data['beammap/za_center'][:]
+        amplitude_pol1 = vpol_data['beammap/amplitude'][:]
+        # chisq_pol1 = pol1_data['beammap/chisq'][:]
+        fwhm_az_pol1 = vpol_data['beammap/fwhm_az'][:]
+        fwhm_za_pol1 = vpol_data['beammap/fwhm_za'][:]
+        snr_pol1 = vpol_data['beammap/snr'][:]
+
+        az_center_pol2 = hpol_data['beammap/az_center'][:]
+        za_center_pol2 = hpol_data['beammap/za_center'][:]
+        amplitude_pol2 = hpol_data['beammap/amplitude'][:]
+        # chisq_pol2 = pol2_data['beammap/chisq'][:]
+        fwhm_az_pol2 = hpol_data['beammap/fwhm_az'][:]
+        fwhm_za_pol2 = hpol_data['beammap/fwhm_za'][:]
+        snr_pol2 = hpol_data['beammap/snr'][:]
+
+        # Determine Polarization
+        is_pol_1 = amplitude_pol1 > amplitude_pol2
+        detector_pol = np.where(is_pol_1, 1, 2)
+        az_center = np.where(is_pol_1, az_center_pol1, az_center_pol2)
+        za_center = np.where(is_pol_1, za_center_pol1, za_center_pol2)
+        amplitude = np.where(is_pol_1, amplitude_pol1, amplitude_pol2)
+        fwhm_az = np.where(is_pol_1, fwhm_az_pol1, fwhm_az_pol2)
+        fwhm_za = np.where(is_pol_1, fwhm_za_pol1, fwhm_za_pol2)
+        snr = np.where(is_pol_1, snr_pol1, snr_pol2)
+        chanmask = vpol_data.chanmask
+
+        # Find low-response resonances
+        good_ind = np.argwhere(
+            (chanmask == ChanmaskValue.ON_RESONANCE) & (amplitude > 0)
+        )  # Ignore failed fits and bad tones
+        amp_med = np.median(amplitude[good_ind])
+        amp_std = np.std(amplitude[good_ind])
+        good_amp = amplitude[np.abs(amplitude - amp_med) <= 2 * amp_std]
+        min_valid_amp = good_amp.min()
+        low_response_ind = np.argwhere(amplitude < min_valid_amp).flatten()
+        chanmask[low_response_ind] = ChanmaskValue.LOW_RESPONSE
+        good_ind = np.setdiff1d(good_ind, low_response_ind)
+
+        i_pol = detector_pol - 1
+        good_ind_pol = (
+            np.intersect1d(good_ind, np.argwhere(detector_pol == 1).flatten()),
+            np.intersect1d(good_ind, np.argwhere(detector_pol == 2).flatten()),
+        )
+
+        # Find collided resonances
+        # Make and analyze residual maps
+        for i_tone in good_ind:
+            this_i_pol = i_pol[i_tone]
+            this_map_val = map_val[this_i_pol]
+            this_map_az = map_az[this_i_pol]
+            this_map_za = map_za[this_i_pol]
+            this_residual_map_val = residual_map_val[this_i_pol]
+            gaussian = gauss_2d(
+                (this_map_az, this_map_za),
+                amplitude[i_tone],
+                az_center[i_tone],
+                za_center[i_tone],
+                fwhm_az[i_tone],
+                fwhm_za[i_tone],
+                0,
+                # offset[i_res],
+            )
+            this_residual_map_val[i_tone] = this_map_val[i_tone] - gaussian
+
+        total_tones = vpol_data.total_tones
+        residual_az_center = np.zeros((total_tones, 2))
+        residual_za_center = np.zeros((total_tones, 2))
+        residual_amplitude = np.zeros((total_tones, 2))
+        residual_snr = np.zeros((total_tones, 2))
+        residual_new_snr = np.zeros((total_tones, 2))
+        residual_chisq = np.zeros((total_tones, 2))
+        residual_fwhm_az = np.zeros((total_tones, 2))
+        residual_fwhm_za = np.zeros((total_tones, 2))
+        residual_offset = np.zeros((total_tones, 2))
+
+        for this_i_pol in range(2):
+            this_map_az = map_az[this_i_pol]
+            this_map_za = map_za[this_i_pol]
+            vals = (
+                (residual_map_val[this_i_pol], (None, 0)),  # Residual map
+                (-1 * residual_map_val[this_i_pol], (None, 1)),  # Inverted map
+            )
+            for this_map_val, axis_slice in vals:
+                find_gaussian_beams(
+                    good_ind_pol[this_i_pol],
+                    this_map_az,
+                    this_map_za,
+                    this_map_val,
+                    residual_az_center,
+                    residual_za_center,
+                    residual_amplitude,
+                    residual_snr,
+                    residual_new_snr,
+                    residual_chisq,
+                    residual_fwhm_az,
+                    residual_fwhm_za,
+                    residual_offset,
+                    initial_fwhm=self.params['initial_fwhm'],
+                    min_fwhm=self.params['min_fwhm'],
+                    max_fwhm=self.params['max_fwhm'],
+                    az_bounds_offset=self.params['az_bounds_offset'],
+                    za_bounds_offset=self.params['za_bounds_offset'],
+                    max_radius=self.params['max_radius'],
+                    maxfev=self.params['maxfev'],
+                    caller_name=self.name,
+                    axis_index=axis_slice,
+                )
+
+        # Check metrics to find collisions
+        pdb.set_trace()
 
 
 # TODO: Implement this

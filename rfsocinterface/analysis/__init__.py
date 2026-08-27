@@ -5,6 +5,7 @@ from rfsocinterface.analysis.bad_resonances import (
 )
 from rfsocinterface.analysis.beammap import (
     AnalyzeBeamMap,
+    CombinePolarizedBeamMaps,
     PlotBeamMap,
 )
 from rfsocinterface.analysis.peak import (
@@ -21,6 +22,7 @@ from rfsocinterface.analysis.psd import (
 __all__ = [
     'AnalyzeBeamMap',
     'CheckFocus',
+    'CombinePolarizedBeamMaps',
     'ComputeNoisePSD',
     'FindDoubleResonances',
     'PlotBeamMap',

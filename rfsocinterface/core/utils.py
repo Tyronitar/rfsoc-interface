@@ -762,12 +762,12 @@ def axis_slice(
     return a[a_slice]
 
 
-def axis_index(
+def get_axis_index(
     a: npt.NDArray,
     indices: npt.ArrayLike | tuple[npt.ArrayLike, ...],
     axis: int | tuple[int, ...] = -1,
-):
-    """Index `a` along axis `axis` with `indices`.
+) -> tuple[slice, ...]:
+    """Return the slice needed to index `a` along axis `axis` with `indices`.
 
     Parameters
     ----------
@@ -801,7 +801,40 @@ def axis_index(
             a_index[ax] = indices[i]
     else:
         a_index[axis] = indices
-    return a[tuple(a_index)]
+    return tuple(a_index)
+
+
+def axis_index(
+    a: npt.NDArray,
+    indices: npt.ArrayLike | tuple[npt.ArrayLike, ...],
+    axis: int | tuple[int, ...] = -1,
+):
+    """Index `a` along axis `axis` with `indices`.
+
+    Parameters
+    ----------
+    a : numpy.ndarray
+        The array to be indexed.
+    indices : array-like
+        The indices to use for indexing.
+    axis : int, optional
+        The axis of `a` to be indexed.
+
+    Examples:
+    --------
+    >>> import numpy as np
+    >>> from scipy.signal._arraytools import axis_index
+    >>> a = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    >>> axis_index(a, [0, 2], axis=1)
+    array([[1, 3],
+           [4, 6],
+           [7, 9]])
+    >>> axis_index(a, [1, 2], axis=0)
+    array([[4, 5, 6],
+           [7, 8, 9]])
+    """
+    a_slice = get_axis_index(a, indices=indices, axis=axis)
+    return a[a_slice]
 
 
 def axis_reverse(a, axis=-1):

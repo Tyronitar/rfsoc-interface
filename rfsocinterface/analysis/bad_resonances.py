@@ -1,6 +1,7 @@
 """Code for identifying bad resonances."""
 
 import logging
+import pdb
 import typing
 from typing import ClassVar
 
@@ -96,11 +97,11 @@ class FindDoubleResonances(DataRoutine):
         )
 
     @typing.override
-    def inputs(self, pdata):
+    def _inputs(self, pdata):
         return list(self.requires)
 
     def _initialize_datasets(self, pdata: ProcessedData):
-        if pdata.has('beammap/double_resonances', exact_match=True):
+        if pdata.has('/beammap/double_resonances', exact_match=True):
             _logger.warning(
                 f'{self.name}: Double resonance group already exists in the file; '
                 'overwriting datasets.'
@@ -111,32 +112,32 @@ class FindDoubleResonances(DataRoutine):
         dr_group.create_dataset('residual_map_val', map_shape, dtype=np.float64)
 
         pos_group = dr_group.create_group('positive')
-        pos_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
-        pos_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
-        pos_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
-        pos_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
-        pos_group.create_dataset('new_snr', (pdata.n_tones,), dtype=np.float64)
-        pos_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
-        pos_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
-        pos_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
-        pos_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
-        pos_group.create_dataset('is_double', (pdata.n_tones,), dtype=np.bool)
+        pos_group.create_dataset('az_center', (pdata.total_tones,), dtype=np.float64)
+        pos_group.create_dataset('za_center', (pdata.total_tones,), dtype=np.float64)
+        pos_group.create_dataset('amplitude', (pdata.total_tones,), dtype=np.float64)
+        pos_group.create_dataset('snr', (pdata.total_tones,), dtype=np.float64)
+        pos_group.create_dataset('new_snr', (pdata.total_tones,), dtype=np.float64)
+        pos_group.create_dataset('chisq', (pdata.total_tones,), dtype=np.float64)
+        pos_group.create_dataset('fwhm_az', (pdata.total_tones,), dtype=np.float64)
+        pos_group.create_dataset('fwhm_za', (pdata.total_tones,), dtype=np.float64)
+        pos_group.create_dataset('offset', (pdata.total_tones,), dtype=np.float64)
+        pos_group.create_dataset('is_double', (pdata.total_tones,), dtype=np.bool)
 
         neg_group = dr_group.create_group('negative')
-        neg_group.create_dataset('az_center', (pdata.n_tones,), dtype=np.float64)
-        neg_group.create_dataset('za_center', (pdata.n_tones,), dtype=np.float64)
-        neg_group.create_dataset('amplitude', (pdata.n_tones,), dtype=np.float64)
-        neg_group.create_dataset('snr', (pdata.n_tones,), dtype=np.float64)
-        neg_group.create_dataset('new_snr', (pdata.n_tones,), dtype=np.float64)
-        neg_group.create_dataset('chisq', (pdata.n_tones,), dtype=np.float64)
-        neg_group.create_dataset('fwhm_az', (pdata.n_tones,), dtype=np.float64)
-        neg_group.create_dataset('fwhm_za', (pdata.n_tones,), dtype=np.float64)
-        neg_group.create_dataset('offset', (pdata.n_tones,), dtype=np.float64)
-        neg_group.create_dataset('is_double', (pdata.n_tones,), dtype=np.bool)
+        neg_group.create_dataset('az_center', (pdata.total_tones,), dtype=np.float64)
+        neg_group.create_dataset('za_center', (pdata.total_tones,), dtype=np.float64)
+        neg_group.create_dataset('amplitude', (pdata.total_tones,), dtype=np.float64)
+        neg_group.create_dataset('snr', (pdata.total_tones,), dtype=np.float64)
+        neg_group.create_dataset('new_snr', (pdata.total_tones,), dtype=np.float64)
+        neg_group.create_dataset('chisq', (pdata.total_tones,), dtype=np.float64)
+        neg_group.create_dataset('fwhm_az', (pdata.total_tones,), dtype=np.float64)
+        neg_group.create_dataset('fwhm_za', (pdata.total_tones,), dtype=np.float64)
+        neg_group.create_dataset('offset', (pdata.total_tones,), dtype=np.float64)
+        neg_group.create_dataset('is_double', (pdata.total_tones,), dtype=np.bool)
 
     # ruff: disable[PLR2004, F841]
     @typing.override
-    def run(self, pdata: ProcessedData, inputs: list[str] | None = None):  # noqa: PLR0915
+    def _run(self, pdata: ProcessedData, inputs: list[str] | None = None):  # noqa: PLR0915
         self._initialize_datasets(pdata)
 
         map_az = pdata['map/map_az'][:][:, np.newaxis]
@@ -202,6 +203,7 @@ class FindDoubleResonances(DataRoutine):
         new_fwhm_az_neg = pdata['beammap/double_resonances/negative/fwhm_az']
         new_fwhm_za_neg = pdata['beammap/double_resonances/negative/fwhm_za']
         new_offset_neg = pdata['beammap/double_resonances/negative/offset']
+        pdb.set_trace()
 
         # Find any second sources in the positive residual map
         find_gaussian_beams(
@@ -227,6 +229,7 @@ class FindDoubleResonances(DataRoutine):
             maxfev=self.params['maxfev'],
             caller_name=self.name,
         )
+        pdb.set_trace()
         # Find any second sources in the negative residual map
         find_gaussian_beams(
             tone_indices,
@@ -268,6 +271,7 @@ class FindDoubleResonances(DataRoutine):
         amp_weight = 0.75
 
         amp_matrix = np.hstack([amplitude[:, np.newaxis], np.ones((amplitude.size, 1))])
+        pdb.set_trace()
         idx = tone_indices[np.isfinite(amplitude[tone_indices])]
         idx = idx[~np.isnan(amplitude[idx])]
         idx = idx[np.isfinite(snr[idx])]
