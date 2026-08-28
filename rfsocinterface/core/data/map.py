@@ -130,7 +130,10 @@ def get_scaled_optical_image(
         max(0, 0 - za_range.start),
         max(0, za_range.stop - optcam_height_pixels),
     )
-    im = np.pad(optical_image, (za_padding, az_padding, (0, 0)))
+    padding = [(0, 0) for _ in range(optical_image.ndim)]
+    padding[0] = za_padding
+    padding[1] = az_padding
+    im = np.pad(optical_image, padding)
     fixed_az_range = slice(
         max(0, az_range.start), max(az_range.stop, az_range.stop + az_padding[1])
     )
@@ -1659,7 +1662,7 @@ class BinTODIntoVideo(DataRoutine):
 
         # Optical Video processing
         timestamp = pdata.get_timestamp(least_samples_chan)[:]
-        if pdata.has('global_data/optical_video_timestamp', exact_match=True):
+        if pdata.has('/global_data/optical_video_timestamp', exact_match=True):
             _logger.info(f'{self.name}: Synchronizing mm and optical videos...')
             optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
             full_scaled_video = get_scaled_optical_image(
@@ -1674,12 +1677,13 @@ class BinTODIntoVideo(DataRoutine):
                 closest_optical_frame = argclosest(optical_timestamp, this_timestamp)
                 optical_video[i_block] = full_scaled_video[..., closest_optical_frame]
         else:
+            _logger.info(f'{self.name}: Repeating optical image for each frame...')
             optical_video[:] = np.repeat(
                 scaled_optical_image[np.newaxis], n_blocks, axis=0
             )
 
-        optical_video[:] = np.clip(optical_video[:], 0, 127)
-        optical_video[:] = optical_video[:] * 2
+        # optical_video[:] = np.clip(optical_video[:], 0, 127)
+        # optical_video[:] = optical_video[:] * 2
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):

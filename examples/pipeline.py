@@ -16,7 +16,7 @@ if __name__ == '__main__':
     _logger.handlers[0].setLevel(logging.INFO)
 
     lp_filter_freq = 15
-    hp_filter_freq = 0.03
+    hp_filter_freq = 0.2
     noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
     ds_factor = 5
