@@ -16,7 +16,7 @@ if __name__ == '__main__':
     _logger.handlers[0].setLevel(logging.INFO)
 
     lp_filter_freq = 15
-    hp_filter_freq = 0.03
+    hp_filter_freq = 0.2
     noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
     ds_factor = 5
@@ -58,7 +58,7 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=True,
+        beam_map_mode=False,
         dataset=dataset,
         az_trim=0,
         za_trim=0,
@@ -91,24 +91,26 @@ if __name__ == '__main__':
         hp_filter,
         lp_filter,
         clean_tod,
-        bin_tod_to_map,
+        # bin_tod_to_map,
         # plotter,
-        # make_video,
+        make_video,
         # find_fwhm,
-        analyze_beammap,
-        plot_beammap,
+        # analyze_beammap,
+        # plot_beammap,
     ])
 
-    date = '20260805'
-    setnum = 1005
+    date = '20260828'
+    setnum = 1002
 
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    # pdata = pipeline.from_consolidated_data(date, setnum)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_consolidated_data(date, setnum)
 
     # pdata = ProcessedData.load(date, setnum)
-    # pdb.set_trace()
     # pipeline.run(pdata)
+    # mm_video = pdata['video/total_map'][:]
+    # median_per_frame = np.median(mm_video, axis=(1, 2))
+    # pdb.set_trace()
     # params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
     # det_dy = params.detector_delta_y[:]
     # i_res = 676
