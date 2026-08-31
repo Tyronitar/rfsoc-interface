@@ -246,14 +246,19 @@ class BinTODIntoMap(DataRoutine):
     - /map/map_az: 1D array of azimuth values for the map pixels.
     - /map/map_za: 1D array of zenith angle values for the map pixels.
     - /map/netd: 1D array of length n_tones containing the NETD values for each tone.
-    - /map/sum_map: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing the sum
-        of the data values for each pixel.
-    - /map/hits_map: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing the
+    - /map/sum_map: 4D array of shape (n_chan, n_maps, n_pix_x, n_pix_y) containing the
+        sum of the data values for each pixel.
+    - /map/hits_map: 4D array of shape (n_chan, n_maps, n_pix_x, n_pix_y) containing the
         number of hits for each pixel.
     - /map/map_val: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing
-        the binned map values (i.e. sum_map / hits_map).
+        the binned map values (i.e. (sum_{i_chan} sum_map) / (sum_{i_chan} hits_map)).
+    - /map/channel_map_val: 4D array of shape (n_chan, n_maps, n_pix_x, n_pix_y)
+        containing the binned map values (i.e. sum_map / hits_map), separated by
+        channel.
     - /map/total_map: 2D array of shape (n_pix_x, n_pix_y) containing
-        the total map values (sum over all maps).
+        the total map values (sum over all channels and maps).
+    - /map/channel_total_map: 3D array of shape (n_chan, n_pix_x, n_pix_y) containing
+        the total map values (sum over all and maps), separated by channel.
     - /map/good_samples: 2D variable length array of length n_chan containing the
         indices of the good samples for each channel.
 
@@ -268,7 +273,9 @@ class BinTODIntoMap(DataRoutine):
         '/map/hits_map',
         '/map/sum_map',
         '/map/map_val',
+        '/map/channel_map_val',
         '/map/total_map',
+        '/map/channel_total_map',
         '/map/map_az',
         '/map/map_za',
         '/map/good_samples',
@@ -363,36 +370,49 @@ class BinTODIntoMap(DataRoutine):
             )
             del pdata['map']
         map_group = pdata.create_group('map')
+        map_group.attrs['dpix'] = dpix
+        map_group.attrs['units'] = (
+            'mK' if self.params['dataset'] == 'data_mK' else 'df/f'
+        )
         map_group.create_dataset('map_az', shape=(n_pix_x,), dtype=np.float64)
         map_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
+        map_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
+        n_chan = pdata.n_chan
         map_group.create_dataset(
             'sum_map',
-            shape=(n_maps, n_pix_x, n_pix_y),
-            chunks=(1, n_pix_x, n_pix_y),
+            shape=(n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         map_group.create_dataset(
             'hits_map',
-            shape=(n_maps, n_pix_x, n_pix_y),
-            chunks=(1, n_pix_x, n_pix_y),
+            shape=(n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         map_group.create_dataset(
             'map_val',
-            shape=(n_maps, n_pix_x, n_pix_y),
-            chunks=(1, n_pix_x, n_pix_y),
+            shape=(n_maps, n_pix_y, n_pix_x),
+            chunks=(1, n_pix_y, n_pix_x),
+            dtype=np.float64,
+        )
+        map_group.create_dataset(
+            'channel_map_val',
+            shape=(n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         map_group.create_dataset(
             'total_map',
-            shape=(n_pix_x, n_pix_y),
-            chunks=(n_pix_x, n_pix_y),
+            shape=(n_pix_y, n_pix_x),
+            chunks=(n_pix_y, n_pix_x),
             dtype=np.float64,
         )
-        map_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
-        map_group.attrs['dpix'] = dpix
-        map_group.attrs['units'] = (
-            'mK' if self.params['dataset'] == 'data_mK' else 'df/f'
+        map_group.create_dataset(
+            'channel_total_map',
+            shape=(n_chan, n_pix_y, n_pix_x),
+            chunks=(1, n_pix_y, n_pix_x),
+            dtype=np.float64,
         )
         good_samples = map_group.create_dataset(
             'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
@@ -548,10 +568,10 @@ class BinTODIntoMap(DataRoutine):
 
             # #loop over samples to create sum and hits maps
             for time_sample in good_samples:
-                sum_map[map_idx, x_ind[time_sample], y_ind[time_sample]] += (
+                sum_map[i_chan, map_idx, x_ind[time_sample], y_ind[time_sample]] += (
                     this_clean_data[time_sample] * weight
                 )
-                hits_map[map_idx, x_ind[time_sample], y_ind[time_sample]] += (
+                hits_map[i_chan, map_idx, x_ind[time_sample], y_ind[time_sample]] += (
                     1.0 * weight
                 )
 
@@ -560,22 +580,27 @@ class BinTODIntoMap(DataRoutine):
         r0 = self.params['r0']
         if r0 > 0:
             kernel = compute_map_kernel(r0=r0, dpix=dpix, sigma=self.params['sigma'])
-            for map_idx in range(n_maps):
-                sum_map[map_idx] = signal.convolve2d(
-                    sum_map[map_idx], kernel, mode='same'
-                )
-                hits_map[map_idx] = signal.convolve2d(
-                    hits_map[map_idx], kernel, mode='same'
-                )
+            for i_chan in range(pdata.n_chan):
+                for map_idx in range(n_maps):
+                    sum_map[i_chan, map_idx] = signal.convolve2d(
+                        sum_map[i_chan, map_idx], kernel, mode='same'
+                    )
+                    hits_map[i_chan, map_idx] = signal.convolve2d(
+                        hits_map[i_chan, map_idx], kernel, mode='same'
+                    )
 
         if not beam_map_mode:
             pdata.set_chanmask(chanmask)
         pdata['map/hits_map'][:] = hits_map
         pdata['map/sum_map'][:] = sum_map
         with np.errstate(divide='ignore', invalid='ignore'):
-            pdata['map/map_val'][:] = sum_map / hits_map
-            pdata['map/total_map'][:] = np.sum(sum_map, axis=0) / np.sum(
-                hits_map, axis=0
+            pdata['map/map_val'][:] = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
+            pdata['map/channel_map_val'][:] = sum_map / hits_map
+            pdata['map/total_map'][:] = np.sum(sum_map, axis=(0, 1)) / np.sum(
+                hits_map, axis=(0, 1)
+            )
+            pdata['map/channel_total_map'][:] = np.sum(sum_map, axis=1) / np.sum(
+                hits_map, axis=1
             )
         pdata['map/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating map.')
@@ -612,7 +637,9 @@ class PlotMap(DataRoutine):
         '/map/netd',
         '/map/hits_map',
         '/map/map_val',
+        '/map/channel_map_val',
         '/map/total_map',
+        '/map/channel_total_map',
     }
 
     produces: ClassVar[set] = {
@@ -1017,14 +1044,17 @@ class MakeVideo(DataRoutine):
     - /video/map_az: 1D array of azimuth values for the map pixels
     - /video/map_za: 1D array of zenith angle values for the map pixels
     - /video/netd: 1D array of length n_tones containing the NETD values for each tone
-    - /video/sum_map: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing
-        the sum of the data values for each pixel, for each time block.
-    - /video/hits_map: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing
-        the number of hitsfor each pixel, for each time block.
+    - /video/sum_map: 5D array of shape (n_blocks, n_chan, n_maps, n_pix_x, n_pix_y)
+        containing the sum of the data values for each pixel, for each time block.
+    - /video/hits_map: 5D array of shape (n_blocks, n_chan, n_maps, n_pix_x, n_pix_y)
+        containing the number of hits for each pixel, for each time block.
+    - /video/channel_map_val: 5D array of shape (n_blocks, n_chan, n_maps, n_pix_x,
+        n_pix_y) containing the binned map values (i.e. sum_map / hits_map), separated
+        by channel.
     - /video/map_val: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing
-        the binned map values (i.e. sum_map / hits_map).
+        the binned map values (i.e. (sum_{i_chan} sum_map) / (sum_{i_chan} hits_map)).
     - /video/total_map: 3D array of shape (n_blocks, n_pix_x, n_pix_y) containing
-        the total map values (sum over all maps).
+        the total map values (sum over all channels and maps).
     - /video/good_samples: 2D variable length array of length n_chan containing the
         indices of the good samples for each channel
     - /video/cropped_optical_video: 4D array of shape (n_blocks, height, width, 3)
@@ -1039,6 +1069,7 @@ class MakeVideo(DataRoutine):
         '/video/netd',
         '/video/hits_map',
         '/video/sum_map',
+        '/video/channel_map_val',
         '/video/map_val',
         '/video/total_map',
         '/video/map_az',
@@ -1170,31 +1201,49 @@ class MakeVideo(DataRoutine):
             )
             del pdata['video']
         video_group = pdata.create_group('video')
+        video_group.attrs['dpix'] = dpix
+        video_group.attrs['block_size_s'] = block_size_s
+        good_samples = video_group.create_dataset(
+            'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
+        )
         video_group.create_dataset('map_az', shape=(n_pix_x,), dtype=np.float64)
         video_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
         video_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
+        n_chan = pdata.n_chan
         video_group.create_dataset(
             'sum_map',
-            shape=(n_blocks, n_maps, n_pix_x, n_pix_y),
-            chunks=(1, 1, n_pix_x, n_pix_y),
+            shape=(n_blocks, n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         video_group.create_dataset(
             'hits_map',
-            shape=(n_blocks, n_maps, n_pix_x, n_pix_y),
-            chunks=(1, 1, n_pix_x, n_pix_y),
+            shape=(n_blocks, n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         video_group.create_dataset(
             'map_val',
-            shape=(n_blocks, n_maps, n_pix_x, n_pix_y),
-            chunks=(1, 1, n_pix_x, n_pix_y),
+            shape=(n_blocks, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
+            dtype=np.float64,
+        )
+        video_group.create_dataset(
+            'channel_map_val',
+            shape=(n_blocks, n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         video_group.create_dataset(
             'total_map',
-            shape=(n_blocks, n_pix_x, n_pix_y),
-            chunks=(1, n_pix_x, n_pix_y),
+            shape=(n_blocks, n_pix_y, n_pix_x),
+            chunks=(1, n_pix_y, n_pix_x),
+            dtype=np.float64,
+        )
+        video_group.create_dataset(
+            'channel_total_map',
+            shape=(n_blocks, n_chan, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         video_group.create_dataset(
@@ -1202,11 +1251,6 @@ class MakeVideo(DataRoutine):
             shape=(n_blocks, *optical_video_shape),
             chunks=(1, *optical_video_shape),
             dtype=np.uint8,
-        )
-        video_group.attrs['dpix'] = dpix
-        video_group.attrs['block_size_s'] = block_size_s
-        good_samples = video_group.create_dataset(
-            'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
         )
         for i_chan in range(pdata.n_chan):
             interpolated_samples = pdata.get_from_channel(
@@ -1408,10 +1452,10 @@ class MakeVideo(DataRoutine):
                 block_slice = slice(blocks[i_block], block_end)
                 for time_sample in good_samples[block_slice]:
                     sum_map[
-                        i_block, map_idx, x_ind[time_sample], y_ind[time_sample]
+                        i_block, i_chan, map_idx, x_ind[time_sample], y_ind[time_sample]
                     ] += this_clean_data[time_sample] * weight
                     hits_map[
-                        i_block, map_idx, x_ind[time_sample], y_ind[time_sample]
+                        i_block, i_chan, map_idx, x_ind[time_sample], y_ind[time_sample]
                     ] += 1.0 * weight
 
         # Create kernel and convolve with map to get more accurate values for pixels
@@ -1420,21 +1464,24 @@ class MakeVideo(DataRoutine):
             r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
         )
         for i_block in range(n_blocks):
-            for map_idx in range(n_maps):
-                sum_map[i_block, map_idx] = signal.convolve2d(
-                    sum_map[i_block, map_idx], kernel, mode='same'
-                )
-                hits_map[i_block, map_idx] = signal.convolve2d(
-                    hits_map[i_block, map_idx], kernel, mode='same'
-                )
+            for i_chan in range(pdata.n_chan):
+                for map_idx in range(n_maps):
+                    sum_map[i_block, i_chan, map_idx] = signal.convolve2d(
+                        sum_map[i_block, map_idx], kernel, mode='same'
+                    )
+                    hits_map[i_block, i_chan, map_idx] = signal.convolve2d(
+                        hits_map[i_block, map_idx], kernel, mode='same'
+                    )
 
         pdata.set_chanmask(chanmask)
         pdata['video/hits_map'][:] = hits_map
         pdata['video/sum_map'][:] = sum_map
         with np.errstate(divide='ignore', invalid='ignore'):
-            pdata['video/map_val'][:] = sum_map / hits_map
-            total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
-        pdata['video/total_map'][:] = total_map
+            pdata['video/channel_map_val'][:] = sum_map / hits_map
+            pdata['video/map_val'][:] = np.sum(sum_map, axis=1) / np.sum(hits_map, axis=1)
+            pdata['video/total_map'][:] = np.sum(sum_map, axis=(1, 2)) / np.sum(
+                hits_map, axis=(1, 2)
+            )
         pdata['video/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating maps.')
 
