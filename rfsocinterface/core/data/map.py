@@ -610,6 +610,106 @@ class BinTODIntoMap(DataRoutine):
         )
 
 
+def get_required_map_datasets(
+    pdata: ProcessedData,
+    channel: int | Sequence[int, ...] | None,
+    group_name: str = '/map',
+    caller_name: str = '',
+) -> set[str]:
+    """Return the datasets needed to use the data from the selected channel(s).
+
+    Arguments:
+        pdata (ProcessedData): The datastet to reference. Used for determining valid
+            channel indices and for error messages.
+        channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
+            use when generating the plots.  If
+            `None`, all channels will be used.
+        group_name (str): Which HDF5 group to get the datasets from. Defaults to '/map'.
+        caller_name (str): The caller of this function. Used for error messages.
+            Defaults to `None`.
+
+    Returns:
+        (set[str]): The appropriate data sets to use. If all channels are selected, will
+            return "[group_name]/map_val" and "[group_name]/total_map". If a single
+            channel is selected, will return "[group_name]/channel_map_val" and
+            "[group_name]/channel_total_map". If multiple channels are selected, but not
+            all channels, the respective maps will be need to be co-added later into new
+            arrays, so returns "[group_name]/sum_map" and "[group_name]/hits_map".
+
+    Raises:
+        ValueError: If channels is not an int, sequence of int, or None.
+        IndexError: If any selected channels are out of the valid bounds.
+    """
+    all_channels = tuple(range(pdata.n_chan))
+    valid_channels = range(-pdata.n_chan, pdata.n_chan)
+    # TODO: Add check for rfsocinterface version for backwards compatibility. Old maps
+    # were not separated by channel, so will always need to return map_val and total_map
+    # and have a warning.
+
+    if channel is None:
+        # Use all channels
+        map_dsets = {f'{group_name}/map_val', f'{group_name}/total_map'}
+    elif isinstance(channel, Sequence) and all(isinstance(c, int) for c in channel):
+        is_valid = np.isin(channel, valid_channels)
+        if any(not is_valid):
+            first_bad = channel[np.argmin(channel)]
+            raise IndexError(
+                f'{caller_name}: '
+                if caller_name
+                else ''
+                f'Channel {first_bad} is out of bounds for '
+                f'ProcessedData {pdata.file_stub} with {pdata.n_chan} '
+                f'channel{"s"[: pdata.n_chan ^ 1]}'
+            )
+        if sorted(channel) == all_channels:
+            # All channel were selected
+            map_dsets = {f'{group_name}/map_val', f'{group_name}/total_map'}
+        elif len(channel) > 1:
+            # Need to compute new map values with only the selected channels
+            map_dsets = {f'{group_name}/sum_map', f'{group_name}/hits_map'}
+        else:
+            # Only one channel selected, so we already have that data
+            if channel[0] not in valid_channels:
+                raise IndexError(
+                    f'{caller_name}: '
+                    if caller_name
+                    else ''
+                    f'Channel {channel[0]} is out of bounds for '
+                    f'ProcessedData {pdata.file_stub} with {pdata.n_chan} '
+                    f'channel{"s"[: pdata.n_chan ^ 1]}'
+                )
+            map_dsets = {
+                f'{group_name}/channel_map_val',
+                f'{group_name}/channel_total_map',
+            }
+    elif isinstance(channel, int):
+        if channel not in valid_channels:
+            raise IndexError(
+                f'{caller_name}: '
+                if caller_name
+                else ''
+                f'Channel {channel} is out of bounds for '
+                f'ProcessedData {pdata.file_stub} with {pdata.n_chan} '
+                f'channel{"s"[: pdata.n_chan ^ 1]}'
+            )
+        if pdata.n_chan == 1:
+            map_dsets = {f'{group_name}/map_val', f'{group_name}/total_map'}
+        else:
+            map_dsets = {
+                f'{group_name}/channel_map_val',
+                f'{group_name}/channel_total_map',
+            }
+    else:
+        raise ValueError(
+            f'{caller_name}: '
+            if caller_name
+            else ''
+            'Expected `channels` to be an int, a sequence of ints, or `None`; '
+            f'got {type(channel)}.'
+        )
+    return map_dsets
+
+
 @register_routine
 class PlotMap(DataRoutine):
     """Plot the map created by BinTODIntoMap.
@@ -635,10 +735,6 @@ class PlotMap(DataRoutine):
         '/map/map_za',
         '/map/netd',
         '/map/hits_map',
-        '/map/map_val',
-        '/map/channel_map_val',
-        '/map/total_map',
-        '/map/channel_total_map',
     }
 
     produces: ClassVar[set] = {
@@ -660,6 +756,7 @@ class PlotMap(DataRoutine):
         show: bool = False,
         keep_figure_open: bool = False,
         overwrite: bool = True,
+        channel: int | Sequence[int, ...] | None = None,
     ):
         """Initialize the PlotMap routine.
 
@@ -681,6 +778,9 @@ class PlotMap(DataRoutine):
                 plotting. Defaults to False.
             overwrite (bool, optional): Whether to overwrite existing plotting datasets
                 in the HDF5 file. Defaults to True.
+            channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
+                use when generating the plots. See `get_required_map_datasets` for more
+                information. Defaults to `None`.
         """
         super().__init__(
             gaussian_sigma=gaussian_sigma,
@@ -691,17 +791,22 @@ class PlotMap(DataRoutine):
             show=show,
             keep_figure_open=keep_figure_open,
             overwrite=overwrite,
+            channel=channel,
         )
 
     @typing.override
     def _inputs(self, pdata: ProcessedData):
-        return self.requires
+        channel = self.params['channel']
+        map_dsets = get_required_map_datasets(
+            pdata, channel, group_name='/map', caller_name=self.name
+        )
+        return self.requires.union(map_dsets)
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: set[str]):
         reset_arrays = self._intialize_arrays(pdata)
         if reset_arrays:
-            self._get_combined_map(pdata)
+            self._get_combined_map(pdata, inputs)
         fig = self._plot(pdata)
 
         created = {'input': self.produces} if reset_arrays else {}
@@ -742,12 +847,34 @@ class PlotMap(DataRoutine):
         return True
 
     def _get_combined_map(
-        self, pdata: ProcessedData
+        self,
+        pdata: ProcessedData,
+        inputs: set[str],
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         """Get the combined map of flagged pixels."""
+        channel = self.params['channel']
+        if '/map/map_val' in inputs:
+            # Using all maps
+            map_val = pdata['map/map_val']
+            total_map = pdata['map/total_map']
+            pdata['map/plotting'].attrs['channel'] = tuple(range(pdata.n_chan))
+        elif '/map/channel_map_val' in inputs:
+            # Using a single channel
+            if isinstance(channel, Sequence):
+                # Turn tuple into singleton to properly reduce number of dimensions
+                channel = channel[0]
+            map_val = pdata['map/channel_map_val'][channel]
+            total_map = pdata['map/channel_total_map'][channel]
+            pdata['map/plotting'].attrs['channel'] = (channel,)
+        else:
+            # Multiple channels selected, but not all. Need to compute new maps
+            sum_map = pdata['map/sum_map'][channel]
+            hits_map = pdata['map/hits_map'][channel]
+            map_val = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
+            total_map = np.sum(sum_map, axis=(0, 1)) / np.sum(hits_map, axis=(0, 1))
+            pdata['map/plotting'].attrs['channel'] = (channel,)
+
         sigma = self.params['gaussian_sigma']
-        map_val = pdata['map/map_val']
-        total_map = pdata['map/total_map']
         flagged_map_1 = gaussian_filter(map_val[0], sigma)
         flagged_map_2 = gaussian_filter(map_val[1], sigma)
         flagged_map_3 = gaussian_filter(total_map, sigma)
@@ -802,6 +929,7 @@ class PlotMap(DataRoutine):
         flagged_map_2_filt = pdata['map/plotting/flagged_map_2'][:]
         flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
         contour_levels = pdata['map/plotting/contour_levels']
+        channel = pdata['map/plotting'].attrs['channel']
         dpix = pdata['map'].attrs['dpix']
         units = pdata['map'].attrs.get('units', 'mK')
 
@@ -849,8 +977,16 @@ class PlotMap(DataRoutine):
         # fig_height = 7.5
         # fig_width = fig_height / aspect_ratio
         fig, axes = plt.subplots(5, 1, figsize=(15, 9), sharex=True, sharey=True)
+        channel_suffix = (
+            'All Channels'
+            if channel == range(pdata.n_chan)
+            else f'Channel {channel[0]}'
+            if len(channel) == 1
+            else f'Channels {channel}'
+        )
         fig.suptitle(
-            f'{pdata.file_stub}\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
+            f'{pdata.file_stub} - {channel_suffix}'
+            f'\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
             f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
             f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
         )
@@ -1054,8 +1190,8 @@ class MakeVideo(DataRoutine):
         by channel.
     - /video/total_map: 3D array of shape (n_blocks, n_pix_x, n_pix_y) containing
         the total map values (sum over all channels and maps).
-    - /video/channel_total_map: 4D array of shape (n_blocks, n_chan, n_pix_x, n_pix_y) containing
-        the total map values (sum over all maps), separated by channel.
+    - /video/channel_total_map: 4D array of shape (n_blocks, n_chan, n_pix_x, n_pix_y)
+        containing the total map values (sum over all maps), separated by channel.
     - /video/good_samples: 2D variable length array of length n_chan containing the
         indices of the good samples for each channel
     - /video/cropped_optical_video: 4D array of shape (n_blocks, height, width, 3)
@@ -1479,7 +1615,9 @@ class MakeVideo(DataRoutine):
         pdata['video/hits_map'][:] = hits_map
         pdata['video/sum_map'][:] = sum_map
         with np.errstate(divide='ignore', invalid='ignore'):
-            pdata['video/map_val'][:] = np.sum(sum_map, axis=1) / np.sum(hits_map, axis=1)
+            pdata['video/map_val'][:] = np.sum(sum_map, axis=1) / np.sum(
+                hits_map, axis=1
+            )
             pdata['video/channel_map_val'][:] = sum_map / hits_map
             pdata['video/total_map'][:] = np.sum(sum_map, axis=(1, 2)) / np.sum(
                 hits_map, axis=(1, 2)
