@@ -567,10 +567,10 @@ class BinTODIntoMap(DataRoutine):
 
             # #loop over samples to create sum and hits maps
             for time_sample in good_samples:
-                sum_map[i_chan, map_idx, x_ind[time_sample], y_ind[time_sample]] += (
+                sum_map[i_chan, map_idx, y_ind[time_sample], x_ind[time_sample]] += (
                     this_clean_data[time_sample] * weight
                 )
-                hits_map[i_chan, map_idx, x_ind[time_sample], y_ind[time_sample]] += (
+                hits_map[i_chan, map_idx, y_ind[time_sample], x_ind[time_sample]] += (
                     1.0 * weight
                 )
 
@@ -629,7 +629,7 @@ def get_required_map_datasets(
             Defaults to `None`.
 
     Returns:
-        (set[str]): The appropriate data sets to use. If all channels are selected, will
+        set[str]: The appropriate data sets to use. If all channels are selected, will
             return "[group_name]/map_val" and "[group_name]/total_map". If a single
             channel is selected, will return "[group_name]/channel_map_val" and
             "[group_name]/channel_total_map". If multiple channels are selected, but not
@@ -638,7 +638,9 @@ def get_required_map_datasets(
 
     Raises:
         ValueError: If channels is not an int, sequence of int, or None.
-        IndexError: If any selected channels are out of the valid bounds.
+        ValueError: If duplicate channels are selected (e.g. [0, -n_chan]).
+        IndexError: If any selected channels are out of the valid bounds i.e.
+            [-n_chan, n_chan - 1].
     """
     all_channels = tuple(range(pdata.n_chan))
     valid_channels = range(-pdata.n_chan, pdata.n_chan)
@@ -651,17 +653,24 @@ def get_required_map_datasets(
         map_dsets = {f'{group_name}/map_val', f'{group_name}/total_map'}
     elif isinstance(channel, Sequence) and all(isinstance(c, int) for c in channel):
         is_valid = np.isin(channel, valid_channels)
-        if any(not is_valid):
-            first_bad = channel[np.argmin(channel)]
+        if any(~is_valid):
+            first_bad = channel[np.argmin(is_valid)]
             raise IndexError(
-                f'{caller_name}: '
-                if caller_name
-                else ''
-                f'Channel {first_bad} is out of bounds for '
+                (f'{caller_name}: ' if caller_name else '')
+                + f'Channel {first_bad} is out of bounds for '
                 f'ProcessedData {pdata.file_stub} with {pdata.n_chan} '
                 f'channel{"s"[: pdata.n_chan ^ 1]}'
             )
-        if sorted(channel) == all_channels:
+        corrected_channel = np.where(
+            np.array(channel) >= 0, channel, channel + pdata.n_chan
+        )
+        has_duplicates = np.unique(corrected_channel).size != len(channel)
+        if has_duplicates:
+            raise ValueError(
+                (f'{caller_name}: ' if caller_name else '')
+                + f'Expected unique channel indices; got {corrected_channel}.'
+            )
+        if tuple(sorted(channel)) == all_channels:
             # All channel were selected
             map_dsets = {f'{group_name}/map_val', f'{group_name}/total_map'}
         elif len(channel) > 1:
@@ -671,10 +680,8 @@ def get_required_map_datasets(
             # Only one channel selected, so we already have that data
             if channel[0] not in valid_channels:
                 raise IndexError(
-                    f'{caller_name}: '
-                    if caller_name
-                    else ''
-                    f'Channel {channel[0]} is out of bounds for '
+                    (f'{caller_name}: ' if caller_name else '')
+                    + f'Channel {channel[0]} is out of bounds for '
                     f'ProcessedData {pdata.file_stub} with {pdata.n_chan} '
                     f'channel{"s"[: pdata.n_chan ^ 1]}'
                 )
@@ -685,10 +692,8 @@ def get_required_map_datasets(
     elif isinstance(channel, int):
         if channel not in valid_channels:
             raise IndexError(
-                f'{caller_name}: '
-                if caller_name
-                else ''
-                f'Channel {channel} is out of bounds for '
+                (f'{caller_name}: ' if caller_name else '')
+                + f'Channel {channel} is out of bounds for '
                 f'ProcessedData {pdata.file_stub} with {pdata.n_chan} '
                 f'channel{"s"[: pdata.n_chan ^ 1]}'
             )
@@ -701,10 +706,8 @@ def get_required_map_datasets(
             }
     else:
         raise ValueError(
-            f'{caller_name}: '
-            if caller_name
-            else ''
-            'Expected `channels` to be an int, a sequence of ints, or `None`; '
+            (f'{caller_name}: ' if caller_name else '')
+            + 'Expected `channels` to be an int, a sequence of ints, or `None`; '
             f'got {type(channel)}.'
         )
     return map_dsets
@@ -861,10 +864,14 @@ class PlotMap(DataRoutine):
             # Use virtual datasets to reduce disk usage
             map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
             map_val_layout[:] = h5py.VirtualSource(pdata['map/map_val'])
-            map_val = pdata['map/plotting'].create_virtual_dataset('map_val', map_val_layout)[:]
+            map_val = pdata['map/plotting'].create_virtual_dataset(
+                'map_val', map_val_layout
+            )[:]
             total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
             total_map_layout[:] = h5py.VirtualSource(pdata['map/total_map'])
-            total_map = pdata['map/plotting'].create_virtual_dataset('total_map', total_map_layout)[:]
+            total_map = pdata['map/plotting'].create_virtual_dataset(
+                'total_map', total_map_layout
+            )[:]
 
             hits_map = np.sum(pdata['map/hits_map'], axis=0)
             pdata['map/plotting'].attrs['channel'] = tuple(range(pdata.n_chan))
@@ -876,11 +883,17 @@ class PlotMap(DataRoutine):
 
             # Use virtual datasets to reduce disk usage
             map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
-            map_val_layout[:] = h5py.VirtualSource(pdata['map/channel_map_val'][channel])
-            map_val = pdata['map/plotting'].create_virtual_dataset('map_val', map_val_layout)[:]
+            map_val_src = h5py.VirtualSource(pdata['map/channel_map_val'])
+            map_val_layout[:] = map_val_src[channel]
+            map_val = pdata['map/plotting'].create_virtual_dataset(
+                'map_val', map_val_layout
+            )[:]
             total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
-            total_map_layout[:] = h5py.VirtualSource(pdata['map/channel_total_map'][channel])
-            total_map = pdata['map/plotting'].create_virtual_dataset('total_map', total_map_layout)[:]
+            total_map_src = h5py.VirtualSource(pdata['map/channel_total_map'])
+            total_map_layout[:] = total_map_src[channel]
+            total_map = pdata['map/plotting'].create_virtual_dataset(
+                'total_map', total_map_layout
+            )[:]
 
             hits_map = pdata['map/hits_map'][channel]
             pdata['map/plotting'].attrs['channel'] = (channel,)
@@ -952,7 +965,9 @@ class PlotMap(DataRoutine):
         pdata.create_dataset('/map/plotting/flagged_map_2', data=flagged_map_2)
         pdata.create_dataset('/map/plotting/flagged_total_map', data=flagged_map_3)
         pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
-        pdata.create_dataset('/map/plotting/map_goodcov', data=np.append(map_goodcov_1, map_goodcov_2))
+        pdata.create_dataset(
+            '/map/plotting/map_good_cov', data=np.append(map_goodcov_1, map_goodcov_2)
+        )
 
     def _plot(self, pdata: ProcessedData) -> Figure | None:
         """Plot the maps using matplotlib.
@@ -967,14 +982,13 @@ class PlotMap(DataRoutine):
         flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
         contour_levels = pdata['map/plotting/contour_levels']
         map_good_cov = pdata['map/plotting/map_good_cov'][:]
-        channel = pdata['map/plotting'].attrs['channel']
+        channel = tuple(pdata['map/plotting'].attrs['channel'].tolist())
         dpix = pdata['map'].attrs['dpix']
         units = pdata['map'].attrs.get('units', 'mK')
 
         map_az = pdata['map/map_az']
         map_za = pdata['map/map_za']
         extent = get_extent(map_az, map_za, dpix)
-
 
         netd = pdata['map/netd']
         netd_1 = netd[pdata.pol_ind_1]
@@ -985,9 +999,7 @@ class PlotMap(DataRoutine):
         max_abs_threshold = self.params['max_abs_threshold']
         this_xlim = min(map_az), max(map_az)
         this_ylim = max(map_za), min(map_za)
-        max_abs = (
-            np.max(np.abs(map_good_cov)) * max_abs_threshold
-        )
+        max_abs = np.max(np.abs(map_good_cov)) * max_abs_threshold
         med_netd_1 = 1.0 / np.sqrt(
             np.sum(1.0 / netd_1[valid_netd_1] ** 2) / np.size(valid_netd_1)
         )
@@ -1005,8 +1017,8 @@ class PlotMap(DataRoutine):
         fig, axes = plt.subplots(5, 1, figsize=(15, 9), sharex=True, sharey=True)
         channel_suffix = (
             'All Channels'
-            if channel == range(pdata.n_chan)
-            else f'Channel {channel[0]}'
+            if channel == tuple(range(pdata.n_chan))
+            else f'Channel {channel[0]} ({pdata.get_tile_name(channel[0])})'
             if len(channel) == 1
             else f'Channels {channel}'
         )

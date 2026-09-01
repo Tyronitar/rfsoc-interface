@@ -62,7 +62,7 @@ if __name__ == '__main__':
         dpix=0.04,
         r0=0,
     )
-    plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
+    plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
     make_video = MakeVideo(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
@@ -85,10 +85,10 @@ if __name__ == '__main__':
         # noise_removal,
         # compute_psd,
         # psd_plotter,
-        hp_filter,
-        lp_filter,
-        clean_tod,
-        bin_tod_to_map,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
+        # bin_tod_to_map,
         plotter,
         # make_video,
         # find_fwhm,
@@ -100,12 +100,12 @@ if __name__ == '__main__':
     setnum = 1005
 
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    # pdata = ProcessedData.load(date, setnum)
+    pdata = ProcessedData.load(date, setnum)
     # pdb.set_trace()
-    # pipeline.run(pdata)
+    pipeline.run(pdata)
     # params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
     # det_dy = params.detector_delta_y[:]
     # i_res = 676
