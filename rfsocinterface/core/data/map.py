@@ -258,10 +258,9 @@ class BinTODIntoMap(DataRoutine):
     - /map/total_map: 2D array of shape (n_pix_x, n_pix_y) containing
         the total map values (sum over all channels and maps).
     - /map/channel_total_map: 3D array of shape (n_chan, n_pix_x, n_pix_y) containing
-        the total map values (sum over all and maps), separated by channel.
+        the total map values (sum over all maps), separated by channel.
     - /map/good_samples: 2D variable length array of length n_chan containing the
         indices of the good samples for each channel.
-
     """
 
     name = 'BinTODIntoMap'
@@ -1048,13 +1047,15 @@ class MakeVideo(DataRoutine):
         containing the sum of the data values for each pixel, for each time block.
     - /video/hits_map: 5D array of shape (n_blocks, n_chan, n_maps, n_pix_x, n_pix_y)
         containing the number of hits for each pixel, for each time block.
+    - /video/map_val: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing
+        the binned map values (i.e. (sum_{i_chan} sum_map) / (sum_{i_chan} hits_map)).
     - /video/channel_map_val: 5D array of shape (n_blocks, n_chan, n_maps, n_pix_x,
         n_pix_y) containing the binned map values (i.e. sum_map / hits_map), separated
         by channel.
-    - /video/map_val: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing
-        the binned map values (i.e. (sum_{i_chan} sum_map) / (sum_{i_chan} hits_map)).
     - /video/total_map: 3D array of shape (n_blocks, n_pix_x, n_pix_y) containing
         the total map values (sum over all channels and maps).
+    - /video/channel_total_map: 4D array of shape (n_blocks, n_chan, n_pix_x, n_pix_y) containing
+        the total map values (sum over all maps), separated by channel.
     - /video/good_samples: 2D variable length array of length n_chan containing the
         indices of the good samples for each channel
     - /video/cropped_optical_video: 4D array of shape (n_blocks, height, width, 3)
@@ -1069,9 +1070,10 @@ class MakeVideo(DataRoutine):
         '/video/netd',
         '/video/hits_map',
         '/video/sum_map',
-        '/video/channel_map_val',
         '/video/map_val',
+        '/video/channel_map_val',
         '/video/total_map',
+        '/video/channel_total_map',
         '/video/map_az',
         '/video/map_za',
         '/video/cropped_optical_video',
@@ -1477,10 +1479,13 @@ class MakeVideo(DataRoutine):
         pdata['video/hits_map'][:] = hits_map
         pdata['video/sum_map'][:] = sum_map
         with np.errstate(divide='ignore', invalid='ignore'):
-            pdata['video/channel_map_val'][:] = sum_map / hits_map
             pdata['video/map_val'][:] = np.sum(sum_map, axis=1) / np.sum(hits_map, axis=1)
+            pdata['video/channel_map_val'][:] = sum_map / hits_map
             pdata['video/total_map'][:] = np.sum(sum_map, axis=(1, 2)) / np.sum(
                 hits_map, axis=(1, 2)
+            )
+            pdata['video/channel_total_map'][:] = np.sum(sum_map, axis=2) / np.sum(
+                hits_map, axis=2
             )
         pdata['video/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating maps.')
