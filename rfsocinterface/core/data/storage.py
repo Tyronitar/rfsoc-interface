@@ -152,7 +152,7 @@ class DataStorage:
         """Get an object from the file."""
         return self.file[name]
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> H5pyObject:
         """Get an object from the file."""
         return self.get(key)
 

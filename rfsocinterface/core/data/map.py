@@ -853,18 +853,36 @@ class PlotMap(DataRoutine):
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         """Get the combined map of flagged pixels."""
         channel = self.params['channel']
+        total_map_shape = (pdata['map/map_za'].size, pdata['map/map_az'].size)
+        map_val_shape = (N_POLARIZATION, *total_map_shape)
         if '/map/map_val' in inputs:
             # Using all maps
-            map_val = pdata['map/map_val']
-            total_map = pdata['map/total_map']
+
+            # Use virtual datasets to reduce disk usage
+            map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
+            map_val_layout[:] = h5py.VirtualSource(pdata['map/map_val'])
+            map_val = pdata['map/plotting'].create_virtual_dataset('map_val', map_val_layout)[:]
+            total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
+            total_map_layout[:] = h5py.VirtualSource(pdata['map/total_map'])
+            total_map = pdata['map/plotting'].create_virtual_dataset('total_map', total_map_layout)[:]
+
+            hits_map = np.sum(pdata['map/hits_map'], axis=0)
             pdata['map/plotting'].attrs['channel'] = tuple(range(pdata.n_chan))
         elif '/map/channel_map_val' in inputs:
             # Using a single channel
             if isinstance(channel, Sequence):
                 # Turn tuple into singleton to properly reduce number of dimensions
                 channel = channel[0]
-            map_val = pdata['map/channel_map_val'][channel]
-            total_map = pdata['map/channel_total_map'][channel]
+
+            # Use virtual datasets to reduce disk usage
+            map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
+            map_val_layout[:] = h5py.VirtualSource(pdata['map/channel_map_val'][channel])
+            map_val = pdata['map/plotting'].create_virtual_dataset('map_val', map_val_layout)[:]
+            total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
+            total_map_layout[:] = h5py.VirtualSource(pdata['map/channel_total_map'][channel])
+            total_map = pdata['map/plotting'].create_virtual_dataset('total_map', total_map_layout)[:]
+
+            hits_map = pdata['map/hits_map'][channel]
             pdata['map/plotting'].attrs['channel'] = (channel,)
         else:
             # Multiple channels selected, but not all. Need to compute new maps
@@ -872,6 +890,12 @@ class PlotMap(DataRoutine):
             hits_map = pdata['map/hits_map'][channel]
             map_val = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
             total_map = np.sum(sum_map, axis=(0, 1)) / np.sum(hits_map, axis=(0, 1))
+            hits_map = np.sum(pdata['map/hits_map'][channel], axis=0)
+
+            # Have to make new arrays for this data
+            pdata.create_dataset('/map/plotting/map_val', data=map_val)
+            pdata.create_dataset('/map/plotting/total_map', data=total_map)
+
             pdata['map/plotting'].attrs['channel'] = (channel,)
 
         sigma = self.params['gaussian_sigma']
@@ -911,32 +935,6 @@ class PlotMap(DataRoutine):
         # flagged_map_2 = [x for x in flagged_map_2 if not np.isnan(x)]
         # flagged_map_3 = [x for x in flagged_map_3 if not np.isnan(x)]
 
-        pdata.create_dataset('/map/plotting/flagged_map_1', data=flagged_map_1)
-        pdata.create_dataset('/map/plotting/flagged_map_2', data=flagged_map_2)
-        pdata.create_dataset('/map/plotting/flagged_total_map', data=flagged_map_3)
-        pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
-
-    def _plot(self, pdata: ProcessedData) -> Figure | None:
-        """Plot the maps using matplotlib.
-
-        Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical
-        image.
-        """
-        hits_map = pdata['map/hits_map']
-        map_val = pdata['map/map_val'][:]
-        total_map = pdata['map/total_map'][:]
-        flagged_map_1_filt = pdata['map/plotting/flagged_map_1'][:]
-        flagged_map_2_filt = pdata['map/plotting/flagged_map_2'][:]
-        flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
-        contour_levels = pdata['map/plotting/contour_levels']
-        channel = pdata['map/plotting'].attrs['channel']
-        dpix = pdata['map'].attrs['dpix']
-        units = pdata['map'].attrs.get('units', 'mK')
-
-        map_az = pdata['map/map_az']
-        map_za = pdata['map/map_za']
-        extent = get_extent(map_az, map_za, dpix)
-
         valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
         map_goodcov_1 = np.zeros(np.size(valid_cov_1[:, 0]))
         for i_cov in np.arange(np.size(valid_cov_1[:, 0])):
@@ -950,6 +948,34 @@ class PlotMap(DataRoutine):
                 1, valid_cov_2[i_cov, 0], valid_cov_2[i_cov, 1]
             ]
 
+        pdata.create_dataset('/map/plotting/flagged_map_1', data=flagged_map_1)
+        pdata.create_dataset('/map/plotting/flagged_map_2', data=flagged_map_2)
+        pdata.create_dataset('/map/plotting/flagged_total_map', data=flagged_map_3)
+        pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
+        pdata.create_dataset('/map/plotting/map_goodcov', data=np.append(map_goodcov_1, map_goodcov_2))
+
+    def _plot(self, pdata: ProcessedData) -> Figure | None:
+        """Plot the maps using matplotlib.
+
+        Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical
+        image.
+        """
+        map_val = pdata['map/plotting/map_val'][:]
+        total_map = pdata['map/plotting/total_map'][:]
+        flagged_map_1_filt = pdata['map/plotting/flagged_map_1'][:]
+        flagged_map_2_filt = pdata['map/plotting/flagged_map_2'][:]
+        flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
+        contour_levels = pdata['map/plotting/contour_levels']
+        map_good_cov = pdata['map/plotting/map_good_cov'][:]
+        channel = pdata['map/plotting'].attrs['channel']
+        dpix = pdata['map'].attrs['dpix']
+        units = pdata['map'].attrs.get('units', 'mK')
+
+        map_az = pdata['map/map_az']
+        map_za = pdata['map/map_za']
+        extent = get_extent(map_az, map_za, dpix)
+
+
         netd = pdata['map/netd']
         netd_1 = netd[pdata.pol_ind_1]
         netd_2 = netd[pdata.pol_ind_2]
@@ -960,7 +986,7 @@ class PlotMap(DataRoutine):
         this_xlim = min(map_az), max(map_az)
         this_ylim = max(map_za), min(map_za)
         max_abs = (
-            np.max(np.abs(np.append(map_goodcov_1, map_goodcov_2))) * max_abs_threshold
+            np.max(np.abs(map_good_cov)) * max_abs_threshold
         )
         med_netd_1 = 1.0 / np.sqrt(
             np.sum(1.0 / netd_1[valid_netd_1] ** 2) / np.size(valid_netd_1)
@@ -997,7 +1023,7 @@ class PlotMap(DataRoutine):
 
         # Vertical polarization
         im = axes[0].imshow(
-            np.transpose(map_val[0]),
+            map_val[0],
             extent=extent,
             aspect='equal',
             vmin=-max_abs,
@@ -1014,7 +1040,7 @@ class PlotMap(DataRoutine):
 
         # Horizontal polarization
         im = axes[1].imshow(
-            np.transpose(map_val[1]),
+            map_val[1],
             extent=extent,
             aspect='equal',
             vmin=-max_abs,
@@ -1031,7 +1057,7 @@ class PlotMap(DataRoutine):
 
         # Total signal
         im = axes[2].imshow(
-            np.transpose(total_map),
+            total_map,
             extent=extent,
             aspect='equal',
             vmin=-max_abs,

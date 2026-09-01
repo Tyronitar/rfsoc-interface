@@ -96,7 +96,7 @@ if __name__ == '__main__':
         # plot_beammap,
     ])
 
-    date = '20260805'
+    date = '20260820'
     setnum = 1005
 
 
