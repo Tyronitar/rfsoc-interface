@@ -1,8 +1,9 @@
 """Submodule for data storage / processing related code."""
 
 from rfsocinterface.core.data.map import (
+    AnimateVideo,
     BinTODIntoMap,
-    MakeVideo,
+    BinTODIntoVideo,
     PlotMap,
     get_extent,
     get_scaled_optical_image,
@@ -66,7 +67,9 @@ __all__ = [
     'SKIPR_PSF_SIGMA',
     'TONES_TABLE_DTYPE',
     'ZA_TRIM',
+    'AnimateVideo',
     'BinTODIntoMap',
+    'BinTODIntoVideo',
     'CleanTOD',
     'ConsolidatedData',
     'CutoffFilter',
@@ -74,7 +77,6 @@ __all__ = [
     'DataStorage',
     'HighPassFilter',
     'LowPassFilter',
-    'MakeVideo',
     'NormalizedRoutineInputs',
     'Pipeline',
     'PlotMap',

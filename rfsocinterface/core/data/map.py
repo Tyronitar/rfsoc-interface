@@ -780,7 +780,8 @@ class PlotMap(DataRoutine):
                 to True.
             savefile (Path, optional): The path to save the plot PNG file. If None, the
                 plot will be saved in the same directory as the HDF5 file. Defaults to
-                None.
+                the animation be saved in the same directory as the HDF5 file under the
+                name "[date]_set[setnum]_Source_Finder_Image.png". Defaults to `None`.
             show (bool, optional): Whether to display the plot. Defaults to False.
             keep_figure_open (bool, optional): Whether to keep the figure open after
                 plotting. Defaults to False.
@@ -1214,7 +1215,7 @@ def animate_video(
 
 
 @register_routine
-class MakeVideo(DataRoutine):
+class BinTODIntoVideo(DataRoutine):
     """Create a video of the map evolution over time.
 
     Creates the following items in the HDF5 file:
@@ -1241,7 +1242,7 @@ class MakeVideo(DataRoutine):
         containing the cropped optical video frames for each time block.
     """
 
-    name = 'MakeVideo'
+    name = 'BinTODIntoVideo'
     version = '2.0.0'
 
     produces: ClassVar[set] = {
@@ -1266,7 +1267,6 @@ class MakeVideo(DataRoutine):
         hp_filter_freq: float = 0.5,
         lp_filter_freq: float = 10.0,
         med_netd_cut_threshold: float = 3.0,
-        max_abs_threshold: float = 0.75,
         az_trim: float = 2.3,
         za_trim: float = 0.2,
         beam_map_mode: bool = False,
@@ -1274,10 +1274,6 @@ class MakeVideo(DataRoutine):
         r0: float = 0.15,
         sigma: float = 0.087 / 2.3,
         block_size_s: float = 1,
-        plot: bool = True,
-        show: bool = False,
-        savefile: Path | None = None,
-        overwrite: bool = True,
     ):
         """Initialize the MakeVideo routine.
 
@@ -1290,8 +1286,6 @@ class MakeVideo(DataRoutine):
                 filter applied to the data when computing NETD values.
             med_netd_cut_threshold (float, optional): The threshold for cutting tones
                 based on their NETD values.
-            max_abs_threshold (float, optional): The maximum absolute value multiplier
-                for the color scale in the plot. Defaults to 0.75.
             az_trim (float, optional): The amount to trim from the edges of the map in
                 the azimuth direction, in degrees. Defaults to 2.3 degrees.
             za_trim (float, optional): The amount to trim from the edges of the map in
@@ -1308,14 +1302,6 @@ class MakeVideo(DataRoutine):
                 SKIPR).
             block_size_s (float, optional): The size of the blocks in seconds to divide
                 the data into when creating the video. Defaults to 1 second.
-            plot (bool, optional): Whether to create an animated plot of the video.
-                Defaults to True.
-            show (bool, optional): Whether to display the animated plot. Defaults to
-                False.
-            savefile (Path, optional): The path to save the animated plot to. If None,
-                the animation will not be saved.
-            overwrite (bool, optional): Whether to overwrite existing video datasets
-                in the HDF5 file. Defaults to True.
         """
         if dataset not in ('data_mK', 'data_freq'):
             msg = (
@@ -1333,7 +1319,6 @@ class MakeVideo(DataRoutine):
             hp_filter_freq=hp_filter_freq,
             lp_filter_freq=lp_filter_freq,
             med_netd_cut_threshold=med_netd_cut_threshold,
-            max_abs_threshold=max_abs_threshold,
             az_trim=az_trim,
             za_trim=za_trim,
             beam_map_mode=beam_map_mode,
@@ -1341,10 +1326,6 @@ class MakeVideo(DataRoutine):
             r0=r0,
             sigma=sigma,
             block_size_s=block_size_s,
-            plot=plot,
-            show=show,
-            savefile=savefile,
-            overwrite=overwrite,
         )
 
     @typing.override
@@ -1384,6 +1365,9 @@ class MakeVideo(DataRoutine):
         video_group = pdata.create_group('video')
         video_group.attrs['dpix'] = dpix
         video_group.attrs['block_size_s'] = block_size_s
+        video_group.attrs['units'] = (
+            'mK' if self.params['dataset'] == 'data_mK' else 'df/f'
+        )
         good_samples = video_group.create_dataset(
             'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
         )
@@ -1633,26 +1617,28 @@ class MakeVideo(DataRoutine):
                 block_slice = slice(blocks[i_block], block_end)
                 for time_sample in good_samples[block_slice]:
                     sum_map[
-                        i_block, i_chan, map_idx, x_ind[time_sample], y_ind[time_sample]
+                        i_block, i_chan, map_idx, y_ind[time_sample], x_ind[time_sample]
                     ] += this_clean_data[time_sample] * weight
                     hits_map[
-                        i_block, i_chan, map_idx, x_ind[time_sample], y_ind[time_sample]
+                        i_block, i_chan, map_idx, y_ind[time_sample], x_ind[time_sample]
                     ] += 1.0 * weight
 
         # Create kernel and convolve with map to get more accurate values for pixels
         # with few hits
-        kernel = compute_map_kernel(
-            r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
-        )
-        for i_block in range(n_blocks):
-            for i_chan in range(pdata.n_chan):
-                for map_idx in range(n_maps):
-                    sum_map[i_block, i_chan, map_idx] = signal.convolve2d(
-                        sum_map[i_block, map_idx], kernel, mode='same'
-                    )
-                    hits_map[i_block, i_chan, map_idx] = signal.convolve2d(
-                        hits_map[i_block, map_idx], kernel, mode='same'
-                    )
+        r0 = self.params['r0']
+        if r0 > 0:
+            kernel = compute_map_kernel(
+                r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
+            )
+            for i_block in range(n_blocks):
+                for i_chan in range(pdata.n_chan):
+                    for map_idx in range(n_maps):
+                        sum_map[i_block, i_chan, map_idx] = signal.convolve2d(
+                            sum_map[i_block, i_chan, map_idx], kernel, mode='same'
+                        )
+                        hits_map[i_block, i_chan, map_idx] = signal.convolve2d(
+                            hits_map[i_block, i_chan, map_idx], kernel, mode='same'
+                        )
 
         pdata.set_chanmask(chanmask)
         pdata['video/hits_map'][:] = hits_map
@@ -1697,9 +1683,70 @@ class MakeVideo(DataRoutine):
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
-        if self.params['overwrite']:
-            self._compute_new_maps(pdata)
+        self._compute_new_maps(pdata)
 
+        modified = {'input': self.produces}
+        created = {'input': self.produces}
+        return RoutineResult(
+            modified=modified,
+            created=created,
+        )
+
+
+@register_routine
+class AnimateVideo(DataRoutine):
+    """Make an animated plot of the mm video.
+
+    Creates the following items in the HDF5 file:
+    - N/A
+    """
+
+    name = 'AnimateVideo'
+    version = '1.0.0'
+
+    requires: ClassVar[set] = {
+        '/video',
+        '/video/netd',
+        '/video/map_val',
+        '/video/map_az',
+        '/video/map_za',
+        '/video/cropped_optical_video',
+    }
+
+    produces: ClassVar[set] = {
+    }
+
+    @ensure_path('savefile')
+    def __init__(
+        self,
+        max_abs_threshold: float = 0.75,
+        savefile: Path | None = None,
+        show: bool = False,
+        channel: int | Sequence[int, ...] | None = None,
+    ):
+        """Initialize the MakeVideo Routine.
+
+        Arguments:
+            max_abs_threshold (float, optional): The maximum absolute value multiplier
+                for the color scale in the plot. Defaults to 0.75.
+            show (bool, optional): Whether to display the animated plot. Defaults to
+                False.
+            savefile (Path, optional): The path to save the animated plot to. If None,
+                the animation be saved in the same directory as the HDF5 file under the
+                name "[date]_set[setnum]_Map_Animation.mp4". Defaults to `None`.
+            channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
+                use when generating the animation. See `get_required_map_datasets` for
+                more information. Defaults to `None`.
+        """
+        super().__init__(
+            max_abs_threshold=max_abs_threshold,
+            savefile=savefile,
+            show=show,
+            channel=channel
+        )
+
+    @typing.override
+    def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         # Use existing datasets and make the video
         map_az = pdata['video/map_az'][:]
         map_za = pdata['video/map_za'][:]
@@ -1708,26 +1755,23 @@ class MakeVideo(DataRoutine):
         total_map = pdata['video/total_map'][:]
         block_size_s = pdata['video'].attrs['block_size_s']
         dpix = pdata['video'].attrs['dpix']
+        units = pdata['video'].attrs['units']
 
         # Animation
-        if self.params['plot']:
-            _logger.info(f'{self.name}: Creating animation...')
-            if self.params['savefile'] is None:
-                savefile = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
-            else:
-                savefile = self.params['savefile']
-            animate_video(
-                total_map,
-                optical_video[:],
-                1000 * block_size_s,
-                get_extent(map_az, map_za, dpix),
-                max_abs_threshold=self.params['max_abs_threshold'],
-                show=self.params['show'],
-                savefile=savefile,
-            )
-        modified = {'input': self.produces} if not self.params['overwrite'] else {}
-        created = {'input': self.produces} if self.params['overwrite'] else {}
-        return RoutineResult(
-            modified=modified,
-            created=created,
+        _logger.info(f'{self.name}: Creating animation...')
+        if self.params['savefile'] is None:
+            savefile = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
+        else:
+            savefile = self.params['savefile']
+        animate_video(
+            total_map,
+            optical_video[:],
+            1000 * block_size_s,
+            get_extent(map_az, map_za, dpix),
+            max_abs_threshold=self.params['max_abs_threshold'],
+            show=self.params['show'],
+            savefile=savefile,
         )
+
+
+

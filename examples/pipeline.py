@@ -63,7 +63,7 @@ if __name__ == '__main__':
         r0=0,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
-    make_video = MakeVideo(
+    bin_tod_to_video = BinTODIntoVideo(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
         dataset=dataset,
@@ -75,6 +75,7 @@ if __name__ == '__main__':
         # show=True,
         # savefile='test.gif',
     )
+    animate_video = AnimateVideo()
 
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap()
@@ -89,23 +90,24 @@ if __name__ == '__main__':
         # lp_filter,
         # clean_tod,
         # bin_tod_to_map,
-        plotter,
-        # make_video,
+        # plotter,
+        # bin_tod_to_video,
+        animate_video,
         # find_fwhm,
         # analyze_beammap,
         # plot_beammap,
     ])
 
-    date = '20260820'
-    setnum = 1005
+    date = '20260828'
+    setnum = 1002
 
 
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
     pdata = ProcessedData.load(date, setnum)
-    # pdb.set_trace()
     pipeline.run(pdata)
+    # pdb.set_trace()
     # params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
     # det_dy = params.detector_delta_y[:]
     # i_res = 676
