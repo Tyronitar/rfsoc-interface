@@ -514,7 +514,7 @@ class BinTODIntoMap(DataRoutine):
                 good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx]
             )
 
-            netd[chanmask != 1] = 0
+            netd[chanmask != ChanmaskValue.ON_RESONANCE] = 1
 
         if beam_map_mode:
             tones_to_map = np.argwhere(
@@ -1153,7 +1153,7 @@ def animate_video(
     optical_video: npt.NDArray,
     interval_ms: float,
     extent: tuple[int, ...],
-    max_abs_threshold: float = 0.75,
+    max_abs_threshold: float = 0.75,  # noqa: ARG001
     repeat_delay_ms: float = 2000,
     show: bool = False,
     savefile: Path | None = None,
@@ -1176,18 +1176,19 @@ def animate_video(
         savefile (Path, optional): The path to save the animation file. If None, the
             animation will not be saved. Defaults to None.
     """
-    smoothed_map = np.transpose(total_map, (0, 2, 1))
-    max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
-    vmax = max_abs
-    vmin = -max_abs
+    # smoothed_map = np.transpose(total_map, (0, 2, 1))
+    smoothed_map = total_map
+    # max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
+    # vmax = max_abs
+    # vmin = -max_abs
     # vmax = 500
     # vmin = -500
 
     fig, axes = plt.subplots(2, 1, figsize=(5, 10), sharex=True)
     im_mm = axes[0].imshow(
         smoothed_map[0],
-        vmin=vmin,
-        vmax=vmax,
+        # vmin=vmin,
+        # vmax=vmax,
         animated=True,
         cmap='Greys_r',
         extent=extent,
@@ -1562,7 +1563,7 @@ class BinTODIntoVideo(DataRoutine):
             good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx]
         )
 
-        netd[chanmask != 1] = 0
+        netd[chanmask != ChanmaskValue.ON_RESONANCE] = 0
 
         if beam_map_mode:
             tones_to_map = np.argwhere(
@@ -1615,24 +1616,43 @@ class BinTODIntoVideo(DataRoutine):
             )
             good_samples = good_samples[valid_index]
 
-            # loop over samples to create sum and hits maps
-            for i_block, block_end in enumerate(blocks[1:]):
-                block_slice = slice(blocks[i_block], block_end)
-                for time_sample in good_samples[block_slice]:
-                    sum_map[
-                        i_block, i_chan, map_idx, y_ind[time_sample], x_ind[time_sample]
-                    ] += this_clean_data[time_sample] * weight
-                    hits_map[
-                        i_block, i_chan, map_idx, y_ind[time_sample], x_ind[time_sample]
-                    ] += 1.0 * weight
+            # If last block ends before the end of the timestream, don't use the
+            # trailing samples.
+            good_samples = good_samples[good_samples < blocks[-1]]
+
+            # Create sum and hits maps
+            n_good_samples = good_samples.size
+            block_idxs = np.digitize(good_samples, blocks[1:])
+            i_chan_array = np.repeat(i_chan, n_good_samples)
+            map_idx_array = np.repeat(map_idx, n_good_samples)
+            np.add.at(
+                sum_map,
+                (
+                    block_idxs,
+                    i_chan_array,
+                    map_idx_array,
+                    y_ind[good_samples],
+                    x_ind[good_samples],
+                ),
+                this_clean_data[good_samples] * weight,
+            )
+            np.add.at(
+                hits_map,
+                (
+                    block_idxs,
+                    i_chan_array,
+                    map_idx_array,
+                    y_ind[good_samples],
+                    x_ind[good_samples],
+                ),
+                1.0 * weight,
+            )
 
         # Create kernel and convolve with map to get more accurate values for pixels
         # with few hits
         r0 = self.params['r0']
         if r0 > 0:
-            kernel = compute_map_kernel(
-                r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
-            )
+            kernel = compute_map_kernel(r0=r0, dpix=dpix, sigma=self.params['sigma'])
             for i_block in range(n_blocks):
                 for i_chan in range(pdata.n_chan):
                     for map_idx in range(n_maps):
@@ -1717,8 +1737,7 @@ class AnimateVideo(DataRoutine):
         '/video/cropped_optical_video',
     }
 
-    produces: ClassVar[set] = {
-    }
+    produces: ClassVar[set] = {}
 
     @ensure_path('savefile')
     def __init__(
@@ -1746,7 +1765,7 @@ class AnimateVideo(DataRoutine):
             max_abs_threshold=max_abs_threshold,
             savefile=savefile,
             show=show,
-            channel=channel
+            channel=channel,
         )
 
     @typing.override
@@ -1759,7 +1778,7 @@ class AnimateVideo(DataRoutine):
         total_map = pdata['video/total_map'][:]
         block_size_s = pdata['video'].attrs['block_size_s']
         dpix = pdata['video'].attrs['dpix']
-        units = pdata['video'].attrs['units']
+        # units = pdata['video'].attrs['units']
 
         # Animation
         _logger.info(f'{self.name}: Creating animation...')
@@ -1776,6 +1795,3 @@ class AnimateVideo(DataRoutine):
             show=self.params['show'],
             savefile=savefile,
         )
-
-
-
