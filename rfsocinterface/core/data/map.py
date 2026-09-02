@@ -622,8 +622,7 @@ def get_required_map_datasets(
         pdata (ProcessedData): The datastet to reference. Used for determining valid
             channel indices and for error messages.
         channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
-            use when generating the plots.  If
-            `None`, all channels will be used.
+            use when generating the plots.  If `None`, all channels will be used.
         group_name (str): Which HDF5 group to get the datasets from. Defaults to '/map'.
         caller_name (str): The caller of this function. Used for error messages.
             Defaults to `None`.
@@ -719,6 +718,9 @@ class PlotMap(DataRoutine):
 
     Creates the following items in the HDF5 file:
     - /map/plotting: group containing the plotting datasets.
+    - /map/plotting/map_val: The polarized map values used in plotting.
+    - /map/plotting/total_map: The total map values used in plotting.
+    - /map/plotting/map_good_cov: The hits_map values greater than half of the median.
     - /map/plotting/flagged_map_1: 2D array of shape (n_pix_x, n_pix_y) containing
         the flagged pixels based on the first map (e.g. polarization 1).
     - /map/plotting/flagged_map_2: 2D array of shape (n_pix_x, n_pix_y) containing
@@ -742,6 +744,9 @@ class PlotMap(DataRoutine):
 
     produces: ClassVar[set] = {
         '/map/plotting',
+        '/map/plotting/map_val',
+        '/map/plotting/total_map',
+        '/map/plotting/map_good_cov',
         '/map/plotting/flagged_map_1',
         '/map/plotting/flagged_map_2',
         '/map/plotting/flagged_total_map',
@@ -903,7 +908,7 @@ class PlotMap(DataRoutine):
             hits_map = pdata['map/hits_map'][channel]
             map_val = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
             total_map = np.sum(sum_map, axis=(0, 1)) / np.sum(hits_map, axis=(0, 1))
-            hits_map = np.sum(pdata['map/hits_map'][channel], axis=0)
+            hits_map = np.sum(hits_map, axis=0)
 
             # Have to make new arrays for this data
             pdata.create_dataset('/map/plotting/map_val', data=map_val)
