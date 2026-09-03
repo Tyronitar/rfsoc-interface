@@ -19,7 +19,7 @@ if __name__ == '__main__':
     hp_filter_freq = 0.03
     noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
-    ds_factor = 5
+    ds_factor = 12
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']

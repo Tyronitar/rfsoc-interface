@@ -249,13 +249,13 @@ class BinTODIntoMap(DataRoutine):
     - /map/map_az: 1D array of azimuth values for the map pixels.
     - /map/map_za: 1D array of zenith angle values for the map pixels.
     - /map/netd: 1D array of length n_tones containing the NETD values for each tone.
-    - /map/sum_map: 4D array of shape (n_chan, n_maps, n_pix_x, n_pix_y) containing the
+    - /map/sum_map: 4D array of shape (n_chan, n_maps, n_pix_y, n_pix_x) containing the
         sum of the data values for each pixel.
-    - /map/hits_map: 4D array of shape (n_chan, n_maps, n_pix_x, n_pix_y) containing the
+    - /map/hits_map: 4D array of shape (n_chan, n_maps, n_pix_y, n_pix_x) containing the
         number of hits for each pixel.
-    - /map/map_val: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing
+    - /map/map_val: 3D array of shape (n_maps, n_pix_y, n_pix_x) containing
         the binned map values (i.e. (sum_{i_chan} sum_map) / (sum_{i_chan} hits_map)).
-    - /map/channel_map_val: 4D array of shape (n_chan, n_maps, n_pix_x, n_pix_y)
+    - /map/channel_map_val: 4D array of shape (n_chan, n_maps, n_pix_y, n_pix_x)
         containing the binned map values (i.e. sum_map / hits_map), separated by
         channel.
     - /map/total_map: 2D array of shape (n_pix_x, n_pix_y) containing
@@ -1648,6 +1648,15 @@ class BinTODIntoVideo(DataRoutine):
                 1.0 * weight,
             )
 
+        # Set the median value to 0 for each channel's sum map
+        # TODO: Inverse variance weighted median
+        for i_block in range(n_blocks):
+            for i_chan in range(pdata.n_chan):
+                for i_map in range(n_maps):
+                    nonzero = np.where(hits_map[i_block, i_chan, i_map] > 0)
+                    median = np.median(sum_map[i_block, i_chan, i_map][nonzero])
+                    sum_map[i_block, i_chan, i_map][nonzero] -= median
+
         # Create kernel and convolve with map to get more accurate values for pixels
         # with few hits
         r0 = self.params['r0']
@@ -1768,6 +1777,14 @@ class AnimateVideo(DataRoutine):
             channel=channel,
         )
 
+    # @typing.override
+    # def _inputs(self, pdata: ProcessedData):
+    #     channel = self.params['channel']
+    #     map_dsets = get_required_map_datasets(
+    #         pdata, channel, group_name='/map', caller_name=self.name
+    #     )
+    #     return self.requires.union(map_dsets)
+
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
         # Use existing datasets and make the video
@@ -1795,3 +1812,65 @@ class AnimateVideo(DataRoutine):
             show=self.params['show'],
             savefile=savefile,
         )
+
+    def _get_combined_map(
+        self,
+        pdata: ProcessedData,
+        inputs: set[str],
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        """Get the combined video."""
+        channel = self.params['channel']
+        total_map_shape = (pdata['video/map_za'].size, pdata['video/map_az'].size)
+        map_val_shape = (N_POLARIZATION, *total_map_shape)
+        if '/video/map_val' in inputs:
+            # Using all maps
+
+            # Use virtual datasets to reduce disk usage
+            map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
+            map_val_layout[:] = h5py.VirtualSource(pdata['video/map_val'])
+            map_val = pdata['video/plotting'].create_virtual_dataset(
+                'map_val', map_val_layout
+            )[:]
+            total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
+            total_map_layout[:] = h5py.VirtualSource(pdata['video/total_map'])
+            total_map = pdata['video/plotting'].create_virtual_dataset(
+                'total_map', total_map_layout
+            )[:]
+
+            hits_map = np.sum(pdata['video/hits_map'], axis=0)
+            pdata['video/plotting'].attrs['channel'] = tuple(range(pdata.n_chan))
+        elif '/video/channel_map_val' in inputs:
+            # Using a single channel
+            if isinstance(channel, Sequence):
+                # Turn tuple into singleton to properly reduce number of dimensions
+                channel = channel[0]
+
+            # Use virtual datasets to reduce disk usage
+            map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
+            map_val_src = h5py.VirtualSource(pdata['video/channel_map_val'])
+            map_val_layout[:] = map_val_src[channel]
+            map_val = pdata['video/plotting'].create_virtual_dataset(
+                'map_val', map_val_layout
+            )[:]
+            total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
+            total_map_src = h5py.VirtualSource(pdata['video/channel_total_map'])
+            total_map_layout[:] = total_map_src[channel]
+            total_map = pdata['video/plotting'].create_virtual_dataset(
+                'total_map', total_map_layout
+            )[:]
+
+            hits_map = pdata['video/hits_map'][channel]
+            pdata['video/plotting'].attrs['channel'] = (channel,)
+        else:
+            # Multiple channels selected, but not all. Need to compute new maps
+            sum_map = pdata['video/sum_map'][channel]
+            hits_map = pdata['video/hits_map'][channel]
+            map_val = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
+            total_map = np.sum(sum_map, axis=(0, 1)) / np.sum(hits_map, axis=(0, 1))
+            hits_map = np.sum(hits_map, axis=0)
+
+            # Have to make new arrays for this data
+            pdata.create_dataset('/video/plotting/map_val', data=map_val)
+            pdata.create_dataset('/video/plotting/total_map', data=total_map)
+
+            pdata['video/plotting'].attrs['channel'] = (channel,)
