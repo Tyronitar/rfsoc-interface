@@ -16,6 +16,7 @@ from matplotlib import animation
 from matplotlib.figure import Figure
 from scipy import signal
 from scipy.ndimage import gaussian_filter as apply_gaussian_blur
+from scipy.spatial import Delaunay
 from scipy.spatial.distance import cdist
 
 from rfsocinterface.core.data.routines import (
@@ -1671,6 +1672,37 @@ class BinTODIntoVideo(DataRoutine):
                         hits_map[i_block, i_chan, map_idx] = signal.convolve2d(
                             hits_map[i_block, i_chan, map_idx], kernel, mode='same'
                         )
+
+        # Set pixels beyond bounds of the tiles to 0
+        for i_block, block_end in enumerate(blocks[1:]):
+            for i_chan in range(pdata.n_chan):
+                # Find map pixels outside of the convex hull of the tile's detector
+                # positions
+                block = np.arange(blocks[i_block], block_end)
+                az_centers = np.nanmedian(
+                    pdata.get_detector_az(i_chan)[:, block], axis=0
+                )
+                za_centers = np.nanmedian(
+                    pdata.get_detector_za(i_chan)[:, block], axis=0
+                )
+                az_centers = np.nan_to_num(az_centers, nan=np.finfo(np.float64).max)
+                za_centers = np.nan_to_num(za_centers, nan=np.finfo(np.float64).max)
+
+                triangluation = Delaunay(np.stack((za_centers, az_centers), axis=1))
+                y, x = np.meshgrid(map_za, map_az)
+                outside_mask = None
+                for i in [-dpix, dpix]:
+                    for j in [-dpix, dpix]:
+                        map_coords = np.column_stack((y.flatten() + i, x.flatten() + j))
+                        this_outside_mask = triangluation.find_simplex(map_coords) < 0
+                        if outside_mask is None:
+                            outside_mask = this_outside_mask
+                        else:
+                            outside_mask &= this_outside_mask
+                outside_mask = outside_mask.reshape(map_az.size, map_za.size).T
+
+                # hits_map[:, i_chan, :, outside_mask] = 0
+                sum_map[:, i_chan, :, outside_mask] = 0
 
         pdata.set_chanmask(chanmask)
         pdata['video/hits_map'][:] = hits_map

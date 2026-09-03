@@ -16,7 +16,7 @@ if __name__ == '__main__':
     _logger.handlers[0].setLevel(logging.INFO)
 
     lp_filter_freq = 15
-    hp_filter_freq = 0.03
+    hp_filter_freq = 0.2
     noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
     ds_factor = 12
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
     clean_tod = CleanTOD(dataset=dataset)
     compute_psd = ComputeNoisePSD(
-        # PsdBasis.GAIN_PHASE,
+        PsdBasis.GAIN_PHASE,
         PsdBasis.FREQ_DISS,
         cut_time=2,
         selection_indices='all',
@@ -84,15 +84,15 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        # compute_psd,
-        # psd_plotter,
         # hp_filter,
         # lp_filter,
         # clean_tod,
+        # compute_psd,
+        # psd_plotter,
         # bin_tod_to_map,
         # plotter,
         bin_tod_to_video,
-        animate_video,
+        # animate_video,
         # find_fwhm,
         # analyze_beammap,
         # plot_beammap,
@@ -106,7 +106,51 @@ if __name__ == '__main__':
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
     pdata = ProcessedData.load(date, setnum)
+    # pdb.set_trace()
     pipeline.run(pdata)
+    # hits_map = pdata['video/hits_map'][:]
+    # map_az = pdata['video/map_az'][:]
+    # map_za = pdata['video/map_za'][:]
+    # extent = get_extent(map_az, map_za, 0.08)
+    # indices_tile2 = pdata.get_onres_ind(0)
+    # indices_tile3 = pdata.get_onres_ind(1)
+    # # az_centers = pdata.detector_delta_x[indices]
+    # # za_centers = pdata.detector_delta_y[indices]
+    # az_centers_tile2 = np.nanmedian(pdata.get_detector_az(0), axis=1)[indices_tile2]
+    # za_centers_tile2 = np.nanmedian(pdata.get_detector_za(0), axis=1)[indices_tile2]
+
+    # az_centers_tile3 = np.nanmedian(pdata.get_detector_az(1), axis=1)[indices_tile3]
+    # za_centers_tile3 = np.nanmedian(pdata.get_detector_za(1), axis=1)[indices_tile3]
+    # az_centers = (az_centers_tile2, az_centers_tile3)
+    # za_centers = (za_centers_tile2, za_centers_tile3)
+
+    # from scipy.spatial import Delaunay
+    # for i_chan in range(pdata.n_chan):
+    #     triangluation = Delaunay(np.stack((za_centers[i_chan], az_centers[i_chan]), axis=1))
+    #     y, x = np.meshgrid(map_za, map_az)
+    #     outside_mask = None
+    #     for i in [-0.08, 0.08]:
+    #         for j in [-0.08, 0.08]:
+    #             map_coords = np.column_stack((y.flatten() + i,  x.flatten() + j))
+    #             this_outside_mask = triangluation.find_simplex(map_coords) < 0
+    #             if outside_mask is None:
+    #                 outside_mask = this_outside_mask
+    #             else:
+    #                 outside_mask &= this_outside_mask
+
+    #     outside_mask = outside_mask.reshape(map_az.size, map_za.size).T
+
+    #     hits_map[:, i_chan, :, outside_mask] = 0
+
+
+    # polsum = np.sum(hits_map, axis=(1, 2))
+
+    # plt.imshow(polsum[10], extent=extent)
+    # plt.scatter(az_centers_tile2, za_centers_tile2, c='white')
+    # plt.scatter(az_centers_tile3, za_centers_tile3, c='white')
+
+
+    # plt.show()
     # pdb.set_trace()
     # params = RFSoCParameters.from_tile_name('Device_aSi2_Channel3_telescope_275mK_20260804')
     # det_dy = params.detector_delta_y[:]
