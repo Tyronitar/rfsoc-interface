@@ -27,6 +27,7 @@ from rfsocinterface.core.data.routines import (
 from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.data.utils import (
     DEFAULT_MAP_DPIX,
+    DEFAULT_VIDEO_DPIX,
     N_POLARIZATION,
     OPTCAM_DPIX,
     OPTCAM_HEIGHT_PIXELS,
@@ -1275,7 +1276,7 @@ class BinTODIntoVideo(DataRoutine):
         az_trim: float = 2.3,
         za_trim: float = 0.2,
         beam_map_mode: bool = False,
-        dpix: int = DEFAULT_MAP_DPIX,
+        dpix: int = DEFAULT_VIDEO_DPIX,
         r0: float = 0.15,
         sigma: float = 0.087 / 2.3,
         block_size_s: float = 1,
