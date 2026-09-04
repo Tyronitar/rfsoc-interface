@@ -1,6 +1,8 @@
 """Main window and GUI manager."""
 
 import logging
+import time
+from collections.abc import Callable
 from multiprocessing import Array, Lock, Pipe, Process, Queue
 from multiprocessing.connection import Connection
 from threading import Thread
@@ -51,6 +53,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.settings = Settings()
         self.settings.load_settings()
 
+        self.telescope_commands: dict[str, list[Callable]] = {}
+        self._telescope_command_data = (
+            None  # Data returned from a command that was waited for
+        )
+        self.camera_commands: dict[str, list[Callable]] = {}
+        self._camera_command_data = (
+            None  # Data returned from a command that was waited for
+        )
+        self.telescope_update.connect(self.handle_telescope)
+        self.camera_update.connect(self.handle_camera)
+
         self.telescope_queue: Queue = None
         self.telescope_parent_conn: Connection = None
         self.telescope_child_conn: Connection = None
@@ -79,6 +92,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._additional_ui_setup()
         self.close_window.connect(self.close)
 
+    def do_post_setup(self):
+        """Do any setup after the initial setup."""
+        for tab in self.tabs.values():
+            tab.start_post_setup.emit()
+        QCoreApplication.processEvents()
+
     def get_current_image(self) -> tuple[npt.NDArray, float]:
         """Return the current optical image."""
         with self.camera_array_lock, self.timestamp_array_lock:
@@ -94,10 +113,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.telescope_controller_process = Process(
             target=make_controller, args=(self.telescope_child_conn,)
         )
-        self.telescope_controller_process.start()
-
         self._telescope_listener_thread = Thread(target=self._telescope_listener_loop)
         self._telescope_listener_thread.start()
+        self.telescope_controller_process.start()
+
+        self.wait_for_telescope_command('start')
+        _logger.info('Telescope process started succesfully.')
 
     def _make_camera_controller(self):
         from rfsocinterface.core.camera import make_controller  # noqa: PLC0415
@@ -116,10 +137,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.timestamp_array_lock,
             ),
         )
-        self.camera_controller_process.start()
 
         self._camera_listener_thread = Thread(target=self._camera_listener_loop)
         self._camera_listener_thread.start()
+        self.camera_controller_process.start()
+        self.wait_for_camera_command('start')
+        _logger.info('Camera process started succesfully.')
 
     def _make_initialization_tab(self):
         self.initialization_tab = QWidget()
@@ -357,3 +380,64 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.settings.save_settings()
         return super().closeEvent(event)
+
+    def handle_telescope(self, command: str, args: tuple):
+        """Call any registered callbacks upon receipt of a telescope command."""
+        if command in self.telescope_commands:
+            for callback in self.telescope_commands[command]:
+                callback(*args)
+
+    def handle_camera(self, command: str, args: tuple):
+        """Call any registered callbacks upon receipt of a camera command."""
+        if command in self.camera_commands:
+            # _logger.debug(
+            #     f'MAIN: Handling camera command: "{command}" with args: {args}'
+            # )
+            for callback in self.camera_commands[command]:
+                callback(*args)
+
+    def connect_to_telescope_command(self, command: str, callback: Callable):
+        """Connect a callback to a telescope controller command."""
+        self.telescope_commands.setdefault(command, []).append(callback)
+
+    def disconnect_telescope_command(self, command: str, callback: Callable):
+        """Disconnect a callback from a telescope controller command."""
+        self.telescope_commands[command].remove(callback)
+
+    def connect_to_camera_command(self, command: str, callback: Callable):
+        """Connect a callback to a camera controller command."""
+        self.camera_commands.setdefault(command, []).append(callback)
+
+    def disconnect_camera_command(self, command: str, callback: Callable):
+        """Disconnect a callback from a camera controller command."""
+        self.camera_commands[command].remove(callback)
+
+    def wait_for_telescope_command(self, command: str, err_msg: str = ''):  # noqa: ARG002
+        """Wait for the specified command from the telescope controller."""
+        wait = True
+
+        def stop_waiting(*data):
+            nonlocal wait
+            wait = False
+            self._telescope_command_data = data
+
+        self.connect_to_telescope_command(command, stop_waiting)
+        while wait:
+            time.sleep(1e-3)
+            QCoreApplication.processEvents()
+        self.disconnect_telescope_command(command, stop_waiting)
+
+    def wait_for_camera_command(self, command: str, err_msg: str = ''):  # noqa: ARG002
+        """Wait for the specified command from the camera controller."""
+        wait = True
+
+        def stop_waiting(*data):
+            nonlocal wait
+            wait = False
+            self._camera_command_data = data
+
+        self.connect_to_camera_command(command, stop_waiting)
+        while wait:
+            time.sleep(1e-3)
+            QCoreApplication.processEvents()
+        self.disconnect_camera_command(command, stop_waiting)

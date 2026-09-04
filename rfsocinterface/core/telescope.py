@@ -109,6 +109,7 @@ class TelescopeMotorController:
     def _listener_loop(self):
         if not self._initialized:
             return
+        self.send('start')
         while True:
             try:
                 command, *args = self.connection.recv()

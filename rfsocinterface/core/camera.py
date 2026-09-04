@@ -21,6 +21,7 @@ import numpy as np
 from vmbpy import (
     Camera,
     CameraEvent,
+    EnumFeature,
     Frame,
     FrameStatus,
     PixelFormat,
@@ -46,7 +47,7 @@ DEFAULT_CAMERA_FEATURE_VALUES = {
     'Height': MAX_FRAME_HEIGHT,
     'PixelFormat': PixelFormat.Rgb8,
     'Gamma': 1,
-    'ExposureAuto': 'Continuous',
+    # 'ExposureAuto': 'Continuous',
     'AcquisitionMode': 'Continuous',
 }
 #
@@ -167,6 +168,7 @@ class FrameProducer(threading.Thread):
 
         try:
             with self.cam:
+                # self.cam.set_access_mode(AccessMode.Full)
                 # self.setup_camera()
 
                 try:
@@ -183,6 +185,14 @@ class FrameProducer(threading.Thread):
             try_put_frame(self.frame_queue, self.cam, None)
 
         _camera_logger.debug(f"Thread 'FrameProducer({self.cam.get_id()})' terminated.")
+
+    def toggle_streaming(self):
+        """Pause/unpause the streaming of the camera."""
+        with self.cam:
+            if self.cam.is_streaming():
+                self.cam.stop_streaming()
+            else:
+                self.cam.start_streaming(self)
 
 
 def make_controller(
@@ -315,7 +325,7 @@ class CameraController:
     def run(self):
         """Run the CameraController."""
         if not self._initialized:
-            _logger.debug(
+            _camera_logger.debug(
                 'VMB Camera System could not be initialized, terminating process'
             )
             return
@@ -367,7 +377,9 @@ class CameraController:
                     f'CAMERA sent command "{command}" with data {args}'
                 )
             except KeyboardInterrupt:
-                _camera_logger.error(f'CAMERA timed out sending command "{command}"')  # noqa: TRY400
+                msg = f'CAMERA timed out sending command "{command}"'
+                _camera_logger.error(msg)  # noqa: TRY400
+                raise TimeoutError(msg) from None
             finally:
                 timer.cancel()
         else:
@@ -380,12 +392,23 @@ class CameraController:
             cam = self.vmb.get_camera_by_id(cam)
 
         try:
+            # Some features can't be changed while streaming, so pause temporarily.
+            resume = False
+            if cam.is_streaming():
+                cam.stop_streaming()
+                resume = True
             cam.get_feature_by_name(feature_name).set(val)
+            if resume:
+                cam.start_streaming(self.producers[cam.get_id()])
         except VmbFeatureError as e:
             self.send(
-                'err', 'CRITICAL', f'Unable to set "{feature_name}" to "val": {e}'
+                'err', 'CRITICAL', f'Unable to set "{feature_name}" to "{val}": {e}'
             )
             raise VmbFeatureError from e
+        _camera_logger.debug(
+            f'Succesfully set feature "{feature_name}" to "{val}" '
+            f'for camera {cam.get_id()}'
+        )
 
     def get_feature(self, cam: Camera | str, feature_name: str):
         """Set the feature for the camera."""
@@ -393,12 +416,28 @@ class CameraController:
             cam = self.vmb.get_camera_by_id(cam)
 
         try:
-            return cam.get_feature_by_name(feature_name).get()
-        except VmbFeatureError as e:
+            resume = False
+            if cam.is_streaming():
+                cam.stop_streaming()
+                resume = True
+            feature = cam.get_feature_by_name(feature_name)
+            val = feature.get()
+            if resume:
+                cam.start_streaming(self.producers[cam.get_id()])
+        except Exception as e:
             self.send(
-                'err', 'CRITICAL', f'Unable to set "{feature_name}" to "val": {e}'
+                'err',
+                'NON-CRITICAL',
+                f'Unable to get "{feature_name}" from camera {cam.get_id()}: {e}',
             )
-            raise VmbFeatureError from e
+            raise
+        _camera_logger.debug(
+            f'Succesfully got feature "{feature_name}" from camera {cam.get_id()}:'
+            f' (Type: {type(val)}, Value: "{val}")'
+        )
+        if isinstance(feature, EnumFeature):
+            val = str(val)
+        return val
 
     def _consumer_loop(self):  # noqa: PLR0912
         frames: dict[str, Frame] = {}
@@ -408,8 +447,12 @@ class CameraController:
 
         interval = 0.2
 
+        first_loop = True
         try:
             while self.alive:
+                if first_loop:
+                    first_loop = False
+                    self.send('start')
                 # Check for commands from the main process
                 if self.connection is not None and self.connection.poll():
                     command, *args = self.connection.recv()
@@ -444,19 +487,15 @@ class CameraController:
                                 with cam:
                                     try:
                                         self.set_feature(cam, feature_name, val)
-                                        self.send(
-                                            'set_feature',
-                                            True,
-                                        )
-                                    except VmbFeatureError:
+                                    except (TimeoutError, VmbFeatureError):
                                         self.alive = False
                                         break
                         case 'get_feature':
-                            if len(args) == 2:  # noqa: PLR2004
-                                feature_name, val = args
+                            if len(args) == 1:
+                                feature_name = args[0]
                                 cams = self.vmb.get_all_cameras()
                             else:
-                                cam_id, feature_name, val = args
+                                cam_id, feature_name = args
                                 cams = [self.vmb.get_camera_by_id(cam_id)]
                             for cam in cams:
                                 with cam:
@@ -467,8 +506,9 @@ class CameraController:
                                             cam.get_id(),
                                             feature_name,
                                             val,
+                                            timeout=1,
                                         )
-                                    except VmbFeatureError:
+                                    except (TimeoutError, VmbFeatureError):
                                         self.alive = False
                                         break
                         case 'terminate':
