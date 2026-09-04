@@ -1348,14 +1348,14 @@ class BinTODIntoVideo(DataRoutine):
     def _initialize_map_arrays(
         self,
         pdata: ProcessedData,
-        n_blocks: int,
         n_maps: int,
         n_pix_x: int,
         n_pix_y: int,
         optical_video_shape: tuple[int, ...],
         dpix: float,
+        fs: float,
         block_size_s: float,
-    ):
+    ) -> tuple[int, npt.NDArray]:
         """Initialize the datasets for the video in the ProcessedData object.
 
         If the 'video' group already exists, it will overwrite it and create new
@@ -1380,6 +1380,30 @@ class BinTODIntoVideo(DataRoutine):
         video_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
         video_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
         n_chan = pdata.n_chan
+
+        # Find good sampels before determining number of blocks
+        for i_chan in range(pdata.n_chan):
+            interpolated_samples = pdata.get_from_channel(
+                i_chan, 'time_ordered_data/interpolated_samples'
+            )
+            good_samples[i_chan] = np.setdiff1d(
+                np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
+            )
+            nan_samples = np.argwhere(
+                np.isnan(pdata.get_detector_az(i_chan)[0])
+                | np.isnan(pdata.get_detector_za(i_chan)[0])
+            ).flatten()
+            good_samples[i_chan] = np.setdiff1d(
+                np.arange(pdata.get_n_samples(i_chan)), nan_samples
+            )
+        least_samples_chan = np.argmin(pdata.n_samples)
+        n_samples = pdata.get_n_samples(least_samples_chan)
+        first_good_sample = np.max(
+            [np.min(good_samples[i_chan]) for i_chan in range(pdata.n_chan)]
+        )
+        blocks = np.arange(first_good_sample, n_samples, int(fs * block_size_s))
+        n_blocks = blocks.size - 1
+
         video_group.create_dataset(
             'sum_map',
             shape=(n_blocks, n_chan, n_maps, n_pix_y, n_pix_x),
@@ -1422,23 +1446,14 @@ class BinTODIntoVideo(DataRoutine):
             chunks=(1, *optical_video_shape),
             dtype=np.uint8,
         )
-        for i_chan in range(pdata.n_chan):
-            interpolated_samples = pdata.get_from_channel(
-                i_chan, 'time_ordered_data/interpolated_samples'
-            )
-            good_samples[i_chan] = np.setdiff1d(
-                np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
-            )
+        return n_blocks, blocks
 
     def _compute_new_maps(self, pdata: ProcessedData):  # noqa: PLR0912, PLR0915
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         block_size_s = self.params['block_size_s']
         least_samples_chan = np.argmin(pdata.n_samples)
-        n_samples = pdata.get_n_samples(least_samples_chan)
         fs = pdata.get_fs(least_samples_chan)
-        blocks = np.arange(0, n_samples, int(fs * block_size_s))
-        n_blocks = blocks.size - 1
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
             pdata,
             self.params['az_trim'],
@@ -1480,16 +1495,17 @@ class BinTODIntoVideo(DataRoutine):
             )
             raise ValueError(msg)
 
-        self._initialize_map_arrays(
+        n_blocks, blocks = self._initialize_map_arrays(
             pdata,
-            n_blocks,
             n_maps,
             n_pix_x,
             n_pix_y,
             optical_image_shape,
             dpix,
+            fs,
             block_size_s,
         )
+        good_samples = pdata['video/good_samples'][:]
         pdata['video/map_az'][:] = map_az
         pdata['video/map_za'][:] = map_za
         detector_az = [
@@ -1602,28 +1618,30 @@ class BinTODIntoVideo(DataRoutine):
             y_ind = np.nan_to_num(y_ind, -1).astype('int')
 
             # eliminate samples outside the map
-            good_samples = pdata['video/good_samples'][i_chan][:]
+            this_good_samples = np.copy(good_samples[i_chan])
             valid_index = np.ndarray.flatten(
                 np.argwhere(
                     np.logical_and(
                         np.logical_and(
-                            x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x
+                            x_ind[this_good_samples] >= 0,
+                            x_ind[this_good_samples] < n_pix_x,
                         ),
                         np.logical_and(
-                            y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y
+                            y_ind[this_good_samples] >= 0,
+                            y_ind[this_good_samples] < n_pix_y,
                         ),
                     )
                 )
             )
-            good_samples = good_samples[valid_index]
+            this_good_samples = this_good_samples[valid_index]
 
             # If last block ends before the end of the timestream, don't use the
             # trailing samples.
-            good_samples = good_samples[good_samples < blocks[-1]]
+            this_good_samples = this_good_samples[this_good_samples < blocks[-1]]
 
             # Create sum and hits maps
-            n_good_samples = good_samples.size
-            block_idxs = np.digitize(good_samples, blocks[1:])
+            n_good_samples = this_good_samples.size
+            block_idxs = np.digitize(this_good_samples, blocks[1:])
             i_chan_array = np.repeat(i_chan, n_good_samples)
             map_idx_array = np.repeat(map_idx, n_good_samples)
             np.add.at(
@@ -1632,10 +1650,10 @@ class BinTODIntoVideo(DataRoutine):
                     block_idxs,
                     i_chan_array,
                     map_idx_array,
-                    y_ind[good_samples],
-                    x_ind[good_samples],
+                    y_ind[this_good_samples],
+                    x_ind[this_good_samples],
                 ),
-                this_clean_data[good_samples] * weight,
+                this_clean_data[this_good_samples] * weight,
             )
             np.add.at(
                 hits_map,
@@ -1643,8 +1661,8 @@ class BinTODIntoVideo(DataRoutine):
                     block_idxs,
                     i_chan_array,
                     map_idx_array,
-                    y_ind[good_samples],
-                    x_ind[good_samples],
+                    y_ind[this_good_samples],
+                    x_ind[this_good_samples],
                 ),
                 1.0 * weight,
             )
@@ -1679,17 +1697,19 @@ class BinTODIntoVideo(DataRoutine):
                 # Find map pixels outside of the convex hull of the tile's detector
                 # positions
                 block = np.arange(blocks[i_block], block_end)
+                onres_ind = pdata.get_onres_ind(i_chan)
                 az_centers = np.nanmedian(
-                    pdata.get_detector_az(i_chan)[:, block], axis=0
-                )
+                    pdata.get_detector_az(i_chan)[:, block], axis=1
+                )[onres_ind]
                 za_centers = np.nanmedian(
-                    pdata.get_detector_za(i_chan)[:, block], axis=0
-                )
-                az_centers = np.nan_to_num(az_centers, nan=np.finfo(np.float64).max)
-                za_centers = np.nan_to_num(za_centers, nan=np.finfo(np.float64).max)
+                    pdata.get_detector_za(i_chan)[:, block], axis=1
+                )[onres_ind]
+                centers = np.stack((za_centers, az_centers), axis=1)
 
-                triangluation = Delaunay(np.stack((za_centers, az_centers), axis=1))
+                triangluation = Delaunay(centers)
                 y, x = np.meshgrid(map_za, map_az)
+
+                # Include pixels within one pixel of the convex hull
                 outside_mask = None
                 for i in [-dpix, dpix]:
                     for j in [-dpix, dpix]:
@@ -1702,21 +1722,26 @@ class BinTODIntoVideo(DataRoutine):
                 outside_mask = outside_mask.reshape(map_az.size, map_za.size).T
 
                 # hits_map[:, i_chan, :, outside_mask] = 0
-                sum_map[:, i_chan, :, outside_mask] = 0
+                sum_map[i_block, i_chan, :, outside_mask] = 0
 
         pdata.set_chanmask(chanmask)
         pdata['video/hits_map'][:] = hits_map
         pdata['video/sum_map'][:] = sum_map
         with np.errstate(divide='ignore', invalid='ignore'):
-            pdata['video/map_val'][:] = np.sum(sum_map, axis=1) / np.sum(
-                hits_map, axis=1
+            pdata['video/map_val'][:] = np.nan_to_num(
+                np.sum(sum_map, axis=1) / np.sum(hits_map, axis=1),
+                nan=0.0,
             )
-            pdata['video/channel_map_val'][:] = sum_map / hits_map
-            pdata['video/total_map'][:] = np.sum(sum_map, axis=(1, 2)) / np.sum(
-                hits_map, axis=(1, 2)
+            pdata['video/channel_map_val'][:] = np.nan_to_num(
+                sum_map / hits_map, nan=0.0
             )
-            pdata['video/channel_total_map'][:] = np.sum(sum_map, axis=2) / np.sum(
-                hits_map, axis=2
+            pdata['video/total_map'][:] = np.nan_to_num(
+                np.sum(sum_map, axis=(1, 2)) / np.sum(hits_map, axis=(1, 2)),
+                nan=0.0,
+            )
+            pdata['video/channel_total_map'][:] = np.nan_to_num(
+                np.sum(sum_map, axis=2) / np.sum(hits_map, axis=2),
+                nan=0.0,
             )
         pdata['video/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating maps.')

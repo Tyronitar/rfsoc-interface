@@ -84,15 +84,15 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
+        hp_filter,
+        lp_filter,
+        clean_tod,
         # compute_psd,
         # psd_plotter,
         # bin_tod_to_map,
         # plotter,
         bin_tod_to_video,
-        # animate_video,
+        animate_video,
         # find_fwhm,
         # analyze_beammap,
         # plot_beammap,
@@ -102,16 +102,27 @@ if __name__ == '__main__':
     setnum = 1002
 
 
-    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    pdata = ProcessedData.load(date, setnum)
+    # pdata = ProcessedData.load(date, setnum)
+    # pipeline.run(pdata)
     # pdb.set_trace()
-    pipeline.run(pdata)
+
     # hits_map = pdata['video/hits_map'][:]
+    # sum_map = pdata['video/sum_map'][:]
     # map_az = pdata['video/map_az'][:]
     # map_za = pdata['video/map_za'][:]
     # extent = get_extent(map_az, map_za, 0.08)
+    # zero_mask = sum_map[10, :, 0] == 0
+    # np.sum(zero_mask, axis=1)
+    # im = np.zeros(sum_map.shape[-2:])
+    # im[zero_mask[0]] = 1
+    # im[zero_mask[1]] = -1
+    # im[np.all(zero_mask, axis=0)] = 2
+    # im[~zero_mask[0]] += 0.5
+    # im[~zero_mask[1]] -= 0.5
+    # plt.imshow(im, extent=extent)
     # indices_tile2 = pdata.get_onres_ind(0)
     # indices_tile3 = pdata.get_onres_ind(1)
     # # az_centers = pdata.detector_delta_x[indices]
@@ -148,6 +159,8 @@ if __name__ == '__main__':
     # plt.imshow(polsum[10], extent=extent)
     # plt.scatter(az_centers_tile2, za_centers_tile2, c='white')
     # plt.scatter(az_centers_tile3, za_centers_tile3, c='white')
+    # plt.show()
+    # pdb.set_trace()
 
 
     # plt.show()
