@@ -420,18 +420,16 @@ def get_detector_positions_no_interp(
         za = za_tel[start:stop]
 
         # rotation angle
-        ang = np.deg2rad(elevation_angle - za)
+        ang = np.deg2rad(za - elevation_angle)
 
         cos_ang = np.cos(ang)
         sin_ang = np.sin(ang)
 
         output_detector_az[:, start:stop] = (
             np.outer(dx[:], cos_ang) - np.outer(dy[:], sin_ang) + az
-            # az - (np.outer(dx[:], cos_ang) - np.outer(dy[:], sin_ang))
         )
         output_detector_za[:, start:stop] = (
             np.outer(dy[:], cos_ang) + np.outer(dx[:], sin_ang) + za
-            # za - (np.outer(dy[:], cos_ang) + np.outer(dx[:], sin_ang))
         )
 
 
@@ -471,7 +469,7 @@ def get_detector_positions(
         za[x[start:stop] > xp[-1]] = za_tel[-1]
 
         # rotation angle
-        ang = np.deg2rad(elevation_angle - za)
+        ang = np.deg2rad(za - elevation_angle)
 
         cos_ang = np.cos(ang)
         sin_ang = np.sin(ang)
