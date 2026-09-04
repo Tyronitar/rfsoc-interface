@@ -444,6 +444,10 @@ class CameraController:
                                 with cam:
                                     try:
                                         self.set_feature(cam, feature_name, val)
+                                        self.send(
+                                            'set_feature',
+                                            True,
+                                        )
                                     except VmbFeatureError:
                                         self.alive = False
                                         break

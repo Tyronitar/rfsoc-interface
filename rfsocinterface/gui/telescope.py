@@ -92,12 +92,21 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.live_footage_ax.set_axis_off()
 
         self.live_footage_canvas = ToolbarCanvas(parent=self, fig=self.live_footage_fig)
-        self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0)
+        self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0, 1, 2)
         self.live_footage_canvas.hide()
 
         self.live_footage_thread = None
         self.optical_pushButton.clicked.connect(self.toggle_live_footage)
         self.frame_rate = 5  # FPS
+
+        # Optical Camera Settings Connections
+        self.auto_exposure_comboBox.currentTextChanged.connect(
+            self.change_auto_exposure
+        )
+        self.update_camera_settings_pushButton.clicked.connect(
+            self.update_camera_settings
+        )
+        self.change_auto_exposure(self.auto_exposure_comboBox.currentText())
 
         # Initialize the numbers in the GUI
         self.az_pos = self.last_az = 0
@@ -136,6 +145,34 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def stop_motion(self):
         """Stop the telescope."""
         self.send_telescope_command('stop_telescope')
+
+    def change_auto_exposure(self, current_text: str):
+        """Change the optical camera's auto exposure setting."""
+        if current_text == 'Off':
+            self.exposure_mode_comboBox.setEnabled(True)
+            self.exposure_time_lineEdit.setEnabled(True)
+        else:
+            self.exposure_mode_comboBox.setEnabled(False)
+            self.exposure_time_lineEdit.setEnabled(False)
+
+    def update_camera_settings(self):
+        """Update the optical camera's settings."""
+        self.send_camera_command(
+            'set_feature', 'ExposureAuto', self.auto_exposure_comboBox.currentText()
+        )
+        self.wait_for_camera_command('set_feature')
+        # self.send_camera_command(
+        #     'set_feature', 'ExposureMode', self.exposure_mode_comboBox.currentText()
+        # )
+        # self.wait_for_camera_command('set_feature')
+        self.send_camera_command(
+            'set_feature', 'ExposureTime', get_num_value(self.exposure_time_lineEdit)
+        )
+        self.wait_for_camera_command('set_feature')
+
+    def get_current_camera_settings(self):
+        """Update the GUI to match actual camera values."""
+        raise NotImplementedError
 
     def take_pic(self):
         """Take an optical image and show the image to screen."""
