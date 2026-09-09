@@ -84,14 +84,14 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        hp_filter,
-        lp_filter,
-        clean_tod,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
         # compute_psd,
         # psd_plotter,
         # bin_tod_to_map,
         # plotter,
-        bin_tod_to_video,
+        # bin_tod_to_video,
         animate_video,
         # find_fwhm,
         # analyze_beammap,
@@ -102,11 +102,11 @@ if __name__ == '__main__':
     setnum = 1002
 
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    # pdata = ProcessedData.load(date, setnum)
-    # pipeline.run(pdata)
+    pdata = ProcessedData.load(date, setnum)
+    pipeline.run(pdata)
     # pdb.set_trace()
 
     # hits_map = pdata['video/hits_map'][:]

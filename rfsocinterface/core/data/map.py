@@ -9,6 +9,7 @@ from typing import ClassVar, Literal
 
 import av
 import h5py
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -1155,6 +1156,7 @@ def animate_video(
     optical_video: npt.NDArray,
     interval_ms: float,
     extent: tuple[int, ...],
+    bad_pixel_mask: npt.NDArray | None = None,
     max_abs_threshold: float = 0.75,  # noqa: ARG001
     repeat_delay_ms: float = 2000,
     show: bool = False,
@@ -1170,6 +1172,9 @@ def animate_video(
         interval_ms (float): The interval between frames in milliseconds.
         extent (tuple[int, ...]): The extent of the map in the format (xmin, xmax, ymin,
              ymax).
+        bad_pixel_mask (npt.NDArray, optional): Boolean mask to select pixels that
+            should be marked as bad. Values will be shown in a different color in the
+            animation. Defaults to  `None`.
         max_abs_threshold (float, optional): The maximum absolute value multiplier for
             the color scale in the animation. Defaults to 0.75.
         repeat_delay_ms (float, optional): The delay between repeats of the animation in
@@ -1179,7 +1184,9 @@ def animate_video(
             animation will not be saved. Defaults to None.
     """
     # smoothed_map = np.transpose(total_map, (0, 2, 1))
-    smoothed_map = total_map
+    smoothed_map = total_map[:]
+    if bad_pixel_mask is not None:
+        smoothed_map[bad_pixel_mask] = np.nan
     # max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
     # vmax = max_abs
     # vmin = -max_abs
@@ -1187,12 +1194,14 @@ def animate_video(
     # vmin = -500
 
     fig, axes = plt.subplots(2, 1, figsize=(5, 10), sharex=True)
+    cmap = mpl.colormaps.get_cmap('Greys_r')
+    cmap.set_bad(color='ivory')
     im_mm = axes[0].imshow(
         smoothed_map[0],
         # vmin=vmin,
         # vmax=vmax,
         animated=True,
-        cmap='Greys_r',
+        cmap=cmap,
         extent=extent,
         aspect='equal',
     )
@@ -1246,6 +1255,9 @@ class BinTODIntoVideo(DataRoutine):
         indices of the good samples for each channel
     - /video/cropped_optical_video: 4D array of shape (n_blocks, height, width, 3)
         containing the cropped optical video frames for each time block.
+    - /video/bad_pixel_mask: 4D Boolean array of shape (n_blocks, n_chan, n_pix_y,
+        n_pix_x) indicating pixels which are "bad" (i.e. outside of the map bounds for
+        each channel).
     """
 
     name = 'BinTODIntoVideo'
@@ -1264,6 +1276,7 @@ class BinTODIntoVideo(DataRoutine):
         '/video/map_za',
         '/video/cropped_optical_video',
         '/video/good_samples',
+        '/video/bad_pixel_mask',
     }
 
     @ensure_path('savefile')
@@ -1405,6 +1418,12 @@ class BinTODIntoVideo(DataRoutine):
         blocks = np.arange(first_good_sample, n_samples, int(fs * block_size_s))
         n_blocks = blocks.size - 1
 
+        video_group.create_dataset(
+            'bad_pixel_mask',
+            shape=(n_blocks, n_chan, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
+            dtype=np.bool,
+        )
         video_group.create_dataset(
             'sum_map',
             shape=(n_blocks, n_chan, n_maps, n_pix_y, n_pix_x),
@@ -1693,6 +1712,7 @@ class BinTODIntoVideo(DataRoutine):
                         )
 
         # Set pixels beyond bounds of the tiles to 0
+        bad_pixel_mask = pdata['video/bad_pixel_mask']
         for i_block, block_end in enumerate(blocks[1:]):
             for i_chan in range(pdata.n_chan):
                 # Find map pixels outside of the convex hull of the tile's detector
@@ -1720,7 +1740,8 @@ class BinTODIntoVideo(DataRoutine):
                             outside_mask = this_outside_mask
                         else:
                             outside_mask &= this_outside_mask
-                outside_mask = outside_mask.reshape(map_az.size, map_za.size).T
+                outside_mask = outside_mask.reshape(n_pix_y, n_pix_x, order='F')
+                bad_pixel_mask[i_block, i_chan, :] = outside_mask
 
                 # hits_map[:, i_chan, :, outside_mask] = 0
                 sum_map[i_block, i_chan, :, outside_mask] = 0
@@ -1801,6 +1822,7 @@ class AnimateVideo(DataRoutine):
         '/video/map_val',
         '/video/map_az',
         '/video/map_za',
+        '/video/bad_pixel_mask',
         '/video/cropped_optical_video',
     }
 
@@ -1851,6 +1873,8 @@ class AnimateVideo(DataRoutine):
         optical_video = pdata['video/cropped_optical_video'][:]
 
         total_map = pdata['video/total_map'][:]
+        bad_pixel_mask = pdata['video/bad_pixel_mask'][:]
+        bad_pixel_mask = np.all(bad_pixel_mask, axis=1)
         block_size_s = pdata['video'].attrs['block_size_s']
         dpix = pdata['video'].attrs['dpix']
         # units = pdata['video'].attrs['units']
@@ -1866,6 +1890,7 @@ class AnimateVideo(DataRoutine):
             optical_video[:],
             1000 * block_size_s,
             get_extent(map_az, map_za, dpix),
+            bad_pixel_mask=bad_pixel_mask,
             max_abs_threshold=self.params['max_abs_threshold'],
             show=self.params['show'],
             savefile=savefile,
