@@ -43,7 +43,6 @@ from rfsocinterface.core.utils import (
     PERMISSIONS_ALL_FULL,
     ChanmaskValue,
     add_colorbar,
-    add_colorbar_outside,
     argclosest,
     ensure_path,
     gaussian_filter,
@@ -1152,11 +1151,13 @@ class PlotMap(DataRoutine):
 
 @ensure_path('savefile')
 def animate_video(
+    map_val: npt.NDArray,
     total_map: npt.NDArray,
     optical_video: npt.NDArray,
     interval_ms: float,
     extent: tuple[int, ...],
     bad_pixel_mask: npt.NDArray | None = None,
+    units: str = 'mK',
     max_abs_threshold: float = 0.75,  # noqa: ARG001
     repeat_delay_ms: float = 2000,
     show: bool = False,
@@ -1165,6 +1166,8 @@ def animate_video(
     """Animate the video of the map evolution over time.
 
     Arguments:
+        map_val (npt.NDArray): 4D array of shape (n_frames, n_maps, n_pix_x, n_pix_y)
+            containing the map values for each frame, separated by polarization.
         total_map (npt.NDArray): 3D array of shape (n_frames, n_pix_x, n_pix_y)
             containing the total map values for each frame.
         optical_video (npt.NDArray): 4D array of shape (n_frames, height, width, 3)
@@ -1175,6 +1178,7 @@ def animate_video(
         bad_pixel_mask (npt.NDArray, optional): Boolean mask to select pixels that
             should be marked as bad. Values will be shown in a different color in the
             animation. Defaults to  `None`.
+        units (str, optional): The units of the data. Defaults to 'mK'.
         max_abs_threshold (float, optional): The maximum absolute value multiplier for
             the color scale in the animation. Defaults to 0.75.
         repeat_delay_ms (float, optional): The delay between repeats of the animation in
@@ -1186,6 +1190,7 @@ def animate_video(
     # smoothed_map = np.transpose(total_map, (0, 2, 1))
     smoothed_map = total_map[:]
     if bad_pixel_mask is not None:
+        map_val[np.broadcast_to(bad_pixel_mask[:, np.newaxis], map_val.shape)] = np.nan
         smoothed_map[bad_pixel_mask] = np.nan
     # max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
     # vmax = max_abs
@@ -1193,26 +1198,76 @@ def animate_video(
     # vmax = 500
     # vmin = -500
 
-    fig, axes = plt.subplots(2, 1, figsize=(5, 10), sharex=True)
-    cmap = mpl.colormaps.get_cmap('Greys_r')
-    cmap.set_bad(color='ivory')
-    im_mm = axes[0].imshow(
-        smoothed_map[0],
-        # vmin=vmin,
-        # vmax=vmax,
+    fig, axes = plt.subplots(4, 1, figsize=(6, 9), sharex=True, sharey=True)
+
+    # fig.suptitle(
+    #     f'{pdata.file_stub} - {channel_suffix}'
+    #     f'\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
+    #     f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
+    #     f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
+    # )
+
+    # Vertical polarization
+    cmap_vpol = mpl.colormaps.get_cmap('Blues_r')
+    cmap_vpol.set_bad(color='ivory')
+    # vmin_vpol = np.nanmin(map_val[:, 0])
+    # vmax_vpol = np.nanmax(map_val[:, 0])
+    im_vpol = axes[0].imshow(
+        map_val[0, 0],
+        # vmin=vmin_vpol,
+        # vmax=vmax_vpol,
         animated=True,
-        cmap=cmap,
+        cmap=cmap_vpol,
         extent=extent,
         aspect='equal',
     )
-    im_opt = axes[1].imshow(
+    add_colorbar(fig, axes[0], im_vpol, f'V-Pol Signal ({units})')
+
+    # Horizontal polarization
+    cmap_hpol = mpl.colormaps.get_cmap('Reds_r')
+    cmap_hpol.set_bad(color='ivory')
+    # vmin_hpol = np.nanmin(map_val[:, 1])
+    # vmax_hpol = np.nanmax(map_val[:, 1])
+    im_hpol = axes[1].imshow(
+        map_val[0, 1],
+        # vmin=vmin_hpol,
+        # vmax=vmax_hpol,
+        animated=True,
+        cmap=cmap_hpol,
+        extent=extent,
+        aspect='equal',
+    )
+    add_colorbar(fig, axes[1], im_hpol, f'H-Pol Signal ({units})')
+
+    # Total signal
+    cmap_total = mpl.colormaps.get_cmap('Greys_r')
+    cmap_total.set_bad(color='ivory')
+    # vmin_total = np.nanmin(smoothed_map)
+    # vmax_total = np.nanmax(smoothed_map)
+    im_total = axes[2].imshow(
+        smoothed_map[0],
+        # vmin=vmin_total,
+        # vmax=vmax_total,
+        animated=True,
+        cmap=cmap_total,
+        extent=extent,
+        aspect='equal',
+    )
+    add_colorbar(fig, axes[2], im_total, f'H-Pol Signal ({units})')
+
+    # Optical Image
+    im_opt = axes[3].imshow(
         optical_video[0], animated=True, extent=extent, aspect='equal'
     )
+    add_colorbar(fig, axes[3], im_opt, 'Optical Signal (rgb)')
+
+    fig.tight_layout()
     fig.subplots_adjust(wspace=0, hspace=0)
-    add_colorbar_outside(im_mm, axes[0], 'right')
 
     def animation_func(i: int):
-        im_mm.set_array(smoothed_map[i])
+        im_vpol.set_array(map_val[i, 0])
+        im_hpol.set_array(map_val[i, 1])
+        im_total.set_array(smoothed_map[i])
         im_opt.set_array(optical_video[i])
 
     an = animation.FuncAnimation(
@@ -1223,7 +1278,7 @@ def animate_video(
         repeat_delay=repeat_delay_ms,
     )
     if savefile is not None:
-        an.save(savefile)
+        an.save(savefile, savefig_kwargs={'bbox_inches': 'tight'})
     if show:
         plt.show()
     return fig, an
@@ -1872,12 +1927,13 @@ class AnimateVideo(DataRoutine):
         map_za = pdata['video/map_za'][:]
         optical_video = pdata['video/cropped_optical_video'][:]
 
+        map_val = pdata['video/map_val'][:]
         total_map = pdata['video/total_map'][:]
         bad_pixel_mask = pdata['video/bad_pixel_mask'][:]
         bad_pixel_mask = np.all(bad_pixel_mask, axis=1)
         block_size_s = pdata['video'].attrs['block_size_s']
         dpix = pdata['video'].attrs['dpix']
-        # units = pdata['video'].attrs['units']
+        units = pdata['video'].attrs['units']
 
         # Animation
         _logger.info(f'{self.name}: Creating animation...')
@@ -1886,11 +1942,13 @@ class AnimateVideo(DataRoutine):
         else:
             savefile = self.params['savefile']
         animate_video(
+            map_val,
             total_map,
             optical_video[:],
             1000 * block_size_s,
             get_extent(map_az, map_za, dpix),
             bad_pixel_mask=bad_pixel_mask,
+            units=units,
             max_abs_threshold=self.params['max_abs_threshold'],
             show=self.params['show'],
             savefile=savefile,

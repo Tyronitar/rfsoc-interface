@@ -91,7 +91,7 @@ if __name__ == '__main__':
         # psd_plotter,
         # bin_tod_to_map,
         # plotter,
-        # bin_tod_to_video,
+        bin_tod_to_video,
         animate_video,
         # find_fwhm,
         # analyze_beammap,
@@ -99,7 +99,7 @@ if __name__ == '__main__':
     ])
 
     date = '20260828'
-    setnum = 1002
+    setnum = 1003
 
 
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
