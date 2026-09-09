@@ -465,6 +465,7 @@ class BinTODIntoMap(DataRoutine):
         sum_map = pdata['map/sum_map'][:]
         hits_map = pdata['map/hits_map'][:]
         netd = pdata['map/netd'][:]
+        good_samples = pdata['map/good_samples'][:]
 
         chanmask = pdata.chanmask[:]
 
@@ -554,30 +555,48 @@ class BinTODIntoMap(DataRoutine):
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
             y_ind = np.nan_to_num(y_ind, -1).astype('int')
 
-            # eliminate samples outside the map
-            good_samples = pdata['map/good_samples'][i_chan][:]
+            # Eliminate samples outside the map
+            this_good_samples = np.copy(good_samples[i_chan])
             valid_index = np.ndarray.flatten(
                 np.argwhere(
                     np.logical_and(
                         np.logical_and(
-                            x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x
+                            x_ind[this_good_samples] >= 0,
+                            x_ind[this_good_samples] < n_pix_x,
                         ),
                         np.logical_and(
-                            y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y
+                            y_ind[this_good_samples] >= 0,
+                            y_ind[this_good_samples] < n_pix_y,
                         ),
                     )
                 )
             )
-            good_samples = good_samples[valid_index]
 
-            # #loop over samples to create sum and hits maps
-            for time_sample in good_samples:
-                sum_map[i_chan, map_idx, y_ind[time_sample], x_ind[time_sample]] += (
-                    this_clean_data[time_sample] * weight
-                )
-                hits_map[i_chan, map_idx, y_ind[time_sample], x_ind[time_sample]] += (
-                    1.0 * weight
-                )
+            # Create sum and hits maps
+            this_good_samples = this_good_samples[valid_index]
+            n_good_samples = this_good_samples.size
+            i_chan_array = np.repeat(i_chan, n_good_samples)
+            map_idx_array = np.repeat(map_idx, n_good_samples)
+            np.add.at(
+                sum_map,
+                (
+                    i_chan_array,
+                    map_idx_array,
+                    y_ind[this_good_samples],
+                    x_ind[this_good_samples],
+                ),
+                this_clean_data[this_good_samples] * weight,
+            )
+            np.add.at(
+                hits_map,
+                (
+                    i_chan_array,
+                    map_idx_array,
+                    y_ind[this_good_samples],
+                    x_ind[this_good_samples],
+                ),
+                1.0 * weight,
+            )
 
         # Create kernel and convolve with map to get more accurate values for pixels
         # with few hits.
@@ -1692,7 +1711,7 @@ class BinTODIntoVideo(DataRoutine):
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
             y_ind = np.nan_to_num(y_ind, -1).astype('int')
 
-            # eliminate samples outside the map
+            # Eliminate samples outside the map
             this_good_samples = np.copy(good_samples[i_chan])
             valid_index = np.ndarray.flatten(
                 np.argwhere(

@@ -57,7 +57,7 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filter_freq,
         beam_map_mode=False,
         dataset=dataset,
-        az_trim=0,
+        az_trim=3,
         za_trim=0,
         dpix=0.04,
         r0=0,
@@ -89,16 +89,16 @@ if __name__ == '__main__':
         # clean_tod,
         # compute_psd,
         # psd_plotter,
-        # bin_tod_to_map,
-        # plotter,
-        bin_tod_to_video,
-        animate_video,
+        bin_tod_to_map,
+        plotter,
+        # bin_tod_to_video,
+        # animate_video,
         # find_fwhm,
         # analyze_beammap,
         # plot_beammap,
     ])
 
-    date = '20260828'
+    date = '20260814'
     setnum = 1003
 
 
