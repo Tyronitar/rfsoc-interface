@@ -33,7 +33,8 @@ from rfsocinterface.gui.main_widget import DataCollectionMainWidget, TelescopeMa
 from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
-from rfsocinterface.gui.widgets import ArgumentType, FunctionWidget
+from rfsocinterface.gui.widgets import FunctionWidget
+from rfsocinterface.gui.widgets.utils import ArgumentType
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow

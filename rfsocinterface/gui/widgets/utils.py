@@ -27,7 +27,7 @@ def get_num_value(
 
 
 class ArgumentType(IntEnum):
-    """Class for specifying the type of argument to add to a GUI."""
+    """Class for specifying the type of argument to add to the GUI."""
 
     BOOL = 0
     ENUM = 1

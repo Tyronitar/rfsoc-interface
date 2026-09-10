@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import inspect
 import json
 import logging
 import time
@@ -11,7 +12,16 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Literal, TypeVar
+from typing import (
+    Annotated,
+    Any,
+    ClassVar,
+    Literal,
+    TypeVar,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 import numpy as np
 import numpy.typing as npt
@@ -40,7 +50,8 @@ __all__ = (
 
 _logger = logging.getLogger(__name__)
 
-ROUTINE_REGISTRY = {}
+ROUTINE_REGISTRY: dict[str, DataRoutineType] = {}
+ROUTINE_GUI_ARGS: dict[DataRoutineType, tuple[GuiArg]] = {}
 DataRoutineType = TypeVar('DataRoutineType', bound='DataRoutine')
 
 
@@ -51,6 +62,97 @@ class ProcessingStage:
     PROCESSING_L1 = 'processing_l1'
     PROCESSING_L2 = 'processing_l2'
     POST_PROCESSING = 'post_processing'
+
+
+@dataclass(frozen=True)
+class GuiMeta:
+    """GuiArg metadata for later use during widget initialization.
+
+    For proper usage, use with `typing.Annotated` in the class's `__init__` signature.
+    For example:
+    ```
+    class FilterRoutine(DataRoutine):
+        def __init__(
+            self,
+            order: int = 4,
+            cutoff: Annotated[
+                float,
+                GuiMeta(
+                    label="Cutoff frequency",
+                    minimum=0.0,
+                    tooltip="Low-pass cutoff frequency.",
+                ),
+            ] = 10.0,
+            enabled: bool = True,
+        ):
+            ...
+    ```
+    """
+
+    label: str | None = None
+    tooltip: str | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+
+
+@dataclass(frozen=True)
+class GuiArg:
+    """Dataclass representing arguments from a DataRoutine for GUI integration."""
+
+    name: str
+    annotation: Any
+    metadata: GuiMeta | None = None
+    default: Any = inspect.Parameter.empty
+
+    @property
+    def required(self) -> bool:
+        return self.default is inspect.Parameter.empty
+
+
+def get_gui_args(routine_cls: type[DataRoutine]) -> list[GuiArg]:
+    """Get all arguments from the DataRoutine in a GUI-compatible format."""
+    # Get arguments from class's signature
+    signature = inspect.signature(routine_cls.__init__)
+    type_hints = get_type_hints(
+        routine_cls.__init__,
+        include_extras=True,
+    )
+
+    args = []
+    for name, param in signature.parameters.items():
+        if name == 'self':
+            continue
+
+        # Make sure that type annotations are present
+        try:
+            annotation = type_hints[name]
+        except KeyError:
+            raise TypeError(
+                f'{routine_cls.__name__}.__init__ parameter '
+                f'{name!r} must have a type annotation.'
+            ) from None
+
+        gui_meta = None
+
+        # Check if metadata was provided
+        if get_origin(annotation) is Annotated:
+            annotation, gui_meta = get_args(annotation)
+
+            if not isinstance(gui_meta, GuiMeta):
+                raise TypeError(f'Expected GuiMeta for {routine_cls.__name__}.{name}')
+        else:
+            gui_meta = None
+
+        args.append(
+            GuiArg(
+                name=name,
+                annotation=annotation,
+                metadata=gui_meta,
+                default=param.default,
+            )
+        )
+
+    return tuple(args)
 
 
 @dataclass
@@ -464,6 +566,15 @@ def register_routine[DataRoutineType: 'DataRoutine'](
         )
         return None
     ROUTINE_REGISTRY[cls.name] = cls
+
+    try:
+        gui_args = get_gui_args(cls)
+        ROUTINE_GUI_ARGS[cls.name] = gui_args
+    except TypeError as e:
+        _logger.warning(
+            f'Failed to register DataRoutine {cls.__name__} for GUI integration; {e}'
+        )
+
     _logger.debug(f'Registered data routine: {cls.__name__}')
     return cls
 
