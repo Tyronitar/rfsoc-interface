@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'pipeline.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.8.1
+## Created by: Qt User Interface Compiler version 6.11.2
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDialogBu
     QGridLayout, QSizePolicy, QSpacerItem, QToolButton,
     QWidget)
 
-from rfsocinterface.gui.widgets.function import MultiSectionDragFunctionWidget
+from rfsocinterface.gui.widgets.function import DragFunctionWidget
+from . import icons_rc
 
 class Ui_PipelineDialog(object):
     def setupUi(self, PipelineDialog):
@@ -28,7 +29,7 @@ class Ui_PipelineDialog(object):
         PipelineDialog.resize(426, 348)
         self.gridLayout = QGridLayout(PipelineDialog)
         self.gridLayout.setObjectName(u"gridLayout")
-        self.drag_function_widget = MultiSectionDragFunctionWidget(PipelineDialog)
+        self.drag_function_widget = DragFunctionWidget(PipelineDialog)
         self.drag_function_widget.setObjectName(u"drag_function_widget")
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
@@ -47,7 +48,8 @@ class Ui_PipelineDialog(object):
 
         self.remove_toolButton = QToolButton(PipelineDialog)
         self.remove_toolButton.setObjectName(u"remove_toolButton")
-        icon = QIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListRemove))
+        icon = QIcon()
+        icon.addFile(u":/icons/remove.png", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
         self.remove_toolButton.setIcon(icon)
         self.remove_toolButton.setIconSize(QSize(32, 32))
 
@@ -55,7 +57,8 @@ class Ui_PipelineDialog(object):
 
         self.add_toolButton = QToolButton(PipelineDialog)
         self.add_toolButton.setObjectName(u"add_toolButton")
-        icon1 = QIcon(QIcon.fromTheme(QIcon.ThemeIcon.ListAdd))
+        icon1 = QIcon()
+        icon1.addFile(u":/icons/add.png", QSize(), QIcon.Mode.Normal, QIcon.State.Off)
         self.add_toolButton.setIcon(icon1)
         self.add_toolButton.setIconSize(QSize(32, 32))
 
@@ -75,7 +78,13 @@ class Ui_PipelineDialog(object):
 
     def retranslateUi(self, PipelineDialog):
         PipelineDialog.setWindowTitle(QCoreApplication.translate("PipelineDialog", u"Dialog", None))
+#if QT_CONFIG(tooltip)
+        self.remove_toolButton.setToolTip(QCoreApplication.translate("PipelineDialog", u"Remove the selected routine", None))
+#endif // QT_CONFIG(tooltip)
         self.remove_toolButton.setText(QCoreApplication.translate("PipelineDialog", u"...", None))
+#if QT_CONFIG(tooltip)
+        self.add_toolButton.setToolTip(QCoreApplication.translate("PipelineDialog", u"Add a new routine", None))
+#endif // QT_CONFIG(tooltip)
         self.add_toolButton.setText(QCoreApplication.translate("PipelineDialog", u"...", None))
     # retranslateUi
 

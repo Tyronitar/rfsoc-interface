@@ -19,5 +19,7 @@
     <file>undo.svg</file>
     <file>redo.svg</file>
     <file alias='close.svg'>icons8-close.svg</file>
+    <file alias='add.png'>icons8-add-48.png</file>
+    <file alias='remove.png'>icons8-remove-48.png</file>
   </qresource>
 </RCC>

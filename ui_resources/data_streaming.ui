@@ -14,7 +14,20 @@
    <string>Form</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="0" column="0">
+   <item row="1" column="0">
+    <spacer name="horizontalSpacer_2">
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>40</width>
+       <height>20</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item row="0" column="0" colspan="2">
     <widget class="QScrollArea" name="scrollArea">
      <property name="widgetResizable">
       <bool>true</bool>
@@ -25,7 +38,7 @@
         <x>0</x>
         <y>0</y>
         <width>437</width>
-        <height>289</height>
+        <height>233</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout">
@@ -35,20 +48,6 @@
           <string>Data Streaming</string>
          </property>
          <layout class="QGridLayout" name="gridLayout_2" columnstretch="0,0,0">
-          <item row="5" column="2">
-           <widget class="QPushButton" name="start_pushButton">
-            <property name="text">
-             <string>Start</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="duration_label">
-            <property name="text">
-             <string>Duration (s):</string>
-            </property>
-           </widget>
-          </item>
           <item row="1" column="1">
            <widget class="QLineEdit" name="duration_lineEdit">
             <property name="placeholderText">
@@ -59,8 +58,12 @@
           <item row="4" column="0" colspan="3">
            <widget class="SaveLocationWidget" name="save_location_widget" native="true"/>
           </item>
-          <item row="0" column="1">
-           <widget class="CheckableComboBox" name="channel_comboBox"/>
+          <item row="1" column="0">
+           <widget class="QLabel" name="duration_label">
+            <property name="text">
+             <string>Duration (s):</string>
+            </property>
+           </widget>
           </item>
           <item row="0" column="0">
            <widget class="QLabel" name="channels_label">
@@ -69,7 +72,7 @@
             </property>
            </widget>
           </item>
-          <item row="0" column="2">
+          <item row="1" column="2">
            <spacer name="horizontalSpacer">
             <property name="orientation">
              <enum>Qt::Orientation::Horizontal</enum>
@@ -82,6 +85,9 @@
             </property>
            </spacer>
           </item>
+          <item row="0" column="1" colspan="2">
+           <widget class="CheckableComboBox" name="channel_comboBox"/>
+          </item>
          </layout>
         </widget>
        </item>
@@ -93,13 +99,27 @@
          <property name="sizeHint" stdset="0">
           <size>
            <width>20</width>
-           <height>0</height>
+           <height>40</height>
           </size>
          </property>
         </spacer>
        </item>
       </layout>
      </widget>
+    </widget>
+   </item>
+   <item row="2" column="1">
+    <widget class="QPushButton" name="start_pushButton">
+     <property name="text">
+      <string>Start</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QPushButton" name="data_routines_pushButton">
+     <property name="text">
+      <string>Data Routines...</string>
+     </property>
     </widget>
    </item>
   </layout>

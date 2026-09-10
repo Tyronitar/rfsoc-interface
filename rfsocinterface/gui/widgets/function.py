@@ -177,6 +177,8 @@ class FunctionDragItem(ClickableDragItem):
 class DragFunctionWidget(QWidget):
     """A orderable list of functions with a side panel for entering arguments."""
 
+    active_item_changed = Signal(QWidget)
+
     def __init__(self, parent=None):
         """Initialize a DragFunctionWidget."""
         super().__init__(parent=parent)
@@ -202,6 +204,8 @@ class DragFunctionWidget(QWidget):
 
         # self.setCentralWidget(drop_container)
         self.setLayout(hlayout)
+
+        self.drag.active_item_changed.connect(self.active_item_changed.emit)
 
     @property
     def active_item(self) -> FunctionDragItem | None:
@@ -233,6 +237,35 @@ class DragFunctionWidget(QWidget):
         self.drag.add_item(item)
         item.clicked.connect(self.display_args)
         self.func_container.addWidget(item.func_widget)
+        return item
+
+    @overload
+    def insert_item(self, index: int, item: FunctionDragItem) -> FunctionDragItem:
+        pass
+
+    @overload
+    def insert_item(
+        self,
+        index: int,
+        label: str,
+        fn: Callable,
+        args: list[tuple[tuple[Concatenate[str, tuple[ArgumentType, ...], Q]], dict]]
+        | None = None,
+    ) -> FunctionDragItem:
+        pass
+
+    def insert_item(self, index: int, *data):
+        """Insert an item to the list."""
+        if not isinstance(data[0], FunctionDragItem):
+            label, fn, args = data
+            item = FunctionDragItem(fn, args, label=label, parent=self)
+            item.set_data(fn.__name__)
+        else:
+            item = data[0]
+        self.drag.insert_item(index, item)
+        item.clicked.connect(self.display_args)
+        self.func_container.addWidget(item.func_widget)
+        self.func_container.insertWidget()
         return item
 
     def clear(self):

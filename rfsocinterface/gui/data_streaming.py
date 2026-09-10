@@ -8,11 +8,15 @@ from kidpy3 import capture
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QProgressDialog
 
+from rfsocinterface.core.data import (
+    Pipeline,
+)
 from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.utils import (
     TabName,
 )
 from rfsocinterface.gui.main_widget import DataCollectionMainWidget
+from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.data_streaming_ui import Ui_DataStreamingWidget
 from rfsocinterface.gui.widgets import get_num_value
 
@@ -37,6 +41,8 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
         """Initialize a DataStreamingWidget."""
         super().__init__(main_window, rfsocs, settings, parent=parent)
         self.setupUi(self)
+        self.pipeline_dialog = PipelineDialog(self)
+        self.pipeline = Pipeline()
         self.save_location_widget.file_type = 'tod'
 
         self.channel_comboBox.set_default_title('Select Channels...')
@@ -49,6 +55,14 @@ class DataStreamingWidget(DataCollectionMainWidget, Ui_DataStreamingWidget):
     def setup_connections(self):
         """Setup widget connections."""
         self.start_pushButton.clicked.connect(self.start_streaming)
+        self.data_routines_pushButton.clicked.connect(self.choose_data_routines)
+
+    def choose_data_routines(self):
+        """Select the data processing routines."""
+        if self.pipeline_dialog.exec():
+            self.pipeline = self.pipeline_dialog.make_pipeline()
+            # Get the selected routines, instantiate them, and store in the class
+            # TODO: validate the inputs somehow...
 
     def wait_for_TOD(self, duration: int):
         """Wait for the TOD file to be created before processing."""

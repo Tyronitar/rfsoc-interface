@@ -225,7 +225,11 @@ class DragWidget(QWidget):
 
     def add_item(self, item: DragItem):
         """Add an item to the list."""
-        self.blayout.addWidget(item)
+        self.insert_item(-1, item)
+
+    def insert_item(self, index: int, item: DragItem):
+        """Insert an item in the list."""
+        self.blayout.insertWidget(index, item)
         item.setParent(self)
 
     def remove_item(self, item: DragItem):
@@ -270,7 +274,11 @@ class ClickableDragWidget(DragWidget):
 
     @override
     def add_item(self, item: ClickableDragItem):
-        super().add_item(item)
+        self.insert_item(-1, item)
+
+    @override
+    def insert_item(self, index: int, item: ClickableDragItem):
+        super().insert_item(int, item)
         item.clicked.connect(self.item_clicked)
 
     @override
