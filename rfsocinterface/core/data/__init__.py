@@ -10,10 +10,13 @@ from rfsocinterface.core.data.map import (
 )
 from rfsocinterface.core.data.pipeline import Pipeline
 from rfsocinterface.core.data.routines import (
+    ROUTINE_GUI_ARGS,
     ROUTINE_REGISTRY,
     CleanTOD,
     CutoffFilter,
     DataRoutine,
+    GuiArg,
+    GuiMeta,
     HighPassFilter,
     LowPassFilter,
     NormalizedRoutineInputs,
@@ -62,6 +65,7 @@ __all__ = [
     'OPTCAM_OFFSET_ZA_PIX',
     'RFSOC_TIME_OFFSET_AZ',
     'RFSOC_TIME_OFFSET_ZA',
+    'ROUTINE_GUI_ARGS',
     'ROUTINE_REGISTRY',
     'SKIPR_PSF_SIGMA',
     'TONES_TABLE_DTYPE',
@@ -72,6 +76,8 @@ __all__ = [
     'CutoffFilter',
     'DataRoutine',
     'DataStorage',
+    'GuiArg',
+    'GuiMeta',
     'HighPassFilter',
     'LowPassFilter',
     'MakeVideo',

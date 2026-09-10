@@ -37,10 +37,13 @@ from rfsocinterface.core.data.utils import (
 from rfsocinterface.core.utils import BUTTER_ORDER, MetadataJSONEncoder, get_git_hash
 
 __all__ = (
+    'ROUTINE_GUI_ARGS',
     'ROUTINE_REGISTRY',
     'CleanTOD',
     'CutoffFilter',
     'DataRoutine',
+    'GuiArg',
+    'GuiMeta',
     'HighPassFilter',
     'LowPassFilter',
     'RemoveElectronicsNoise',
@@ -106,6 +109,7 @@ class GuiArg:
 
     @property
     def required(self) -> bool:
+        """Whether the argument is required."""
         return self.default is inspect.Parameter.empty
 
 
