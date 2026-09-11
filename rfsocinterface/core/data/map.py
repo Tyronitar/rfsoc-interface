@@ -1272,7 +1272,7 @@ def animate_video(
         extent=extent,
         aspect='equal',
     )
-    add_colorbar(fig, axes[2], im_total, f'H-Pol Signal ({units})')
+    add_colorbar(fig, axes[2], im_total, f'Total Signal ({units})')
 
     # Optical Image
     im_opt = axes[3].imshow(
