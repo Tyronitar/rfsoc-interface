@@ -12,28 +12,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import (
-    Qt,
     QCoreApplication,
     QTimer,
-    Slot,
     Signal,
+    Slot,
 )
-from PySide6.QtGui import (
-    QPixmap, QImage
-)
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractButton,
     QDialog,
     QVBoxLayout,
     QWidget,
-    QLabel,
-    
 )
 
-from rfsocinterface.core.camera import (
-    MAX_FRAME_HEIGHT,
-    MAX_FRAME_WIDTH,
-)
 from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.telescope import (
     AZ_OUT_CHANNEL,
@@ -45,7 +36,6 @@ from rfsocinterface.gui.uic.telescope_control_ui import (
     Ui_TelescopeControlWidget,
 )
 from rfsocinterface.gui.widgets import get_num_value
-from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -93,18 +83,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.connect_to_telescope_command('za_pos_comm', self.update_za_cmd)
 
         # Set up Optical Camera
-        # self.live_footage_fig, self.live_footage_ax = plt.subplots(figsize=(12, 9))
-        # self.live_footage_im = self.live_footage_ax.imshow(
-        #     np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3))
-        # )
-        # self.live_footage_fig.tight_layout()
-        # self.live_footage_ax.set_axis_off()
-
-        # self.live_footage_canvas = ToolbarCanvas(parent=self, fig=self.live_footage_fig)
-        # self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0, 1, 2)
-        # self.live_footage_canvas.hide()
         self.optical_label.hide()
-
         self.live_footage_thread = None
         self.optical_pushButton.clicked.connect(self.toggle_live_footage)
         self.frame_rate = 5  # FPS
@@ -353,7 +332,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         while self.optical_pushButton.isChecked():
             self.update_live_footage()
             time.sleep(1 / self.frame_rate)
-            break
+            # break
 
     @Slot()
     def toggle_live_footage(self):
@@ -380,16 +359,17 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         if self.is_active_tab:  # Only update the canvas if the tab is in focus
             image, _ = self.get_current_image()
             image = np.ascontiguousarray(image)
-            h, w, ch = image.shape
-            print(type(image))
-            print(image.shape)
-            print(image.dtype)
-            bytes_per_line = image.strides[0]
-            print(bytes_per_line)
-            print(w * ch)
-            qt_image = QImage(
-                image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).copy()
-            self.optical_label.setPixmap(QPixmap.fromImage(qt_image))
+            self.optical_label.set_image(image)
+            # h, w, ch = image.shape
+            # print(type(image))
+            # print(image.shape)
+            # print(image.dtype)
+            # bytes_per_line = image.strides[0]
+            # print(bytes_per_line)
+            # print(w * ch)
+            # qt_image = QImage(
+            #     image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).copy()
+            # self.optical_label.setPixmap(QPixmap.fromImage(qt_image))
             # self.frame_signal.emit(qt_image)
             # self.live_footage_im.set_array(image)
             # self.live_footage_canvas.canvas.draw()

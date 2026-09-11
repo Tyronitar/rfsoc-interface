@@ -332,13 +332,16 @@ class CameraController:
 
         _logger.debug('Starting VMB Camera System...')
         # Start FrameProducer threads
+        _logger.debug('Waiting for producers lock...')
         with self.producers_lock:
+            _logger.debug('Starting frame producer threads...')
             for producer in self.producers.values():
                 producer.start()
 
         # Run the frame consumer to display the recorded images
         self.vmb.register_camera_change_handler(self)
 
+        _logger.debug('Starting consumer loop...')
         self._consumer_loop()
 
         # Stop recording if still doing that
