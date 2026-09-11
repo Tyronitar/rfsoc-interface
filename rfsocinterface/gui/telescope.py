@@ -12,15 +12,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from PySide6.QtCore import (
+    Qt,
     QCoreApplication,
     QTimer,
     Slot,
+    Signal,
+)
+from PySide6.QtGui import (
+    QPixmap, QImage
 )
 from PySide6.QtWidgets import (
     QAbstractButton,
     QDialog,
     QVBoxLayout,
     QWidget,
+    QLabel,
+    
 )
 
 from rfsocinterface.core.camera import (
@@ -51,6 +58,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     """GUI tab for controlling the telescope."""
 
     tab_name = TabName.TELESCOPE
+    frame_signal = Signal(QImage)
 
     def __init__(
         self,
@@ -85,20 +93,22 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.connect_to_telescope_command('za_pos_comm', self.update_za_cmd)
 
         # Set up Optical Camera
-        self.live_footage_fig, self.live_footage_ax = plt.subplots(figsize=(12, 9))
-        self.live_footage_im = self.live_footage_ax.imshow(
-            np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3))
-        )
-        self.live_footage_fig.tight_layout()
-        self.live_footage_ax.set_axis_off()
+        # self.live_footage_fig, self.live_footage_ax = plt.subplots(figsize=(12, 9))
+        # self.live_footage_im = self.live_footage_ax.imshow(
+        #     np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3))
+        # )
+        # self.live_footage_fig.tight_layout()
+        # self.live_footage_ax.set_axis_off()
 
-        self.live_footage_canvas = ToolbarCanvas(parent=self, fig=self.live_footage_fig)
-        self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0, 1, 2)
-        self.live_footage_canvas.hide()
+        # self.live_footage_canvas = ToolbarCanvas(parent=self, fig=self.live_footage_fig)
+        # self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0, 1, 2)
+        # self.live_footage_canvas.hide()
+        self.optical_label.hide()
 
         self.live_footage_thread = None
         self.optical_pushButton.clicked.connect(self.toggle_live_footage)
         self.frame_rate = 5  # FPS
+        self.frame_signal.connect(self._set_camera_frame)
 
         # Optical Camera Settings Connections
         self.auto_exposure_comboBox.currentTextChanged.connect(
@@ -343,19 +353,22 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         while self.optical_pushButton.isChecked():
             self.update_live_footage()
             time.sleep(1 / self.frame_rate)
+            break
 
     @Slot()
     def toggle_live_footage(self):
         """Toggle whether the optical footage is shown."""
         if self.optical_pushButton.isChecked():
             # Start showing live footage
-            self.live_footage_canvas.show()
+            # self.live_footage_canvas.show()
+            self.optical_label.show()
             self.live_footage_thread = Thread(target=(self.optical_camera_loop))
             self.live_footage_thread.start()
             self.optical_pushButton.setText('Hide Optical Video')
         else:
             # Stop showing live footage
-            self.live_footage_canvas.hide()
+            # self.live_footage_canvas.hide()
+            self.optical_label.hide()
             while self.live_footage_thread.is_alive():
                 self.live_footage_thread.join(0)
                 QCoreApplication.processEvents()
@@ -366,9 +379,26 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         """Update the data in the live footage."""
         if self.is_active_tab:  # Only update the canvas if the tab is in focus
             image, _ = self.get_current_image()
-            self.live_footage_im.set_array(image)
-            self.live_footage_canvas.canvas.draw()
-            self.live_footage_canvas.canvas.flush_events()
+            image = np.ascontiguousarray(image)
+            h, w, ch = image.shape
+            print(type(image))
+            print(image.shape)
+            print(image.dtype)
+            bytes_per_line = image.strides[0]
+            print(bytes_per_line)
+            print(w * ch)
+            qt_image = QImage(
+                image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).copy()
+            self.optical_label.setPixmap(QPixmap.fromImage(qt_image))
+            # self.frame_signal.emit(qt_image)
+            # self.live_footage_im.set_array(image)
+            # self.live_footage_canvas.canvas.draw()
+            # self.live_footage_canvas.canvas.flush_events()
+
+    @Slot(QImage)
+    def _set_camera_frame(self, im: QImage):
+        """Update the current image shown to screen."""
+        self.optical_label.setPixmap(QPixmap.fromImage(im))
 
     @override
     def closeEvent(self, event):

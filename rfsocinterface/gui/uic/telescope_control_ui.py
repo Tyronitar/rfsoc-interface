@@ -27,7 +27,7 @@ class Ui_TelescopeControlWidget(object):
     def setupUi(self, TelescopeControlWidget):
         if not TelescopeControlWidget.objectName():
             TelescopeControlWidget.setObjectName(u"TelescopeControlWidget")
-        TelescopeControlWidget.resize(1041, 507)
+        TelescopeControlWidget.resize(1041, 510)
         self.gridLayout_2 = QGridLayout(TelescopeControlWidget)
         self.gridLayout_2.setObjectName(u"gridLayout_2")
         self.optical_pushButton = QPushButton(TelescopeControlWidget)
@@ -40,59 +40,6 @@ class Ui_TelescopeControlWidget(object):
         self.optical_pushButton.setCheckable(True)
 
         self.gridLayout_2.addWidget(self.optical_pushButton, 1, 0, 1, 1)
-
-        self.camera_settings_groupBox = QGroupBox(TelescopeControlWidget)
-        self.camera_settings_groupBox.setObjectName(u"camera_settings_groupBox")
-        self.gridLayout_4 = QGridLayout(self.camera_settings_groupBox)
-        self.gridLayout_4.setObjectName(u"gridLayout_4")
-        self.exposure_mode_label = QLabel(self.camera_settings_groupBox)
-        self.exposure_mode_label.setObjectName(u"exposure_mode_label")
-
-        self.gridLayout_4.addWidget(self.exposure_mode_label, 2, 0, 1, 1)
-
-        self.update_camera_settings_pushButton = QPushButton(self.camera_settings_groupBox)
-        self.update_camera_settings_pushButton.setObjectName(u"update_camera_settings_pushButton")
-
-        self.gridLayout_4.addWidget(self.update_camera_settings_pushButton, 4, 1, 1, 1)
-
-        self.exposure_mode_comboBox = QComboBox(self.camera_settings_groupBox)
-        self.exposure_mode_comboBox.addItem("")
-        self.exposure_mode_comboBox.setObjectName(u"exposure_mode_comboBox")
-        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
-        sizePolicy1.setHorizontalStretch(0)
-        sizePolicy1.setVerticalStretch(0)
-        sizePolicy1.setHeightForWidth(self.exposure_mode_comboBox.sizePolicy().hasHeightForWidth())
-        self.exposure_mode_comboBox.setSizePolicy(sizePolicy1)
-
-        self.gridLayout_4.addWidget(self.exposure_mode_comboBox, 2, 1, 1, 1)
-
-        self.auto_exposure_comboBox = QComboBox(self.camera_settings_groupBox)
-        self.auto_exposure_comboBox.addItem("")
-        self.auto_exposure_comboBox.addItem("")
-        self.auto_exposure_comboBox.addItem("")
-        self.auto_exposure_comboBox.setObjectName(u"auto_exposure_comboBox")
-
-        self.gridLayout_4.addWidget(self.auto_exposure_comboBox, 0, 1, 1, 1)
-
-        self.exposure_time_lineEdit = QLineEdit(self.camera_settings_groupBox)
-        self.exposure_time_lineEdit.setObjectName(u"exposure_time_lineEdit")
-        sizePolicy1.setHeightForWidth(self.exposure_time_lineEdit.sizePolicy().hasHeightForWidth())
-        self.exposure_time_lineEdit.setSizePolicy(sizePolicy1)
-
-        self.gridLayout_4.addWidget(self.exposure_time_lineEdit, 3, 1, 1, 1)
-
-        self.exposure_time_label = QLabel(self.camera_settings_groupBox)
-        self.exposure_time_label.setObjectName(u"exposure_time_label")
-
-        self.gridLayout_4.addWidget(self.exposure_time_label, 3, 0, 1, 1)
-
-        self.label = QLabel(self.camera_settings_groupBox)
-        self.label.setObjectName(u"label")
-
-        self.gridLayout_4.addWidget(self.label, 0, 0, 1, 1)
-
-
-        self.gridLayout_2.addWidget(self.camera_settings_groupBox, 1, 1, 1, 1)
 
         self.gridLayout = QGridLayout()
         self.gridLayout.setObjectName(u"gridLayout")
@@ -108,11 +55,11 @@ class Ui_TelescopeControlWidget(object):
 
         self.stop_pushButton = QPushButton(TelescopeControlWidget)
         self.stop_pushButton.setObjectName(u"stop_pushButton")
-        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
-        sizePolicy2.setHorizontalStretch(0)
-        sizePolicy2.setVerticalStretch(0)
-        sizePolicy2.setHeightForWidth(self.stop_pushButton.sizePolicy().hasHeightForWidth())
-        self.stop_pushButton.setSizePolicy(sizePolicy2)
+        sizePolicy1 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        sizePolicy1.setHorizontalStretch(0)
+        sizePolicy1.setVerticalStretch(0)
+        sizePolicy1.setHeightForWidth(self.stop_pushButton.sizePolicy().hasHeightForWidth())
+        self.stop_pushButton.setSizePolicy(sizePolicy1)
         self.stop_pushButton.setMinimumSize(QSize(200, 200))
         self.stop_pushButton.setMaximumSize(QSize(600, 600))
         self.stop_pushButton.setBaseSize(QSize(500, 500))
@@ -341,6 +288,64 @@ class Ui_TelescopeControlWidget(object):
 
         self.gridLayout_2.addLayout(self.gridLayout, 0, 0, 1, 2)
 
+        self.optical_label = QLabel(TelescopeControlWidget)
+        self.optical_label.setObjectName(u"optical_label")
+
+        self.gridLayout_2.addWidget(self.optical_label, 2, 0, 1, 1)
+
+        self.camera_settings_groupBox = QGroupBox(TelescopeControlWidget)
+        self.camera_settings_groupBox.setObjectName(u"camera_settings_groupBox")
+        self.gridLayout_4 = QGridLayout(self.camera_settings_groupBox)
+        self.gridLayout_4.setObjectName(u"gridLayout_4")
+        self.exposure_mode_label = QLabel(self.camera_settings_groupBox)
+        self.exposure_mode_label.setObjectName(u"exposure_mode_label")
+
+        self.gridLayout_4.addWidget(self.exposure_mode_label, 2, 0, 1, 1)
+
+        self.update_camera_settings_pushButton = QPushButton(self.camera_settings_groupBox)
+        self.update_camera_settings_pushButton.setObjectName(u"update_camera_settings_pushButton")
+
+        self.gridLayout_4.addWidget(self.update_camera_settings_pushButton, 4, 1, 1, 1)
+
+        self.exposure_mode_comboBox = QComboBox(self.camera_settings_groupBox)
+        self.exposure_mode_comboBox.addItem("")
+        self.exposure_mode_comboBox.setObjectName(u"exposure_mode_comboBox")
+        sizePolicy2 = QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        sizePolicy2.setHorizontalStretch(0)
+        sizePolicy2.setVerticalStretch(0)
+        sizePolicy2.setHeightForWidth(self.exposure_mode_comboBox.sizePolicy().hasHeightForWidth())
+        self.exposure_mode_comboBox.setSizePolicy(sizePolicy2)
+
+        self.gridLayout_4.addWidget(self.exposure_mode_comboBox, 2, 1, 1, 1)
+
+        self.auto_exposure_comboBox = QComboBox(self.camera_settings_groupBox)
+        self.auto_exposure_comboBox.addItem("")
+        self.auto_exposure_comboBox.addItem("")
+        self.auto_exposure_comboBox.addItem("")
+        self.auto_exposure_comboBox.setObjectName(u"auto_exposure_comboBox")
+
+        self.gridLayout_4.addWidget(self.auto_exposure_comboBox, 0, 1, 1, 1)
+
+        self.exposure_time_lineEdit = QLineEdit(self.camera_settings_groupBox)
+        self.exposure_time_lineEdit.setObjectName(u"exposure_time_lineEdit")
+        sizePolicy2.setHeightForWidth(self.exposure_time_lineEdit.sizePolicy().hasHeightForWidth())
+        self.exposure_time_lineEdit.setSizePolicy(sizePolicy2)
+
+        self.gridLayout_4.addWidget(self.exposure_time_lineEdit, 3, 1, 1, 1)
+
+        self.exposure_time_label = QLabel(self.camera_settings_groupBox)
+        self.exposure_time_label.setObjectName(u"exposure_time_label")
+
+        self.gridLayout_4.addWidget(self.exposure_time_label, 3, 0, 1, 1)
+
+        self.label = QLabel(self.camera_settings_groupBox)
+        self.label.setObjectName(u"label")
+
+        self.gridLayout_4.addWidget(self.label, 0, 0, 1, 1)
+
+
+        self.gridLayout_2.addWidget(self.camera_settings_groupBox, 1, 1, 2, 1)
+
 
         self.retranslateUi(TelescopeControlWidget)
 
@@ -350,18 +355,6 @@ class Ui_TelescopeControlWidget(object):
     def retranslateUi(self, TelescopeControlWidget):
         TelescopeControlWidget.setWindowTitle(QCoreApplication.translate("TelescopeControlWidget", u"MainWindow", None))
         self.optical_pushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Show Optical Video", None))
-        self.camera_settings_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Optical Video Settings", None))
-        self.exposure_mode_label.setText(QCoreApplication.translate("TelescopeControlWidget", u"Exposure Mode:", None))
-        self.update_camera_settings_pushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Update Settings", None))
-        self.exposure_mode_comboBox.setItemText(0, QCoreApplication.translate("TelescopeControlWidget", u"Timed", None))
-
-        self.auto_exposure_comboBox.setItemText(0, QCoreApplication.translate("TelescopeControlWidget", u"Continuous", None))
-        self.auto_exposure_comboBox.setItemText(1, QCoreApplication.translate("TelescopeControlWidget", u"Once", None))
-        self.auto_exposure_comboBox.setItemText(2, QCoreApplication.translate("TelescopeControlWidget", u"Off", None))
-
-        self.exposure_time_lineEdit.setText(QCoreApplication.translate("TelescopeControlWidget", u"1166.087", None))
-        self.exposure_time_label.setText(QCoreApplication.translate("TelescopeControlWidget", u"Exposure Time (\u00b5s):", None))
-        self.label.setText(QCoreApplication.translate("TelescopeControlWidget", u"Auto Exposure:", None))
         self.stop_pushButton.setText("")
         self.control_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Manual Control", None))
         self.manual_controlcheckBox.setText(QCoreApplication.translate("TelescopeControlWidget", u"Enable Manual Control", None))
@@ -391,5 +384,18 @@ class Ui_TelescopeControlWidget(object):
         self.azimuth_velocity_valLabel.setText(QCoreApplication.translate("TelescopeControlWidget", u"0.0\u00b0/sec", None))
         self.azimuth_setpushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Set", None))
         self.enable_motion_checkBox.setText(QCoreApplication.translate("TelescopeControlWidget", u"Enable Telescope Motion", None))
+        self.optical_label.setText("")
+        self.camera_settings_groupBox.setTitle(QCoreApplication.translate("TelescopeControlWidget", u"Optical Video Settings", None))
+        self.exposure_mode_label.setText(QCoreApplication.translate("TelescopeControlWidget", u"Exposure Mode:", None))
+        self.update_camera_settings_pushButton.setText(QCoreApplication.translate("TelescopeControlWidget", u"Update Settings", None))
+        self.exposure_mode_comboBox.setItemText(0, QCoreApplication.translate("TelescopeControlWidget", u"Timed", None))
+
+        self.auto_exposure_comboBox.setItemText(0, QCoreApplication.translate("TelescopeControlWidget", u"Continuous", None))
+        self.auto_exposure_comboBox.setItemText(1, QCoreApplication.translate("TelescopeControlWidget", u"Once", None))
+        self.auto_exposure_comboBox.setItemText(2, QCoreApplication.translate("TelescopeControlWidget", u"Off", None))
+
+        self.exposure_time_lineEdit.setText(QCoreApplication.translate("TelescopeControlWidget", u"1166.087", None))
+        self.exposure_time_label.setText(QCoreApplication.translate("TelescopeControlWidget", u"Exposure Time (\u00b5s):", None))
+        self.label.setText(QCoreApplication.translate("TelescopeControlWidget", u"Auto Exposure:", None))
     # retranslateUi
 
