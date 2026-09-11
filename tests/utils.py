@@ -4,13 +4,15 @@ import functools
 import time
 import typing
 from collections.abc import Callable
-from typing import Any
+from enum import Enum
+from typing import Annotated, Any
 
 import numpy as np
 import pytest
 
 from rfsocinterface.core.data import (
     DataRoutine,
+    GuiMeta,
     ProcessedData,
     RoutineResult,
 )
@@ -150,6 +152,87 @@ class CreateValueRoutine(DataRoutine):
         val = self.params['val']
         test_group.create_dataset(f'val_{val}', data=val)
         return RoutineResult(created={'input': [f'test/val_{val}']})
+
+
+class CreateValueRoutineWithDefault(CreateValueRoutine):
+    def __init__(self, val: int = 0):
+        super().__init__(val)
+
+
+class CreateValueRoutineWithOptionalArgument(CreateValueRoutine):
+    def __init__(self, val: int | None = None):
+        if val is None:
+            val = 0
+        super().__init__(val)
+
+
+class CreateValueRoutineWithMetadata(CreateValueRoutine):
+    def __init__(
+        self,
+        val: Annotated[
+            int,
+            GuiMeta(
+                label='Value:',
+                tooltip='The value of the routine',
+                minimum=-50,
+                maximum=50,
+            ),
+        ],
+    ):
+        super().__init__(val)
+
+
+class CreateValueRoutineWithMetadataAndDefault(CreateValueRoutine):
+    def __init__(
+        self,
+        val: Annotated[
+            int,
+            GuiMeta(
+                label='Value:',
+                tooltip='The value of the routine',
+                minimum=-50,
+                maximum=50,
+            ),
+        ] = 10,
+    ):
+        super().__init__(val)
+
+
+class ReductionOperation(Enum):
+    SUM = 0
+    SUBTRACT = 1
+    MULTIPLY = 2
+
+
+class ReduceRoutine(DataRoutine):
+    def __init__(
+        self,
+        terms: Annotated[
+            list,
+            GuiMeta(
+                label='Terms:',
+                tooltip='The values to perform the reduction on',
+            ),
+        ],
+        operation: Annotated[
+            ReductionOperation,
+            GuiMeta(
+                label='Reduction operation:',
+                tooltip='The reduction operation to perform',
+            ),
+        ] = ReductionOperation.SUM,
+        start: Any = 0,
+        reverse: Annotated[
+            bool,
+            GuiMeta(
+                label='Reverse order',
+            ),
+        ] = False,
+    ):
+        super().__init__(terms=terms, operation=operation, start=start, reverse=reverse)
+
+    def _run(self, pdata, inputs):
+        return
 
 
 class MultiInputDefaultInputsRoutine(DataRoutine):
