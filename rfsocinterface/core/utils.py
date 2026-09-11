@@ -17,11 +17,15 @@ from enum import EnumMeta, IntEnum, StrEnum
 from functools import partial
 from multiprocessing.connection import Connection
 from pathlib import Path
+from types import UnionType
 from typing import (
     Any,
     Literal,
     ParamSpec,
     TypeVar,
+    Union,
+    get_args,
+    get_origin,
 )
 
 from matplotlib.colorbar import Colorbar
@@ -1241,3 +1245,17 @@ def add_colorbar(
     cb.ax.yaxis.get_offset_text().set_position(offset_position)
     cb.update_ticks()
     return cb
+
+
+def is_union(type_: type) -> bool:
+    """Whether the type is a union type."""
+    origin = get_origin(type_)
+    return origin is Union or origin is UnionType
+
+
+def is_type(type_: type, ref: type) -> bool:
+    """Whether the type is the same type as ref.
+
+    If type_ is a union type, will check if any of its types are the same as ref.
+    """
+    return type_ is ref or (is_union(type_) and ref in get_args(type_))
