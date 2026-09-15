@@ -643,6 +643,7 @@ def create_input_widget(  # noqa: PLR0911
 
     # Enum subclass
     if isinstance(annotation, type) and issubclass(annotation, Enum):
+        # TODO: Check GuiMeta for whether single or multi-input
         return EnumInputWidget(
             annotation,
             gui_meta=gui_meta,
