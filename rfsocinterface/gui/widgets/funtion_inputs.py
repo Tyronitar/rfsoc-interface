@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from enum import Enum
 from pathlib import Path
 from types import UnionType
@@ -11,6 +12,7 @@ from typing import (
     TypeVar,
     TypeVarTuple,
     Union,
+    cast,
     get_args,
     get_origin,
     override,
@@ -41,8 +43,10 @@ NONE_TYPE = type(None)
 E = TypeVar('E', bound=Enum)
 Ts = TypeVarTuple('Ts')
 
+type TypeAnnotation = Any
 
-def check_type(value, expected_type) -> bool:
+
+def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
     """Recursively check that a value is the correct type."""
     base_type = get_origin(expected_type)
 
@@ -78,19 +82,16 @@ def check_type(value, expected_type) -> bool:
     return isinstance(value, base_type)
 
 
-class InputWidget:
+class InputWidget[T](ABC):
     """Interface for widgets that support GUI function integration."""
 
-    def __init__(self, *args, **kwargs):
-        """Initialize an InputWidget."""
+    @abstractmethod
+    def value(self) -> T:
+        """Return the value represented by this widget."""
 
-    def value(self):
-        """Return the value from this widget."""
-        raise NotImplementedError
-
-    def set_value(self, value):
-        """Set the value of this widget."""
-        raise NotImplementedError
+    @abstractmethod
+    def set_value(self, value: T) -> None:
+        """Set the value represented by this widget."""
 
 
 #
@@ -100,10 +101,10 @@ class InputWidget:
 # ruff: disable[ARG002]
 
 
-class IntInputWidget(QSpinBox, InputWidget):
+class IntInputWidget(QSpinBox, InputWidget[int]):
     """InputWidget that handles integer inputs."""
 
-    def __init__(self, gui_meta: GuiMeta | None = None, parent=None):
+    def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize an IntInputWidget."""
         super().__init__(parent=parent)
 
@@ -116,10 +117,10 @@ class IntInputWidget(QSpinBox, InputWidget):
         QSpinBox.setValue(self, value)
 
 
-class FloatInputWidget(QDoubleSpinBox, InputWidget):
+class FloatInputWidget(QDoubleSpinBox, InputWidget[float]):
     """InputWidget that handles float inputs."""
 
-    def __init__(self, gui_meta: GuiMeta | None = None, parent=None):
+    def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a FloatInputWidget."""
         super().__init__(parent=parent)
 
@@ -132,10 +133,10 @@ class FloatInputWidget(QDoubleSpinBox, InputWidget):
         QDoubleSpinBox.setValue(self, value)
 
 
-class BoolInputWidget(QCheckBox, InputWidget):
+class BoolInputWidget(QCheckBox, InputWidget[bool]):
     """InputWidget that handles Boolean inputs."""
 
-    def __init__(self, gui_meta: GuiMeta | None = None, parent=None):
+    def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a BoolInputWidget."""
         super().__init__(parent=parent)
 
@@ -148,10 +149,10 @@ class BoolInputWidget(QCheckBox, InputWidget):
         self.setChecked(value)
 
 
-class StringInputWidget(QLineEdit, InputWidget):
+class StringInputWidget(QLineEdit, InputWidget[str]):
     """InputWidget that handles string inputs."""
 
-    def __init__(self, gui_meta: GuiMeta | None = None, parent=None):
+    def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a StringInputWidget."""
         super().__init__(parent=parent)
 
@@ -164,10 +165,10 @@ class StringInputWidget(QLineEdit, InputWidget):
         self.setText(value)
 
 
-class FileInputWidget(FileSelectWidget, InputWidget):
+class FileInputWidget(FileSelectWidget, InputWidget[Path]):
     """InputWidget that handles file inputs."""
 
-    def __init__(self, gui_meta: GuiMeta | None = None, parent=None):
+    def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a FileInputWidget."""
         super().__init__(parent=parent)
 
@@ -180,14 +181,14 @@ class FileInputWidget(FileSelectWidget, InputWidget):
         self.set_text(str(value))
 
 
-class NoneInputWidget(QWidget, InputWidget):
+class NoneInputWidget(QWidget, InputWidget[NONE_TYPE]):
     """Dummy InputWidget for handling `None` inputs.
 
     Needed for generating InputWidgets for types of the kind T1 | T2 | ... | None. It's
     not an Optional[T], so it will need some way to handle the `None` option.
     """
 
-    def __init__(self, gui_meta: GuiMeta | None = None, parent=None):
+    def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a NoneInputWidget."""
         super().__init__(parent=parent)
 
@@ -216,14 +217,17 @@ def is_enum_value(value: Any, enum_cls: type[Enum]) -> bool:
         return True
 
 
-class EnumInputWidget[E](QComboBox, InputWidget):
+class EnumInputWidget[E: Enum](QComboBox, InputWidget[E]):
     """InputWidget that handles enum inputs.
 
     Given an enum class, it will populate a QComboBox with each member of the class.
     """
 
     def __init__(
-        self, enum_type: type[E], gui_meta: GuiMeta | None = None, parent=None
+        self,
+        enum_type: type[E],
+        gui_meta: GuiMeta | None = None,
+        parent: QWidget | None = None,
     ):
         """Initialize an EnumInputWidget."""
         super().__init__(parent=parent)
@@ -244,11 +248,14 @@ class EnumInputWidget[E](QComboBox, InputWidget):
         self.setCurrentIndex(self.findData(self.enum_type(value)))
 
 
-class MultiEnumInputWidget[E](CheckableComboBox, InputWidget):
+class MultiEnumInputWidget[E: Enum](CheckableComboBox, InputWidget[E]):
     """InputWidget that handles enum inputs, allowing for selecting multiple options."""
 
     def __init__(
-        self, enum_type: type[E], gui_meta: GuiMeta | None = None, parent=None
+        self,
+        enum_type: type[E],
+        gui_meta: GuiMeta | None = None,
+        parent: QWidget | None = None,
     ):
         """Initialize a MultiInputEnumInputWidget."""
         super().__init__(parent=parent)
@@ -280,12 +287,12 @@ class MultiEnumInputWidget[E](CheckableComboBox, InputWidget):
 #
 
 
-class SequenceInputRow[T](QWidget, InputWidget):
+class SequenceInputRow[T](QWidget, InputWidget[T]):
     """Widget representing a single element of a SequenceInputWidget."""
 
     removed = Signal()
 
-    def __init__(self, widget: InputWidget, parent=None):
+    def __init__(self, widget: InputWidget[T], parent: QWidget | None = None):
         """Initialize a SequenceInputRow."""
         super().__init__(parent=parent)
         self.hlayout = QHBoxLayout()
@@ -318,7 +325,7 @@ class SequenceInputRow[T](QWidget, InputWidget):
         self.widget.set_value(value)
 
 
-class SequenceInputWidget[T](QWidget, InputWidget):
+class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
     """InputWidget representing seqeunce inputs (e.g. list[T], tuple[T, ...], etc.).
 
     Given the specified type `item_type`, will automatically generate the appropriate
@@ -327,18 +334,18 @@ class SequenceInputWidget[T](QWidget, InputWidget):
 
     def __init__(
         self,
-        item_type: type[T],
-        container_type: type[Sequence],
+        item_type: TypeAnnotation,
+        container_type: Callable[[Iterable[T]], S],
         gui_meta: GuiMeta | None = None,
-        parent=None,
+        parent: QWidget | None = None,
     ):
         """Initialize a SequenceInputWidget.
 
         Arguments:
             item_type (type): The type of sequence elements (i.e. the "T" of
                 Sequence[T]).
-            container_type (type): The type of sequence container (i.e. the "Sequence"
-                of Sequence[T]).
+            container_type (Callable[[Iterable[T]], S]): A function that converts an
+                iterable into the desired container type. (e.g. `list`, `tuple`).
             gui_meta (GuiMeta, optional): Metadata to further describe the widgets
                 created. Defaults to `None`.
             parent (QObject, optional): The parent of this widget. Defaults to `None`.
@@ -346,7 +353,7 @@ class SequenceInputWidget[T](QWidget, InputWidget):
         super().__init__(parent)
 
         self.item_type = item_type
-        self.rows: list[SequenceInputRow] = []
+        self.rows: list[SequenceInputRow[T]] = []
         self.container_type = container_type
 
         # layout setup...
@@ -386,11 +393,11 @@ class SequenceInputWidget[T](QWidget, InputWidget):
             row.deleteLater()
 
     @override
-    def value(self) -> Sequence[T]:
+    def value(self) -> S:
         return self.container_type(row.value() for row in self.rows)
 
     @override
-    def set_value(self, value: Sequence[T]):
+    def set_value(self, value: S):
         if not isinstance(value, Sequence):
             raise TypeError(f'Expected a sequence of values; got {type(value)}')
         if not all(check_type(v, self.item_type) for v in value):
@@ -403,7 +410,7 @@ class SequenceInputWidget[T](QWidget, InputWidget):
             self.add_item(v)
 
 
-class TupleInputWidget[*Ts](QWidget, InputWidget):
+class TupleInputWidget[*Ts](QWidget, InputWidget[tuple[*Ts]]):
     """InputWidget representing tuple inputs.
 
     Given the specified type `item_type` will automatically generate the appropriate
@@ -411,7 +418,10 @@ class TupleInputWidget[*Ts](QWidget, InputWidget):
     """
 
     def __init__(
-        self, types: tuple[type, ...], gui_meta: GuiMeta | None = None, parent=None
+        self,
+        types: tuple[TypeAnnotation, ...],
+        gui_meta: GuiMeta | None = None,
+        parent: QWidget | None = None,
     ):
         """Initialize a TupleInputWidget."""
         super().__init__(parent)
@@ -435,26 +445,23 @@ class TupleInputWidget[*Ts](QWidget, InputWidget):
 
     @override
     def value(self) -> tuple[*Ts]:
-        return tuple(widget.value() for widget in self.widgets)
+        return cast(
+            tuple[*Ts],
+            tuple(widget.value() for widget in self.widgets),
+        )
 
     @override
     def set_value(self, value: tuple[*Ts]):
         if len(value) != self.count():
             raise ValueError(f'Expected {self.count()} values, got {len(value)}.')
 
-        # check_type(value, self.types)
-        for i, val in enumerate(value):
-            if not isinstance(val, self.types[i]):
+        for val, expected_type in zip(value, self.types, strict=True):
+            if not check_type(val, expected_type):
                 raise TypeError(
-                    f'Values must be of type {self.types}, got '
-                    f'{tuple(type(v) for v in value)}'
+                    f'Expected value of type {expected_type!r}, got {type(val)!r}'
                 )
 
-        for widget, item_value in zip(
-            self.widgets,
-            value,
-            strict=True,
-        ):
+        for widget, item_value in zip(self.widgets, value, strict=True):
             widget.set_value(item_value)
 
 
@@ -463,13 +470,13 @@ class TupleInputWidget[*Ts](QWidget, InputWidget):
 #
 
 
-def is_union(annotation) -> bool:
+def is_union(annotation: TypeAnnotation) -> bool:
     """Return whether a type annotation is a union type."""
     origin = get_origin(annotation)
     return origin is Union or origin is UnionType
 
 
-def is_optional(annotation) -> bool:
+def is_optional(annotation: TypeAnnotation) -> bool:
     """Return whether a type annotation is optional."""
     if not is_union(annotation):
         return False
@@ -479,7 +486,7 @@ def is_optional(annotation) -> bool:
     return len(args) == 2 and NONE_TYPE in args  # noqa: PLR2004
 
 
-def get_optional_type(annotation):
+def get_optional_type(annotation: TypeAnnotation) -> TypeAnnotation | None:
     """Extract the type from an optional type annotation."""
     args = get_args(annotation)
 
@@ -495,18 +502,21 @@ def get_optional_type(annotation):
     return non_none[0]
 
 
-def convert_type_to_string(type_: type) -> str:
+def convert_type_to_string(type_: TypeAnnotation) -> str:
     """Return a string representation of types."""
     if type_ is NONE_TYPE:
         return 'None'
     return type_.__name__
 
 
-class UnionInputWidget[*Ts](QWidget, InputWidget):
+class UnionInputWidget[T](QWidget, InputWidget[T]):
     """Widget representing inputs of union type (e.g. str | int)."""
 
     def __init__(
-        self, types: tuple[type, ...], gui_meta: GuiMeta | None = None, parent=None
+        self,
+        types: tuple[TypeAnnotation, ...],
+        gui_meta: GuiMeta | None = None,
+        parent: QWidget | None = None,
     ):
         """Initialize a UnionInputWidget."""
         super().__init__(parent)
@@ -527,14 +537,16 @@ class UnionInputWidget[*Ts](QWidget, InputWidget):
         self.setLayout(self.vlayout)
 
     @override
-    def value(self) -> Union[*Ts]:
-        return self.stack.currentWidget().value()
+    def value(self) -> T:
+        widget = cast(InputWidget[T], self.stack.currentWidget())
+        return widget.value()
 
     @override
-    def set_value(self, value: Union[*Ts]):
+    def set_value(self, value: T) -> None:
         for i, type_ in enumerate(self.types):
             widget = self.stack.widget(i)
-            if isinstance(value, type_):
+
+            if check_type(value, type_):
                 self.type_combo.setCurrentIndex(i)
                 widget.set_value(value)
                 return
@@ -548,7 +560,12 @@ class UnionInputWidget[*Ts](QWidget, InputWidget):
 class OptionalInputWidget[T](QWidget, InputWidget):
     """InputWidget that handles optional inputs."""
 
-    def __init__(self, type_: type[T], gui_meta: GuiMeta | None = None, parent=None):
+    def __init__(
+        self,
+        type_: type[T],
+        gui_meta: GuiMeta | None = None,
+        parent: QWidget | None = None,
+    ):
         """Initialize an OptionalInputWidget."""
         super().__init__(parent=parent)
 
@@ -581,12 +598,12 @@ class OptionalInputWidget[T](QWidget, InputWidget):
 #
 
 
-def create_input_widget(  # noqa: PLR0911
-    annotation,
+def create_input_widget[T](  # noqa: PLR0911
+    annotation: type[T],
     *,
-    gui_meta=None,
-    parent=None,
-) -> InputWidget:
+    gui_meta: GuiMeta | None = None,
+    parent: QWidget | None = None,
+) -> InputWidget[T]:
     """Recursively create a widget appropriate for a type annotation."""
     # Optional[T]
     if is_optional(annotation):
@@ -607,11 +624,14 @@ def create_input_widget(  # noqa: PLR0911
         if len(args) != 1:
             raise TypeError(f'Expected list[T], got {annotation!r}')
 
-        return SequenceInputWidget(
-            args[0],
-            list,
-            gui_meta=gui_meta,
-            parent=parent,
+        return cast(
+            InputWidget[T],
+            SequenceInputWidget(
+                args[0],
+                list,
+                gui_meta=gui_meta,
+                parent=parent,
+            ),
         )
 
     if origin is tuple:
@@ -619,18 +639,24 @@ def create_input_widget(  # noqa: PLR0911
 
         # tuple[T, ...]
         if len(args) == 2 and args[1] is Ellipsis:  # noqa: PLR2004
-            return SequenceInputWidget(
-                args[0],
-                tuple,
-                gui_meta=gui_meta,
-                parent=parent,
+            return cast(
+                InputWidget[T],
+                SequenceInputWidget(
+                    args[0],
+                    tuple,
+                    gui_meta=gui_meta,
+                    parent=parent,
+                ),
             )
 
         # tuple[T1, T2, ..., TN]
-        return TupleInputWidget(
-            args,
-            gui_meta=gui_meta,
-            parent=parent,
+        return cast(
+            InputWidget[T],
+            TupleInputWidget(
+                args,
+                gui_meta=gui_meta,
+                parent=parent,
+            ),
         )
 
     # A | B | ...
