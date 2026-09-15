@@ -134,7 +134,7 @@ class AnalyzeBeamMap(DataRoutine):
         return list(self.requires)
 
     def _initialize_datasets(self, pdata: ProcessedData):
-        if pdata.has('beammap', exact_match=True):
+        if pdata.has('/beammap', exact_match=True):
             _logger.warning(
                 f'{self.name}: Beam Map group already exists in the file; '
                 'overwriting datasets.'
@@ -159,8 +159,8 @@ class AnalyzeBeamMap(DataRoutine):
     def _run(self, pdata: ProcessedData, inputs: list[str]):
         self._initialize_datasets(pdata)
 
-        az = pdata['map/map_az'][:][:, np.newaxis]
-        za = pdata['map/map_za'][:][np.newaxis, :]
+        az = pdata['map/map_az'][:][np.newaxis, :]
+        za = pdata['map/map_za'][:][:, np.newaxis]
         map_val = pdata['map/map_val'][:]
 
         az_center = pdata['beammap/az_center']
@@ -188,9 +188,9 @@ class AnalyzeBeamMap(DataRoutine):
             this_val[np.isnan(this_val)] = 0
 
             max_index = np.argwhere(this_val == np.max(this_val))
-            az_idx, za_idx = np.unravel_index(max_index[0], map_val[i_res].shape)
-            az_max = az[az_idx, :]
-            za_max = za[:, za_idx]
+            za_idx, az_idx = np.unravel_index(max_index[0], map_val[i_res].shape)
+            az_max = az[:, az_idx]
+            za_max = za[za_idx, :]
             separation = np.sqrt((az - az_max[0]) ** 2 + (za - za_max[0]) ** 2)
             index = np.argwhere(separation < max_radius)
             flat_index = np.ravel_multi_index(
@@ -198,15 +198,15 @@ class AnalyzeBeamMap(DataRoutine):
             )
 
             az_center[i_res] = np.sum(
-                az[index[:, 0]].squeeze() * this_val[flat_index]
+                az[:, index[:, 1]].squeeze() * this_val[flat_index]
             ) / np.sum(this_val[flat_index])
             za_center[i_res] = np.sum(
-                za[:, index[:, 1]].squeeze() * this_val[flat_index]
+                za[index[:, 0]].squeeze() * this_val[flat_index]
             ) / np.sum(this_val[flat_index])
             amplitude[i_res] = np.max(this_val[index])
 
-            this_az = np.ndarray.flatten(az[index[:, 0], :])
-            this_za = np.ndarray.flatten(za[:, index[:, 1]])
+            this_az = np.ndarray.flatten(az[:, index[:, 1]])
+            this_za = np.ndarray.flatten(za[index[:, 0], :])
             this_val = this_val[flat_index]
             sigma_z = np.full(
                 int(np.size(this_val)),
