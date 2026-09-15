@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from enum import Enum
 from pathlib import Path
@@ -18,6 +17,7 @@ from typing import (
     override,
 )
 
+import numpy as np
 from PySide6.QtCore import QSize, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -44,6 +44,11 @@ E = TypeVar('E', bound=Enum)
 Ts = TypeVarTuple('Ts')
 
 type TypeAnnotation = Any
+
+MAX_INT = np.iinfo(np.int32).max
+MIN_INT = np.iinfo(np.int32).min
+MAX_FLOAT = np.finfo(np.float64).max
+MIN_FLOAT = np.finfo(np.float64).min
 
 
 def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
@@ -82,14 +87,12 @@ def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
     return isinstance(value, base_type)
 
 
-class InputWidget[T](ABC):
+class InputWidget[T]:
     """Interface for widgets that support GUI function integration."""
 
-    @abstractmethod
     def value(self) -> T:
         """Return the value represented by this widget."""
 
-    @abstractmethod
     def set_value(self, value: T) -> None:
         """Set the value represented by this widget."""
 
@@ -108,6 +111,12 @@ class IntInputWidget(QSpinBox, InputWidget[int]):
         """Initialize an IntInputWidget."""
         super().__init__(parent=parent)
 
+        if gui_meta is not None:
+            self.setMinimum(gui_meta.minimum or MIN_INT)
+            self.setMaximum(gui_meta.maximum or MAX_INT)
+            self.setPrefix(gui_meta.prefix)
+            self.setSuffix(gui_meta.suffix)
+
     @override
     def value(self) -> int:
         return QSpinBox.value(self)
@@ -123,6 +132,14 @@ class FloatInputWidget(QDoubleSpinBox, InputWidget[float]):
     def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a FloatInputWidget."""
         super().__init__(parent=parent)
+
+        if gui_meta is not None:
+            if gui_meta.tooltip is not None:
+                self.setToolTip(gui_meta.tooltip)
+            self.setMinimum(gui_meta.minimum or MIN_FLOAT)
+            self.setMaximum(gui_meta.minimum or MAX_FLOAT)
+            self.setPrefix(gui_meta.prefix)
+            self.setSuffix(gui_meta.suffix)
 
     @override
     def value(self) -> float:
@@ -140,6 +157,9 @@ class BoolInputWidget(QCheckBox, InputWidget[bool]):
         """Initialize a BoolInputWidget."""
         super().__init__(parent=parent)
 
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
+
     @override
     def value(self) -> bool:
         return self.isChecked()
@@ -156,6 +176,9 @@ class StringInputWidget(QLineEdit, InputWidget[str]):
         """Initialize a StringInputWidget."""
         super().__init__(parent=parent)
 
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
+
     @override
     def value(self) -> str:
         return self.text()
@@ -171,6 +194,9 @@ class FileInputWidget(FileSelectWidget, InputWidget[Path]):
     def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a FileInputWidget."""
         super().__init__(parent=parent)
+
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
 
     @override
     def value(self) -> Path:
@@ -233,7 +259,10 @@ class EnumInputWidget[E: Enum](QComboBox, InputWidget[E]):
         super().__init__(parent=parent)
         self.enum_type = enum_type
         for member in enum_type:
-            self.addItem(str(member), userData=member)
+            self.addItem(member.name, userData=member)
+
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
 
     @override
     def value(self) -> E:
@@ -261,7 +290,10 @@ class MultiEnumInputWidget[E: Enum](CheckableComboBox, InputWidget[E]):
         super().__init__(parent=parent)
         self.enum_type = enum_type
         for member in enum_type:
-            self.addItem(str(member), userData=member)
+            self.addItem(member.name, userData=member)
+
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
 
     @override
     def value(self) -> list[E]:
@@ -358,7 +390,25 @@ class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
 
         # layout setup...
         self.vlayout = QVBoxLayout()
+
+        self.spacer = QSpacerItem(
+            20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.MinimumExpanding
+        )
+        self.vlayout.addSpacerItem(self.spacer)
+
+        self.add_button = QToolButton(parent=self)
+        self.add_button.setCheckable(False)
+        icon = QIcon()
+        icon.addFile(':/icons/add.png', QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        self.add_button.setIcon(icon)
+        self.add_button.setIconSize(QSize(32, 32))
+        self.add_button.clicked.connect(lambda _: self.add_item())
+        self.vlayout.addWidget(self.add_button)
+
         self.setLayout(self.vlayout)
+
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
 
     def add_item(self, value: T | None = None):
         """Add an item to the sequence.
@@ -375,7 +425,8 @@ class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
 
         self.rows.append(new_row)
         # add widget + remove button to layout
-        self.vlayout.addWidget(new_row)
+        self.vlayout.insertWidget(self.vlayout.count() - 2, new_row)
+        # self.vlayout.addWidget(new_row)
 
     @Slot()
     def remove_row(self):
@@ -438,6 +489,9 @@ class TupleInputWidget[*Ts](QWidget, InputWidget[tuple[*Ts]]):
             self.vlayout.addWidget(widget)
 
         self.setLayout(self.vlayout)
+
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
 
     def count(self) -> int:
         """Return the length of the tuple."""
@@ -536,6 +590,9 @@ class UnionInputWidget[T](QWidget, InputWidget[T]):
         self.vlayout.addWidget(self.stack)
         self.setLayout(self.vlayout)
 
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
+
     @override
     def value(self) -> T:
         widget = cast(InputWidget[T], self.stack.currentWidget())
@@ -557,7 +614,7 @@ class UnionInputWidget[T](QWidget, InputWidget[T]):
         )
 
 
-class OptionalInputWidget[T](QWidget, InputWidget):
+class OptionalInputWidget[T](QWidget, InputWidget[T]):
     """InputWidget that handles optional inputs."""
 
     def __init__(
@@ -569,16 +626,21 @@ class OptionalInputWidget[T](QWidget, InputWidget):
         """Initialize an OptionalInputWidget."""
         super().__init__(parent=parent)
 
-        self.hlayout = QHBoxLayout()
+        self.vlayout = QVBoxLayout()
         self.checkbox = QCheckBox('Use value', parent=self)
-        self.hlayout.addWidget(self.checkbox)
+        self.vlayout.addWidget(self.checkbox)
 
         self.widget = create_input_widget(type_)
-        self.hlayout.addWidget(self.widget)
+        self.vlayout.addWidget(self.widget)
 
         self.checkbox.toggled.connect(self.widget.setEnabled)
         self.checkbox.setChecked(True)  # Default to enabled
         self.widget.setEnabled(True)
+
+        self.setLayout(self.vlayout)
+
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
 
     @override
     def value(self) -> T | None:
@@ -670,6 +732,12 @@ def create_input_widget[T](  # noqa: PLR0911
     # Enum subclass
     if isinstance(annotation, type) and issubclass(annotation, Enum):
         # TODO: Check GuiMeta for whether single or multi-input
+        if gui_meta is not None and gui_meta.multi_input:
+            return MultiEnumInputWidget(
+                annotation,
+                gui_meta=gui_meta,
+                parent=parent,
+            )
         return EnumInputWidget(
             annotation,
             gui_meta=gui_meta,
@@ -719,16 +787,78 @@ def create_input_widget[T](  # noqa: PLR0911
 
 # ruff: enable[ARG002]
 
-# if __name__ == '__main__':
-#     import pdb
+if __name__ == '__main__':
+    # ruff: disable[D101,D102,D107]
 
-#     from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QPushButton
 
-#     class ExEnum(Enum):
-#         ONE = 1
-#         TWO = 2
-#         THREE = 3
+    class ExEnum(Enum):
+        ONE = 1
+        TWO = 2
+        THREE = 3
 
-#     app = QApplication()
-#     pdb.set_trace()
-#     app.exec()
+    ANNOTATION_NAMESPACE = {
+        'int': int,
+        'float': float,
+        'str': str,
+        'bool': bool,
+        'list': list,
+        'tuple': tuple,
+        'Path': Path,
+        'None': None,
+        'ExEnum': ExEnum,
+    }
+
+    def parse_annotation(text: str):
+        """Parse a string form of a type annotation."""
+        return eval(text, {'__builtins__': {}}, ANNOTATION_NAMESPACE)
+
+    app = QApplication()
+
+    class MainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+
+            self.container = QWidget(parent=self)
+            self.vlayout = QVBoxLayout()
+
+            self.line_edit = QLineEdit(parent=self.container)
+            self.vlayout.addWidget(self.line_edit)
+
+            self.push_button = QPushButton('Generate widget', parent=self.container)
+            self.push_button.clicked.connect(self.create_widget)
+            self.vlayout.addWidget(self.push_button)
+
+            self.value_label = QLabel('Value:', parent=self.container)
+            self.vlayout.addWidget(self.value_label)
+
+            self.value_button = QPushButton('Get current value', parent=self.container)
+            self.value_button.clicked.connect(self.display_value)
+            self.vlayout.addWidget(self.value_button)
+
+            self.widget = None
+
+            self.container.setLayout(self.vlayout)
+            self.setCentralWidget(self.container)
+
+        def create_widget(self):
+            annotation = parse_annotation(self.line_edit.text())
+            new_widget = create_input_widget(
+                annotation, parent=self.container
+            )
+            if self.widget is not None:
+                self.vlayout.removeWidget(self.widget)
+                self.widget.deleteLater()
+            self.widget = new_widget
+            self.vlayout.addWidget(new_widget)
+
+        def display_value(self):
+            if self.widget is not None:
+                val = self.widget.value()
+                self.value_label.setText(f'Value: {val}')
+
+    # ruff: enable[D101,D102,D107]
+    w = MainWindow()
+    w.show()
+
+    app.exec()

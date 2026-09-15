@@ -94,8 +94,15 @@ class GuiMeta:
 
     label: str | None = None
     tooltip: str | None = None
+    # QSpinBox specific values
     minimum: float | None = None
     maximum: float | None = None
+    prefix: str = ''
+    suffix: str = ''
+    # Enum specific value
+    multi_input: bool = False
+    # Sequence / tuple specific values
+    internal_labels: str | list[str] | None = None
 
 
 @dataclass(frozen=True)
