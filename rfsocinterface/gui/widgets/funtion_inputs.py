@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from types import UnionType
 from typing import (
+    Annotated,
     Any,
     TypeVar,
     TypeVarTuple,
@@ -24,12 +25,14 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QSizePolicy,
     QSpacerItem,
     QSpinBox,
-    QStackedWidget,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -38,6 +41,7 @@ from PySide6.QtWidgets import (
 from rfsocinterface.core.data.routines import GuiMeta
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
+from rfsocinterface.gui.widgets.stacked_widget import ResizingStackedWidget
 
 NONE_TYPE = type(None)
 E = TypeVar('E', bound=Enum)
@@ -51,8 +55,25 @@ MAX_FLOAT = np.finfo(np.float64).max
 MIN_FLOAT = np.finfo(np.float64).min
 
 
+def unwrap_annotated(
+    annotation: TypeAnnotation,
+) -> tuple[TypeAnnotation, GuiMeta | None]:
+    """Extract the underlying type and GuiMeta from an Annotated type."""
+    if get_origin(annotation) is not Annotated:
+        return annotation, None
+
+    inner_type, *metadata = get_args(annotation)
+    gui_meta = next(
+        (meta for meta in metadata if isinstance(meta, GuiMeta)),
+        None,
+    )
+
+    return inner_type, gui_meta
+
+
 def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
     """Recursively check that a value is the correct type."""
+    expected_type, _ = unwrap_annotated(expected_type)
     base_type = get_origin(expected_type)
 
     # Base type of None means it's not a generic, so just check the type directly.
@@ -112,6 +133,8 @@ class IntInputWidget(QSpinBox, InputWidget[int]):
         super().__init__(parent=parent)
 
         if gui_meta is not None:
+            if gui_meta.tooltip is not None:
+                self.setToolTip(gui_meta.tooltip)
             self.setMinimum(gui_meta.minimum or MIN_INT)
             self.setMaximum(gui_meta.maximum or MAX_INT)
             self.setPrefix(gui_meta.prefix)
@@ -319,7 +342,7 @@ class MultiEnumInputWidget[E: Enum](CheckableComboBox, InputWidget[E]):
 #
 
 
-class SequenceInputRow[T](QWidget, InputWidget[T]):
+class SequenceInputRow[T](QGroupBox, InputWidget[T]):
     """Widget representing a single element of a SequenceInputWidget."""
 
     removed = Signal()
@@ -332,16 +355,17 @@ class SequenceInputRow[T](QWidget, InputWidget[T]):
         self.widget = widget
         self.hlayout.addWidget(widget)
 
-        self.spacer = QSpacerItem(
-            40, 20, QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Minimum
-        )
-        self.hlayout.addSpacerItem(self.spacer)
+        # self.spacer = QSpacerItem(
+        #     40, 20, QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Minimum
+        # )
+        # self.hlayout.addSpacerItem(self.spacer)
 
         self.remove_button = QToolButton(parent=self)
         icon = QIcon()
         icon.addFile(':/icons/remove.png', QSize(), QIcon.Mode.Normal, QIcon.State.Off)
         self.remove_button.setIcon(icon)
-        self.remove_button.setIconSize(QSize(32, 32))
+        self.remove_button.setIconSize(QSize(16, 16))
+        self.remove_button.setToolTip('Remove this tem from the sequence')
         self.hlayout.addWidget(self.remove_button)
 
         self.setLayout(self.hlayout)
@@ -357,7 +381,7 @@ class SequenceInputRow[T](QWidget, InputWidget[T]):
         self.widget.set_value(value)
 
 
-class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
+class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
     """InputWidget representing seqeunce inputs (e.g. list[T], tuple[T, ...], etc.).
 
     Given the specified type `item_type`, will automatically generate the appropriate
@@ -392,7 +416,7 @@ class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
         self.vlayout = QVBoxLayout()
 
         self.spacer = QSpacerItem(
-            20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.MinimumExpanding
+            20, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.MinimumExpanding
         )
         self.vlayout.addSpacerItem(self.spacer)
 
@@ -401,8 +425,9 @@ class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
         icon = QIcon()
         icon.addFile(':/icons/add.png', QSize(), QIcon.Mode.Normal, QIcon.State.Off)
         self.add_button.setIcon(icon)
-        self.add_button.setIconSize(QSize(32, 32))
+        self.add_button.setIconSize(QSize(16, 16))
         self.add_button.clicked.connect(lambda _: self.add_item())
+        self.add_button.setToolTip('Add an item to the sequence')
         self.vlayout.addWidget(self.add_button)
 
         self.setLayout(self.vlayout)
@@ -426,6 +451,7 @@ class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
         self.rows.append(new_row)
         # add widget + remove button to layout
         self.vlayout.insertWidget(self.vlayout.count() - 2, new_row)
+        self.adjustSize()
         # self.vlayout.addWidget(new_row)
 
     @Slot()
@@ -435,6 +461,7 @@ class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
         self.vlayout.removeWidget(row)
         self.rows.remove(row)
         row.deleteLater()
+        self.adjustSize()
 
     def clear(self):
         """Remove all rows from the widget."""
@@ -442,6 +469,7 @@ class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
             row = self.rows.pop()
             self.vlayout.removeWidget(row)
             row.deleteLater()
+        self.adjustSize()
 
     @override
     def value(self) -> S:
@@ -461,7 +489,7 @@ class SequenceInputWidget[T, S: Sequence[T]](QWidget, InputWidget[S]):
             self.add_item(v)
 
 
-class TupleInputWidget[*Ts](QWidget, InputWidget[tuple[*Ts]]):
+class TupleInputWidget[*Ts](QGroupBox, InputWidget[tuple[*Ts]]):
     """InputWidget representing tuple inputs.
 
     Given the specified type `item_type` will automatically generate the appropriate
@@ -556,14 +584,34 @@ def get_optional_type(annotation: TypeAnnotation) -> TypeAnnotation | None:
     return non_none[0]
 
 
-def convert_type_to_string(type_: TypeAnnotation) -> str:
+def convert_type_to_string(annotation: TypeAnnotation) -> str:  # noqa: PLR0911
     """Return a string representation of types."""
-    if type_ is NONE_TYPE:
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+
+    if annotation is NONE_TYPE:
         return 'None'
-    return type_.__name__
+    if annotation is Ellipsis:
+        return '...'
+    if get_origin(annotation) is None:
+        return annotation.__name__
+    if origin is Annotated:
+        annotation, gui_meta = unwrap_annotated(annotation)
+        if (
+            gui_meta is not None
+            and issubclass(annotation, Enum)
+            and gui_meta.multi_input
+        ):
+            return f'{convert_type_to_string(annotation)} (Multi-input)'
+        return convert_type_to_string(annotation)
+    if is_union(annotation):
+        return f'{" | ".join(convert_type_to_string(arg) for arg in args)}'
+    return (
+        f'{origin.__name__}[{", ".join(convert_type_to_string(arg) for arg in args)}]'
+    )
 
 
-class UnionInputWidget[T](QWidget, InputWidget[T]):
+class UnionInputWidget[T](QGroupBox, InputWidget[T]):
     """Widget representing inputs of union type (e.g. str | int)."""
 
     def __init__(
@@ -577,18 +625,26 @@ class UnionInputWidget[T](QWidget, InputWidget[T]):
 
         self.types = types
 
-        self.type_combo = QComboBox(parent=self)
-        self.vlayout = QVBoxLayout()
-        self.stack = QStackedWidget(parent=self)
+        self.grid_layout = QGridLayout()
 
+        self.type_label = QLabel('Input type:', parent=self)
+        self.grid_layout.addWidget(self.type_label, 0, 0)
+
+        self.type_combo = QComboBox(parent=self)
+        self.type_combo.setPlaceholderText('Select object type...')
+        self.grid_layout.addWidget(self.type_combo, 0, 1)
+
+        self.stack = ResizingStackedWidget(parent=self)
         for annotation in types:
             self.type_combo.addItem(convert_type_to_string(annotation))
             self.stack.addWidget(create_input_widget(annotation))
-
         self.type_combo.currentIndexChanged.connect(self.stack.setCurrentIndex)
-        self.vlayout.addWidget(self.type_combo)
-        self.vlayout.addWidget(self.stack)
-        self.setLayout(self.vlayout)
+        self.stack.currentChanged.connect(self.stack.adjustSize)
+        self.stack.currentChanged.connect(self.adjustSize)
+        self.type_combo.setCurrentIndex(0)
+        self.grid_layout.addWidget(self.stack, 1, 0, 1, 2)
+
+        self.setLayout(self.grid_layout)
 
         if gui_meta is not None and gui_meta.tooltip is not None:
             self.setToolTip(gui_meta.tooltip)
@@ -614,7 +670,7 @@ class UnionInputWidget[T](QWidget, InputWidget[T]):
         )
 
 
-class OptionalInputWidget[T](QWidget, InputWidget[T]):
+class OptionalInputWidget[T](QGroupBox, InputWidget[T]):
     """InputWidget that handles optional inputs."""
 
     def __init__(
@@ -667,6 +723,12 @@ def create_input_widget[T](  # noqa: PLR0911
     parent: QWidget | None = None,
 ) -> InputWidget[T]:
     """Recursively create a widget appropriate for a type annotation."""
+    # Annotated[T, ...]
+    annotation, annotation_meta = unwrap_annotated(annotation)
+
+    if annotation_meta is not None:
+        gui_meta = annotation_meta
+
     # Optional[T]
     if is_optional(annotation):
         inner_type = get_optional_type(annotation)
@@ -807,6 +869,7 @@ if __name__ == '__main__':
         'Path': Path,
         'None': None,
         'ExEnum': ExEnum,
+        'Annotated': Annotated,
     }
 
     def parse_annotation(text: str):
@@ -826,7 +889,7 @@ if __name__ == '__main__':
             self.vlayout.addWidget(self.line_edit)
 
             self.push_button = QPushButton('Generate widget', parent=self.container)
-            self.push_button.clicked.connect(self.create_widget)
+            self.push_button.clicked.connect(self.parse_annotation)
             self.vlayout.addWidget(self.push_button)
 
             self.value_label = QLabel('Value:', parent=self.container)
@@ -841,16 +904,19 @@ if __name__ == '__main__':
             self.container.setLayout(self.vlayout)
             self.setCentralWidget(self.container)
 
-        def create_widget(self):
-            annotation = parse_annotation(self.line_edit.text())
-            new_widget = create_input_widget(
-                annotation, parent=self.container
-            )
+        def parse_annotation(self):
+            if self.line_edit.text():
+                annotation = parse_annotation(self.line_edit.text())
+                self.create_widget(annotation)
+
+        def create_widget(self, annotation: TypeAnnotation):
+            new_widget = create_input_widget(annotation, parent=self.container)
             if self.widget is not None:
                 self.vlayout.removeWidget(self.widget)
                 self.widget.deleteLater()
             self.widget = new_widget
             self.vlayout.addWidget(new_widget)
+            self.adjustSize()
 
         def display_value(self):
             if self.widget is not None:
@@ -860,5 +926,6 @@ if __name__ == '__main__':
     # ruff: enable[D101,D102,D107]
     w = MainWindow()
     w.show()
+    # w.create_widget(ExEnum | Annotated[ExEnum, GuiMeta(multi_input=True)])
 
     app.exec()
