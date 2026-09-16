@@ -34,7 +34,13 @@ from rfsocinterface.core.data.utils import (
     get_step_group_name,
     rotate_basis,
 )
-from rfsocinterface.core.utils import BUTTER_ORDER, MetadataJSONEncoder, get_git_hash
+from rfsocinterface.core.utils import (
+    BUTTER_ORDER,
+    GuiArg,
+    GuiMeta,
+    MetadataJSONEncoder,
+    get_git_hash,
+)
 
 __all__ = (
     'ROUTINE_GUI_ARGS',
@@ -42,8 +48,6 @@ __all__ = (
     'CleanTOD',
     'CutoffFilter',
     'DataRoutine',
-    'GuiArg',
-    'GuiMeta',
     'HighPassFilter',
     'LowPassFilter',
     'RemoveElectronicsNoise',
@@ -65,59 +69,6 @@ class ProcessingStage:
     PROCESSING_L1 = 'processing_l1'
     PROCESSING_L2 = 'processing_l2'
     POST_PROCESSING = 'post_processing'
-
-
-@dataclass(frozen=True)
-class GuiMeta:
-    """GuiArg metadata for later use during widget initialization.
-
-    For proper usage, use with `typing.Annotated` in the class's `__init__` signature.
-    For example:
-    ```
-    class FilterRoutine(DataRoutine):
-        def __init__(
-            self,
-            order: int = 4,
-            cutoff: Annotated[
-                float,
-                GuiMeta(
-                    label="Cutoff frequency",
-                    minimum=0.0,
-                    tooltip="Low-pass cutoff frequency.",
-                ),
-            ] = 10.0,
-            enabled: bool = True,
-        ):
-            ...
-    ```
-    """
-
-    label: str | None = None
-    tooltip: str | None = None
-    # QSpinBox specific values
-    minimum: float | None = None
-    maximum: float | None = None
-    prefix: str = ''
-    suffix: str = ''
-    # Enum specific value
-    multi_input: bool = False
-    # Sequence / tuple specific values
-    internal_labels: str | list[str] | None = None
-
-
-@dataclass(frozen=True)
-class GuiArg:
-    """Dataclass representing arguments from a DataRoutine for GUI integration."""
-
-    name: str
-    annotation: Any
-    metadata: GuiMeta | None = None
-    default: Any = inspect.Parameter.empty
-
-    @property
-    def required(self) -> bool:
-        """Whether the argument is required."""
-        return self.default is inspect.Parameter.empty
 
 
 def get_gui_args(routine_cls: type[DataRoutine]) -> list[GuiArg]:

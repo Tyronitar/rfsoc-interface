@@ -17,8 +17,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rfsocinterface.core.data import GuiArg
 from rfsocinterface.core.data.routines import get_gui_args
+from rfsocinterface.core.utils import GuiArg
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 from rfsocinterface.gui.widgets.utils import gui_arg_to_widget
 from tests.utils import (

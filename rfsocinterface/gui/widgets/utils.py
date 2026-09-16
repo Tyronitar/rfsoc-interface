@@ -19,8 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rfsocinterface.core.data import GuiArg
-from rfsocinterface.core.utils import ensure_path, is_type
+from rfsocinterface.core.utils import GuiArg, ensure_path, is_type
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 
 

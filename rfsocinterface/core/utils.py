@@ -1,6 +1,7 @@
 """Common functions to be used anywhere in the project."""
 
 import functools
+import inspect
 import io
 import json
 import logging
@@ -12,17 +13,20 @@ import warnings
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime
-from enum import EnumMeta, IntEnum, StrEnum
+from enum import Enum, EnumMeta, IntEnum, StrEnum
 from functools import partial
 from multiprocessing.connection import Connection
 from pathlib import Path
 from types import UnionType
 from typing import (
+    Annotated,
     Any,
     Literal,
     ParamSpec,
     TypeVar,
+    TypeVarTuple,
     Union,
     get_args,
     get_origin,
@@ -68,12 +72,22 @@ PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
 FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
 H5pyObject = TypeVar('H5pyObject', h5py.Dataset, h5py.Group)
 
+NONE_TYPE = type(None)
+MAX_INT = np.iinfo(np.int32).max
+MIN_INT = np.iinfo(np.int32).min
+MAX_FLOAT = np.finfo(np.float64).max
+MIN_FLOAT = np.finfo(np.float64).min
+
+
 GAUSSIAN_SIGMA = (0.5, 0.33)
 BUTTER_ORDER = 2
 
 # Generic types for type hints
 T = TypeVar('T')
 R = TypeVar('R')
+E = TypeVar('E', bound=Enum)
+Ts = TypeVarTuple('Ts')
+type TypeAnnotation = Any
 
 P = ParamSpec('P')
 Q = ParamSpec('Q')
@@ -1247,15 +1261,189 @@ def add_colorbar(
     return cb
 
 
-def is_union(type_: type) -> bool:
-    """Whether the type is a union type."""
-    origin = get_origin(type_)
-    return origin is Union or origin is UnionType
-
-
 def is_type(type_: type, ref: type) -> bool:
     """Whether the type is the same type as ref.
 
     If type_ is a union type, will check if any of its types are the same as ref.
     """
     return type_ is ref or (is_union(type_) and ref in get_args(type_))
+
+
+#
+# Typing Utils
+#
+
+
+@dataclass(frozen=True)
+class GuiMeta:
+    """GuiArg metadata for later use during widget initialization.
+
+    For proper usage, use with `typing.Annotated` in the class's `__init__` signature.
+    For example:
+    ```
+    class FilterRoutine(DataRoutine):
+        def __init__(
+            self,
+            order: int = 4,
+            cutoff: Annotated[
+                float,
+                GuiMeta(
+                    label="Cutoff frequency",
+                    minimum=0.0,
+                    tooltip="Low-pass cutoff frequency.",
+                ),
+            ] = 10.0,
+            enabled: bool = True,
+        ):
+            ...
+    ```
+    """
+
+    label: str | None = None
+    tooltip: str | None = None
+    # QSpinBox specific values
+    minimum: float | None = None
+    maximum: float | None = None
+    prefix: str = ''
+    suffix: str = ''
+    # Enum specific value
+    multi_input: bool = False
+    # Sequence / tuple specific values
+    internal_labels: str | list[str] | None = None
+
+
+@dataclass(frozen=True)
+class GuiArg:
+    """Dataclass representing arguments from a DataRoutine for GUI integration."""
+
+    name: str
+    annotation: Any
+    metadata: GuiMeta | None = None
+    default: Any = inspect.Parameter.empty
+
+    @property
+    def required(self) -> bool:
+        """Whether the argument is required."""
+        return self.default is inspect.Parameter.empty
+
+
+def unwrap_annotated(
+    annotation: TypeAnnotation,
+) -> tuple[TypeAnnotation, GuiMeta | None]:
+    """Extract the underlying type and GuiMeta from an Annotated type."""
+    if get_origin(annotation) is not Annotated:
+        return annotation, None
+
+    inner_type, *metadata = get_args(annotation)
+    gui_meta = next(
+        (meta for meta in metadata if isinstance(meta, GuiMeta)),
+        None,
+    )
+
+    return inner_type, gui_meta
+
+
+def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
+    """Recursively check that a value is the correct type."""
+    expected_type, _ = unwrap_annotated(expected_type)
+    base_type = get_origin(expected_type)
+
+    # Base type of None means it's not a generic, so just check the type directly.
+    if base_type is None:
+        return isinstance(value, expected_type)
+
+    # Recursively check each element
+    internal_type = get_args(expected_type)
+    if issubclass(base_type, Mapping):
+        # Chec kkey and values separately for a dictionary
+        key_type, val_type = internal_type
+        internals = [
+            check_type(k, key_type) and check_type(v, val_type)
+            for k, v in value.items()
+        ]
+        return all(internals) and isinstance(value, base_type)
+    if issubclass(base_type, Sequence):
+        # Check each element in a sequence
+        if len(internal_type) == 1:
+            # Single type so just check if each one is the right one
+            internals = [check_type(v, internal_type) for v in value]
+        elif len(internal_type) < len(value):
+            return False
+        else:
+            # Multiple types, so each element should be the corresponsing type
+            internals = [
+                check_type(v, type_)
+                for (v, type_) in zip(value, internal_type, strict=True)
+            ]
+        return all(internals) and isinstance(value, base_type)
+    # Unhandled generic type scenario; just check base class
+    return isinstance(value, base_type)
+
+
+def is_enum_value(value: Any, enum_cls: type[Enum]) -> bool:
+    """Return whether a value is a valid value for the specified enum class."""
+    try:
+        enum_cls(value)
+    except ValueError:
+        return False
+    else:
+        return True
+
+
+def is_union(annotation: TypeAnnotation) -> bool:
+    """Return whether a type annotation is a union type."""
+    origin = get_origin(annotation)
+    return origin is Union or origin is UnionType
+
+
+def is_optional(annotation: TypeAnnotation) -> bool:
+    """Return whether a type annotation is optional."""
+    if not is_union(annotation):
+        return False
+
+    args = get_args(annotation)
+
+    return len(args) == 2 and NONE_TYPE in args  # noqa: PLR2004
+
+
+def get_optional_type(annotation: TypeAnnotation) -> TypeAnnotation | None:
+    """Extract the type from an optional type annotation."""
+    args = get_args(annotation)
+
+    if type(None) not in args:
+        return None
+
+    non_none = tuple(arg for arg in args if arg is not type(None))
+
+    if len(non_none) != 1:
+        # Type was not Optional[T] but of the form T1 | T2 | ... | None
+        return None
+
+    return non_none[0]
+
+
+def convert_type_to_string(annotation: TypeAnnotation) -> str:  # noqa: PLR0911
+    """Return a string representation of types."""
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+
+    if annotation is NONE_TYPE:
+        return 'None'
+    if annotation is Ellipsis:
+        return '...'
+    if get_origin(annotation) is None:
+        return annotation.__name__
+    if origin is Annotated:
+        annotation, gui_meta = unwrap_annotated(annotation)
+        if (
+            gui_meta is not None
+            and issubclass(annotation, Enum)
+            and gui_meta.multi_input
+        ):
+            return f'{convert_type_to_string(annotation)} (Multi-input)'
+        return convert_type_to_string(annotation)
+    if is_union(annotation):
+        return f'{" | ".join(convert_type_to_string(arg) for arg in args)}'
+    return (
+        f'{origin.__name__}[{", ".join(convert_type_to_string(arg) for arg in args)}]'
+    )

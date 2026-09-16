@@ -12,10 +12,10 @@ import pytest
 
 from rfsocinterface.core.data import (
     DataRoutine,
-    GuiMeta,
     ProcessedData,
     RoutineResult,
 )
+from rfsocinterface.core.utils import GuiMeta
 
 __all__ = [
     'assert_close',

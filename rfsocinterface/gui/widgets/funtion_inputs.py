@@ -2,23 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from enum import Enum
 from pathlib import Path
-from types import UnionType
 from typing import (
     Annotated,
     Any,
-    TypeVar,
-    TypeVarTuple,
-    Union,
     cast,
     get_args,
     get_origin,
     override,
 )
 
-import numpy as np
 from PySide6.QtCore import QSize, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -38,74 +33,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rfsocinterface.core.data.routines import GuiMeta
+from rfsocinterface.core.utils import (
+    MAX_FLOAT,
+    MAX_INT,
+    MIN_FLOAT,
+    MIN_INT,
+    NONE_TYPE,
+    GuiMeta,
+    TypeAnnotation,
+    check_type,
+    convert_type_to_string,
+    get_optional_type,
+    is_enum_value,
+    is_optional,
+    is_union,
+    unwrap_annotated,
+)
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 from rfsocinterface.gui.widgets.stacked_widget import ResizingStackedWidget
-
-NONE_TYPE = type(None)
-E = TypeVar('E', bound=Enum)
-Ts = TypeVarTuple('Ts')
-
-type TypeAnnotation = Any
-
-MAX_INT = np.iinfo(np.int32).max
-MIN_INT = np.iinfo(np.int32).min
-MAX_FLOAT = np.finfo(np.float64).max
-MIN_FLOAT = np.finfo(np.float64).min
-
-
-def unwrap_annotated(
-    annotation: TypeAnnotation,
-) -> tuple[TypeAnnotation, GuiMeta | None]:
-    """Extract the underlying type and GuiMeta from an Annotated type."""
-    if get_origin(annotation) is not Annotated:
-        return annotation, None
-
-    inner_type, *metadata = get_args(annotation)
-    gui_meta = next(
-        (meta for meta in metadata if isinstance(meta, GuiMeta)),
-        None,
-    )
-
-    return inner_type, gui_meta
-
-
-def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
-    """Recursively check that a value is the correct type."""
-    expected_type, _ = unwrap_annotated(expected_type)
-    base_type = get_origin(expected_type)
-
-    # Base type of None means it's not a generic, so just check the type directly.
-    if base_type is None:
-        return isinstance(value, expected_type)
-
-    # Recursively check each element
-    internal_type = get_args(expected_type)
-    if issubclass(base_type, Mapping):
-        # Chec kkey and values separately for a dictionary
-        key_type, val_type = internal_type
-        internals = [
-            check_type(k, key_type) and check_type(v, val_type)
-            for k, v in value.items()
-        ]
-        return all(internals) and isinstance(value, base_type)
-    if issubclass(base_type, Sequence):
-        # Check each element in a sequence
-        if len(internal_type) == 1:
-            # Single type so just check if each one is the right one
-            internals = [check_type(v, internal_type) for v in value]
-        elif len(internal_type) < len(value):
-            return False
-        else:
-            # Multiple types, so each element should be the corresponsing type
-            internals = [
-                check_type(v, type_)
-                for (v, type_) in zip(value, internal_type, strict=True)
-            ]
-        return all(internals) and isinstance(value, base_type)
-    # Unhandled generic type scenario; just check base class
-    return isinstance(value, base_type)
 
 
 class InputWidget[T]:
@@ -254,16 +200,6 @@ class NoneInputWidget(QWidget, InputWidget[NONE_TYPE]):
 #
 # Enum types
 #
-
-
-def is_enum_value(value: Any, enum_cls: type[Enum]) -> bool:
-    """Return whether a value is a valid value for the specified enum class."""
-    try:
-        enum_cls(value)
-    except ValueError:
-        return False
-    else:
-        return True
 
 
 class EnumInputWidget[E: Enum](QComboBox, InputWidget[E]):
@@ -550,65 +486,6 @@ class TupleInputWidget[*Ts](QGroupBox, InputWidget[tuple[*Ts]]):
 #
 # Union Types
 #
-
-
-def is_union(annotation: TypeAnnotation) -> bool:
-    """Return whether a type annotation is a union type."""
-    origin = get_origin(annotation)
-    return origin is Union or origin is UnionType
-
-
-def is_optional(annotation: TypeAnnotation) -> bool:
-    """Return whether a type annotation is optional."""
-    if not is_union(annotation):
-        return False
-
-    args = get_args(annotation)
-
-    return len(args) == 2 and NONE_TYPE in args  # noqa: PLR2004
-
-
-def get_optional_type(annotation: TypeAnnotation) -> TypeAnnotation | None:
-    """Extract the type from an optional type annotation."""
-    args = get_args(annotation)
-
-    if type(None) not in args:
-        return None
-
-    non_none = tuple(arg for arg in args if arg is not type(None))
-
-    if len(non_none) != 1:
-        # Type was not Optional[T] but of the form T1 | T2 | ... | None
-        return None
-
-    return non_none[0]
-
-
-def convert_type_to_string(annotation: TypeAnnotation) -> str:  # noqa: PLR0911
-    """Return a string representation of types."""
-    origin = get_origin(annotation)
-    args = get_args(annotation)
-
-    if annotation is NONE_TYPE:
-        return 'None'
-    if annotation is Ellipsis:
-        return '...'
-    if get_origin(annotation) is None:
-        return annotation.__name__
-    if origin is Annotated:
-        annotation, gui_meta = unwrap_annotated(annotation)
-        if (
-            gui_meta is not None
-            and issubclass(annotation, Enum)
-            and gui_meta.multi_input
-        ):
-            return f'{convert_type_to_string(annotation)} (Multi-input)'
-        return convert_type_to_string(annotation)
-    if is_union(annotation):
-        return f'{" | ".join(convert_type_to_string(arg) for arg in args)}'
-    return (
-        f'{origin.__name__}[{", ".join(convert_type_to_string(arg) for arg in args)}]'
-    )
 
 
 class UnionInputWidget[T](QGroupBox, InputWidget[T]):
