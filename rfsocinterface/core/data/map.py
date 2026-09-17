@@ -272,7 +272,7 @@ class BinTODIntoMap(DataRoutine):
     """
 
     name = 'BinTODIntoMap'
-    version = '3.0.0'
+    version = '4.0.0'
 
     produces: ClassVar[set] = {
         '/map/',
@@ -772,7 +772,7 @@ class PlotMap(DataRoutine):
     """
 
     name = 'PlotMap'
-    version = '3.0.0'
+    version = '3.1.0'
 
     requires: ClassVar[set] = {
         '/map',
@@ -1363,7 +1363,7 @@ class BinTODIntoVideo(DataRoutine):
     """
 
     name = 'BinTODIntoVideo'
-    version = '2.0.0'
+    version = '3.0.0'
 
     produces: ClassVar[set] = {
         '/video',
@@ -1916,7 +1916,7 @@ class AnimateVideo(DataRoutine):
     """
 
     name = 'AnimateVideo'
-    version = '1.0.0'
+    version = '2.0.0'
 
     requires: ClassVar[set] = {
         '/video',

@@ -76,7 +76,7 @@ class AnalyzeBeamMap(DataRoutine):
     """
 
     name = 'AnalyzeBeamMap'
-    version = '2.0.0'
+    version = '2.1.0'
 
     requires: ClassVar[set[str]] = {
         '/map',
@@ -307,7 +307,7 @@ class PlotBeamMap(DataRoutine):
     """Plot a beam map, post-analysis."""
 
     name = 'PlotBeamMap'
-    version = '2.0.0'
+    version = '2.1.0'
 
     requires: ClassVar[set[str]] = {
         '/map',
