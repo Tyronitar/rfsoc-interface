@@ -69,6 +69,7 @@ type PathLike = str | Path | bytes | os.PathLike
 type FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
 type H5pyObject = h5py.Dataset | h5py.Group
 type TypeAnnotation = Any
+type Empty = type[inspect.Parameter.empty]
 
 NONE_TYPE = type(None)
 MAX_INT = np.iinfo(np.int32).max
@@ -1302,18 +1303,23 @@ class GuiMeta:
 
 
 @dataclass(frozen=True)
-class GuiArg:
+class GuiArg[T]:
     """Dataclass representing arguments from a DataRoutine for GUI integration."""
 
     name: str
-    annotation: Any
-    metadata: GuiMeta | None = None
-    default: Any = inspect.Parameter.empty
+    annotation: TypeAnnotation  # Runtime representation of T's value
+    metadata: GuiMeta | None = None  # Gui information associated with T
+    default: T | Empty = inspect.Parameter.empty
 
     @property
     def required(self) -> bool:
         """Whether the argument is required."""
         return self.default is inspect.Parameter.empty
+
+
+def is_empty(v: any) -> bool:
+    """Return whether the value is empty (i.e. inspect.Parameter.empty)."""
+    return v is inspect.Parameter.empty
 
 
 def unwrap_annotated(

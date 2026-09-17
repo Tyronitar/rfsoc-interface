@@ -39,11 +39,13 @@ from rfsocinterface.core.utils import (
     MIN_FLOAT,
     MIN_INT,
     NONE_TYPE,
+    GuiArg,
     GuiMeta,
     TypeAnnotation,
     check_type,
     convert_type_to_string,
     get_optional_type,
+    is_empty,
     is_enum_value,
     is_optional,
     is_union,
@@ -723,6 +725,20 @@ def create_input_widget[T](  # noqa: PLR0911
         )
 
     raise TypeError(f'No GUI widget defined for annotation "{annotation!r}"')
+
+
+def gui_arg_to_widget[T](
+    gui_arg: GuiArg[T], parent: QWidget | None = None
+) -> InputWidget[T]:
+    """Create an appropriate widget for the gui argument."""
+    widget = create_input_widget(
+        gui_arg.annotation,
+        gui_meta=gui_arg.metadata,
+        parent=parent,
+    )
+    if not is_empty(gui_arg.default):
+        widget.set_value(gui_arg.default)
+    return widget
 
 
 # ruff: enable[ARG002]
