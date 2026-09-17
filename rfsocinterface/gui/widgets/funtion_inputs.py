@@ -20,11 +20,13 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QScrollArea,
     QSizePolicy,
     QSpacerItem,
     QSpinBox,
@@ -79,12 +81,17 @@ class IntInputWidget(QSpinBox, InputWidget[int]):
     def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize an IntInputWidget."""
         super().__init__(parent=parent)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
         if gui_meta is not None:
             if gui_meta.tooltip is not None:
                 self.setToolTip(gui_meta.tooltip)
-            self.setMinimum(gui_meta.minimum or MIN_INT)
-            self.setMaximum(gui_meta.maximum or MAX_INT)
+            self.setMinimum(
+                gui_meta.minimum if gui_meta.minimum is not None else MIN_INT
+            )
+            self.setMaximum(
+                gui_meta.maximum if gui_meta.maximum is not None else MAX_INT
+            )
             self.setPrefix(gui_meta.prefix)
             self.setSuffix(gui_meta.suffix)
 
@@ -103,12 +110,19 @@ class FloatInputWidget(QDoubleSpinBox, InputWidget[float]):
     def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a FloatInputWidget."""
         super().__init__(parent=parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed
+        )
 
         if gui_meta is not None:
             if gui_meta.tooltip is not None:
                 self.setToolTip(gui_meta.tooltip)
-            self.setMinimum(gui_meta.minimum or MIN_FLOAT)
-            self.setMaximum(gui_meta.minimum or MAX_FLOAT)
+            self.setMinimum(
+                gui_meta.minimum if gui_meta.minimum is not None else MIN_FLOAT
+            )
+            self.setMaximum(
+                gui_meta.maximum if gui_meta.maximum is not None else MAX_FLOAT
+            )
             self.setPrefix(gui_meta.prefix)
             self.setSuffix(gui_meta.suffix)
 
@@ -127,9 +141,15 @@ class BoolInputWidget(QCheckBox, InputWidget[bool]):
     def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a BoolInputWidget."""
         super().__init__(parent=parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed
+        )
 
-        if gui_meta is not None and gui_meta.tooltip is not None:
-            self.setToolTip(gui_meta.tooltip)
+        if gui_meta is not None:
+            if gui_meta.label is not None:
+                self.setText(gui_meta.label)
+            if gui_meta.tooltip is not None:
+                self.setToolTip(gui_meta.tooltip)
 
     @override
     def value(self) -> bool:
@@ -146,6 +166,7 @@ class StringInputWidget(QLineEdit, InputWidget[str]):
     def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a StringInputWidget."""
         super().__init__(parent=parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         if gui_meta is not None and gui_meta.tooltip is not None:
             self.setToolTip(gui_meta.tooltip)
@@ -288,6 +309,9 @@ class SequenceInputRow[T](QGroupBox, InputWidget[T]):
     def __init__(self, widget: InputWidget[T], parent: QWidget | None = None):
         """Initialize a SequenceInputRow."""
         super().__init__(parent=parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding
+        )
         self.hlayout = QHBoxLayout()
 
         self.widget = widget
@@ -345,6 +369,9 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
             parent (QObject, optional): The parent of this widget. Defaults to `None`.
         """
         super().__init__(parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding
+        )
 
         self.item_type = item_type
         self.rows: list[SequenceInputRow[T]] = []
@@ -353,8 +380,28 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
         # layout setup...
         self.vlayout = QVBoxLayout()
 
+        self.scroll_area = QScrollArea(widgetResizable=True, parent=self)
+        self.scroll_layout = QVBoxLayout()
+        self.scroll_area.setMinimumHeight(100)
+        self.scroll_area.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.MinimumExpanding
+        )
+        self.scroll_container = QWidget(parent=self.scroll_area)
+        self.scroll_container.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.MinimumExpanding
+        )
+        self.scroll_spacer = QSpacerItem(
+            20, 10, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum
+        )
+        self.scroll_layout.addSpacerItem(self.scroll_spacer)
+        self.scroll_container.setLayout(self.scroll_layout)
+        self.scroll_area.setLayout(QVBoxLayout())
+        self.scroll_area.layout().addWidget(self.scroll_container)
+        self.scroll_area.setWidget(self.scroll_container)
+        self.vlayout.addWidget(self.scroll_area)
+
         self.spacer = QSpacerItem(
-            20, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.MinimumExpanding
+            20, 10, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum
         )
         self.vlayout.addSpacerItem(self.spacer)
 
@@ -388,26 +435,29 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
 
         self.rows.append(new_row)
         # add widget + remove button to layout
-        self.vlayout.insertWidget(self.vlayout.count() - 2, new_row)
-        self.adjustSize()
+        self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, new_row)
+        # self.vlayout.insertWidget(self.vlayout.count() - 2, new_row)
+        # self.adjustSize()
         # self.vlayout.addWidget(new_row)
 
     @Slot()
     def remove_row(self):
         """Remove a row from the sequence."""
         row: SequenceInputRow = self.sender()
-        self.vlayout.removeWidget(row)
+        # self.vlayout.removeWidget(row)
+        self.scroll_layout.removeWidget(row)
         self.rows.remove(row)
         row.deleteLater()
-        self.adjustSize()
+        # self.adjustSize()
 
     def clear(self):
         """Remove all rows from the widget."""
         while self.rows:
             row = self.rows.pop()
-            self.vlayout.removeWidget(row)
+            # self.vlayout.removeWidget(row)
+            self.scroll_layout.removeWidget(row)
             row.deleteLater()
-        self.adjustSize()
+        # self.adjustSize()
 
     @override
     def value(self) -> S:
@@ -442,19 +492,28 @@ class TupleInputWidget[*Ts](QGroupBox, InputWidget[tuple[*Ts]]):
     ):
         """Initialize a TupleInputWidget."""
         super().__init__(parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Minimum
+        )
 
         self.types = types
         self.widgets = []
 
         # layout setup...
-        self.vlayout = QVBoxLayout()
+        self.form_layout = QFormLayout()
 
-        for type_ in types:
-            widget = create_input_widget(type_, parent=self)
+        for annotation in types:
+            unwrapped_annotation, gui_meta = unwrap_annotated(annotation)
+            widget = create_input_widget(
+                unwrapped_annotation, gui_meta=gui_meta, parent=self
+            )
             self.widgets.append(widget)
-            self.vlayout.addWidget(widget)
+            if gui_meta is not None and gui_meta.label is not None:
+                self.form_layout.addRow(gui_meta.label, widget)
+            else:
+                self.form_layout.addRow(widget)
 
-        self.setLayout(self.vlayout)
+        self.setLayout(self.form_layout)
 
         if gui_meta is not None and gui_meta.tooltip is not None:
             self.setToolTip(gui_meta.tooltip)
@@ -501,6 +560,9 @@ class UnionInputWidget[T](QGroupBox, InputWidget[T]):
     ):
         """Initialize a UnionInputWidget."""
         super().__init__(parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred
+        )
 
         self.types = types
 
@@ -518,8 +580,8 @@ class UnionInputWidget[T](QGroupBox, InputWidget[T]):
             self.type_combo.addItem(convert_type_to_string(annotation))
             self.stack.addWidget(create_input_widget(annotation))
         self.type_combo.currentIndexChanged.connect(self.stack.setCurrentIndex)
-        self.stack.currentChanged.connect(self.stack.adjustSize)
-        self.stack.currentChanged.connect(self.adjustSize)
+        # self.stack.currentChanged.connect(self.stack.adjustSize)
+        # self.stack.currentChanged.connect(self.adjustSize)
         self.type_combo.setCurrentIndex(0)
         self.grid_layout.addWidget(self.stack, 1, 0, 1, 2)
 
@@ -560,6 +622,9 @@ class OptionalInputWidget[T](QGroupBox, InputWidget[T]):
     ):
         """Initialize an OptionalInputWidget."""
         super().__init__(parent=parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred
+        )
         self.item_type = type_
 
         self.vlayout = QVBoxLayout()
@@ -810,7 +875,7 @@ if __name__ == '__main__':
                 self.widget.deleteLater()
             self.widget = new_widget
             self.vlayout.addWidget(new_widget)
-            self.adjustSize()
+            # self.adjustSize()
 
         def display_value(self):
             if self.widget is not None:

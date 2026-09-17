@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QPushButton,
+    QSizePolicy,
     QToolButton,
     QWidget,
 )
@@ -73,6 +74,7 @@ class FileSelectWidget(QWidget):
         self.retranslate_ui()
 
         QMetaObject.connectSlotsByName(self)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     @Slot()
     def choose_file(self):
