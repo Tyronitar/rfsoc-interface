@@ -85,21 +85,21 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        hp_filter,
-        lp_filter,
-        clean_tod,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
         # compute_psd,
         # psd_plotter,
-        bin_tod_to_map,
-        # plotter,
+        # bin_tod_to_map,
+        plotter,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
-        analyze_beammap,
-        plot_beammap,
+        # analyze_beammap,
+        # plot_beammap,
     ])
 
-    date = '20260617'
+    date = '20260820'
     setnum = 1005
 
 
@@ -107,9 +107,10 @@ if __name__ == '__main__':
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
     pdata = ProcessedData.load(date, setnum)
-    plot_beammap.apply(pdata)
-    # pipeline.run(pdata)
     # pdb.set_trace()
+    # plot_beammap.apply(pdata)
+    pipeline.run(pdata)
+    pdb.set_trace()
 
     # hits_map = pdata['video/hits_map'][:]
     # sum_map = pdata['video/sum_map'][:]

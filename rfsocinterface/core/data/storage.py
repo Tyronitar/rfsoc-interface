@@ -17,6 +17,7 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 from kidpy3.data_handler import RawDataFile
+from packaging.version import Version
 
 from rfsocinterface import __version__ as VERSION
 from rfsocinterface.core.data.utils import (
@@ -1020,6 +1021,34 @@ class ProcessedData(DataStorage):
     #
     # Useful getter methods
     #
+    def get_history_step(self, step: int) -> h5py.Group:
+        """Get the desired step from the processing history."""
+        res = search(self['processing_history'], f'{get_step_group_name(step, '')}')
+        if res is not None:
+            return res[1]
+        raise IndexError(
+            f'ProcessedData {self.file_stub} has no processing step with index {step}'
+        )
+
+    def get_version(self) -> Version:
+        """Return the rfsocinterface version that this data was processed in."""
+        step0 = self.get_history_step(0)
+        version_string = step0.attrs['rfsocinterface_version']
+        return Version(version_string)
+
+    def find_most_recent_history_step(self, pattern: str) -> tuple[str, h5py.Group]:
+        """Get the most recent processing step matching the search pattern."""
+        res = search_regex(
+            self['processing_history'],
+            pattern,
+        )
+        if len(res) > 0:
+            return res[-1]
+        raise KeyError(
+            f'ProcessedData {self.file_stub} has no processing steps matching the '
+            f'search pattern: {pattern}'
+        )
+
     def list_history(self) -> list[dict]:
         """Return a list of each processing step."""
         if not self.has('processing_history'):

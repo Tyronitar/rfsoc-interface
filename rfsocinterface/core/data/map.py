@@ -15,6 +15,7 @@ import numpy as np
 import numpy.typing as npt
 from matplotlib import animation
 from matplotlib.figure import Figure
+from packaging.version import Version
 from scipy import signal
 from scipy.ndimage import gaussian_filter as apply_gaussian_blur
 from scipy.spatial import Delaunay
@@ -49,6 +50,8 @@ from rfsocinterface.core.utils import (
 )
 
 _logger = logging.getLogger(__name__)
+MAP_CHANGE_VERSION = Version('1.1.0')
+BIN_TOD_INTO_MAP_CHANGE_VERSION = Version('4.0.0')
 
 
 def plot_map(
@@ -665,11 +668,24 @@ def get_required_map_datasets(
         IndexError: If any selected channels are out of the valid bounds i.e.
             [-n_chan, n_chan - 1].
     """
-    all_channels = tuple(range(pdata.n_chan))
-    valid_channels = range(-pdata.n_chan, pdata.n_chan)
-    # TODO: Add check for rfsocinterface version for backwards compatibility. Old maps
+    # Check rfsocinterface version for backwards compatibility. Old maps
     # were not separated by channel, so will always need to return map_val and total_map
     # and have a warning.
+    _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+    bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+    if (
+        pdata.get_version() < MAP_CHANGE_VERSION
+        or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+    ):
+        _logger.warning(
+            (f'{caller_name}: ' if caller_name else '')
+            + f'ProcessedData {pdata.file_stub} was created prior to map data changes. '
+            'Using `map_val` and `total_map`'
+        )
+        return {'/map/map_val', '/map/total_map'}
+
+    all_channels = tuple(range(pdata.n_chan))
+    valid_channels = range(-pdata.n_chan, pdata.n_chan)
 
     if channel is None:
         # Use all channels
