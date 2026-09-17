@@ -167,6 +167,15 @@ class AnalyzeBeamMap(DataRoutine):
         za = pdata['map/map_za'][:][:, np.newaxis]
         map_val = pdata['map/map_val'][:]
 
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+        old_format = 'map/channel_map_val' not in pdata and (
+            pdata.get_version() < MAP_CHANGE_VERSION
+            or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+        if old_format:
+            map_val = np.transpose(map_val, (0, 2, 1))
+
         az_center = pdata['beammap/az_center']
         za_center = pdata['beammap/za_center']
         amplitude = pdata['beammap/amplitude']
