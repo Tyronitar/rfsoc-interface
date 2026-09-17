@@ -16,11 +16,11 @@ if __name__ == '__main__':
     _logger.handlers[0].setLevel(logging.INFO)
 
     lp_filter_freq = 15
-    hp_filter_freq = 0.2
+    hp_filter_freq = 0.03
 
     noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
-    ds_factor = 12
+    ds_factor = 16
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
@@ -56,12 +56,12 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=False,
+        beam_map_mode=True,
         dataset=dataset,
         az_trim=0,
         za_trim=0,
         dpix=0.03,
-        r0=0,
+        r0=0.15,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
     bin_tod_to_video = BinTODIntoVideo(
@@ -85,21 +85,21 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
+        hp_filter,
+        lp_filter,
+        clean_tod,
         # compute_psd,
         # psd_plotter,
-        # bin_tod_to_map,
-        plotter,
+        bin_tod_to_map,
+        # plotter,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
-        # analyze_beammap,
-        # plot_beammap,
+        analyze_beammap,
+        plot_beammap,
     ])
 
-    date = '20260917'
+    date = '20260617'
     setnum = 1005
 
 
@@ -107,7 +107,8 @@ if __name__ == '__main__':
     # pdata = pipeline.from_consolidated_data(date, setnum)
 
     pdata = ProcessedData.load(date, setnum)
-    pipeline.run(pdata)
+    plot_beammap.apply(pdata)
+    # pipeline.run(pdata)
     # pdb.set_trace()
 
     # hits_map = pdata['video/hits_map'][:]

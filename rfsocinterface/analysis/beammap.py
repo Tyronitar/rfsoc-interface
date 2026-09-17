@@ -23,6 +23,7 @@ from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     DEFAULT_DATA_DIRECTORY,
     OFF_RESONANCE_COLOR,
+    elide_text,
     get_beammap_pdf_template,
     get_detector_pos_pdf_template,
 )
@@ -394,17 +395,17 @@ class PlotBeamMap(DataRoutine):
         ncols = self.params['ncols']
         page_size = nrows * ncols
         dpi = self.params['dpi']
-        fom_cutoff = self.params['fom_cutoff']
+        # fom_cutoff = self.params['fom_cutoff']
         high_snr_percentile = self.params['high_snr_percentile']
 
-        fom = np.divide(
-            amplitude, chisq, out=np.zeros_like(amplitude), where=chisq != 0
-        )
+        # fom = np.divide(
+        #     amplitude, chisq, out=np.zeros_like(amplitude), where=chisq != 0
+        # )
         high_snr_ind = np.argwhere(
-            np.bitwise_and(
+            # np.bitwise_and(
                 amplitude > np.percentile(amplitude, high_snr_percentile),
-                fom > fom_cutoff,
-            )
+                # fom > fom_cutoff,
+            # )
         ).flatten()
 
         # Create scatter plot of beam centers
@@ -429,7 +430,7 @@ class PlotBeamMap(DataRoutine):
             if i_loop == tones_to_plot.size // 2:
                 _logger.info(f'{self.name}: Halfway done creating grid pages...')
             ax = axes.flatten()[i_subplot - 1]
-            plot_data = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
+            plot_data = map_val[i_tone_absolute]
             ax.imshow(
                 plot_data,
                 extent=extent,
@@ -479,7 +480,8 @@ class PlotBeamMap(DataRoutine):
 
             fig, ax = plt.subplots()
 
-            data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
+            # data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
+            data_to_plot = map_val[i_tone_absolute]
             data_to_plot -= np.nanmedian(data_to_plot)
             data_to_plot /= np.nanmax(data_to_plot)
             # data_to_plot = 10 * np.log10(np.abs(data_to_plot))
@@ -537,11 +539,18 @@ class PlotBeamMap(DataRoutine):
                 ax.add_artist(t)
 
             i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
-            tile_name = pdata.get_tile_name(i_chan)
-            title = (
-                f'{tile_name} - Tone {i_tone_relative} '
-                f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
-            )
+            if pdata.n_chan > 1:
+                # Spefcify the tile name if there are multiple channels
+                tile_name = pdata.get_tile_name(i_chan)
+                title = (
+                    f'{elide_text(tile_name, max_len=30)} - Tone {i_tone_relative}\n'
+                    f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
+                )
+            else:
+                title = (
+                    f'Tone {i_tone_relative} '
+                    f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
+                )
 
             # Indicate in plot title and face color if off-resonance / bad tone
             if chanmask[i_tone_absolute] != 1:
