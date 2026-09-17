@@ -315,7 +315,6 @@ class PlotBeamMap(DataRoutine):
     def __init__(
         self,
         high_snr_percentile: float = 55,
-        fom_cutoff: float = 50,
         nrows: int = 10,
         ncols: int = 10,
         show_all: bool = True,
@@ -328,8 +327,6 @@ class PlotBeamMap(DataRoutine):
         Arguments:
             high_snr_percentile (float, optional): The percentile for determining a high
                 SNR. Defaults to 55.
-            fom_cutoff (float, optional): The minimum FOM value to consider for high
-                SNR. Defaults to 50.
             nrows (int, optional): The number of rows for plots in one page. Defaults to
                 10.
             ncols (int, optional): The number of columns for plots in one page. Defaults
@@ -346,7 +343,6 @@ class PlotBeamMap(DataRoutine):
         """
         super().__init__(
             high_snr_percentile=high_snr_percentile,
-            fom_cutoff=fom_cutoff,
             nrows=nrows,
             ncols=ncols,
             show_all=show_all,
@@ -395,17 +391,10 @@ class PlotBeamMap(DataRoutine):
         ncols = self.params['ncols']
         page_size = nrows * ncols
         dpi = self.params['dpi']
-        # fom_cutoff = self.params['fom_cutoff']
         high_snr_percentile = self.params['high_snr_percentile']
 
-        # fom = np.divide(
-        #     amplitude, chisq, out=np.zeros_like(amplitude), where=chisq != 0
-        # )
         high_snr_ind = np.argwhere(
-            # np.bitwise_and(
             amplitude > np.percentile(amplitude, high_snr_percentile),
-            # fom > fom_cutoff,
-            # )
         ).flatten()
 
         # Create scatter plot of beam centers
