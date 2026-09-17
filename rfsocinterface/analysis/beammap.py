@@ -10,9 +10,12 @@ import numpy.typing as npt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from packaging.version import Version
 from scipy.optimize import curve_fit
 
 from rfsocinterface.core.data import (
+    BIN_TOD_INTO_MAP_CHANGE_VERSION,
+    MAP_CHANGE_VERSION,
     DataRoutine,
     ProcessedData,
     RoutineResult,
@@ -372,6 +375,13 @@ class PlotBeamMap(DataRoutine):
         chanmask = pdata.chanmask
         detector_f = pdata.detector_f()
 
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+        old_format = 'map/channel_map_val' not in pdata and (
+            pdata.get_version() < MAP_CHANGE_VERSION
+            or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+
         # Which tones to use
         tones_to_plot = (
             np.arange(pdata.total_tones, dtype=int)
@@ -420,6 +430,8 @@ class PlotBeamMap(DataRoutine):
                 _logger.info(f'{self.name}: Halfway done creating grid pages...')
             ax = axes.flatten()[i_subplot - 1]
             plot_data = map_val[i_tone_absolute]
+            if old_format:
+                plot_data = np.transpose(plot_data)
             ax.imshow(
                 plot_data,
                 extent=extent,
@@ -471,6 +483,8 @@ class PlotBeamMap(DataRoutine):
 
             # data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
             data_to_plot = map_val[i_tone_absolute]
+            if old_format:
+                data_to_plot = np.transpose(data_to_plot)
             data_to_plot -= np.nanmedian(data_to_plot)
             data_to_plot /= np.nanmax(data_to_plot)
             # data_to_plot = 10 * np.log10(np.abs(data_to_plot))

@@ -673,7 +673,7 @@ def get_required_map_datasets(
     # and have a warning.
     _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
     bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
-    if (
+    if 'map/channel_map_val' not in pdata and (
         pdata.get_version() < MAP_CHANGE_VERSION
         or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
     ):
@@ -902,7 +902,8 @@ class PlotMap(DataRoutine):
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         """Get the combined map of flagged pixels."""
         channel = self.params['channel']
-        total_map_shape = (pdata['map/map_za'].size, pdata['map/map_az'].size)
+        # total_map_shape = (pdata['map/map_za'].size, pdata['map/map_az'].size)
+        total_map_shape = pdata['map/total_map'].shape
         map_val_shape = (N_POLARIZATION, *total_map_shape)
         if '/map/map_val' in inputs:
             # Using all maps
@@ -1032,6 +1033,13 @@ class PlotMap(DataRoutine):
         dpix = pdata['map'].attrs['dpix']
         units = pdata['map'].attrs.get('units', 'mK')
 
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+        old_format = 'map/channel_map_val' not in pdata and (
+            pdata.get_version() < MAP_CHANGE_VERSION
+            or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+
         map_az = pdata['map/map_az']
         map_za = pdata['map/map_za']
         extent = get_extent(map_az, map_za, dpix)
@@ -1085,7 +1093,7 @@ class PlotMap(DataRoutine):
 
         # Vertical polarization
         im = axes[0].imshow(
-            map_val[0],
+            np.transpose(map_val[0]) if old_format else map_val[0],
             extent=extent,
             aspect='equal',
             vmin=vmin,
@@ -1102,7 +1110,7 @@ class PlotMap(DataRoutine):
 
         # Horizontal polarization
         im = axes[1].imshow(
-            map_val[1],
+            np.transpose(map_val[1]) if old_format else map_val[1],
             extent=extent,
             aspect='equal',
             vmin=vmin,
@@ -1119,7 +1127,7 @@ class PlotMap(DataRoutine):
 
         # Total signal
         im = axes[2].imshow(
-            total_map,
+            np.transpose(total_map) if old_format else total_map,
             extent=extent,
             aspect='equal',
             vmin=vmin,
