@@ -403,8 +403,8 @@ class PlotBeamMap(DataRoutine):
         # )
         high_snr_ind = np.argwhere(
             # np.bitwise_and(
-                amplitude > np.percentile(amplitude, high_snr_percentile),
-                # fom > fom_cutoff,
+            amplitude > np.percentile(amplitude, high_snr_percentile),
+            # fom > fom_cutoff,
             # )
         ).flatten()
 

@@ -1242,6 +1242,7 @@ def add_colorbar(
     cb.update_ticks()
     return cb
 
+
 def elide_text(text: str, max_len=30) -> str:
     """Truncates text and adds ellipses if it exceeds max_len."""
     return text[:max_len] + '...' if len(text) > max_len else text
