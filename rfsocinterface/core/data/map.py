@@ -1142,7 +1142,7 @@ class PlotMap(DataRoutine):
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        add_colorbar(fig, axes[4], im, 'Blurred\nOptical Signal (rgb)')
+        add_colorbar(fig, axes[4], im, 'Dergaded\nOptical Signal (rgb)')
 
         axes[-1].set_xlabel('Azimuth (degrees)')
         fig.tight_layout()

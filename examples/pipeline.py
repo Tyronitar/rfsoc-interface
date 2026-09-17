@@ -16,7 +16,8 @@ if __name__ == '__main__':
     _logger.handlers[0].setLevel(logging.INFO)
 
     lp_filter_freq = 15
-    hp_filter_freq = 0.2
+    hp_filter_freq = 0.07
+
     noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
     ds_factor = 12
@@ -57,9 +58,9 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filter_freq,
         beam_map_mode=False,
         dataset=dataset,
-        az_trim=3,
+        az_trim=0,
         za_trim=0,
-        dpix=0.04,
+        dpix=0.03,
         r0=0,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
@@ -98,8 +99,8 @@ if __name__ == '__main__':
         # plot_beammap,
     ])
 
-    date = '20260814'
-    setnum = 1002
+    date = '20260917'
+    setnum = 1004
 
 
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
