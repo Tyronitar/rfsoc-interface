@@ -64,6 +64,12 @@ def sleep_and_raise(n: int):
     time.sleep(n)
     raise RuntimeError('expected raise')
 
+class ExEnum(Enum):
+    """Example enum class for testing."""
+    ONE = 1
+    TWO = 2
+    THREE = 3
+
 
 # ruff: disable[ARG002]
 

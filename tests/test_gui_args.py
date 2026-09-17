@@ -4,7 +4,7 @@
 import inspect
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_origin
 
 import pytest
 from PySide6.QtWidgets import (
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from rfsocinterface.core.data.routines import get_gui_args
-from rfsocinterface.core.utils import GuiArg
+from rfsocinterface.core.utils import GuiArg, GuiMeta, NONE_TYPE
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 from rfsocinterface.gui.widgets.utils import gui_arg_to_widget
 from tests.utils import (
@@ -29,6 +29,24 @@ from tests.utils import (
     CreateValueRoutineWithOptionalArgument,
     ReduceRoutine,
     ReductionOperation,
+    ExEnum,
+)
+from rfsocinterface.gui.widgets.funtion_inputs import (
+    InputWidget,
+    IntInputWidget,
+    FloatInputWidget,
+    BoolInputWidget,
+    StringInputWidget,
+    FileInputWidget,
+    NoneInputWidget,
+    EnumInputWidget,
+    MultiEnumInputWidget,
+    SequenceInputRow,
+    SequenceInputWidget,
+    TupleInputWidget,
+    UnionInputWidget,
+    OptionalInputWidget,
+    create_input_widget,
 )
 
 
@@ -117,30 +135,41 @@ def test_arg_extraction():
 
 
 @pytest.mark.parametrize(
-    'name, annotation, widget_type',
+    'annotation, widget_type',
     [
-        ('bool', bool, QCheckBox),
-        ('in', int, QSpinBox),
-        ('float', float, QDoubleSpinBox),
-        ('Path', Path, FileSelectWidget),
-        ('str', str, QLineEdit),
-        ('tuple', tuple, QLineEdit),
-        ('list', list, QLineEdit),
-        ('enum', Enum, QComboBox),
+        (NONE_TYPE, NoneInputWidget),
+        (int, IntInputWidget),
+        (float, FloatInputWidget),
+        (bool, BoolInputWidget),
+        (str, StringInputWidget),
+        (Path, FileInputWidget),
+        (ExEnum, EnumInputWidget),
+        (tuple[int, int], TupleInputWidget),
+        (tuple[int, ...], SequenceInputWidget),
+        (list[int], SequenceInputWidget),
+        (int | float, UnionInputWidget),
+        (int | float | None, UnionInputWidget),
+        (int | None, OptionalInputWidget),
     ],
 )
-def test_arg_to_widget(qtbot, name: str, annotation: Any, widget_type: type[QWidget]):
-    """Test converting GuiArgs to widgets."""
-    arg = GuiArg(name=name, annotation=annotation)
-    label, widget = gui_arg_to_widget(arg)
+def test_annotation_to_widget(qtbot, annotation: Any, widget_type: type[InputWidget]):
+    """Test converting type annotations to widgets."""
+    widget = create_input_widget(annotation)
     qtbot.addWidget(widget)
-    if widget_type == QCheckBox:
-        assert label is None
-    else:
-        qtbot.addWidget(label)
-        assert isinstance(label, QLabel)
-        assert label.text() == f'{arg.name}:'
     assert isinstance(widget, widget_type)
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+    if isinstance(widget, TupleInputWidget):
+        assert widget.types == args
+    elif isinstance(widget, SequenceInputWidget):
+        assert widget.container_type == origin
+        assert widget.item_type == args[0]
+    elif isinstance(widget, UnionInputWidget):
+        assert widget.types == args
+    elif isinstance(widget, OptionalInputWidget):
+        assert widget.item_type == args[0]
+    elif isinstance(widget, EnumInputWidget):
+        assert widget.enum_type == annotation
 
 
 def test_arg_to_widget_with_metadata(qtbot):
