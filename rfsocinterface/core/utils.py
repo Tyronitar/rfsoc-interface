@@ -24,9 +24,6 @@ from typing import (
     Annotated,
     Any,
     Literal,
-    ParamSpec,
-    TypeVar,
-    TypeVarTuple,
     Union,
     get_args,
     get_origin,
@@ -67,10 +64,11 @@ MAC_REGEX = r'^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$'
 GLOBAL_SETTINGS_PATH = Path('/etc/rfsocinterface/settings.json')
 USER_SETTINGS_PATH = Path('~/.rfsocinterface/settings.json')
 
-PathLike = TypeVar('PathLike', str, Path, bytes, os.PathLike)
-# Number = TypeVar('Number', int, float, complex, bytes)
-FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
-H5pyObject = TypeVar('H5pyObject', h5py.Dataset, h5py.Group)
+# Generic types for type hints
+type PathLike = str | Path | bytes | os.PathLike
+type FileType = Literal['lo', 'tonelist', 'tod', 'azel', 'attenuator']
+type H5pyObject = h5py.Dataset | h5py.Group
+type TypeAnnotation = Any
 
 NONE_TYPE = type(None)
 MAX_INT = np.iinfo(np.int32).max
@@ -82,15 +80,6 @@ MIN_FLOAT = np.finfo(np.float64).min
 GAUSSIAN_SIGMA = (0.5, 0.33)
 BUTTER_ORDER = 2
 
-# Generic types for type hints
-T = TypeVar('T')
-R = TypeVar('R')
-E = TypeVar('E', bound=Enum)
-Ts = TypeVarTuple('Ts')
-type TypeAnnotation = Any
-
-P = ParamSpec('P')
-Q = ParamSpec('Q')
 
 PERMISSIONS_USR_RW = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH
 PERMISSIONS_ALL_RW = PERMISSIONS_USR_RW | stat.S_IWGRP | stat.S_IWOTH
@@ -180,7 +169,7 @@ def convert_path[PathLike: (str, Path, bytes, os.PathLike)](
     raise ValueError(f'Argument must be PathLike or None, got {type(path)}')
 
 
-def ensure_path(
+def ensure_path[**P, **Q, R](
     *targets: int | str,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Function decorator factory for converting PathLike's to Path's.

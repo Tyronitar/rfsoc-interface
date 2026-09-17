@@ -24,7 +24,6 @@ from rfsocinterface.core.data import (
 from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.utils import (
     PERMISSIONS_ALL_FULL,
-    P,
     PathLike,
     TabName,
     get_filename,
@@ -46,7 +45,7 @@ _camera_logger = logging.getLogger('rfsocinterface.cameraControl')
 enum_choices = ['hello', 'world']
 
 
-class DitherPatternWidget(FunctionWidget):
+class DitherPatternWidget[**P](FunctionWidget):
     """FunctionWidget representing a telescope dither pattern."""
 
     def __init__(

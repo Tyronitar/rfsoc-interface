@@ -17,7 +17,6 @@ from typing import (
     Any,
     ClassVar,
     Literal,
-    TypeVar,
     get_args,
     get_origin,
     get_type_hints,
@@ -57,9 +56,8 @@ __all__ = (
 
 _logger = logging.getLogger(__name__)
 
-ROUTINE_REGISTRY: dict[str, DataRoutineType] = {}
-ROUTINE_GUI_ARGS: dict[DataRoutineType, tuple[GuiArg]] = {}
-DataRoutineType = TypeVar('DataRoutineType', bound='DataRoutine')
+ROUTINE_REGISTRY: dict[str, type[DataRoutine]] = {}
+ROUTINE_GUI_ARGS: dict[type[DataRoutine], tuple[GuiArg]] = {}
 
 
 class ProcessingStage:

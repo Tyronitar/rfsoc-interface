@@ -62,7 +62,6 @@ from rfsocinterface.core.utils import (
     OFF_RESONANCE_COLOR,
     ON_RESONANCE_COLOR,
     ChanmaskValue,
-    P,
     convert_path,
     ensure_path,
     reset_axes,
@@ -323,7 +322,7 @@ class ResonatorDialog(QDialog, Ui_ResonatorDialog):
 
         self.adjustSize()
 
-    def replot_figure(
+    def replot_figure[**P](
         self,
         plotting_function: Callable[Concatenate[Figure, P], None],
         *args: P.args,
@@ -970,7 +969,7 @@ class BlindSweepDialog(QDialog):
         self.figure_canvas.mpl_connect('motion_notify_event', self.mouse_move)
         self.figure_canvas.mpl_connect('pick_event', self.pick_line)
 
-    def replot_figure(
+    def replot_figure[**P](
         self,
         plotting_function: Callable[Concatenate[Figure, P], None],
         *args: P.args,

@@ -16,7 +16,7 @@ from serial import SerialException
 from rfsocinterface.core.params import RFSoCParameters
 from rfsocinterface.core.settings import SettingsError
 from rfsocinterface.core.sweeps import LoSweepData
-from rfsocinterface.core.utils import P, PathLike, R, convert_path, ensure_path
+from rfsocinterface.core.utils import PathLike, convert_path, ensure_path
 
 _logger = logging.getLogger(__name__)
 
@@ -503,7 +503,7 @@ class RFSoCWrapper:
             rfchans.append(rfchan)
         return rfchans
 
-    def capture(
+    def capture[**P, R](
         self,
         channels: list[int],
         file: PathLike,

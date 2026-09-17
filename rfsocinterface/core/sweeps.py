@@ -9,7 +9,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from itertools import pairwise
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypeVar
+from typing import TYPE_CHECKING, Literal
 
 import h5py
 import matplotlib.pyplot as plt
@@ -58,8 +58,6 @@ POWER_SWEEP_FRACTIONAL_FREQ_SHIFT = 1e-5
 POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB = 0
 
 NEW_LO_SWEEP_FORMAT_DATE = '20260612'  # For backwards compatibility
-
-CompositeSweepDataType = TypeVar('CompositeSweepDataType', bound='CompositeSweepData')
 
 
 def simple_derivative_fits(

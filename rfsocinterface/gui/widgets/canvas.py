@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
 from rfsocinterface.core.utils import (
     EDITED_RESONANCE_COLOR,
     SELECTED_RESONANCE_COLOR,
-    P,
 )
 from rfsocinterface.gui.blit_manager import BlitManager
 
@@ -163,7 +162,7 @@ class ScrollableCanvas(QScrollArea):
             return True
         return super().eventFilter(obj, event)
 
-    def replot_figure(
+    def replot_figure[**P](
         self,
         plotting_function: Callable[Concatenate[Figure, P], None],
         *args: P.args,
@@ -430,7 +429,7 @@ class ToolbarCanvas(QWidget):
         self.nav = self.manager.toolbar
         layout.replaceWidget(old_nav, self.nav)
 
-    def replot_figure(
+    def replot_figure[**P](
         self,
         plotting_function: Callable[Concatenate[Figure, P], None],
         *args: P.args,
@@ -486,7 +485,7 @@ class ResonatorCanvas(QWidget):
         """Update the figure of this widget."""
         self.update()
 
-    def replot_figure(
+    def replot_figure[**P](
         self,
         plotting_function: Callable[Concatenate[Figure, P], None],
         *args: P.args,

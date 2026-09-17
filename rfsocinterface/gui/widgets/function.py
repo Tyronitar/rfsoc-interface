@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rfsocinterface.core.utils import P, Q, R
 from rfsocinterface.gui.widgets.drag_and_drop import (
     ClickableDragItem,
     ClickableDragWidget,
@@ -23,7 +22,7 @@ from rfsocinterface.gui.widgets.drag_and_drop import (
 from rfsocinterface.gui.widgets.utils import ArgumentType
 
 
-class FunctionWidget(QWidget):
+class FunctionWidget[**P, **Q, R](QWidget):
     """Class for generalizing a function and its arguments for a Qt GUI."""
 
     def __init__(
@@ -149,7 +148,7 @@ class FunctionWidget(QWidget):
         return self.fn(*values)
 
 
-class FunctionDragItem(ClickableDragItem):
+class FunctionDragItem[**P, **Q, R](ClickableDragItem):
     """Drag and drop item representing a function."""
 
     def __init__(
@@ -217,7 +216,7 @@ class DragFunctionWidget(QWidget):
         pass
 
     @overload
-    def add_item(
+    def add_item[**Q](
         self,
         label: str,
         fn: Callable,
@@ -244,7 +243,7 @@ class DragFunctionWidget(QWidget):
         pass
 
     @overload
-    def insert_item(
+    def insert_item[**Q](
         self,
         index: int,
         label: str,
@@ -351,7 +350,7 @@ class MultiSectionDragFunctionWidget(QWidget):
         pass
 
     @overload
-    def add_item(
+    def add_item[**Q](
         self,
         i_section: int,
         label: str,
