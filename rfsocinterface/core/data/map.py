@@ -1030,6 +1030,10 @@ class PlotMap(DataRoutine):
         this_xlim = min(map_az), max(map_az)
         this_ylim = max(map_za), min(map_za)
         max_abs = np.max(np.abs(map_good_cov)) * max_abs_threshold
+        max_abs = 1.5e-7
+        vmin = -max_abs
+        vmax = max_abs
+
         med_netd_1 = 1.0 / np.sqrt(
             np.sum(1.0 / netd_1[valid_netd_1] ** 2) / np.size(valid_netd_1)
         )
@@ -1068,8 +1072,8 @@ class PlotMap(DataRoutine):
             map_val[0],
             extent=extent,
             aspect='equal',
-            vmin=-max_abs,
-            vmax=max_abs,
+            vmin=vmin,
+            vmax=vmax,
             cmap='Blues_r',
         )
         add_colorbar(fig, axes[0], im, f'V-Pol Signal ({units})')
@@ -1085,8 +1089,8 @@ class PlotMap(DataRoutine):
             map_val[1],
             extent=extent,
             aspect='equal',
-            vmin=-max_abs,
-            vmax=max_abs,
+            vmin=vmin,
+            vmax=vmax,
             cmap='Reds_r',
         )
         add_colorbar(fig, axes[1], im, f'H-Pol Signal ({units})')
@@ -1102,8 +1106,8 @@ class PlotMap(DataRoutine):
             total_map,
             extent=extent,
             aspect='equal',
-            vmin=-max_abs,
-            vmax=max_abs,
+            vmin=vmin,
+            vmax=vmax,
             cmap='Greys_r',
         )
         add_colorbar(fig, axes[2], im, f'Total Signal ({units})')
@@ -1160,6 +1164,7 @@ class PlotMap(DataRoutine):
                 )
                 self.params['savefile'].touch(PERMISSIONS_ALL_FULL)
             fig.savefig(self.params['savefile'], bbox_inches='tight')
+            fig.savefig(Path(self.params['savefile']).with_suffix('.pdf'), bbox_inches='tight')
         if self.params['show']:
             plt.show()
 
@@ -1233,8 +1238,8 @@ def animate_video(
     # vmax_vpol = np.nanmax(map_val[:, 0])
     im_vpol = axes[0].imshow(
         map_val[0, 0],
-        # vmin=vmin_vpol,
-        # vmax=vmax_vpol,
+        vmin=-1e-7,
+        vmax=1e-7,
         animated=True,
         cmap=cmap_vpol,
         extent=extent,

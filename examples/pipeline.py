@@ -16,7 +16,7 @@ if __name__ == '__main__':
     _logger.handlers[0].setLevel(logging.INFO)
 
     lp_filter_freq = 15
-    hp_filter_freq = 0.07
+    hp_filter_freq = 0.2
 
     noise_removal_lp_filt_freq_offres = 244  # Filter disabled if set to 0
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
@@ -69,7 +69,7 @@ if __name__ == '__main__':
         lp_filter_freq=lp_filter_freq,
         dataset=dataset,
         block_size_s=0.1,
-        dpix=0.08,
+        dpix=0.04,
         az_trim=0,
         za_trim=0,
         # overwrite=False,
@@ -85,12 +85,12 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        hp_filter,
-        lp_filter,
-        clean_tod,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
         # compute_psd,
         # psd_plotter,
-        bin_tod_to_map,
+        # bin_tod_to_map,
         plotter,
         # bin_tod_to_video,
         # animate_video,
@@ -100,14 +100,14 @@ if __name__ == '__main__':
     ])
 
     date = '20260917'
-    setnum = 1004
+    setnum = 1005
 
 
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    pdata = pipeline.from_consolidated_data(date, setnum)
+    # pdata = pipeline.from_consolidated_data(date, setnum)
 
-    # pdata = ProcessedData.load(date, setnum)
-    # pipeline.run(pdata)
+    pdata = ProcessedData.load(date, setnum)
+    pipeline.run(pdata)
     # pdb.set_trace()
 
     # hits_map = pdata['video/hits_map'][:]
