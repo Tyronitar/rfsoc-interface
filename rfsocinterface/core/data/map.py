@@ -1363,7 +1363,7 @@ class BinTODIntoVideo(DataRoutine):
     """
 
     name = 'BinTODIntoVideo'
-    version = '3.0.0'
+    version = '3.1.0'
 
     produces: ClassVar[set] = {
         '/video',
