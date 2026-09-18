@@ -1304,6 +1304,10 @@ def load_mp4_ffmpeg(
             If `None` will attempt to determine the shape with ffprobe. Defaults to
             `None`.
 
+    Returns:
+        npt.NDArray: The full video as a numpy array with shape
+            (n_frames, height, width, 3).
+
     Raises:
         RuntimeError: If no shape was provided and ffprobe was unable to determine the
             shape.
