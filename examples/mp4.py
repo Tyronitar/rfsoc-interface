@@ -1,13 +1,17 @@
 from pathlib import Path
 import timeit
 import subprocess
+import json
+import pdb
 
 import av
 import ffmpeg
 import numpy as np
 import numpy.typing as npt
+import matplotlib.pyplot as plt
 
 from rfsocinterface.core.camera import MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
+from rfsocinterface.core.utils import load_mp4_ffmpeg
 
 
 def read_mp4_to_ndarray_iterative(file: str | Path) -> npt.NDArray:
@@ -44,26 +48,50 @@ def load_mp4_ffmpeg_python(filename):
     video = np.frombuffer(out, np.uint8).reshape([-1, MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3])
     return video
 
-def load_mp4_ffmpeg(filename):
-    cmd = [
-        "ffmpeg",
-        "-i",
-        str(filename),
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "rgb24",  # Pixels format: 3 bytes per pixel (R, G, B)
-        "-",
+# def load_mp4_ffmpeg(filename):
+#     cmd = [
+#         "ffmpeg",
+#         "-i",
+#         str(filename),
+#         "-f",
+#         "rawvideo",
+#         "-pix_fmt",
+#         "rgb24",  # Pixels format: 3 bytes per pixel (R, G, B)
+#         "-",
+#     ]
+
+#     # Run the process and capture stdout
+#     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+#     # Read the entire raw video stream from memory
+#     raw_video, stderr_output = process.communicate()
+#     # video = np.frombuffer(raw_video, dtype=np.uint8)
+#     video = np.frombuffer(raw_video, np.uint8).reshape([-1, MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3])
+#     return video
+
+def get_video_size_ffprobe(video_path):
+    command = [
+        'ffprobe', 
+        '-v', 'error', 
+        '-select_streams', 'v:0', 
+        '-show_entries', 'stream=width,height', 
+        '-of', 'json', 
+        video_path
     ]
-
-    # Run the process and capture stdout
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    # Read the entire raw video stream from memory
-    raw_video, stderr_output = process.communicate()
-    # video = np.frombuffer(raw_video, dtype=np.uint8)
-    video = np.frombuffer(raw_video, np.uint8).reshape([-1, MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3])
-    return video
+    
+    # Run the command and capture standard output via pipe
+    pipe = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    stdout, _ = pipe.communicate()
+    
+    # Parse JSON output
+    data = json.loads(stdout)
+    pdb.set_trace()
+    if 'streams' in data and len(data['streams']) > 0:
+        width = data['streams'][0]['width']
+        height = data['streams'][0]['height']
+        return width, height
+    
+    return None
 
 
 if __name__ == '__main__':
@@ -73,8 +101,8 @@ if __name__ == '__main__':
     n = 3
     # iterative_time = timeit.timeit(lambda: read_mp4_to_ndarray_iterative(fname), number=n)
     # threaded_time = timeit.timeit(lambda: read_mp4_to_ndarray_threaded(fname), number=n)
-    ffmpeg_python_time = timeit.timeit(lambda: load_mp4_ffmpeg_python(fname), number=n)
-    ffmpeg_time = timeit.timeit(lambda: load_mp4_ffmpeg(fname), number=n)
+    # ffmpeg_python_time = timeit.timeit(lambda: load_mp4_ffmpeg_python(fname), number=n)
+    # ffmpeg_time = timeit.timeit(lambda: load_mp4_ffmpeg(fname), number=n)
 
     # print(f'Total time for iterative: {iterative_time:.4f} seconds')
     # print(f'Average time for iterative: {iterative_time / n:.4f} seconds')
@@ -82,10 +110,16 @@ if __name__ == '__main__':
     # print(f'Total time for threaded:  {threaded_time:.4f} seconds')
     # print(f'Average time for threaded:  {threaded_time / n:.4f} seconds')
     # print('\n')
-    print(f'Total time for ffmpeg-python:  {ffmpeg_python_time:.4f} seconds')
-    print(f'Average time for ffmpeg-python:  {ffmpeg_python_time / n:.4f} seconds')
-    print('\n')
-    print(f'Total time for ffmpeg:  {ffmpeg_time:.4f} seconds')
-    print(f'Average time for ffmpeg:  {ffmpeg_time / n:.4f} seconds')
+    # print(f'Total time for ffmpeg-python:  {ffmpeg_python_time:.4f} seconds')
+    # print(f'Average time for ffmpeg-python:  {ffmpeg_python_time / n:.4f} seconds')
+    # print('\n')
+    # print(f'Total time for ffmpeg:  {ffmpeg_time:.4f} seconds')
+    # print(f'Average time for ffmpeg:  {ffmpeg_time / n:.4f} seconds')
+
+    # print(get_video_size_ffprobe(fname))
+    video = load_mp4_ffmpeg(fname)
+    plt.imshow(video[0])
+    plt.show()
+    pdb.set_trace()
 
 
