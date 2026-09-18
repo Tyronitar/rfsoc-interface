@@ -36,6 +36,7 @@ from rfsocinterface.core.data.utils import (
     interpolate_timestamp_streaming,
     rotate_basis,
 )
+from rfsocinterface.core.params import DEFAULT_DFOVERF_PER_MK
 from rfsocinterface.core.sweeps import LoSweepData
 from rfsocinterface.core.utils import (
     DEFAULT_DATA_DIRECTORY,
@@ -1070,7 +1071,13 @@ class ConsolidatedData(DataStorage):
             # tones_table['delta_y'] = np.zeros(n_tones)
             tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
             tones_table['polarization'] = raw_data.detector_pol[:]
-            tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
+            # tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:]
+            raw_dfoverf_per_mK = raw_data.dfoverf_per_mK[:]
+            if np.all(np.abs(raw_dfoverf_per_mK) == 1):  # For backwards compatibility
+                raw_dfoverf_per_mK = (
+                    np.ones(n_tones, dtype=np.float64) * DEFAULT_DFOVERF_PER_MK
+                )
+            tones_table['dfoverf_per_mK'] = raw_dfoverf_per_mK
             chanmask = raw_data.chanmask[:]
             # Flag tones with no polarization
             no_pol = tones_table['polarization'] < 1

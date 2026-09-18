@@ -3,7 +3,7 @@ import logging.config
 
 from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis
 from rfsocinterface.core.data import *
-from rfsocinterface.core.params import RFSoCParameters
+from rfsocinterface.core.params import RFSoCParameters, DEFAULT_DFOVERF_PER_MK
 from rfsocinterface.analysis import *
 import pdb
 import matplotlib.pyplot as plt
@@ -22,8 +22,10 @@ if __name__ == '__main__':
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
     ds_factor = 16
 
-    dataset = 'data_freq'
-    datasets = ['.*/data_freq_diss']
+    # dataset = 'data_freq'
+    # datasets = ['.*/data_freq_diss']
+    dataset = 'data_mK'
+    datasets = ['.*/data_mK']
 
     find_fwhm = CheckFocus(
         'az',
@@ -90,27 +92,37 @@ if __name__ == '__main__':
         clean_tod,
         # compute_psd,
         # psd_plotter,
-        # bin_tod_to_map,
+        bin_tod_to_map,
         # plotter,
-        bin_tod_to_video,
-        animate_video,
+        # bin_tod_to_video,
+        # animate_video,
         # find_fwhm,
-        # analyze_beammap,
-        # plot_beammap,
+        analyze_beammap,
+        plot_beammap,
     ])
 
-    date = '20260917'
-    setnum = 1007
+    date = '20260617'
+    setnum = 1005
 
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    # pdata = pipeline.from_consolidated_data(date, setnum)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, _ = pipeline.from_consolidated_data(date, setnum)
 
+    # cdata = ConsolidatedData.load(date, setnum)
+    # fixed = cdata.dfoverf_per_mK * -1
+    # cdata.set_dfoverf_per_mK(fixed)
+    # pdb.set_trace()
+    # cdata['vdsets/tones']['dfoverf_per_mK'] = DEFAULT_DFOVERF_PER_MK
+    # pdata = cdata.create_processed_data()
+    # cdata.close()
     # pdata = ProcessedData.load(date, setnum)
+    # pdata.dfoverf_per_mK[:] = DEFAULT_DFOVERF_PER_MK
     # pdb.set_trace()
     # plot_beammap.apply(pdata)
     # pipeline.run(pdata)
-    # pdb.set_trace()
+    # plt.plot(pdata.get_data_mK(0)[60])
+    # plt.show()
+    pdb.set_trace()
 
     # hits_map = pdata['video/hits_map'][:]
     # sum_map = pdata['video/sum_map'][:]
