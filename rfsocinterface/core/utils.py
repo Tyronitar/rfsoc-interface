@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import stat
+import subprocess
 import typing
 import warnings
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
@@ -1246,3 +1247,92 @@ def add_colorbar(
 def elide_text(text: str, max_len=30) -> str:
     """Truncates text and adds ellipses if it exceeds max_len."""
     return text[:max_len] + '...' if len(text) > max_len else text
+
+
+def get_video_size_ffprobe(video_path: str | Path) -> tuple[int, int] | None:
+    """Execute ffprobe to determine the dimensions of an mp4 video.
+
+    Arguments:
+        video_path (str | Path): Path to the video file.
+
+    Returns:
+        tuple[int, int] | None: The height and width of the video in pixels. If using
+            ffprobe failed returns `None`.
+
+    """
+    command = [
+        'ffprobe',
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=width,height',
+        '-of',
+        'json',
+        str(video_path),
+    ]
+
+    # Run the command and capture standard output via pipe
+    pipe = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    stdout, _ = pipe.communicate()
+
+    # Parse JSON output
+    data = json.loads(stdout)
+    if 'streams' in data and len(data['streams']) > 0:
+        width = data['streams'][0]['width']
+        height = data['streams'][0]['height']
+        return height, width
+
+    return None
+
+
+def load_mp4_ffmpeg(
+    video_path: str | Path,
+    pixel_format: str = 'rgb24',
+    shape: tuple[int, int] | None = None,
+) -> npt.NDArray:
+    """Execute ffmpeg to load an mp4 video into a numpy array.
+
+    Arguments:
+        video_path (str | Path): Path to the video file.
+        pixel_format (str, optional): The pixel format of the video. Defaults to
+            'rgb24'.
+        shape (tuple[int, int], optional): The height and widht of the output array.
+            If `None` will attempt to determine the shape with ffprobe. Defaults to
+            `None`.
+
+    Returns:
+        npt.NDArray: The full video as a numpy array with shape
+            (n_frames, height, width, 3).
+
+    Raises:
+        RuntimeError: If no shape was provided and ffprobe was unable to determine the
+            shape.
+    """
+    if shape is None:
+        shape = get_video_size_ffprobe(video_path)
+        if shape is None:
+            raise RuntimeError(
+                f'Unable to automatically determine shape of mp4 video "{video_path}"'
+            )
+    cmd = [
+        'ffmpeg',
+        '-i',
+        str(video_path),
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        pixel_format,
+        '-',
+    ]
+
+    # Run the process and capture stdout
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    # Read the entire raw video stream from memory
+    raw_video, _ = process.communicate()
+    # video = np.frombuffer(raw_video, dtype=np.uint8)
+    return np.frombuffer(raw_video, np.uint8).reshape([-1, *shape, 3])

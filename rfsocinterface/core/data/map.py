@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import ClassVar, Literal
 
-import av
 import h5py
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -47,6 +46,7 @@ from rfsocinterface.core.utils import (
     argclosest,
     ensure_path,
     gaussian_filter,
+    load_mp4_ffmpeg,
 )
 
 _logger = logging.getLogger(__name__)
@@ -1363,7 +1363,7 @@ class BinTODIntoVideo(DataRoutine):
     """
 
     name = 'BinTODIntoVideo'
-    version = '3.0.0'
+    version = '3.1.0'
 
     produces: ClassVar[set] = {
         '/video',
@@ -1595,14 +1595,9 @@ class BinTODIntoVideo(DataRoutine):
             optical_image_shape = scaled_optical_image.shape
 
         if 'optical_video_file' in pdata['global_data'].attrs:
-            container = av.open(pdata['global_data'].attrs['optical_video_file'])
-            video = container.streams.video[0]
-            n_frames = video.frames
-            shape = (video.height, video.width, 3, n_frames)
-            full_optical_video = np.zeros(shape, dtype=np.uint8)
+            video_path = pdata['global_data'].attrs['optical_video_file']
             _logger.info(f'{self.name}: Reading optical video from mp4 file...')
-            for i_frame, frame in enumerate(container.decode(video=0)):
-                full_optical_video[..., i_frame] = frame.to_ndarray(format='rgb24')
+            full_optical_video = load_mp4_ffmpeg(video_path).transpose((1, 2, 3, 0))
             _logger.info(f'{self.name}: Finished reading optical video.')
             scaled_optical_image = get_scaled_optical_image(
                 dpix, full_optical_video[..., 0], map_az, map_za
