@@ -324,6 +324,508 @@ class DataStorage:
         """Clean up  the data file."""
         self.close()
 
+    #
+    # Useful Getter Methods
+    #
+    def get_history_step(self, step: int) -> h5py.Group:
+        """Get the desired step from the processing history."""
+        res = search(self['processing_history'], f'{get_step_group_name(step, '')}')
+        if res is not None:
+            return res[1]
+        raise IndexError(
+            f'ProcessedData {self.file_stub} has no processing step with index {step}'
+        )
+
+    def get_version(self) -> Version:
+        """Return the rfsocinterface version that this data was processed in."""
+        step0 = self.get_history_step(0)
+        version_string = step0.attrs['rfsocinterface_version']
+        return Version(version_string)
+
+    def find_most_recent_history_step(self, pattern: str) -> tuple[str, h5py.Group]:
+        """Get the most recent processing step matching the search pattern."""
+        res = search_regex(
+            self['processing_history'],
+            pattern,
+        )
+        if len(res) > 0:
+            return res[-1]
+        raise KeyError(
+            f'ProcessedData {self.file_stub} has no processing steps matching the '
+            f'search pattern: {pattern}'
+        )
+
+    def list_history(self) -> list[dict]:
+        """Return a list of each processing step."""
+        if not self.has('processing_history'):
+            return []
+        hist = self['processing_history']
+        return list(hist.keys())
+
+    def print_history(self, verbose: bool = False):
+        """Print the processing history for this file."""
+        if not self.has('processing_history'):
+            print('No history')  # noqa: T201
+            return
+
+        hist = self.file['processing_history']
+
+        for k in sorted(hist.keys()):
+            step = hist[k]
+            name = step.attrs.get('name', '?')
+            if verbose:
+                print(f'[{k}]:\n{json.dumps(dict(step.attrs), indent=4)}')  # noqa: T201
+            else:
+                params = json.loads(step.attrs.get('params', '{}'))
+
+                param_str = ', '.join(f'{k}={v}' for k, v in params.items())
+                print(f'[{k}] {name}({param_str})')  # noqa: T201
+
+    def channels(self) -> Iterator[h5py.Group]:
+        """Return an iterator over each channel group."""
+        yield from self['channels'].values()
+
+    def get_channel_group(self, i_chan: int) -> h5py.Group:
+        """Return the specified channel group."""
+        return self[f'channels/channel_{i_chan:03d}']
+
+    def get_channel_group_from_tile_name(self, tile_name: str) -> h5py.Group:
+        """Return the specified channel group by tile name."""
+        tile_names = []
+        for channel_group in self['channels'].values():
+            this_tile_name = channel_group.attrs['tile_name']
+            tile_names.append(this_tile_name)
+            if this_tile_name == tile_name:
+                return channel_group
+        msg = (
+            f'Unable to find channel with name "{tile_name}". Tile names found: '
+            f'{tile_names}'
+        )
+        raise KeyError(msg)
+
+    def get_from_channel(self, i_chan: int, obj_name: str) -> H5pyObject:
+        """Return the object from the specified channel group."""
+        return self.get_channel_group(i_chan)[obj_name]
+
+    def get_from_all_channels(self, obj_name: str) -> list[H5pyObject]:
+        """Return a list of `obj_name` from each channel group."""
+        return [channel_group[obj_name] for channel_group in self['channels'].values()]
+
+    def search_in_channel(
+        self, i_chan: int, name: str, full_name: bool = True, exact_match: bool = False
+    ) -> tuple[str, H5pyObject] | None:
+        """Search for the name in the specified channel group."""
+        return search(
+            self.get_channel_group(i_chan),
+            name,
+            full_name=full_name,
+            exact_match=exact_match,
+        )
+
+    def search_in_all_channels(
+        self, name: str, full_name: bool = True, exact_match: bool = False
+    ) -> list[tuple[str, H5pyObject]] | None:
+        """Search for the name in the each channel group."""
+        return [
+            search(channel_group, name, full_name=full_name, exact_match=exact_match)
+            for channel_group in self['channels'].values()
+        ]
+
+    @property
+    def tile_names(self) -> tuple[str]:
+        """The name for each tile."""
+        return tuple(
+            self.get_channel_group(i_chan).attrs['tile_name']
+            for i_chan in range(self.n_chan)
+        )
+
+    def get_tile_name(self, i_chan: int) -> tuple[str]:
+        """Get the tile name of the specifeid channel."""
+        return self.tile_names[i_chan]
+
+    def get_absolute_tone_index(self, i_chan: int, i_tone_relative: int) -> int:
+        """Return the absolute tone index for the tone within the channel."""
+        tone_cutoffs = np.cumsum((0, *self.n_tones))
+        if (
+            i_tone_relative < 0
+            or (tone_cutoffs[i_chan + 1] - tone_cutoffs[i_chan]) <= i_tone_relative
+        ):
+            return -1
+        return int(tone_cutoffs[i_chan] + i_tone_relative)
+
+    def get_absolute_tone_indices(self, i_chan: int) -> npt.NDArray[int]:
+        """Return the absolute tone indices for all tones within the channel."""
+        tone_cutoffs = np.cumsum((0, *self.n_tones))
+        return np.arange(tone_cutoffs[i_chan], tone_cutoffs[i_chan + 1], dtype=int)
+
+    def split_to_relative_tone_indices(
+        self, indices: npt.NDArray[int]
+    ) -> list[list[int]]:
+        """Split a list of absolute tone indices into per-channel relative indices."""
+        bins = [[] for _ in range(self.n_chan)]
+        tone_cutoffs = np.cumsum((0, *self.n_tones))
+        bin_indices = np.digitize(indices, tone_cutoffs) - 1
+        for i, i_bin in enumerate(bin_indices):
+            i_tone_abs = indices[i]
+            i_tone_relative = int(i_tone_abs - tone_cutoffs[i_bin])
+            bins[i_bin].append(i_tone_relative)
+        return bins
+
+    def get_channel_from_tone_index(self, i_tone_absolute: int) -> int:
+        """Return the index of channel that contains the tone."""
+        tone_cutoffs = np.cumsum((0, *self.n_tones)) - 1
+        if i_tone_absolute < 0 or self.total_tones <= i_tone_absolute:
+            return -1
+        return int(np.where(tone_cutoffs <= i_tone_absolute)[0][-1])
+
+    def get_relative_tone_index(self, i_tone_absolute: int) -> tuple[int, int]:
+        """Return the channel and index of the tone within its channel."""
+        tone_cutoffs = np.cumsum((0, *self.n_tones))
+        if i_tone_absolute < 0 or i_tone_absolute >= tone_cutoffs[-1]:
+            return -1, -1
+        diff = np.astype((i_tone_absolute - tone_cutoffs), int)
+        i_tone_relative = np.min(diff[diff >= 0]).item()
+        return np.where(diff == i_tone_relative)[0].item(), i_tone_relative
+
+    def get_n_tones(self, i_chan: int) -> int:
+        """Return n_tones for the specified channel."""
+        return self.get_channel_group(i_chan).attrs['n_tones']
+
+    def get_n_samples(self, i_chan: int) -> int:
+        """The number of samples collected for the specified channel."""
+        return self.get_channel_group(i_chan).attrs['n_samples']
+
+    def get_fs(self, i_chan: int) -> float:
+        """The sampling rate for the specified channel."""
+        return self.get_channel_group(i_chan).attrs['fs']
+
+    def get_chanmask(self, i_chan: int) -> npt.NDArray:
+        """Return the chanmask for the specified channel."""
+        return self.get_from_channel(i_chan, 'tones')['chanmask']
+
+    def get_onres_ind(self, i_chan: int) -> npt.NDArray:
+        """Return on-resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.ON_RESONANCE
+        ).flatten()
+
+    def get_offres_ind(self, i_chan: int) -> npt.NDArray:
+        """Return off-resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.OFF_RESONANCE
+        ).flatten()
+
+    def get_bad_ind(self, i_chan: int) -> npt.NDArray:
+        """Return bad resonance indices for the specified channel."""
+        return np.argwhere(self.get_chanmask(i_chan) < 0).flatten()
+
+    def get_collided_ind(self, i_chan: int) -> npt.NDArray:
+        """Return collided resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.COLLIDED
+        ).flatten()
+
+    def get_double_ind(self, i_chan: int) -> npt.NDArray:
+        """Return double resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.DOUBLE_RESONANCE
+        ).flatten()
+
+    def get_low_response_ind(self, i_chan: int) -> npt.NDArray:
+        """Return collided resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.LOW_RESPONSE
+        ).flatten()
+
+    def get_misc_bad_ind(self, i_chan: int) -> npt.NDArray:
+        """Return miscellaneous bad resonance indices for the specified channel."""
+        return np.argwhere(
+            self.get_chanmask(i_chan) == ChanmaskValue.MISC_BAD
+        ).flatten()
+
+    #
+    # Useful properties
+    #
+    @property
+    def n_chan(self) -> int:
+        """The nmuber of channels."""
+        return self['channels'].attrs['n_channels']
+
+    @property
+    def n_samples(self) -> tuple[int, ...]:
+        """The nmuber of samples collected for each channel."""
+        return self['global_data'].attrs['n_samples']
+
+    @property
+    def n_tones(self) -> tuple[int, ...]:
+        """The nmuber of tones for each channel."""
+        return self['global_data'].attrs['n_tones']
+
+    @property
+    def total_tones(self) -> int:
+        """The total nmuber of tones."""
+        return self['global_data'].attrs['total_tones']
+
+    @property
+    def fs(self) -> tuple[float, ...]:
+        """Sampling rate for each channel."""
+        return tuple(self.get_fs(i_chan) for i_chan in range(self.n_chan))
+
+    @property
+    def virtual_datasets(self) -> h5py.Group:
+        """The virtual dataset group in the file."""
+        return self['vdsets']
+
+    # Global data
+    @property
+    def optical_image(self) -> h5py.Dataset:
+        """The optical image."""
+        return self['global_data/optical_image']
+
+    @property
+    def optical_visibility(self) -> h5py.Dataset:
+        """The optical visibility at the time of data capture."""
+        return self['global_data/optical_visibility']
+
+    #
+    # Time-ordered data
+    #
+    def get_timestamp(self, i_chan: int) -> h5py.Dataset:
+        """Return the data timestamps for the specified channel."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/timestamp')
+
+    def get_data_IQ(self, i_chan: int) -> h5py.Dataset:
+        """Return the data for the specified channel in ADC units."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/data_IQ')
+
+    def get_detector_az(self, i_chan: int) -> h5py.Dataset:
+        """Return the azimuthal angle of each detector at each timestamp."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+
+    def get_detector_za(self, i_chan: int) -> h5py.Dataset:
+        """Return the zenith angle of each detector at each timestamp."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+
+    #
+    # Tone/detector properties
+    #
+    @property
+    def tones_table(self) -> h5py.Dataset:
+        """The table containing tone-specific values.
+
+        Contains the keys:
+            baseband_freq: The frequency of the tone relative to the baseband.
+            power: The relative power of this tone.
+            delta_x: The x position relative to the center of the focal plane.
+            delta_y: The y position relative to the center of the focal plane.
+            beam_amplitude: The beam amplitude for this resonator.
+            polarization: The polarization for this resonator.
+            dfoverf_per_mK: The change in df/f per mK for this tone.
+            chanmask: Mask value indicating if this tone is on-resonance (1),
+                off-resonance (0), or flagged as bad (-1).
+        """
+        return self['vdsets/tones']
+
+    def _set_table_field(
+        self, table_name: str, field_name: str, new_values: npt.NDArray
+    ):
+        """Utility function for setting table fields.
+
+        Setting values through virtual datasets doesn't work for tables, so this is the
+        work around.
+        """
+        i_tone = 0
+        for i_chan in range(self.n_chan):
+            channel_group = self.get_channel_group(i_chan)
+            n_tones = channel_group.attrs['n_tones']
+            channel_group[table_name][field_name] = new_values[
+                i_tone : i_tone + n_tones
+            ]
+            i_tone += n_tones
+
+    @property
+    def tone_counts(self) -> npt.NDArray:
+        """The number of tones for each channel."""
+        counts = [self.get_n_tones(i_chan) for i_chan in range(self.n_chan)]
+        return np.array(counts)
+
+    def get_channel_index_from_tone_index(self, tone_index: int) -> int:
+        """Get which channel `tone_index` is a part of."""
+        cumulative_counts = np.cumsum(self.tone_counts)
+        return np.searchsorted(cumulative_counts, tone_index, side='right')
+
+    @property
+    def baseband_freqs(self) -> npt.NDArray:
+        """The frequencies relative to baseband."""
+        return self.tones_table['baseband_freq']
+
+    def get_baseband_freqs(self, i_chan: int) -> npt.NDArray:
+        """Return the baseband frequencies for the specifeid channel."""
+        return self.baseband_freqs[self.get_absolute_tone_indices(i_chan)]
+
+    def set_baseband_freqs(self, new_freqs: npt.NDArray):
+        """Set the frequencies relative to baseband."""
+        self._set_table_field('tones', 'baseband_freq', new_freqs)
+
+    def get_f_center(self, i_chan: int) -> float:
+        """Return the LO frequency for the specified channel."""
+        return self.get_channel_group(i_chan).attrs['f_center']
+
+    def get_detector_f(self, i_chan: int) -> npt.NDArray:
+        """Return the absolute frequency of the tones for the specified channel."""
+        channel_group = self.get_channel_group(i_chan)
+        tones_table = channel_group['tones']
+        return tones_table['baseband_freq'] + channel_group.attrs['f_center']
+
+    def detector_f(self) -> npt.NDArray:
+        """The absolute frequency of each tone."""
+        f = self.baseband_freqs
+        i_tone = 0
+        for channel_group in self.channels():
+            n_tones = channel_group.attrs['n_tones']
+            f[i_tone : i_tone + n_tones] += channel_group.attrs['f_center']
+            i_tone += n_tones
+        return f
+
+    def get_lo_sweep(self, i_chan: int) -> LoSweepData:
+        """Get the LO sweep for the specified channel."""
+        sweep_data = self.get_from_channel(i_chan, 'lo_sweep')[:]
+        return LoSweepData(
+            self.get_baseband_freqs(i_chan),
+            self.get_f_center(i_chan),
+            sweep_data,
+            self.get_chanmask(i_chan),
+            self.get_tile_name(i_chan),
+        )
+
+    @property
+    def tone_powers(self) -> npt.NDArray:
+        """The relative power level for each tone."""
+        return self.tones_table['power']
+
+    def set_tone_powers(self, new_powers: npt.NDArray):
+        """Set the relative power level for each tone."""
+        self._set_table_field('tones', 'power', new_powers)
+
+    @property
+    def chanmask(self) -> npt.NDArray:
+        """Mask indicating on/off resonance tones and bad resonators."""
+        return self.tones_table['chanmask']
+
+    def set_chanmask(self, new_chanmask: npt.NDArray):
+        """Update the chanmask."""
+        self._set_table_field('tones', 'chanmask', new_chanmask)
+
+    @property
+    def onres_ind(self) -> npt.NDArray:
+        """Indices of on-resonance tones."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.ON_RESONANCE)
+            .flatten()
+            .astype(int)
+        )
+
+    @property
+    def offres_ind(self) -> npt.NDArray:
+        """Indices of off-resonance tones."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.OFF_RESONANCE)
+            .flatten()
+            .astype(int)
+        )
+
+    @property
+    def bad_ind(self) -> npt.NDArray:
+        """Indices of bad resonances (i.e. negative chanmask values)."""
+        return np.argwhere(self.chanmask < 0).flatten().astype(int)
+
+    @property
+    def collided_ind(self) -> npt.NDArray:
+        """Indices of collided resonances."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.COLLIDED).flatten().astype(int)
+        )
+
+    @property
+    def double_ind(self) -> npt.NDArray:
+        """Indices of double resonances."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.DOUBLE_RESONANCE)
+            .flatten()
+            .astype(int)
+        )
+
+    @property
+    def low_response_ind(self) -> npt.NDArray:
+        """Indices of resonances with a low response."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.LOW_RESPONSE)
+            .flatten()
+            .astype(int)
+        )
+
+    @property
+    def misc_bad_ind(self) -> npt.NDArray:
+        """Indices of bad resonances not marked otherwise."""
+        return (
+            np.argwhere(self.chanmask == ChanmaskValue.MISC_BAD).flatten().astype(int)
+        )
+
+    @property
+    def detector_pol(self) -> npt.NDArray:
+        """The polarization of each resonator."""
+        return self.tones_table['polarization']
+
+    def set_detector_pol(self, new_pols: npt.NDArray):
+        """Update detector_pol."""
+        self._set_table_field('tones', 'polarization', new_pols)
+
+    @property
+    def pol_ind_1(self) -> npt.NDArray:
+        """Which tones are polarization 1."""
+        return np.argwhere(self.detector_pol == 1).flatten()
+
+    @property
+    def pol_ind_2(self) -> npt.NDArray:
+        """Which tones are polarization 2."""
+        return np.argwhere(self.detector_pol == 2).flatten()  # noqa: PLR2004
+
+    @property
+    def detector_beam_ampl(self) -> npt.NDArray:
+        """The beam amplitude for each resonator."""
+        return self.tones_table['beam_amplitude']
+
+    def set_detector_beam_ampl(self, new_ampls: npt.NDArray):
+        """Update the detector_beam_ampl."""
+        self._set_table_field('tones', 'beam_amplitude', new_ampls)
+
+    @property
+    def detector_delta_x(self) -> npt.NDArray:
+        """The x position relative to the center of the focal plane."""
+        return self.tones_table['delta_x']
+
+    def set_detector_delta_x(self, new_delta_x: npt.NDArray):
+        """Update detector_delta_x."""
+        self._set_table_field('tones', 'delta_x', new_delta_x)
+
+    @property
+    def detector_delta_y(self) -> npt.NDArray:
+        """The y position relative to the center of the focal plane."""
+        return self.tones_table['delta_y']
+
+    def set_detector_delta_y(self, new_delta_y: npt.NDArray):
+        """Update detector_delta_y."""
+        self._set_table_field('tones', 'delta_y', new_delta_y)
+
+    @property
+    def dfoverf_per_mK(self) -> npt.NDArray:
+        """The change in df/f per mK for each resonator."""
+        return self.tones_table['dfoverf_per_mK']
+
+    def set_dfoverf_per_mK(self, new_dfoverf_per_mK: npt.NDArray):
+        """Update dfoverf_per_mK."""
+        self._set_table_field('tones', 'dfoverf_per_mK', new_dfoverf_per_mK)
+
 
 class ConsolidatedData(DataStorage):
     """Class representing the data from the various sources consolidated into one file.
@@ -1019,277 +1521,8 @@ class ProcessedData(DataStorage):
         _logger.info('ProcessedData: Finished initializing processed data fields.')
 
     #
-    # Useful getter methods
-    #
-    def get_history_step(self, step: int) -> h5py.Group:
-        """Get the desired step from the processing history."""
-        res = search(self['processing_history'], f'{get_step_group_name(step, '')}')
-        if res is not None:
-            return res[1]
-        raise IndexError(
-            f'ProcessedData {self.file_stub} has no processing step with index {step}'
-        )
-
-    def get_version(self) -> Version:
-        """Return the rfsocinterface version that this data was processed in."""
-        step0 = self.get_history_step(0)
-        version_string = step0.attrs['rfsocinterface_version']
-        return Version(version_string)
-
-    def find_most_recent_history_step(self, pattern: str) -> tuple[str, h5py.Group]:
-        """Get the most recent processing step matching the search pattern."""
-        res = search_regex(
-            self['processing_history'],
-            pattern,
-        )
-        if len(res) > 0:
-            return res[-1]
-        raise KeyError(
-            f'ProcessedData {self.file_stub} has no processing steps matching the '
-            f'search pattern: {pattern}'
-        )
-
-    def list_history(self) -> list[dict]:
-        """Return a list of each processing step."""
-        if not self.has('processing_history'):
-            return []
-        hist = self['processing_history']
-        return list(hist.keys())
-
-    def print_history(self, verbose: bool = False):
-        """Print the processing history for this file."""
-        if not self.has('processing_history'):
-            print('No history')  # noqa: T201
-            return
-
-        hist = self.file['processing_history']
-
-        for k in sorted(hist.keys()):
-            step = hist[k]
-            name = step.attrs.get('name', '?')
-            if verbose:
-                print(f'[{k}]:\n{json.dumps(dict(step.attrs), indent=4)}')  # noqa: T201
-            else:
-                params = json.loads(step.attrs.get('params', '{}'))
-
-                param_str = ', '.join(f'{k}={v}' for k, v in params.items())
-                print(f'[{k}] {name}({param_str})')  # noqa: T201
-
-    def channels(self) -> Iterator[h5py.Group]:
-        """Return an iterator over each channel group."""
-        yield from self['channels'].values()
-
-    def get_channel_group(self, i_chan: int) -> h5py.Group:
-        """Return the specified channel group."""
-        return self[f'channels/channel_{i_chan:03d}']
-
-    def get_channel_group_from_tile_name(self, tile_name: str) -> h5py.Group:
-        """Return the specified channel group by tile name."""
-        tile_names = []
-        for channel_group in self['channels'].values():
-            this_tile_name = channel_group.attrs['tile_name']
-            tile_names.append(this_tile_name)
-            if this_tile_name == tile_name:
-                return channel_group
-        msg = (
-            f'Unable to find channel with name "{tile_name}". Tile names found: '
-            f'{tile_names}'
-        )
-        raise KeyError(msg)
-
-    def get_from_channel(self, i_chan: int, obj_name: str) -> H5pyObject:
-        """Return the object from the specified channel group."""
-        return self.get_channel_group(i_chan)[obj_name]
-
-    def get_from_all_channels(self, obj_name: str) -> list[H5pyObject]:
-        """Return a list of `obj_name` from each channel group."""
-        return [channel_group[obj_name] for channel_group in self['channels'].values()]
-
-    def search_in_channel(
-        self, i_chan: int, name: str, full_name: bool = True, exact_match: bool = False
-    ) -> tuple[str, H5pyObject] | None:
-        """Search for the name in the specified channel group."""
-        return search(
-            self.get_channel_group(i_chan),
-            name,
-            full_name=full_name,
-            exact_match=exact_match,
-        )
-
-    def search_in_all_channels(
-        self, name: str, full_name: bool = True, exact_match: bool = False
-    ) -> list[tuple[str, H5pyObject]] | None:
-        """Search for the name in the each channel group."""
-        return [
-            search(channel_group, name, full_name=full_name, exact_match=exact_match)
-            for channel_group in self['channels'].values()
-        ]
-
-    @property
-    def tile_names(self) -> tuple[str]:
-        """The name for each tile."""
-        return tuple(
-            self.get_channel_group(i_chan).attrs['tile_name']
-            for i_chan in range(self.n_chan)
-        )
-
-    def get_tile_name(self, i_chan: int) -> tuple[str]:
-        """Get the tile name of the specifeid channel."""
-        return self.tile_names[i_chan]
-
-    def get_absolute_tone_index(self, i_chan: int, i_tone_relative: int) -> int:
-        """Return the absolute tone index for the tone within the channel."""
-        tone_cutoffs = np.cumsum((0, *self.n_tones))
-        if (
-            i_tone_relative < 0
-            or (tone_cutoffs[i_chan + 1] - tone_cutoffs[i_chan]) <= i_tone_relative
-        ):
-            return -1
-        return int(tone_cutoffs[i_chan] + i_tone_relative)
-
-    def get_absolute_tone_indices(self, i_chan: int) -> npt.NDArray[int]:
-        """Return the absolute tone indices for all tones within the channel."""
-        tone_cutoffs = np.cumsum((0, *self.n_tones))
-        return np.arange(tone_cutoffs[i_chan], tone_cutoffs[i_chan + 1], dtype=int)
-
-    def split_to_relative_tone_indices(
-        self, indices: npt.NDArray[int]
-    ) -> list[list[int]]:
-        """Split a list of absolute tone indices into per-channel relative indices."""
-        bins = [[] for _ in range(self.n_chan)]
-        tone_cutoffs = np.cumsum((0, *self.n_tones))
-        bin_indices = np.digitize(indices, tone_cutoffs) - 1
-        for i, i_bin in enumerate(bin_indices):
-            i_tone_abs = indices[i]
-            i_tone_relative = int(i_tone_abs - tone_cutoffs[i_bin])
-            bins[i_bin].append(i_tone_relative)
-        return bins
-
-    def get_channel_from_tone_index(self, i_tone_absolute: int) -> int:
-        """Return the index of channel that contains the tone."""
-        tone_cutoffs = np.cumsum((0, *self.n_tones)) - 1
-        if i_tone_absolute < 0 or self.total_tones <= i_tone_absolute:
-            return -1
-        return int(np.where(tone_cutoffs <= i_tone_absolute)[0][-1])
-
-    def get_relative_tone_index(self, i_tone_absolute: int) -> tuple[int, int]:
-        """Return the channel and index of the tone within its channel."""
-        tone_cutoffs = np.cumsum((0, *self.n_tones))
-        if i_tone_absolute < 0 or i_tone_absolute >= tone_cutoffs[-1]:
-            return -1, -1
-        diff = np.astype((i_tone_absolute - tone_cutoffs), int)
-        i_tone_relative = np.min(diff[diff >= 0]).item()
-        return np.where(diff == i_tone_relative)[0].item(), i_tone_relative
-
-    def get_n_tones(self, i_chan: int) -> int:
-        """Return n_tones for the specified channel."""
-        return self.get_channel_group(i_chan).attrs['n_tones']
-
-    def get_n_samples(self, i_chan: int) -> int:
-        """The number of samples collected for the specified channel."""
-        return self.get_channel_group(i_chan).attrs['n_samples']
-
-    def get_fs(self, i_chan: int) -> float:
-        """The sampling rate for the specified channel."""
-        return self.get_channel_group(i_chan).attrs['fs']
-
-    def get_chanmask(self, i_chan: int) -> npt.NDArray:
-        """Return the chanmask for the specified channel."""
-        return self.get_from_channel(i_chan, 'tones')['chanmask']
-
-    def get_onres_ind(self, i_chan: int) -> npt.NDArray:
-        """Return on-resonance indices for the specified channel."""
-        return np.argwhere(
-            self.get_chanmask(i_chan) == ChanmaskValue.ON_RESONANCE
-        ).flatten()
-
-    def get_offres_ind(self, i_chan: int) -> npt.NDArray:
-        """Return off-resonance indices for the specified channel."""
-        return np.argwhere(
-            self.get_chanmask(i_chan) == ChanmaskValue.OFF_RESONANCE
-        ).flatten()
-
-    def get_bad_ind(self, i_chan: int) -> npt.NDArray:
-        """Return bad resonance indices for the specified channel."""
-        return np.argwhere(self.get_chanmask(i_chan) < 0).flatten()
-
-    def get_collided_ind(self, i_chan: int) -> npt.NDArray:
-        """Return collided resonance indices for the specified channel."""
-        return np.argwhere(
-            self.get_chanmask(i_chan) == ChanmaskValue.COLLIDED
-        ).flatten()
-
-    def get_double_ind(self, i_chan: int) -> npt.NDArray:
-        """Return double resonance indices for the specified channel."""
-        return np.argwhere(
-            self.get_chanmask(i_chan) == ChanmaskValue.DOUBLE_RESONANCE
-        ).flatten()
-
-    def get_low_response_ind(self, i_chan: int) -> npt.NDArray:
-        """Return collided resonance indices for the specified channel."""
-        return np.argwhere(
-            self.get_chanmask(i_chan) == ChanmaskValue.LOW_RESPONSE
-        ).flatten()
-
-    def get_misc_bad_ind(self, i_chan: int) -> npt.NDArray:
-        """Return miscellaneous bad resonance indices for the specified channel."""
-        return np.argwhere(
-            self.get_chanmask(i_chan) == ChanmaskValue.MISC_BAD
-        ).flatten()
-
-    #
-    # Useful properties
-    #
-    @property
-    def n_chan(self) -> int:
-        """The nmuber of channels."""
-        return self['channels'].attrs['n_channels']
-
-    @property
-    def n_samples(self) -> tuple[int, ...]:
-        """The nmuber of samples collected for each channel."""
-        return self['global_data'].attrs['n_samples']
-
-    @property
-    def n_tones(self) -> tuple[int, ...]:
-        """The nmuber of tones for each channel."""
-        return self['global_data'].attrs['n_tones']
-
-    @property
-    def total_tones(self) -> int:
-        """The total nmuber of tones."""
-        return self['global_data'].attrs['total_tones']
-
-    @property
-    def fs(self) -> tuple[float, ...]:
-        """Sampling rate for each channel."""
-        return tuple(self.get_fs(i_chan) for i_chan in range(self.n_chan))
-
-    @property
-    def virtual_datasets(self) -> h5py.Group:
-        """The virtual dataset group in the file."""
-        return self['vdsets']
-
-    # Global data
-    @property
-    def optical_image(self) -> h5py.Dataset:
-        """The optical image."""
-        return self['global_data/optical_image']
-
-    @property
-    def optical_visibility(self) -> h5py.Dataset:
-        """The optical visibility at the time of data capture."""
-        return self['global_data/optical_visibility']
-
     # Time-ordered data
-    def get_timestamp(self, i_chan: int) -> h5py.Dataset:
-        """Return the data timestamps for the specified channel."""
-        return self.get_from_channel(i_chan, 'time_ordered_data/timestamp')
-
-    def get_data_IQ(self, i_chan: int) -> h5py.Dataset:
-        """Return the data for the specified channel in ADC units."""
-        return self.get_from_channel(i_chan, 'time_ordered_data/data_IQ')
-
+    #
     def get_data_gain_phase(self, i_chan: int) -> h5py.Dataset:
         """Return the data for the specified channel in the gain/phase basis."""
         return self.get_from_channel(i_chan, 'time_ordered_data/data_gain_phase')
@@ -1301,234 +1534,6 @@ class ProcessedData(DataStorage):
     def get_data_mK(self, i_chan: int) -> h5py.Dataset:
         """Return the data for the specified channel in milikelvin."""
         return self.get_from_channel(i_chan, 'time_ordered_data/data_mK')
-
-    def get_detector_az(self, i_chan: int) -> h5py.Dataset:
-        """Return the azimuthal angle of each detector at each timestamp."""
-        return self.get_from_channel(i_chan, 'time_ordered_data/detector_az')
-
-    def get_detector_za(self, i_chan: int) -> h5py.Dataset:
-        """Return the zenith angle of each detector at each timestamp."""
-        return self.get_from_channel(i_chan, 'time_ordered_data/detector_za')
-
-    #
-    # Tone/detector properties
-    #
-    @property
-    def tones_table(self) -> h5py.Dataset:
-        """The table containing tone-specific values.
-
-        Contains the keys:
-            baseband_freq: The frequency of the tone relative to the baseband.
-            power: The relative power of this tone.
-            delta_x: The x position relative to the center of the focal plane.
-            delta_y: The y position relative to the center of the focal plane.
-            beam_amplitude: The beam amplitude for this resonator.
-            polarization: The polarization for this resonator.
-            dfoverf_per_mK: The change in df/f per mK for this tone.
-            chanmask: Mask value indicating if this tone is on-resonance (1),
-                off-resonance (0), or flagged as bad (-1).
-        """
-        return self['vdsets/tones']
-
-    def _set_table_field(
-        self, table_name: str, field_name: str, new_values: npt.NDArray
-    ):
-        """Utility function for setting table fields.
-
-        Setting values through virtual datasets doesn't work for tables, so this is the
-        work around.
-        """
-        i_tone = 0
-        for i_chan in range(self.n_chan):
-            channel_group = self.get_channel_group(i_chan)
-            n_tones = channel_group.attrs['n_tones']
-            channel_group[table_name][field_name] = new_values[
-                i_tone : i_tone + n_tones
-            ]
-            i_tone += n_tones
-
-    @property
-    def tone_counts(self) -> npt.NDArray:
-        """The number of tones for each channel."""
-        counts = [self.get_n_tones(i_chan) for i_chan in range(self.n_chan)]
-        return np.array(counts)
-
-    def get_channel_index_from_tone_index(self, tone_index: int) -> int:
-        """Get which channel `tone_index` is a part of."""
-        cumulative_counts = np.cumsum(self.tone_counts)
-        return np.searchsorted(cumulative_counts, tone_index, side='right')
-
-    @property
-    def baseband_freqs(self) -> npt.NDArray:
-        """The frequencies relative to baseband."""
-        return self.tones_table['baseband_freq']
-
-    def get_baseband_freqs(self, i_chan: int) -> npt.NDArray:
-        """Return the baseband frequencies for the specifeid channel."""
-        return self.baseband_freqs[self.get_absolute_tone_indices(i_chan)]
-
-    def set_baseband_freqs(self, new_freqs: npt.NDArray):
-        """Set the frequencies relative to baseband."""
-        self._set_table_field('tones', 'baseband_freq', new_freqs)
-
-    def get_f_center(self, i_chan: int) -> float:
-        """Return the LO frequency for the specified channel."""
-        return self.get_channel_group(i_chan).attrs['f_center']
-
-    def get_detector_f(self, i_chan: int) -> npt.NDArray:
-        """Return the absolute frequency of the tones for the specified channel."""
-        channel_group = self.get_channel_group(i_chan)
-        tones_table = channel_group['tones']
-        return tones_table['baseband_freq'] + channel_group.attrs['f_center']
-
-    def detector_f(self) -> npt.NDArray:
-        """The absolute frequency of each tone."""
-        f = self.baseband_freqs
-        i_tone = 0
-        for channel_group in self.channels():
-            n_tones = channel_group.attrs['n_tones']
-            f[i_tone : i_tone + n_tones] += channel_group.attrs['f_center']
-            i_tone += n_tones
-        return f
-
-    def get_lo_sweep(self, i_chan: int) -> LoSweepData:
-        """Get the LO sweep for the specified channel."""
-        sweep_data = self.get_from_channel(i_chan, 'lo_sweep')[:]
-        return LoSweepData(
-            self.get_baseband_freqs(i_chan),
-            self.get_f_center(i_chan),
-            sweep_data,
-            self.get_chanmask(i_chan),
-            self.get_tile_name(i_chan),
-        )
-
-    @property
-    def tone_powers(self) -> npt.NDArray:
-        """The relative power level for each tone."""
-        return self.tones_table['power']
-
-    def set_tone_powers(self, new_powers: npt.NDArray):
-        """Set the relative power level for each tone."""
-        self._set_table_field('tones', 'power', new_powers)
-
-    @property
-    def chanmask(self) -> npt.NDArray:
-        """Mask indicating on/off resonance tones and bad resonators."""
-        return self.tones_table['chanmask']
-
-    def set_chanmask(self, new_chanmask: npt.NDArray):
-        """Update the chanmask."""
-        self._set_table_field('tones', 'chanmask', new_chanmask)
-
-    @property
-    def onres_ind(self) -> npt.NDArray:
-        """Indices of on-resonance tones."""
-        return (
-            np.argwhere(self.chanmask == ChanmaskValue.ON_RESONANCE)
-            .flatten()
-            .astype(int)
-        )
-
-    @property
-    def offres_ind(self) -> npt.NDArray:
-        """Indices of off-resonance tones."""
-        return (
-            np.argwhere(self.chanmask == ChanmaskValue.OFF_RESONANCE)
-            .flatten()
-            .astype(int)
-        )
-
-    @property
-    def bad_ind(self) -> npt.NDArray:
-        """Indices of bad resonances (i.e. negative chanmask values)."""
-        return np.argwhere(self.chanmask < 0).flatten().astype(int)
-
-    @property
-    def collided_ind(self) -> npt.NDArray:
-        """Indices of collided resonances."""
-        return (
-            np.argwhere(self.chanmask == ChanmaskValue.COLLIDED).flatten().astype(int)
-        )
-
-    @property
-    def double_ind(self) -> npt.NDArray:
-        """Indices of double resonances."""
-        return (
-            np.argwhere(self.chanmask == ChanmaskValue.DOUBLE_RESONANCE)
-            .flatten()
-            .astype(int)
-        )
-
-    @property
-    def low_response_ind(self) -> npt.NDArray:
-        """Indices of resonances with a low response."""
-        return (
-            np.argwhere(self.chanmask == ChanmaskValue.LOW_RESPONSE)
-            .flatten()
-            .astype(int)
-        )
-
-    @property
-    def misc_bad_ind(self) -> npt.NDArray:
-        """Indices of bad resonances not marked otherwise."""
-        return (
-            np.argwhere(self.chanmask == ChanmaskValue.MISC_BAD).flatten().astype(int)
-        )
-
-    @property
-    def detector_pol(self) -> npt.NDArray:
-        """The polarization of each resonator."""
-        return self.tones_table['polarization']
-
-    def set_detector_pol(self, new_pols: npt.NDArray):
-        """Update detector_pol."""
-        self._set_table_field('tones', 'polarization', new_pols)
-
-    @property
-    def pol_ind_1(self) -> npt.NDArray:
-        """Which tones are polarization 1."""
-        return np.argwhere(self.detector_pol == 1).flatten()
-
-    @property
-    def pol_ind_2(self) -> npt.NDArray:
-        """Which tones are polarization 2."""
-        return np.argwhere(self.detector_pol == 2).flatten()  # noqa: PLR2004
-
-    @property
-    def detector_beam_ampl(self) -> npt.NDArray:
-        """The beam amplitude for each resonator."""
-        return self.tones_table['beam_amplitude']
-
-    def set_detector_beam_ampl(self, new_ampls: npt.NDArray):
-        """Update the detector_beam_ampl."""
-        self._set_table_field('tones', 'beam_amplitude', new_ampls)
-
-    @property
-    def detector_delta_x(self) -> npt.NDArray:
-        """The x position relative to the center of the focal plane."""
-        return self.tones_table['delta_x']
-
-    def set_detector_delta_x(self, new_delta_x: npt.NDArray):
-        """Update detector_delta_x."""
-        self._set_table_field('tones', 'delta_x', new_delta_x)
-
-    @property
-    def detector_delta_y(self) -> npt.NDArray:
-        """The y position relative to the center of the focal plane."""
-        return self.tones_table['delta_y']
-
-    def set_detector_delta_y(self, new_delta_y: npt.NDArray):
-        """Update detector_delta_y."""
-        self._set_table_field('tones', 'delta_y', new_delta_y)
-
-    @property
-    def dfoverf_per_mK(self) -> npt.NDArray:
-        """The change in df/f per mK for each resonator."""
-        return self.tones_table['dfoverf_per_mK']
-
-    def set_dfoverf_per_mK(self, new_dfoverf_per_mK: npt.NDArray):
-        """Update dfoverf_per_mK."""
-        self._set_table_field('tones', 'dfoverf_per_mK', new_dfoverf_per_mK)
 
     #
     # Calibration information
