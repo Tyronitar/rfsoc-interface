@@ -27,6 +27,7 @@ OPTCAM_DPIX = 0.0025  # Degrees / pixel
 OPTCAM_OFFSET_AZ_PIX = 289
 OPTCAM_OFFSET_ZA_PIX = -16
 DEFAULT_MAP_DPIX = 0.03  # Degrees / pixel
+DEFAULT_VIDEO_DPIX = 0.045  # Degrees / pixel
 OPTCAM_HEIGHT_PIXELS = 1944
 OPTCAM_WIDTH_PIXELS = 2592
 
@@ -420,18 +421,16 @@ def get_detector_positions_no_interp(
         za = za_tel[start:stop]
 
         # rotation angle
-        ang = np.deg2rad(elevation_angle - za)
+        ang = np.deg2rad(za - elevation_angle)
 
         cos_ang = np.cos(ang)
         sin_ang = np.sin(ang)
 
         output_detector_az[:, start:stop] = (
             np.outer(dx[:], cos_ang) - np.outer(dy[:], sin_ang) + az
-            # az - (np.outer(dx[:], cos_ang) - np.outer(dy[:], sin_ang))
         )
         output_detector_za[:, start:stop] = (
             np.outer(dy[:], cos_ang) + np.outer(dx[:], sin_ang) + za
-            # za - (np.outer(dy[:], cos_ang) + np.outer(dx[:], sin_ang))
         )
 
 
@@ -471,7 +470,7 @@ def get_detector_positions(
         za[x[start:stop] > xp[-1]] = za_tel[-1]
 
         # rotation angle
-        ang = np.deg2rad(elevation_angle - za)
+        ang = np.deg2rad(za - elevation_angle)
 
         cos_ang = np.cos(ang)
         sin_ang = np.sin(ang)
