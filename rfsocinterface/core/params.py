@@ -39,12 +39,13 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
     'dfoverf_per_mK',
     'chanmask',
 ]
+DEFAULT_DFOVERF_PER_MK = -7.181229465879829e-10
 
 
 class RFSoCParameters:
     """Class wrapping around RFSoC parameters files."""
 
-    VERSION = Version('1.0.0')
+    VERSION = Version('1.0.1')
 
     @ensure_path(1)
     def __init__(self, file: Path, mode: str = 'r'):
@@ -145,7 +146,7 @@ class RFSoCParameters:
                 shape=(n_tones,),
                 dtype=np.float64,
                 maxshape=(1024,),
-                fillvalue=1,
+                fillvalue=DEFAULT_DFOVERF_PER_MK,
             )
         _logger.info(f'Initialized params file {filename}')
         return cls(filename, mode=mode)
@@ -584,7 +585,10 @@ class RFSoCParameters:
             (detector_pol, np.ones(tones_added, dtype=np.int8))
         )[sorted_ind]
         new_dfoverf_per_mK = np.concatenate(
-            (dfoverf_per_mK, np.ones(tones_added, dtype=np.float64))
+            (
+                dfoverf_per_mK,
+                np.ones(tones_added, dtype=np.float64) * DEFAULT_DFOVERF_PER_MK,
+            )
         )[sorted_ind]
 
         new_params = RFSoCParameters.new_file(new_tile_name, len(all_tones))
