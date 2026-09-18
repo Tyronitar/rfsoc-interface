@@ -141,7 +141,7 @@ def run_lo_sweep(
     tile_name: str,
     chan: int = 1,
     step: float = 5e3,
-    span: float = 200e3,
+    span: float = 1000e3,
     tone_shift: float = 0,
     filename_suffix: str | None = None,
 ) -> Path:
@@ -163,6 +163,24 @@ def run_lo_sweep(
     sweep_data.save()
     return sweep_file
 
+
+def remote_lo_sweep(chan = 1, tile_name: str = 'Be260114BL_100_tones_260721', step: float = 5e3, span: float = 1000e3, tone_shift: float = 0, filename_suffix: str | None = None):
+    settings = Settings()
+    settings.load_settings()
+
+    rfsoc = RFSOCWrapper(settings['rfsocs'][0])
+    chan = chan
+    tile_name = tile_name
+
+    rfsoc.load_params_file(
+        1,
+        f'/data/params/params_tile_{tile_name}.h5',
+        upload_tones=False,
+        set_freq=False,
+        set_atten=False,
+    )
+    sweep_file = run_lo_sweep(rfsoc, tile_name=tile_name, chan=chan, step=step, span=span, tone_shift=tone_shift, filename_suffix=filename_suffix)
+    return str(sweep_file)
 
 
 def run_noise_data_collection(
@@ -205,12 +223,8 @@ def process_noise_data(date, setnum, save_file: str, lp_filter_freq: float = 244
     clean_tod = CleanTOD(dataset=dataset)
 
     pipeline = Pipeline([
-        noise_removal_offres,
-        hp_filter,
-        lp_filter,
-        clean_tod,
     ])
-    pdata = pipeline.from_tod(date, setnum)
+    pdata = pipeline.from_tod(date, setnum, downsampling_factor=ds_factor, use_pps = False)
 
 
 
@@ -231,8 +245,11 @@ def remote_data_collection(chan = 1, tile_name: str = 'Be260114BL_100_tones_2607
         set_freq=False,
         set_atten=False,
     )
-
     save_file = run_noise_data_collection(rfsoc, tile_name=tile_name, chan=chan, duration=duration, process_data=process_data)
     return str(save_file)
 
-
+#if __name__ == '__main__':
+#
+#    tile_name = 'FTS_Tone_List_Be260114BL_100_tones_260729'
+#    file_name = remote_lo_sweep(tile_name=tile_name, chan=1, step=5e3, span=1000e3, tone_shift=0, filename_suffix=None)
+#    print(file_name)

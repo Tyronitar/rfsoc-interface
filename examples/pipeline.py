@@ -63,28 +63,28 @@ if __name__ == '__main__':
         dpix=0.03,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
-    make_video = MakeVideo(
-        lp_filter_freq=lp_filter_freq,
-        block_size_s=0.1,
-        dpix=0.08,
-        az_trim=0,
-        za_trim=0,
-        # show=True,
-        # savefile='test.gif',
-    )
+    #make_video = MakeVideo(
+    #    lp_filter_freq=lp_filter_freq,
+    #    block_size_s=0.1,
+    #    dpix=0.08,
+    #    az_trim=0,
+    #    za_trim=0,
+    #    # show=True,
+    #    # savefile='test.gif',
+    #)
 
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap()
 
     pipeline = Pipeline([
-        noise_removal_offres,
-        noise_removal_onres,
+        #noise_removal_offres,
+        #noise_removal_onres,
         #noise_removal,
-        compute_psd,
-        psd_plotter,
-        hp_filter,
-        lp_filter,
-        clean_tod,
+        #compute_psd,
+        #psd_plotter,
+        #hp_filter,
+        #lp_filter,
+        #clean_tod,
         #bin_tod_to_map,
         # plotter,
         # make_video,
@@ -94,7 +94,7 @@ if __name__ == '__main__':
     ])
 
 
-    date = '20260727'
+    date = '20260825'
     setnums = np.array([1002])
 
     psd_fd_obj_list = []
@@ -109,13 +109,13 @@ if __name__ == '__main__':
         # to run the pipeline starting  from the consolidated data without issues
         # I'll fix this at some point so that the error is handled more gracefully
         # pdata = pipeline.from_consolidated_data(date, setnum)
-        pdata = pipeline.from_tod(date, setnum)
+        pdata = pipeline.from_consolidated_data(date, setnum)
         psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
         psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
 
 
     psd_fd_avg = np.mean(np.array(psd_fd_obj_list), axis=0)
-
+    pdb.set_trace()
     psd_freq = pdata['psd/freq_diss/freq'][:]
     figs = plot_resonator_report(psd_fd_avg, psd_freq, pdata.detector_f(),pdata.onres_ind, pdata.offres_ind,  pdata.adc_units_to_hz)
     

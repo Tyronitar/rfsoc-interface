@@ -859,14 +859,26 @@ class ConsolidatedData(NewDataStorage):
 
             # Store the tone parameters
             tones_table = this_channel_group.create_dataset('tones', shape=(n_tones,), dtype=TONES_TABLE_DTYPE)
-
-            tones_table['baseband_freq'] = raw_data.baseband_freqs[:]
+         
             tones_table['power'] = raw_data.tone_powers[:]
             tones_table['delta_x'] = raw_data.detector_delta_x[:]
             tones_table['delta_y'] = raw_data.detector_delta_y[:]
             tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
             tones_table['polarization']  = raw_data.detector_pol[:]
             tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
+            tones_table['baseband_freq'] = raw_data.baseband_freqs[:]
+
+            sweep = LoSweepData(
+                        tones_table['baseband_freq'],
+                        this_channel_group.attrs['f_center'],
+                        raw_data.lo_sweep[:],
+                        tones_table['chanmask'],
+                        this_channel_group.attrs['tile_name'],
+                    )
+            sweep.fit()
+            IQ_to_freq_diss_angle, adc_units_to_hz = sweep.freq_direction()
+            this_channel_group.attrs['iq_to_freq_diss_angle'] = IQ_to_freq_diss_angle
+
             chanmask = raw_data.chanmask[:]
             off_res = np.argwhere(chanmask == 0).flatten()
             no_pol = np.argwhere(tones_table['polarization'] < 1).flatten()
@@ -1092,7 +1104,8 @@ class ConsolidatedData(NewDataStorage):
         vdsets.create_virtual_dataset('detector_az', detector_az_layout)
         vdsets.create_virtual_dataset('detector_za', detector_za_layout)
         vdsets.create_virtual_dataset('tones', tones_table_layout)
-
+        if raw_data.pps is not None:
+            vdsets.create_dataset('pps', data=raw_data.pps[:])
         return cdata
 
     def create_processed_data(self, mode:str='a') -> ProcessedData:

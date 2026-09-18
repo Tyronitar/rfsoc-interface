@@ -94,14 +94,8 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
             else:
                 center_ind = lo_ind + min_ind
 
-    peaks = find_peaks(-s21, height=0.1)
-    if len(peaks[0]) != 0:
-        prominances = peaks[1]['heights']
-        highest_prom_index = np.argmax(prominances)
-        #print(freq[peaks[0][highest_prom_index]])
-        f0 = freq[peaks[0][highest_prom_index]]
-    else:
-        f0 = freq[center_ind]
+
+    f0 = freq[np.argmin(s21)] + df
     
     return f0, 0, 0
 
@@ -746,7 +740,8 @@ class LoSweepData:
     def freq_direction(self, fit_order: int=3, deriv_length: int=10, plot = False)-> tuple[npt.NDArray, npt.NDArray]:
         dIQ_df = np.zeros((2, self.n_tones))
         mid_ind = self.nfreq // 2
-        edge_indices = [mid_ind - deriv_length, mid_ind + deriv_length + 1]
+        edge_indices = [max(0, mid_ind - deriv_length), min(self.nfreq, mid_ind + deriv_length + 1)]
+        deriv_length = min(deriv_length, mid_ind)
         ind_val = np.arange(edge_indices[0], edge_indices[1])
         freq_val = self.freq[:, ind_val] - self.detector_f[:, np.newaxis]
 
