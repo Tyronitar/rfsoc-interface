@@ -21,7 +21,7 @@ import logging.config
 
 from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis
 from rfsocinterface.core.data import *
-from rfsocinterface.core.params import RFSoCParameters
+from rfsocinterface.core.params import RFSoCParameters, DEFAULT_DFOVERF_PER_MK
 from rfsocinterface.analysis import *
 import pdb
 import matplotlib.pyplot as plt
@@ -58,19 +58,19 @@ def process_20260917_set1005():
     plot_map = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
 
     pipeline = Pipeline([
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
+        hp_filter,
+        lp_filter,
+        clean_tod,
         bin_tod_to_map,
         plot_map,
     ])
 
-    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
-    pdata = ProcessedData.load(date, setnum)
+    # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
 
-    pdb.set_trace()
+    # pdb.set_trace()
 
 def process_20260917_set1007():
     date = '20260917'
@@ -104,9 +104,9 @@ def process_20260917_set1007():
 
   
     pipeline = Pipeline([
-        hp_filter,
-        lp_filter,
-        clean_tod,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
         bin_tod_to_video,
         animate_video,
     ])
@@ -115,10 +115,10 @@ def process_20260917_set1007():
     setnum = 1007
 
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum)
-    # pipeline.run(pdata)
+    pdata = ProcessedData.load(date, setnum)
+    pipeline.run(pdata)
 
     # pdb.set_trace()
 
@@ -135,7 +135,8 @@ def fix_df_per_mK():
     old_params1 = RFSoCParameters(old_params_path1)
     old_params2 = RFSoCParameters(old_params_path2)
     pdb.set_trace()
-    correct_val = old_params1.dfoverf_per_mK[0]
+    # correct_val = old_params1.dfoverf_per_mK[0]
+    correct_val = DEFAULT_DFOVERF_PER_MK
     new_params_tile2.dfoverf_per_mK[:] = correct_val
     new_params_tile3.dfoverf_per_mK[:] = correct_val
     pdb.set_trace()
@@ -156,7 +157,7 @@ if __name__ == '__main__':
     _logger = logging.getLogger('rfsocinterface')
     _logger.handlers[0].setLevel(logging.INFO)
 
-    # process_20260917_set1005()
-    process_20260917_set1007()
+    process_20260917_set1005()
+    # process_20260917_set1007()
     # fix_df_per_mK()
 
