@@ -621,6 +621,23 @@ class ConsolidatedData(DataStorage):
                 compression='lzf',
                 shuffle=True,
             )
+            # Telescope positions
+            telescope_az = time_ordered_data_group.create_dataset(
+                'telescope_az',
+                shape=(n_samples_ds,),
+                chunks=chunk_shape_1d_ds,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+            telescope_za = time_ordered_data_group.create_dataset(
+                'telescope_za',
+                shape=(n_samples_ds,),
+                chunks=chunk_shape_1d_ds,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
             # Detector Positions
             detector_az = time_ordered_data_group.create_dataset(
                 'detector_az',
@@ -667,22 +684,6 @@ class ConsolidatedData(DataStorage):
                 shape=(n_samples,),
                 dtype=np.uint8,
                 chunks=chunk_shape_1d,
-            )
-            temp_detector_az = temp_data.create_dataset(
-                'temp_detector_az',
-                shape=azel_shape,
-                chunks=chunk_shape_azel,
-                dtype=np.float64,
-                compression='lzf',
-                shuffle=True,
-            )
-            temp_detector_za = temp_data.create_dataset(
-                'temp_detector_za',
-                shape=azel_shape,
-                chunks=chunk_shape_azel,
-                dtype=np.float64,
-                compression='lzf',
-                shuffle=True,
             )
 
             # Get packet indices
@@ -779,31 +780,40 @@ class ConsolidatedData(DataStorage):
                         temp_pps[:],
                         direction='za',
                     )
-                    _logger.info('ConsolidatedData: Computing detector positions...')
-                    get_detector_positions_no_interp(
-                        corrected_az_tel,
-                        corrected_za_tel,
-                        temp_detector_az,
-                        temp_detector_za,
-                        tones_table['delta_x'][:],
-                        tones_table['delta_y'][:],
-                        this_channel_group.attrs['detector_dx_dy_elevation_angle'],
-                    )
                 else:
-                    _logger.info('ConsolidatedData: Computing detector positions...')
-                    get_detector_positions(
-                        temp_timestamp,
-                        timestamp_tel[:],
-                        az_tel[:],
-                        za_tel[:],
-                        temp_detector_az,
-                        temp_detector_za,
-                        tones_table['delta_x'][:],
-                        tones_table['delta_y'][:],
-                        this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                    corrected_az_tel = np.interp(
+                        temp_timestamp, timestamp_tel[:], az_tel[:], left=np.nan, right=np.nan
                     )
+                    corrected_za_tel = np.interp(
+                        temp_timestamp, timestamp_tel[:], za_tel[:], left=np.nan, right=np.nan
+                    )
+                _logger.info('ConsolidatedData: Downsampling telescope positions...')
+                chunked_downsample(
+                    corrected_az_tel,
+                    telescope_az,
+                    downsampling_factor,
+                    temp_timestamp.chunks[-1],
+                    use_filter=False,
+                )
+                chunked_downsample(
+                    corrected_za_tel,
+                    telescope_za,
+                    downsampling_factor,
+                    temp_timestamp.chunks[-1],
+                    use_filter=False,
+                )
+                _logger.info('ConsolidatedData: Computing detector positions...')
+                get_detector_positions_no_interp(
+                    telescope_az,
+                    telescope_za,
+                    detector_az,
+                    detector_za,
+                    tones_table['delta_x'][:],
+                    tones_table['delta_y'][:],
+                    this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                )
 
-            # Downsample timestamp and IQ data
+            # Downsample IQ data
             _logger.info('ConsolidatedData: Downsampling IQ data...')
             decimate_in_chunks(
                 temp_data_IQ,
@@ -821,24 +831,24 @@ class ConsolidatedData(DataStorage):
             interpolated_samples.resize(downsampled_interpolated_samples.shape)
             interpolated_samples = downsampled_interpolated_samples[:]
 
-            if azel_exists:
-                _logger.info(
-                    'ConsolidatedData: Downsampling detector position arrays...'
-                )
-                chunked_downsample(
-                    temp_detector_az,
-                    detector_az,
-                    downsampling_factor,
-                    detector_az.chunks[-1],
-                    use_filter=False,
-                )
-                chunked_downsample(
-                    temp_detector_za,
-                    detector_za,
-                    downsampling_factor,
-                    detector_za.chunks[-1],
-                    use_filter=False,
-                )
+            # if azel_exists:
+            #     _logger.info(
+            #         'ConsolidatedData: Downsampling detector position arrays...'
+            #     )
+            #     chunked_downsample(
+            #         temp_detector_az,
+            #         detector_az,
+            #         downsampling_factor,
+            #         detector_az.chunks[-1],
+            #         use_filter=False,
+            #     )
+            #     chunked_downsample(
+            #         temp_detector_za,
+            #         detector_za,
+            #         downsampling_factor,
+            #         detector_za.chunks[-1],
+            #         use_filter=False,
+            #     )
 
             # Delete temporary datasets
             temp_data.close()
@@ -1285,6 +1295,14 @@ class ProcessedData(DataStorage):
     def get_timestamp(self, i_chan: int) -> h5py.Dataset:
         """Return the data timestamps for the specified channel."""
         return self.get_from_channel(i_chan, 'time_ordered_data/timestamp')
+
+    def get_telescope_az(self, i_chan: int) -> h5py.Dataset:
+        """Return the telescope azimuth positions for the channel's timstamps."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/telescope_az')
+
+    def get_telescope_za(self, i_chan: int) -> h5py.Dataset:
+        """Return the telescope zenith angle  positions for the channel's timstamps."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/telescope_za')
 
     def get_data_IQ(self, i_chan: int) -> h5py.Dataset:
         """Return the data for the specified channel in ADC units."""
