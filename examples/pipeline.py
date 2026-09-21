@@ -56,7 +56,7 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=False,
+        beam_map_mode=True,
         dataset=dataset,
         az_trim=0,
         za_trim=0,
@@ -91,7 +91,7 @@ if __name__ == '__main__':
         # compute_psd,
         # psd_plotter,
         bin_tod_to_map,
-        plotter,
+        # plotter,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
@@ -99,28 +99,38 @@ if __name__ == '__main__':
         # plot_beammap,
     ])
 
-    date = '20260820'  # For testing normal maps
-    setnum = 1005
-    # date = '20260710'  # For testing beammaps
-    # setnum = 1006
+    # date = '20260820'  # For testing normal maps
+    # setnum = 1005
+    date = '20260710'  # For testing beammaps
+    setnum = 1006
 
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    # pdata = pipeline.from_consolidated_data(date, setnum)
+    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata, _ = pipeline.from_consolidated_data(date, setnum)
     # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
+    # pdb.set_trace()
 
     # pdata = ProcessedData.load(date, setnum)
-    # az = pdata.get_telescope_az(0)[:]
-    # za = pdata.get_telescope_za(0)[:]
-    # det_az = pdata.get_detector_az(0)[:]
-    # det_za = pdata.get_detector_za(0)[:]
-    # plt.plot(az, za)
-    # plt.plot(det_az[50], det_za[50])
+    i_res = 503
+    az = pdata.get_telescope_az(0)[:]
+    za = pdata.get_telescope_za(0)[:]
+    det_az = pdata.get_detector_az(0)[:]
+    det_za = pdata.get_detector_za(0)[:]
+    map_val = pdata['map/map_val'][:]
+    data = pdata.get_data_freq_diss(0)[:] / pdata.get_detector_f(0)[np.newaxis, :, np.newaxis]
+    plt.figure()
+    plt.plot(data[0, i_res])
+    plt.figure()
+    plt.plot(az, za)
+    plt.plot(det_az[i_res], det_za[i_res])
+    plt.figure()
+    plt.imshow(map_val[i_res])
+    plt.show()
     # plt.plot(det_az[100], det_za[100])
     # plt.plot(det_az[150], det_za[150])
     # plt.show()
-    # pdb.set_trace()
+    pdb.set_trace()
     # plot_beammap.apply(pdata)
 
     # hits_map = pdata['video/hits_map'][:]

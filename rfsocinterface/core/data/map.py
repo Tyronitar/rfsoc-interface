@@ -167,16 +167,20 @@ def get_map_size(
     az_trim: float,
     za_trim: float,
     dpix: float = DEFAULT_MAP_DPIX,
-    beam_map_mode: bool = False,  # noqa: ARG001
+    beam_map_mode: bool = False,
 ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
     """Determine map size based on detector positions and desired pixel size."""
     abs_max_az = abs_max_za = -np.inf
     abs_min_az = abs_min_za = np.inf
     for i_chan in range(pdata.n_chan):
-        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
-        det_az = det_az[pdata.get_onres_ind(i_chan)]
-        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
-        det_za = det_za[pdata.get_onres_ind(i_chan)]
+        if beam_map_mode:
+            det_az = pdata.get_telescope_az(i_chan)[:]
+            det_za = pdata.get_telescope_za(i_chan)[:]
+        else:
+            det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+            det_az = det_az[pdata.get_onres_ind(i_chan)]
+            det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+            det_za = det_za[pdata.get_onres_ind(i_chan)]
         abs_max_az = max(np.nanmax(det_az), abs_max_az)
         abs_min_az = min(np.nanmin(det_az), abs_min_az)
         abs_max_za = max(np.nanmax(det_za), abs_max_za)
@@ -192,10 +196,14 @@ def get_map_size(
     max_az = max_za = -np.inf
     min_az = min_za = np.inf
     for i_chan in range(pdata.n_chan):
-        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
-        det_az = det_az[pdata.get_onres_ind(i_chan)]
-        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
-        det_za = det_za[pdata.get_onres_ind(i_chan)]
+        if beam_map_mode:
+            det_az = pdata.get_telescope_az(i_chan)[:]
+            det_za = pdata.get_telescope_za(i_chan)[:]
+        else:
+            det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+            det_az = det_az[pdata.get_onres_ind(i_chan)]
+            det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+            det_za = det_za[pdata.get_onres_ind(i_chan)]
         good_idx = tuple(
             np.argwhere(
                 ((abs_min_az <= det_az) & (det_az <= abs_max_az))
@@ -433,7 +441,7 @@ class BinTODIntoMap(DataRoutine):
             )
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):  # noqa: PLR0912
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
@@ -447,12 +455,20 @@ class BinTODIntoMap(DataRoutine):
         self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za
-        detector_az = [
-            pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
-        ]
-        detector_za = [
-            pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)
-        ]
+        if beam_map_mode:
+            detector_az = [
+                pdata.get_telescope_az(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
+            detector_za = [
+                pdata.get_telescope_za(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
+        else:
+            detector_az = [
+                pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
+            detector_za = [
+                pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
 
         data = []
         match self.params['dataset']:
@@ -545,8 +561,12 @@ class BinTODIntoMap(DataRoutine):
                 weight = 1.0 / netd[i_tone_absolute] ** 2.0
 
             i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
-            this_detector_az = detector_az[i_chan][i_tone_relative]
-            this_detector_za = detector_za[i_chan][i_tone_relative]
+            if beam_map_mode:
+                this_detector_az = detector_az[i_chan]
+                this_detector_za = detector_za[i_chan]
+            else:
+                this_detector_az = detector_az[i_chan][i_tone_relative]
+                this_detector_za = detector_za[i_chan][i_tone_relative]
 
             # Get the good samples if they haven't been specified
             this_clean_data = np.squeeze(data[i_chan][i_tone_relative])
@@ -554,9 +574,9 @@ class BinTODIntoMap(DataRoutine):
             # Get this detector's positions, need to account for rotation in EL based on
             # beammap taken at EL=89
             x_ind = np.squeeze(np.round((this_detector_az - map_az[0]) / dpix))
-            x_ind = np.nan_to_num(x_ind, -1).astype('int')
+            x_ind = np.nan_to_num(x_ind, nan=-1).astype('int')
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
-            y_ind = np.nan_to_num(y_ind, -1).astype('int')
+            y_ind = np.nan_to_num(y_ind, nan=-1).astype('int')
 
             # Eliminate samples outside the map
             this_good_samples = np.copy(good_samples[i_chan])

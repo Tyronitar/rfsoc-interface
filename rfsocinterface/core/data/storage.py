@@ -28,7 +28,6 @@ from rfsocinterface.core.data.utils import (
     find_missed_packets_with_indices,
     generate_calibrated_data,
     get_channel_group_name,
-    get_detector_positions,
     get_detector_positions_no_interp,
     get_step_group_name,
     interpolate_missing_data,
@@ -582,16 +581,12 @@ class ConsolidatedData(DataStorage):
             # Compute the chunk sizes to use
             chunk_shape_1d = compute_chunk_shape((), 8, max_chunk_size=n_samples)
             chunk_shape_1d_ds = compute_chunk_shape((), 8, max_chunk_size=n_samples_ds)
-            azel_shape = (n_tones, n_samples) if azel_exists else (n_tones, 1)
             azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
             chunk_shape_3d = compute_chunk_shape(
                 (2, n_tones), 8, max_chunk_size=n_samples
             )
             chunk_shape_3d_ds = compute_chunk_shape(
                 (2, n_tones), 8, max_chunk_size=n_samples_ds
-            )
-            chunk_shape_azel = compute_chunk_shape(
-                (1,), 8, max_chunk_size=azel_shape[-1]
             )
             chunk_shape_azel_ds = compute_chunk_shape(
                 (1,), 8, max_chunk_size=azel_shape_ds[-1]
@@ -782,10 +777,18 @@ class ConsolidatedData(DataStorage):
                     )
                 else:
                     corrected_az_tel = np.interp(
-                        temp_timestamp, timestamp_tel[:], az_tel[:], left=np.nan, right=np.nan
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        az_tel[:],
+                        left=np.nan,
+                        right=np.nan,
                     )
                     corrected_za_tel = np.interp(
-                        temp_timestamp, timestamp_tel[:], za_tel[:], left=np.nan, right=np.nan
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        za_tel[:],
+                        left=np.nan,
+                        right=np.nan,
                     )
                 _logger.info('ConsolidatedData: Downsampling telescope positions...')
                 chunked_downsample(
