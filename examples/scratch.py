@@ -55,7 +55,7 @@ def process_20260917_set1005():
         dpix=0.03,
         r0=0.15,
     )
-    plot_map = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
+    plot_map = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None, overwrite=False)
 
     pipeline = Pipeline([
         hp_filter,
@@ -65,9 +65,10 @@ def process_20260917_set1005():
         plot_map,
     ])
 
-    pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum)
+    pdata = ProcessedData.load(date, setnum)
+    plot_map.apply(pdata)
     # pipeline.run(pdata)
 
     # pdb.set_trace()

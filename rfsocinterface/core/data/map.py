@@ -1069,10 +1069,22 @@ class PlotMap(DataRoutine):
         vis = pdata.optical_visibility[()]
 
         # TODO: Make figure size change based on the size of the map
-        # aspect_ratio = (this_ylim[0] - this_ylim[1]) / (this_xlim[1] - this_xlim[0])
-        # fig_height = 7.5
-        # fig_width = fig_height / aspect_ratio
-        fig, axes = plt.subplots(5, 1, figsize=(15, 9), sharex=True, sharey=True)
+        fig, axes = plt.subplot_mosaic(
+            [
+                ['vpol', '.'],
+                ['vpol', 'optical'],
+                ['hpol', 'optical'],
+                ['hpol', 'degraded'],
+                ['total', 'degraded'],
+                ['total', '.'],
+            ],
+            sharex=True,
+            sharey=True,
+            figsize=(16, 8),
+            gridspec_kw={
+                'hspace': 0,
+            }
+        )
         channel_suffix = (
             'All Channels'
             if channel == tuple(range(pdata.n_chan))
@@ -1086,13 +1098,20 @@ class PlotMap(DataRoutine):
             f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
             f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
         )
-        for ax in axes:
+        for ax in axes.values():
             ax.set_ylabel('ZA (degrees)')
             ax.set_xlim(this_xlim)
             ax.set_ylim(this_ylim)
+            ax.label_outer()
+
+        ax_vpol = axes['vpol']
+        ax_hpol = axes['hpol']
+        ax_total = axes['total']
+        ax_optical = axes['optical']
+        ax_degraded = axes['degraded']
 
         # Vertical polarization
-        im = axes[0].imshow(
+        im = ax_vpol.imshow(
             np.transpose(map_val[0]) if old_format else map_val[0],
             extent=extent,
             aspect='equal',
@@ -1100,8 +1119,8 @@ class PlotMap(DataRoutine):
             vmax=vmax,
             cmap='Blues_r',
         )
-        add_colorbar(fig, axes[0], im, f'V-Pol Signal ({units})')
-        axes[0].contour(
+        add_colorbar(fig, ax_vpol, im, f'V-Pol Signal ({units})')
+        ax_vpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
@@ -1109,7 +1128,7 @@ class PlotMap(DataRoutine):
         )
 
         # Horizontal polarization
-        im = axes[1].imshow(
+        im = ax_hpol.imshow(
             np.transpose(map_val[1]) if old_format else map_val[1],
             extent=extent,
             aspect='equal',
@@ -1117,8 +1136,8 @@ class PlotMap(DataRoutine):
             vmax=vmax,
             cmap='Reds_r',
         )
-        add_colorbar(fig, axes[1], im, f'H-Pol Signal ({units})')
-        axes[1].contour(
+        add_colorbar(fig, ax_hpol, im, f'H-Pol Signal ({units})')
+        ax_hpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
@@ -1126,7 +1145,7 @@ class PlotMap(DataRoutine):
         )
 
         # Total signal
-        im = axes[2].imshow(
+        im = ax_total.imshow(
             np.transpose(total_map) if old_format else total_map,
             extent=extent,
             aspect='equal',
@@ -1134,8 +1153,8 @@ class PlotMap(DataRoutine):
             vmax=vmax,
             cmap='Greys_r',
         )
-        add_colorbar(fig, axes[2], im, f'Total Signal ({units})')
-        axes[2].contour(
+        add_colorbar(fig, ax_total, im, f'Total Signal ({units})')
+        ax_total.contour(
             np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
@@ -1148,14 +1167,26 @@ class PlotMap(DataRoutine):
         )
         opt_vmax = 255.0
         opt_vmin = 0  # NOTE: Shouldn't this be 0?
-        im = axes[3].imshow(
+        im = ax_optical.imshow(
             optical_image,
             extent=extent,
             aspect='equal',
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        add_colorbar(fig, axes[3], im, 'Optical Signal (rgb)')
+        ax_optical.text(
+            1.05,
+            0.5,
+            'Optical Signal',
+            rotation=90,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_optical.transAxes,
+            fontsize=10,
+        )
+        ax_optical.set_ylabel('ZA (degrees)')
+        ax_optical.yaxis.set_tick_params(labelleft=True)
+
 
         # Blurred optical image
         sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
@@ -1163,18 +1194,30 @@ class PlotMap(DataRoutine):
             optical_image,
             (sigma, sigma, 0),
         )
-        im = axes[4].imshow(
+        im = ax_degraded.imshow(
             blurred_optical_image,
             extent=extent,
             aspect='equal',
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        add_colorbar(fig, axes[4], im, 'Dergaded\nOptical Signal (rgb)')
+        ax_degraded.text(
+            1.05,
+            0.5,
+            'Degraded\nOptical Signal',
+            rotation=90,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_degraded.transAxes,
+            fontsize=10,
+        )
+        ax_degraded.set_ylabel('ZA (degrees)')
+        ax_degraded.yaxis.set_tick_params(labelleft=True)
+        ax_degraded.xaxis.set_tick_params(labelbottom=True)
 
-        axes[-1].set_xlabel('Azimuth (degrees)')
-        fig.tight_layout()
-        fig.subplots_adjust(wspace=0, hspace=0)
+        # Add x labels to bottom axes
+        ax_total.set_xlabel('Azimuth (degrees)')
+        ax_degraded.set_xlabel('Azimuth (degrees)')
 
         if self.params['save_plot']:
             if self.params['savefile'] is None:
