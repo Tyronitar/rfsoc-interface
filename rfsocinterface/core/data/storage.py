@@ -834,25 +834,6 @@ class ConsolidatedData(DataStorage):
             interpolated_samples.resize(downsampled_interpolated_samples.shape)
             interpolated_samples = downsampled_interpolated_samples[:]
 
-            # if azel_exists:
-            #     _logger.info(
-            #         'ConsolidatedData: Downsampling detector position arrays...'
-            #     )
-            #     chunked_downsample(
-            #         temp_detector_az,
-            #         detector_az,
-            #         downsampling_factor,
-            #         detector_az.chunks[-1],
-            #         use_filter=False,
-            #     )
-            #     chunked_downsample(
-            #         temp_detector_za,
-            #         detector_za,
-            #         downsampling_factor,
-            #         detector_za.chunks[-1],
-            #         use_filter=False,
-            #     )
-
             # Delete temporary datasets
             temp_data.close()
             temp_data_file.close()
