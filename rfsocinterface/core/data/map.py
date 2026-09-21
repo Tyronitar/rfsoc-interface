@@ -173,7 +173,7 @@ def get_map_size(
     abs_max_az = abs_max_za = -np.inf
     abs_min_az = abs_min_za = np.inf
     for i_chan in range(pdata.n_chan):
-        if beam_map_mode:
+        if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
             det_az = pdata.get_telescope_az(i_chan)[:]
             det_za = pdata.get_telescope_za(i_chan)[:]
         else:
@@ -196,7 +196,7 @@ def get_map_size(
     max_az = max_za = -np.inf
     min_az = min_za = np.inf
     for i_chan in range(pdata.n_chan):
-        if beam_map_mode:
+        if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
             det_az = pdata.get_telescope_az(i_chan)[:]
             det_za = pdata.get_telescope_za(i_chan)[:]
         else:
@@ -455,7 +455,8 @@ class BinTODIntoMap(DataRoutine):
         self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za
-        if beam_map_mode:
+        if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
+            _logger.info(f'{self.name}: Using telescope positions for map creation')
             detector_az = [
                 pdata.get_telescope_az(i_chan)[:] for i_chan in range(pdata.n_chan)
             ]
@@ -463,6 +464,7 @@ class BinTODIntoMap(DataRoutine):
                 pdata.get_telescope_za(i_chan)[:] for i_chan in range(pdata.n_chan)
             ]
         else:
+            _logger.info(f'{self.name}: Using detector positions for map creation')
             detector_az = [
                 pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
             ]
@@ -561,7 +563,7 @@ class BinTODIntoMap(DataRoutine):
                 weight = 1.0 / netd[i_tone_absolute] ** 2.0
 
             i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
-            if beam_map_mode:
+            if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
                 this_detector_az = detector_az[i_chan]
                 this_detector_za = detector_za[i_chan]
             else:
