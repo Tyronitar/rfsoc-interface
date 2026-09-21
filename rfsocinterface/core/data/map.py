@@ -280,7 +280,7 @@ class BinTODIntoMap(DataRoutine):
     """
 
     name = 'BinTODIntoMap'
-    version = '4.0.0'
+    version = '4.1.0'
 
     produces: ClassVar[set] = {
         '/map/',
