@@ -36,6 +36,7 @@ from rfsocinterface.core.data.utils import (
     rotate_basis,
 )
 from rfsocinterface.core.sweeps import LoSweepData
+from rfsocinterface.core.telescope import TELESCOPE_INITIAL_POSITION_VERSION
 from rfsocinterface.core.utils import (
     DEFAULT_DATA_DIRECTORY,
     PERMISSIONS_ALL_FULL,
@@ -427,8 +428,12 @@ class ConsolidatedData(DataStorage):
 
         if azel_exists:
             global_data_group.attrs['telescope_params'] = json.dumps(telescope_params)
-            initial_tel_pos = (az_tel[0], za_tel[0])
-            global_data_group.attrs['initial_telescope_pos'] = initial_tel_pos
+            if 'initial_az' in telescope_params and 'initial_za' in telescope_params:
+                initial_tel_pos = (
+                    telescope_params['initial_az'],
+                    telescope_params['initial_za'],
+                )
+                global_data_group.attrs['initial_telescope_pos'] = initial_tel_pos
 
         # Optical image
         if optcam_exists:
@@ -453,6 +458,13 @@ class ConsolidatedData(DataStorage):
                 global_data_group.create_dataset(
                     'optical_video_timestamp', data=optcam_file['timestamp']
                 )
+                if (
+                    'initial_telescope_pos' not in global_data_group.attrs
+                    and Version(VERSION) <= TELESCOPE_INITIAL_POSITION_VERSION
+                ):
+                    # NOTE: This is only correct for versions < 1.3.0 if in video mode
+                    initial_tel_pos = (az_tel[0], za_tel[0])
+                    global_data_group.attrs['initial_telescope_pos'] = initial_tel_pos
             elif 'timestamp' in optcam_file:
                 # Only 'timestamp' exists (i.e. video was saved in a seperate file)
                 global_data_group.attrs['optical_video_file'] = optcam_file.attrs[
@@ -462,6 +474,13 @@ class ConsolidatedData(DataStorage):
                     'optical_video_timestamp', data=optcam_file['timestamp']
                 )
                 global_data_group.create_dataset('optical_image', data=np.array([]))
+                if (
+                    'initial_telescope_pos' not in global_data_group.attrs
+                    and Version(VERSION) <= TELESCOPE_INITIAL_POSITION_VERSION
+                ):
+                    # NOTE: This is only correct for versions < 1.3.0 if in video mode
+                    initial_tel_pos = (az_tel[0], za_tel[0])
+                    global_data_group.attrs['initial_telescope_pos'] = initial_tel_pos
             optcam_file.close()
         else:
             global_data_group.create_dataset('optical_image', data=np.array([]))
@@ -584,6 +603,10 @@ class ConsolidatedData(DataStorage):
             chunk_shape_1d = compute_chunk_shape((), 8, max_chunk_size=n_samples)
             chunk_shape_1d_ds = compute_chunk_shape((), 8, max_chunk_size=n_samples_ds)
             azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
+            azel_shape_1d_ds = (n_samples_ds,) if azel_exists else (1,)
+            chunk_shape_azel_1d_ds = compute_chunk_shape(
+                (), 8, max_chunk_size=azel_shape_1d_ds[-1]
+            )
             chunk_shape_3d = compute_chunk_shape(
                 (2, n_tones), 8, max_chunk_size=n_samples
             )
@@ -621,16 +644,16 @@ class ConsolidatedData(DataStorage):
             # Telescope positions
             telescope_az = time_ordered_data_group.create_dataset(
                 'telescope_az',
-                shape=(n_samples_ds,),
-                chunks=chunk_shape_1d_ds,
+                shape=azel_shape_1d_ds,
+                chunks=chunk_shape_azel_1d_ds,
                 dtype=np.float64,
                 compression='lzf',
                 shuffle=True,
             )
             telescope_za = time_ordered_data_group.create_dataset(
                 'telescope_za',
-                shape=(n_samples_ds,),
-                chunks=chunk_shape_1d_ds,
+                shape=azel_shape_1d_ds,
+                chunks=chunk_shape_azel_1d_ds,
                 dtype=np.float64,
                 compression='lzf',
                 shuffle=True,
@@ -1282,9 +1305,26 @@ class ProcessedData(DataStorage):
         """Return the data timestamps for the specified channel."""
         return self.get_from_channel(i_chan, 'time_ordered_data/timestamp')
 
+    def get_telescope_params(self) -> dict | None:
+        """Return the parameters used for the telescope dither, if available."""
+        params_str = self['global_data'].attrs.get('telescope_params', None)
+        if params_str is not None:
+            return json.loads(params_str)
+        return None
+
     def get_initial_telescope_position(self) -> tuple[float, float] | None:
         """Return the initial azimuth / zenith angle of the telescope."""
-        return self['global_data'].attrs.get('initial_telescope_pos', None)
+        pos = self['global_data'].attrs.get('initial_telescope_pos', None)
+        if pos is None:
+            params = self.get_telescope_params()
+            # Backwards compatible check
+            if params is not None and 'initial_az' in params and 'initial_za' in params:
+                pos = (params['initial_az'], params['initial_za'])
+                # Store the position for easy access later
+                self['global_data'].attrs['initial_telescope_pos'] = pos
+                return pos
+            return None
+        return pos
 
     def get_telescope_az(self, i_chan: int) -> h5py.Dataset:
         """Return the telescope azimuth positions for the channel's timstamps."""
