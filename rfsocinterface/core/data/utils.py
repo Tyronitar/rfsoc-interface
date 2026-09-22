@@ -24,12 +24,16 @@ _logger = logging.getLogger(__name__)
 
 # OPTCAM_SENSOR_SIZE = (5.76, 4.29)  # mm, (width, height)
 OPTCAM_DPIX = 0.0025  # Degrees / pixel
-OPTCAM_OFFSET_AZ_PIX = 289
-OPTCAM_OFFSET_ZA_PIX = -16
-DEFAULT_MAP_DPIX = 0.03  # Degrees / pixel
-DEFAULT_VIDEO_DPIX = 0.045  # Degrees / pixel
+# Empirically determined optical camera offset relative to telescope position
+# i.e. telescope position + offset = optcam position
+OPTCAM_OFFSET_AZ_DEG = -1.11111
+OPTCAM_OFFSET_ZA_DEG = -1.65628
+OPTCAM_OFFSET_AZ_PIX = int(OPTCAM_OFFSET_AZ_DEG / OPTCAM_DPIX)
+OPTCAM_OFFSET_ZA_PIX = int(OPTCAM_OFFSET_ZA_DEG / OPTCAM_DPIX)
 OPTCAM_HEIGHT_PIXELS = 1944
 OPTCAM_WIDTH_PIXELS = 2592
+DEFAULT_MAP_DPIX = 0.03  # Degrees / pixel
+DEFAULT_VIDEO_DPIX = 0.045  # Degrees / pixel
 
 SKIPR_PSF_SIGMA = 0.087 / 2.3  # Degrees
 # DATA_DIRECTORY = 'reference_data'  # For testing with local data files
