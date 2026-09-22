@@ -751,6 +751,18 @@ class TelescopeMotorController:
             f.create_dataset('az_pps', data=position_data[3::5])
             f.create_dataset('za_pps', data=position_data[4::5])
             f.create_dataset('optical_visibility', data=['****'])
+            f.attrs['params'] = json.dumps(
+                {
+                    # Generic parameters
+                    'initial_az': az_pos,
+                    'initial_za': za_pos,
+                    # self._run can only be False here if it was cancelled
+                    'completed': self._run,
+                    # Arguments to this function
+                    'file': str(file),
+                    'duration': duration,
+                }
+            )
         path.chmod(PERMISSIONS_ALL_FULL)
 
         self._run = False
