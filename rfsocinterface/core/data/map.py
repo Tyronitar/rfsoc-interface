@@ -32,7 +32,9 @@ from rfsocinterface.core.data.utils import (
     N_POLARIZATION,
     OPTCAM_DPIX,
     OPTCAM_HEIGHT_PIXELS,
+    OPTCAM_OFFSET_AZ_DEG,
     OPTCAM_OFFSET_AZ_PIX,
+    OPTCAM_OFFSET_ZA_DEG,
     OPTCAM_OFFSET_ZA_PIX,
     OPTCAM_WIDTH_PIXELS,
     SKIPR_PSF_SIGMA,
@@ -52,6 +54,7 @@ from rfsocinterface.core.utils import (
 _logger = logging.getLogger(__name__)
 MAP_CHANGE_VERSION = Version('1.1.0')
 BIN_TOD_INTO_MAP_CHANGE_VERSION = Version('4.0.0')
+BIN_TOD_INTO_VIDEO_CHANGE_VERSION = Version('3.1.0')
 
 
 def plot_map(
@@ -102,18 +105,183 @@ def plot_map(
     return fig
 
 
+def align_image(
+    im: npt.NDArray,
+    y_vals: npt.NDArray,
+    x_vals: npt.NDArray,
+    center_pos: tuple[float, float],
+    pixel_size: float,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Place an image on a grid covering the desired physical area.
+
+    Arguments:
+        im (npt.NDArray): The image or video to align, with shape (y, x, ...).
+        y_vals (npt.NDArray): The y coordinates of the area to align to.
+        x_vals (npt.NDArray): The x coordinates of the area to align to.
+        center_pos (tuple[float, float]): The center of the image in the same
+            units as the xy coordinates.
+        pixel_size (float): The size of pixels in `im`, in the same units as the xy
+            coordinates.
+
+    Returns:
+        aligned (npt.NDArray):
+            Zero-padded array containing `im` at its original resolution.
+            The first two dimensions cover the desired physical area.
+            All trailing dimensions are preserved.
+
+        y_out, x_out (npt.NDArray, npt.NDArray):
+            Physical coordinates of the output pixel centers.
+    """
+    # Physical boundaries of image 1
+    dy1 = y_vals[1] - y_vals[0]
+    dx1 = x_vals[1] - x_vals[0]
+
+    y_min = y_vals[0] - dy1 / 2
+    y_max = y_vals[-1] + dy1 / 2
+
+    x_min = x_vals[0] - dx1 / 2
+    x_max = x_vals[-1] + dx1 / 2
+
+    # Output shape at image 2's original resolution
+    height = int(np.ceil((y_max - y_min) / pixel_size))
+    width = int(np.ceil((x_max - x_min) / pixel_size))
+
+    aligned = np.zeros(
+        (height, width, *im.shape[2:]),
+        dtype=im.dtype,
+    )
+
+    # Physical coordinates of output pixel centers
+    y_out = y_min + (np.arange(height) + 0.5) * pixel_size
+    x_out = x_min + (np.arange(width) + 0.5) * pixel_size
+
+    # Center of arr2 in its own pixel coordinates
+    center_pixel2 = (np.asarray(im.shape[:2]) - 1) / 2
+
+    # Desired starting position of arr2 in the output
+    start_y = int(np.rint((center_pos[0] - y_out[0]) / pixel_size - center_pixel2[0]))
+
+    start_x = int(np.rint((center_pos[1] - x_out[0]) / pixel_size - center_pixel2[1]))
+
+    # Find overlapping slices for each spatial axis
+    target_slices = []
+    source_slices = []
+
+    # print("Input shape:", im.shape)
+    # print("Output shape:", aligned.shape)
+
+    # print("Start position:", start_y, start_x)
+
+    # print("Center position:", center_pos)
+    # print("Output center:", np.mean(y_out), np.mean(x_out))
+
+    for target_size, source_size, start in zip(
+        aligned.shape[:2],
+        im.shape[:2],
+        (start_y, start_x),
+        strict=False,
+    ):
+        dst_start = max(0, start)
+        dst_end = min(target_size, start + source_size)
+
+        # print(
+        #     f"Target size: {target_size}, "
+        #     f"Source size: {source_size}, "
+        #     f"Start: {start}, "
+        #     f"Destination: {dst_start}:{dst_end}"
+        # )
+
+        # No overlap along this axis
+        if dst_start >= dst_end:
+            return aligned, y_out, x_out
+
+        src_start = dst_start - start
+        src_end = dst_end - start
+
+        target_slices.append(slice(dst_start, dst_end))
+        source_slices.append(slice(src_start, src_end))
+
+    # Copy original pixels without interpolation
+    aligned[(*target_slices, ...)] = im[(*source_slices, ...)]
+    # pdb.set_trace()
+    # print("Source slices:", source_slices)
+    # print("Target slices:", target_slices)
+
+    # source_region = im[(*source_slices, slice(None))]
+    # target_region = aligned[(*target_slices, slice(None))]
+
+    # print("Source region shape:", source_region.shape)
+    # print("Target region shape:", target_region.shape)
+
+    # print("Source nonzero:", np.count_nonzero(source_region))
+    # print("Target nonzero:", np.count_nonzero(target_region))
+
+    # assert np.array_equal(source_region, target_region)
+
+    return aligned, y_out, x_out
+
+
 def get_scaled_optical_image(
     dpix: float,
     optical_image: npt.NDArray,
     map_az: npt.NDArray,
     map_za: npt.NDArray,
     optcam_pix_size_degrees: float = OPTCAM_DPIX,
+    optcam_offset_az_deg: float = OPTCAM_OFFSET_AZ_DEG,
+    optcam_offset_za_deg: float = OPTCAM_OFFSET_ZA_DEG,
     optcam_offset_az_pix: float = OPTCAM_OFFSET_AZ_PIX,
     optcam_offset_za_pix: float = OPTCAM_OFFSET_ZA_PIX,
     optcam_height_pixels: int = OPTCAM_HEIGHT_PIXELS,
     optcam_width_pixels: int = OPTCAM_WIDTH_PIXELS,
+    telescope_start_position: tuple[float, float] | None = None,
 ) -> npt.NDArray:
-    """Scale the optical image to match the pixel scale of the map."""
+    """Scale the optical image to match the pixel scale of the map.
+
+    Arguments:
+        dpix (float): Degrees / pixel for mm map pixels.
+        optical_image (npt.NDArray): The optical image.
+        map_az (npt.NDArray): The azimuth coordinates of mm map pixels.
+        map_za (npt.NDArray): The zenith angle coordinates of mm map pixels.
+        optcam_pix_size_degrees (float, optional): Degrees / pixel for optical
+            image pixels. Defaults to `OPTCAM_DPIX`.
+        optcam_offset_az_deg (float, optional): Optical image offset from telescope
+            position in azimuth, in optical image degrees. Defaults to
+            `OPTCAM_OFFSET_AZ_DEG`.
+        optcam_offset_za_deg (float, optional): Optical image offset from telescope
+            position in zenith angle, in optical image degrees. Defaults to
+            `OPTCAM_OFFSET_ZA_DEG`.
+        optcam_offset_az_pix (float, optional): Optical image offset from telescope
+            position in azimuth, in optical image pixels. Defaults to
+            `OPTCAM_OFFSET_AZ_PIX`.
+        optcam_offset_za_pix (float, optional): Optical image offset from telescope
+            position in zentih angle, in optical image pixels. Defaults to
+            `OPTCAM_OFFSET_ZA_PIX`.
+        optcam_height_pixels (int, optional): The height of the optical image in pixels.
+            Defaults to `OPTCAM_HEIGHT_PIXELS`.
+        optcam_width_pixels (int, optional): The width of the optical image in pixels.
+            Defaults to `OPTCAM_WIDTH_PIXELS`.
+        telescope_start_position (tuple[float, float], optional): The azimuth and
+            zentih angle of the telescope's boresight at the time of collecting the
+            optical image. If `None`, image is placed relative to the center of the map.
+            This can result in alignment issues. Defaults to `None`.
+    """
+    if telescope_start_position is not None:
+        center_az = telescope_start_position[0] + optcam_offset_az_deg
+        center_za = telescope_start_position[1] + optcam_offset_za_deg
+        full_image, _, _ = align_image(
+            optical_image,
+            map_za[:],
+            map_az[:],
+            (center_za, center_az),
+            optcam_pix_size_degrees,
+        )
+        return full_image
+
+    _logger.warning(
+        'Telescope start position not provided. '
+        'Placing optical image relative to center of map. '
+        'This may result in alignment issues.'
+    )
     opt_npix_per_tel_npix = dpix / optcam_pix_size_degrees
     opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
     opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
@@ -167,16 +335,20 @@ def get_map_size(
     az_trim: float,
     za_trim: float,
     dpix: float = DEFAULT_MAP_DPIX,
-    beam_map_mode: bool = False,  # noqa: ARG001
+    beam_map_mode: bool = False,
 ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
     """Determine map size based on detector positions and desired pixel size."""
     abs_max_az = abs_max_za = -np.inf
     abs_min_az = abs_min_za = np.inf
     for i_chan in range(pdata.n_chan):
-        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
-        det_az = det_az[pdata.get_onres_ind(i_chan)]
-        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
-        det_za = det_za[pdata.get_onres_ind(i_chan)]
+        if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
+            det_az = pdata.get_telescope_az(i_chan)[:]
+            det_za = pdata.get_telescope_za(i_chan)[:]
+        else:
+            det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+            det_az = det_az[pdata.get_onres_ind(i_chan)]
+            det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+            det_za = det_za[pdata.get_onres_ind(i_chan)]
         abs_max_az = max(np.nanmax(det_az), abs_max_az)
         abs_min_az = min(np.nanmin(det_az), abs_min_az)
         abs_max_za = max(np.nanmax(det_za), abs_max_za)
@@ -192,10 +364,14 @@ def get_map_size(
     max_az = max_za = -np.inf
     min_az = min_za = np.inf
     for i_chan in range(pdata.n_chan):
-        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
-        det_az = det_az[pdata.get_onres_ind(i_chan)]
-        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
-        det_za = det_za[pdata.get_onres_ind(i_chan)]
+        if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
+            det_az = pdata.get_telescope_az(i_chan)[:]
+            det_za = pdata.get_telescope_za(i_chan)[:]
+        else:
+            det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+            det_az = det_az[pdata.get_onres_ind(i_chan)]
+            det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+            det_za = det_za[pdata.get_onres_ind(i_chan)]
         good_idx = tuple(
             np.argwhere(
                 ((abs_min_az <= det_az) & (det_az <= abs_max_az))
@@ -272,7 +448,7 @@ class BinTODIntoMap(DataRoutine):
     """
 
     name = 'BinTODIntoMap'
-    version = '4.0.0'
+    version = '4.1.0'
 
     produces: ClassVar[set] = {
         '/map/',
@@ -433,7 +609,7 @@ class BinTODIntoMap(DataRoutine):
             )
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):  # noqa: PLR0912
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
@@ -447,12 +623,22 @@ class BinTODIntoMap(DataRoutine):
         self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za
-        detector_az = [
-            pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
-        ]
-        detector_za = [
-            pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)
-        ]
+        if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
+            _logger.info(f'{self.name}: Using telescope positions for map creation')
+            detector_az = [
+                pdata.get_telescope_az(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
+            detector_za = [
+                pdata.get_telescope_za(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
+        else:
+            _logger.info(f'{self.name}: Using detector positions for map creation')
+            detector_az = [
+                pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
+            detector_za = [
+                pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
 
         data = []
         match self.params['dataset']:
@@ -545,8 +731,12 @@ class BinTODIntoMap(DataRoutine):
                 weight = 1.0 / netd[i_tone_absolute] ** 2.0
 
             i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
-            this_detector_az = detector_az[i_chan][i_tone_relative]
-            this_detector_za = detector_za[i_chan][i_tone_relative]
+            if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
+                this_detector_az = detector_az[i_chan]
+                this_detector_za = detector_za[i_chan]
+            else:
+                this_detector_az = detector_az[i_chan][i_tone_relative]
+                this_detector_za = detector_za[i_chan][i_tone_relative]
 
             # Get the good samples if they haven't been specified
             this_clean_data = np.squeeze(data[i_chan][i_tone_relative])
@@ -554,9 +744,9 @@ class BinTODIntoMap(DataRoutine):
             # Get this detector's positions, need to account for rotation in EL based on
             # beammap taken at EL=89
             x_ind = np.squeeze(np.round((this_detector_az - map_az[0]) / dpix))
-            x_ind = np.nan_to_num(x_ind, -1).astype('int')
+            x_ind = np.nan_to_num(x_ind, nan=-1).astype('int')
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
-            y_ind = np.nan_to_num(y_ind, -1).astype('int')
+            y_ind = np.nan_to_num(y_ind, nan=-1).astype('int')
 
             # Eliminate samples outside the map
             this_good_samples = np.copy(good_samples[i_chan])
@@ -671,18 +861,37 @@ def get_required_map_datasets(
     # Check rfsocinterface version for backwards compatibility. Old maps
     # were not separated by channel, so will always need to return map_val and total_map
     # and have a warning.
-    _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
-    bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+    try:
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_map_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+    except KeyError:
+        bintod_map_version = Version('0.0.0')
+    try:
+        _, most_recent_video_step = pdata.find_most_recent_history_step(
+            'BinTODIntoVideo'
+        )
+        bintod_video_version = Version(
+            most_recent_video_step.attrs['version'].strip('"')
+        )
+    except KeyError:
+        bintod_video_version = Version('0.0.0')
     if 'map/channel_map_val' not in pdata and (
         pdata.get_version() < MAP_CHANGE_VERSION
-        or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        or (
+            group_name == '/map'
+            and bintod_map_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+        or (
+            group_name == '/video'
+            and bintod_video_version < BIN_TOD_INTO_VIDEO_CHANGE_VERSION
+        )
     ):
         _logger.warning(
             (f'{caller_name}: ' if caller_name else '')
             + f'ProcessedData {pdata.file_stub} was created prior to map data changes. '
             'Using `map_val` and `total_map`'
         )
-        return {'/map/map_val', '/map/total_map'}
+        return {f'{group_name}/map_val', f'{group_name}/total_map'}
 
     all_channels = tuple(range(pdata.n_chan))
     valid_channels = range(-pdata.n_chan, pdata.n_chan)
@@ -1162,8 +1371,13 @@ class PlotMap(DataRoutine):
         )
 
         # Optical Image
+        tel_start = pdata.get_initial_telescope_position()
         optical_image = get_scaled_optical_image(
-            dpix, pdata.optical_image, map_az, map_za
+            dpix,
+            pdata.optical_image,
+            map_az,
+            map_za,
+            telescope_start_position=tel_start,
         )
         opt_vmax = 255.0
         opt_vmin = 0  # NOTE: Shouldn't this be 0?
@@ -1629,11 +1843,16 @@ class BinTODIntoVideo(DataRoutine):
         n_maps = N_POLARIZATION if not beam_map_mode else pdata.total_tones
 
         # Determine optical video dimenmsions before intiializing arryas
+        tel_start_pos = pdata.get_initial_telescope_position()
         if np.size(pdata.optical_image) == 0:
             optical_image_shape = (0, 0, 0)
         else:
             scaled_optical_image = get_scaled_optical_image(
-                dpix, pdata.optical_image[:], map_az, map_za
+                dpix,
+                pdata.optical_image[:],
+                map_az,
+                map_za,
+                telescope_start_position=tel_start_pos,
             )
             optical_image_shape = scaled_optical_image.shape
 
@@ -1643,7 +1862,11 @@ class BinTODIntoVideo(DataRoutine):
             full_optical_video = load_mp4_ffmpeg(video_path).transpose((1, 2, 3, 0))
             _logger.info(f'{self.name}: Finished reading optical video.')
             scaled_optical_image = get_scaled_optical_image(
-                dpix, full_optical_video[..., 0], map_az, map_za
+                dpix,
+                full_optical_video[..., 0],
+                map_az,
+                map_za,
+                telescope_start_position=tel_start_pos,
             )
             optical_image_shape = scaled_optical_image.shape
         elif 'optical_video' in pdata['global_data']:
@@ -1914,7 +2137,11 @@ class BinTODIntoVideo(DataRoutine):
             _logger.info(f'{self.name}: Synchronizing mm and optical videos...')
             optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
             full_scaled_video = get_scaled_optical_image(
-                dpix, full_optical_video, map_az, map_za
+                dpix,
+                full_optical_video,
+                map_az,
+                map_za,
+                telescope_start_position=tel_start_pos,
             )
             video_timestamp = np.zeros(n_blocks)
             for i_block, block_end in enumerate(blocks[1:]):
