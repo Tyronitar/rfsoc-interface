@@ -28,6 +28,7 @@ from typing import (
 from matplotlib.colorbar import Colorbar
 from matplotlib.image import AxesImage
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from packaging.version import Version
 
 try:
     import thread  # type: ignore
@@ -92,6 +93,9 @@ SELECTED_RESONANCE_COLOR = 'dodgerblue'
 EDITED_RESONANCE_COLOR = 'limegreen'
 
 MAX_ATTENUATION = 31.75
+
+# First version where telescope patterns always record the initial position
+TELESCOPE_INITIAL_POSITION_VERSION = Version('1.3.0')
 
 
 class ChanmaskValue(IntEnum):

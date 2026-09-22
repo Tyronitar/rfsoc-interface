@@ -36,10 +36,10 @@ from rfsocinterface.core.data.utils import (
     rotate_basis,
 )
 from rfsocinterface.core.sweeps import LoSweepData
-from rfsocinterface.core.telescope import TELESCOPE_INITIAL_POSITION_VERSION
 from rfsocinterface.core.utils import (
     DEFAULT_DATA_DIRECTORY,
     PERMISSIONS_ALL_FULL,
+    TELESCOPE_INITIAL_POSITION_VERSION,
     ChanmaskValue,
     H5pyObject,
     PathLike,

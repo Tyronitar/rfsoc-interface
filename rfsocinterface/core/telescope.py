@@ -17,7 +17,6 @@ import numpy as np
 import serial
 import serial.tools.list_ports
 import uldaq as ul
-from packaging.version import Version
 
 # from Exscript.protocols.telnetlib import Telnet
 from telnetlib3.telnetlib import Telnet
@@ -72,10 +71,6 @@ NEG_SW_LIM = -181.000
 POS_SW_LIM = 181.000
 NEG_ZA_SW_LIM = -np.inf
 POS_ZA_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
-
-
-# First version where telescope patterns always record the initial position
-TELESCOPE_INITIAL_POSITION_VERSION = Version('1.3.0')
 
 
 class TelescopeMotorController:
