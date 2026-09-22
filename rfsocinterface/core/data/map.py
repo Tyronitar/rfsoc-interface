@@ -1,7 +1,6 @@
 """Data processing code for generating maps."""
 
 import logging
-import pdb
 import time
 import typing
 from collections.abc import Sequence
@@ -194,7 +193,6 @@ def align_image(
 
         # No overlap along this axis
         if dst_start >= dst_end:
-            print("NO OVERLAP — RETURNING ZERO ARRAY")
             return aligned, y_out, x_out
 
         src_start = dst_start - start
@@ -246,11 +244,17 @@ def get_scaled_optical_image(
         map_za (npt.NDArray): The zenith angle coordinates of mm map pixels.
         optcam_pix_size_degrees (float, optional): Degrees / pixel for optical
             image pixels. Defaults to `OPTCAM_DPIX`.
+        optcam_offset_az_deg (float, optional): Optical image offset from telescope
+            position in azimuth, in optical image degrees. Defaults to
+            `OPTCAM_OFFSET_AZ_DEG`.
+        optcam_offset_za_deg (float, optional): Optical image offset from telescope
+            position in zenith angle, in optical image degrees. Defaults to
+            `OPTCAM_OFFSET_ZA_DEG`.
         optcam_offset_az_pix (float, optional): Optical image offset from telescope
-            boresight in azimuth, in optical image pixels. Defaults to
+            position in azimuth, in optical image pixels. Defaults to
             `OPTCAM_OFFSET_AZ_PIX`.
         optcam_offset_za_pix (float, optional): Optical image offset from telescope
-            boresight in zentih angle, in optical image pixels. Defaults to
+            position in zentih angle, in optical image pixels. Defaults to
             `OPTCAM_OFFSET_ZA_PIX`.
         optcam_height_pixels (int, optional): The height of the optical image in pixels.
             Defaults to `OPTCAM_HEIGHT_PIXELS`.
@@ -273,6 +277,11 @@ def get_scaled_optical_image(
         )
         return full_image
 
+    _logger.warning(
+        'Telescope start position not provided. '
+        'Placing optical image relative to center of map. '
+        'This may result in alignment issues.'
+    )
     opt_npix_per_tel_npix = dpix / optcam_pix_size_degrees
     opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
     opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
@@ -304,7 +313,6 @@ def get_scaled_optical_image(
     fixed_za_range = slice(
         max(0, za_range.start), max(za_range.stop, za_range.stop + za_padding[1])
     )
-    pdb.set_trace()
     return im[fixed_za_range, fixed_az_range]
 
 
@@ -859,14 +867,24 @@ def get_required_map_datasets(
     except KeyError:
         bintod_map_version = Version('0.0.0')
     try:
-        _, most_recent_video_step = pdata.find_most_recent_history_step('BinTODIntoVideo')
-        bintod_video_version = Version(most_recent_video_step.attrs['version'].strip('"'))
+        _, most_recent_video_step = pdata.find_most_recent_history_step(
+            'BinTODIntoVideo'
+        )
+        bintod_video_version = Version(
+            most_recent_video_step.attrs['version'].strip('"')
+        )
     except KeyError:
         bintod_video_version = Version('0.0.0')
     if 'map/channel_map_val' not in pdata and (
         pdata.get_version() < MAP_CHANGE_VERSION
-        or (group_name=='/map' and bintod_map_version < BIN_TOD_INTO_MAP_CHANGE_VERSION)
-        or (group_name=='/video' and bintod_video_version < BIN_TOD_INTO_VIDEO_CHANGE_VERSION)
+        or (
+            group_name == '/map'
+            and bintod_map_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+        or (
+            group_name == '/video'
+            and bintod_video_version < BIN_TOD_INTO_VIDEO_CHANGE_VERSION
+        )
     ):
         _logger.warning(
             (f'{caller_name}: ' if caller_name else '')
@@ -1787,7 +1805,10 @@ class BinTODIntoVideo(DataRoutine):
             optical_image_shape = (0, 0, 0)
         else:
             scaled_optical_image = get_scaled_optical_image(
-                dpix, pdata.optical_image[:], map_az, map_za,
+                dpix,
+                pdata.optical_image[:],
+                map_az,
+                map_za,
                 telescope_start_position=tel_start_pos,
             )
             optical_image_shape = scaled_optical_image.shape
@@ -1798,7 +1819,10 @@ class BinTODIntoVideo(DataRoutine):
             full_optical_video = load_mp4_ffmpeg(video_path).transpose((1, 2, 3, 0))
             _logger.info(f'{self.name}: Finished reading optical video.')
             scaled_optical_image = get_scaled_optical_image(
-                dpix, full_optical_video[..., 0], map_az, map_za,
+                dpix,
+                full_optical_video[..., 0],
+                map_az,
+                map_za,
                 telescope_start_position=tel_start_pos,
             )
             optical_image_shape = scaled_optical_image.shape
@@ -2070,7 +2094,10 @@ class BinTODIntoVideo(DataRoutine):
             _logger.info(f'{self.name}: Synchronizing mm and optical videos...')
             optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
             full_scaled_video = get_scaled_optical_image(
-                dpix, full_optical_video, map_az, map_za,
+                dpix,
+                full_optical_video,
+                map_az,
+                map_za,
                 telescope_start_position=tel_start_pos,
             )
             video_timestamp = np.zeros(n_blocks)
