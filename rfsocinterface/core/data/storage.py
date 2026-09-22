@@ -427,6 +427,8 @@ class ConsolidatedData(DataStorage):
 
         if azel_exists:
             global_data_group.attrs['telescope_params'] = json.dumps(telescope_params)
+            initial_tel_pos = (az_tel[0], za_tel[0])
+            global_data_group.attrs['initial_telescope_pos'] = initial_tel_pos
 
         # Optical image
         if optcam_exists:
@@ -1279,6 +1281,10 @@ class ProcessedData(DataStorage):
     def get_timestamp(self, i_chan: int) -> h5py.Dataset:
         """Return the data timestamps for the specified channel."""
         return self.get_from_channel(i_chan, 'time_ordered_data/timestamp')
+
+    def get_initial_telescope_position(self) -> tuple[float, float] | None:
+        """Return the initial azimuth / zenith angle of the telescope."""
+        return self['global_data'].attrs.get('initial_telescope_pos', None)
 
     def get_telescope_az(self, i_chan: int) -> h5py.Dataset:
         """Return the telescope azimuth positions for the channel's timstamps."""
