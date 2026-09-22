@@ -1,6 +1,7 @@
 """Data processing code for generating maps."""
 
 import logging
+import pdb
 import time
 import typing
 from collections.abc import Sequence
@@ -54,6 +55,7 @@ from rfsocinterface.core.utils import (
 _logger = logging.getLogger(__name__)
 MAP_CHANGE_VERSION = Version('1.1.0')
 BIN_TOD_INTO_MAP_CHANGE_VERSION = Version('4.0.0')
+BIN_TOD_INTO_VIDEO_CHANGE_VERSION = Version('3.1.0')
 
 
 def plot_map(
@@ -114,7 +116,7 @@ def align_image(
     """Place an image on a grid covering the desired physical area.
 
     Arguments:
-        im (npt.NDArray): The image to align.
+        im (npt.NDArray): The image or video to align, with shape (y, x, ...).
         y_vals (npt.NDArray): The y coordinates of the area to align to.
         x_vals (npt.NDArray): The x coordinates of the area to align to.
         center_pos (tuple[float, float]): The center of the image in the same
@@ -124,7 +126,9 @@ def align_image(
 
     Returns:
         aligned (npt.NDArray):
-            Zero-padded image containing the original pixels of arr2.
+            Zero-padded array containing `im` at its original resolution.
+            The first two dimensions cover the desired physical area.
+            All trailing dimensions are preserved.
 
         y_out, x_out (npt.NDArray, npt.NDArray):
             Physical coordinates of the output pixel centers.
@@ -144,7 +148,7 @@ def align_image(
     width = int(np.ceil((x_max - x_min) / pixel_size))
 
     aligned = np.zeros(
-        (height, width, im.shape[2]),
+        (height, width, *im.shape[2:]),
         dtype=im.dtype,
     )
 
@@ -164,6 +168,14 @@ def align_image(
     target_slices = []
     source_slices = []
 
+    # print("Input shape:", im.shape)
+    # print("Output shape:", aligned.shape)
+
+    # print("Start position:", start_y, start_x)
+
+    # print("Center position:", center_pos)
+    # print("Output center:", np.mean(y_out), np.mean(x_out))
+
     for target_size, source_size, start in zip(
         aligned.shape[:2],
         im.shape[:2],
@@ -173,8 +185,16 @@ def align_image(
         dst_start = max(0, start)
         dst_end = min(target_size, start + source_size)
 
+        # print(
+        #     f"Target size: {target_size}, "
+        #     f"Source size: {source_size}, "
+        #     f"Start: {start}, "
+        #     f"Destination: {dst_start}:{dst_end}"
+        # )
+
         # No overlap along this axis
         if dst_start >= dst_end:
+            print("NO OVERLAP — RETURNING ZERO ARRAY")
             return aligned, y_out, x_out
 
         src_start = dst_start - start
@@ -184,7 +204,21 @@ def align_image(
         source_slices.append(slice(src_start, src_end))
 
     # Copy original pixels without interpolation
-    aligned[(*target_slices, slice(None))] = im[(*source_slices, slice(None))]
+    aligned[(*target_slices, ...)] = im[(*source_slices, ...)]
+    # pdb.set_trace()
+    # print("Source slices:", source_slices)
+    # print("Target slices:", target_slices)
+
+    # source_region = im[(*source_slices, slice(None))]
+    # target_region = aligned[(*target_slices, slice(None))]
+
+    # print("Source region shape:", source_region.shape)
+    # print("Target region shape:", target_region.shape)
+
+    # print("Source nonzero:", np.count_nonzero(source_region))
+    # print("Target nonzero:", np.count_nonzero(target_region))
+
+    # assert np.array_equal(source_region, target_region)
 
     return aligned, y_out, x_out
 
@@ -195,6 +229,8 @@ def get_scaled_optical_image(
     map_az: npt.NDArray,
     map_za: npt.NDArray,
     optcam_pix_size_degrees: float = OPTCAM_DPIX,
+    optcam_offset_az_deg: float = OPTCAM_OFFSET_AZ_DEG,
+    optcam_offset_za_deg: float = OPTCAM_OFFSET_ZA_DEG,
     optcam_offset_az_pix: float = OPTCAM_OFFSET_AZ_PIX,
     optcam_offset_za_pix: float = OPTCAM_OFFSET_ZA_PIX,
     optcam_height_pixels: int = OPTCAM_HEIGHT_PIXELS,
@@ -226,8 +262,8 @@ def get_scaled_optical_image(
             This can result in alignment issues. Defaults to `None`.
     """
     if telescope_start_position is not None:
-        center_az = telescope_start_position[0] + OPTCAM_OFFSET_AZ_DEG
-        center_za = telescope_start_position[1] + OPTCAM_OFFSET_ZA_DEG
+        center_az = telescope_start_position[0] + optcam_offset_az_deg
+        center_za = telescope_start_position[1] + optcam_offset_za_deg
         full_image, _, _ = align_image(
             optical_image,
             map_za[:],
@@ -268,6 +304,7 @@ def get_scaled_optical_image(
     fixed_za_range = slice(
         max(0, za_range.start), max(za_range.stop, za_range.stop + za_padding[1])
     )
+    pdb.set_trace()
     return im[fixed_za_range, fixed_az_range]
 
 
@@ -816,18 +853,27 @@ def get_required_map_datasets(
     # Check rfsocinterface version for backwards compatibility. Old maps
     # were not separated by channel, so will always need to return map_val and total_map
     # and have a warning.
-    _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
-    bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+    try:
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_map_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+    except KeyError:
+        bintod_map_version = Version('0.0.0')
+    try:
+        _, most_recent_video_step = pdata.find_most_recent_history_step('BinTODIntoVideo')
+        bintod_video_version = Version(most_recent_video_step.attrs['version'].strip('"'))
+    except KeyError:
+        bintod_video_version = Version('0.0.0')
     if 'map/channel_map_val' not in pdata and (
         pdata.get_version() < MAP_CHANGE_VERSION
-        or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        or (group_name=='/map' and bintod_map_version < BIN_TOD_INTO_MAP_CHANGE_VERSION)
+        or (group_name=='/video' and bintod_video_version < BIN_TOD_INTO_VIDEO_CHANGE_VERSION)
     ):
         _logger.warning(
             (f'{caller_name}: ' if caller_name else '')
             + f'ProcessedData {pdata.file_stub} was created prior to map data changes. '
             'Using `map_val` and `total_map`'
         )
-        return {'/map/map_val', '/map/total_map'}
+        return {f'{group_name}/map_val', f'{group_name}/total_map'}
 
     all_channels = tuple(range(pdata.n_chan))
     valid_channels = range(-pdata.n_chan, pdata.n_chan)
@@ -1736,11 +1782,13 @@ class BinTODIntoVideo(DataRoutine):
         n_maps = N_POLARIZATION if not beam_map_mode else pdata.total_tones
 
         # Determine optical video dimenmsions before intiializing arryas
+        tel_start_pos = pdata.get_initial_telescope_position()
         if np.size(pdata.optical_image) == 0:
             optical_image_shape = (0, 0, 0)
         else:
             scaled_optical_image = get_scaled_optical_image(
-                dpix, pdata.optical_image[:], map_az, map_za
+                dpix, pdata.optical_image[:], map_az, map_za,
+                telescope_start_position=tel_start_pos,
             )
             optical_image_shape = scaled_optical_image.shape
 
@@ -1750,7 +1798,8 @@ class BinTODIntoVideo(DataRoutine):
             full_optical_video = load_mp4_ffmpeg(video_path).transpose((1, 2, 3, 0))
             _logger.info(f'{self.name}: Finished reading optical video.')
             scaled_optical_image = get_scaled_optical_image(
-                dpix, full_optical_video[..., 0], map_az, map_za
+                dpix, full_optical_video[..., 0], map_az, map_za,
+                telescope_start_position=tel_start_pos,
             )
             optical_image_shape = scaled_optical_image.shape
         elif 'optical_video' in pdata['global_data']:
@@ -2021,7 +2070,8 @@ class BinTODIntoVideo(DataRoutine):
             _logger.info(f'{self.name}: Synchronizing mm and optical videos...')
             optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
             full_scaled_video = get_scaled_optical_image(
-                dpix, full_optical_video, map_az, map_za
+                dpix, full_optical_video, map_az, map_za,
+                telescope_start_position=tel_start_pos,
             )
             video_timestamp = np.zeros(n_blocks)
             for i_block, block_end in enumerate(blocks[1:]):

@@ -85,33 +85,47 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        hp_filter,
-        lp_filter,
-        clean_tod,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
         # compute_psd,
         # psd_plotter,
-        bin_tod_to_map,
-        plotter,
-        # bin_tod_to_video,
-        # animate_video,
+        # bin_tod_to_map,
+        # plotter,
+        bin_tod_to_video,
+        animate_video,
         # find_fwhm,
         # analyze_beammap,
         # plot_beammap,
     ])
 
-    date = '20260820'  # For testing normal maps
-    setnum = 1005
+    # date = '20260820'  # For testing normal maps
+    # setnum = 1005
     # date = '20260710'  # For testing beammaps
     # setnum = 1006
+    date = '20260917'  # For testing video
+    setnum = 1007
 
 
     # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
     pdata = ProcessedData.load(date, setnum)
-    plotter.apply(pdata)
-    # pipeline.run(pdata)
+    pipeline.run(pdata)
     # pdb.set_trace()
 
+    # plotter.apply(pdata)
+    # map_az = pdata['map/map_az'][:]
+    # map_za = pdata['map/map_za'][:]
+    # dpix = 0.03
+    # optim = get_scaled_optical_image(
+    #     dpix, pdata.optical_image, map_az, map_za,
+    #     optcam_offset_az_deg=0, optcam_offset_za_deg=0,
+    #     telescope_start_position=(np.nanmean(map_az), np.nanmean(map_za)),
+    # )
+    # ofig = plt.figure()
+    # plt.imshow(optim)
+    # ofig.show()
+    # pdb.set_trace()
     # pdata = ProcessedData.load(date, setnum)
     # tel_az = pdata.get_telescope_az(0)[:]
     # tel_za = pdata.get_telescope_za(0)[:]
