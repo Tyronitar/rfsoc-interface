@@ -85,9 +85,9 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
+        hp_filter,
+        lp_filter,
+        clean_tod,
         # compute_psd,
         # psd_plotter,
         # bin_tod_to_map,
@@ -107,10 +107,10 @@ if __name__ == '__main__':
     setnum = 1007
 
 
-    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    pdata = ProcessedData.load(date, setnum)
-    pipeline.run(pdata)
+    # pdata = ProcessedData.load(date, setnum)
+    # pipeline.run(pdata)
     # pdb.set_trace()
 
     # plotter.apply(pdata)
