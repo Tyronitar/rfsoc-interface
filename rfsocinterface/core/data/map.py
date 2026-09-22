@@ -32,7 +32,9 @@ from rfsocinterface.core.data.utils import (
     N_POLARIZATION,
     OPTCAM_DPIX,
     OPTCAM_HEIGHT_PIXELS,
+    OPTCAM_OFFSET_AZ_DEG,
     OPTCAM_OFFSET_AZ_PIX,
+    OPTCAM_OFFSET_ZA_DEG,
     OPTCAM_OFFSET_ZA_PIX,
     OPTCAM_WIDTH_PIXELS,
     SKIPR_PSF_SIGMA,
@@ -102,6 +104,91 @@ def plot_map(
     return fig
 
 
+def align_image(
+    im: npt.NDArray,
+    y_vals: npt.NDArray,
+    x_vals: npt.NDArray,
+    center_pos: tuple[float, float],
+    pixel_size: float,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Place an image on a grid covering the desired physical area.
+
+    Arguments:
+        im (npt.NDArray): The image to align.
+        y_vals (npt.NDArray): The y coordinates of the area to align to.
+        x_vals (npt.NDArray): The x coordinates of the area to align to.
+        center_pos (tuple[float, float]): The center of the image in the same
+            units as the xy coordinates.
+        pixel_size (float): The size of pixels in `im`, in the same units as the xy
+            coordinates.
+
+    Returns:
+        aligned (npt.NDArray):
+            Zero-padded image containing the original pixels of arr2.
+
+        y_out, x_out (npt.NDArray, npt.NDArray):
+            Physical coordinates of the output pixel centers.
+    """
+    # Physical boundaries of image 1
+    dy1 = y_vals[1] - y_vals[0]
+    dx1 = x_vals[1] - x_vals[0]
+
+    y_min = y_vals[0] - dy1 / 2
+    y_max = y_vals[-1] + dy1 / 2
+
+    x_min = x_vals[0] - dx1 / 2
+    x_max = x_vals[-1] + dx1 / 2
+
+    # Output shape at image 2's original resolution
+    height = int(np.ceil((y_max - y_min) / pixel_size))
+    width = int(np.ceil((x_max - x_min) / pixel_size))
+
+    aligned = np.zeros(
+        (height, width, im.shape[2]),
+        dtype=im.dtype,
+    )
+
+    # Physical coordinates of output pixel centers
+    y_out = y_min + (np.arange(height) + 0.5) * pixel_size
+    x_out = x_min + (np.arange(width) + 0.5) * pixel_size
+
+    # Center of arr2 in its own pixel coordinates
+    center_pixel2 = (np.asarray(im.shape[:2]) - 1) / 2
+
+    # Desired starting position of arr2 in the output
+    start_y = int(np.rint((center_pos[0] - y_out[0]) / pixel_size - center_pixel2[0]))
+
+    start_x = int(np.rint((center_pos[1] - x_out[0]) / pixel_size - center_pixel2[1]))
+
+    # Find overlapping slices for each spatial axis
+    target_slices = []
+    source_slices = []
+
+    for target_size, source_size, start in zip(
+        aligned.shape[:2],
+        im.shape[:2],
+        (start_y, start_x),
+        strict=False,
+    ):
+        dst_start = max(0, start)
+        dst_end = min(target_size, start + source_size)
+
+        # No overlap along this axis
+        if dst_start >= dst_end:
+            return aligned, y_out, x_out
+
+        src_start = dst_start - start
+        src_end = dst_end - start
+
+        target_slices.append(slice(dst_start, dst_end))
+        source_slices.append(slice(src_start, src_end))
+
+    # Copy original pixels without interpolation
+    aligned[(*target_slices, slice(None))] = im[(*source_slices, slice(None))]
+
+    return aligned, y_out, x_out
+
+
 def get_scaled_optical_image(
     dpix: float,
     optical_image: npt.NDArray,
@@ -112,8 +199,44 @@ def get_scaled_optical_image(
     optcam_offset_za_pix: float = OPTCAM_OFFSET_ZA_PIX,
     optcam_height_pixels: int = OPTCAM_HEIGHT_PIXELS,
     optcam_width_pixels: int = OPTCAM_WIDTH_PIXELS,
+    telescope_start_position: tuple[float, float] | None = None,
 ) -> npt.NDArray:
-    """Scale the optical image to match the pixel scale of the map."""
+    """Scale the optical image to match the pixel scale of the map.
+
+    Arguments:
+        dpix (float): Degrees / pixel for mm map pixels.
+        optical_image (npt.NDArray): The optical image.
+        map_az (npt.NDArray): The azimuth coordinates of mm map pixels.
+        map_za (npt.NDArray): The zenith angle coordinates of mm map pixels.
+        optcam_pix_size_degrees (float, optional): Degrees / pixel for optical
+            image pixels. Defaults to `OPTCAM_DPIX`.
+        optcam_offset_az_pix (float, optional): Optical image offset from telescope
+            boresight in azimuth, in optical image pixels. Defaults to
+            `OPTCAM_OFFSET_AZ_PIX`.
+        optcam_offset_za_pix (float, optional): Optical image offset from telescope
+            boresight in zentih angle, in optical image pixels. Defaults to
+            `OPTCAM_OFFSET_ZA_PIX`.
+        optcam_height_pixels (int, optional): The height of the optical image in pixels.
+            Defaults to `OPTCAM_HEIGHT_PIXELS`.
+        optcam_width_pixels (int, optional): The width of the optical image in pixels.
+            Defaults to `OPTCAM_WIDTH_PIXELS`.
+        telescope_start_position (tuple[float, float], optional): The azimuth and
+            zentih angle of the telescope's boresight at the time of collecting the
+            optical image. If `None`, image is placed relative to the center of the map.
+            This can result in alignment issues. Defaults to `None`.
+    """
+    if telescope_start_position is not None:
+        center_az = telescope_start_position[0] + OPTCAM_OFFSET_AZ_DEG
+        center_za = telescope_start_position[1] + OPTCAM_OFFSET_ZA_DEG
+        full_image, _, _ = align_image(
+            optical_image,
+            map_za[:],
+            map_az[:],
+            (center_za, center_az),
+            optcam_pix_size_degrees,
+        )
+        return full_image
+
     opt_npix_per_tel_npix = dpix / optcam_pix_size_degrees
     opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
     opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
@@ -1165,8 +1288,13 @@ class PlotMap(DataRoutine):
         )
 
         # Optical Image
+        tel_start = pdata.get_initial_telescope_position()
         optical_image = get_scaled_optical_image(
-            dpix, pdata.optical_image, map_az, map_za
+            dpix,
+            pdata.optical_image,
+            map_az,
+            map_za,
+            telescope_start_position=tel_start,
         )
         opt_vmax = 255.0
         opt_vmin = 0  # NOTE: Shouldn't this be 0?

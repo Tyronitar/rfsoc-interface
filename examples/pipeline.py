@@ -56,12 +56,12 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=True,
+        beam_map_mode=False,
         dataset=dataset,
         az_trim=0,
         za_trim=0,
         dpix=0.03,
-        r0=0.15,
+        r0=0.0,
     )
     plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
     bin_tod_to_video = BinTODIntoVideo(
@@ -91,7 +91,7 @@ if __name__ == '__main__':
         # compute_psd,
         # psd_plotter,
         bin_tod_to_map,
-        # plotter,
+        plotter,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
@@ -99,14 +99,22 @@ if __name__ == '__main__':
         # plot_beammap,
     ])
 
-    # date = '20260820'  # For testing normal maps
-    # setnum = 1005
-    date = '20260710'  # For testing beammaps
-    setnum = 1006
+    date = '20260820'  # For testing normal maps
+    setnum = 1005
+    # date = '20260710'  # For testing beammaps
+    # setnum = 1006
 
 
     # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
     pdata = ProcessedData.load(date, setnum)
-    pipeline.run(pdata)
+    plotter.apply(pdata)
+    # pipeline.run(pdata)
+    # pdb.set_trace()
+
+    # pdata = ProcessedData.load(date, setnum)
+    # tel_az = pdata.get_telescope_az(0)[:]
+    # tel_za = pdata.get_telescope_za(0)[:]
+    # plt.plot(tel_az, tel_za)
+    # plt.show()
     # pdb.set_trace()
