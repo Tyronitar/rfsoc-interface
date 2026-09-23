@@ -12,7 +12,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-from matplotlib import animation
+from matplotlib.animation import FuncAnimation
 from matplotlib.figure import Figure
 from packaging.version import Version
 from scipy import signal
@@ -1069,10 +1069,9 @@ class PlotMap(DataRoutine):
         fig = self._plot(pdata)
 
         created = {'input': self.produces} if reset_arrays else {}
-        values = {'input': fig} if fig is not None else {}
         return RoutineResult(
             created=created,
-            value=values,
+            value=fig,
         )
 
     def _intialize_arrays(self, pdata: ProcessedData) -> bool:
@@ -1450,6 +1449,7 @@ class PlotMap(DataRoutine):
 
         if not self.params['keep_figure_open']:
             plt.close(fig)
+            return None
         return fig
 
 
@@ -2067,6 +2067,7 @@ class AnimateVideo(DataRoutine):
         repeat_delay_ms: float = 2000,
         savefile: Path | None = None,
         show: bool = False,
+        keep_figure_open: bool = False,
         channel: int | Sequence[int, ...] | None = None,
     ):
         """Initialize the MakeVideo Routine.
@@ -2081,6 +2082,8 @@ class AnimateVideo(DataRoutine):
                 name "[date]_set[setnum]_Map_Animation.mp4". Defaults to `None`.
             show (bool, optional): Whether to display the animated plot. Defaults to
                 False.
+            keep_figure_open (bool, optional): Whether to keep the figure open after
+                plotting. Defaults to False.
             channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
                 use when generating the animation. See `get_required_map_datasets` for
                 more information. Defaults to `None`.
@@ -2090,6 +2093,7 @@ class AnimateVideo(DataRoutine):
             repeat_delay_ms=repeat_delay_ms,
             savefile=savefile,
             show=show,
+            keep_figure_open=keep_figure_open,
             channel=channel,
         )
 
@@ -2103,6 +2107,11 @@ class AnimateVideo(DataRoutine):
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+        res = self._animate(pdata)
+        return RoutineResult(value=res)
+
+    def _animate(self, pdata: ProcessedData) -> tuple[Figure, FuncAnimation] | None:
+        """Animate the video."""
         # Load the parameters
         block_size_s = pdata['video'].attrs['block_size_s']
         interval_ms = 1000 * block_size_s
@@ -2298,7 +2307,7 @@ class AnimateVideo(DataRoutine):
             im_opt.set_array(optical_video[i])
             im_degraded.set_array(blurred_optical_video[i])
 
-        an = animation.FuncAnimation(
+        an = FuncAnimation(
             fig,
             animation_func,
             frames=total_map.shape[0],
@@ -2309,7 +2318,10 @@ class AnimateVideo(DataRoutine):
             an.save(savefile, savefig_kwargs={'bbox_inches': 'tight'})
         if show:
             plt.show()
-        return RoutineResult(value=(fig, an))
+        if not self.params['keep_figure_open']:
+            plt.close(fig)
+            return None
+        return fig, an
 
     def _get_combined_map(
         self,
