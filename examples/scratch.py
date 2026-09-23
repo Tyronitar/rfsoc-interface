@@ -167,7 +167,7 @@ if __name__ == '__main__':
     _logger = logging.getLogger('rfsocinterface')
     _logger.handlers[0].setLevel(logging.INFO)
 
-    process_20260917_set1005()
-    # process_20260917_set1007()
+    # process_20260917_set1005()
+    process_20260917_set1007()
     # fix_df_per_mK()
 

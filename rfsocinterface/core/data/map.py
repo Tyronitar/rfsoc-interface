@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 from matplotlib.animation import FuncAnimation
+from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 from packaging.version import Version
 from scipy import signal
@@ -2091,6 +2092,7 @@ class AnimateVideo(DataRoutine):
         max_abs_threshold: float = 0.75,
         dpi: float = 300,
         repeat_delay_ms: float = 2000,
+        show_tile_bounds: bool = True,
         savefile: Path | None = None,
         show: bool = False,
         keep_figure_open: bool = False,
@@ -2105,7 +2107,9 @@ class AnimateVideo(DataRoutine):
                 Defaults to 300.
             repeat_delay_ms (float, optional): The delay between repeats of the
                 animation in milliseconds. Defaults to 2000 ms.
-            savefile (Path, optional): The path to save the animated plot to. If None,
+            show_tile_bounds (bool, optional): Whehter to show the tile bounds overlayed
+                on the optical videos. Defaults to `True`.
+            savefile (Path, optional): The path to save the animated plot to. If `None`,
                 the animation be saved in the same directory as the HDF5 file under the
                 name "[date]_set[setnum]_Map_Animation.mp4". Defaults to `None`.
             show (bool, optional): Whether to display the animated plot. Defaults to
@@ -2120,6 +2124,7 @@ class AnimateVideo(DataRoutine):
             max_abs_threshold=max_abs_threshold,
             dpi=dpi,
             repeat_delay_ms=repeat_delay_ms,
+            show_tile_bounds=show_tile_bounds,
             savefile=savefile,
             show=show,
             keep_figure_open=keep_figure_open,
@@ -2148,6 +2153,7 @@ class AnimateVideo(DataRoutine):
         dpix = pdata['video'].attrs['dpix']
         units = pdata['video'].attrs['units']
         show = self.params['show']
+        show_tile_bounds = self.params['show_tile_bounds']
 
         if self.params['savefile'] is None:
             savefile = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
@@ -2168,6 +2174,9 @@ class AnimateVideo(DataRoutine):
         bad_pixel_mask = np.all(bad_pixel_mask, axis=1)
         map_val[np.broadcast_to(bad_pixel_mask[:, np.newaxis], map_val.shape)] = np.nan
         total_map[bad_pixel_mask] = np.nan
+        if show_tile_bounds:
+            tile_bounds_map = (~bad_pixel_mask).astype(float)
+            tile_bounds_map[tile_bounds_map == 0] = np.nan
 
         # Calculate median NETD values
         netd = pdata['video/netd']
@@ -2193,7 +2202,7 @@ class AnimateVideo(DataRoutine):
         # vmax = 500
         # vmin = -500
 
-        _logger.info(f'{self.name}: Creating animation...')
+        _logger.info(f'{self.name}: Initializing figure...')
         fig, axes = plt.subplot_mosaic(
             [
                 ['vpol', '.'],
@@ -2238,6 +2247,7 @@ class AnimateVideo(DataRoutine):
         ax_degraded = axes['degraded']
 
         # Vertical polarization
+        _logger.info(f'{self.name}: Plotting V-Pol signal...')
         cmap_vpol = mpl.colormaps.get_cmap('Blues_r')
         cmap_vpol.set_bad(color='ivory')
         # vmin_vpol = np.nanmin(map_val[:, 0])
@@ -2254,6 +2264,7 @@ class AnimateVideo(DataRoutine):
         add_colorbar(fig, ax_vpol, im_vpol, f'V-Pol Signal ({units})')
 
         # Horizontal polarization
+        _logger.info(f'{self.name}: Plotting H-Pol signal...')
         cmap_hpol = mpl.colormaps.get_cmap('Reds_r')
         cmap_hpol.set_bad(color='ivory')
         # vmin_hpol = np.nanmin(map_val[:, 1])
@@ -2270,6 +2281,7 @@ class AnimateVideo(DataRoutine):
         add_colorbar(fig, ax_hpol, im_hpol, f'H-Pol Signal ({units})')
 
         # Total signal
+        _logger.info(f'{self.name}: Plotting total signal...')
         cmap_total = mpl.colormaps.get_cmap('Greys_r')
         cmap_total.set_bad(color='ivory')
         # vmin_total = np.nanmin(smoothed_map)
@@ -2285,10 +2297,26 @@ class AnimateVideo(DataRoutine):
         )
         add_colorbar(fig, ax_total, im_total, f'Total Signal ({units})')
 
+        # Create a colormap that is completely solid white
+        solid_white_cmap = ListedColormap(['white'])
+
         # Optical Video
+        _logger.info(f'{self.name}: Plotting optical signal...')
         im_opt = ax_optical.imshow(
-            optical_video[0], animated=True, extent=extent, aspect='equal'
+            optical_video[0],
+            animated=True,
+            extent=extent,
+            aspect='equal',
         )
+        if show_tile_bounds:
+            im_opt_bounds = ax_optical.imshow(
+                tile_bounds_map[0],
+                animated=True,
+                extent=extent,
+                aspect='equal',
+                alpha=0.25,
+                cmap=solid_white_cmap,
+            )
         ax_optical.text(
             1.05,
             0.5,
@@ -2303,6 +2331,7 @@ class AnimateVideo(DataRoutine):
         ax_optical.yaxis.set_tick_params(labelleft=True)
 
         # Degraded Optical Video
+        _logger.info(f'{self.name}: Plotting degraded optical signal...')
         sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
         blurred_optical_video = apply_gaussian_blur(
             optical_video,
@@ -2311,6 +2340,15 @@ class AnimateVideo(DataRoutine):
         im_degraded = ax_degraded.imshow(
             blurred_optical_video[0], animated=True, extent=extent, aspect='equal'
         )
+        if show_tile_bounds:
+            im_degraded_bounds = ax_degraded.imshow(
+                tile_bounds_map[0],
+                animated=True,
+                extent=extent,
+                aspect='equal',
+                alpha=0.25,
+                cmap=solid_white_cmap,
+            )
         ax_degraded.text(
             1.05,
             0.5,
@@ -2335,7 +2373,11 @@ class AnimateVideo(DataRoutine):
             im_total.set_array(total_map[i])
             im_opt.set_array(optical_video[i])
             im_degraded.set_array(blurred_optical_video[i])
+            if show_tile_bounds:
+                im_opt_bounds.set_array(tile_bounds_map[i])
+                im_degraded_bounds.set_array(tile_bounds_map[i])
 
+        _logger.info(f'{self.name}: Initializing animation...')
         an = FuncAnimation(
             fig,
             animation_func,
@@ -2344,6 +2386,7 @@ class AnimateVideo(DataRoutine):
             repeat_delay=repeat_delay_ms,
         )
         if savefile is not None:
+            _logger.info(f'{self.name}: Saving animation...')
             an.save(
                 savefile,
                 dpi=self.params['dpi'],
