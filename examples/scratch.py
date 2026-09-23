@@ -55,7 +55,13 @@ def process_20260917_set1005():
         dpix=0.03,
         r0=0.15,
     )
-    plot_map = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None, overwrite=False)
+    plot_map = PlotMap(
+        show=True,
+        max_abs_threshold=0.4,
+        keep_figure_open=False,
+        channel=None,
+        overwrite=False,
+    )
 
     pipeline = Pipeline([
         hp_filter,
@@ -159,7 +165,7 @@ if __name__ == '__main__':
     _logger = logging.getLogger('rfsocinterface')
     _logger.handlers[0].setLevel(logging.INFO)
 
-    # process_20260917_set1005()
-    process_20260917_set1007()
+    process_20260917_set1005()
+    # process_20260917_set1007()
     # fix_df_per_mK()
 

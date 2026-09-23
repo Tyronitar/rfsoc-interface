@@ -1009,6 +1009,7 @@ class PlotMap(DataRoutine):
         gaussian_sigma: float = GAUSSIAN_SIGMA,
         valid_covariance_threshold: float = 0.5,
         max_abs_threshold: float = 0.75,
+        dpi: float = 300,
         save_plot: bool = True,
         savefile: Path | None = None,
         show: bool = False,
@@ -1026,6 +1027,8 @@ class PlotMap(DataRoutine):
                 to 0.5.
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
+            dpi (float, optional): The saved figure's resolution in dots per inch.
+                Defaults to 300.
             save_plot (bool, optional): Whether to save the plot as a PNG file. Defaults
                 to True.
             savefile (Path, optional): The path to save the plot PNG file. If None, the
@@ -1045,6 +1048,7 @@ class PlotMap(DataRoutine):
             gaussian_sigma=gaussian_sigma,
             valid_covariance_threshold=valid_covariance_threshold,
             max_abs_threshold=max_abs_threshold,
+            dpi=dpi,
             save_plot=save_plot,
             savefile=savefile,
             show=show,
@@ -1443,7 +1447,9 @@ class PlotMap(DataRoutine):
                     mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
                 )
                 self.params['savefile'].touch(PERMISSIONS_ALL_FULL)
-            fig.savefig(self.params['savefile'], bbox_inches='tight')
+            fig.savefig(
+                self.params['savefile'], dpi=self.params['dpi'], bbox_inches='tight'
+            )
         if self.params['show']:
             plt.show()
 
@@ -2064,6 +2070,7 @@ class AnimateVideo(DataRoutine):
     def __init__(
         self,
         max_abs_threshold: float = 0.75,
+        dpi: float = 300,
         repeat_delay_ms: float = 2000,
         savefile: Path | None = None,
         show: bool = False,
@@ -2075,6 +2082,8 @@ class AnimateVideo(DataRoutine):
         Arguments:
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
+            dpi (float, optional): The saved figure's resolution in dots per inch.
+                Defaults to 300.
             repeat_delay_ms (float, optional): The delay between repeats of the
                 animation in milliseconds. Defaults to 2000 ms.
             savefile (Path, optional): The path to save the animated plot to. If None,
@@ -2090,6 +2099,7 @@ class AnimateVideo(DataRoutine):
         """
         super().__init__(
             max_abs_threshold=max_abs_threshold,
+            dpi=dpi,
             repeat_delay_ms=repeat_delay_ms,
             savefile=savefile,
             show=show,
@@ -2315,7 +2325,11 @@ class AnimateVideo(DataRoutine):
             repeat_delay=repeat_delay_ms,
         )
         if savefile is not None:
-            an.save(savefile, savefig_kwargs={'bbox_inches': 'tight'})
+            an.save(
+                savefile,
+                dpi=self.params['dpi'],
+                savefig_kwargs={'bbox_inches': 'tight'},
+            )
         if show:
             plt.show()
         if not self.params['keep_figure_open']:
