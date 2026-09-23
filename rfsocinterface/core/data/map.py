@@ -46,6 +46,7 @@ from rfsocinterface.core.utils import (
     ChanmaskValue,
     add_colorbar,
     argclosest,
+    convert_path,
     ensure_path,
     gaussian_filter,
     load_mp4_ffmpeg,
@@ -1452,202 +1453,6 @@ class PlotMap(DataRoutine):
         return fig
 
 
-@ensure_path('savefile')
-def animate_video(
-    map_val: npt.NDArray,
-    total_map: npt.NDArray,
-    optical_video: npt.NDArray,
-    interval_ms: float,
-    extent: tuple[int, ...],
-    bad_pixel_mask: npt.NDArray | None = None,
-    units: str = 'mK',
-    max_abs_threshold: float = 0.75,  # noqa: ARG001
-    repeat_delay_ms: float = 2000,
-    show: bool = False,
-    savefile: Path | None = None,
-) -> tuple[Figure, animation.FuncAnimation]:
-    """Animate the video of the map evolution over time.
-
-    Arguments:
-        map_val (npt.NDArray): 4D array of shape (n_frames, n_maps, n_pix_x, n_pix_y)
-            containing the map values for each frame, separated by polarization.
-        total_map (npt.NDArray): 3D array of shape (n_frames, n_pix_x, n_pix_y)
-            containing the total map values for each frame.
-        optical_video (npt.NDArray): 4D array of shape (n_frames, height, width, 3)
-            containing the optical video frames for each frame.
-        interval_ms (float): The interval between frames in milliseconds.
-        extent (tuple[int, ...]): The extent of the map in the format (xmin, xmax, ymin,
-             ymax).
-        bad_pixel_mask (npt.NDArray, optional): Boolean mask to select pixels that
-            should be marked as bad. Values will be shown in a different color in the
-            animation. Defaults to  `None`.
-        units (str, optional): The units of the data. Defaults to 'mK'.
-        max_abs_threshold (float, optional): The maximum absolute value multiplier for
-            the color scale in the animation. Defaults to 0.75.
-        repeat_delay_ms (float, optional): The delay between repeats of the animation in
-            milliseconds. Defaults to 2000 ms.
-        show (bool, optional): Whether to display the animation. Defaults to False.
-        savefile (Path, optional): The path to save the animation file. If None, the
-            animation will not be saved. Defaults to None.
-    """
-    # smoothed_map = np.transpose(total_map, (0, 2, 1))
-    smoothed_map = total_map[:]
-    if bad_pixel_mask is not None:
-        map_val[np.broadcast_to(bad_pixel_mask[:, np.newaxis], map_val.shape)] = np.nan
-        smoothed_map[bad_pixel_mask] = np.nan
-    # max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
-    # vmax = max_abs
-    # vmin = -max_abs
-    # vmax = 500
-    # vmin = -500
-
-    fig, axes = plt.subplot_mosaic(
-        [
-            ['vpol', '.'],
-            ['vpol', 'optical'],
-            ['hpol', 'optical'],
-            ['hpol', 'degraded'],
-            ['total', 'degraded'],
-            ['total', '.'],
-        ],
-        sharex=True,
-        sharey=True,
-        figsize=(12, 8),
-        gridspec_kw={
-            'hspace': 0,
-        },
-    )
-
-    # fig.suptitle(
-    #     f'{pdata.file_stub} - {channel_suffix}'
-    #     f'\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
-    #     f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
-    #     f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
-    # )
-
-    for ax in axes.values():
-        ax.set_ylabel('ZA (degrees)')
-        ax.label_outer()
-
-    ax_vpol = axes['vpol']
-    ax_hpol = axes['hpol']
-    ax_total = axes['total']
-    ax_optical = axes['optical']
-    ax_degraded = axes['degraded']
-
-    # Vertical polarization
-    cmap_vpol = mpl.colormaps.get_cmap('Blues_r')
-    cmap_vpol.set_bad(color='ivory')
-    # vmin_vpol = np.nanmin(map_val[:, 0])
-    # vmax_vpol = np.nanmax(map_val[:, 0])
-    im_vpol = ax_vpol.imshow(
-        map_val[0, 0],
-        # vmin=-1e-7,
-        # vmax=1e-7,
-        animated=True,
-        cmap=cmap_vpol,
-        extent=extent,
-        aspect='equal',
-    )
-    add_colorbar(fig, ax_vpol, im_vpol, f'V-Pol Signal ({units})')
-
-    # Horizontal polarization
-    cmap_hpol = mpl.colormaps.get_cmap('Reds_r')
-    cmap_hpol.set_bad(color='ivory')
-    # vmin_hpol = np.nanmin(map_val[:, 1])
-    # vmax_hpol = np.nanmax(map_val[:, 1])
-    im_hpol = ax_hpol.imshow(
-        map_val[0, 1],
-        # vmin=vmin_hpol,
-        # vmax=vmax_hpol,
-        animated=True,
-        cmap=cmap_hpol,
-        extent=extent,
-        aspect='equal',
-    )
-    add_colorbar(fig, ax_hpol, im_hpol, f'H-Pol Signal ({units})')
-
-    # Total signal
-    cmap_total = mpl.colormaps.get_cmap('Greys_r')
-    cmap_total.set_bad(color='ivory')
-    # vmin_total = np.nanmin(smoothed_map)
-    # vmax_total = np.nanmax(smoothed_map)
-    im_total = ax_total.imshow(
-        smoothed_map[0],
-        # vmin=vmin_total,
-        # vmax=vmax_total,
-        animated=True,
-        cmap=cmap_total,
-        extent=extent,
-        aspect='equal',
-    )
-    add_colorbar(fig, ax_total, im_total, f'Total Signal ({units})')
-
-    # Optical Video
-    im_opt = ax_optical.imshow(
-        optical_video[0], animated=True, extent=extent, aspect='equal'
-    )
-    ax_optical.text(
-        1.05,
-        0.5,
-        'Optical Signal',
-        rotation=90,
-        horizontalalignment='center',
-        verticalalignment='center',
-        transform=ax_optical.transAxes,
-        fontsize=10,
-    )
-    ax_optical.set_ylabel('ZA (degrees)')
-    ax_optical.yaxis.set_tick_params(labelleft=True)
-
-    # Degraded Optical Video
-    sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
-    blurred_optical_video = apply_gaussian_blur(
-        optical_video,
-        (0, sigma, sigma, 0),
-    )
-    im_degraded = ax_degraded.imshow(
-        blurred_optical_video[0], animated=True, extent=extent, aspect='equal'
-    )
-    ax_degraded.text(
-        1.05,
-        0.5,
-        'Degraded Optical Signal',
-        rotation=90,
-        horizontalalignment='center',
-        verticalalignment='center',
-        transform=ax_degraded.transAxes,
-        fontsize=10,
-    )
-    ax_degraded.set_ylabel('ZA (degrees)')
-    ax_degraded.yaxis.set_tick_params(labelleft=True)
-    ax_degraded.xaxis.set_tick_params(labelbottom=True)
-
-    # Add x labels to bottom axes
-    ax_total.set_xlabel('Azimuth (degrees)')
-    ax_degraded.set_xlabel('Azimuth (degrees)')
-
-    def animation_func(i: int):
-        im_vpol.set_array(map_val[i, 0])
-        im_hpol.set_array(map_val[i, 1])
-        im_total.set_array(smoothed_map[i])
-        im_opt.set_array(optical_video[i])
-        im_degraded.set_array(blurred_optical_video[i])
-
-    an = animation.FuncAnimation(
-        fig,
-        animation_func,
-        frames=total_map.shape[0],
-        interval=interval_ms,
-        repeat_delay=repeat_delay_ms,
-    )
-    if savefile is not None:
-        an.save(savefile, savefig_kwargs={'bbox_inches': 'tight'})
-    if show:
-        plt.show()
-    return fig, an
-
-
 @register_routine
 class BinTODIntoVideo(DataRoutine):
     """Create a video of the map evolution over time.
@@ -2259,6 +2064,7 @@ class AnimateVideo(DataRoutine):
     def __init__(
         self,
         max_abs_threshold: float = 0.75,
+        repeat_delay_ms: float = 2000,
         savefile: Path | None = None,
         show: bool = False,
         channel: int | Sequence[int, ...] | None = None,
@@ -2268,17 +2074,20 @@ class AnimateVideo(DataRoutine):
         Arguments:
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
-            show (bool, optional): Whether to display the animated plot. Defaults to
-                False.
+            repeat_delay_ms (float, optional): The delay between repeats of the
+                animation in milliseconds. Defaults to 2000 ms.
             savefile (Path, optional): The path to save the animated plot to. If None,
                 the animation be saved in the same directory as the HDF5 file under the
                 name "[date]_set[setnum]_Map_Animation.mp4". Defaults to `None`.
+            show (bool, optional): Whether to display the animated plot. Defaults to
+                False.
             channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
                 use when generating the animation. See `get_required_map_datasets` for
                 more information. Defaults to `None`.
         """
         super().__init__(
             max_abs_threshold=max_abs_threshold,
+            repeat_delay_ms=repeat_delay_ms,
             savefile=savefile,
             show=show,
             channel=channel,
@@ -2294,37 +2103,213 @@ class AnimateVideo(DataRoutine):
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
-        # Use existing datasets and make the video
-        map_az = pdata['video/map_az'][:]
-        map_za = pdata['video/map_za'][:]
-        optical_video = pdata['video/cropped_optical_video'][:]
-
-        map_val = pdata['video/map_val'][:]
-        total_map = pdata['video/total_map'][:]
-        bad_pixel_mask = pdata['video/bad_pixel_mask'][:]
-        bad_pixel_mask = np.all(bad_pixel_mask, axis=1)
+        # Load the parameters
         block_size_s = pdata['video'].attrs['block_size_s']
+        interval_ms = 1000 * block_size_s
+        repeat_delay_ms = self.params['repeat_delay_ms']
         dpix = pdata['video'].attrs['dpix']
         units = pdata['video'].attrs['units']
+        show = self.params['show']
 
-        # Animation
-        _logger.info(f'{self.name}: Creating animation...')
         if self.params['savefile'] is None:
             savefile = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
         else:
             savefile = self.params['savefile']
-        animate_video(
-            map_val,
-            total_map,
-            optical_video[:],
-            1000 * block_size_s,
-            get_extent(map_az, map_za, dpix),
-            bad_pixel_mask=bad_pixel_mask,
-            units=units,
-            max_abs_threshold=self.params['max_abs_threshold'],
-            show=self.params['show'],
-            savefile=savefile,
+        savefile = convert_path(savefile)
+
+        # Read the relevant datasets
+        map_az = pdata['video/map_az'][:]
+        map_za = pdata['video/map_za'][:]
+        map_val = pdata['video/map_val'][:]
+        total_map = pdata['video/total_map'][:]
+        extent = get_extent(map_az, map_za, dpix)
+        optical_video = pdata['video/cropped_optical_video'][:]
+
+        # Set values for non-covered pixels to NaN
+        bad_pixel_mask = pdata['video/bad_pixel_mask'][:]
+        bad_pixel_mask = np.all(bad_pixel_mask, axis=1)
+        map_val[np.broadcast_to(bad_pixel_mask[:, np.newaxis], map_val.shape)] = np.nan
+        total_map[bad_pixel_mask] = np.nan
+
+        # Calculate median NETD values
+        netd = pdata['video/netd']
+        netd_1 = netd[pdata.pol_ind_1]
+        netd_2 = netd[pdata.pol_ind_2]
+        valid_netd_1 = np.argwhere(netd_1 > 0)
+        valid_netd_2 = np.argwhere(netd_2 > 0)
+        med_netd_1 = 1.0 / np.sqrt(
+            np.sum(1.0 / netd_1[valid_netd_1] ** 2) / np.size(valid_netd_1)
         )
+        med_netd_2 = 1.0 / np.sqrt(
+            np.sum(1.0 / netd_2[valid_netd_2] ** 2) / np.size(valid_netd_2)
+        )
+        t0 = time.asctime(time.localtime(pdata.get_timestamp(0)[0] - 7500))
+        vis = pdata.optical_visibility[()]
+
+        # Animation
+
+        # smoothed_map = np.transpose(total_map, (0, 2, 1))
+        # max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
+        # vmax = max_abs
+        # vmin = -max_abs
+        # vmax = 500
+        # vmin = -500
+
+        _logger.info(f'{self.name}: Creating animation...')
+        fig, axes = plt.subplot_mosaic(
+            [
+                ['vpol', '.'],
+                ['vpol', 'optical'],
+                ['hpol', 'optical'],
+                ['hpol', 'degraded'],
+                ['total', 'degraded'],
+                ['total', '.'],
+            ],
+            sharex=True,
+            sharey=True,
+            figsize=(12, 8),
+            gridspec_kw={
+                'hspace': 0,
+            },
+        )
+
+        channel_suffix = 'All Channels'
+        # channel_suffix = (
+        #     'All Channels'
+        #     if channel == tuple(range(pdata.n_chan))
+        #     else f'Channel {channel[0]} ({pdata.get_tile_name(channel[0])})'
+        #     if len(channel) == 1
+        #     else f'Channels {channel}'
+        # )
+
+        fig.suptitle(
+            f'{pdata.file_stub} - {channel_suffix}'
+            f'\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
+            f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
+            f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
+        )
+
+        for ax in axes.values():
+            ax.set_ylabel('ZA (degrees)')
+            ax.label_outer()
+
+        ax_vpol = axes['vpol']
+        ax_hpol = axes['hpol']
+        ax_total = axes['total']
+        ax_optical = axes['optical']
+        ax_degraded = axes['degraded']
+
+        # Vertical polarization
+        cmap_vpol = mpl.colormaps.get_cmap('Blues_r')
+        cmap_vpol.set_bad(color='ivory')
+        # vmin_vpol = np.nanmin(map_val[:, 0])
+        # vmax_vpol = np.nanmax(map_val[:, 0])
+        im_vpol = ax_vpol.imshow(
+            map_val[0, 0],
+            # vmin=-1e-7,
+            # vmax=1e-7,
+            animated=True,
+            cmap=cmap_vpol,
+            extent=extent,
+            aspect='equal',
+        )
+        add_colorbar(fig, ax_vpol, im_vpol, f'V-Pol Signal ({units})')
+
+        # Horizontal polarization
+        cmap_hpol = mpl.colormaps.get_cmap('Reds_r')
+        cmap_hpol.set_bad(color='ivory')
+        # vmin_hpol = np.nanmin(map_val[:, 1])
+        # vmax_hpol = np.nanmax(map_val[:, 1])
+        im_hpol = ax_hpol.imshow(
+            map_val[0, 1],
+            # vmin=vmin_hpol,
+            # vmax=vmax_hpol,
+            animated=True,
+            cmap=cmap_hpol,
+            extent=extent,
+            aspect='equal',
+        )
+        add_colorbar(fig, ax_hpol, im_hpol, f'H-Pol Signal ({units})')
+
+        # Total signal
+        cmap_total = mpl.colormaps.get_cmap('Greys_r')
+        cmap_total.set_bad(color='ivory')
+        # vmin_total = np.nanmin(smoothed_map)
+        # vmax_total = np.nanmax(smoothed_map)
+        im_total = ax_total.imshow(
+            total_map[0],
+            # vmin=vmin_total,
+            # vmax=vmax_total,
+            animated=True,
+            cmap=cmap_total,
+            extent=extent,
+            aspect='equal',
+        )
+        add_colorbar(fig, ax_total, im_total, f'Total Signal ({units})')
+
+        # Optical Video
+        im_opt = ax_optical.imshow(
+            optical_video[0], animated=True, extent=extent, aspect='equal'
+        )
+        ax_optical.text(
+            1.05,
+            0.5,
+            'Optical Signal',
+            rotation=90,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_optical.transAxes,
+            fontsize=10,
+        )
+        ax_optical.set_ylabel('ZA (degrees)')
+        ax_optical.yaxis.set_tick_params(labelleft=True)
+
+        # Degraded Optical Video
+        sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
+        blurred_optical_video = apply_gaussian_blur(
+            optical_video,
+            (0, sigma, sigma, 0),
+        )
+        im_degraded = ax_degraded.imshow(
+            blurred_optical_video[0], animated=True, extent=extent, aspect='equal'
+        )
+        ax_degraded.text(
+            1.05,
+            0.5,
+            'Degraded Optical Signal',
+            rotation=90,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_degraded.transAxes,
+            fontsize=10,
+        )
+        ax_degraded.set_ylabel('ZA (degrees)')
+        ax_degraded.yaxis.set_tick_params(labelleft=True)
+        ax_degraded.xaxis.set_tick_params(labelbottom=True)
+
+        # Add x labels to bottom axes
+        ax_total.set_xlabel('Azimuth (degrees)')
+        ax_degraded.set_xlabel('Azimuth (degrees)')
+
+        def animation_func(i: int):
+            im_vpol.set_array(map_val[i, 0])
+            im_hpol.set_array(map_val[i, 1])
+            im_total.set_array(total_map[i])
+            im_opt.set_array(optical_video[i])
+            im_degraded.set_array(blurred_optical_video[i])
+
+        an = animation.FuncAnimation(
+            fig,
+            animation_func,
+            frames=total_map.shape[0],
+            interval=interval_ms,
+            repeat_delay=repeat_delay_ms,
+        )
+        if savefile is not None:
+            an.save(savefile, savefig_kwargs={'bbox_inches': 'tight'})
+        if show:
+            plt.show()
+        return RoutineResult(value=(fig, an))
 
     def _get_combined_map(
         self,
