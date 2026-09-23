@@ -1292,7 +1292,7 @@ class PlotMap(DataRoutine):
             figsize=(16, 8),
             gridspec_kw={
                 'hspace': 0,
-            }
+            },
         )
         channel_suffix = (
             'All Channels'
@@ -1401,7 +1401,6 @@ class PlotMap(DataRoutine):
         ax_optical.set_ylabel('ZA (degrees)')
         ax_optical.yaxis.set_tick_params(labelleft=True)
 
-
         # Blurred optical image
         sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
         blurred_optical_image = apply_gaussian_blur(
@@ -1502,7 +1501,22 @@ def animate_video(
     # vmax = 500
     # vmin = -500
 
-    fig, axes = plt.subplots(4, 1, figsize=(6, 9), sharex=True, sharey=True)
+    fig, axes = plt.subplot_mosaic(
+        [
+            ['vpol', '.'],
+            ['vpol', 'optical'],
+            ['hpol', 'optical'],
+            ['hpol', 'degraded'],
+            ['total', 'degraded'],
+            ['total', '.'],
+        ],
+        sharex=True,
+        sharey=True,
+        figsize=(12, 8),
+        gridspec_kw={
+            'hspace': 0,
+        },
+    )
 
     # fig.suptitle(
     #     f'{pdata.file_stub} - {channel_suffix}'
@@ -1511,12 +1525,22 @@ def animate_video(
     #     f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
     # )
 
+    for ax in axes.values():
+        ax.set_ylabel('ZA (degrees)')
+        ax.label_outer()
+
+    ax_vpol = axes['vpol']
+    ax_hpol = axes['hpol']
+    ax_total = axes['total']
+    ax_optical = axes['optical']
+    ax_degraded = axes['degraded']
+
     # Vertical polarization
     cmap_vpol = mpl.colormaps.get_cmap('Blues_r')
     cmap_vpol.set_bad(color='ivory')
     # vmin_vpol = np.nanmin(map_val[:, 0])
     # vmax_vpol = np.nanmax(map_val[:, 0])
-    im_vpol = axes[0].imshow(
+    im_vpol = ax_vpol.imshow(
         map_val[0, 0],
         # vmin=-1e-7,
         # vmax=1e-7,
@@ -1525,14 +1549,14 @@ def animate_video(
         extent=extent,
         aspect='equal',
     )
-    add_colorbar(fig, axes[0], im_vpol, f'V-Pol Signal ({units})')
+    add_colorbar(fig, ax_vpol, im_vpol, f'V-Pol Signal ({units})')
 
     # Horizontal polarization
     cmap_hpol = mpl.colormaps.get_cmap('Reds_r')
     cmap_hpol.set_bad(color='ivory')
     # vmin_hpol = np.nanmin(map_val[:, 1])
     # vmax_hpol = np.nanmax(map_val[:, 1])
-    im_hpol = axes[1].imshow(
+    im_hpol = ax_hpol.imshow(
         map_val[0, 1],
         # vmin=vmin_hpol,
         # vmax=vmax_hpol,
@@ -1541,14 +1565,14 @@ def animate_video(
         extent=extent,
         aspect='equal',
     )
-    add_colorbar(fig, axes[1], im_hpol, f'H-Pol Signal ({units})')
+    add_colorbar(fig, ax_hpol, im_hpol, f'H-Pol Signal ({units})')
 
     # Total signal
     cmap_total = mpl.colormaps.get_cmap('Greys_r')
     cmap_total.set_bad(color='ivory')
     # vmin_total = np.nanmin(smoothed_map)
     # vmax_total = np.nanmax(smoothed_map)
-    im_total = axes[2].imshow(
+    im_total = ax_total.imshow(
         smoothed_map[0],
         # vmin=vmin_total,
         # vmax=vmax_total,
@@ -1557,22 +1581,58 @@ def animate_video(
         extent=extent,
         aspect='equal',
     )
-    add_colorbar(fig, axes[2], im_total, f'Total Signal ({units})')
+    add_colorbar(fig, ax_total, im_total, f'Total Signal ({units})')
 
-    # Optical Image
-    im_opt = axes[3].imshow(
+    # Optical Video
+    im_opt = ax_optical.imshow(
         optical_video[0], animated=True, extent=extent, aspect='equal'
     )
-    add_colorbar(fig, axes[3], im_opt, 'Optical Signal (rgb)')
+    ax_optical.text(
+        1.05,
+        0.5,
+        'Optical Signal',
+        rotation=90,
+        horizontalalignment='center',
+        verticalalignment='center',
+        transform=ax_optical.transAxes,
+        fontsize=10,
+    )
+    ax_optical.set_ylabel('ZA (degrees)')
+    ax_optical.yaxis.set_tick_params(labelleft=True)
 
-    fig.tight_layout()
-    fig.subplots_adjust(wspace=0, hspace=0)
+    # Degraded Optical Video
+    sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
+    blurred_optical_video = apply_gaussian_blur(
+        optical_video,
+        (0, sigma, sigma, 0),
+    )
+    im_degraded = ax_degraded.imshow(
+        blurred_optical_video[0], animated=True, extent=extent, aspect='equal'
+    )
+    ax_degraded.text(
+        1.05,
+        0.5,
+        'Degraded Optical Signal',
+        rotation=90,
+        horizontalalignment='center',
+        verticalalignment='center',
+        transform=ax_degraded.transAxes,
+        fontsize=10,
+    )
+    ax_degraded.set_ylabel('ZA (degrees)')
+    ax_degraded.yaxis.set_tick_params(labelleft=True)
+    ax_degraded.xaxis.set_tick_params(labelbottom=True)
+
+    # Add x labels to bottom axes
+    ax_total.set_xlabel('Azimuth (degrees)')
+    ax_degraded.set_xlabel('Azimuth (degrees)')
 
     def animation_func(i: int):
         im_vpol.set_array(map_val[i, 0])
         im_hpol.set_array(map_val[i, 1])
         im_total.set_array(smoothed_map[i])
         im_opt.set_array(optical_video[i])
+        im_degraded.set_array(blurred_optical_video[i])
 
     an = animation.FuncAnimation(
         fig,

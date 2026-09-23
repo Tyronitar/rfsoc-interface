@@ -103,11 +103,11 @@ def process_20260917_set1007():
     )
     animate_video = AnimateVideo()
 
-  
+
     pipeline = Pipeline([
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
+        hp_filter,
+        lp_filter,
+        clean_tod,
         bin_tod_to_video,
         animate_video,
     ])
@@ -119,7 +119,8 @@ def process_20260917_set1007():
     # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
     pdata = ProcessedData.load(date, setnum)
-    pipeline.run(pdata)
+    # pipeline.run(pdata)
+    animate_video.apply(pdata)
 
     # pdb.set_trace()
 
@@ -158,7 +159,7 @@ if __name__ == '__main__':
     _logger = logging.getLogger('rfsocinterface')
     _logger.handlers[0].setLevel(logging.INFO)
 
-    process_20260917_set1005()
-    # process_20260917_set1007()
+    # process_20260917_set1005()
+    process_20260917_set1007()
     # fix_df_per_mK()
 
