@@ -56,11 +56,13 @@ def process_20260917_set1005():
         r0=0.15,
     )
     plot_map = PlotMap(
-        show=True,
+        # show=True,
+        show=False,
         max_abs_threshold=0.4,
         keep_figure_open=False,
         channel=None,
         overwrite=False,
+        format='svg',
     )
 
     pipeline = Pipeline([

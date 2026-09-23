@@ -1012,6 +1012,7 @@ class PlotMap(DataRoutine):
         dpi: float = 300,
         save_plot: bool = True,
         savefile: Path | None = None,
+        format: str | None = None,  # noqa: A002
         show: bool = False,
         keep_figure_open: bool = False,
         overwrite: bool = True,
@@ -1029,12 +1030,23 @@ class PlotMap(DataRoutine):
                 for the color scale in the plot. Defaults to 0.75.
             dpi (float, optional): The saved figure's resolution in dots per inch.
                 Defaults to 300.
-            save_plot (bool, optional): Whether to save the plot as a PNG file. Defaults
+            save_plot (bool, optional): Whether to save the plot to file. Defaults
                 to True.
-            savefile (Path, optional): The path to save the plot PNG file. If None, the
+            savefile (Path, optional): The path to save the plot to. If None, the
                 plot will be saved in the same directory as the HDF5 file. Defaults to
                 the animation be saved in the same directory as the HDF5 file under the
-                name "[date]_set[setnum]_Source_Finder_Image.png". Defaults to `None`.
+                name "[date]_set[setnum]_Source_Finder_Image.[format]". Defaults to
+                `None`. If format is set, it determines the output format, and the file
+                is saved as savefile. Note that savefile is used verbatim, and there is
+                no attempt to make the extension, if any, of savefile match format, and
+                no extension is appended. If format is not set, then the format is
+                inferred from the extension of savefile, if there is one. If format is
+                not set and savefile has no extension, then the file is saved with
+                `matplotlib.rcParams["savefig.format"]` (default: 'png') and the
+                appropriate extension is appended to savefile.
+            format (str, optional): The file format, e.g. 'png', 'pdf', 'svg', ... The
+                behavior when this is unset is documented under savefile. Defaults to
+                `None`.
             show (bool, optional): Whether to display the plot. Defaults to False.
             keep_figure_open (bool, optional): Whether to keep the figure open after
                 plotting. Defaults to False.
@@ -1051,6 +1063,7 @@ class PlotMap(DataRoutine):
             dpi=dpi,
             save_plot=save_plot,
             savefile=savefile,
+            format=format,
             show=show,
             keep_figure_open=keep_figure_open,
             overwrite=overwrite,
@@ -1437,19 +1450,25 @@ class PlotMap(DataRoutine):
         ax_degraded.set_xlabel('Azimuth (degrees)')
 
         if self.params['save_plot']:
+            format_ = self.params['format']
             if self.params['savefile'] is None:
                 # TODO: Move this to some global getter function
-                self.params['savefile'] = (
-                    pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
-                )
-            if not self.params['savefile'].exists():
-                self.params['savefile'].parent.mkdir(
-                    mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
-                )
-                self.params['savefile'].touch(PERMISSIONS_ALL_FULL)
-            fig.savefig(
-                self.params['savefile'], dpi=self.params['dpi'], bbox_inches='tight'
+                fname = pdata.folder / f'{pdata.file_stub}_Source_Finder_Image'
+            else:
+                fname = Path(self.params['savefile'])
+            suffix = fname.suffix.lstrip('.')
+            if format_ is None:
+                # Get format from file suffix if it exists
+                format_ = suffix or 'png'
+            savefile = fname.with_suffix(f'.{format_}').resolve()
+            self.params['savefile'] = savefile
+            savefile.parent.mkdir(
+                mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
             )
+            fig.savefig(
+                savefile, dpi=self.params['dpi'], format=format_, bbox_inches='tight'
+            )
+            _logger.info(f'{self.name}: Saved figure to "{savefile}"')
         if self.params['show']:
             plt.show()
 
