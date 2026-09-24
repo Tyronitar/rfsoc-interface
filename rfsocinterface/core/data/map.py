@@ -1005,11 +1005,13 @@ class PlotMap(DataRoutine):
     }
 
     @ensure_path('savefile')
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         gaussian_sigma: float = GAUSSIAN_SIGMA,
         valid_covariance_threshold: float = 0.5,
         max_abs_threshold: float = 0.75,
+        vmin: float | tuple[float, float, float] | None = None,
+        vmax: float | tuple[float, float, float] | None = None,
         dpi: float = 300,
         save_plot: bool = True,
         savefile: Path | None = None,
@@ -1029,6 +1031,12 @@ class PlotMap(DataRoutine):
                 to 0.5.
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
+            vmin, vmax (float | tuple[float, float, float], optional): The minimum /
+                maximum value(s) for the color scale in the plot. If a single value is
+                provided, the same range will be used for all plots. A tuple should have
+                3 elements, for v-pol, h-pol, and total signal respectively. If `None`,
+                will auto scale based on `max_abs_threshold` and matplotlib's default
+                behavior. Defaults to `None`.
             dpi (float, optional): The saved figure's resolution in dots per inch.
                 Defaults to 300.
             save_plot (bool, optional): Whether to save the plot to file. Defaults
@@ -1061,6 +1069,8 @@ class PlotMap(DataRoutine):
             gaussian_sigma=gaussian_sigma,
             valid_covariance_threshold=valid_covariance_threshold,
             max_abs_threshold=max_abs_threshold,
+            vmin=vmin,
+            vmax=vmax,
             dpi=dpi,
             save_plot=save_plot,
             savefile=savefile,
@@ -1243,7 +1253,7 @@ class PlotMap(DataRoutine):
             '/map/plotting/map_good_cov', data=np.append(map_goodcov_1, map_goodcov_2)
         )
 
-    def _plot(self, pdata: ProcessedData) -> Figure | None:
+    def _plot(self, pdata: ProcessedData) -> Figure | None:  # noqa: PLR0915
         """Plot the maps using matplotlib.
 
         Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical
@@ -1278,12 +1288,37 @@ class PlotMap(DataRoutine):
         valid_netd_2 = np.argwhere(netd_2 > 0)
 
         max_abs_threshold = self.params['max_abs_threshold']
+        vmin = self.params['vmin']
+        vmax = self.params['vmax']
         this_xlim = min(map_az), max(map_az)
         this_ylim = max(map_za), min(map_za)
         max_abs = np.max(np.abs(map_good_cov)) * max_abs_threshold
-        # max_abs = 1.5e-7
-        vmin = -max_abs
-        vmax = max_abs
+        match vmin:
+            case float() | int():
+                vmin_vpol = vmin_hpol = vmin_total = vmin
+            case tuple():
+                if len(vmin) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmin must have length 3.')
+                vmin_vpol, vmin_hpol, vmin_total = vmin
+            case None:
+                vmin_vpol = vmin_hpol = vmin_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmin must be a float or tuple of floats.'
+                )
+        match vmax:
+            case float() | int():
+                vmax_vpol = vmax_hpol = vmax_total = vmax
+            case tuple():
+                if len(vmax) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmax must have length 3.')
+                vmax_vpol, vmax_hpol, vmax_total = vmax
+            case None:
+                vmax_vpol = vmax_hpol = vmax_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmax must be a float or tuple of floats.'
+                )
 
         med_netd_1 = 1.0 / np.sqrt(
             np.sum(1.0 / netd_1[valid_netd_1] ** 2) / np.size(valid_netd_1)
@@ -1342,8 +1377,8 @@ class PlotMap(DataRoutine):
             np.transpose(map_val[0]) if old_format else map_val[0],
             extent=extent,
             aspect='equal',
-            vmin=vmin,
-            vmax=vmax,
+            vmin=vmin_vpol,
+            vmax=vmax_vpol,
             cmap='Blues_r',
         )
         add_colorbar(fig, ax_vpol, im, f'V-Pol Signal ({units})')
@@ -1359,8 +1394,8 @@ class PlotMap(DataRoutine):
             np.transpose(map_val[1]) if old_format else map_val[1],
             extent=extent,
             aspect='equal',
-            vmin=vmin,
-            vmax=vmax,
+            vmin=vmin_hpol,
+            vmax=vmax_hpol,
             cmap='Reds_r',
         )
         add_colorbar(fig, ax_hpol, im, f'H-Pol Signal ({units})')
@@ -1376,8 +1411,8 @@ class PlotMap(DataRoutine):
             np.transpose(total_map) if old_format else total_map,
             extent=extent,
             aspect='equal',
-            vmin=vmin,
-            vmax=vmax,
+            vmin=vmin_total,
+            vmax=vmax_total,
             cmap='Greys_r',
         )
         add_colorbar(fig, ax_total, im, f'Total Signal ({units})')
@@ -2087,9 +2122,11 @@ class AnimateVideo(DataRoutine):
     produces: ClassVar[set] = {}
 
     @ensure_path('savefile')
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         max_abs_threshold: float = 0.75,
+        vmin: float | tuple[float, float, float] | None = None,
+        vmax: float | tuple[float, float, float] | None = None,
         dpi: float = 300,
         repeat_delay_ms: float = 2000,
         show_tile_bounds: bool = True,
@@ -2103,6 +2140,12 @@ class AnimateVideo(DataRoutine):
         Arguments:
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
+            vmin, vmax (float | tuple[float, float, float], optional): The minimum /
+                maximum value(s) for the color scale in the plot. If a single value is
+                provided, the same range will be used for all plots. A tuple should have
+                3 elements, for v-pol, h-pol, and total signal respectively. If `None`,
+                will auto scale based on `max_abs_threshold` and matplotlib's default
+                behavior. Defaults to `None`.
             dpi (float, optional): The saved figure's resolution in dots per inch.
                 Defaults to 300.
             repeat_delay_ms (float, optional): The delay between repeats of the
@@ -2122,6 +2165,8 @@ class AnimateVideo(DataRoutine):
         """
         super().__init__(
             max_abs_threshold=max_abs_threshold,
+            vmin=vmin,
+            vmax=vmax,
             dpi=dpi,
             repeat_delay_ms=repeat_delay_ms,
             show_tile_bounds=show_tile_bounds,
@@ -2144,7 +2189,7 @@ class AnimateVideo(DataRoutine):
         res = self._animate(pdata)
         return RoutineResult(value=res)
 
-    def _animate(self, pdata: ProcessedData) -> tuple[Figure, FuncAnimation] | None:
+    def _animate(self, pdata: ProcessedData) -> tuple[Figure, FuncAnimation] | None:  # noqa: PLR0915
         """Animate the video."""
         # Load the parameters
         block_size_s = pdata['video'].attrs['block_size_s']
@@ -2168,6 +2213,38 @@ class AnimateVideo(DataRoutine):
         total_map = pdata['video/total_map'][:]
         extent = get_extent(map_az, map_za, dpix)
         optical_video = pdata['video/cropped_optical_video'][:]
+
+        # Determine the plot range
+        max_abs_threshold = self.params['max_abs_threshold']
+        vmin = self.params['vmin']
+        vmax = self.params['vmax']
+        max_abs = np.nanmax(np.abs(total_map)) * max_abs_threshold
+        match vmin:
+            case float() | int():
+                vmin_vpol = vmin_hpol = vmin_total = vmin
+            case tuple():
+                if len(vmin) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmin must have length 3.')
+                vmin_vpol, vmin_hpol, vmin_total = vmin
+            case None:
+                vmin_vpol = vmin_hpol = vmin_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmin must be a float or tuple of floats.'
+                )
+        match vmax:
+            case float() | int():
+                vmax_vpol = vmax_hpol = vmax_total = vmax
+            case tuple():
+                if len(vmax) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmax must have length 3.')
+                vmax_vpol, vmax_hpol, vmax_total = vmax
+            case None:
+                vmax_vpol = vmax_hpol = vmax_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmax must be a float or tuple of floats.'
+                )
 
         # Set values for non-covered pixels to NaN
         bad_pixel_mask = pdata['video/bad_pixel_mask'][:]
@@ -2254,8 +2331,8 @@ class AnimateVideo(DataRoutine):
         # vmax_vpol = np.nanmax(map_val[:, 0])
         im_vpol = ax_vpol.imshow(
             map_val[0, 0],
-            # vmin=-1e-7,
-            # vmax=1e-7,
+            vmin=vmin_vpol,
+            vmax=vmax_vpol,
             animated=True,
             cmap=cmap_vpol,
             extent=extent,
@@ -2271,8 +2348,8 @@ class AnimateVideo(DataRoutine):
         # vmax_hpol = np.nanmax(map_val[:, 1])
         im_hpol = ax_hpol.imshow(
             map_val[0, 1],
-            # vmin=vmin_hpol,
-            # vmax=vmax_hpol,
+            vmin=vmin_hpol,
+            vmax=vmax_hpol,
             animated=True,
             cmap=cmap_hpol,
             extent=extent,
@@ -2288,8 +2365,8 @@ class AnimateVideo(DataRoutine):
         # vmax_total = np.nanmax(smoothed_map)
         im_total = ax_total.imshow(
             total_map[0],
-            # vmin=vmin_total,
-            # vmax=vmax_total,
+            vmin=vmin_total,
+            vmax=vmax_total,
             animated=True,
             cmap=cmap_total,
             extent=extent,
@@ -2377,7 +2454,7 @@ class AnimateVideo(DataRoutine):
                 im_opt_bounds.set_array(tile_bounds_map[i])
                 im_degraded_bounds.set_array(tile_bounds_map[i])
 
-        _logger.info(f'{self.name}: Initializing animation...')
+        _logger.info(f'{self.name}: Creating animation...')
         an = FuncAnimation(
             fig,
             animation_func,
