@@ -2175,7 +2175,7 @@ class AnimateVideo(DataRoutine):
         map_val[np.broadcast_to(bad_pixel_mask[:, np.newaxis], map_val.shape)] = np.nan
         total_map[bad_pixel_mask] = np.nan
         if show_tile_bounds:
-            tile_bounds_map = (~bad_pixel_mask).astype(float)
+            tile_bounds_map = bad_pixel_mask.astype(float)
             tile_bounds_map[tile_bounds_map == 0] = np.nan
 
         # Calculate median NETD values
