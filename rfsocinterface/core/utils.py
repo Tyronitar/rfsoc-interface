@@ -1234,6 +1234,7 @@ def add_colorbar(
         'bottom', 'baseline', 'center', 'center_baseline', 'top'
     ] = 'top',
     offset_position: tuple[float, float] = (1.05, 0),
+    keep_ticks_in_bounds: bool = True,
 ) -> Colorbar:
     """Split an axes into two and append a colorbar to the side."""
     divider = make_axes_locatable(ax)
@@ -1244,6 +1245,18 @@ def add_colorbar(
     offset_text.set_horizontalalignment(horizontal_alignment)
     offset_text.set_verticalalignment(vertical_alignment)
     cb.ax.yaxis.get_offset_text().set_position(offset_position)
+
+    # Align first and last tick labels so they stay within the colorbar's bounding box
+    if keep_ticks_in_bounds:
+        match position:
+            case 'right' | 'left':
+                ylabels = cb.ax.get_ymajorticklabels()
+                ylabels[0].set_verticalalignment('bottom')
+                ylabels[-1].set_verticalalignment('top')
+            case 'top' | 'bottom':
+                xlabels = cb.ax.get_xmajorticklabels()
+                xlabels[0].set_horizontalalignment('right')
+                xlabels[-1].set_horizontalalignment('left')
     cb.update_ticks()
     return cb
 
