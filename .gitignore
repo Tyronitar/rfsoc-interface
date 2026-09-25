@@ -192,6 +192,7 @@ data/
 *.png
 *.gif
 *.mp4
+*.svg
 
 # Configuration Files
 *.yml
