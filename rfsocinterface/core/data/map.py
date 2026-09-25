@@ -1012,6 +1012,9 @@ class PlotMap(DataRoutine):
         max_abs_threshold: float = 0.75,
         vmin: float | tuple[float, float, float] | None = None,
         vmax: float | tuple[float, float, float] | None = None,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
+        figsize: tuple[float, float] = (16, 8),
         dpi: float = 300,
         save_plot: bool = True,
         savefile: Path | None = None,
@@ -1037,6 +1040,12 @@ class PlotMap(DataRoutine):
                 3 elements, for v-pol, h-pol, and total signal respectively. If `None`,
                 will auto scale based on `max_abs_threshold` and matplotlib's default
                 behavior. Defaults to `None`.
+            xlim, yim (tuple[float, float], optional): The x/y bounds of the plots. All
+                plots will be cropped to fit the desired area. If `None`, uses the full
+                area. Note that ylim should be (max, min) order, as the ZA increases
+                downwards. Defaults to `None`.
+            figsize (tuple[float, float], optional): The (width, height) of the figure
+                in inches. Defaults to (16, 8).
             dpi (float, optional): The saved figure's resolution in dots per inch.
                 Defaults to 300.
             save_plot (bool, optional): Whether to save the plot to file. Defaults
@@ -1071,6 +1080,9 @@ class PlotMap(DataRoutine):
             max_abs_threshold=max_abs_threshold,
             vmin=vmin,
             vmax=vmax,
+            xlim=xlim,
+            ylim=ylim,
+            figsize=figsize,
             dpi=dpi,
             save_plot=save_plot,
             savefile=savefile,
@@ -1287,11 +1299,16 @@ class PlotMap(DataRoutine):
         valid_netd_1 = np.argwhere(netd_1 > 0)
         valid_netd_2 = np.argwhere(netd_2 > 0)
 
+        xlim = self.params['xlim']
+        ylim = self.params['ylim']
+        if xlim is None:
+            xlim = min(map_az), max(map_az)
+        if ylim is None:
+            ylim = max(map_za), min(map_za)
+
         max_abs_threshold = self.params['max_abs_threshold']
         vmin = self.params['vmin']
         vmax = self.params['vmax']
-        this_xlim = min(map_az), max(map_az)
-        this_ylim = max(map_za), min(map_za)
         max_abs = np.max(np.abs(map_good_cov)) * max_abs_threshold
         match vmin:
             case float() | int():
@@ -1314,7 +1331,7 @@ class PlotMap(DataRoutine):
                     raise ValueError(f'{self.name}: vmax must have length 3.')
                 vmax_vpol, vmax_hpol, vmax_total = vmax
             case None:
-                vmax_vpol = vmax_hpol = vmax_total = -max_abs
+                vmax_vpol = vmax_hpol = vmax_total = max_abs
             case _:
                 raise TypeError(
                     f'{self.name}: vmax must be a float or tuple of floats.'
@@ -1331,7 +1348,16 @@ class PlotMap(DataRoutine):
         vis = pdata.optical_visibility[()]
 
         # TODO: Make figure size change based on the size of the map
+        figsize = self.params['figsize']
         fig, axes = plt.subplot_mosaic(
+            # [
+            #     ['vpol', '.'],
+            #     ['vpol', '.'],
+            #     ['hpol', 'degraded'],
+            #     ['hpol', 'degraded'],
+            #     ['total', 'optical'],
+            #     ['total', 'optical'],
+            # ],
             [
                 ['vpol', '.'],
                 ['vpol', 'optical'],
@@ -1342,7 +1368,7 @@ class PlotMap(DataRoutine):
             ],
             sharex=True,
             sharey=True,
-            figsize=(16, 8),
+            figsize=figsize,
             gridspec_kw={
                 'hspace': 0,
             },
@@ -1362,8 +1388,8 @@ class PlotMap(DataRoutine):
         )
         for ax in axes.values():
             ax.set_ylabel('ZA (degrees)')
-            ax.set_xlim(this_xlim)
-            ax.set_ylim(this_ylim)
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
             ax.label_outer()
 
         ax_vpol = axes['vpol']
@@ -1381,7 +1407,7 @@ class PlotMap(DataRoutine):
             vmax=vmax_vpol,
             cmap='Blues_r',
         )
-        add_colorbar(fig, ax_vpol, im, f'V-Pol Signal ({units})')
+        cax_vpol, cbar_vpol = add_colorbar(fig, ax_vpol, im, f'V-Pol Signal ({units})')
         ax_vpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -1398,7 +1424,7 @@ class PlotMap(DataRoutine):
             vmax=vmax_hpol,
             cmap='Reds_r',
         )
-        add_colorbar(fig, ax_hpol, im, f'H-Pol Signal ({units})')
+        cax_hpol, cbar_hpol = add_colorbar(fig, ax_hpol, im, f'H-Pol Signal ({units})')
         ax_hpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -1415,7 +1441,7 @@ class PlotMap(DataRoutine):
             vmax=vmax_total,
             cmap='Greys_r',
         )
-        add_colorbar(fig, ax_total, im, f'Total Signal ({units})')
+        cax_total, cbar_total = add_colorbar(fig, ax_total, im, f'Total Signal ({units})')
         ax_total.contour(
             np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -1470,7 +1496,7 @@ class PlotMap(DataRoutine):
         ax_degraded.text(
             1.05,
             0.5,
-            'Degraded\nOptical Signal',
+            'Degraded Optical Signal',
             rotation=90,
             horizontalalignment='center',
             verticalalignment='center',
@@ -1484,6 +1510,12 @@ class PlotMap(DataRoutine):
         # Add x labels to bottom axes
         ax_total.set_xlabel('Azimuth (degrees)')
         ax_degraded.set_xlabel('Azimuth (degrees)')
+
+        # ax_vpol.set_visible(False)
+        # cax_vpol.set_visible(False)
+        # ax_hpol.set_visible(False)
+        # cax_hpol.set_visible(False)
+        # ax_degraded.set_visible(False)
 
         if self.params['save_plot']:
             format_ = self.params['format']
@@ -2408,12 +2440,13 @@ class AnimateVideo(DataRoutine):
         ax_optical.yaxis.set_tick_params(labelleft=True)
 
         # Degraded Optical Video
-        _logger.info(f'{self.name}: Plotting degraded optical signal...')
+        _logger.info(f'{self.name}: Applying Gaussian blur to optical video...')
         sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
         blurred_optical_video = apply_gaussian_blur(
             optical_video,
             (0, sigma, sigma, 0),
         )
+        _logger.info(f'{self.name}: Plotting degraded optical signal...')
         im_degraded = ax_degraded.imshow(
             blurred_optical_video[0], animated=True, extent=extent, aspect='equal'
         )

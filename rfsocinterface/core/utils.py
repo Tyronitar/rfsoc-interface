@@ -25,6 +25,7 @@ from typing import (
     TypeVar,
 )
 
+from matplotlib.axes import Axes
 from matplotlib.colorbar import Colorbar
 from matplotlib.image import AxesImage
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -1221,7 +1222,7 @@ def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
 
 def add_colorbar(
     fig: Figure,
-    ax: plt.Axes,
+    ax: Axes,
     im: AxesImage,
     label: str,
     position: Literal['right', 'left', 'bottom', 'top'] = 'right',
@@ -1235,7 +1236,7 @@ def add_colorbar(
     ] = 'top',
     offset_position: tuple[float, float] = (1.05, 0),
     keep_ticks_in_bounds: bool = True,
-) -> Colorbar:
+) -> tuple[Axes, Colorbar]:
     """Split an axes into two and append a colorbar to the side."""
     divider = make_axes_locatable(ax)
     cax = divider.append_axes(position, size=size, pad=pad)
@@ -1258,7 +1259,7 @@ def add_colorbar(
                 xlabels[0].set_horizontalalignment('right')
                 xlabels[-1].set_horizontalalignment('left')
     cb.update_ticks()
-    return cb
+    return cax, cb
 
 
 def elide_text(text: str, max_len=30) -> str:
