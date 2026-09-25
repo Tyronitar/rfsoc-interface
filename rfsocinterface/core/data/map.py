@@ -1013,6 +1013,7 @@ class PlotMap(DataRoutine):
         show_optical_overlay: bool = False,
         vmin: float | tuple[float, float, float] | None = None,
         vmax: float | tuple[float, float, float] | None = None,
+        crop_to_optical_bounds: bool = False,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
         layout: Literal['staggered', 'stacked'] = 'staggered',
@@ -1045,6 +1046,9 @@ class PlotMap(DataRoutine):
                 3 elements, for v-pol, h-pol, and total signal respectively. If `None`,
                 will auto scale based on `max_abs_threshold` and matplotlib's default
                 behavior. Defaults to `None`.
+            crop_to_optical_bounds (bool, optional): Whehter to crop the images to the
+                bounds of the optical image. This has precedence over `xlim` and
+                `ylim`. Defaults to `False`.
             xlim, yim (tuple[float, float], optional): The x/y bounds of the plots. All
                 plots will be cropped to fit the desired area. If `None`, uses the full
                 area. Note that ylim should be (max, min) order, as the ZA increases
@@ -1093,6 +1097,7 @@ class PlotMap(DataRoutine):
             show_optical_overlay=show_optical_overlay,
             vmin=vmin,
             vmax=vmax,
+            crop_to_optical_bounds=crop_to_optical_bounds,
             xlim=xlim,
             ylim=ylim,
             layout=layout,
@@ -1317,12 +1322,34 @@ class PlotMap(DataRoutine):
         valid_netd_1 = np.argwhere(netd_1 > 0)
         valid_netd_2 = np.argwhere(netd_2 > 0)
 
-        xlim = self.params['xlim']
-        ylim = self.params['ylim']
-        if xlim is None:
-            xlim = min(map_az), max(map_az)
-        if ylim is None:
-            ylim = max(map_za), min(map_za)
+        # Optical Image
+        tel_start = pdata.get_initial_telescope_position()
+        optical_image = get_scaled_optical_image(
+            dpix,
+            pdata.optical_image,
+            map_az,
+            map_za,
+            telescope_start_position=tel_start,
+        )
+        # Find optical image bounds
+        is_nonzero_opt = np.any(optical_image > 0, axis=-1)
+        nonzero_opt_idx_za, nonzero_opt_idx_az = np.nonzero(is_nonzero_opt)
+        corner_opt_za = map_za[0] + OPTCAM_DPIX * nonzero_opt_idx_za
+        corner_opt_az = map_az[0] + OPTCAM_DPIX * nonzero_opt_idx_az
+        height_opt_deg = OPTCAM_HEIGHT_PIXELS * OPTCAM_DPIX
+        width_opt_deg = OPTCAM_WIDTH_PIXELS * OPTCAM_DPIX
+        corner_opt = (corner_opt_az[0], corner_opt_za[0])
+        crop_to_optical = self.params['crop_to_optical_bounds']
+        if crop_to_optical:
+            xlim = (corner_opt[0], corner_opt[0] + width_opt_deg)
+            ylim = (corner_opt[1] + height_opt_deg, corner_opt[1])
+        else:
+            xlim = self.params['xlim']
+            ylim = self.params['ylim']
+            if xlim is None:
+                xlim = (min(map_az), max(map_az))
+            if ylim is None:
+                ylim = (max(map_za), min(map_za))
 
         max_abs_threshold = self.params['max_abs_threshold']
         vmin = self.params['vmin']
@@ -1489,31 +1516,14 @@ class PlotMap(DataRoutine):
             colors='red',
         )
 
-        # Optical Image
-        tel_start = pdata.get_initial_telescope_position()
-        optical_image = get_scaled_optical_image(
-            dpix,
-            pdata.optical_image,
-            map_az,
-            map_za,
-            telescope_start_position=tel_start,
-        )
-
         # Optical image outline for mm maps
         show_optical_overlay = self.params['show_optical_overlay']
-        if show_optical_overlay:
-            is_nonzero = np.any(optical_image > 0, axis=-1)
-            nonzero_idx_za, nonzero_idx_az = np.nonzero(is_nonzero)
-            corner_za = map_za[0] + OPTCAM_DPIX * nonzero_idx_za
-            corner_az = map_az[0] + OPTCAM_DPIX * nonzero_idx_az
-            height = OPTCAM_HEIGHT_PIXELS * OPTCAM_DPIX
-            width = OPTCAM_WIDTH_PIXELS * OPTCAM_DPIX
-            corner = (corner_az[0], corner_za[0])
+        if not crop_to_optical and show_optical_overlay:
             for ax in [ax_vpol, ax_hpol, ax_total]:
                 rect = plt.Rectangle(
-                    corner,
-                    width,
-                    height,
+                    corner_opt,
+                    width_opt_deg,
+                    height_opt_deg,
                     facecolor='white',
                     # edgecolor='white',
                     # linewidth='2',
@@ -1521,8 +1531,8 @@ class PlotMap(DataRoutine):
                 )
                 ax.add_patch(rect)
                 ax.text(
-                    corner[0] + width / 2,
-                    corner[1],
+                    corner_opt[0] + width_opt_deg / 2,
+                    corner_opt[1],
                     'Optical Image Bounds',
                     ha='center',
                     va='bottom',
