@@ -26,8 +26,11 @@ _logger = logging.getLogger(__name__)
 OPTCAM_DPIX = 0.0025  # Degrees / pixel
 # Empirically determined optical camera offset relative to telescope position
 # i.e. telescope position + offset = optcam position
-OPTCAM_OFFSET_AZ_DEG = -1.11111
-OPTCAM_OFFSET_ZA_DEG = -1.65628
+# OPTCAM_OFFSET_AZ_DEG = -1.11111
+# OPTCAM_OFFSET_ZA_DEG = -1.65628
+# OPTCAM_OFFSET_AZ_DEG = -1.1810
+OPTCAM_OFFSET_ZA_DEG = -1.7138
+OPTCAM_OFFSET_AZ_DEG = -1.1465
 OPTCAM_OFFSET_AZ_PIX = int(OPTCAM_OFFSET_AZ_DEG / OPTCAM_DPIX)
 OPTCAM_OFFSET_ZA_PIX = int(OPTCAM_OFFSET_ZA_DEG / OPTCAM_DPIX)
 OPTCAM_HEIGHT_PIXELS = 1944
