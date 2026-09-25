@@ -13,7 +13,6 @@ from kidpy3 import RawDataFile
 
 from rfsocinterface.core.data import ProcessedData
 from rfsocinterface.core.sweeps import LoSweepData
-from rfsocinterface.gui.sweep_diagnostics import DiagnosticsDialog
 from rfsocinterface.core.utils import mHz_axis_formatter, BAD_RESONANCE_COLOR
 
 import logging
@@ -53,16 +52,37 @@ def process_20260917_set1005():
         az_trim=0,
         za_trim=0,
         dpix=0.03,
-        r0=0.15,
+        r0=0.0,
     )
     plot_map = PlotMap(
-        # show=True,
-        show=False,
+        show=True,
+        # show=False,
         max_abs_threshold=0.4,
         keep_figure_open=False,
         channel=None,
         overwrite=False,
-        format='svg',
+        format='png',
+        dpi=300,
+        vmin=-500,
+        vmax=500,
+        # xlim=(2.7, 9.0),
+        # ylim=(90.5, 86),
+        # figsize=(10.5, 8),
+        # savefile='20260917_set1005_2_7-9x90_5-86'
+        # xlim=(5, 8),
+        # ylim=(88, 86),
+        # figsize=(11.5, 8),
+        # savefile='20260917_set1005_5-8x88-86'
+        # xlim=(2.65, 9.05),
+        # ylim=(87.75, 86.20),
+        # figsize=(15, 5),
+        # gridspec_kw={'hspace': 0, 'wspace': 0.5},
+        # savefile='20260917_set1005_ridgeline'
+        # xlim=(2.65, 9.05),
+        # ylim=(87.75, 86.20),
+        # figsize=(10, 10),
+        # layout='stacked',
+        # savefile='20260917_set1005_ridgeline_stacked'
     )
 
     pipeline = Pipeline([
@@ -73,9 +93,10 @@ def process_20260917_set1005():
         plot_map,
     ])
 
-    # pdata = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata = pipeline.from_consolidated_data(date, setnum)
     pdata = ProcessedData.load(date, setnum)
+    # bin_tod_to_map.apply(pdata)
     plot_map.apply(pdata)
     # pipeline.run(pdata)
 
@@ -109,7 +130,7 @@ def process_20260917_set1007():
         # show=True,
         # savefile='test.gif',
     )
-    animate_video = AnimateVideo()
+    animate_video = AnimateVideo(dpi=300, vmin=-300, vmax=300)
 
 
     pipeline = Pipeline([
@@ -128,6 +149,7 @@ def process_20260917_set1007():
     # pdata = pipeline.from_consolidated_data(date, setnum)
     pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
+    # bin_tod_to_video.apply(pdata)
     animate_video.apply(pdata)
 
     # pdb.set_trace()
@@ -167,7 +189,7 @@ if __name__ == '__main__':
     _logger = logging.getLogger('rfsocinterface')
     _logger.handlers[0].setLevel(logging.INFO)
 
-    # process_20260917_set1005()
-    process_20260917_set1007()
+    process_20260917_set1005()
+    # process_20260917_set1007()
     # fix_df_per_mK()
 

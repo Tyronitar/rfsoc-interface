@@ -93,24 +93,25 @@ if __name__ == '__main__':
         # compute_psd,
         # psd_plotter,
         bin_tod_to_map,
-        # plotter,
+        plotter,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
-        analyze_beammap,
-        plot_beammap,
+        # analyze_beammap,
+        # plot_beammap,
     ])
 
-    # date = '20260820'  # For testing normal maps
-    # setnum = 1005
+    date = '20260820'  # For testing normal maps
+    setnum = 1005
     # date = '20260710'  # For testing beammaps
     # setnum = 1006
-    date = '20260917'  # For testing video
-    setnum = 1007
+    # date = '20260917'  # For testing video
+    # setnum = 1007
 
 
-    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum)
+    pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
     # pdb.set_trace()
+    plotter.apply(pdata)

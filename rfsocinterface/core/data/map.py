@@ -1014,6 +1014,8 @@ class PlotMap(DataRoutine):
         vmax: float | tuple[float, float, float] | None = None,
         xlim: tuple[float, float] | None = None,
         ylim: tuple[float, float] | None = None,
+        layout: Literal['staggered', 'stacked'] = 'staggered',
+        gridspec_kw: dict | None = None,
         figsize: tuple[float, float] = (16, 8),
         dpi: float = 300,
         save_plot: bool = True,
@@ -1044,6 +1046,13 @@ class PlotMap(DataRoutine):
                 plots will be cropped to fit the desired area. If `None`, uses the full
                 area. Note that ylim should be (max, min) order, as the ZA increases
                 downwards. Defaults to `None`.
+            layout (Literal['staggered', 'stacked'], optional): Which layout
+                configuration to use. If 'staggered', the optical images will be offset
+                in another column. If 'stacked', all images will be stacked vertically.
+                Defaults to 'staggered'.
+            gridspec_kw (dict, optional): The keyword arguments to pass to gridspec when
+                initializing the figure. If `None`, will use `{'hspace': 0}`. Defaults
+                to `None`.
             figsize (tuple[float, float], optional): The (width, height) of the figure
                 in inches. Defaults to (16, 8).
             dpi (float, optional): The saved figure's resolution in dots per inch.
@@ -1082,6 +1091,8 @@ class PlotMap(DataRoutine):
             vmax=vmax,
             xlim=xlim,
             ylim=ylim,
+            layout=layout,
+            gridspec_kw=gridspec_kw,
             figsize=figsize,
             dpi=dpi,
             save_plot=save_plot,
@@ -1265,7 +1276,7 @@ class PlotMap(DataRoutine):
             '/map/plotting/map_good_cov', data=np.append(map_goodcov_1, map_goodcov_2)
         )
 
-    def _plot(self, pdata: ProcessedData) -> Figure | None:  # noqa: PLR0915
+    def _plot(self, pdata: ProcessedData) -> Figure | None:  # noqa: PLR0912, PLR0915
         """Plot the maps using matplotlib.
 
         Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical
@@ -1281,6 +1292,9 @@ class PlotMap(DataRoutine):
         channel = tuple(pdata['map/plotting'].attrs['channel'].tolist())
         dpix = pdata['map'].attrs['dpix']
         units = pdata['map'].attrs.get('units', 'mK')
+        gridspec_kw = self.params['gridspec_kw']
+        if gridspec_kw is None:
+            gridspec_kw = {'hspace': 0}
 
         _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
         bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
@@ -1348,31 +1362,53 @@ class PlotMap(DataRoutine):
         vis = pdata.optical_visibility[()]
 
         # TODO: Make figure size change based on the size of the map
+        layout = self.params['layout']
         figsize = self.params['figsize']
-        fig, axes = plt.subplot_mosaic(
-            # [
-            #     ['vpol', '.'],
-            #     ['vpol', '.'],
-            #     ['hpol', 'degraded'],
-            #     ['hpol', 'degraded'],
-            #     ['total', 'optical'],
-            #     ['total', 'optical'],
-            # ],
-            [
-                ['vpol', '.'],
-                ['vpol', 'optical'],
-                ['hpol', 'optical'],
-                ['hpol', 'degraded'],
-                ['total', 'degraded'],
-                ['total', '.'],
-            ],
-            sharex=True,
-            sharey=True,
-            figsize=figsize,
-            gridspec_kw={
-                'hspace': 0,
-            },
-        )
+        if layout == 'staggered':
+            fig, axes = plt.subplot_mosaic(
+                [
+                    ['vpol', '.'],
+                    ['vpol', 'optical'],
+                    ['hpol', 'optical'],
+                    ['hpol', 'degraded'],
+                    ['total', 'degraded'],
+                    ['total', '.'],
+                ],
+                # [
+                #     ['vpol'],
+                #     ['hpol'],
+                #     ['total'],
+                #     ['optical'],
+                #     ['degraded'],
+                # ],
+                sharex=True,
+                sharey=True,
+                figsize=figsize,
+                gridspec_kw=gridspec_kw,
+                # layout='constrained',
+            )
+            for key in ['vpol', 'hpol', 'optical']:
+                plt.setp(axes[key].get_xticklines(), visible=False)
+        else:
+            fig, axes = plt.subplot_mosaic(
+                [
+                    ['vpol'],
+                    ['hpol'],
+                    ['total'],
+                    ['optical'],
+                    ['degraded'],
+                ],
+                sharex=True,
+                sharey=True,
+                figsize=figsize,
+                gridspec_kw=gridspec_kw,
+                layout='constrained',
+            )
+            fig.get_layout_engine().set(h_pad=0)
+            for key in ['vpol', 'hpol', 'total', 'optical']:
+                axes[key].tick_params(labelbottom=False)
+                axes[key].label_outer()
+                plt.setp(axes[key].get_xticklines(), visible=False)
         channel_suffix = (
             'All Channels'
             if channel == tuple(range(pdata.n_chan))
@@ -1407,7 +1443,7 @@ class PlotMap(DataRoutine):
             vmax=vmax_vpol,
             cmap='Blues_r',
         )
-        cax_vpol, cbar_vpol = add_colorbar(fig, ax_vpol, im, f'V-Pol Signal ({units})')
+        add_colorbar(fig, ax_vpol, im, f'V-Pol Signal ({units})')
         ax_vpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -1424,7 +1460,7 @@ class PlotMap(DataRoutine):
             vmax=vmax_hpol,
             cmap='Reds_r',
         )
-        cax_hpol, cbar_hpol = add_colorbar(fig, ax_hpol, im, f'H-Pol Signal ({units})')
+        add_colorbar(fig, ax_hpol, im, f'H-Pol Signal ({units})')
         ax_hpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -1441,7 +1477,7 @@ class PlotMap(DataRoutine):
             vmax=vmax_total,
             cmap='Greys_r',
         )
-        cax_total, cbar_total = add_colorbar(fig, ax_total, im, f'Total Signal ({units})')
+        add_colorbar(fig, ax_total, im, f'Total Signal ({units})')
         ax_total.contour(
             np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
@@ -1467,6 +1503,9 @@ class PlotMap(DataRoutine):
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
+        if layout == 'stacked':
+            cax_opt, _ = add_colorbar(fig, ax_optical, im, '')
+            cax_opt.set_visible(False)
         ax_optical.text(
             1.05,
             0.5,
@@ -1477,8 +1516,9 @@ class PlotMap(DataRoutine):
             transform=ax_optical.transAxes,
             fontsize=10,
         )
-        ax_optical.set_ylabel('ZA (degrees)')
-        ax_optical.yaxis.set_tick_params(labelleft=True)
+        if layout == 'staggered':
+            ax_optical.set_ylabel('ZA (degrees)')
+            ax_optical.yaxis.set_tick_params(labelleft=True)
 
         # Blurred optical image
         sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
@@ -1493,23 +1533,35 @@ class PlotMap(DataRoutine):
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
+        if layout == 'stacked':
+            cax_deg, _ = add_colorbar(fig, ax_degraded, im, '')
+            cax_deg.set_visible(False)
         ax_degraded.text(
             1.05,
             0.5,
-            'Degraded Optical Signal',
+            'Degraded Optical Signal'
+            if layout == 'staggered'
+            else 'Degraded\nOptical Signal',
             rotation=270,
             horizontalalignment='center',
             verticalalignment='center',
             transform=ax_degraded.transAxes,
             fontsize=10,
         )
-        ax_degraded.set_ylabel('ZA (degrees)')
-        ax_degraded.yaxis.set_tick_params(labelleft=True)
-        ax_degraded.xaxis.set_tick_params(labelbottom=True)
+        if layout == 'staggered':
+            ax_degraded.set_ylabel('ZA (degrees)')
+            ax_degraded.yaxis.set_tick_params(labelleft=True)
+            ax_degraded.xaxis.set_tick_params(labelbottom=True)
 
         # Add x labels to bottom axes
-        ax_total.set_xlabel('Azimuth (degrees)')
+        if layout == 'staggered':
+            ax_total.set_xlabel('Azimuth (degrees)')
         ax_degraded.set_xlabel('Azimuth (degrees)')
+
+        for ax in axes.values():
+            ylabels = ax.get_ymajorticklabels()
+            ylabels[0].set_verticalalignment('bottom')
+            ylabels[-1].set_verticalalignment('top')
 
         # ax_vpol.set_visible(False)
         # cax_vpol.set_visible(False)
