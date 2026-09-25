@@ -1010,6 +1010,7 @@ class PlotMap(DataRoutine):
         gaussian_sigma: float = GAUSSIAN_SIGMA,
         valid_covariance_threshold: float = 0.5,
         max_abs_threshold: float = 0.75,
+        show_optical_overlay: bool = False,
         vmin: float | tuple[float, float, float] | None = None,
         vmax: float | tuple[float, float, float] | None = None,
         xlim: tuple[float, float] | None = None,
@@ -1036,6 +1037,8 @@ class PlotMap(DataRoutine):
                 to 0.5.
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
+            show_optical_overlay (bool, optional): Whether to overlay the region
+                covered by the optical camera on the mm images. Defatuls to `False`.
             vmin, vmax (float | tuple[float, float, float], optional): The minimum /
                 maximum value(s) for the color scale in the plot. If a single value is
                 provided, the same range will be used for all plots. A tuple should have
@@ -1087,6 +1090,7 @@ class PlotMap(DataRoutine):
             gaussian_sigma=gaussian_sigma,
             valid_covariance_threshold=valid_covariance_threshold,
             max_abs_threshold=max_abs_threshold,
+            show_optical_overlay=show_optical_overlay,
             vmin=vmin,
             vmax=vmax,
             xlim=xlim,
@@ -1494,6 +1498,38 @@ class PlotMap(DataRoutine):
             map_za,
             telescope_start_position=tel_start,
         )
+
+        # Optical image outline for mm maps
+        show_optical_overlay = self.params['show_optical_overlay']
+        if show_optical_overlay:
+            is_nonzero = np.any(optical_image > 0, axis=-1)
+            nonzero_idx_za, nonzero_idx_az = np.nonzero(is_nonzero)
+            corner_za = map_za[0] + OPTCAM_DPIX * nonzero_idx_za
+            corner_az = map_az[0] + OPTCAM_DPIX * nonzero_idx_az
+            height = OPTCAM_HEIGHT_PIXELS * OPTCAM_DPIX
+            width = OPTCAM_WIDTH_PIXELS * OPTCAM_DPIX
+            corner = (corner_az[0], corner_za[0])
+            for ax in [ax_vpol, ax_hpol, ax_total]:
+                rect = plt.Rectangle(
+                    corner,
+                    width,
+                    height,
+                    facecolor='white',
+                    # edgecolor='white',
+                    # linewidth='2',
+                    alpha=0.2,
+                )
+                ax.add_patch(rect)
+                ax.text(
+                    corner[0] + width / 2,
+                    corner[1],
+                    'Optical Image Bounds',
+                    ha='center',
+                    va='bottom',
+                    fontsize=8,
+                    color='white',
+                )
+
         opt_vmax = 255.0
         opt_vmin = 0  # NOTE: Shouldn't this be 0?
         im = ax_optical.imshow(

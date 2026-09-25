@@ -65,19 +65,31 @@ def process_20260917_set1005():
         dpi=300,
         vmin=-500,
         vmax=500,
+        # Full image
+        show_optical_overlay=True,
+        xlim=(1.4, 16.25),
+        ylim=(92, 85.25),
+
+        # AZ [2.7, 9], ZA [90.5, 86]
         # xlim=(2.7, 9.0),
         # ylim=(90.5, 86),
         # figsize=(10.5, 8),
         # savefile='20260917_set1005_2_7-9x90_5-86'
+
+        # AZ [5, 8], ZA [88, 86]
         # xlim=(5, 8),
         # ylim=(88, 86),
         # figsize=(11.5, 8),
         # savefile='20260917_set1005_5-8x88-86'
+
+        # Ridgeline (staggered)
         # xlim=(2.65, 9.05),
         # ylim=(87.75, 86.20),
         # figsize=(15, 5),
         # gridspec_kw={'hspace': 0, 'wspace': 0.5},
         # savefile='20260917_set1005_ridgeline'
+
+        # Ridgeline (stacked)
         # xlim=(2.65, 9.05),
         # ylim=(87.75, 86.20),
         # figsize=(10, 10),
