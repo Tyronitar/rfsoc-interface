@@ -1228,7 +1228,7 @@ def add_colorbar(
     position: Literal['right', 'left', 'bottom', 'top'] = 'right',
     size: str | float = '2.5%',
     pad: str | float = 0.05,
-    label_rotation: float = 90,
+    label_rotation: float = 270,
     labelpad: float = 15,
     horizontal_alignment: Literal['left', 'center', 'right'] = 'left',
     vertical_alignment: Literal[
