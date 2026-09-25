@@ -66,7 +66,7 @@ def process_20260917_set1005():
         vmin=-500,
         vmax=500,
         # Full image
-        # show_optical_overlay=True,
+        show_optical_overlay=True,
         xlim=(1.4, 16.25),
         ylim=(92, 85.25),
 
