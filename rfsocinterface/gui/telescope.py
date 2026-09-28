@@ -27,6 +27,7 @@ from rfsocinterface.core.camera import (
     MAX_FRAME_HEIGHT,
     MAX_FRAME_WIDTH,
 )
+from rfsocinterface.core.data import get_current_camera_extent
 from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.telescope import (
     AZ_OUT_CHANNEL,
@@ -90,7 +91,6 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
             np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3))
         )
         self.live_footage_fig.tight_layout()
-        self.live_footage_ax.set_axis_off()
 
         self.live_footage_canvas = ToolbarCanvas(parent=self, fig=self.live_footage_fig)
         self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0, 1, 2)
@@ -367,6 +367,9 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         if self.is_active_tab:  # Only update the canvas if the tab is in focus
             image, _ = self.get_current_image()
             self.live_footage_im.set_array(image)
+            self.live_footage_im.set_extent(
+                get_current_camera_extent(self.az_pos, self.za_pos)
+            )
             self.live_footage_canvas.canvas.draw()
             self.live_footage_canvas.canvas.flush_events()
 

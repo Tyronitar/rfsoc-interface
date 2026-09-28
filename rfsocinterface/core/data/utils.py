@@ -103,6 +103,22 @@ CALIBRATION_TABLE_DTYPE = [
 ]
 
 
+def get_current_camera_extent(
+    tel_az: float, tel_za: float
+) -> tuple[float, float, float, float]:
+    """Return the extent of the camera given the current telescope position."""
+    opt_center_az = tel_az + OPTCAM_OFFSET_AZ_DEG
+    opt_center_za = tel_za + OPTCAM_OFFSET_ZA_DEG
+    opt_width_deg = OPTCAM_WIDTH_PIXELS * OPTCAM_DPIX
+    opt_height_deg = OPTCAM_HEIGHT_PIXELS * OPTCAM_DPIX
+    return (
+        opt_center_az - opt_width_deg / 2,
+        opt_center_az + opt_width_deg / 2,
+        opt_center_za + opt_height_deg / 2,
+        opt_center_za - opt_height_deg / 2,
+    )
+
+
 def get_channel_group_name(idx: int) -> str:
     """Return the properly formatted group name for the channel with index `idx`."""
     return f'channel_{idx:03d}'
