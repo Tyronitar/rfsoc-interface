@@ -652,7 +652,7 @@ class LoSweepData:
         """Load an LO sweep from an HDF5 file."""
         path = path.with_suffix('.h5')
         with h5py.File(path, 'r') as f:
-            if datetime.datetime.fromtimestamp(
+            if 'global_data' in f or datetime.datetime.fromtimestamp(
                 path.stat().st_mtime
             ) < datetime.datetime.strptime(NEW_LO_SWEEP_FORMAT_DATE, '%Y%m%d'):
                 _logger.warning(
@@ -665,9 +665,13 @@ class LoSweepData:
                 fit_f0 = f['global_data/fit_f0'][:]
                 fit_qi = f['global_data/fit_qi'][:]
                 fit_qc = f['global_data/fit_qc'][:]
-                f_center = f['global_data/lo_freq'][()]
+                if 'lo_freq' in f['global_data']:
+                    f_center = f['global_data/lo_freq'][()]
+                elif 'f_center' in f.attrs:
+                    f_center = f.attrs['f_center']
+                else:
+                    raise ValueError('Unkown LO Sweep file format encountered.')
                 tile_name = ''
-
                 date = None
                 hour = None
             else:

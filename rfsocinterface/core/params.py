@@ -15,7 +15,9 @@ from matplotlib.figure import Figure
 from packaging.version import Version
 
 from rfsocinterface.core.utils import (
+    BAD_RESONANCE_COLOR,
     DEFAULT_PARAMS_DIRECTORY,
+    OFF_RESONANCE_COLOR,
     PERMISSIONS_ALL_FULL,
     ChanmaskValue,
     PathLike,
@@ -40,12 +42,13 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
     'chanmask',
 ]
 DEFAULT_DFOVERF_PER_MK = 7.181229465879829e-10
+DEFAULT_FOCAL_PLANE_CENTER_ZA = 90.0
 
 
 class RFSoCParameters:
     """Class wrapping around RFSoC parameters files."""
 
-    VERSION = Version('1.0.1')
+    VERSION = Version('1.1.1')
 
     @ensure_path(1)
     def __init__(self, file: Path, mode: str = 'r'):
@@ -67,6 +70,22 @@ class RFSoCParameters:
                 f'File "{self._file.filename}" is not an appropriate format. '
                 'Use `update_params_file_format` to update the file and try again.'
             )
+
+    @classmethod
+    def load(
+        cls,
+        tile_name: str,
+        mode: str = 'r',
+        params_dir: Path = DEFAULT_PARAMS_DIRECTORY,
+    ) -> RFSoCParameters:
+        """Load parameters from the appropriate file for the given tile name."""
+        filename = Path(get_params_file_template(tile_name, params_dir=params_dir))
+        if not filename.exists():
+            raise FileNotFoundError(
+                f'Unable to find a params file for tile "{tile_name}" '
+                f'in directory {params_dir}'
+            )
+        return cls(filename, mode=mode)
 
     @classmethod
     def new_file(
@@ -93,6 +112,7 @@ class RFSoCParameters:
             fh.attrs['tile_number'] = 0
             fh.attrs['chan_number'] = 0
             fh.attrs['ifslice_number'] = 0
+            fh.attrs['focal_plane_center_za'] = DEFAULT_FOCAL_PLANE_CENTER_ZA
             fh.attrs['params_version'] = str(RFSoCParameters.VERSION)
 
             # Datasets
@@ -160,6 +180,7 @@ class RFSoCParameters:
         tile_number: int | None = None,
         chan_number: int | None = None,
         ifslice_number: int | None = None,
+        focal_plane_center_za: float | None = None,
         chanmask: npt.NDArray = None,
         baseband_freqs: npt.NDArray = None,
         tone_powers: npt.NDArray = None,
@@ -178,6 +199,11 @@ class RFSoCParameters:
         chan_number = chan_number if chan_number is not None else self.chan_number
         ifslice_number = (
             ifslice_number if ifslice_number is not None else self.ifslice_number
+        )
+        focal_plane_center_za = (
+            focal_plane_center_za
+            if focal_plane_center_za is not None
+            else self.focal_plane_center_za
         )
 
         chanmask = chanmask if chanmask is not None else self.chanmask[:]
@@ -217,6 +243,7 @@ class RFSoCParameters:
         new_params.tile_number = tile_number
         new_params.chan_number = chan_number
         new_params.ifslice_number = ifslice_number
+        new_params.focal_plane_center_za = focal_plane_center_za
         new_params.chanmask[:] = chanmask
         new_params.baseband_freqs[:] = baseband_freqs
         new_params.tone_powers[:] = tone_powers
@@ -316,6 +343,17 @@ class RFSoCParameters:
     @ifslice_number.setter
     def ifslice_number(self, n: int):
         self._file.attrs['ifslice_number'] = n
+
+    @property
+    def focal_plane_center_za(self) -> float:
+        """The zenith angle center of the focal plane."""
+        if 'focal_plane_center_za' in self._file.attrs:
+            return self._file.attrs['focal_plane_center_za']
+        return DEFAULT_FOCAL_PLANE_CENTER_ZA  # Backwards-compatible default value
+
+    @focal_plane_center_za.setter
+    def focal_plane_center_za(self, za: float):
+        self._file.attrs['focal_plane_center_za'] = za
 
     @property
     def f_center(self) -> float:
@@ -463,6 +501,12 @@ class RFSoCParameters:
         bb_freqs = self.baseband_freqs[:]
         shift1 = np.abs(bb_freqs - np.roll(bb_freqs, 1))
         shift2 = np.abs(np.roll(bb_freqs, -1) - bb_freqs)
+        shift1 = np.where(
+            np.roll(self.chanmask[:], 1) == ChanmaskValue.ON_RESONANCE, shift1, np.inf
+        )
+        shift2 = np.where(
+            np.roll(self.chanmask[:], -1) == ChanmaskValue.ON_RESONANCE, shift2, np.inf
+        )
         nearest_res = np.abs(np.minimum(shift1, shift2) / self.detector_f)
         collided_ind = np.argwhere(
             (nearest_res < collision_threshold)
@@ -470,7 +514,7 @@ class RFSoCParameters:
                 self.chanmask[:] == 1
             )  # Only care about on-resonance tones for collisions
         )
-        new_chanmask[collided_ind] = -1
+        new_chanmask[collided_ind] = ChanmaskValue.COLLIDED
 
         _logger.info(f'Found {collided_ind.size} collided resonances')
 
@@ -481,7 +525,7 @@ class RFSoCParameters:
                 params_dir=params_dir,
             )
 
-        self.chanmask[:] = collided_ind
+        self.chanmask[:] = new_chanmask
         return None
 
     def add_off_resonance_tones(
@@ -585,10 +629,7 @@ class RFSoCParameters:
             (detector_pol, np.ones(tones_added, dtype=np.int8))
         )[sorted_ind]
         new_dfoverf_per_mK = np.concatenate(
-            (
-                dfoverf_per_mK,
-                np.ones(tones_added, dtype=np.float64) * DEFAULT_DFOVERF_PER_MK,
-            )
+            (dfoverf_per_mK, np.ones(tones_added, dtype=np.float64))
         )[sorted_ind]
 
         new_params = RFSoCParameters.new_file(new_tile_name, len(all_tones))
@@ -614,7 +655,8 @@ class RFSoCParameters:
         """Create a stem plot showing all tones, chanmask values, and power levels."""
         detector_f = self.detector_f[:]
         tone_powers = self.tone_powers[:]
-        bad_ind = self.bad_ind
+        misc_bad_ind = self.misc_bad_ind
+        collided_ind = self.collided_ind
         onres_ind = self.onres_ind
         offres_ind = self.offres_ind
 
@@ -625,7 +667,7 @@ class RFSoCParameters:
             linefmt='b',
             markerfmt='none',
             basefmt='none',
-            label='On-resonance Tones',
+            label=f'On-resonance Tones (n = {onres_ind.size})',
         )
         if offres_ind.size > 0:
             # Increase 0 off-res tone powers so they're visible in the plot
@@ -634,19 +676,28 @@ class RFSoCParameters:
             plt.stem(
                 detector_f[offres_ind],
                 tone_powers[offres_ind],
-                linefmt='orange',
+                linefmt=OFF_RESONANCE_COLOR,
                 markerfmt='none',
                 basefmt='none',
-                label='Off-resonance Tones',
+                label=f'Off-resonance Tones (n = {offres_ind.size})',
             )
-        if bad_ind.size > 0:
+        if collided_ind.size > 0:
             plt.stem(
-                detector_f[bad_ind],
-                tone_powers[bad_ind],
-                linefmt='red',
+                detector_f[collided_ind],
+                tone_powers[collided_ind],
+                linefmt='red',  # TODO: Use the actual color
                 markerfmt='none',
                 basefmt='none',
-                label='Bad Resonances',
+                label=f'Collided Resonances (n = {collided_ind.size})',
+            )
+        if misc_bad_ind.size > 0:
+            plt.stem(
+                detector_f[misc_bad_ind],
+                tone_powers[misc_bad_ind],
+                linefmt=BAD_RESONANCE_COLOR,
+                markerfmt='none',
+                basefmt='none',
+                label=f'Other Bad Resonances (n = {misc_bad_ind.size})',
             )
         plt.xlabel('Frequency (MHz)')
         plt.ylabel('Tone Power')

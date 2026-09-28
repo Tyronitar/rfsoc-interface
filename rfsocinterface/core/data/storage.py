@@ -110,6 +110,10 @@ class DataStorage:
                 # Date / setnum provided
                 date, setnum = args
                 filename = cls.get_template(date, setnum, data_dir=data_dir)
+                if not Path(filename).exists():
+                    raise FileNotFoundError(
+                        f'Could not find processed data for {date}_set{setnum}.'
+                    )
                 return cls(filename, mode=mode)
             # filename / mode provided
             return cls(args[0], mode=args[1])
@@ -117,11 +121,19 @@ class DataStorage:
             # date, setnum, mode provided
             date, setnum, mode = args
             filename = cls.get_template(date, setnum, data_dir=data_dir)
+            if not Path(filename).exists():
+                raise FileNotFoundError(
+                    f'Could not find processed data for {date}_set{setnum}.'
+                )
             return cls(filename, mode=mode)
         if len(args) == 4 and isinstance(args[1], (int, np.integer)):
             # date, setnum, mode, data_dir provided
             date, setnum, mode, data_dir = args
             filename = cls.get_template(date, setnum, data_dir=data_dir)
+            if not Path(filename).exists():
+                raise FileNotFoundError(
+                    f'Could not find processed data for {date}_set{setnum}.'
+                )
             return cls(filename, mode=mode)
         raise TypeError(
             'Expected either load(filename[, mode]) or '
@@ -154,7 +166,7 @@ class DataStorage:
         """Get an object from the file."""
         return self.file[name]
 
-    def __getitem__(self, key) -> H5pyObject:
+    def __getitem__(self, key):
         """Get an object from the file."""
         return self.get(key)
 

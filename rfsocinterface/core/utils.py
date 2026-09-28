@@ -132,6 +132,15 @@ class MetaEnum(EnumMeta):
         return True
 
 
+def create_axis_formatter(precision: int) -> Callable[[float, int], str]:
+    """Create a MHz axis formatter with the speicifed precision."""
+
+    def formatter(x: float, pos: int) -> str:  # noqa: ARG001
+        return f'{x * 1e-6:.{precision}f}'
+
+    return formatter
+
+
 @FuncFormatter
 def mHz_axis_formatter(x: float, pos: int) -> str:  # noqa: ARG001
     """Format the x-axis labels for the resonator plot, converting to MHz.
