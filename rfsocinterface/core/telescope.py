@@ -867,7 +867,7 @@ class TelescopeMotorController:
         if primary_az:
             # NOTE: Threshold for faster scan speed, when the ZA dither is large.
             # TODO: Improve this
-            if secondary_dither >= 0.1:
+            if secondary_dither >= 0.1:  # noqa: PLR2004
                 _tele_logger.info('Using fast speed for ZA dither')
                 self.set_za_speed_relation(ZA_DEAFULT_RPM_PER_VOLT)
             else:

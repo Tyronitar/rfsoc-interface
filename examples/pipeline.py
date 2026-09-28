@@ -65,7 +65,16 @@ if __name__ == '__main__':
         dpix=0.03,
         r0=0.0,
     )
-    plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
+    plot_map_routine = PlotMap(
+        show=True,
+        max_abs_threshold=0.4,
+        keep_figure_open=False,
+        channel=None,
+        show_optical_overlay=True,
+        vmin=-400,
+        vmax=400,
+        overwrite=False,
+        )
     bin_tod_to_video = BinTODIntoVideo(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
@@ -78,7 +87,7 @@ if __name__ == '__main__':
         # show=True,
         # savefile='test.gif',
     )
-    animate_video = AnimateVideo()
+    animate_video = AnimateVideo(vmin=-400, vmax=400)
 
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap()
@@ -92,26 +101,32 @@ if __name__ == '__main__':
         clean_tod,
         # compute_psd,
         # psd_plotter,
-        bin_tod_to_map,
-        plotter,
-        # bin_tod_to_video,
-        # animate_video,
+        # bin_tod_to_map,
+        # plot_map_routine,
+        bin_tod_to_video,
+        animate_video,
         # find_fwhm,
         # analyze_beammap,
         # plot_beammap,
     ])
 
-    date = '20260820'  # For testing normal maps
-    setnum = 1005
+    # date = '20260820'  # For testing normal maps
+    # setnum = 1005
     # date = '20260710'  # For testing beammaps
     # setnum = 1006
     # date = '20260917'  # For testing video
     # setnum = 1007
+    date = '20260928'  # For testing normal maps
+    setnum = 1011
 
 
     # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    pdata = ProcessedData.load(date, setnum)
+    # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
     # pdb.set_trace()
-    plotter.apply(pdata)
+
+    pdata = ProcessedData.load(date, setnum)
+    # plot_map_routine.apply(pdata)
+    print(pdata.get_telescope_params())
+    animate_video.apply(pdata)
