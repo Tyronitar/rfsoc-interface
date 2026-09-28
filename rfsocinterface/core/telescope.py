@@ -865,8 +865,14 @@ class TelescopeMotorController:
             )
 
         if primary_az:
-            self.set_za_speed_relation(ZA_DEAFULT_RPM_PER_VOLT)
-            # self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
+            # NOTE: Threshold for faster scan speed, when the ZA dither is large.
+            # TODO: Improve this
+            if secondary_dither >= 0.1:
+                _tele_logger.info('Using fast speed for ZA dither')
+                self.set_za_speed_relation(ZA_DEAFULT_RPM_PER_VOLT)
+            else:
+                _tele_logger.info('Using scan (slow) speed for ZA dither')
+                self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
 
         # az_speed_factor = 1 / 3 if large_map_mode else 1.0
         az_speed_factor = 1
