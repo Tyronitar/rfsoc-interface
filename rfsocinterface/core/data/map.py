@@ -1927,12 +1927,6 @@ class BinTODIntoVideo(DataRoutine):
             optical_image_shape = scaled_optical_image.shape
         elif 'optical_video' in pdata['global_data']:
             full_optical_video = pdata['global_data/optical_video']
-        else:
-            msg = (
-                f'{self.name}: Could not find optical video for provided '
-                'procesed dataset.'
-            )
-            raise ValueError(msg)
 
         n_blocks, blocks = self._initialize_map_arrays(
             pdata,
