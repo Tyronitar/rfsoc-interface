@@ -913,6 +913,7 @@ class TelescopeMotorController:
                         scan_mode=True,
                         stop_run=False,
                         speed_factor=az_speed_factor,
+                        store_position_data=True,
                     )
                 else:
                     this_position_data = self._set_za_pos(
@@ -920,6 +921,7 @@ class TelescopeMotorController:
                         scan_mode=True,
                         stop_run=False,
                         primary_scan_direction=primary_dither_direction,
+                        store_position_data=True,
                     )
                 position_data = np.append(position_data, this_position_data)
             if np.mod(i_rep, 2) == 1:
@@ -929,6 +931,7 @@ class TelescopeMotorController:
                         scan_mode=True,
                         stop_run=False,
                         speed_factor=az_speed_factor,
+                        store_position_data=True,
                     )
                 else:
                     this_position_data = self._set_za_pos(
@@ -936,6 +939,7 @@ class TelescopeMotorController:
                         scan_mode=True,
                         stop_run=False,
                         primary_scan_direction=primary_dither_direction,
+                        store_position_data=True,
                     )
                 position_data = np.append(position_data, this_position_data)
             rep_end_time = time.time()
