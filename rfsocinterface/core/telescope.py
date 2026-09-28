@@ -109,6 +109,7 @@ class TelescopeMotorController:
     def _listener_loop(self):
         if not self._initialized:
             return
+        self.send('start')
         while True:
             try:
                 command, *args = self.connection.recv()
@@ -864,9 +865,11 @@ class TelescopeMotorController:
             )
 
         if primary_az:
-            self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
+            self.set_za_speed_relation(ZA_DEAFULT_RPM_PER_VOLT)
+            # self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
 
-        az_speed_factor = 1 / 3 if large_map_mode else 1.0
+        # az_speed_factor = 1 / 3 if large_map_mode else 1.0
+        az_speed_factor = 1
 
         self.send('dither_pattern_maximum', n_repeats)
         start_time = time.time()

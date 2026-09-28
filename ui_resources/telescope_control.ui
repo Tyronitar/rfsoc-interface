@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1041</width>
-    <height>397</height>
+    <height>507</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -16,6 +16,12 @@
   <layout class="QGridLayout" name="gridLayout_2">
    <item row="1" column="0">
     <widget class="QPushButton" name="optical_pushButton">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="text">
       <string>Show Optical Video</string>
      </property>
@@ -24,7 +30,91 @@
      </property>
     </widget>
    </item>
-   <item row="0" column="0">
+   <item row="1" column="1">
+    <widget class="QGroupBox" name="camera_settings_groupBox">
+     <property name="title">
+      <string>Optical Video Settings</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayout_4">
+      <item row="2" column="0">
+       <widget class="QLabel" name="exposure_mode_label">
+        <property name="text">
+         <string>Exposure Mode:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QPushButton" name="update_camera_settings_pushButton">
+        <property name="text">
+         <string>Update Settings</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="exposure_mode_comboBox">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <item>
+         <property name="text">
+          <string>Timed</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="auto_exposure_comboBox">
+        <item>
+         <property name="text">
+          <string>Continuous</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Once</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Off</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLineEdit" name="exposure_time_lineEdit">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>1166.087</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="exposure_time_label">
+        <property name="text">
+         <string>Exposure Time (µs):</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>Auto Exposure:</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="0" column="0" colspan="2">
     <layout class="QGridLayout" name="gridLayout">
      <item row="0" column="4">
       <spacer name="horizontalSpacer_2">
