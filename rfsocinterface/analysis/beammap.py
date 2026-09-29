@@ -10,9 +10,12 @@ import numpy.typing as npt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from packaging.version import Version
 from scipy.optimize import curve_fit
 
 from rfsocinterface.core.data import (
+    BIN_TOD_INTO_MAP_CHANGE_VERSION,
+    MAP_CHANGE_VERSION,
     DataRoutine,
     ProcessedData,
     RoutineResult,
@@ -23,6 +26,7 @@ from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     DEFAULT_DATA_DIRECTORY,
     OFF_RESONANCE_COLOR,
+    elide_text,
     get_beammap_pdf_template,
     get_detector_pos_pdf_template,
 )
@@ -72,7 +76,7 @@ class AnalyzeBeamMap(DataRoutine):
     """
 
     name = 'AnalyzeBeamMap'
-    version = '2.0.0'
+    version = '2.1.0'
 
     requires: ClassVar[set[str]] = {
         '/map',
@@ -134,7 +138,7 @@ class AnalyzeBeamMap(DataRoutine):
         return list(self.requires)
 
     def _initialize_datasets(self, pdata: ProcessedData):
-        if pdata.has('beammap', exact_match=True):
+        if pdata.has('/beammap', exact_match=True):
             _logger.warning(
                 f'{self.name}: Beam Map group already exists in the file; '
                 'overwriting datasets.'
@@ -159,9 +163,18 @@ class AnalyzeBeamMap(DataRoutine):
     def _run(self, pdata: ProcessedData, inputs: list[str]):
         self._initialize_datasets(pdata)
 
-        az = pdata['map/map_az'][:][:, np.newaxis]
-        za = pdata['map/map_za'][:][np.newaxis, :]
+        az = pdata['map/map_az'][:][np.newaxis, :]
+        za = pdata['map/map_za'][:][:, np.newaxis]
         map_val = pdata['map/map_val'][:]
+
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+        old_format = 'map/channel_map_val' not in pdata and (
+            pdata.get_version() < MAP_CHANGE_VERSION
+            or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+        if old_format:
+            map_val = np.transpose(map_val, (0, 2, 1))
 
         az_center = pdata['beammap/az_center']
         za_center = pdata['beammap/za_center']
@@ -188,9 +201,9 @@ class AnalyzeBeamMap(DataRoutine):
             this_val[np.isnan(this_val)] = 0
 
             max_index = np.argwhere(this_val == np.max(this_val))
-            az_idx, za_idx = np.unravel_index(max_index[0], map_val[i_res].shape)
-            az_max = az[az_idx, :]
-            za_max = za[:, za_idx]
+            za_idx, az_idx = np.unravel_index(max_index[0], map_val[i_res].shape)
+            az_max = az[:, az_idx]
+            za_max = za[za_idx, :]
             separation = np.sqrt((az - az_max[0]) ** 2 + (za - za_max[0]) ** 2)
             index = np.argwhere(separation < max_radius)
             flat_index = np.ravel_multi_index(
@@ -198,15 +211,15 @@ class AnalyzeBeamMap(DataRoutine):
             )
 
             az_center[i_res] = np.sum(
-                az[index[:, 0]].squeeze() * this_val[flat_index]
+                az[:, index[:, 1]].squeeze() * this_val[flat_index]
             ) / np.sum(this_val[flat_index])
             za_center[i_res] = np.sum(
-                za[:, index[:, 1]].squeeze() * this_val[flat_index]
+                za[index[:, 0]].squeeze() * this_val[flat_index]
             ) / np.sum(this_val[flat_index])
             amplitude[i_res] = np.max(this_val[index])
 
-            this_az = np.ndarray.flatten(az[index[:, 0], :])
-            this_za = np.ndarray.flatten(za[:, index[:, 1]])
+            this_az = np.ndarray.flatten(az[:, index[:, 1]])
+            this_za = np.ndarray.flatten(za[index[:, 0], :])
             this_val = this_val[flat_index]
             sigma_z = np.full(
                 int(np.size(this_val)),
@@ -294,7 +307,7 @@ class PlotBeamMap(DataRoutine):
     """Plot a beam map, post-analysis."""
 
     name = 'PlotBeamMap'
-    version = '2.0.0'
+    version = '2.1.0'
 
     requires: ClassVar[set[str]] = {
         '/map',
@@ -314,7 +327,6 @@ class PlotBeamMap(DataRoutine):
     def __init__(
         self,
         high_snr_percentile: float = 55,
-        fom_cutoff: float = 50,
         nrows: int = 10,
         ncols: int = 10,
         show_all: bool = True,
@@ -327,8 +339,6 @@ class PlotBeamMap(DataRoutine):
         Arguments:
             high_snr_percentile (float, optional): The percentile for determining a high
                 SNR. Defaults to 55.
-            fom_cutoff (float, optional): The minimum FOM value to consider for high
-                SNR. Defaults to 50.
             nrows (int, optional): The number of rows for plots in one page. Defaults to
                 10.
             ncols (int, optional): The number of columns for plots in one page. Defaults
@@ -345,7 +355,6 @@ class PlotBeamMap(DataRoutine):
         """
         super().__init__(
             high_snr_percentile=high_snr_percentile,
-            fom_cutoff=fom_cutoff,
             nrows=nrows,
             ncols=ncols,
             show_all=show_all,
@@ -375,6 +384,13 @@ class PlotBeamMap(DataRoutine):
         chanmask = pdata.chanmask
         detector_f = pdata.detector_f()
 
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+        old_format = 'map/channel_map_val' not in pdata and (
+            pdata.get_version() < MAP_CHANGE_VERSION
+            or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+
         # Which tones to use
         tones_to_plot = (
             np.arange(pdata.total_tones, dtype=int)
@@ -394,17 +410,10 @@ class PlotBeamMap(DataRoutine):
         ncols = self.params['ncols']
         page_size = nrows * ncols
         dpi = self.params['dpi']
-        fom_cutoff = self.params['fom_cutoff']
         high_snr_percentile = self.params['high_snr_percentile']
 
-        fom = np.divide(
-            amplitude, chisq, out=np.zeros_like(amplitude), where=chisq != 0
-        )
         high_snr_ind = np.argwhere(
-            np.bitwise_and(
-                amplitude > np.percentile(amplitude, high_snr_percentile),
-                fom > fom_cutoff,
-            )
+            amplitude > np.percentile(amplitude, high_snr_percentile),
         ).flatten()
 
         # Create scatter plot of beam centers
@@ -429,7 +438,9 @@ class PlotBeamMap(DataRoutine):
             if i_loop == tones_to_plot.size // 2:
                 _logger.info(f'{self.name}: Halfway done creating grid pages...')
             ax = axes.flatten()[i_subplot - 1]
-            plot_data = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
+            plot_data = map_val[i_tone_absolute]
+            if old_format:
+                plot_data = np.transpose(plot_data)
             ax.imshow(
                 plot_data,
                 extent=extent,
@@ -479,7 +490,10 @@ class PlotBeamMap(DataRoutine):
 
             fig, ax = plt.subplots()
 
-            data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
+            # data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
+            data_to_plot = map_val[i_tone_absolute]
+            if old_format:
+                data_to_plot = np.transpose(data_to_plot)
             data_to_plot -= np.nanmedian(data_to_plot)
             data_to_plot /= np.nanmax(data_to_plot)
             # data_to_plot = 10 * np.log10(np.abs(data_to_plot))
@@ -537,11 +551,18 @@ class PlotBeamMap(DataRoutine):
                 ax.add_artist(t)
 
             i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
-            tile_name = pdata.get_tile_name(i_chan)
-            title = (
-                f'{tile_name} - Tone {i_tone_relative} '
-                f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
-            )
+            if pdata.n_chan > 1:
+                # Spefcify the tile name if there are multiple channels
+                tile_name = pdata.get_tile_name(i_chan)
+                title = (
+                    f'{elide_text(tile_name, max_len=30)} - Tone {i_tone_relative}\n'
+                    f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
+                )
+            else:
+                title = (
+                    f'Tone {i_tone_relative} '
+                    f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
+                )
 
             # Indicate in plot title and face color if off-resonance / bad tone
             if chanmask[i_tone_absolute] != 1:

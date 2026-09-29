@@ -406,11 +406,19 @@ class TelescopeMotorController:
             self.send('az_pos', new_pos, new_pps_pos, timeout=timeout)
         return new_pos, new_pps_pos
 
-    def set_az_pos(self, new_pos: int, scan_mode: bool = False, stop_run: bool = True):
+    def set_az_pos(
+        self,
+        new_pos: int,
+        scan_mode: bool = False,
+        stop_run: bool = True,
+        speed_factor: float = 1.0,
+        store_position_data: bool = False,
+    ):
         """Set the serial azimuth position."""
         self._run = True
         worker_thread = Thread(
-            target=self._set_az_pos, args=(new_pos, scan_mode, stop_run)
+            target=self._set_az_pos,
+            args=(new_pos, scan_mode, stop_run, speed_factor, store_position_data),
         )
         self._active_jobs.append(worker_thread)
         worker_thread.start()
@@ -421,6 +429,7 @@ class TelescopeMotorController:
         scan_mode: bool = False,
         stop_run: bool = True,
         speed_factor: float = 1.0,
+        store_position_data: bool = False,
     ):
         """Set the serial azimuth position."""
         self.send('az_pos_comm', new_pos, timeout=0.25)
@@ -429,9 +438,9 @@ class TelescopeMotorController:
 
         ##confirm position
         az_pos, az_pps_pos = self.get_ser_az_pos()
-        if scan_mode:
-            za_pos, za_pps_pos = self.get_ser_za_pos()
-            position_data = []
+        za_pos, za_pps_pos = self.get_ser_za_pos()
+        if store_position_data:
+            position_data = [az_pos, za_pos, time.time(), az_pps_pos, za_pps_pos]
         counter = 0
         ##Run loop
         pfb_time = time.time()
@@ -478,7 +487,7 @@ class TelescopeMotorController:
                 # self.azimuthUpdated.emit(pfb)
                 # self.conn.send(['az_pos', pfb])
 
-                if scan_mode:
+                if store_position_data:
                     position_data = np.append(
                         position_data,
                         [az_pos, za_pos, pfb_time, az_pps_pos, za_pps_pos],
@@ -501,7 +510,7 @@ class TelescopeMotorController:
             f'Finished setting az_pos to {new_pos}. '
             'Actual={az_pos}, Error={az_pos - new_pos:.5f}'
         )
-        if scan_mode:
+        if store_position_data:
             return position_data
         return None
 
@@ -580,13 +589,20 @@ class TelescopeMotorController:
         scan_mode: bool = False,
         stop_run: bool = True,
         primary_scan_direction: str = 'za',
+        store_position_data: bool = False,
     ):
         """Set the serial zenith angle position."""
         # self.zenithCommanded.emit(new_pos)
         self._run = True
         worker_thread = Thread(
             target=self._set_za_pos,
-            args=(new_pos, scan_mode, stop_run, primary_scan_direction),
+            args=(
+                new_pos,
+                scan_mode,
+                stop_run,
+                primary_scan_direction,
+                store_position_data,
+            ),
         )
         self._active_jobs.append(worker_thread)
         worker_thread.start()
@@ -597,16 +613,17 @@ class TelescopeMotorController:
         scan_mode: bool = False,
         stop_run: bool = True,
         primary_scan_direction: str = 'za',
+        store_position_data: bool = False,
     ):
         self.send('za_pos_comm', new_pos, timeout=0.25)
         # new_pos = float(new_pos)
         self.set_ao_zero()
 
         # confirm position
-        za_pos, _ = self.get_ser_za_pos()
-        if scan_mode:
-            az_pos, az_pps_pos = self.get_ser_az_pos()
-            position_data = []
+        za_pos, za_pps_pos = self.get_ser_za_pos()
+        az_pos, az_pps_pos = self.get_ser_az_pos()
+        if store_position_data:
+            position_data = [az_pos, za_pos, time.time(), az_pps_pos, za_pps_pos]
         if scan_mode and primary_scan_direction.lower() == 'za':
             tolerance = ZA_POS_TOL_DEG * 5
         else:
@@ -653,8 +670,7 @@ class TelescopeMotorController:
                 za_pos, za_pps_pos = self.get_ser_za_pos()
                 if abs(za_pos - new_pos) <= tolerance:
                     self.set_ao_value(ZERO_DATA, ZA_OUT_CHANNEL)
-                if scan_mode:
-                    _tele_logger.debug('Appending scan mode position data')
+                if store_position_data:
                     position_data = np.append(
                         position_data,
                         [az_pos, za_pos, time.time(), az_pps_pos, za_pps_pos],
@@ -682,7 +698,7 @@ class TelescopeMotorController:
             f'Finished setting za_pos to {new_pos}. '
             f'Actual={za_pos}, Error={za_pos - new_pos:.5f}'
         )
-        if scan_mode:
+        if store_position_data:
             return position_data
         return None
 
@@ -735,6 +751,18 @@ class TelescopeMotorController:
             f.create_dataset('az_pps', data=position_data[3::5])
             f.create_dataset('za_pps', data=position_data[4::5])
             f.create_dataset('optical_visibility', data=['****'])
+            f.attrs['params'] = json.dumps(
+                {
+                    # Generic parameters
+                    'initial_az': az_pos,
+                    'initial_za': za_pos,
+                    # self._run can only be False here if it was cancelled
+                    'completed': self._run,
+                    # Arguments to this function
+                    'file': str(file),
+                    'duration': duration,
+                }
+            )
         path.chmod(PERMISSIONS_ALL_FULL)
 
         self._run = False
@@ -823,9 +851,17 @@ class TelescopeMotorController:
             'Running Dither Pattern\nMoving telescope to initial position',
         )
         if primary_az:
-            self._set_az_pos(primary_start - primary_start_buffer, stop_run=False)
+            position_data = self._set_az_pos(
+                primary_start - primary_start_buffer,
+                stop_run=False,
+                store_position_data=True,
+            )
         else:
-            self._set_za_pos(primary_start - primary_start_buffer, stop_run=False)
+            position_data = self._set_za_pos(
+                primary_start - primary_start_buffer,
+                stop_run=False,
+                store_position_data=True,
+            )
 
         if primary_az:
             self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
@@ -852,13 +888,20 @@ class TelescopeMotorController:
                 break
             if large_map_mode:
                 new_za = initial_za + (i_rep - (n_repeats - 1) / 2) * secondary_dither
-                self._set_za_pos(new_za, stop_run=False)
+                this_position_data = self._set_za_pos(
+                    new_za, stop_run=False, store_position_data=True
+                )
             elif primary_az:
                 new_za = initial_za + (i_rep % 2) * secondary_dither
-                self._set_za_pos(new_za, stop_run=False)
+                this_position_data = self._set_za_pos(
+                    new_za, stop_run=False, store_position_data=True
+                )
             else:
                 new_az = initial_az + (i_rep % 2) * secondary_dither
-                self._set_az_pos(new_az, stop_run=False)
+                this_position_data = self._set_az_pos(
+                    new_az, stop_run=False, store_position_data=True
+                )
+            position_data = np.append(position_data, this_position_data)
 
             if np.mod(i_rep, 2) == 0:
                 if primary_az:
@@ -875,10 +918,7 @@ class TelescopeMotorController:
                         stop_run=False,
                         primary_scan_direction=primary_dither_direction,
                     )
-                if i_rep == 0:
-                    position_data = this_position_data
-                else:
-                    position_data = np.append(position_data, this_position_data)
+                position_data = np.append(position_data, this_position_data)
             if np.mod(i_rep, 2) == 1:
                 if primary_az:
                     this_position_data = self._set_az_pos(

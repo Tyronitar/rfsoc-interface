@@ -17,6 +17,7 @@ import h5py
 import numpy as np
 import numpy.typing as npt
 from kidpy3.data_handler import RawDataFile
+from packaging.version import Version
 
 from rfsocinterface import __version__ as VERSION
 from rfsocinterface.core.data.utils import (
@@ -27,7 +28,6 @@ from rfsocinterface.core.data.utils import (
     find_missed_packets_with_indices,
     generate_calibrated_data,
     get_channel_group_name,
-    get_detector_positions,
     get_detector_positions_no_interp,
     get_step_group_name,
     interpolate_missing_data,
@@ -39,6 +39,7 @@ from rfsocinterface.core.sweeps import LoSweepData
 from rfsocinterface.core.utils import (
     DEFAULT_DATA_DIRECTORY,
     PERMISSIONS_ALL_FULL,
+    TELESCOPE_INITIAL_POSITION_VERSION,
     ChanmaskValue,
     H5pyObject,
     PathLike,
@@ -152,7 +153,7 @@ class DataStorage:
         """Get an object from the file."""
         return self.file[name]
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> H5pyObject:
         """Get an object from the file."""
         return self.get(key)
 
@@ -427,6 +428,12 @@ class ConsolidatedData(DataStorage):
 
         if azel_exists:
             global_data_group.attrs['telescope_params'] = json.dumps(telescope_params)
+            if 'initial_az' in telescope_params and 'initial_za' in telescope_params:
+                initial_tel_pos = (
+                    telescope_params['initial_az'],
+                    telescope_params['initial_za'],
+                )
+                global_data_group.attrs['initial_telescope_pos'] = initial_tel_pos
 
         # Optical image
         if optcam_exists:
@@ -451,6 +458,13 @@ class ConsolidatedData(DataStorage):
                 global_data_group.create_dataset(
                     'optical_video_timestamp', data=optcam_file['timestamp']
                 )
+                if (
+                    'initial_telescope_pos' not in global_data_group.attrs
+                    and Version(VERSION) <= TELESCOPE_INITIAL_POSITION_VERSION
+                ):
+                    # NOTE: This is only correct for versions < 1.3.0 if in video mode
+                    initial_tel_pos = (az_tel[0], za_tel[0])
+                    global_data_group.attrs['initial_telescope_pos'] = initial_tel_pos
             elif 'timestamp' in optcam_file:
                 # Only 'timestamp' exists (i.e. video was saved in a seperate file)
                 global_data_group.attrs['optical_video_file'] = optcam_file.attrs[
@@ -460,6 +474,13 @@ class ConsolidatedData(DataStorage):
                     'optical_video_timestamp', data=optcam_file['timestamp']
                 )
                 global_data_group.create_dataset('optical_image', data=np.array([]))
+                if (
+                    'initial_telescope_pos' not in global_data_group.attrs
+                    and Version(VERSION) <= TELESCOPE_INITIAL_POSITION_VERSION
+                ):
+                    # NOTE: This is only correct for versions < 1.3.0 if in video mode
+                    initial_tel_pos = (az_tel[0], za_tel[0])
+                    global_data_group.attrs['initial_telescope_pos'] = initial_tel_pos
             optcam_file.close()
         else:
             global_data_group.create_dataset('optical_image', data=np.array([]))
@@ -563,6 +584,8 @@ class ConsolidatedData(DataStorage):
             # params.close()
             tones_table['delta_x'] = raw_data.detector_delta_x[:]
             tones_table['delta_y'] = raw_data.detector_delta_y[:]
+            # tones_table['delta_x'] = np.zeros(n_tones)
+            # tones_table['delta_y'] = np.zeros(n_tones)
             tones_table['beam_amplitude'] = raw_data.detector_beam_ampl[:]
             tones_table['polarization'] = raw_data.detector_pol[:]
             tones_table['dfoverf_per_mK'] = raw_data.dfoverf_per_mK[:] * -1
@@ -579,16 +602,16 @@ class ConsolidatedData(DataStorage):
             # Compute the chunk sizes to use
             chunk_shape_1d = compute_chunk_shape((), 8, max_chunk_size=n_samples)
             chunk_shape_1d_ds = compute_chunk_shape((), 8, max_chunk_size=n_samples_ds)
-            azel_shape = (n_tones, n_samples) if azel_exists else (n_tones, 1)
             azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
+            azel_shape_1d_ds = (n_samples_ds,) if azel_exists else (1,)
+            chunk_shape_azel_1d_ds = compute_chunk_shape(
+                (), 8, max_chunk_size=azel_shape_1d_ds[-1]
+            )
             chunk_shape_3d = compute_chunk_shape(
                 (2, n_tones), 8, max_chunk_size=n_samples
             )
             chunk_shape_3d_ds = compute_chunk_shape(
                 (2, n_tones), 8, max_chunk_size=n_samples_ds
-            )
-            chunk_shape_azel = compute_chunk_shape(
-                (1,), 8, max_chunk_size=azel_shape[-1]
             )
             chunk_shape_azel_ds = compute_chunk_shape(
                 (1,), 8, max_chunk_size=azel_shape_ds[-1]
@@ -615,6 +638,23 @@ class ConsolidatedData(DataStorage):
                 shape=(2, n_tones, n_samples_ds),
                 dtype=np.float64,
                 chunks=chunk_shape_3d_ds,
+                compression='lzf',
+                shuffle=True,
+            )
+            # Telescope positions
+            telescope_az = time_ordered_data_group.create_dataset(
+                'telescope_az',
+                shape=azel_shape_1d_ds,
+                chunks=chunk_shape_azel_1d_ds,
+                dtype=np.float64,
+                compression='lzf',
+                shuffle=True,
+            )
+            telescope_za = time_ordered_data_group.create_dataset(
+                'telescope_za',
+                shape=azel_shape_1d_ds,
+                chunks=chunk_shape_azel_1d_ds,
+                dtype=np.float64,
                 compression='lzf',
                 shuffle=True,
             )
@@ -664,22 +704,6 @@ class ConsolidatedData(DataStorage):
                 shape=(n_samples,),
                 dtype=np.uint8,
                 chunks=chunk_shape_1d,
-            )
-            temp_detector_az = temp_data.create_dataset(
-                'temp_detector_az',
-                shape=azel_shape,
-                chunks=chunk_shape_azel,
-                dtype=np.float64,
-                compression='lzf',
-                shuffle=True,
-            )
-            temp_detector_za = temp_data.create_dataset(
-                'temp_detector_za',
-                shape=azel_shape,
-                chunks=chunk_shape_azel,
-                dtype=np.float64,
-                compression='lzf',
-                shuffle=True,
             )
 
             # Get packet indices
@@ -776,31 +800,48 @@ class ConsolidatedData(DataStorage):
                         temp_pps[:],
                         direction='za',
                     )
-                    _logger.info('ConsolidatedData: Computing detector positions...')
-                    get_detector_positions_no_interp(
-                        corrected_az_tel,
-                        corrected_za_tel,
-                        temp_detector_az,
-                        temp_detector_za,
-                        tones_table['delta_x'][:],
-                        tones_table['delta_y'][:],
-                        this_channel_group.attrs['detector_dx_dy_elevation_angle'],
-                    )
                 else:
-                    _logger.info('ConsolidatedData: Computing detector positions...')
-                    get_detector_positions(
+                    corrected_az_tel = np.interp(
                         temp_timestamp,
                         timestamp_tel[:],
                         az_tel[:],
-                        za_tel[:],
-                        temp_detector_az,
-                        temp_detector_za,
-                        tones_table['delta_x'][:],
-                        tones_table['delta_y'][:],
-                        this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                        left=np.nan,
+                        right=np.nan,
                     )
+                    corrected_za_tel = np.interp(
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        za_tel[:],
+                        left=np.nan,
+                        right=np.nan,
+                    )
+                _logger.info('ConsolidatedData: Downsampling telescope positions...')
+                chunked_downsample(
+                    corrected_az_tel,
+                    telescope_az,
+                    downsampling_factor,
+                    temp_timestamp.chunks[-1],
+                    use_filter=False,
+                )
+                chunked_downsample(
+                    corrected_za_tel,
+                    telescope_za,
+                    downsampling_factor,
+                    temp_timestamp.chunks[-1],
+                    use_filter=False,
+                )
+                _logger.info('ConsolidatedData: Computing detector positions...')
+                get_detector_positions_no_interp(
+                    telescope_az,
+                    telescope_za,
+                    detector_az,
+                    detector_za,
+                    tones_table['delta_x'][:],
+                    tones_table['delta_y'][:],
+                    this_channel_group.attrs['detector_dx_dy_elevation_angle'],
+                )
 
-            # Downsample timestamp and IQ data
+            # Downsample IQ data
             _logger.info('ConsolidatedData: Downsampling IQ data...')
             decimate_in_chunks(
                 temp_data_IQ,
@@ -817,25 +858,6 @@ class ConsolidatedData(DataStorage):
             )
             interpolated_samples.resize(downsampled_interpolated_samples.shape)
             interpolated_samples = downsampled_interpolated_samples[:]
-
-            if azel_exists:
-                _logger.info(
-                    'ConsolidatedData: Downsampling detector position arrays...'
-                )
-                chunked_downsample(
-                    temp_detector_az,
-                    detector_az,
-                    downsampling_factor,
-                    detector_az.chunks[-1],
-                    use_filter=False,
-                )
-                chunked_downsample(
-                    temp_detector_za,
-                    detector_za,
-                    downsampling_factor,
-                    detector_za.chunks[-1],
-                    use_filter=False,
-                )
 
             # Delete temporary datasets
             temp_data.close()
@@ -1018,6 +1040,34 @@ class ProcessedData(DataStorage):
     #
     # Useful getter methods
     #
+    def get_history_step(self, step: int) -> h5py.Group:
+        """Get the desired step from the processing history."""
+        res = search(self['processing_history'], f'{get_step_group_name(step, '')}')
+        if res is not None:
+            return res[1]
+        raise IndexError(
+            f'ProcessedData {self.file_stub} has no processing step with index {step}'
+        )
+
+    def get_version(self) -> Version:
+        """Return the rfsocinterface version that this data was processed in."""
+        step0 = self.get_history_step(0)
+        version_string = step0.attrs['rfsocinterface_version']
+        return Version(version_string)
+
+    def find_most_recent_history_step(self, pattern: str) -> tuple[str, h5py.Group]:
+        """Get the most recent processing step matching the search pattern."""
+        res = search_regex(
+            self['processing_history'],
+            pattern,
+        )
+        if len(res) > 0:
+            return res[-1]
+        raise KeyError(
+            f'ProcessedData {self.file_stub} has no processing steps matching the '
+            f'search pattern: {pattern}'
+        )
+
     def list_history(self) -> list[dict]:
         """Return a list of each processing step."""
         if not self.has('processing_history'):
@@ -1254,6 +1304,35 @@ class ProcessedData(DataStorage):
     def get_timestamp(self, i_chan: int) -> h5py.Dataset:
         """Return the data timestamps for the specified channel."""
         return self.get_from_channel(i_chan, 'time_ordered_data/timestamp')
+
+    def get_telescope_params(self) -> dict | None:
+        """Return the parameters used for the telescope dither, if available."""
+        params_str = self['global_data'].attrs.get('telescope_params', None)
+        if params_str is not None:
+            return json.loads(params_str)
+        return None
+
+    def get_initial_telescope_position(self) -> tuple[float, float] | None:
+        """Return the initial azimuth / zenith angle of the telescope."""
+        pos = self['global_data'].attrs.get('initial_telescope_pos', None)
+        if pos is None:
+            params = self.get_telescope_params()
+            # Backwards compatible check
+            if params is not None and 'initial_az' in params and 'initial_za' in params:
+                pos = (params['initial_az'], params['initial_za'])
+                # Store the position for easy access later
+                self['global_data'].attrs['initial_telescope_pos'] = pos
+                return pos
+            return None
+        return pos
+
+    def get_telescope_az(self, i_chan: int) -> h5py.Dataset:
+        """Return the telescope azimuth positions for the channel's timstamps."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/telescope_az')
+
+    def get_telescope_za(self, i_chan: int) -> h5py.Dataset:
+        """Return the telescope zenith angle  positions for the channel's timstamps."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/telescope_za')
 
     def get_data_IQ(self, i_chan: int) -> h5py.Dataset:
         """Return the data for the specified channel in ADC units."""
