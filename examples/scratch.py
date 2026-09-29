@@ -55,8 +55,9 @@ def process_20260917_set1005():
         r0=0.0,
     )
     plot_map = PlotMap(
-        show=True,
-        # show=False,
+        # show=True,
+        show=False,
+        # save_plot=False,
         max_abs_threshold=0.4,
         keep_figure_open=False,
         channel=None,
@@ -65,16 +66,22 @@ def process_20260917_set1005():
         dpi=300,
         vmin=-500,
         vmax=500,
-        # Full image
-        show_optical_overlay=True,
-        xlim=(1.4, 16.25),
-        ylim=(92, 85.25),
+        # # Full image
+        # show_optical_overlay=True,
+        # xlim=(1.4, 16.25),
+        # ylim=(92, 85.25),
 
         # AZ [2.7, 9], ZA [90.5, 86]
         # xlim=(2.7, 9.0),
         # ylim=(90.5, 86),
         # figsize=(10.5, 8),
         # savefile='20260917_set1005_2_7-9x90_5-86'
+
+        # AZ [2.7, 9], ZA [90.5, 86]
+        xlim=(3, 6),
+        ylim=(90.65, 88.95),
+        figsize=(14, 8),
+        savefile='20260917_set1005_3-6x90_65-88_95'
 
         # AZ [5, 8], ZA [88, 86]
         # xlim=(5, 8),
