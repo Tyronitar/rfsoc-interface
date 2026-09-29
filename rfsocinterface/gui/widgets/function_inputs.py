@@ -952,6 +952,13 @@ if __name__ == '__main__':
             self.vlayout.addWidget(new_widget, alignment=Qt.AlignmentFlag.AlignTop)
             # self.adjustSize()
 
+        def set_widget(self, new_widget: InputWidget):
+            if self.widget is not None:
+                self.vlayout.removeWidget(self.widget)
+                self.widget.deleteLater()
+            self.widget = new_widget
+            self.vlayout.addWidget(new_widget, alignment=Qt.AlignmentFlag.AlignTop)
+
         def display_value(self):
             if self.widget is not None:
                 val = self.widget.value()
@@ -961,5 +968,6 @@ if __name__ == '__main__':
     w = MainWindow()
     w.show()
     # w.create_widget(ExEnum | Annotated[ExEnum, GuiMeta(multi_input=True)])
+    # w.set_widget(gui_arg_to_widget(ROUTINE_GUI_ARGS['CutoffFilter'][1], parent=w))
 
     app.exec()

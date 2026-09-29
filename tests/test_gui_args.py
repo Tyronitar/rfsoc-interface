@@ -54,28 +54,28 @@ from rfsocinterface.gui.widgets.function_inputs import (
 
 def test_arg_extraction():
     """Test that getting GuiArgs from routines works."""
-    arg = get_gui_args(CreateValueRoutine)[0]
+    arg = get_gui_args(CreateValueRoutine, use_defaults=False)[0]
     assert arg.name == 'val'
     assert arg.required
     assert arg.annotation is int
     assert arg.metadata is None
     assert arg.default is inspect.Parameter.empty
 
-    arg = get_gui_args(CreateValueRoutineWithDefault)[0]
+    arg = get_gui_args(CreateValueRoutineWithDefault, use_defaults=False)[0]
     assert arg.name == 'val'
     assert not arg.required
     assert arg.annotation is int
     assert arg.metadata is None
     assert arg.default == 0
 
-    arg = get_gui_args(CreateValueRoutineWithOptionalArgument)[0]
+    arg = get_gui_args(CreateValueRoutineWithOptionalArgument, use_defaults=False)[0]
     assert arg.name == 'val'
     assert not arg.required
     assert arg.annotation == (int | None)
     assert arg.metadata is None
     assert arg.default is None
 
-    arg = get_gui_args(CreateValueRoutineWithMetadata)[0]
+    arg = get_gui_args(CreateValueRoutineWithMetadata, use_defaults=False)[0]
     assert arg.name == 'val'
     assert arg.required
     assert arg.annotation is int
@@ -86,7 +86,7 @@ def test_arg_extraction():
     assert arg.metadata.maximum == 50
     assert arg.default is inspect.Parameter.empty
 
-    arg = get_gui_args(CreateValueRoutineWithMetadataAndDefault)[0]
+    arg = get_gui_args(CreateValueRoutineWithMetadataAndDefault, use_defaults=False)[0]
     assert arg.name == 'val'
     assert not arg.required
     assert arg.annotation is int
@@ -97,7 +97,7 @@ def test_arg_extraction():
     assert arg.metadata.maximum == 50
     assert arg.default == 10
 
-    args = get_gui_args(ReduceRoutine)
+    args = get_gui_args(ReduceRoutine, use_defaults=False)
     assert len(args) == 4
     assert args[0].name == 'terms'
     assert args[0].required

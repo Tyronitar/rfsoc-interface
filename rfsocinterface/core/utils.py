@@ -30,6 +30,7 @@ from typing import (
     get_origin,
 )
 
+import docstring_parser
 from matplotlib.colorbar import Colorbar
 from matplotlib.image import AxesImage
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -1428,6 +1429,26 @@ class GuiArg[T]:
     def required(self) -> bool:
         """Whether the argument is required."""
         return self.default is inspect.Parameter.empty
+
+
+def get_parameter_descriptions(
+    func: Callable, replace_newlines: bool = False
+) -> dict[str, str]:
+    """Get docstring descriptions for function parameters."""
+    docstring = inspect.getdoc(func)
+    if docstring is None:
+        return {}
+
+    parsed = docstring_parser.parse(docstring)
+
+    return {
+        # Remove newline characters in description
+        param.arg_name: param.description.replace('\n', ' ')
+        if replace_newlines
+        else param.description
+        for param in parsed.params
+        if param.description is not None
+    }
 
 
 def is_empty(v: any) -> bool:

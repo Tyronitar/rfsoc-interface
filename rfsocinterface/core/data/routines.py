@@ -39,6 +39,8 @@ from rfsocinterface.core.utils import (
     GuiMeta,
     MetadataJSONEncoder,
     get_git_hash,
+    get_parameter_descriptions,
+    unwrap_annotated,
 )
 
 __all__ = (
@@ -69,14 +71,91 @@ class ProcessingStage:
     POST_PROCESSING = 'post_processing'
 
 
-def get_gui_args(routine_cls: type[DataRoutine]) -> list[GuiArg]:
+def get_inherited_gui_meta(
+    routine_type: type,
+    parameter_name: str,
+) -> GuiMeta | None:
+    """Get GuiMeta data from the direct super class for the parameter, if possible."""
+    for parent_cls in routine_type.__mro__[1:]:
+        init = parent_cls.__dict__.get('__init__')
+        if init is None:
+            continue
+
+        signature = inspect.signature(init)
+
+        parameter = signature.parameters.get(parameter_name)
+        if parameter is None:
+            continue
+
+        type_hints = get_type_hints(init, include_extras=True)
+        annotation = type_hints.get(parameter_name)
+
+        if annotation is None:
+            continue
+
+        _, gui_meta = unwrap_annotated(annotation)
+
+        if gui_meta is not None:
+            return gui_meta
+
+    return None
+
+
+def get_inherited_parameter_description(
+    routine_type: type,
+    parameter_name: str,
+) -> str | None:
+    for cls in routine_type.__mro__:
+        init = cls.__dict__.get('__init__')
+        if init is None:
+            continue
+
+        signature = inspect.signature(init)
+
+        if parameter_name not in signature.parameters:
+            continue
+
+        tooltips = get_parameter_descriptions(init, replace_newlines=True)
+
+        if description := tooltips.get(parameter_name):
+            return description
+
+    return None
+
+
+def merge_gui_meta(
+    parent: GuiMeta | None,
+    child: GuiMeta | None,
+) -> GuiMeta | None:
+    """Merge two GuiMeta objects, with the child having precedence."""
+    if child is None:
+        return parent
+
+    if parent is None:
+        return child
+
+    return GuiMeta(
+        label=child.label if child.label is not None else parent.label,
+        tooltip=child.tooltip if child.tooltip is not None else parent.tooltip,
+        minimum=child.minimum if child.minimum is not None else parent.minimum,
+        maximum=child.maximum if child.maximum is not None else parent.maximum,
+        prefix=child.prefix if child.prefix is not None else parent.prefix,
+        suffix=child.suffix if child.suffix is not None else parent.suffix,
+        multi_input=child.multi_input,
+        internal_labels=child.internal_labels
+        if child.internal_labels is not None
+        else parent.internal_labels,
+    )
+
+
+def get_gui_args(
+    routine_cls: type[DataRoutine], use_defaults: bool = True
+) -> list[GuiArg]:
     """Get all arguments from the DataRoutine in a GUI-compatible format."""
     # Get arguments from class's signature
-    signature = inspect.signature(routine_cls.__init__)
-    type_hints = get_type_hints(
-        routine_cls.__init__,
-        include_extras=True,
-    )
+    init = routine_cls.__init__
+    signature = inspect.signature(init)
+    type_hints = get_type_hints(init, include_extras=True)
 
     args = []
     for name, param in signature.parameters.items():
@@ -92,8 +171,6 @@ def get_gui_args(routine_cls: type[DataRoutine]) -> list[GuiArg]:
                 f'{name!r} must have a type annotation.'
             ) from None
 
-        gui_meta = None
-
         # Check if metadata was provided
         if get_origin(annotation) is Annotated:
             annotation, gui_meta = get_args(annotation)
@@ -102,6 +179,23 @@ def get_gui_args(routine_cls: type[DataRoutine]) -> list[GuiArg]:
                 raise TypeError(f'Expected GuiMeta for {routine_cls.__name__}.{name}')
         else:
             gui_meta = None
+
+        if use_defaults:
+            # Use docstring for default tooltip
+            docstring_tooltip = get_inherited_parameter_description(routine_cls, name)
+            # Use parameter name for default label
+            default_meta = GuiMeta(
+                tooltip=docstring_tooltip,
+                label=f'{name}:',
+            )
+        else:
+            default_meta = None
+
+        # Use inherited metadata where appropriate
+        inherited_meta = get_inherited_gui_meta(routine_cls, name)
+
+        gui_meta = merge_gui_meta(parent=inherited_meta, child=gui_meta)
+        gui_meta = merge_gui_meta(parent=default_meta, child=gui_meta)
 
         args.append(
             GuiArg(
@@ -557,7 +651,14 @@ class CutoffFilter(DataRoutine):
 
     def __init__(
         self,
-        filter_freq: float,
+        filter_freq: Annotated[
+            float,
+            GuiMeta(
+                label='Filter frequency:',
+                tooltip='Cutoff freqeuncy for the filter, in Hz',
+                suffix='Hz',
+            ),
+        ],
         btype: str,
         datasets: Sequence[str] = ['.*/data_mK'],
     ):
