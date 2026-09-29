@@ -3,7 +3,7 @@
 import logging
 import time
 import typing
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import ClassVar, Literal
 
@@ -1013,7 +1013,7 @@ class PlotMap(DataRoutine):
         show: bool = False,
         keep_figure_open: bool = False,
         overwrite: bool = True,
-        channel: int | Sequence[int, ...] | None = None,
+        channel: int | Collection[int] | None = None,
     ):
         """Initialize the PlotMap routine.
 
@@ -1036,7 +1036,7 @@ class PlotMap(DataRoutine):
                 plotting. Defaults to False.
             overwrite (bool, optional): Whether to overwrite existing plotting datasets
                 in the HDF5 file. Defaults to True.
-            channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
+            channel (int | Collection[int] | None, optional): Which channel(s) to
                 use when generating the plots. See `get_required_map_datasets` for more
                 information. Defaults to `None`.
         """
@@ -2158,7 +2158,7 @@ class AnimateVideo(DataRoutine):
         max_abs_threshold: float = 0.75,
         savefile: Path | None = None,
         show: bool = False,
-        channel: int | Sequence[int, ...] | None = None,
+        channel: int | Collection[int] | None = None,
     ):
         """Initialize the MakeVideo Routine.
 
@@ -2170,7 +2170,7 @@ class AnimateVideo(DataRoutine):
             savefile (Path, optional): The path to save the animated plot to. If None,
                 the animation be saved in the same directory as the HDF5 file under the
                 name "[date]_set[setnum]_Map_Animation.mp4". Defaults to `None`.
-            channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
+            channel (int | Collection[int] | None, optional): Which channel(s) to
                 use when generating the animation. See `get_required_map_datasets` for
                 more information. Defaults to `None`.
         """

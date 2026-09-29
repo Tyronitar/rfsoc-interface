@@ -753,7 +753,7 @@ class RemoveElectronicsNoise(DataRoutine):
         self,
         max_modes: int = 30,
         lp_filt_freq: float = 0,
-        template_selection_indices: npt.NDArray | str = 'all',
+        template_selection_indices: Collection[int] | str = 'all',
         eigenmodes: list[int] | None = None,
     ):
         """Initialize the RemoveElectronicsNoise routine.
@@ -764,8 +764,8 @@ class RemoveElectronicsNoise(DataRoutine):
             lp_filt_freq (float, optional): The cutoff frequency for the low-pass filter
                 applied to the gain/phase data before computing templates. Set to 0 or
                 a value >= Nyquist to disable filtering. Defaults to 0 (no filtering).
-            template_selection_indices (npt.NDArray | str, optional): Indices of tones
-                to use for computing the templates. Can be any value supported by
+            template_selection_indices (Collection[int] | str, optional): Indices of
+                tones to use for computing the templates. Can be any value supported by
                 `decode_tone_indices`. Defaults to `all`.
             eigenmodes (list[int], optional): The actual number of modes used for each
                 channel. If None, will be computed and stored in the params after

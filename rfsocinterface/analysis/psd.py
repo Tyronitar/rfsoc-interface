@@ -2,6 +2,7 @@
 
 import logging
 import typing
+from collections.abc import Collection
 from enum import StrEnum
 from pathlib import Path
 
@@ -61,7 +62,7 @@ class ComputeNoisePSD(DataRoutine):
         *bases: PsdBasis,
         nominal_block_length: float = 10,
         cut_time: float = 0.0,
-        selection_indices: npt.NDArray | str = 'all',
+        selection_indices: Collection[int] | str = 'all',
     ):
         """Initialize the ComputeNoisePSD routine.
 
