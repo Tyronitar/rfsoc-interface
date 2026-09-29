@@ -39,8 +39,9 @@ from rfsocinterface.core.utils import (
     GuiMeta,
     MetadataJSONEncoder,
     get_git_hash,
-    get_parameter_descriptions,
-    unwrap_annotated,
+    get_inherited_gui_meta,
+    get_inherited_parameter_description,
+    merge_gui_meta,
 )
 
 __all__ = (
@@ -69,83 +70,6 @@ class ProcessingStage:
     PROCESSING_L1 = 'processing_l1'
     PROCESSING_L2 = 'processing_l2'
     POST_PROCESSING = 'post_processing'
-
-
-def get_inherited_gui_meta(
-    routine_type: type,
-    parameter_name: str,
-) -> GuiMeta | None:
-    """Get GuiMeta data from the direct super class for the parameter, if possible."""
-    for parent_cls in routine_type.__mro__[1:]:
-        init = parent_cls.__dict__.get('__init__')
-        if init is None:
-            continue
-
-        signature = inspect.signature(init)
-
-        parameter = signature.parameters.get(parameter_name)
-        if parameter is None:
-            continue
-
-        type_hints = get_type_hints(init, include_extras=True)
-        annotation = type_hints.get(parameter_name)
-
-        if annotation is None:
-            continue
-
-        _, gui_meta = unwrap_annotated(annotation)
-
-        if gui_meta is not None:
-            return gui_meta
-
-    return None
-
-
-def get_inherited_parameter_description(
-    routine_type: type,
-    parameter_name: str,
-) -> str | None:
-    for cls in routine_type.__mro__:
-        init = cls.__dict__.get('__init__')
-        if init is None:
-            continue
-
-        signature = inspect.signature(init)
-
-        if parameter_name not in signature.parameters:
-            continue
-
-        tooltips = get_parameter_descriptions(init, replace_newlines=True)
-
-        if description := tooltips.get(parameter_name):
-            return description
-
-    return None
-
-
-def merge_gui_meta(
-    parent: GuiMeta | None,
-    child: GuiMeta | None,
-) -> GuiMeta | None:
-    """Merge two GuiMeta objects, with the child having precedence."""
-    if child is None:
-        return parent
-
-    if parent is None:
-        return child
-
-    return GuiMeta(
-        label=child.label if child.label is not None else parent.label,
-        tooltip=child.tooltip if child.tooltip is not None else parent.tooltip,
-        minimum=child.minimum if child.minimum is not None else parent.minimum,
-        maximum=child.maximum if child.maximum is not None else parent.maximum,
-        prefix=child.prefix if child.prefix is not None else parent.prefix,
-        suffix=child.suffix if child.suffix is not None else parent.suffix,
-        multi_input=child.multi_input,
-        internal_labels=child.internal_labels
-        if child.internal_labels is not None
-        else parent.internal_labels,
-    )
 
 
 def get_gui_args(
