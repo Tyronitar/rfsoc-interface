@@ -15,7 +15,7 @@ from typing import (
 )
 
 from PySide6.QtCore import QSize, Signal, Slot
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QScrollArea,
     QSizePolicy,
     QSpacerItem,
     QSpinBox,
@@ -55,6 +54,7 @@ from rfsocinterface.core.utils import (
 )
 from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
+from rfsocinterface.gui.widgets.scroll_area import ExpandingScrollArea
 from rfsocinterface.gui.widgets.stacked_widget import ResizingStackedWidget
 
 
@@ -110,9 +110,7 @@ class FloatInputWidget(QDoubleSpinBox, InputWidget[float]):
     def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a FloatInputWidget."""
         super().__init__(parent=parent)
-        self.setSizePolicy(
-            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
         if gui_meta is not None:
             if gui_meta.tooltip is not None:
@@ -141,9 +139,7 @@ class BoolInputWidget(QCheckBox, InputWidget[bool]):
     def __init__(self, gui_meta: GuiMeta | None = None, parent: QWidget | None = None):
         """Initialize a BoolInputWidget."""
         super().__init__(parent=parent)
-        self.setSizePolicy(
-            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
         if gui_meta is not None:
             if gui_meta.label is not None:
@@ -239,6 +235,7 @@ class EnumInputWidget[E: Enum](QComboBox, InputWidget[E]):
     ):
         """Initialize an EnumInputWidget."""
         super().__init__(parent=parent)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.enum_type = enum_type
         for member in enum_type:
             self.addItem(member.name, userData=member)
@@ -270,6 +267,7 @@ class MultiEnumInputWidget[E: Enum](CheckableComboBox, InputWidget[E]):
     ):
         """Initialize a MultiInputEnumInputWidget."""
         super().__init__(parent=parent)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.enum_type = enum_type
         for member in enum_type:
             self.addItem(member.name, userData=member)
@@ -309,9 +307,7 @@ class SequenceInputRow[T](QGroupBox, InputWidget[T]):
     def __init__(self, widget: InputWidget[T], parent: QWidget | None = None):
         """Initialize a SequenceInputRow."""
         super().__init__(parent=parent)
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.hlayout = QHBoxLayout()
 
         self.widget = widget
@@ -369,9 +365,7 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
             parent (QObject, optional): The parent of this widget. Defaults to `None`.
         """
         super().__init__(parent)
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         self.item_type = item_type
         self.rows: list[SequenceInputRow[T]] = []
@@ -380,23 +374,26 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
         # layout setup...
         self.vlayout = QVBoxLayout()
 
-        self.scroll_area = QScrollArea(widgetResizable=True, parent=self)
+        self.scroll_area = ExpandingScrollArea(widgetResizable=True, parent=self)
         self.scroll_layout = QVBoxLayout()
         self.scroll_area.setMinimumHeight(100)
         self.scroll_area.setSizePolicy(
-            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.MinimumExpanding
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self.scroll_container = QWidget(parent=self.scroll_area)
         self.scroll_container.setSizePolicy(
-            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.MinimumExpanding
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
         self.scroll_spacer = QSpacerItem(
             20, 10, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum
         )
         self.scroll_layout.addSpacerItem(self.scroll_spacer)
         self.scroll_container.setLayout(self.scroll_layout)
-        self.scroll_area.setLayout(QVBoxLayout())
-        self.scroll_area.layout().addWidget(self.scroll_container)
+        # self.scroll_area.setLayout(QVBoxLayout())
+        # self.scroll_area.layout().addWidget(self.scroll_container)
         self.scroll_area.setWidget(self.scroll_container)
         self.vlayout.addWidget(self.scroll_area)
 
@@ -439,6 +436,9 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
         # self.vlayout.insertWidget(self.vlayout.count() - 2, new_row)
         # self.adjustSize()
         # self.vlayout.addWidget(new_row)
+        self.scroll_container.adjustSize()
+        self.scroll_area.updateGeometry()
+        self.updateGeometry()
 
     @Slot()
     def remove_row(self):
@@ -449,6 +449,9 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
         self.rows.remove(row)
         row.deleteLater()
         # self.adjustSize()
+        self.scroll_container.adjustSize()
+        self.scroll_area.updateGeometry()
+        self.updateGeometry()
 
     def clear(self):
         """Remove all rows from the widget."""
@@ -492,9 +495,7 @@ class TupleInputWidget[*Ts](QGroupBox, InputWidget[tuple[*Ts]]):
     ):
         """Initialize a TupleInputWidget."""
         super().__init__(parent)
-        self.setSizePolicy(
-            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Minimum
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         self.types = types
         self.widgets = []
@@ -560,9 +561,7 @@ class UnionInputWidget[T](QGroupBox, InputWidget[T]):
     ):
         """Initialize a UnionInputWidget."""
         super().__init__(parent)
-        self.setSizePolicy(
-            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
         self.types = types
 
@@ -576,6 +575,10 @@ class UnionInputWidget[T](QGroupBox, InputWidget[T]):
         self.grid_layout.addWidget(self.type_combo, 0, 1)
 
         self.stack = ResizingStackedWidget(parent=self)
+        self.stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         for annotation in types:
             self.type_combo.addItem(convert_type_to_string(annotation))
             self.stack.addWidget(create_input_widget(annotation))
@@ -622,9 +625,7 @@ class OptionalInputWidget[T](QGroupBox, InputWidget[T]):
     ):
         """Initialize an OptionalInputWidget."""
         super().__init__(parent=parent)
-        self.setSizePolicy(
-            QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.item_type = type_
 
         self.vlayout = QVBoxLayout()
@@ -874,7 +875,7 @@ if __name__ == '__main__':
                 self.vlayout.removeWidget(self.widget)
                 self.widget.deleteLater()
             self.widget = new_widget
-            self.vlayout.addWidget(new_widget)
+            self.vlayout.addWidget(new_widget, alignment=Qt.AlignmentFlag.AlignTop)
             # self.adjustSize()
 
         def display_value(self):
