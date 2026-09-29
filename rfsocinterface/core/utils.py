@@ -1432,26 +1432,6 @@ class GuiArg[T]:
         return self.default is inspect.Parameter.empty
 
 
-def get_parameter_descriptions(
-    func: Callable, replace_newlines: bool = False
-) -> dict[str, str]:
-    """Get docstring descriptions for function parameters."""
-    docstring = inspect.getdoc(func)
-    if docstring is None:
-        return {}
-
-    parsed = docstring_parser.parse(docstring)
-
-    return {
-        # Remove newline characters in description
-        param.arg_name: param.description.replace('\n', ' ')
-        if replace_newlines
-        else param.description
-        for param in parsed.params
-        if param.description is not None
-    }
-
-
 def is_empty(v: any) -> bool:
     """Return whether the value is empty (i.e. inspect.Parameter.empty)."""
     return v is inspect.Parameter.empty
@@ -1588,6 +1568,50 @@ def convert_type_to_string(annotation: TypeAnnotation) -> str:  # noqa: PLR0911
     )
 
 
+def get_parameter_descriptions(
+    func: Callable, replace_newlines: bool = False
+) -> dict[str, str]:
+    """Get docstring descriptions for function parameters."""
+    docstring = inspect.getdoc(func)
+    if docstring is None:
+        return {}
+
+    parsed = docstring_parser.parse(docstring)
+
+    return {
+        # Remove newline characters in description
+        param.arg_name: param.description.replace('\n', ' ')
+        if replace_newlines
+        else param.description
+        for param in parsed.params
+        if param.description is not None
+    }
+
+
+def get_inherited_parameter_description(
+    child_cls: type,
+    parameter_name: str,
+    replace_newlines: bool = False,
+) -> str | None:
+    """Get the description of the parameter from the direct super class, if possible."""
+    for parent_cls in child_cls.__mro__:
+        init = parent_cls.__dict__.get('__init__')
+        if init is None:
+            continue
+
+        signature = inspect.signature(init)
+
+        if parameter_name not in signature.parameters:
+            continue
+
+        tooltips = get_parameter_descriptions(init, replace_newlines=replace_newlines)
+
+        if description := tooltips.get(parameter_name):
+            return description
+
+    return None
+
+
 def get_inherited_gui_meta(
     child_cls: type,
     parameter_name: str,
@@ -1614,29 +1638,6 @@ def get_inherited_gui_meta(
 
         if gui_meta is not None:
             return gui_meta
-
-    return None
-
-
-def get_inherited_parameter_description(
-    child_cls: type,
-    parameter_name: str,
-) -> str | None:
-    """Get the description of the parameter from the direct super class, if possible."""
-    for parent_cls in child_cls.__mro__:
-        init = parent_cls.__dict__.get('__init__')
-        if init is None:
-            continue
-
-        signature = inspect.signature(init)
-
-        if parameter_name not in signature.parameters:
-            continue
-
-        tooltips = get_parameter_descriptions(init, replace_newlines=True)
-
-        if description := tooltips.get(parameter_name):
-            return description
 
     return None
 

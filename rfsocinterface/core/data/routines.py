@@ -106,7 +106,9 @@ def get_gui_args(
 
         if use_defaults:
             # Use docstring for default tooltip
-            docstring_tooltip = get_inherited_parameter_description(routine_cls, name)
+            docstring_tooltip = get_inherited_parameter_description(
+                routine_cls, name, replace_newlines=True
+            )
             # Use parameter name for default label
             default_meta = GuiMeta(
                 tooltip=docstring_tooltip,
