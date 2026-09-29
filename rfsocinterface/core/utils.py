@@ -1407,8 +1407,8 @@ class GuiMeta:
     # QSpinBox specific values
     minimum: float | None = None
     maximum: float | None = None
-    prefix: str = ''
-    suffix: str = ''
+    prefix: str | None = None
+    suffix: str | None = None
     # Enum specific value
     multi_input: bool = False
     # Sequence / tuple specific values

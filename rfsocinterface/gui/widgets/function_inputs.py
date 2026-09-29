@@ -95,8 +95,8 @@ class IntInputWidget(QSpinBox, InputWidget[int]):
             self.setMaximum(
                 gui_meta.maximum if gui_meta.maximum is not None else MAX_INT
             )
-            self.setPrefix(gui_meta.prefix)
-            self.setSuffix(gui_meta.suffix)
+            self.setPrefix(gui_meta.prefix if gui_meta.prefix is not None else '')
+            self.setSuffix(gui_meta.suffix if gui_meta.suffix is not None else '')
 
     @override
     def value(self) -> int:
@@ -124,8 +124,8 @@ class FloatInputWidget(QDoubleSpinBox, InputWidget[float]):
             self.setMaximum(
                 gui_meta.maximum if gui_meta.maximum is not None else MAX_FLOAT
             )
-            self.setPrefix(gui_meta.prefix)
-            self.setSuffix(gui_meta.suffix)
+            self.setPrefix(gui_meta.prefix if gui_meta.prefix is not None else '')
+            self.setSuffix(gui_meta.suffix if gui_meta.suffix is not None else '')
 
     @override
     def value(self) -> float:
