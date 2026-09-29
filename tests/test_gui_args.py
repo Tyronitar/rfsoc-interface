@@ -31,7 +31,7 @@ from tests.utils import (
     ReductionOperation,
     ExEnum,
 )
-from rfsocinterface.gui.widgets.funtion_inputs import (
+from rfsocinterface.gui.widgets.function_inputs import (
     InputWidget,
     IntInputWidget,
     FloatInputWidget,
