@@ -4,7 +4,8 @@
 import inspect
 from enum import Enum
 from pathlib import Path
-from typing import Any, get_args, get_origin
+from collections.abc import Collection, Sequence
+from typing import Any, Literal, get_args, get_origin
 
 import pytest
 from PySide6.QtWidgets import (
@@ -41,8 +42,9 @@ from rfsocinterface.gui.widgets.function_inputs import (
     NoneInputWidget,
     EnumInputWidget,
     MultiEnumInputWidget,
-    SequenceInputRow,
-    SequenceInputWidget,
+    CollectionInputRow,
+    LiteralInputWidget,
+    CollectionInputWidget,
     TupleInputWidget,
     UnionInputWidget,
     OptionalInputWidget,
@@ -144,9 +146,13 @@ def test_arg_extraction():
         (str, StringInputWidget),
         (Path, FileInputWidget),
         (ExEnum, EnumInputWidget),
+        (Literal['hello', 'world'], LiteralInputWidget),
         (tuple[int, int], TupleInputWidget),
-        (tuple[int, ...], SequenceInputWidget),
-        (list[int], SequenceInputWidget),
+        (tuple[int, ...], CollectionInputWidget),
+        (list[int], CollectionInputWidget),
+        (set[int], CollectionInputWidget),
+        (Sequence[int], CollectionInputWidget),
+        (Collection[int], CollectionInputWidget),
         (int | float, UnionInputWidget),
         (int | float | None, UnionInputWidget),
         (int | None, OptionalInputWidget),
@@ -161,8 +167,11 @@ def test_annotation_to_widget(qtbot, annotation: Any, widget_type: type[InputWid
     args = get_args(annotation)
     if isinstance(widget, TupleInputWidget):
         assert widget.types == args
-    elif isinstance(widget, SequenceInputWidget):
-        assert widget.container_type == origin
+    elif isinstance(widget, CollectionInputWidget) and origin in (list, set, tuple):
+        assert widget.container_type is origin
+        assert widget.item_type == args[0]
+    elif isinstance(widget, CollectionInputWidget):
+        assert widget.container_type is list
         assert widget.item_type == args[0]
     elif isinstance(widget, UnionInputWidget):
         assert widget.types == args
@@ -170,6 +179,8 @@ def test_annotation_to_widget(qtbot, annotation: Any, widget_type: type[InputWid
         assert widget.item_type == args[0]
     elif isinstance(widget, EnumInputWidget):
         assert widget.enum_type == annotation
+    elif isinstance(widget, LiteralInputWidget):
+        assert widget.values == ('hello', 'world')
 
 
 def test_arg_to_widget_with_metadata(qtbot):

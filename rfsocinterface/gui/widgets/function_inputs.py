@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from enum import Enum
 from pathlib import Path
 from typing import (
     Annotated,
     Any,
+    Literal,
     cast,
     get_args,
     get_origin,
     override,
 )
 
+import numpy as np
+import numpy.typing as npt
 from PySide6.QtCore import QSize, Signal, Slot
 from PySide6.QtGui import QIcon, Qt
 from PySide6.QtWidgets import (
@@ -216,6 +219,49 @@ class NoneInputWidget(QWidget, InputWidget[NONE_TYPE]):
             raise ValueError(f'The only accepted input is `None`; got "{value}"')
 
 
+class LiteralInputWidget[T](QComboBox, InputWidget[T]):
+    """InputWidget for choosing from a fixed set of literal values."""
+
+    def __init__(
+        self,
+        values: tuple[T, ...],
+        gui_meta: GuiMeta | None = None,
+        parent: QWidget | None = None,
+    ):
+        """Initialize a LiteralInputWidget.
+
+        Given the possible values, it will populate a QComboBox with each one.
+        """
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Fixed,
+        )
+
+        self.values = values
+
+        for value in values:
+            self.addItem(str(value), userData=value)
+
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
+
+    @override
+    def value(self) -> T:
+        return self.currentData()
+
+    @override
+    def set_value(self, value: T) -> None:
+        for index, literal in enumerate(self.values):
+            # Test type and value to prevent spurious cases like True == 1
+            if type(value) is type(literal) and value == literal:
+                self.setCurrentIndex(index)
+                return
+
+        raise ValueError(f'{value!r} is not one of the allowed values {self.values!r}')
+
+
 #
 # Enum types
 #
@@ -299,8 +345,8 @@ class MultiEnumInputWidget[E: Enum](CheckableComboBox, InputWidget[E]):
 #
 
 
-class SequenceInputRow[T](QGroupBox, InputWidget[T]):
-    """Widget representing a single element of a SequenceInputWidget."""
+class CollectionInputRow[T](QGroupBox, InputWidget[T]):
+    """Widget representing a single element of a CollectionInputWidget."""
 
     removed = Signal()
 
@@ -339,26 +385,26 @@ class SequenceInputRow[T](QGroupBox, InputWidget[T]):
         self.widget.set_value(value)
 
 
-class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
-    """InputWidget representing seqeunce inputs (e.g. list[T], tuple[T, ...], etc.).
+class CollectionInputWidget[T, C: Collection[T]](QGroupBox, InputWidget[C]):
+    """InputWidget representing collection inputs (e.g. list[T], tuple[T, ...], etc.).
 
     Given the specified type `item_type`, will automatically generate the appropriate
-    widgets for each list item.
+    widgets for each collection item.
     """
 
     def __init__(
         self,
         item_type: TypeAnnotation,
-        container_type: Callable[[Iterable[T]], S],
+        container_type: Callable[[Iterable[T]], C],
         gui_meta: GuiMeta | None = None,
         parent: QWidget | None = None,
     ):
-        """Initialize a SequenceInputWidget.
+        """Initialize a CollectionInputWidget.
 
         Arguments:
-            item_type (type): The type of sequence elements (i.e. the "T" of
-                Sequence[T]).
-            container_type (Callable[[Iterable[T]], S]): A function that converts an
+            item_type (type): The type of collection elements (i.e. the "T" of
+                Collection[T]).
+            container_type (Callable[[Iterable[T]], C]): A function that converts an
                 iterable into the desired container type. (e.g. `list`, `tuple`).
             gui_meta (GuiMeta, optional): Metadata to further describe the widgets
                 created. Defaults to `None`.
@@ -368,7 +414,7 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         self.item_type = item_type
-        self.rows: list[SequenceInputRow[T]] = []
+        self.rows: list[CollectionInputRow[T]] = []
         self.container_type = container_type
 
         # layout setup...
@@ -424,7 +470,7 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
         """
         widget = create_input_widget(self.item_type)
         widget.setParent(self)
-        new_row = SequenceInputRow(widget)
+        new_row = CollectionInputRow(widget)
         new_row.removed.connect(self.remove_row)
 
         if value is not None:
@@ -443,7 +489,7 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
     @Slot()
     def remove_row(self):
         """Remove a row from the sequence."""
-        row: SequenceInputRow = self.sender()
+        row: CollectionInputRow = self.sender()
         # self.vlayout.removeWidget(row)
         self.scroll_layout.removeWidget(row)
         self.rows.remove(row)
@@ -463,11 +509,11 @@ class SequenceInputWidget[T, S: Sequence[T]](QGroupBox, InputWidget[S]):
         # self.adjustSize()
 
     @override
-    def value(self) -> S:
-        return self.container_type(row.value() for row in self.rows)
+    def value(self) -> C:
+        return self.container_type([row.value() for row in self.rows])
 
     @override
-    def set_value(self, value: S):
+    def set_value(self, value: C):
         if not isinstance(value, Sequence):
             raise TypeError(f'Expected a sequence of values; got {type(value)}')
         if not all(check_type(v, self.item_type) for v in value):
@@ -687,18 +733,27 @@ def create_input_widget[T](  # noqa: PLR0911
 
     origin = get_origin(annotation)
 
-    # list[T]
-    if origin is list:
+    # list[T], Sequence[T], Collection[T], set[T], NDArray[T]...
+    if origin in (list, Sequence, Collection, set, npt.NDArray):
         args = get_args(annotation)
 
         if len(args) != 1:
-            raise TypeError(f'Expected list[T], got {annotation!r}')
+            raise TypeError(
+                f'Expected {convert_type_to_string(origin)}[T], got {annotation!r}'
+            )
+
+        if origin in (Sequence, Collection):
+            container_type = list
+        elif origin is npt.NDArray:
+            container_type = np.asarray
+        else:
+            container_type = origin
 
         return cast(
             InputWidget[T],
-            SequenceInputWidget(
+            CollectionInputWidget(
                 args[0],
-                list,
+                container_type,
                 gui_meta=gui_meta,
                 parent=parent,
             ),
@@ -711,7 +766,7 @@ def create_input_widget[T](  # noqa: PLR0911
         if len(args) == 2 and args[1] is Ellipsis:  # noqa: PLR2004
             return cast(
                 InputWidget[T],
-                SequenceInputWidget(
+                CollectionInputWidget(
                     args[0],
                     tuple,
                     gui_meta=gui_meta,
@@ -735,6 +790,19 @@ def create_input_widget[T](  # noqa: PLR0911
             get_args(annotation),
             gui_meta=gui_meta,
             parent=parent,
+        )
+
+    # Literal[v1, v2, ...]
+    if origin is Literal:
+        values = get_args(annotation)
+
+        return cast(
+            InputWidget[T],
+            LiteralInputWidget(
+                values,
+                gui_meta=gui_meta,
+                parent=parent,
+            ),
         )
 
     # Enum subclass
@@ -826,10 +894,16 @@ if __name__ == '__main__':
         'bool': bool,
         'list': list,
         'tuple': tuple,
+        'set': set,
+        'Sequence': Sequence,
+        'Collection': Collection,
+        'NDArray': npt.NDArray,
         'Path': Path,
         'None': None,
+        'Literal': Literal,
         'ExEnum': ExEnum,
         'Annotated': Annotated,
+        'GuiMeta': GuiMeta,
     }
 
     def parse_annotation(text: str):

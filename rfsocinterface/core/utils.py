@@ -20,7 +20,7 @@ from enum import Enum, EnumMeta, IntEnum, StrEnum
 from functools import partial
 from multiprocessing.connection import Connection
 from pathlib import Path
-from types import UnionType
+from types import GenericAlias, UnionType
 from typing import (
     Annotated,
     Any,
@@ -1363,6 +1363,20 @@ def is_type(type_: type, ref: type) -> bool:
     return type_ is ref or (is_union(type_) and ref in get_args(type_))
 
 
+def is_type_annotation(val: Any) -> bool:
+    """Return whther the value is a type / type annotation."""
+    return (
+        # Standard classes (e.g. int, float, custom classes)
+        isinstance(val, type)  # noqa: SIM101
+        or
+        # Generic type aliases (e.g. list[int], dict[str, int])
+        isinstance(val, GenericAlias)
+        or
+        # Special typing forms (e.g. Optional, Union, Any)
+        isinstance(val, typing._SpecialForm)  # noqa: SLF001
+    )
+
+
 @dataclass(frozen=True)
 class GuiMeta:
     """GuiArg metadata for later use during widget initialization.
@@ -1448,6 +1462,12 @@ def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
 
     # Recursively check each element
     internal_type = get_args(expected_type)
+    if base_type is Literal:
+        # Test type and value to prevent spurious cases like True == 1
+        return any(
+            type(value) is type(literal) and value == literal
+            for literal in internal_type
+        )
     if issubclass(base_type, Mapping):
         # Chec kkey and values separately for a dictionary
         key_type, val_type = internal_type
@@ -1520,12 +1540,15 @@ def convert_type_to_string(annotation: TypeAnnotation) -> str:  # noqa: PLR0911
     """Return a string representation of types."""
     origin = get_origin(annotation)
     args = get_args(annotation)
-
     if annotation is NONE_TYPE:
         return 'None'
     if annotation is Ellipsis:
         return '...'
-    if get_origin(annotation) is None:
+    if origin is None:
+        if not is_type_annotation(annotation):
+            if isinstance(annotation, str):
+                return f"'{annotation}'"
+            return str(annotation)
         return annotation.__name__
     if origin is Annotated:
         annotation, gui_meta = unwrap_annotated(annotation)
