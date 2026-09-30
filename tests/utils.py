@@ -227,7 +227,7 @@ class ReduceRoutine(DataRoutine):
                 tooltip='The reduction operation to perform',
             ),
         ] = ReductionOperation.SUM,
-        start: Any = 0,
+        start: int = 0,
         reverse: Annotated[
             bool,
             GuiMeta(

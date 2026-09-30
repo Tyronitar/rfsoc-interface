@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from enum import Enum
 from pathlib import Path
 from typing import (
@@ -18,7 +18,7 @@ from typing import (
 
 import numpy as np
 import numpy.typing as npt
-from PySide6.QtCore import QSize, Signal, Slot
+from PySide6.QtCore import QObject, QSize, Signal, Slot
 from PySide6.QtGui import QIcon, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -593,6 +593,267 @@ class TupleInputWidget[*Ts](QGroupBox, InputWidget[tuple[*Ts]]):
 
 
 #
+# Mapping Types
+#
+class MappingInputRow[K, V](QObject):
+    """Widgets representing one key/value pair in a mapping."""
+
+    removed = Signal()
+
+    def __init__(
+        self,
+        key_widget: InputWidget[K],
+        value_widget: InputWidget[V],
+        parent: QObject | None = None,
+    ):
+        """Initialize a MappingInputRow."""
+        super().__init__(parent)
+
+        self.key_widget = key_widget
+        self.value_widget = value_widget
+
+        self.remove_button = QToolButton()
+        self.remove_button.setToolTip('Remove this item')
+        self.remove_button.clicked.connect(self.removed.emit)
+
+        icon = QIcon()
+        icon.addFile(
+            ':/icons/remove.png',
+            QSize(),
+            QIcon.Mode.Normal,
+            QIcon.State.Off,
+        )
+        self.remove_button.setIcon(icon)
+        self.remove_button.setIconSize(QSize(16, 16))
+
+    @property
+    def key(self) -> K:
+        """The value of this pair's key widget."""
+        return self.key_widget.value()
+
+    @property
+    def value(self) -> V:
+        """The value of this pair's value widget."""
+        return self.value_widget.value()
+
+    def set_value(self, key: K, value: V) -> None:
+        """Set the value of this key/value pair."""
+        self.key_widget.set_value(key)
+        self.value_widget.set_value(value)
+
+    @override
+    def deleteLater(self) -> None:
+        self.key_widget.deleteLater()
+        self.value_widget.deleteLater()
+        self.remove_button.deleteLater()
+        super().deleteLater()
+
+
+class MappingInputWidget[K, V, M: Mapping[K, V]](QGroupBox, InputWidget[M]):
+    """InputWidget representing mapping inputs (i.e. dict[K, V]).
+
+    Given the specified types `key_type` and `value_type` will automatically generate
+    the appropriate widgets for each key/value pair.
+    """
+
+    def __init__(
+        self,
+        key_type: TypeAnnotation,
+        value_type: TypeAnnotation,
+        container_type: Callable[[Iterable[tuple[K, V]]], M],
+        gui_meta: GuiMeta | None = None,
+        parent: QWidget | None = None,
+    ):
+        """Initialize a MappingInputWidget.
+
+        Arguments:
+            key_type (type): The type of the map's keys.
+            value_type (type): The type of the map's values.
+            container_type (Callable[[Iterable[tuple[K, V]]], M]): A function that
+                converts an iterable of tuples of key/value pairs into the desired
+                mapping type. (e.g. `dict`)
+            gui_meta (GuiMeta, optional): Metadata to further describe the widgets
+                created. Defaults to `None`.
+            parent (QObject, optional): The parent of this widget. Defaults to `None`.
+        """
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        self.key_type = key_type
+        self.value_type = value_type
+        self.container_type = container_type
+        self.rows: list[MappingInputRow[K, V]] = []
+
+        # layout setup...
+        self.vlayout = QVBoxLayout()
+
+        self.scroll_area = ExpandingScrollArea(widgetResizable=True, parent=self)
+        self.grid_layout = QGridLayout()
+        self.grid_layout.setColumnStretch(0, 1)
+        self.grid_layout.setColumnStretch(1, 1)
+        self.grid_layout.setColumnStretch(2, 0)
+        self.scroll_area.setMinimumHeight(100)
+        self.scroll_area.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        self.scroll_container = QWidget(parent=self.scroll_area)
+        self.scroll_container.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.key_label = QLabel('Key', parent=self.scroll_container)
+        self.grid_layout.addWidget(self.key_label, 0, 0)
+        self.value_label = QLabel('Value', parent=self.scroll_container)
+        self.grid_layout.addWidget(self.value_label, 0, 1)
+        self.scroll_container.setLayout(self.grid_layout)
+
+        # self.scroll_area.setLayout(QVBoxLayout())
+        # self.scroll_area.layout().addWidget(self.scroll_container)
+        self.scroll_area.setWidget(self.scroll_container)
+        self.vlayout.addWidget(self.scroll_area)
+
+        self.spacer = QSpacerItem(
+            20, 10, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum
+        )
+        self.vlayout.addSpacerItem(self.spacer)
+
+        self.add_button = QToolButton(parent=self)
+        self.add_button.setCheckable(False)
+        icon = QIcon()
+        icon.addFile(':/icons/add.png', QSize(), QIcon.Mode.Normal, QIcon.State.Off)
+        self.add_button.setIcon(icon)
+        self.add_button.setIconSize(QSize(16, 16))
+        self.add_button.clicked.connect(lambda _: self.add_item())
+        self.add_button.setToolTip('Add an item to the sequence')
+        self.vlayout.addWidget(self.add_button)
+
+        self.setLayout(self.vlayout)
+
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
+
+    def add_item(self, key: K | None = None, value: V | None = None):
+        """Add an item to the sequence.
+
+        If `value` is not `None` the new row's value will be assigned.
+        """
+        key_widget = create_input_widget(
+            self.key_type,
+            parent=self.scroll_container,
+        )
+        value_widget = create_input_widget(
+            self.value_type,
+            parent=self.scroll_container,
+        )
+
+        row = MappingInputRow(key_widget, value_widget, parent=self.scroll_container)
+        row.removed.connect(lambda row=row: self.remove_row(row))
+        self.rows.append(row)
+        row_idx = len(self.rows)
+        self.grid_layout.addWidget(row.key_widget, row_idx, 0)
+        self.grid_layout.addWidget(row.value_widget, row_idx, 1)
+        self.grid_layout.addWidget(row.remove_button, row_idx, 2)
+
+        if key is not None:
+            row.key_widget.set_value(key)
+        if value is not None:
+            row.value_widget.set_value(value)
+
+        self.scroll_container.adjustSize()
+        self.scroll_area.updateGeometry()
+        self.updateGeometry()
+
+    @Slot()
+    def remove_row(
+        self,
+        row: MappingInputRow[K, V],
+    ) -> None:
+        """Remove a row from the map."""
+        self.rows.remove(row)
+
+        self.grid_layout.removeWidget(row.key_widget)
+        self.grid_layout.removeWidget(row.value_widget)
+        self.grid_layout.removeWidget(row.remove_button)
+
+        row.deleteLater()
+
+        self._reposition_rows()
+
+        self.scroll_container.adjustSize()
+        self.scroll_area.updateGeometry()
+        self.updateGeometry()
+
+    def _reposition_rows(self) -> None:
+        for grid_row, row in enumerate(self.rows, start=1):
+            self.grid_layout.addWidget(
+                row.key_widget,
+                grid_row,
+                0,
+            )
+            self.grid_layout.addWidget(
+                row.value_widget,
+                grid_row,
+                1,
+            )
+            self.grid_layout.addWidget(
+                row.remove_button,
+                grid_row,
+                2,
+            )
+
+    def clear(self) -> None:
+        """Remove all rows from the widget."""
+        for row in self.rows:
+            self.grid_layout.removeWidget(row.key_widget)
+            self.grid_layout.removeWidget(row.value_widget)
+            self.grid_layout.removeWidget(row.remove_button)
+            row.deleteLater()
+
+        self.rows.clear()
+
+        self.scroll_container.adjustSize()
+        self.scroll_area.updateGeometry()
+        self.updateGeometry()
+
+    @override
+    def value(self) -> M:
+        items: list[tuple[K, V]] = []
+        keys: list[K] = []
+
+        for row in self.rows:
+            key = row.key
+
+            if key in keys:
+                raise ValueError(f'Duplicate mapping key: {key!r}')
+
+            keys.append(key)
+            items.append((key, row.value))
+
+        return self.container_type(items)
+
+    @override
+    def set_value(self, value: M) -> None:
+        if not isinstance(value, Mapping):
+            raise TypeError(f'Expected a mapping, got {type(value)!r}')
+
+        if not all(
+            check_type(key, self.key_type) and check_type(item, self.value_type)
+            for key, item in value.items()
+        ):
+            raise TypeError(
+                f'Mapping does not match {self.key_type!r} -> {self.value_type!r}'
+            )
+
+        self.clear()
+
+        for key, item in value.items():
+            self.add_item(key, item)
+
+
+#
 # Union Types
 #
 
@@ -709,7 +970,7 @@ class OptionalInputWidget[T](QGroupBox, InputWidget[T]):
 #
 
 
-def create_input_widget[T](  # noqa: PLR0911
+def create_input_widget[T](  # noqa: PLR0911, PLR0912
     annotation: type[T],
     *,
     gui_meta: GuiMeta | None = None,
@@ -733,6 +994,28 @@ def create_input_widget[T](  # noqa: PLR0911
         )
 
     origin = get_origin(annotation)
+
+    # dict[K, V], Mapping[K, V]
+    if origin in (dict, Mapping):
+        args = get_args(annotation)
+
+        if len(args) != 2:  # noqa: PLR2004
+            raise TypeError(
+                f'Expected {convert_type_to_string(origin)}[K, V], got {annotation!r}'
+            )
+
+        key_type, value_type = args
+
+        return cast(
+            InputWidget[T],
+            MappingInputWidget(
+                key_type,
+                value_type,
+                dict,
+                gui_meta=gui_meta,
+                parent=parent,
+            ),
+        )
 
     # list[T], Sequence[T], Collection[T], set[T], NDArray[T]...
     if origin in (list, Sequence, Collection, set, npt.NDArray):
@@ -808,7 +1091,6 @@ def create_input_widget[T](  # noqa: PLR0911
 
     # Enum subclass
     if isinstance(annotation, type) and issubclass(annotation, Enum):
-        # TODO: Check GuiMeta for whether single or multi-input
         if gui_meta is not None and gui_meta.multi_input:
             return MultiEnumInputWidget(
                 annotation,
@@ -869,6 +1151,7 @@ def gui_arg_to_widget[T](
 ) -> InputWidget[T]:
     """Create an appropriate widget for the gui argument."""
     match gui_arg.kind:
+        # *args: T
         case inspect.Parameter.VAR_POSITIONAL:
             widget = CollectionInputWidget(
                 gui_arg.annotation,
@@ -876,13 +1159,22 @@ def gui_arg_to_widget[T](
                 gui_meta=gui_arg.metadata,
                 parent=parent,
             )
+        # **kwargs: T
         case inspect.Parameter.VAR_KEYWORD:
             # TODO: Make MappingInputWidget[K, V]
+            widget = MappingInputWidget(
+                str,
+                gui_arg.annotation,
+                dict,
+                gui_meta=gui_arg.metadata,
+                parent=parent,
+            )
             widget = create_input_widget(
                 gui_arg.annotation,
                 gui_meta=gui_arg.metadata,
                 parent=parent,
             )
+        # param: T
         case _:
             widget = create_input_widget(
                 gui_arg.annotation,
@@ -926,6 +1218,8 @@ if __name__ == '__main__':
         'list': list,
         'tuple': tuple,
         'set': set,
+        'dict': dict,
+        'Mapping': Mapping,
         'Sequence': Sequence,
         'Collection': Collection,
         'NDArray': npt.NDArray,

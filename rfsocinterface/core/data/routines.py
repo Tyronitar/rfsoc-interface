@@ -104,6 +104,21 @@ def get_gui_args(
         else:
             gui_meta = None
 
+        # Handle Any types
+        if param.kind is inspect.Parameter.VAR_KEYWORD:
+            if annotation is Any:
+                # Generic **kwargs used for programmatic extensibility.
+                # Don't expose it to the GUI.
+                continue
+            # Otherwise, it's a defined type (e.g. **kwargs: int), so treat it as a
+            # Mapping[str, T]
+        elif annotation is Any:
+            # Any is not allowed for type hints
+            raise TypeError(
+                f'GUI argument {name!r} is annotated with Any; '
+                'a concrete type is required.'
+            )
+
         if use_defaults:
             # Use docstring for default tooltip
             docstring_tooltip = get_inherited_parameter_description(

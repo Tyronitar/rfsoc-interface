@@ -121,7 +121,7 @@ def test_arg_extraction():
 
     assert args[2].name == 'start'
     assert not args[2].required
-    assert args[2].annotation is Any
+    assert args[2].annotation is int
     assert args[2].metadata is None
     assert args[2].default == 0
 
@@ -231,7 +231,7 @@ def test_arg_to_widget_with_metadata(qtbot):
     qtbot.addWidget(label2)
     assert isinstance(label2, QLabel)
     assert label2.text() == 'start:'
-    assert isinstance(widget2, QLineEdit)
+    assert isinstance(widget2, QSpinBox)
     assert widget2.toolTip() == ''
     assert widget2.text() == '0'
 
