@@ -1470,6 +1470,10 @@ def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
             type(value) is type(literal) and value == literal
             for literal in internal_type
         )
+    if is_union(expected_type) or is_optional(expected_type):
+        return any(
+            check_type(value, t) for t in internal_type
+        )
     if issubclass(base_type, Mapping):
         # Chec kkey and values separately for a dictionary
         key_type, val_type = internal_type
@@ -1478,8 +1482,8 @@ def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
             for k, v in value.items()
         ]
         return all(internals) and isinstance(value, base_type)
-    if issubclass(base_type, Sequence):
-        # Check each element in a sequence
+    if issubclass(base_type, Collection):
+        # Check each element in a collection
         if len(internal_type) == 1:
             # Single type so just check if each one is the right one
             internals = [check_type(v, internal_type) for v in value]
