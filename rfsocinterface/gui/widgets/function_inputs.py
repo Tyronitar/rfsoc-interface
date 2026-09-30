@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Collection, Iterable, Sequence
 from enum import Enum
 from pathlib import Path
@@ -861,15 +862,33 @@ def create_input_widget[T](  # noqa: PLR0911
     raise TypeError(f'No GUI widget defined for annotation "{annotation!r}"')
 
 
+# TODO: Make a function for calling the DataRoutine with all of the args
+# This needs to account for the GuiArg.kind.
 def gui_arg_to_widget[T](
     gui_arg: GuiArg[T], parent: QWidget | None = None
 ) -> InputWidget[T]:
     """Create an appropriate widget for the gui argument."""
-    widget = create_input_widget(
-        gui_arg.annotation,
-        gui_meta=gui_arg.metadata,
-        parent=parent,
-    )
+    match gui_arg.kind:
+        case inspect.Parameter.VAR_POSITIONAL:
+            widget = CollectionInputWidget(
+                gui_arg.annotation,
+                tuple,
+                gui_meta=gui_arg.metadata,
+                parent=parent,
+            )
+        case inspect.Parameter.VAR_KEYWORD:
+            # TODO: Make MappingInputWidget[K, V]
+            widget = create_input_widget(
+                gui_arg.annotation,
+                gui_meta=gui_arg.metadata,
+                parent=parent,
+            )
+        case _:
+            widget = create_input_widget(
+                gui_arg.annotation,
+                gui_meta=gui_arg.metadata,
+                parent=parent,
+            )
     if not is_empty(gui_arg.default):
         widget.set_value(gui_arg.default)
     return widget
@@ -881,6 +900,18 @@ if __name__ == '__main__':
     # ruff: disable[D101,D102,D107]
 
     from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QPushButton
+
+    # import pdb
+    # from rfsocinterface.core.utils import (
+    #     get_parameter_descriptions,
+    #     get_inherited_parameter_description,
+    # )
+    # from rfsocinterface.core.data.routines import get_gui_args
+    # from rfsocinterface.analysis import ComputeNoisePSD
+    # params = get_parameter_descriptions(ComputeNoisePSD.__init__)
+    # args = get_gui_args(ComputeNoisePSD)
+    # pdb.set_trace()
+    # exit()
 
     class ExEnum(Enum):
         ONE = 1
@@ -968,6 +999,8 @@ if __name__ == '__main__':
     w = MainWindow()
     w.show()
     # w.create_widget(ExEnum | Annotated[ExEnum, GuiMeta(multi_input=True)])
-    # w.set_widget(gui_arg_to_widget(ROUTINE_GUI_ARGS['CutoffFilter'][1], parent=w))
+    # from rfsocinterface.core.data import ROUTINE_GUI_ARGS
+    # from rfsocinterface.analysis import ComputeNoisePSD
+    # w.set_widget(gui_arg_to_widget(ROUTINE_GUI_ARGS['ComputeNoisePSD'][0], parent=w))
 
     app.exec()

@@ -1425,6 +1425,7 @@ class GuiArg[T]:
     annotation: TypeAnnotation  # Runtime representation of T's value
     metadata: GuiMeta | None = None  # Gui information associated with T
     default: T | Empty = inspect.Parameter.empty
+    kind: inspect._ParameterKind = inspect.Parameter.POSITIONAL_OR_KEYWORD
 
     @property
     def required(self) -> bool:
@@ -1453,7 +1454,7 @@ def unwrap_annotated(
     return inner_type, gui_meta
 
 
-def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
+def check_type(value: Any, expected_type: TypeAnnotation) -> bool:  # noqa: PLR0911
     """Recursively check that a value is the correct type."""
     expected_type, _ = unwrap_annotated(expected_type)
     base_type = get_origin(expected_type)
@@ -1471,9 +1472,7 @@ def check_type(value: Any, expected_type: TypeAnnotation) -> bool:
             for literal in internal_type
         )
     if is_union(expected_type) or is_optional(expected_type):
-        return any(
-            check_type(value, t) for t in internal_type
-        )
+        return any(check_type(value, t) for t in internal_type)
     if issubclass(base_type, Mapping):
         # Chec kkey and values separately for a dictionary
         key_type, val_type = internal_type

@@ -71,7 +71,7 @@ class ComputeNoisePSD(DataRoutine):
         Will overwrite existing PSD datasets in the file if they already exist.
 
         Arguments:
-            *bases (PsdBasis): Variable length of bases to compute the PSD for.
+            bases (PsdBasis): Bases to compute the PSD for.
             nominal_block_length (float): Nominal block length in seconds to use for
                 computing the PSD. Defaults to 10 seconds.
             cut_time (float): Time in seconds to cut from the beginning and end of the
@@ -593,7 +593,7 @@ class PlotPSD(DataRoutine):
         """Initialize the PlotPSD routine.
 
         Arguments:
-            *bases (PsdBasis): Variable length of bases to plot the PSD for.
+            bases (PsdBasis): Bases to plot the PSD for.
             show_error_band (bool, optional): Whether to show the error band. Defaults
                 to True.
             error_band_min_percentile (float, optional): Percentile of lower error

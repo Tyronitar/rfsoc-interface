@@ -129,6 +129,7 @@ def get_gui_args(
                 annotation=annotation,
                 metadata=gui_meta,
                 default=param.default,
+                kind=param.kind,
             )
         )
 
