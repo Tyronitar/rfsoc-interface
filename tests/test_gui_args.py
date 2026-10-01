@@ -37,6 +37,9 @@ from rfsocinterface.gui.widgets.function_inputs import (
 )
 from rfsocinterface.gui.widgets.utils import gui_arg_to_widget as old_gui_arg_to_widget
 from tests.utils import (
+    AnyAnnotationRoutine,
+    ArgsAnyAnnotationRoutine,
+    ArgsMissingAnnotationRoutine,
     CreateValueRoutine,
     CreateValueRoutineWithDefault,
     CreateValueRoutineWithMetadata,
@@ -44,6 +47,9 @@ from tests.utils import (
     CreateValueRoutineWithOptionalArgument,
     DocstringExtractionRoutine,
     ExEnum,
+    KeywordAnyAnnotationRoutine,
+    KeywordMissingAnnotationRoutine,
+    MissingAnnotationRoutine,
     ReduceRoutine,
     ReductionOperation,
     VariableParameterRoutine,
@@ -326,3 +332,32 @@ def test_variable_parameters(qtbot):
     assert widget.key_type is str
     assert widget.value_type is str
     assert widget.container_type is dict
+
+
+def test_bad_annotations():
+    """Test that exceptions are raised with bad type hints."""
+    with pytest.raises(TypeError, match='must have a type annotation'):
+        get_gui_args(MissingAnnotationRoutine)
+
+    with pytest.raises(TypeError, match='a concrete type is required'):
+        get_gui_args(AnyAnnotationRoutine)
+
+    with pytest.raises(TypeError, match='must have a type annotation'):
+        get_gui_args(ArgsMissingAnnotationRoutine)
+
+    with pytest.raises(TypeError, match='a concrete type is required'):
+        get_gui_args(ArgsAnyAnnotationRoutine)
+
+    args = get_gui_args(KeywordMissingAnnotationRoutine)
+    assert len(args) == 0
+    args = get_gui_args(KeywordAnyAnnotationRoutine)
+    assert len(args) == 0
+
+    with pytest.raises(TypeError, match=r'Expected .*\[K, V\], got'):
+        create_input_widget(dict[int])
+
+    with pytest.raises(TypeError, match=r'Expected .*\[T\], got'):
+        create_input_widget(list[int, int])
+
+    with pytest.raises(TypeError, match='No GUI widget defined for'):
+        create_input_widget(bytes)

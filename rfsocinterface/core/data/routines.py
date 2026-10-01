@@ -90,6 +90,9 @@ def get_gui_args(
         try:
             annotation = type_hints[name]
         except KeyError:
+            # Can't infer type from "**kwargs", so just skip this
+            if param.kind is inspect.Parameter.VAR_KEYWORD:
+                continue
             raise TypeError(
                 f'{routine_cls.__name__}.__init__ parameter '
                 f'{name!r} must have a type annotation.'
@@ -105,15 +108,12 @@ def get_gui_args(
             gui_meta = None
 
         # Handle Any types
-        if param.kind is inspect.Parameter.VAR_KEYWORD:
-            if annotation is Any:
-                # Generic **kwargs used for programmatic extensibility.
-                # Don't expose it to the GUI.
+        if annotation is Any:
+            # Generic **kwargs used for programmatic extensibility. Don't expose it to
+            # the GUI.
+            if param.kind is inspect.Parameter.VAR_KEYWORD:
                 continue
-            # Otherwise, it's a defined type (e.g. **kwargs: int), so treat it as a
-            # Mapping[str, T]
-        elif annotation is Any:
-            # Any is not allowed for type hints
+            # Any is not allowed for type hints for non **kwargs
             raise TypeError(
                 f'GUI argument {name!r} is annotated with Any; '
                 'a concrete type is required.'

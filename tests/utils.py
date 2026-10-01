@@ -279,6 +279,54 @@ class PositionalOnlyRoutine(DataRoutine):
         return
 
 
+class AnyAnnotationRoutine(DataRoutine):
+    def __init__(self, arg: Any):
+        super().__init__()
+
+    def _run(self, pdata, inputs):
+        return
+
+
+class MissingAnnotationRoutine(DataRoutine):
+    def __init__(self, arg):
+        super().__init__()
+
+    def _run(self, pdata, inputs):
+        return
+
+
+class ArgsAnyAnnotationRoutine(DataRoutine):
+    def __init__(self, arg: Any):
+        super().__init__()
+
+    def _run(self, pdata, inputs):
+        return
+
+
+class ArgsMissingAnnotationRoutine(DataRoutine):
+    def __init__(self, arg):
+        super().__init__()
+
+    def _run(self, pdata, inputs):
+        return
+
+
+class KeywordAnyAnnotationRoutine(DataRoutine):
+    def __init__(self, **kwargs: Any):
+        super().__init__()
+
+    def _run(self, pdata, inputs):
+        return
+
+
+class KeywordMissingAnnotationRoutine(DataRoutine):
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    def _run(self, pdata, inputs):
+        return
+
+
 class ReductionOperation(Enum):
     SUM = 0
     SUBTRACT = 1
