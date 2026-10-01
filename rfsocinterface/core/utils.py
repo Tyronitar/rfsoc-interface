@@ -300,6 +300,7 @@ def get_filename(
     tile_name='',
     attenuation=0.0,
     date: str | None = None,
+    setnum: int | None = None,
     hour: str | None = None,
     mkdir: bool = False,
 ):
@@ -324,15 +325,16 @@ def get_filename(
                 case 'power':
                     strings = [date, tile_name, 'Power_Sweep', hour]
         case 'tod' | 'azel' | 'optcam' | 'optcam_video':
-            this_dir_files = list(date_folder.glob('*TOD_set*'))
-            if not this_dir_files:
-                setnum = 1001
-            else:
-                this_dir_files.sort()
-                offset = 1 if file_type == 'tod' else 0
-                setnums = [f.name[-7:-3] for f in this_dir_files]
-                setnums.sort()
-                setnum = int(setnums[-1]) + offset
+            if setnum is None:
+                this_dir_files = list(date_folder.glob('*TOD_set*'))
+                if not this_dir_files:
+                    setnum = 1001
+                else:
+                    this_dir_files.sort()
+                    offset = 1 if file_type == 'tod' else 0
+                    setnums = [f.name[-7:-3] for f in this_dir_files]
+                    setnums.sort()
+                    setnum = int(setnums[-1]) + offset
             if file_type.lower() == 'optcam' or file_type.lower() == 'optcam_video':
                 strings = [date, file_type.lower(), f'set{setnum}']
             else:
