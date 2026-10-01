@@ -25,10 +25,8 @@ _logger = logging.getLogger(__name__)
 # OPTCAM_SENSOR_SIZE = (5.76, 4.29)  # mm, (width, height)
 OPTCAM_DPIX = 0.0025  # Degrees / pixel
 # Empirically determined optical camera offset relative to telescope position
-# i.e. telescope position + offset = optcam position
-# OPTCAM_OFFSET_AZ_DEG = -1.11111
-# OPTCAM_OFFSET_ZA_DEG = -1.65628
-# OPTCAM_OFFSET_AZ_DEG = -1.1810
+# i.e. optical position in telescope coordinates = tel position - offset
+# optical camera aligned to tel position -> tel position + offset
 OPTCAM_OFFSET_ZA_DEG = -1.7138
 OPTCAM_OFFSET_AZ_DEG = -1.1465
 OPTCAM_OFFSET_AZ_PIX = int(OPTCAM_OFFSET_AZ_DEG / OPTCAM_DPIX)
@@ -107,8 +105,9 @@ def get_current_camera_extent(
     tel_az: float, tel_za: float
 ) -> tuple[float, float, float, float]:
     """Return the extent of the camera given the current telescope position."""
-    opt_center_az = tel_az + OPTCAM_OFFSET_AZ_DEG
-    opt_center_za = tel_za + OPTCAM_OFFSET_ZA_DEG
+    # Get the optical image's actual coordinates (hence subtraction)
+    opt_center_az = tel_az - OPTCAM_OFFSET_AZ_DEG
+    opt_center_za = tel_za - OPTCAM_OFFSET_ZA_DEG
     opt_width_deg = OPTCAM_WIDTH_PIXELS * OPTCAM_DPIX
     opt_height_deg = OPTCAM_HEIGHT_PIXELS * OPTCAM_DPIX
     return (

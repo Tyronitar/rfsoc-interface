@@ -90,6 +90,7 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.live_footage_im = self.live_footage_ax.imshow(
             np.zeros((MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH, 3))
         )
+        self.live_footage_crosshair = None
         self.live_footage_fig.tight_layout()
 
         self.live_footage_canvas = ToolbarCanvas(parent=self, fig=self.live_footage_fig)
@@ -369,6 +370,12 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
             self.live_footage_im.set_array(image)
             self.live_footage_im.set_extent(
                 get_current_camera_extent(self.az_pos, self.za_pos)
+            )
+            if self.live_footage_crosshair is not None:
+                self.live_footage_crosshair.remove()
+            self.live_footage_crosshair = self.live_footage_ax.plot(
+                self.az_pos, self.za_pos, c='w', marker='+',
+                markersize=10, mew=2,
             )
             self.live_footage_canvas.canvas.draw()
             self.live_footage_canvas.canvas.flush_events()
