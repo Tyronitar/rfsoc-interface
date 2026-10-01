@@ -101,10 +101,10 @@ if __name__ == '__main__':
         clean_tod,
         # compute_psd,
         # psd_plotter,
-        # bin_tod_to_map,
-        # plot_map_routine,
-        bin_tod_to_video,
-        animate_video,
+        bin_tod_to_map,
+        plot_map_routine,
+        # bin_tod_to_video,
+        # animate_video,
         # find_fwhm,
         # analyze_beammap,
         # plot_beammap,
@@ -116,17 +116,17 @@ if __name__ == '__main__':
     # setnum = 1006
     # date = '20260917'  # For testing video
     # setnum = 1007
-    date = '20260928'  # For testing normal maps
-    setnum = 1011
+    date = '20261001'  # For testing normal maps
+    setnum = 1006
 
 
-    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
     # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
     # pdb.set_trace()
 
-    pdata = ProcessedData.load(date, setnum)
+    # pdata = ProcessedData.load(date, setnum)
     # plot_map_routine.apply(pdata)
-    print(pdata.get_telescope_params())
-    animate_video.apply(pdata)
+    # print(pdata.get_telescope_params())
+    # animate_video.apply(pdata)

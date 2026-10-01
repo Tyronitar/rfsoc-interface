@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QStackedLayout,
     QVBoxLayout,
     QWidget,
+    QSizeGrip,
+    QLayout,
 )
 
 from rfsocinterface.core.camera import MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
@@ -233,6 +235,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
 
         # Show plot if there was one
         pickle_file = Path(f'/data/{date}/{date}_set{setnum}_plot.pkl')
+        _logger.info(f'Looking for pickle file {pickle_file}')
         if pickle_file.exists():
             with open(pickle_file, 'rb') as f:
                 fig = pickle.load(f)
@@ -241,7 +244,10 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             fig_dial_layout = QVBoxLayout()
             canvas = ToolbarCanvas(parent=fig_dialog, fig=fig)
             fig_dial_layout.addWidget(canvas)
+            fig_dial_layout.addWidget(QSizeGrip(fig_dialog))
+            fig_dial_layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
             fig_dialog.setLayout(fig_dial_layout)
+            fig_dialog.setSizeGripEnabled(True)
             fig_dialog.exec()
         else:
             # Show popup saying where video is
@@ -388,10 +394,11 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         if self.buttonGroup.checkedButton() == self.video_radioButton:
             self.stop_recording_video()
 
-        if (
-            self._telescope_command_data == 0
-        ):  # Value other than 1 idicates the scan stopped early
-            self.make_map()
+        self.make_map()
+        # if (
+        #     self._telescope_command_data == 0
+        # ):  # Value other than 1 idicates the scan stopped early
+        #     self.make_map()
 
 
 def process_data(date: str, setnum: int):
@@ -435,7 +442,6 @@ def process_data(date: str, setnum: int):
         dpix=0.04,
         az_trim=0,
         za_trim=0,
-        dpi=100,  # Lower quality for faster processing
     )
     animate_video = AnimateVideo(vmin=-400, vmax=400)
 
@@ -443,6 +449,7 @@ def process_data(date: str, setnum: int):
     video_savefile = get_filename(
         file_type='optcam_video', date=date, setnum=setnum
     ).with_suffix('.mp4')
+    _logger.info(f'Looking for video file {video_savefile}')
     is_video = video_savefile.exists()
     if is_video:
         pipeline = Pipeline(
@@ -465,11 +472,12 @@ def process_data(date: str, setnum: int):
             ]
         )
 
-    _pdata, res = pipeline.from_consolidated_data(date, setnum, ds_factor=ds_factor)
+    _pdata, res = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     if not is_video:
         # Pickle plot and reopen in main process
         fig = res[-1]
         pickle_file = Path(f'/data/{date}/{date}_set{setnum}_plot.pkl')
+        _logger.info(f'Saving plot to pickle file {pickle_file}')
         with open(pickle_file, 'wb') as f:
             pickle.dump(fig, f)
             _logger.debug(f'Pickled figure to {pickle_file}')
