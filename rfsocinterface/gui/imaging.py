@@ -2,8 +2,10 @@
 
 import copy
 import logging
+import pickle
 import time
 from collections.abc import Callable
+from multiprocessing import Process
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Concatenate
@@ -11,15 +13,26 @@ from typing import TYPE_CHECKING, Any, Concatenate
 import h5py
 import numpy as np
 from kidpy3 import capture
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import (
+    QDialog,
+    QMessageBox,
     QProgressDialog,
     QStackedLayout,
+    QVBoxLayout,
     QWidget,
 )
 
 from rfsocinterface.core.camera import MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH
 from rfsocinterface.core.data import (
+    AnimateVideo,
+    BinTODIntoMap,
+    BinTODIntoVideo,
+    CleanTOD,
+    HighPassFilter,
+    LowPassFilter,
     Pipeline,
+    PlotMap,
 )
 from rfsocinterface.core.rfsoc import RFSoCWrapper
 from rfsocinterface.core.utils import (
@@ -33,7 +46,7 @@ from rfsocinterface.gui.main_widget import DataCollectionMainWidget, TelescopeMa
 from rfsocinterface.gui.pipeline import PipelineDialog
 from rfsocinterface.gui.uic.imaging_ui import Ui_ImagingWidget
 from rfsocinterface.gui.utils import DATA_ROUTINE_FUNCTION_WIDGET_ARGS
-from rfsocinterface.gui.widgets import ArgumentType, FunctionWidget
+from rfsocinterface.gui.widgets import ArgumentType, FunctionWidget, ToolbarCanvas
 
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
@@ -187,10 +200,55 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
 
     def make_map(self):
         """Process the data from the observation."""
-        # current_file = self.get_current_file().stem
-        # date = current_file[:8]
-        # setnum = int(current_file[-4:])
-        # p = ProcessedData.from_tod(date, setnum)
+        current_file = self.get_current_file().stem
+        date = current_file[:8]
+        setnum = int(current_file[-4:])
+
+        #
+        # Begin hacky implementation for live demo
+        #
+
+        # Create indeterminate progress bar
+        pbar = QProgressDialog(
+            f'Processing data from {date}_set{setnum}...',
+            'Cancel',
+            0,
+            0,
+        )
+        pbar.setWindowTitle('Processing Data')
+        pbar.show()
+
+        # Process data in a subprocess
+        subproc = Process(target=process_data, args=(date, setnum))
+        subproc.start()
+
+        # Wait for processing to finish or for the user to cancel
+        while subproc.is_alive():
+            subproc.join(1e-1)
+            QCoreApplication.processEvents()
+            if pbar.wasCanceled():
+                subproc.kill()
+        if not pbar.wasCanceled():
+            pbar.setValue(0)
+
+        # Show plot if there was one
+        pickle_file = Path(f'/data/{date}/{date}_set{setnum}_plot.pkl')
+        if pickle_file.exists():
+            with open(pickle_file, 'rb') as f:
+                fig = pickle.load(f)
+            fig_dialog = QDialog(parent=self)
+            fig_dialog.setWindowTitle(f'{date}_set{setnum}')
+            fig_dial_layout = QVBoxLayout()
+            canvas = ToolbarCanvas(parent=fig_dialog, fig=fig)
+            fig_dial_layout.addWidget(canvas)
+            fig_dialog.setLayout(fig_dial_layout)
+            fig_dialog.exec()
+        else:
+            # Show popup saying where video is
+            msg = QMessageBox(self)
+            savefile = f'/data/{date}/{date}_set{setnum}_Map_Animation.mp4'
+            msg.setText(f'Video saved to {savefile}')
+            msg.exec()
 
     def update_current_file(self) -> Path:
         """Update the current save location."""
@@ -334,3 +392,84 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
             self._telescope_command_data == 0
         ):  # Value other than 1 idicates the scan stopped early
             self.make_map()
+
+
+def process_data(date: str, setnum: int):
+    """Hacky hard-coded processing for the demo.
+
+    Intended to be run in a subprocess.
+    """
+    dataset = 'data_mK'
+    datasets = ['.*/data_mK']
+    lp_filter_freq = 15
+    hp_filter_freq = 0.03
+
+    ds_factor = 16
+    lp_filter = LowPassFilter(filter_freq=lp_filter_freq, datasets=datasets)
+    hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
+    clean_tod = CleanTOD(dataset=dataset)
+    bin_tod_to_map = BinTODIntoMap(
+        hp_filter_freq=hp_filter_freq,
+        lp_filter_freq=lp_filter_freq,
+        beam_map_mode=False,
+        dataset=dataset,
+        az_trim=0,
+        za_trim=0,
+        dpix=0.03,
+        r0=0.0,
+    )
+    plot_map_routine = PlotMap(
+        show=False,  # Don't show since it's a subprocess
+        max_abs_threshold=0.4,
+        keep_figure_open=True,  # Needed to pickle the figure
+        channel=None,
+        show_optical_overlay=True,
+        vmin=-400,
+        vmax=400,
+    )
+    bin_tod_to_video = BinTODIntoVideo(
+        hp_filter_freq=hp_filter_freq,
+        lp_filter_freq=lp_filter_freq,
+        dataset=dataset,
+        block_size_s=0.1,
+        dpix=0.04,
+        az_trim=0,
+        za_trim=0,
+        dpi=100,  # Lower quality for faster processing
+    )
+    animate_video = AnimateVideo(vmin=-400, vmax=400)
+
+    # Check if this dataset was a video or not
+    video_savefile = get_filename(
+        file_type='optcam_video', date=date, setnum=setnum
+    ).with_suffix('.mp4')
+    is_video = video_savefile.exists()
+    if is_video:
+        pipeline = Pipeline(
+            [
+                hp_filter,
+                lp_filter,
+                clean_tod,
+                bin_tod_to_video,
+                animate_video,
+            ]
+        )
+    else:
+        pipeline = Pipeline(
+            [
+                hp_filter,
+                lp_filter,
+                clean_tod,
+                bin_tod_to_map,
+                plot_map_routine,
+            ]
+        )
+
+    _pdata, res = pipeline.from_consolidated_data(date, setnum, ds_factor=ds_factor)
+    if not is_video:
+        # Pickle plot and reopen in main process
+        fig = res[-1]
+        pickle_file = Path(f'/data/{date}/{date}_set{setnum}_plot.pkl')
+        with open(pickle_file, 'wb') as f:
+            pickle.dump(fig, f)
+            _logger.debug(f'Pickled figure to {pickle_file}')

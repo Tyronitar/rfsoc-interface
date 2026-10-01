@@ -374,8 +374,12 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
             if self.live_footage_crosshair is not None:
                 self.live_footage_crosshair.remove()
             self.live_footage_crosshair = self.live_footage_ax.plot(
-                self.az_pos, self.za_pos, c='w', marker='+',
-                markersize=10, mew=2,
+                self.az_pos,
+                self.za_pos,
+                c='w',
+                marker='+',
+                markersize=10,
+                mew=2,
             )
             self.live_footage_canvas.canvas.draw()
             self.live_footage_canvas.canvas.flush_events()
