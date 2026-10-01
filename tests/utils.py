@@ -64,8 +64,10 @@ def sleep_and_raise(n: int):
     time.sleep(n)
     raise RuntimeError('expected raise')
 
+
 class ExEnum(Enum):
     """Example enum class for testing."""
+
     ONE = 1
     TWO = 2
     THREE = 3
@@ -202,6 +204,79 @@ class CreateValueRoutineWithMetadataAndDefault(CreateValueRoutine):
         ] = 10,
     ):
         super().__init__(val)
+
+
+class DocstringExtractionRoutine(DataRoutine):
+    def __init__(  # noqa: D417
+        self,
+        arg1: Annotated[
+            str,
+            GuiMeta(
+                label='Argument 1:',
+                tooltip='The first argument',
+            ),
+        ],
+        arg2: Annotated[
+            int,
+            GuiMeta(
+                minimum=-10,
+                maximum=10,
+                tooltip='The second argument',
+            ),
+        ],
+        arg3: Annotated[
+            int,
+            GuiMeta(
+                minimum=-10,
+                maximum=10,
+            ),
+        ],
+        arg4: int,
+    ):
+        """Routine for testing docstring extraction.
+
+        Arguments:
+            arg2 (str): The tooltip in GuiMeta should have precedence over this.
+            arg4 (int): The fourth argument.
+        """
+        # arg3 should end up with no tooltip
+        super().__init__(
+            arg1=arg1,
+            arg2=arg2,
+            arg3=arg3,
+        )
+
+    def _run(self, pdata, inputs):
+        return
+
+
+class VariableParameterRoutine(DataRoutine):
+    def __init__(
+        self,
+        var0: str,
+        /,
+        var1: float,
+        *args: int,
+        var2: bool = False,
+        **kwargs: str,
+    ):
+        super().__init__()
+
+    def _run(self, pdata, inputs):
+        return
+
+
+class PositionalOnlyRoutine(DataRoutine):
+    def __init__(
+        self,
+        a: int,
+        /,
+        *args: int,
+    ):
+        super().__init__()
+
+    def _run(self, pdata, inputs):
+        return
 
 
 class ReductionOperation(Enum):

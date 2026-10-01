@@ -2,53 +2,51 @@
 
 # ruff: noqa: PLR2004
 import inspect
-from enum import Enum
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
-from collections.abc import Collection, Sequence
 from typing import Any, Literal, get_args, get_origin
 
 import pytest
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QLabel,
     QLineEdit,
     QSpinBox,
-    QWidget,
 )
 
 from rfsocinterface.core.data.routines import get_gui_args
-from rfsocinterface.core.utils import GuiArg, GuiMeta, NONE_TYPE
-from rfsocinterface.gui.widgets.file_select import FileSelectWidget
-from rfsocinterface.gui.widgets.utils import gui_arg_to_widget
+from rfsocinterface.core.utils import NONE_TYPE
+from rfsocinterface.gui.widgets.function_inputs import (
+    BoolInputWidget,
+    CollectionInputWidget,
+    EnumInputWidget,
+    FileInputWidget,
+    FloatInputWidget,
+    InputWidget,
+    IntInputWidget,
+    LiteralInputWidget,
+    MappingInputWidget,
+    NoneInputWidget,
+    OptionalInputWidget,
+    StringInputWidget,
+    TupleInputWidget,
+    UnionInputWidget,
+    create_input_widget,
+    gui_arg_to_widget,
+)
+from rfsocinterface.gui.widgets.utils import gui_arg_to_widget as old_gui_arg_to_widget
 from tests.utils import (
     CreateValueRoutine,
     CreateValueRoutineWithDefault,
     CreateValueRoutineWithMetadata,
     CreateValueRoutineWithMetadataAndDefault,
     CreateValueRoutineWithOptionalArgument,
+    DocstringExtractionRoutine,
+    ExEnum,
     ReduceRoutine,
     ReductionOperation,
-    ExEnum,
-)
-from rfsocinterface.gui.widgets.function_inputs import (
-    InputWidget,
-    IntInputWidget,
-    FloatInputWidget,
-    BoolInputWidget,
-    StringInputWidget,
-    FileInputWidget,
-    NoneInputWidget,
-    EnumInputWidget,
-    MultiEnumInputWidget,
-    CollectionInputRow,
-    LiteralInputWidget,
-    CollectionInputWidget,
-    TupleInputWidget,
-    UnionInputWidget,
-    OptionalInputWidget,
-    create_input_widget,
+    VariableParameterRoutine,
 )
 
 
@@ -60,6 +58,7 @@ def test_arg_extraction():
     assert arg.annotation is int
     assert arg.metadata is None
     assert arg.default is inspect.Parameter.empty
+    assert arg.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
     arg = get_gui_args(CreateValueRoutineWithDefault, use_defaults=False)[0]
     assert arg.name == 'val'
@@ -67,6 +66,7 @@ def test_arg_extraction():
     assert arg.annotation is int
     assert arg.metadata is None
     assert arg.default == 0
+    assert arg.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
     arg = get_gui_args(CreateValueRoutineWithOptionalArgument, use_defaults=False)[0]
     assert arg.name == 'val'
@@ -74,6 +74,7 @@ def test_arg_extraction():
     assert arg.annotation == (int | None)
     assert arg.metadata is None
     assert arg.default is None
+    assert arg.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
     arg = get_gui_args(CreateValueRoutineWithMetadata, use_defaults=False)[0]
     assert arg.name == 'val'
@@ -85,6 +86,7 @@ def test_arg_extraction():
     assert arg.metadata.minimum == -50
     assert arg.metadata.maximum == 50
     assert arg.default is inspect.Parameter.empty
+    assert arg.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
     arg = get_gui_args(CreateValueRoutineWithMetadataAndDefault, use_defaults=False)[0]
     assert arg.name == 'val'
@@ -96,6 +98,7 @@ def test_arg_extraction():
     assert arg.metadata.minimum == -50
     assert arg.metadata.maximum == 50
     assert arg.default == 10
+    assert arg.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
     args = get_gui_args(ReduceRoutine, use_defaults=False)
     assert len(args) == 4
@@ -108,6 +111,7 @@ def test_arg_extraction():
     assert args[0].metadata.minimum is None
     assert args[0].metadata.maximum is None
     assert args[0].default is inspect.Parameter.empty
+    assert args[0].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
     assert args[1].name == 'operation'
     assert not args[1].required
@@ -118,12 +122,14 @@ def test_arg_extraction():
     assert args[1].metadata.minimum is None
     assert args[1].metadata.maximum is None
     assert args[1].default == ReductionOperation.SUM
+    assert args[1].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
     assert args[2].name == 'start'
     assert not args[2].required
     assert args[2].annotation is int
     assert args[2].metadata is None
     assert args[2].default == 0
+    assert args[2].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
     assert args[3].name == 'reverse'
     assert not args[3].required
@@ -134,6 +140,7 @@ def test_arg_extraction():
     assert args[3].metadata.minimum is None
     assert args[3].metadata.maximum is None
     assert args[3].default == False  # noqa: E712
+    assert args[3].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
 
 @pytest.mark.parametrize(
@@ -156,6 +163,9 @@ def test_arg_extraction():
         (int | float, UnionInputWidget),
         (int | float | None, UnionInputWidget),
         (int | None, OptionalInputWidget),
+        (dict[int, str], MappingInputWidget),
+        (Mapping[int, str], MappingInputWidget),
+        (Mapping[str, list[int]], MappingInputWidget),
     ],
 )
 def test_annotation_to_widget(qtbot, annotation: Any, widget_type: type[InputWidget]):
@@ -181,12 +191,15 @@ def test_annotation_to_widget(qtbot, annotation: Any, widget_type: type[InputWid
         assert widget.enum_type == annotation
     elif isinstance(widget, LiteralInputWidget):
         assert widget.values == ('hello', 'world')
+    elif isinstance(widget, MappingInputWidget):
+        assert widget.key_type == args[0]
+        assert widget.value_type == args[1]
 
 
 def test_arg_to_widget_with_metadata(qtbot):
     """Test that metadata and default values are used properly when creating widgets."""
     arg = get_gui_args(CreateValueRoutineWithMetadataAndDefault)[0]
-    label, widget = gui_arg_to_widget(arg)
+    label, widget = old_gui_arg_to_widget(arg)
 
     qtbot.addWidget(widget)
 
@@ -203,7 +216,7 @@ def test_arg_to_widget_with_metadata(qtbot):
     # Check more complicated routine
     args = get_gui_args(ReduceRoutine)
 
-    label0, widget0 = gui_arg_to_widget(args[0])
+    label0, widget0 = old_gui_arg_to_widget(args[0])
     assert label0 is not None
     qtbot.addWidget(widget0)
     qtbot.addWidget(label0)
@@ -213,7 +226,7 @@ def test_arg_to_widget_with_metadata(qtbot):
     assert widget0.toolTip() == 'The values to perform the reduction on'
     assert widget0.text() == ''
 
-    label1, widget1 = gui_arg_to_widget(args[1])
+    label1, widget1 = old_gui_arg_to_widget(args[1])
     assert label1 is not None
     qtbot.addWidget(widget1)
     qtbot.addWidget(label1)
@@ -225,7 +238,7 @@ def test_arg_to_widget_with_metadata(qtbot):
         assert widget1.findText(member.name) >= 0
     assert widget1.currentText() == 'SUM'
 
-    label2, widget2 = gui_arg_to_widget(args[2])
+    label2, widget2 = old_gui_arg_to_widget(args[2])
     assert label2 is not None
     qtbot.addWidget(widget2)
     qtbot.addWidget(label2)
@@ -235,10 +248,81 @@ def test_arg_to_widget_with_metadata(qtbot):
     assert widget2.toolTip() == ''
     assert widget2.text() == '0'
 
-    label3, widget3 = gui_arg_to_widget(args[3])
+    label3, widget3 = old_gui_arg_to_widget(args[3])
     assert label3 is None
     qtbot.addWidget(widget3)
     assert isinstance(widget3, QCheckBox)
     assert widget3.toolTip() == ''
     assert widget3.text() == 'Reverse order'
     assert not widget3.isChecked()
+
+
+def test_docstring_extraction():
+    """Test that extracting values from the docstring works as expected."""
+    args = get_gui_args(DocstringExtractionRoutine)
+
+    assert len(args) == 4
+
+    assert args[0].metadata is not None
+    assert args[0].metadata.label == 'Argument 1:'
+    assert args[0].metadata.tooltip == 'The first argument'
+
+    assert args[1].metadata is not None
+    assert args[1].metadata.label == 'arg2:'  # Default label
+    assert args[1].metadata.minimum == -10
+    assert args[1].metadata.maximum == 10
+    # Check that GuiMeta has precendence over docstring
+    assert args[1].metadata.tooltip == 'The second argument'
+
+    assert args[2].metadata is not None
+    assert args[2].metadata.label == 'arg3:'  # Default label
+    assert args[2].metadata.minimum == -10
+    assert args[2].metadata.maximum == 10
+    assert args[2].metadata.tooltip is None  # No docstring or GuiMeta tooltip
+
+    assert args[3].metadata is not None
+    assert args[3].metadata.label == 'arg4:'  # Default label
+    assert args[3].metadata.minimum is None  # Default minimum
+    assert args[3].metadata.maximum is None  # Default maximum
+    assert args[3].metadata.tooltip == 'The fourth argument.'  # From docstring
+
+
+def test_variable_parameters(qtbot):
+    """Test arg extraction from routines with variable parameters."""
+    args = get_gui_args(VariableParameterRoutine)
+    assert len(args) == 5
+
+    widget = gui_arg_to_widget(args[0])
+    qtbot.addWidget(widget)
+    assert args[0].name == 'var0'
+    assert args[0].kind == inspect.Parameter.POSITIONAL_ONLY
+    assert isinstance(widget, StringInputWidget)
+
+    widget = gui_arg_to_widget(args[1])
+    qtbot.addWidget(widget)
+    assert args[1].name == 'var1'
+    assert args[1].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert isinstance(widget, FloatInputWidget)
+
+    widget = gui_arg_to_widget(args[2])
+    qtbot.addWidget(widget)
+    assert args[2].name == 'args'
+    assert args[2].kind == inspect.Parameter.VAR_POSITIONAL
+    assert isinstance(widget, CollectionInputWidget)
+    assert widget.item_type is int
+    assert widget.container_type is tuple
+
+    widget = gui_arg_to_widget(args[3])
+    qtbot.addWidget(widget)
+    assert args[3].name == 'var2'
+    assert args[3].kind == inspect.Parameter.KEYWORD_ONLY
+    assert isinstance(widget, BoolInputWidget)
+
+    widget = gui_arg_to_widget(args[4])
+    qtbot.addWidget(widget)
+    assert args[4].name == 'kwargs'
+    assert args[4].kind == inspect.Parameter.VAR_KEYWORD
+    assert isinstance(widget, MappingInputWidget)
+    assert widget.key_type is str
+    assert widget.value_type is str
+    assert widget.container_type is dict

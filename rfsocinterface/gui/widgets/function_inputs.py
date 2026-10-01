@@ -1169,11 +1169,6 @@ def gui_arg_to_widget[T](
                 gui_meta=gui_arg.metadata,
                 parent=parent,
             )
-            widget = create_input_widget(
-                gui_arg.annotation,
-                gui_meta=gui_arg.metadata,
-                parent=parent,
-            )
         # param: T
         case _:
             widget = create_input_widget(
