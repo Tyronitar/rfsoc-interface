@@ -1441,7 +1441,7 @@ class GuiMeta:
     For proper usage, use with `typing.Annotated` in the function's signature.
     For example:
     ```
-    class FilterRoutine(DataRoutine):
+    class A:
         def __init__(
             self,
             order: int = 4,
