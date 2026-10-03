@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import inspect
 import json
 import logging
 import time
@@ -17,9 +16,6 @@ from typing import (
     Any,
     ClassVar,
     Literal,
-    get_args,
-    get_origin,
-    get_type_hints,
 )
 
 import numpy as np
@@ -39,9 +35,7 @@ from rfsocinterface.core.utils import (
     GuiMeta,
     MetadataJSONEncoder,
     get_git_hash,
-    get_inherited_gui_meta,
-    get_inherited_parameter_description,
-    merge_gui_meta,
+    get_gui_args,
 )
 
 __all__ = (
@@ -70,85 +64,6 @@ class ProcessingStage:
     PROCESSING_L1 = 'processing_l1'
     PROCESSING_L2 = 'processing_l2'
     POST_PROCESSING = 'post_processing'
-
-
-def get_gui_args(
-    routine_cls: type[DataRoutine], use_defaults: bool = True
-) -> list[GuiArg]:
-    """Get all arguments from the DataRoutine in a GUI-compatible format."""
-    # Get arguments from class's signature
-    init = routine_cls.__init__
-    signature = inspect.signature(init)
-    type_hints = get_type_hints(init, include_extras=True)
-
-    args = []
-    for name, param in signature.parameters.items():
-        if name == 'self':
-            continue
-
-        # Make sure that type annotations are present
-        try:
-            annotation = type_hints[name]
-        except KeyError:
-            # Can't infer type from "**kwargs", so just skip this
-            if param.kind is inspect.Parameter.VAR_KEYWORD:
-                continue
-            raise TypeError(
-                f'{routine_cls.__name__}.__init__ parameter '
-                f'{name!r} must have a type annotation.'
-            ) from None
-
-        # Check if metadata was provided
-        if get_origin(annotation) is Annotated:
-            annotation, gui_meta = get_args(annotation)
-
-            if not isinstance(gui_meta, GuiMeta):
-                raise TypeError(f'Expected GuiMeta for {routine_cls.__name__}.{name}')
-        else:
-            gui_meta = None
-
-        # Handle Any types
-        if annotation is Any:
-            # Generic **kwargs used for programmatic extensibility. Don't expose it to
-            # the GUI.
-            if param.kind is inspect.Parameter.VAR_KEYWORD:
-                continue
-            # Any is not allowed for type hints for non **kwargs
-            raise TypeError(
-                f'GUI argument {name!r} is annotated with Any; '
-                'a concrete type is required.'
-            )
-
-        if use_defaults:
-            # Use docstring for default tooltip
-            docstring_tooltip = get_inherited_parameter_description(
-                routine_cls, name, replace_newlines=True
-            )
-            # Use parameter name for default label
-            default_meta = GuiMeta(
-                tooltip=docstring_tooltip,
-                label=f'{name}:',
-            )
-        else:
-            default_meta = None
-
-        # Use inherited metadata where appropriate
-        inherited_meta = get_inherited_gui_meta(routine_cls, name)
-
-        gui_meta = merge_gui_meta(parent=inherited_meta, child=gui_meta)
-        gui_meta = merge_gui_meta(parent=default_meta, child=gui_meta)
-
-        args.append(
-            GuiArg(
-                name=name,
-                annotation=annotation,
-                metadata=gui_meta,
-                default=param.default,
-                kind=param.kind,
-            )
-        )
-
-    return tuple(args)
 
 
 @dataclass

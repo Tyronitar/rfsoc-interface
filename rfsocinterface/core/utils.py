@@ -1380,10 +1380,65 @@ def is_type_annotation(val: Any) -> bool:
 
 
 @dataclass(frozen=True)
+class CallableInfo:
+    """Information describing a callable or a class's __init__ method.
+
+    Attributes:
+        func: The callable or class __init__ method this represents.
+        signature: The signature of the callable or class.
+        owner: The class that owns the callable if it is a method.
+        method_name: The name of the method if the callable was a method. If describing
+            a class, this will be '__init__'.
+    """
+
+    func: Callable[..., Any]
+    signature: inspect.Signature
+    owner: type | None
+    method_name: str | None
+
+
+def get_callable_info(
+    obj: type | Callable[..., Any],
+) -> CallableInfo:
+    """Get the CallableInfo for a callable or class."""
+    if inspect.isclass(obj):
+        return CallableInfo(
+            func=obj.__init__,
+            signature=inspect.signature(obj),
+            owner=obj,
+            method_name='__init__',
+        )
+
+    owner = get_method_owner(obj)
+
+    return CallableInfo(
+        func=obj,
+        signature=inspect.signature(obj),
+        owner=owner,
+        method_name=obj.__name__ if owner is not None else None,
+    )
+
+
+def get_method_owner(func: Callable) -> type | None:
+    """Return the owner of this callable if it is a method."""
+    if not inspect.ismethod(func):
+        return None
+
+    owner = func.__self__
+
+    if inspect.isclass(owner):
+        # Bound classmethod
+        return owner
+
+    # Bound instance method
+    return type(owner)
+
+
+@dataclass(frozen=True)
 class GuiMeta:
     """GuiArg metadata for later use during widget initialization.
 
-    For proper usage, use with `typing.Annotated` in the class's `__init__` signature.
+    For proper usage, use with `typing.Annotated` in the function's signature.
     For example:
     ```
     class FilterRoutine(DataRoutine):
@@ -1419,7 +1474,7 @@ class GuiMeta:
 
 @dataclass(frozen=True)
 class GuiArg[T]:
-    """Dataclass representing arguments from a DataRoutine for GUI integration."""
+    """Dataclass representing arguments from a function for GUI integration."""
 
     name: str
     annotation: TypeAnnotation  # Runtime representation of T's value
@@ -1431,6 +1486,81 @@ class GuiArg[T]:
     def required(self) -> bool:
         """Whether the argument is required."""
         return self.default is inspect.Parameter.empty
+
+
+def get_gui_args(target: Callable | type, use_defaults: bool = True) -> list[GuiArg]:
+    """Get all arguments from a function in a GUI-compatible format."""
+    info = get_callable_info(target)
+
+    type_hints = get_type_hints(
+        info.func,
+        include_extras=True,
+    )
+
+    args = []
+    for name, param in info.signature.parameters.items():
+        # Make sure that type annotations are present
+        try:
+            annotation = type_hints[name]
+        except KeyError:
+            # Can't infer type from "**kwargs", so just skip this
+            if param.kind is inspect.Parameter.VAR_KEYWORD:
+                continue
+            raise TypeError(
+                f'{info.func.__qualname__} parameter '
+                f'{name!r} must have a type annotation.'
+            ) from None
+
+        # Check if metadata was provided
+        annotation, gui_meta = unwrap_annotated(annotation)
+
+        # Handle Any types
+        if annotation is Any:
+            # Generic **kwargs used for programmatic extensibility. Don't expose it to
+            # the GUI.
+            if param.kind is inspect.Parameter.VAR_KEYWORD:
+                continue
+            # Any is not allowed for type hints for non **kwargs
+            raise TypeError(
+                f'GUI argument {name!r} is annotated with Any; '
+                'a concrete type is required.'
+            )
+
+        if info.owner is not None and info.method_name is not None:
+            # Use inherited metadata where appropriate
+            inherited_meta = get_inherited_gui_meta(info.owner, info.method_name, name)
+            # gui_meta = get_inherited_gui_meta(info.owner, info.method_name, name)
+            gui_meta = merge_gui_meta(parent=inherited_meta, child=gui_meta)
+
+        if use_defaults:
+            # Use docstring for default tooltip
+            if info.owner is not None and info.method_name is not None:
+                docstring_tooltip = get_inherited_parameter_description(
+                    info.owner, info.method_name, name, replace_newlines=True
+                )
+            else:
+                docstring_tooltip = get_parameter_descriptions(
+                    info.func,
+                    replace_newlines=True,
+                ).get(name)
+            # Use parameter name for default label
+            default_meta = GuiMeta(
+                tooltip=docstring_tooltip,
+                label=f'{name}:',
+            )
+            gui_meta = merge_gui_meta(parent=default_meta, child=gui_meta)
+
+        args.append(
+            GuiArg(
+                name=name,
+                annotation=annotation,
+                metadata=gui_meta,
+                default=param.default,
+                kind=param.kind,
+            )
+        )
+
+    return tuple(args)
 
 
 def is_empty(v: any) -> bool:
@@ -1593,21 +1723,26 @@ def get_parameter_descriptions(
 
 def get_inherited_parameter_description(
     child_cls: type,
+    method_name: str,
     parameter_name: str,
     replace_newlines: bool = False,
 ) -> str | None:
-    """Get the description of the parameter from the direct super class, if possible."""
+    """Get the description of the parameter from nearest parent class's docstring."""
     for parent_cls in child_cls.__mro__:
-        init = parent_cls.__dict__.get('__init__')
-        if init is None:
+        method = parent_cls.__dict__.get(method_name)
+        if method is None:
             continue
 
-        signature = inspect.signature(init)
+        # __dict__ gives us the descriptor itself for class/static methods.
+        if isinstance(method, (classmethod, staticmethod)):
+            method = method.__func__
+
+        signature = inspect.signature(method)
 
         if parameter_name not in signature.parameters:
             continue
 
-        tooltips = get_parameter_descriptions(init, replace_newlines=replace_newlines)
+        tooltips = get_parameter_descriptions(method, replace_newlines=replace_newlines)
 
         if description := tooltips.get(parameter_name):
             return description
@@ -1617,32 +1752,30 @@ def get_inherited_parameter_description(
 
 def get_inherited_gui_meta(
     child_cls: type,
+    method_name: str,
     parameter_name: str,
 ) -> GuiMeta | None:
-    """Get GuiMeta data from the direct super class for the parameter, if possible."""
+    """Get GuiMeta data from any parent classes for the parameter, if possible."""
+    final_meta = None
     for parent_cls in child_cls.__mro__[1:]:
-        init = parent_cls.__dict__.get('__init__')
-        if init is None:
+        method = parent_cls.__dict__.get(method_name)
+        if method is None:
             continue
 
-        signature = inspect.signature(init)
+        # __dict__ gives us the descriptor itself for class/static methods.
+        if isinstance(method, (classmethod, staticmethod)):
+            method = method.__func__
 
-        parameter = signature.parameters.get(parameter_name)
-        if parameter is None:
-            continue
-
-        type_hints = get_type_hints(init, include_extras=True)
+        type_hints = get_type_hints(method, include_extras=True)
         annotation = type_hints.get(parameter_name)
 
         if annotation is None:
             continue
 
         _, gui_meta = unwrap_annotated(annotation)
+        final_meta = merge_gui_meta(parent=gui_meta, child=final_meta)
 
-        if gui_meta is not None:
-            return gui_meta
-
-    return None
+    return final_meta
 
 
 def merge_gui_meta(

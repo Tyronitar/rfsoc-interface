@@ -15,8 +15,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
 )
 
-from rfsocinterface.core.data.routines import get_gui_args
-from rfsocinterface.core.utils import NONE_TYPE
+from rfsocinterface.core.utils import NONE_TYPE, get_gui_args
 from rfsocinterface.gui.widgets.function_inputs import (
     BoolInputWidget,
     CollectionInputWidget,
@@ -40,6 +39,7 @@ from tests.utils import (
     AnyAnnotationRoutine,
     ArgsAnyAnnotationRoutine,
     ArgsMissingAnnotationRoutine,
+    Child,
     CreateValueRoutine,
     CreateValueRoutineWithDefault,
     CreateValueRoutineWithMetadata,
@@ -53,6 +53,8 @@ from tests.utils import (
     ReduceRoutine,
     ReductionOperation,
     VariableParameterRoutine,
+    docstring_extraction_function,
+    variable_parameter_function,
 )
 
 
@@ -263,9 +265,16 @@ def test_arg_to_widget_with_metadata(qtbot):
     assert not widget3.isChecked()
 
 
-def test_docstring_extraction():
+@pytest.mark.parametrize(
+    'obj',
+    [
+        DocstringExtractionRoutine,
+        docstring_extraction_function,
+    ],
+)
+def test_docstring_extraction(obj):
     """Test that extracting values from the docstring works as expected."""
-    args = get_gui_args(DocstringExtractionRoutine)
+    args = get_gui_args(obj)
 
     assert len(args) == 4
 
@@ -293,9 +302,16 @@ def test_docstring_extraction():
     assert args[3].metadata.tooltip == 'The fourth argument.'  # From docstring
 
 
-def test_variable_parameters(qtbot):
-    """Test arg extraction from routines with variable parameters."""
-    args = get_gui_args(VariableParameterRoutine)
+@pytest.mark.parametrize(
+    'obj',
+    [
+        VariableParameterRoutine,
+        variable_parameter_function,
+    ],
+)
+def test_variable_parameters(qtbot, obj):
+    """Test arg extraction from functions with variable parameters."""
+    args = get_gui_args(obj)
     assert len(args) == 5
 
     widget = gui_arg_to_widget(args[0])
@@ -361,3 +377,16 @@ def test_bad_annotations():
 
     with pytest.raises(TypeError, match='No GUI widget defined for'):
         create_input_widget(bytes)
+
+
+def test_metadata_inheritance():
+    """Test that meta data is properly inherited, with children having precendence."""
+    child = Child()
+    args = get_gui_args(child.process)
+    assert len(args) == 1
+    arg = args[0]
+    meta = arg.metadata
+    assert meta is not None
+    assert meta.label == 'Number of samples'
+    assert meta.minimum == 0
+    assert meta.maximum == 50

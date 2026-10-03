@@ -206,6 +206,39 @@ class CreateValueRoutineWithMetadataAndDefault(CreateValueRoutine):
         super().__init__(val)
 
 
+def docstring_extraction_function(  # noqa: D417
+    arg1: Annotated[
+        str,
+        GuiMeta(
+            label='Argument 1:',
+            tooltip='The first argument',
+        ),
+    ],
+    arg2: Annotated[
+        int,
+        GuiMeta(
+            minimum=-10,
+            maximum=10,
+            tooltip='The second argument',
+        ),
+    ],
+    arg3: Annotated[
+        int,
+        GuiMeta(
+            minimum=-10,
+            maximum=10,
+        ),
+    ],
+    arg4: int,
+):
+    """Routine for testing docstring extraction.
+
+    Arguments:
+        arg2 (str): The tooltip in GuiMeta should have precedence over this.
+        arg4 (int): The fourth argument.
+    """
+
+
 class DocstringExtractionRoutine(DataRoutine):
     def __init__(  # noqa: D417
         self,
@@ -248,6 +281,17 @@ class DocstringExtractionRoutine(DataRoutine):
 
     def _run(self, pdata, inputs):
         return
+
+
+def variable_parameter_function(
+    var0: str,
+    /,
+    var1: float,
+    *args: int,
+    var2: bool = False,
+    **kwargs: str,
+):
+    pass
 
 
 class VariableParameterRoutine(DataRoutine):
@@ -362,6 +406,30 @@ class ReduceRoutine(DataRoutine):
 
     def _run(self, pdata, inputs):
         return
+
+
+class Base:
+    def process(
+        self,
+        x: Annotated[
+            int,
+            GuiMeta(
+                label='Number of samples',
+                minimum=0,
+                maximum=100,
+            ),
+        ],
+    ): ...
+
+
+class Child(Base):
+    def process(
+        self,
+        x: Annotated[
+            int,
+            GuiMeta(maximum=50),
+        ],
+    ): ...
 
 
 class MultiInputDefaultInputsRoutine(DataRoutine):
