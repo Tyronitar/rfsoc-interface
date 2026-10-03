@@ -480,11 +480,12 @@ def register_routine[DataRoutineType: 'DataRoutine'](
 
     try:
         gui_args = get_gui_args(cls)
-        ROUTINE_GUI_ARGS[cls.name] = gui_args
     except TypeError as e:
         _logger.warning(
             f'Failed to register DataRoutine {cls.__name__} for GUI integration; {e}'
         )
+    else:
+        ROUTINE_GUI_ARGS[cls.name] = gui_args
 
     _logger.debug(f'Registered data routine: {cls.__name__}')
     return cls
