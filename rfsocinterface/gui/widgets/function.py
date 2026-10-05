@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -28,6 +29,7 @@ from rfsocinterface.gui.widgets.function_inputs import (
     GuiArgWidget,
     gui_arg_to_widget,
 )
+from rfsocinterface.gui.widgets.scroll_area import ExpandingScrollArea
 from rfsocinterface.gui.widgets.utils import ArgumentType
 
 
@@ -432,21 +434,30 @@ class CallableWidget(QWidget):
 
     def __init__(
         self,
-        target_fn: Callable[..., Any],
+        target: Callable[..., Any],
         args: Sequence[GuiArg] | None = None,
         use_defaults: bool = True,
         parent=None,
     ):
         """Initialize a FunctionWidget."""
         super().__init__(parent=parent)
-        self.target_fn = target_fn
-        self.signature = inspect.signature(target_fn)
+        self.target_fn = target
+        self.signature = inspect.signature(target)
         if args is None:
-            args = get_gui_args(target_fn, use_defaults=use_defaults)
+            args = get_gui_args(target, use_defaults=use_defaults)
         self.widgets: list[GuiArgWidget] = []
 
-        self.scroll_area = QScrollArea(self)
+        self.scroll_area = ExpandingScrollArea(widgetResizable=True, parent=self)
+        self.scroll_area.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
         self.container = QWidget()
+        self.container.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         self.scroll_area.setWidget(self.container)
         self.scroll_area.setWidgetResizable(True)
         self.form_layout = QFormLayout(parent=self.container)
@@ -529,6 +540,167 @@ class CallableWidget(QWidget):
         return self.target_fn(*args, **kwargs)
 
 
+class CallableDragItem[**P, **Q, R](ClickableDragItem):
+    """Drag and drop item representing a callable."""
+
+    def __init__(
+        self,
+        target: Callable[..., Any],
+        *init_args,
+        label: str | None = None,
+        args: Sequence[GuiArg] | None = None,
+        use_defaults: bool = True,
+        parent=None,
+        **init_kwargs,
+    ):
+        """Initialize a FunctionDragItem."""
+        if not label:
+            label = target.__name__
+        super().__init__(label, *init_args, parent=parent, **init_kwargs)
+        self.widget = CallableWidget(
+            target, args=args, use_defaults=use_defaults, parent=parent
+        )
+
+
+class CallableListWidget(QWidget):
+    """A orderable list of callables with a side panel for entering arguments."""
+
+    active_item_changed = Signal(QWidget)
+
+    def __init__(
+        self, parent=None, orientation: Qt.Orientation = Qt.Orientation.Vertical
+    ):
+        """Initialize a DragFunctionWidget."""
+        super().__init__(parent=parent)
+        self.drag = ClickableDragWidget(orientation=orientation)
+
+        hlayout = QHBoxLayout()
+
+        self.drop_container = QWidget(parent=self)
+        drop_vlayout = QVBoxLayout()
+        drop_vlayout.addStretch(1)
+        drop_vlayout.addWidget(self.drag)
+        drop_vlayout.addStretch(1)
+        self.drop_container.setLayout(drop_vlayout)
+        hlayout.addWidget(self.drop_container)
+
+        hlayout.addStretch(1)
+
+        self.args_container = QStackedWidget(parent=self)
+        self.args_container.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        placheolder_widget = QWidget(parent=self)
+        self.args_container.addWidget(placheolder_widget)
+        hlayout.addWidget(self.args_container)
+
+        self.setLayout(hlayout)
+
+        self.drag.active_item_changed.connect(self.active_item_changed.emit)
+
+    @property
+    def active_item(self) -> CallableDragItem | None:
+        """Return the currently selected item."""
+        return self.drag.active_item
+
+    def add_item(
+        self,
+        item: CallableDragItem,
+    ):
+        """Add an item to the list."""
+        self.insert_item(-1, item)
+
+    def insert_item(
+        self,
+        idx: int,
+        item: CallableDragItem,
+    ):
+        """Inset an item in the list at the specified index."""
+        self.drag.insert_item(idx, item)
+        item.clicked.connect(self.display_args)
+        self.args_container.insertWidget(idx, item.widget)
+
+    def add_callable(
+        self,
+        target: Callable[..., Any],
+        *init_args,
+        label: str | None = None,
+        args: Sequence[GuiArg] | None = None,
+        use_defaults: bool = True,
+        **init_kwargs,
+    ):
+        """Create an item for the callable and add it to the list."""
+        self.insert_callable(
+            -1,
+            target,
+            *init_args,
+            label=label,
+            args=args,
+            use_defaults=use_defaults,
+            **init_kwargs,
+        )
+
+    def insert_callable(
+        self,
+        idx: int,
+        target: Callable[..., Any],
+        *init_args,
+        label: str | None = None,
+        args: Sequence[GuiArg] | None = None,
+        use_defaults: bool = True,
+        **init_kwargs,
+    ):
+        """Create an item for the callable and add it to the list."""
+        item = CallableDragItem(
+            target,
+            *init_args,
+            label=label or target.__name__,
+            args=args,
+            use_defaults=use_defaults,
+            parent=self,
+            **init_kwargs,
+        )
+        self.insert_item(idx, item)
+
+    def clear(self):
+        """Clear all items from the list."""
+        item: CallableDragItem
+        for item in self.drag.items():
+            self.drag.remove_item(item)
+            self.args_container.removeWidget(item.widget)
+        self.args_container.setCurrentIndex(0)
+
+    def remove_item(self, item: CallableDragItem):
+        """Remove an item from the list."""
+        self.drag.remove_item(item)
+        self.args_container.removeWidget(item.widget)
+        item.deleteLater()
+        self.args_container.setCurrentIndex(0)
+
+    def items(self) -> list[CallableDragItem]:
+        """Return a list of all items."""
+        return self.drag.items()
+
+    @Slot()
+    def display_args(self):
+        """Show the arguments for the selected function in the side panel."""
+        item: CallableDragItem = self.sender()
+        idx = self.items().index(item) + 1
+        self.args_container.setCurrentIndex(idx)
+        # self.args_container.setCurrentIndex(
+        #     self.args_container.indexOf(item.widget)
+        # )
+
+    @override
+    def mousePressEvent(self, event: QMouseEvent):
+        child = self.childAt(event.position())
+        # Clicking off of the list items or parameters should deselect
+        if child is None or child in (self.drop_container, self.drag):
+            self.drag.set_active_item(None)
+            self.args_container.setCurrentIndex(0)
+        return super().mousePressEvent(event)
+
+
 if __name__ == '__main__':
     # ruff: disable[D101,D102,D107]
     from PySide6.QtWidgets import (
@@ -538,44 +710,71 @@ if __name__ == '__main__':
         QPushButton,
     )
 
+    from rfsocinterface.core.data import (
+        CleanTOD,
+        DataRoutine,
+        HighPassFilter,
+        LowPassFilter,
+        RemoveElectronicsNoise,
+    )
+
     app = QApplication()
 
     class MainWindow(QMainWindow):
-        def __init__(self, callable_: Callable):
+        def __init__(self):
             super().__init__()
 
             self.container = QWidget(parent=self)
             self.vlayout = QVBoxLayout()
 
-            self.callable_widget = CallableWidget(callable_, parent=self.container)
-            self.vlayout.addWidget(self.callable_widget)
+            self.callables_widget = CallableListWidget(parent=self)
+            self.vlayout.addWidget(self.callables_widget)
 
             self.parse_push_button = QPushButton('Parse inputs', parent=self.container)
             self.parse_push_button.clicked.connect(self.parse_inputs)
             self.vlayout.addWidget(self.parse_push_button)
 
-            self.call_push_button = QPushButton('Call function', parent=self.container)
+            self.call_push_button = QPushButton(
+                'Call function(s)', parent=self.container
+            )
             self.call_push_button.clicked.connect(self.call)
             self.vlayout.addWidget(self.call_push_button)
 
             self.container.setLayout(self.vlayout)
             self.setCentralWidget(self.container)
 
+        def add_item(self, target: Callable):
+            self.callables_widget.add_callable(target)
+
         def parse_inputs(self):
-            inputs = self.callable_widget.get_inputs()
+            inputs = [
+                item.widget.get_inputs() for item in self.callables_widget.items()
+            ]
             msg = QMessageBox(parent=self)
-            msg.setText(f'Args: {inputs[0]}\nKwargs: {inputs[1]}')
+            strings = tuple(
+                f'(Args: {input_[0]}\nKwargs: {input_[1]})\n' for input_ in inputs
+            )
+            msg.setText('\n'.join(strings))
             msg.exec()
 
         def call(self):
-            res = self.callable_widget.call()
+            outputs = []
+            for item in self.callables_widget.items():
+                res = item.widget.call()
+                if isinstance(res, DataRoutine):
+                    outputs.append(f'{res.__class__.__name__}({res.params})')
+                else:
+                    outputs.append(res)
+
             msg = QMessageBox(parent=self)
-            msg.setText(str(res))
+            msg.setText('\n'.join(outputs))
             msg.exec()
 
-    from rfsocinterface.core.data import RemoveElectronicsNoise
-
-    w = MainWindow(RemoveElectronicsNoise)
+    w = MainWindow()
+    w.add_item(RemoveElectronicsNoise)
+    w.add_item(HighPassFilter)
+    w.add_item(LowPassFilter)
+    w.add_item(CleanTOD)
     w.show()
 
     # ruff: enable[D101,D102,D107]

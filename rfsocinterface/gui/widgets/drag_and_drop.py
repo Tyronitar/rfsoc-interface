@@ -278,7 +278,7 @@ class ClickableDragWidget(DragWidget):
 
     @override
     def insert_item(self, index: int, item: ClickableDragItem):
-        super().insert_item(int, item)
+        super().insert_item(index, item)
         item.clicked.connect(self.item_clicked)
 
     @override
