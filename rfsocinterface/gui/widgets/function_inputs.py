@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import (
@@ -60,6 +61,18 @@ from rfsocinterface.gui.widgets.combo_box import CheckableComboBox
 from rfsocinterface.gui.widgets.file_select import FileSelectWidget
 from rfsocinterface.gui.widgets.scroll_area import ExpandingScrollArea
 from rfsocinterface.gui.widgets.stacked_widget import ResizingStackedWidget
+
+
+@dataclass
+class GuiArgWidget[T]:
+    """Paif of argument and its corresponding InputWidget."""
+
+    arg: GuiArg[T]
+    widget: InputWidget[T]
+
+    def value(self) -> T:
+        """Return the value of the input widget."""
+        return self.widget.value()
 
 
 class InputWidget[T]:
@@ -145,11 +158,8 @@ class BoolInputWidget(QCheckBox, InputWidget[bool]):
         super().__init__(parent=parent)
         self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
-        if gui_meta is not None:
-            if gui_meta.label is not None:
-                self.setText(gui_meta.label)
-            if gui_meta.tooltip is not None:
-                self.setToolTip(gui_meta.tooltip)
+        if gui_meta is not None and gui_meta.tooltip is not None:
+            self.setToolTip(gui_meta.tooltip)
 
     @override
     def value(self) -> bool:

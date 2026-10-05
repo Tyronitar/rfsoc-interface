@@ -1,6 +1,7 @@
 """Widgets for representing functions and their arguments."""
 
-from collections.abc import Callable
+import inspect
+from collections.abc import Callable, Sequence
 from typing import Any, Concatenate, overload, override
 
 from PySide6.QtCore import Qt, Signal, Slot
@@ -14,10 +15,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rfsocinterface.core.utils import (
+    GuiArg,
+    get_gui_args,
+)
 from rfsocinterface.gui.widgets.drag_and_drop import (
     ClickableDragItem,
     ClickableDragWidget,
     ClickableMultiSectionDragWidget,
+)
+from rfsocinterface.gui.widgets.function_inputs import (
+    GuiArgWidget,
+    gui_arg_to_widget,
 )
 from rfsocinterface.gui.widgets.utils import ArgumentType
 
@@ -416,3 +425,159 @@ class MultiSectionDragFunctionWidget(QWidget):
             self.drag.set_active_item(-1, None)
             self.func_container.setCurrentIndex(0)
         return super().mousePressEvent(event)
+
+
+class CallableWidget(QWidget):
+    """Class for generalizing a callable and its arguments for a Qt GUI."""
+
+    def __init__(
+        self,
+        target_fn: Callable[..., Any],
+        args: Sequence[GuiArg] | None = None,
+        use_defaults: bool = True,
+        parent=None,
+    ):
+        """Initialize a FunctionWidget."""
+        super().__init__(parent=parent)
+        self.target_fn = target_fn
+        self.signature = inspect.signature(target_fn)
+        if args is None:
+            args = get_gui_args(target_fn, use_defaults=use_defaults)
+        self.widgets: list[GuiArgWidget] = []
+
+        self.scroll_area = QScrollArea(self)
+        self.container = QWidget()
+        self.scroll_area.setWidget(self.container)
+        self.scroll_area.setWidgetResizable(True)
+        self.form_layout = QFormLayout(parent=self.container)
+
+        for arg in args:
+            self.add_argument(arg)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.scroll_area)
+
+    def add_argument(
+        self,
+        arg: GuiArg,
+    ):
+        """Add an argument to the widget."""
+        new_widget = gui_arg_to_widget(arg, parent=self.container)
+        gui_meta = arg.metadata
+        if gui_meta is not None and gui_meta.label is not None:
+            label_text = gui_meta.label
+        else:
+            label_text = f'{arg.name}:'
+        self.widgets.append(GuiArgWidget(arg=arg, widget=new_widget))
+        self.form_layout.addRow(
+            label_text,
+            new_widget,
+        )
+        label = self.form_layout.labelForField(new_widget)
+        label.setToolTip(new_widget.toolTip())
+
+    def get_inputs(self) -> tuple[tuple[Any, ...], dict[str, Any]]:
+        """Get the inputs of the target function in the proper format."""
+        args: list[Any] = []
+        kwargs: dict[str, Any] = {}
+
+        has_var_positional = any(
+            item.arg.kind is inspect.Parameter.VAR_POSITIONAL for item in self.widgets
+        )
+
+        for item in self.widgets:
+            gui_arg = item.arg
+            value = item.value()
+
+            match gui_arg.kind:
+                case inspect.Parameter.POSITIONAL_ONLY:
+                    args.append(value)
+
+                case inspect.Parameter.POSITIONAL_OR_KEYWORD:
+                    if has_var_positional:
+                        args.append(value)
+                    else:
+                        kwargs[gui_arg.name] = value
+
+                case inspect.Parameter.VAR_POSITIONAL:
+                    args.extend(value)
+
+                case inspect.Parameter.KEYWORD_ONLY:
+                    kwargs[gui_arg.name] = value
+
+                case inspect.Parameter.VAR_KEYWORD:
+                    kwargs.update(value)
+
+                case inspect.Parameter.VAR_KEYWORD:
+                    duplicates = kwargs.keys() & value.keys()
+
+                    if duplicates:
+                        raise ValueError(
+                            "Variable keyword arguments conflict with explicit "
+                            f"arguments: {', '.join(sorted(duplicates))}"
+                        )
+
+                    kwargs.update(value)
+
+        args = tuple(args)
+        self.signature.bind(*args, **kwargs)
+        return args, kwargs
+
+    def call(self) -> Any:
+        """Call the function with the given inputs."""
+        args, kwargs = self.get_inputs()
+        return self.target_fn(*args, **kwargs)
+
+
+if __name__ == '__main__':
+    # ruff: disable[D101,D102,D107]
+    from PySide6.QtWidgets import (
+        QApplication,
+        QMainWindow,
+        QMessageBox,
+        QPushButton,
+    )
+
+    app = QApplication()
+
+    class MainWindow(QMainWindow):
+        def __init__(self, callable_: Callable):
+            super().__init__()
+
+            self.container = QWidget(parent=self)
+            self.vlayout = QVBoxLayout()
+
+            self.callable_widget = CallableWidget(callable_, parent=self.container)
+            self.vlayout.addWidget(self.callable_widget)
+
+            self.parse_push_button = QPushButton('Parse inputs', parent=self.container)
+            self.parse_push_button.clicked.connect(self.parse_inputs)
+            self.vlayout.addWidget(self.parse_push_button)
+
+            self.call_push_button = QPushButton('Call function', parent=self.container)
+            self.call_push_button.clicked.connect(self.call)
+            self.vlayout.addWidget(self.call_push_button)
+
+            self.container.setLayout(self.vlayout)
+            self.setCentralWidget(self.container)
+
+        def parse_inputs(self):
+            inputs = self.callable_widget.get_inputs()
+            msg = QMessageBox(parent=self)
+            msg.setText(f'Args: {inputs[0]}\nKwargs: {inputs[1]}')
+            msg.exec()
+
+        def call(self):
+            res = self.callable_widget.call()
+            msg = QMessageBox(parent=self)
+            msg.setText(str(res))
+            msg.exec()
+
+    from rfsocinterface.core.data import RemoveElectronicsNoise
+
+    w = MainWindow(RemoveElectronicsNoise)
+    w.show()
+
+    # ruff: enable[D101,D102,D107]
+
+    app.exec()
