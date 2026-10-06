@@ -597,11 +597,21 @@ class CallableListWidget(QWidget):
         self.setLayout(hlayout)
 
         self.drag.active_item_changed.connect(self.active_item_changed.emit)
+        self.drag.active_item_changed.connect(self.show_active_args)
 
     @property
     def active_item(self) -> CallableDragItem | None:
         """Return the currently selected item."""
         return self.drag.active_item
+
+    def show_active_args(self, active_item: CallableDragItem | None):
+        """Update the arguments to match the active item."""
+        if active_item is None:
+            self.args_container.setCurrentIndex(0)
+        else:
+            self.args_container.setCurrentIndex(
+                self.args_container.indexOf(active_item.widget)
+            )
 
     def add_item(
         self,
@@ -628,9 +638,9 @@ class CallableListWidget(QWidget):
         args: Sequence[GuiArg] | None = None,
         use_defaults: bool = True,
         **init_kwargs,
-    ):
+    ) -> CallableDragItem:
         """Create an item for the callable and add it to the list."""
-        self.insert_callable(
+        return self.insert_callable(
             -1,
             target,
             *init_args,
@@ -649,7 +659,7 @@ class CallableListWidget(QWidget):
         args: Sequence[GuiArg] | None = None,
         use_defaults: bool = True,
         **init_kwargs,
-    ):
+    ) -> CallableDragItem:
         """Create an item for the callable and add it to the list."""
         item = CallableDragItem(
             target,
@@ -661,6 +671,7 @@ class CallableListWidget(QWidget):
             **init_kwargs,
         )
         self.insert_item(idx, item)
+        return item
 
     def clear(self):
         """Clear all items from the list."""
@@ -685,11 +696,13 @@ class CallableListWidget(QWidget):
     def display_args(self):
         """Show the arguments for the selected function in the side panel."""
         item: CallableDragItem = self.sender()
-        idx = self.items().index(item) + 1
-        self.args_container.setCurrentIndex(idx)
-        # self.args_container.setCurrentIndex(
-        #     self.args_container.indexOf(item.widget)
-        # )
+        # idx = self.items().index(item) + 1
+        # self.args_container.setCurrentIndex(idx)
+        self.args_container.setCurrentIndex(self.args_container.indexOf(item.widget))
+
+    def set_active_item(self, item: CallableDragItem | None):
+        """Set teh current active item."""
+        self.drag.set_active_item(item)
 
     @override
     def mousePressEvent(self, event: QMouseEvent):

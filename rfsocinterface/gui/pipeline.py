@@ -10,7 +10,7 @@ from rfsocinterface.core.data import (
     Pipeline,
 )
 from rfsocinterface.gui.uic.pipeline_ui import Ui_PipelineDialog
-from rfsocinterface.gui.widgets.function import FunctionDragItem
+from rfsocinterface.gui.widgets.function import CallableDragItem
 
 
 class RoutineSelectionDialog(QDialog):
@@ -65,19 +65,19 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         # self.add_toolButton.clicked.connect(self.select_and_add_routine)
         self.add_toolButton.clicked.connect(lambda _: self.select_and_add_routine())
         self.remove_toolButton.clicked.connect(lambda _: self._temp_remove_item())
-        self.drag_function_widget.active_item_changed.connect(self.toggle_remove_button)
+        self.callable_list_widget.active_item_changed.connect(self.toggle_remove_button)
         self.toggle_remove_button(None)
         # self.buttonBox.accepted.connect(self.accept)
         # self.buttonBox.rejected.connect(self.reject)
 
-        self._current_items: list[FunctionDragItem] = []
-        self._new_items: list[FunctionDragItem] = []
-        self._removed_items: list[FunctionDragItem] = []
+        self._current_items: list[CallableDragItem] = []
+        self._new_items: list[CallableDragItem] = []
+        self._removed_items: list[CallableDragItem] = []
         # self.drag_function_widget.orderChanged.connect(self.update_order)
 
     @override
     def exec(self):
-        self._current_items = self.drag_function_widget.items()
+        self._current_items = self.callable_list_widget.items()
         # print(f'Original order: {self.drag_function_widget.item_data_separated()}\n')
         self._new_items = []
         self._removed_items = []
@@ -98,28 +98,26 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
     def make_pipeline(self) -> Pipeline:
         """Create a Pipeline object from the dialog."""
         new_pipeline = Pipeline()
-        for item in self.drag_function_widget.items():
-            new_pipeline.add_routine(item.func_widget.call_function())
+        for item in self.callable_list_widget.items():
+            new_pipeline.add_routine(item.widget.call())
         return new_pipeline
 
     @override
     def reject(self):
         # Un-remove any items that were removed
-        for section_items in self._removed_items:
-            for item in section_items:
-                item.show()
+        for item in self._removed_items:
+            item.show()
         self._removed_items = []
 
         # Delete new items
-        for section_items in self._new_items:
-            for item in section_items:
-                self.remove_routine(item)
+        for item in self._new_items:
+            self.remove_routine(item)
         self._new_items = []
 
         # Restore the order of the original items
         # print(f'New order: {self.drag_function_widget.item_data_separated()}\n')
         for i, item in enumerate(self._current_items):
-            self.drag_function_widget.insert_item(i, item)
+            self.callable_list_widget.insert_item(i + 1, item)
         # for i_sec, section_items in enumerate(self._current_items):
         #     section = self.drag_function_widget.drag.sections[i_sec]
         #     for i, item in enumerate(section_items):
@@ -130,9 +128,8 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
     @override
     def accept(self):
         # Actually remove items
-        for section in self._removed_items:
-            for item in section:
-                self.remove_routine(item)
+        for item in self._removed_items:
+            self.remove_routine(item)
         self._new_items = []  # New items were already added
         self._removed_items = []
 
@@ -165,20 +162,21 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
         #     args = DATA_ROUTINE_FUNCTION_WIDGET_ARGS[
         #         routine_type_name
         #     ]  # Get default values
-        item = self.drag_function_widget.add_item(*args)
+        routine_cls = ROUTINE_REGISTRY[routine_type_name]
+        item = self.callable_list_widget.add_callable(routine_cls)
         # item = self.drag_function_widget.add_item(*args)
         item.clicked.emit()  # Set active itme and display the function's aruments
         self._new_items.append(item)
 
-    def remove_routine(self, i_sec: int, item: FunctionDragItem | None = None):
+    def remove_routine(self, item: CallableDragItem | None = None):
         """Remove a routine from the list."""
         if item is None:
-            i_sec, item = self.drag_function_widget.active_item
+            item = self.callable_list_widget.active_item
         if item is not None:
-            self.drag_function_widget.remove_item(i_sec, item)
+            self.callable_list_widget.remove_item(item)
 
     def _temp_remove_item(self):
-        item = self.drag_function_widget.active_item
+        item = self.callable_list_widget.active_item
         # No need to keep track of new items that are then removed
         if item in self._new_items:
             self._new_items.remove(item)
@@ -188,3 +186,50 @@ class PipelineDialog(QDialog, Ui_PipelineDialog):
             item.hide()
             # ...but keep track of it in case changes are discarded
             self._removed_items.append(item)
+            self.callable_list_widget.set_active_item(None)
+
+
+if __name__ == '__main__':
+    # ruff: disable[D101,D102,D107]
+    from PySide6.QtWidgets import (
+        QApplication,
+        QMainWindow,
+        QMessageBox,
+        QPushButton,
+    )
+
+    app = QApplication()
+
+    class MainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.dial = PipelineDialog(parent=self)
+            self.pipeline = None
+            self.push_button = QPushButton('Processing...', parent=self)
+            self.push_button.clicked.connect(self.make_pipeline)
+            self.setCentralWidget(self.push_button)
+
+        def make_pipeline(self):
+            res = self.dial.exec()
+            match res:
+                case QDialog.DialogCode.Accepted:
+                    self.pipeline = self.dial.make_pipeline()
+                    self.show_routines()
+                case _:
+                    return
+
+        def show_routines(self):
+            strings = [
+                f'{routine.__class__.__name__}({routine.params})'
+                for routine in self.pipeline.routines
+            ]
+            msg = QMessageBox(parent=self)
+            msg.setText('\n'.join(strings))
+            msg.exec()
+
+    w = MainWindow()
+    w.show()
+
+    # ruff: enable[D101,D102,D107]
+
+    app.exec()

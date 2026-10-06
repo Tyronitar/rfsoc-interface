@@ -15,7 +15,7 @@
   </property>
   <layout class="QGridLayout" name="gridLayout">
    <item row="0" column="0" colspan="4">
-    <widget class="DragFunctionWidget" name="drag_function_widget" native="true">
+    <widget class="CallableListWidget" name="callable_list_widget" native="true">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
        <horstretch>0</horstretch>
@@ -91,7 +91,7 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>DragFunctionWidget</class>
+   <class>CallableListWidget</class>
    <extends>QWidget</extends>
    <header>rfsocinterface.gui.widgets.function</header>
    <container>1</container>

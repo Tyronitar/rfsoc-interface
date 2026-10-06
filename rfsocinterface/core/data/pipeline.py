@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from typing import overload
 
 from rfsocinterface.core.data.routines import (
     ROUTINE_REGISTRY,
@@ -18,8 +19,10 @@ _logger = logging.getLogger(__name__)
 class Pipeline:
     """Class representing a data pipeline."""
 
-    def __init__(self, routines: Sequence[DataRoutine] = []):
+    def __init__(self, routines: Sequence[DataRoutine] | None = None):
         """Initialize a Pipeline."""
+        if routines is None:
+            routines = []
         self.routines = routines
 
     def from_tod(
@@ -50,18 +53,36 @@ class Pipeline:
         results = self.run(pd)
         return pd, results
 
+    @overload
     def add_routine(self, name: str, **params):
+        pass
+
+    @overload
+    def add_routine(self, routine_cls: type[DataRoutine], **params):
+        pass
+
+    @overload
+    def add_routine(self, routine: DataRoutine):
+        pass
+
+    def add_routine(self, arg: str | type[DataRoutine] | DataRoutine, **params):
         """Instatiate a DataRoutine and add it to this pipeline.
 
         Raises:
             (KeyError): If the `name` is not registered in the ROUTINE_REGISTRY.
 
         """
-        routine_cls = ROUTINE_REGISTRY[name]
-        routine = routine_cls(**params)
+        if isinstance(arg, str):
+            routine_cls = ROUTINE_REGISTRY[arg]
+            routine = routine_cls(**params)
+        elif isinstance(arg, type):
+            routine = arg(**params)
+        else:
+            routine = arg
         self.routines.append(routine)
         _logger.debug(
-            f'Pipeline: Added routine {name} with params {params} to pipeline.'
+            f'Pipeline: Added routine {routine.__class__.__name__} with '
+            f'params {params} to pipeline.'
         )
 
     def load_config(self, config: dict):

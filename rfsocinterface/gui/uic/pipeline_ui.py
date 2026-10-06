@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialog, QDialogBu
     QGridLayout, QSizePolicy, QSpacerItem, QToolButton,
     QWidget)
 
-from rfsocinterface.gui.widgets.function import DragFunctionWidget
+from rfsocinterface.gui.widgets.function import CallableListWidget
 from . import icons_rc
 
 class Ui_PipelineDialog(object):
@@ -29,15 +29,15 @@ class Ui_PipelineDialog(object):
         PipelineDialog.resize(426, 348)
         self.gridLayout = QGridLayout(PipelineDialog)
         self.gridLayout.setObjectName(u"gridLayout")
-        self.drag_function_widget = DragFunctionWidget(PipelineDialog)
-        self.drag_function_widget.setObjectName(u"drag_function_widget")
+        self.callable_list_widget = CallableListWidget(PipelineDialog)
+        self.callable_list_widget.setObjectName(u"callable_list_widget")
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.drag_function_widget.sizePolicy().hasHeightForWidth())
-        self.drag_function_widget.setSizePolicy(sizePolicy)
+        sizePolicy.setHeightForWidth(self.callable_list_widget.sizePolicy().hasHeightForWidth())
+        self.callable_list_widget.setSizePolicy(sizePolicy)
 
-        self.gridLayout.addWidget(self.drag_function_widget, 0, 0, 1, 4)
+        self.gridLayout.addWidget(self.callable_list_widget, 0, 0, 1, 4)
 
         self.buttonBox = QDialogButtonBox(PipelineDialog)
         self.buttonBox.setObjectName(u"buttonBox")
