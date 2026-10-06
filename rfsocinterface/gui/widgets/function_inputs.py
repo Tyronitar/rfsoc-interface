@@ -947,7 +947,7 @@ class OptionalInputWidget[T](QGroupBox, InputWidget[T]):
         self.item_type = type_
 
         self.vlayout = QVBoxLayout()
-        self.checkbox = QCheckBox('Use value', parent=self)
+        self.checkbox = QCheckBox('Specify value?', parent=self)
         self.vlayout.addWidget(self.checkbox)
 
         self.widget = create_input_widget(type_)
