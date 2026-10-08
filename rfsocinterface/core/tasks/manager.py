@@ -10,7 +10,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from rfsocinterface.core.tasks.backend import TaskBackend
 from rfsocinterface.core.tasks.tasks import (
-    TERMINAL,
+    TERMINAL_STATUSES,
     CancellationPolicy,
     Cancelled,
     Failed,
@@ -70,7 +70,7 @@ class TaskManager(QObject):
     def cancel(self, task_id: UUID) -> None:
         """Cancel a currently executing task."""
         record = self.records[task_id]
-        if record.status in TERMINAL:
+        if record.status in TERMINAL_STATUSES:
             return
         match record.task.cancellation_policy:
             case CancellationPolicy.COOPERATIVE:
@@ -85,7 +85,7 @@ class TaskManager(QObject):
     def terminate(self, task_id: UUID) -> None:
         """Forcibly terminate a currently executing task."""
         record = self.records[task_id]
-        if record.status not in TERMINAL:
+        if record.status not in TERMINAL_STATUSES:
             self.backend.terminate(task_id)
             # Termination is not guaranteed to be immediate; _poll reconciles exit.
             record.status = TaskStatus.CANCELLING
@@ -129,7 +129,7 @@ class TaskManager(QObject):
         for task_id, exit_info in updates.exited_workers.items():
             record = self.records.get(task_id)
 
-            if record is None or record.status in TERMINAL:
+            if record is None or record.status in TERMINAL_STATUSES:
                 continue
 
             if exit_info.termination_requested:

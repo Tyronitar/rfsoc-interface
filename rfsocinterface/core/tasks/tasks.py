@@ -32,7 +32,8 @@ class TaskStatus(Enum):
     """Task has finished handling cancellation."""
 
 
-TERMINAL = {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+TERMINAL_STATUSES = {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+type TerminalEvent = Succeeded | Failed | Cancelled
 
 
 class CancellationPolicy(Enum):

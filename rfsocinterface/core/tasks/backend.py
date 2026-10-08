@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
 import multiprocessing as mp
-import queue
 import traceback
 import typing
 from dataclasses import dataclass
@@ -20,6 +20,7 @@ from rfsocinterface.core.tasks.tasks import (
     TaskCancelled,
     TaskContext,
     TaskEvent,
+    TerminalEvent,
 )
 
 
@@ -76,14 +77,17 @@ class MultiprocessingWorkerHandle:
     cancel_event: mp.Event
     """Event to trigger cancellation."""
 
-    result_conn: Connection
-    """Connection to send the execution result to the backend."""
+    conn: Connection
+    """Connection to send events to the backend."""
 
     termination_requested: bool = False
     """Whether termination was requested for this task."""
 
     terminal_received: bool = False
     """Whether the worker's terminal event was received."""
+
+    channel_closed: bool = False
+    """Whether the worker's connection has been closed."""
 
     def is_alive(self) -> bool:
         """Whether the process is still alive."""
@@ -95,17 +99,17 @@ class MultiprocessingWorkerHandle:
 
 
 def multiprocessing_worker_entry(
-    task: Task, out_queue: mp.Queue, cancel_event: mp.Event, result_conn: Connection
+    task: Task, cancel_event: mp.Event, event_conn: Connection
 ) -> None:
     """Entry point for a worker to execute a task from a MultiprocessingBackend."""
     context = TaskContext(
         task.id,
-        send_event=out_queue.put,
+        send_event=event_conn.send,
         is_cancelled=cancel_event.is_set,
     )
     try:
         context.check_cancelled()
-        out_queue.put(Started(task.id))
+        event_conn.send(Started(task.id))
 
         kwargs = dict(task.kwargs)
         if task.with_context:
@@ -116,15 +120,16 @@ def multiprocessing_worker_entry(
         result = task.target(*task.args, **kwargs)
         context.check_cancelled()
 
-        result_conn.send(Succeeded(task.id, result))
+        event_conn.send(Succeeded(task.id, result))
     except TaskCancelled:
-        result_conn.send(Cancelled(task.id))
+        event_conn.send(Cancelled(task.id))
     except Exception as exc:  # noqa: BLE001
-        result_conn.send(
-            Failed(task.id, f'{type(exc).__name__}: {exc}', traceback.format_exc())
-        )
+        with contextlib.suppress(OSError, BrokenPipeError):
+            event_conn.send(
+                Failed(task.id, f'{type(exc).__name__}: {exc}', traceback.format_exc())
+            )
     finally:
-        result_conn.close()
+        event_conn.close()
 
 
 class MultiprocessingBackend:
@@ -133,7 +138,6 @@ class MultiprocessingBackend:
     def __init__(self) -> None:
         """Initialize a MultiprocessingBackend."""
         self.context = mp.get_context('spawn')
-        self.events = self.context.Queue()
         self.workers: dict[UUID, MultiprocessingWorkerHandle] = {}
 
     @typing.override
@@ -142,11 +146,11 @@ class MultiprocessingBackend:
             raise ValueError(f'Duplicate task ID: {task.id}')
 
         cancel_event = self.context.Event()
-        parent_conn, child_conn = self.context.Pipe(duplex=False)
+        recv_conn, send_conn = self.context.Pipe(duplex=False)
 
         process = self.context.Process(
             target=multiprocessing_worker_entry,
-            args=(task, self.events, cancel_event, child_conn),
+            args=(task, cancel_event, send_conn),
             name=task.name,
         )
 
@@ -154,15 +158,16 @@ class MultiprocessingBackend:
             process.start()
         except:
             process.close()
-            child_conn.close()
+            send_conn.close()
+            recv_conn.close()
             raise
-
-        child_conn.close()
+        else:
+            send_conn.close()
 
         self.workers[task.id] = MultiprocessingWorkerHandle(
             process=process,
             cancel_event=cancel_event,
-            result_conn=parent_conn,
+            conn=recv_conn,
         )
 
     @typing.override
@@ -173,63 +178,62 @@ class MultiprocessingBackend:
     def terminate(self, task_id: UUID) -> None:
         handle = self.workers[task_id]
         handle.termination_requested = True
-        handle.process.terminate()
+        if handle.process.is_alive():
+            handle.process.terminate()
 
     @typing.override
     def poll(self, limit: int = 100) -> BackendUpdate:
-        messages: list[TaskEvent] = []
+        events: list[TaskEvent] = []
         exited_workers: dict[UUID, WorkerExit] = {}
 
-        # Retrieve ordinary task events (progress, messages, etc.).
-        for _ in range(limit):
-            try:
-                messages.append(self.events.get_nowait())
-            except queue.Empty:
-                break
-
-        # Retrieve terminal outcomes and detect unexpected worker exits.
         for task_id, handle in list(self.workers.items()):
-            conn = handle.result_conn
+            conn = handle.conn
+
+            while len(events) < limit and not handle.channel_closed:
+                # Consume the worker's remaining events
+                try:
+                    if not conn.poll(0):
+                        break
+                    event = conn.recv()
+                except EOFError:
+                    # Pipe is closed
+                    handle.channel_closed = True
+                    break
+                except (OSError, ConnectionError):
+                    # Pipe is broken
+                    handle.channel_closed = True
+                    break
+
+                events.append(event)
+                if isinstance(event, TerminalEvent.__value__):
+                    handle.terminal_received = True
+
             exit_code = handle.process.exitcode
 
-            terminal_event = None
-            # A pipe can contain a result even after the process exits.
-            try:
-                if conn.poll():
-                    terminal_event = conn.recv()
-            except (EOFError, OSError):
-                pass
-
-            if terminal_event is not None:
-                messages.append(terminal_event)
-                handle.terminal_received = True
-
-            if exit_code is None:
-                # The worker sent its result before fully exiting.
-                # Keep the handle until the process has actually exited.
+            # Keep the worker until its channel is fully drained.
+            if exit_code is None or not handle.channel_closed:
                 continue
 
             if not handle.terminal_received:
-                # Worker exited without reporting a terminal outcome.
+                # The worker process has exited or the pipe has been closed but we
+                # haven't seen a TerminalEvent yet, so something went wrong.
                 exited_workers[task_id] = WorkerExit(
                     exit_code=exit_code,
                     termination_requested=handle.termination_requested,
                 )
 
-            handle.process.join(timeout=0)
-            conn.close()
-            del self.workers[task_id]
+            # We're done with the worker, so clean up resources
+            self.reap(task_id)
 
-        return BackendUpdate(
-            events=messages,
-            exited_workers=exited_workers,
-        )
+        return BackendUpdate(events, exited_workers)
 
-    @typing.override
-    def reap(self, task_id: UUID) -> None:
+    def reap(self, task_id: UUID, timeout: float = 0) -> None:
+        """Clean up resources of and remove references to a completed worker."""
         handle = self.workers.pop(task_id, None)
         if handle is not None:
-            handle.process.join(timeout=0)
+            handle.process.join(timeout=timeout)
+            handle.conn.close()
+            handle.process.close()
 
     @typing.override
     def close(self) -> None:
@@ -241,7 +245,6 @@ class MultiprocessingBackend:
             if handle.process.is_alive():
                 handle.process.terminate()
                 handle.process.join()
-            handle.result_conn.close()
+            handle.conn.close()
+            handle.process.close()
         self.workers.clear()
-        self.events.close()
-        self.events.join_thread()
