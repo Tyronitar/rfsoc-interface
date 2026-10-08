@@ -173,6 +173,7 @@ class Window(QWidget):
 
     def closeEvent(self, event):
         self.manager.close()
+        self.manager.runner.wait()
         super().closeEvent(event)
 
 
