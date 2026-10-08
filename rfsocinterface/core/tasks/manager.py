@@ -36,7 +36,7 @@ class TaskRecord:
 
 
 class TaskManager(QObject):
-    """Widget for managing tasks and displaying their progress and results."""
+    """Widget for tracking task state and communicating with the GUI."""
 
     changed = Signal(object)
     event_received = Signal(object)

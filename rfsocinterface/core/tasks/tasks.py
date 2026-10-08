@@ -144,17 +144,22 @@ class TaskCancelled(Exception):  # noqa: N818
 
 
 class TaskContext:
-    """Structure facilitating communication beween the main process and this task."""
+    """Backend-independent interface for reporting progress and checking status."""
 
-    def __init__(self, task_id: UUID, queue: Any, cancel_event: Any):
+    def __init__(
+        self,
+        task_id: UUID,
+        send_event: Callable[[TaskEvent], None],
+        is_cancelled: Callable[[], bool],
+    ):
         """Initialize a TaskContext."""
         self.task_id = task_id
-        self._queue = queue
-        self._cancel_event = cancel_event
+        self._send_event = send_event
+        self._is_cancelled = is_cancelled
 
     def emit(self, kind: str, payload: Any) -> None:
         """Send a message to the main process."""
-        self._queue.put(Message(self.task_id, kind, payload))
+        self._send_event(Message(self.task_id, kind, payload))
 
     def progress(
         self,
@@ -165,16 +170,16 @@ class TaskContext:
         label: str | None = None,
     ) -> None:
         """Send the task's progress to the main process."""
-        self._queue.put(Progress(self.task_id, value, minimum, maximum, label))
-
-    def check_cancelled(self) -> None:
-        """Check if the task has been cancelled."""
-        if self._cancel_event.is_set():
-            raise TaskCancelled
+        self._send_event(Progress(self.task_id, value, minimum, maximum, label))
 
     def is_cancelled(self) -> bool:
         """Return whether the task has started cancellation."""
-        return self._cancel_event.is_set()
+        return self._is_cancelled()
+
+    def check_cancelled(self) -> None:
+        """Check if the task has been cancelled."""
+        if self.is_cancelled():
+            raise TaskCancelled
 
     # TODO: Implement handling for sending pickled figures to the main process.
     # def show_plot(self, figure: Figure) -> None:

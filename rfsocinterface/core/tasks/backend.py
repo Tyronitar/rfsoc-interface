@@ -8,7 +8,7 @@ import traceback
 import typing
 from dataclasses import dataclass
 from multiprocessing.connection import Connection
-from typing import Any, Protocol
+from typing import Protocol
 from uuid import UUID
 
 from rfsocinterface.core.tasks.tasks import (
@@ -43,7 +43,7 @@ class BackendUpdate:
 
 
 class TaskBackend(Protocol):
-    """Class handling worker creation and communication to the main process."""
+    """Class handling worker creation and task execution."""
 
     def start(self, task: Task) -> None:
         """Start executing a task."""
@@ -95,10 +95,14 @@ class MultiprocessingWorkerHandle:
 
 
 def multiprocessing_worker_entry(
-    task: Task, out_queue: Any, cancel_event: Any, result_conn: Connection
+    task: Task, out_queue: mp.Queue, cancel_event: mp.Event, result_conn: Connection
 ) -> None:
     """Entry point for a worker to execute a task from a MultiprocessingBackend."""
-    context = TaskContext(task.id, out_queue, cancel_event)
+    context = TaskContext(
+        task.id,
+        send_event=out_queue.put,
+        is_cancelled=cancel_event.is_set,
+    )
     try:
         context.check_cancelled()
         out_queue.put(Started(task.id))
