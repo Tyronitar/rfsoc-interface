@@ -140,6 +140,13 @@ class Cancelled(TaskEvent):
     """Event indicating that a task has finished cancelling."""
 
 
+@dataclass(frozen=True)
+class IPCFailed(TaskEvent):
+    """Event indicating that IPC has failed."""
+
+    error: str
+
+
 class TaskCancelled(Exception):  # noqa: N818
     """Exception raised to signal a task to interrupt its execution."""
 

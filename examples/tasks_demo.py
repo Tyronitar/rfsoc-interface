@@ -111,7 +111,7 @@ class Window(QWidget):
         super().__init__()
         self.setWindowTitle('Background task demo')
         self.resize(750, 350)
-        self.manager = TaskManager(MultiprocessingBackend())
+        self.manager = TaskManager(MultiprocessingBackend(ipc_failure_grace=0.25))
         self.rows = {}
         layout = QVBoxLayout(self)
         add_button = QPushButton('Start 10-second task')

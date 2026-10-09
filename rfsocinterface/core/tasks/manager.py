@@ -15,6 +15,7 @@ from rfsocinterface.core.tasks.tasks import (
     CancellationPolicy,
     Cancelled,
     Failed,
+    IPCFailed,
     Message,
     Progress,
     Started,
@@ -34,6 +35,7 @@ class TaskRecord:
     result: Any = None
     error: str | None = None
     traceback: str | None = None
+    worker_exited: bool = False
 
 
 class TaskManager(QObject):
@@ -57,6 +59,7 @@ class TaskManager(QObject):
         self.runner.updated.connect(self._handle_update)
         self.runner.command_failed.connect(self._command_failed)
         self.runner.command_succeeded.connect(self._command_succeeded)
+        self.runner.fatal_error.connect(self._handle_fatal_error)
         self.runner.start()
 
     def submit(self, task: Task):
@@ -118,12 +121,19 @@ class TaskManager(QObject):
                 case Succeeded():
                     record.status = TaskStatus.SUCCEEDED
                     record.result = event.result
+                    record.worker_exited = True
                 case Failed():
                     record.status = TaskStatus.FAILED
                     record.error = event.error
                     record.traceback = event.traceback
+                    record.worker_exited = True
                 case Cancelled():
                     record.status = TaskStatus.CANCELLED
+                    record.worker_exited = True
+                case IPCFailed():
+                    if record.status not in TERMINAL_STATUSES:
+                        record.status = TaskStatus.FAILED
+                    record.error = event.error
 
             self.changed.emit(record)
 
@@ -146,9 +156,10 @@ class TaskManager(QObject):
                         'without reporting a terminal outcome'
                     )
 
+            record.worker_exited = True
             self.changed.emit(record)
 
-    @Slot(object, str, str)
+    @Slot(object, object, str, str)
     def _command_failed(
         self, command: CommandType, task_id: UUID, error: str, traceback: str
     ):
@@ -169,6 +180,11 @@ class TaskManager(QObject):
                 record.traceback = traceback
 
         self.changed.emit(record)
+
+    @Slot(str, str)
+    def _handle_fatal_error(self, error: CommandType, traceback: str):
+        """Handle fatal errors reported by the runner."""
+        # TODO: Mark affected tasks as failed or indicate unknown execution state
 
     @Slot(object, object)
     def _command_succeeded(self, task_id: UUID, command: CommandType):

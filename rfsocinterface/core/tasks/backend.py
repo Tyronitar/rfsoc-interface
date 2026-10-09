@@ -5,18 +5,22 @@ from __future__ import annotations
 import contextlib
 import multiprocessing as mp
 import queue
+import time
 import traceback
 import typing
 from dataclasses import dataclass
 from enum import Enum, auto
 from multiprocessing.connection import Connection
 from threading import Thread
+from time import monotonic
 from typing import Protocol
 from uuid import UUID
 
 from rfsocinterface.core.tasks.tasks import (
+    CancellationPolicy,
     Cancelled,
     Failed,
+    IPCFailed,
     Started,
     Succeeded,
     Task,
@@ -107,6 +111,9 @@ class MultiprocessingWorkerHandle:
     the backend handles the message to avoid slow deserialization blocking.
     """
 
+    cancellation_policy: CancellationPolicy
+    """How this worker should handle cancellation. Inherited from the task."""
+
     termination_requested: bool = False
     """Whether termination was requested for this task."""
 
@@ -118,6 +125,9 @@ class MultiprocessingWorkerHandle:
 
     receiver_error: str | None = None
     """Error concerning the receiver thread."""
+
+    ipc_failure_at: float | None = None
+    """The time that IPC failure was detected, if it did."""
 
     def is_alive(self) -> bool:
         """Whether the process is still alive."""
@@ -198,11 +208,13 @@ def receive_worker_events(
 class MultiprocessingBackend:
     """TaskBackend implementation using multiprocessing."""
 
-    def __init__(self) -> None:
+    def __init__(self, ipc_failure_grace: float = 2.0) -> None:
         """Initialize a MultiprocessingBackend."""
         self.context = mp.get_context('spawn')
         self.workers: dict[UUID, MultiprocessingWorkerHandle] = {}
         self._received: queue.Queue[ReceiverUpdate] = queue.Queue()
+        # Fallback for broken communication channels
+        self.ipc_failure_grace = ipc_failure_grace
 
     @typing.override
     def start(self, task: Task) -> None:
@@ -241,6 +253,7 @@ class MultiprocessingBackend:
             cancel_event=cancel_event,
             conn=recv_conn,
             receiver=receiver,
+            cancellation_policy=task.cancellation_policy,
         )
         try:
             receiver.start()
@@ -277,21 +290,53 @@ class MultiprocessingBackend:
             if handle is None:
                 continue
 
-            if update.status == ReceiverStatus.EVENT:
-                # Process the event
-                event = update.event
-                if event is None:
-                    continue
-                events.append(event)
-                if isinstance(event, TerminalEvent.__value__):
-                    handle.terminal_received = True
-            elif update.status == ReceiverStatus.EOF:
-                # Pipe is closed
-                handle.channel_closed = True
-            elif update.status == ReceiverStatus.ERROR:
-                # Receiver encountered an issue while calling recv()
-                handle.channel_closed = True
-                handle.receiver_error = update.error
+            match update.status:
+                case ReceiverStatus.EVENT:
+                    # Process the event
+                    event = update.event
+                    if event is None:
+                        continue
+                    assert isinstance(event, TaskEvent)
+                    assert event.task_id == update.task_id
+                    events.append(event)
+                    if isinstance(event, TerminalEvent.__value__):
+                        handle.terminal_received = True
+                case ReceiverStatus.EOF:
+                    # Pipe is closed
+                    handle.channel_closed = True
+                case ReceiverStatus.ERROR:
+                    # Receiver encountered an issue while calling recv(). The
+                    # communication channel is no longer usable
+                    handle.channel_closed = True
+                    handle.receiver_error = update.error
+                    handle.ipc_failure_at = monotonic()
+                    # Notify manager of the issue
+                    events.append(
+                        IPCFailed(
+                            update.task_id,
+                            update.error or 'Unknown IPC error',
+                        )
+                    )
+                    # Ask the worker to stop if it is still running
+                    if handle.process.is_alive():
+                        handle.cancel()
+
+        # Handle recovery from any IPC failures
+        now = monotonic()
+        for handle in self.workers.values():
+            if handle.ipc_failure_at is None:
+                continue
+
+            if not handle.process.is_alive():
+                continue
+
+            elapsed = now - handle.ipc_failure_at
+
+            if elapsed >= self.ipc_failure_grace:  # noqa: SIM102
+                # Worker took too long to cancel after the issue. Force terminate it.
+                if handle.cancellation_policy == CancellationPolicy.TERMINATE:
+                    handle.process.terminate()
+                # Otherwise, keep supervision of the worker until it exits
 
         # Reconcile worker process exits.
         for task_id, handle in list(self.workers.items()):
@@ -301,10 +346,14 @@ class MultiprocessingBackend:
             #
             # This also ensures that all previously received events
             # have been processed, since they share one FIFO queue.
-            if exit_code is None or not handle.channel_closed:
+            if (
+                exit_code is None
+                or not handle.channel_closed
+                or handle.receiver.is_alive()
+            ):
                 continue
 
-            if not handle.terminal_received:
+            if handle.receiver_error is not None or not handle.terminal_received:
                 # The worker process has exited or the pipe has been closed but we
                 # haven't seen a TerminalEvent yet, so something went wrong.
                 exited_workers[task_id] = WorkerExit(
@@ -318,16 +367,20 @@ class MultiprocessingBackend:
 
         return BackendUpdate(events, exited_workers)
 
-    def reap(
-        self, task_id: UUID, process_timeout: float = 0, receiver_timeout: float = 0
-    ) -> None:
+    def reap(self, task_id: UUID):
         """Clean up resources of and remove references to a completed worker."""
-        handle = self.workers.pop(task_id, None)
-        if handle is not None:
-            handle.receiver.join(timeout=process_timeout)
-            handle.process.join(timeout=receiver_timeout)
-            handle.conn.close()
-            handle.process.close()
+        handle = self.workers[task_id]
+
+        if handle.process.exitcode is None:
+            raise RuntimeError('Cannot reap a running worker')
+        if handle.receiver.is_alive():
+            raise RuntimeError('Cannot reap a worker with an active receiver')
+
+        handle.receiver.join(timeout=0)
+        handle.process.join(timeout=0)
+        handle.conn.close()
+        handle.process.close()
+        del self.workers[task_id]
 
     @typing.override
     def close(self) -> None:
@@ -337,18 +390,24 @@ class MultiprocessingBackend:
                 handle.cancel()
 
         # Give workers an opportunity to finish cleanup.
-        for handle in self.workers.values():
-            handle.process.join(timeout=1)
+        time.sleep(self.ipc_failure_grace)
 
         # Forcefully stop workers that did not exit.
         for handle in self.workers.values():
-            if handle.process.is_alive():
+            if (
+                handle.process.is_alive()
+                and handle.cancellation_policy == CancellationPolicy.TERMINATE
+            ):
                 handle.process.terminate()
 
+        # Join exited worker processes
+        for handle in self.workers.values():
+            handle.process.join()
+
         # Close IPC resources and reap receiver threads.
-        for task_id in self.workers:
+        for task_id in list(self.workers):
             # A partial message may leave recv() blocked on some
             # platforms. Do not wait indefinitely for receiver.
-            self.reap(task_id, receiver_timeout=0.5)
+            self.reap(task_id)
 
         self.workers.clear()

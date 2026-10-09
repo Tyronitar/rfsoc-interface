@@ -37,9 +37,10 @@ class BackendRunner(QObject):
     """Execute backend operations outside the GUI thread."""
 
     updated = Signal(object)
-    command_failed = Signal(int, object, str, str)
+    command_failed = Signal(object, object, str, str)
     command_succeeded = Signal(object, object)
     stopped = Signal()
+    fatal_error = Signal(str, str)
 
     def __init__(
         self,
@@ -119,6 +120,26 @@ class BackendRunner(QObject):
         self.command_succeeded.emit(command.task_id, command.kind)
 
     def _run(self) -> None:
+        """Wrapper around run loop for handling backend errors."""
+        try:
+            self._run_loop()
+        except BaseException as exc:  # noqa: BLE001
+            self.fatal_error.emit(
+                f'{type(exc).__name__}: {exc}',
+                traceback.format_exc(),
+            )
+        finally:
+            try:
+                self.backend.close()
+            except BaseException as exc:  # noqa: BLE001
+                self.fatal_error.emit(
+                    f'Backend cleanup failed: {exc}',
+                    traceback.format_exc(),
+                )
+            finally:
+                self.stopped.emit()
+
+    def _run_loop(self) -> None:
         """Core loop for handling communications."""
         try:
             while True:
