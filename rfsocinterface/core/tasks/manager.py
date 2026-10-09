@@ -138,10 +138,13 @@ class TaskManager(QObject):
                 record.status = TaskStatus.CANCELLED
             else:
                 record.status = TaskStatus.FAILED
-                record.error = (
-                    f'Worker exited with code {exit_info.exit_code} '
-                    'without reporting a result'
-                )
+                if exit_info.receiver_error:
+                    record.error = f'IPC failure: {exit_info.receiver_error}'
+                else:
+                    record.error = (
+                        f'Worker exited with code {exit_info.exit_code} '
+                        'without reporting a terminal outcome'
+                    )
 
             self.changed.emit(record)
 
