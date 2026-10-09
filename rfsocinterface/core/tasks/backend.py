@@ -48,7 +48,7 @@ class BackendUpdate:
     """Events since the last poll."""
 
     exited_workers: dict[UUID, WorkerExit]
-    """Workers that exited without reporting an outcome."""
+    """Workers that have succesfully been cleaned up by the backend."""
 
 
 class ReceiverStatus(Enum):
@@ -257,9 +257,18 @@ class MultiprocessingBackend:
         )
         try:
             receiver.start()
-        except:
-            self.terminate(task.id)
-            self.reap(task.id)
+        except BaseException:
+            handle = self.workers.pop(task.id)
+
+            try:
+                if handle.process.is_alive():
+                    handle.process.terminate()
+
+                handle.process.join()
+            finally:
+                handle.conn.close()
+                handle.process.close()
+
             raise
 
     @typing.override
@@ -296,8 +305,21 @@ class MultiprocessingBackend:
                     event = update.event
                     if event is None:
                         continue
-                    assert isinstance(event, TaskEvent)
-                    assert event.task_id == update.task_id
+                    if (
+                        not isinstance(event, TaskEvent)
+                        or event.task_id != update.task_id
+                    ):
+                        error = 'Invalid event received from worker'
+
+                        handle.receiver_error = error
+                        handle.ipc_failure_at = monotonic()
+
+                        events.append(IPCFailed(update.task_id, error))
+
+                        if handle.is_alive():
+                            handle.cancel()
+
+                        continue
                     events.append(event)
                     if isinstance(event, TerminalEvent.__value__):
                         handle.terminal_received = True
@@ -353,14 +375,11 @@ class MultiprocessingBackend:
             ):
                 continue
 
-            if handle.receiver_error is not None or not handle.terminal_received:
-                # The worker process has exited or the pipe has been closed but we
-                # haven't seen a TerminalEvent yet, so something went wrong.
-                exited_workers[task_id] = WorkerExit(
-                    exit_code=exit_code,
-                    termination_requested=handle.termination_requested,
-                    receiver_error=handle.receiver_error,
-                )
+            exited_workers[task_id] = WorkerExit(
+                exit_code=exit_code,
+                termination_requested=handle.termination_requested,
+                receiver_error=handle.receiver_error,
+            )
 
             # We're done with the worker, so clean up resources
             self.reap(task_id)
@@ -383,14 +402,18 @@ class MultiprocessingBackend:
         del self.workers[task_id]
 
     @typing.override
-    def close(self) -> None:
+    def close(self) -> bool:
         # Request cooperative cancellation
         for handle in self.workers.values():
             if handle.is_alive():
                 handle.cancel()
 
         # Give workers an opportunity to finish cleanup.
-        time.sleep(self.ipc_failure_grace)
+        deadline = monotonic() + self.ipc_failure_grace
+        while monotonic() < deadline:
+            if all(not h.is_alive() for h in self.workers.values()):
+                break
+            time.sleep(2e-2)
 
         # Forcefully stop workers that did not exit.
         for handle in self.workers.values():
@@ -402,12 +425,15 @@ class MultiprocessingBackend:
 
         # Join exited worker processes
         for handle in self.workers.values():
-            handle.process.join()
+            if handle.process.exitcode is not None:
+                handle.process.join(timeout=0)
 
-        # Close IPC resources and reap receiver threads.
-        for task_id in list(self.workers):
-            # A partial message may leave recv() blocked on some
-            # platforms. Do not wait indefinitely for receiver.
-            self.reap(task_id)
+        self.reap_finished_workers()
 
-        self.workers.clear()
+        return not self.workers
+
+    def reap_finished_workers(self):
+        """Close IPC resources and reap receiver threads for finished workers."""
+        for task_id, handle in list(self.workers.items()):
+            if not handle.is_alive() and not handle.receiver.is_alive():
+                self.reap(task_id)

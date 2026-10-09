@@ -9,7 +9,7 @@ from uuid import UUID
 from PySide6.QtCore import QObject, Signal, Slot
 
 from rfsocinterface.core.tasks.backend import BackendUpdate, TaskBackend
-from rfsocinterface.core.tasks.runner import BackendRunner, CommandType
+from rfsocinterface.core.tasks.runner import BackendCommandType, BackendRunner
 from rfsocinterface.core.tasks.tasks import (
     TERMINAL_STATUSES,
     CancellationPolicy,
@@ -121,15 +121,12 @@ class TaskManager(QObject):
                 case Succeeded():
                     record.status = TaskStatus.SUCCEEDED
                     record.result = event.result
-                    record.worker_exited = True
                 case Failed():
                     record.status = TaskStatus.FAILED
                     record.error = event.error
                     record.traceback = event.traceback
-                    record.worker_exited = True
                 case Cancelled():
                     record.status = TaskStatus.CANCELLED
-                    record.worker_exited = True
                 case IPCFailed():
                     if record.status not in TERMINAL_STATUSES:
                         record.status = TaskStatus.FAILED
@@ -137,31 +134,32 @@ class TaskManager(QObject):
 
             self.changed.emit(record)
 
-        # Workers that exited without reporting a terminal outcome.
+        # Handle workers that have exited and been cleaned up by the backend
         for task_id, exit_info in updates.exited_workers.items():
             record = self.records.get(task_id)
 
-            if record is None or record.status in TERMINAL_STATUSES:
+            if record is None:
                 continue
 
-            if exit_info.termination_requested:
-                record.status = TaskStatus.CANCELLED
-            else:
-                record.status = TaskStatus.FAILED
+            record.worker_exited = True
+
+            if record.status not in TERMINAL_STATUSES:
                 if exit_info.receiver_error:
+                    record.status = TaskStatus.FAILED
                     record.error = f'IPC failure: {exit_info.receiver_error}'
+                elif exit_info.termination_requested:
+                    record.status = TaskStatus.CANCELLED
                 else:
+                    record.status = TaskStatus.FAILED
                     record.error = (
                         f'Worker exited with code {exit_info.exit_code} '
                         'without reporting a terminal outcome'
                     )
-
-            record.worker_exited = True
             self.changed.emit(record)
 
     @Slot(object, object, str, str)
     def _command_failed(
-        self, command: CommandType, task_id: UUID, error: str, traceback: str
+        self, command: BackendCommandType, task_id: UUID, error: str, traceback: str
     ):
         """Handle failed commands sent to the runner."""
         record = self.records.get(task_id)
@@ -170,11 +168,11 @@ class TaskManager(QObject):
             return
 
         match command:
-            case CommandType.START:
+            case BackendCommandType.START:
                 record.status = TaskStatus.FAILED
                 record.error = error
                 record.traceback = traceback
-            case CommandType.CANCEL | CommandType.TERMINATE:
+            case BackendCommandType.CANCEL | BackendCommandType.TERMINATE:
                 # TODO: Report cancellation error to the GUI
                 record.error = error
                 record.traceback = traceback
@@ -182,12 +180,23 @@ class TaskManager(QObject):
         self.changed.emit(record)
 
     @Slot(str, str)
-    def _handle_fatal_error(self, error: CommandType, traceback: str):
+    def _handle_fatal_error(self, error: str, traceback: str):
         """Handle fatal errors reported by the runner."""
         # TODO: Mark affected tasks as failed or indicate unknown execution state
+        for record in self.records.values():
+            if record.worker_exited:
+                continue
+
+            if record.status not in TERMINAL_STATUSES:
+                # Backend crashed before verfiying that the task was completed
+                record.status = TaskStatus.UNKNOWN
+
+            record.error = f'Backend failure: {error}'
+            record.traceback = traceback
+            self.changed.emit(record)
 
     @Slot(object, object)
-    def _command_succeeded(self, task_id: UUID, command: CommandType):
+    def _command_succeeded(self, task_id: UUID, command: BackendCommandType):
         """Hook for acknowledging command completion."""
         # TODO: Add some acknowledgment logic if desired.
 

@@ -13,7 +13,7 @@ class TaskStatus(Enum):
     """Status of a task."""
 
     PENDING = auto()
-    """Task has not statred yet."""
+    """Task has not started yet."""
 
     RUNNING = auto()
     """Task is currently executing."""
@@ -30,6 +30,9 @@ class TaskStatus(Enum):
 
     CANCELLED = auto()
     """Task has finished handling cancellation."""
+
+    UNKNOWN = auto()
+    """The backend has lost access to the task's execution ."""
 
 
 TERMINAL_STATUSES = {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED}
