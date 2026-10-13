@@ -11,11 +11,11 @@ from uuid import UUID
 
 from PySide6.QtCore import QObject, Signal
 
-from .backend import BackendUpdate, TaskBackend
+from .backend import TaskBackend
 from .tasks import Task
 
 
-class CommandType(Enum):
+class BackendCommandType(Enum):
     """Type of message to send to a backend."""
 
     START = auto()
@@ -28,7 +28,7 @@ class CommandType(Enum):
 class BackendCommand:
     """A command issued to a manager's backend."""
 
-    kind: CommandType
+    kind: BackendCommandType
     task_id: UUID | None = None
     task: Task | None = None
 
@@ -72,15 +72,15 @@ class BackendRunner(QObject):
 
     def submit(self, task: Task) -> None:
         """Submit a task to the backend."""
-        self._enqueue(BackendCommand(CommandType.START, task.id, task))
+        self._enqueue(BackendCommand(BackendCommandType.START, task.id, task))
 
     def cancel(self, task_id: UUID) -> None:
         """Cancel execution of a task."""
-        self._enqueue(BackendCommand(CommandType.CANCEL, task_id))
+        self._enqueue(BackendCommand(BackendCommandType.CANCEL, task_id))
 
     def terminate(self, task_id: UUID) -> None:
         """Forceibly terminate execution of a task."""
-        self._enqueue(BackendCommand(CommandType.TERMINATE, task_id))
+        self._enqueue(BackendCommand(BackendCommandType.TERMINATE, task_id))
 
     def _enqueue(self, command: BackendCommand) -> None:
         """Add a command to the queue to be processed."""
@@ -92,7 +92,7 @@ class BackendRunner(QObject):
         """Request that the BackendRunner end it's polling thread."""
         if not self._stopping:
             self._stopping = True
-            self._commands.put(BackendCommand(CommandType.STOP))
+            self._commands.put(BackendCommand(BackendCommandType.STOP))
 
     def wait(self, timeout: float | None = None) -> bool:
         """Wait for shutdown. Call only when blocking is acceptable."""
@@ -105,13 +105,13 @@ class BackendRunner(QObject):
     def _execute(self, command: BackendCommand) -> None:
         """Pass a command to the backend for execution."""
         match command.kind:
-            case CommandType.START:
+            case BackendCommandType.START:
                 assert command.task is not None
                 self.backend.start(command.task)
-            case CommandType.CANCEL:
+            case BackendCommandType.CANCEL:
                 assert command.task_id is not None
                 self.backend.cancel(command.task_id)
-            case CommandType.TERMINATE:
+            case BackendCommandType.TERMINATE:
                 assert command.task_id is not None
                 self.backend.terminate(command.task_id)
             case _:
@@ -129,69 +129,81 @@ class BackendRunner(QObject):
                 traceback.format_exc(),
             )
         finally:
-            try:
-                self.backend.close()
-            except BaseException as exc:  # noqa: BLE001
-                self.fatal_error.emit(
-                    f'Backend cleanup failed: {exc}',
-                    traceback.format_exc(),
-                )
-            finally:
-                self.stopped.emit()
+            self._stop()
 
     def _run_loop(self) -> None:
         """Core loop for handling communications."""
-        try:
-            while True:
-                # Wait briefly for a command. This also determines
-                # the normal polling interval.
+        while True:
+            # # If stopping, wait until the backend is finished with cleanup
+            # if self._stopping:
+            #     if self.backend.close():
+            #         break
+            #     update = self.backend.poll()
+            #     if update.events or update.exited_workers:
+            #         self.updated.emit(update)
+            #     continue
+
+            # Wait briefly for a command. This also determines
+            # the normal polling interval.
+            try:
+                command = self._commands.get(timeout=self.poll_interval)
+            except queue.Empty:
+                command = None
+
+            if command is not None:
+                if command.kind == BackendCommandType.STOP:
+                    self._stopping = True  # Probably redundant
+                    break  # Go to the stopping block
+
                 try:
-                    command = self._commands.get(timeout=self.poll_interval)
+                    self._execute(command)
+                except Exception as exc:  # noqa: BLE001
+                    self.command_failed.emit(
+                        command.kind,
+                        command.task_id,
+                        f'{type(exc).__name__}: {exc}',
+                        traceback.format_exc(),
+                    )
+
+            # Drain additional commands without waiting.
+            # Bound the batch so polling cannot be starved.
+            for _ in range(99):
+                try:
+                    command = self._commands.get_nowait()
                 except queue.Empty:
-                    command = None
+                    break
 
-                if command is not None:
-                    if command.kind == CommandType.STOP:
-                        break
+                if command.kind == BackendCommandType.STOP:
+                    self._stopping = True
+                    break
 
-                    try:
-                        self._execute(command)
-                    except Exception as exc:  # noqa: BLE001
-                        self.command_failed.emit(
-                            command.kind,
-                            command.task_id,
-                            f'{type(exc).__name__}: {exc}',
-                            traceback.format_exc(),
-                        )
+                try:
+                    self._execute(command)
+                except Exception as exc:  # noqa: BLE001
+                    self.command_failed.emit(
+                        command.kind,
+                        command.task_id,
+                        f'{type(exc).__name__}: {exc}',
+                        traceback.format_exc(),
+                    )
 
-                # Drain additional commands without waiting.
-                # Bound the batch so polling cannot be starved.
-                for _ in range(99):
-                    try:
-                        command = self._commands.get_nowait()
-                    except queue.Empty:
-                        break
+            update = self.backend.poll()
 
-                    if command.kind == CommandType.STOP:
-                        return
+            if update.events or update.exited_workers:
+                self.updated.emit(update)
 
-                    try:
-                        self._execute(command)
-                    except Exception as exc:  # noqa: BLE001
-                        self.command_failed.emit(
-                            command.kind,
-                            command.task_id,
-                            f'{type(exc).__name__}: {exc}',
-                            traceback.format_exc(),
-                        )
-
-                update: BackendUpdate = self.backend.poll()
-
+    def _stop(self):
+        """Stop the backend and wait for resources to be cleaned up."""
+        try:
+            while not self.backend.close():
+                # Keep polling for WorkerExits and other events
+                update = self.backend.poll()
                 if update.events or update.exited_workers:
                     self.updated.emit(update)
-
+        except BaseException as exc:  # noqa: BLE001
+            self.fatal_error.emit(
+                f'Backend cleanup failed: {exc}',
+                traceback.format_exc(),
+            )
         finally:
-            try:
-                self.backend.close()
-            finally:
-                self.stopped.emit()
+            self.stopped.emit()

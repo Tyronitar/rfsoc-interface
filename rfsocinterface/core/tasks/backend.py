@@ -88,9 +88,8 @@ class TaskBackend(Protocol):
         """Retrieve task events and backend-generated events."""
         ...
 
-    def close(self) -> None:
-        """Release backend resources."""
-        ...
+    def close(self) -> bool:
+        """Release backend resources and return whether cleanup is complete."""
 
 
 @dataclass
@@ -429,11 +428,20 @@ class MultiprocessingBackend:
                 handle.process.join(timeout=0)
 
         self.reap_finished_workers()
-
         return not self.workers
 
     def reap_finished_workers(self):
         """Close IPC resources and reap receiver threads for finished workers."""
         for task_id, handle in list(self.workers.items()):
-            if not handle.is_alive() and not handle.receiver.is_alive():
+            # Check channel closed, as that's only assigned in poll. So we won't reap
+            # before the final WorkerExit is processed and sent to the manager
+            if (
+                handle.channel_closed
+                and not handle.is_alive()
+                and not handle.receiver.is_alive()
+            ):
                 self.reap(task_id)
+
+    def active_workers(self) -> int:
+        """Return the number of workers still alive."""
+        return len(self.workers)
