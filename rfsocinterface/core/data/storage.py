@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from importlib.metadata import version
 from pathlib import Path
 from typing import Self, overload
+from scipy import signal
 
 import h5py
 import numpy as np
@@ -1530,6 +1531,51 @@ class ProcessedData(DataStorage):
                 channel_group.attrs['tile_name'],
             )
             IQ_to_freq_diss_angle, adc_units_to_hz, _ = sweep.freq_direction()
+
+            # # Compute IQ to freq/diss angle based on the source crossing
+            # # First mean center IQ data
+            # data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
+
+            # data_iq = data_IQ[:]
+            # filt_sos_lp = signal.butter(
+            #     2,
+            #     15,
+            #     btype='lowpass',
+            #     fs=self.get_fs(i_chan),
+            #     output='sos',
+            #     analog=False,
+            # )
+            # filt_sos_hp = signal.butter(
+            #     2,
+            #     0.5,
+            #     btype='highpass',
+            #     fs=self.get_fs(i_chan),
+            #     output='sos',
+            #     analog=False,
+            # )
+            # filt_data_IQ = signal.sosfiltfilt(filt_sos_hp, data_iq)
+            # filt_data_IQ = signal.sosfiltfilt(filt_sos_lp, filt_data_IQ)
+
+            # cut_time = 5
+            # cut_samples = int(cut_time * self.get_fs(i_chan))
+            # cut_data_IQ = filt_data_IQ[..., cut_samples:-cut_samples]
+            # cut_data_IQ_normalized = cut_data_IQ / \
+            #     carrier_amplitudes[:][..., np.newaxis]
+
+            # max_i_samples = np.argmax(
+            #     np.abs(cut_data_IQ_normalized[0]), axis=-1).flatten()
+            # max_i = cut_data_IQ_normalized[0, range(n_tones), max_i_samples]
+            # max_q_samples = np.argmax(
+            #     np.abs(cut_data_IQ_normalized[1]), axis=-1).flatten()
+            # max_q = cut_data_IQ_normalized[1, range(n_tones), max_q_samples]
+            # source_cut_sample = np.where(
+            #     np.abs(max_i) >= np.abs(max_q), max_i_samples, max_q_samples)
+            # # Actual sample index of the source crossing
+            # source_sample = source_cut_sample + cut_samples
+            # source_amplitudes = data_iq[:, range(n_tones), source_sample]
+            # IQ_to_freq_diss_angle = -np.atan2(
+            #     source_amplitudes[1], source_amplitudes[0])
+
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
             calibration_info['adc_units_to_hz'] = adc_units_to_hz
 

@@ -22,10 +22,10 @@ if __name__ == '__main__':
     noise_removal_lp_filt_freq_onres = 5  # Filter disabled if set to 0
     ds_factor = 16
 
-    # dataset = 'data_freq'
-    # datasets = ['.*/data_freq_diss']
-    dataset = 'data_mK'
-    datasets = ['.*/data_mK']
+    dataset = 'data_freq'
+    datasets = ['.*/data_freq_diss']
+    # dataset = 'data_mK'
+    # datasets = ['.*/data_mK']
 
     find_fwhm = CheckFocus(
         'az',
@@ -58,7 +58,7 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=False,
+        beam_map_mode=True,
         dataset=dataset,
         az_trim=0,
         za_trim=0,
@@ -102,12 +102,12 @@ if __name__ == '__main__':
         # compute_psd,
         # psd_plotter,
         bin_tod_to_map,
-        plot_map_routine,
+        # plot_map_routine,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
-        # analyze_beammap,
-        # plot_beammap,
+        analyze_beammap,
+        plot_beammap,
     ])
 
     # date = '20260820'  # For testing normal maps
@@ -116,12 +116,15 @@ if __name__ == '__main__':
     # setnum = 1006
     # date = '20260917'  # For testing video
     # setnum = 1007
-    date = '20261001'  # For testing normal maps
+    # date = '20261001'  # For testing normal maps
+    # setnum = 1006
+
+    date = '20260617'
     setnum = 1006
 
 
-    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    # pdata, _ = pipeline.from_consolidated_data(date, setnum)
+    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata, _ = pipeline.from_consolidated_data(date, setnum)
     # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
     # pdb.set_trace()
