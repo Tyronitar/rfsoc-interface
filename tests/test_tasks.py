@@ -1,8 +1,10 @@
 """Tests for running backend tasks."""
 
+import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 
+import pytest
 from PySide6.QtCore import SignalInstance
 
 from rfsocinterface.core.tasks import (
@@ -110,14 +112,63 @@ def get_signals_fail(
     return signals, status_checkers
 
 
-def add_task(x: float, y: float) -> float:
-    """Task adding two numbers together."""
+@pytest.fixture
+def manager(qtbot) -> Generator[TaskManager, None, None]:
+    """Fixture for creating a TaskManager and handling cleanup."""
+    backend = MultiprocessingBackend(ipc_failure_grace=0.2)
+    manager = TaskManager(backend)
+
+    yield manager
+
+    manager.close()
+
+    qtbot.waitUntil(
+        lambda: not manager.runner._thread.is_alive(),  # noqa: SLF001
+        timeout=5000,
+    )
+
+
+def wait_for_task(qtbot, manager, task_id, timeout=5000):
+    """Wait for a task's worker to exit."""
+    qtbot.waitUntil(
+        lambda: manager.records[task_id].worker_exited,
+        timeout=timeout,
+    )
+    return manager.records[task_id]
+
+
+#
+# Example tasks for testing
+#
+
+
+def sum_task(x: float, y: float) -> float:
+    """Return the sum of two numbers."""
     return x + y
 
 
 def exception_task():
     """Task that raises an exception."""
     raise RuntimeError('Expected failure')
+
+
+def crash_task():
+    """Task that crashes 'unexpectedly'.
+
+    `os._exit` bypasses normal Python exception handling, so useful for testing worker
+    exit reconciliation.
+    """
+    os._exit(17)
+
+
+def unpickleable_result_task():
+    """Return an unpickleable result, which results in an IPC failure."""
+    return lambda x: x
+
+
+def long_running_task():
+    """Task that just runs for a whilem for testing termination."""
+    time.sleep(30)
 
 
 def sleep_task(duration: int, context: TaskContext | None = None):
@@ -129,35 +180,26 @@ def sleep_task(duration: int, context: TaskContext | None = None):
     return True
 
 
-def test_normal_task_success(qtbot):
+#
+# Final state tests
+#
+
+
+def test_normal_task_success(qtbot, manager):
     """Test that a task succeeds under normal circumstances and cleanup is handled."""
-    backend = MultiprocessingBackend(ipc_failure_grace=0.01)
-    manager = TaskManager(backend)
-
     task = Task(
-        target=add_task,
+        target=sum_task,
         args=(1, 1),
-        # with_context=True,
     )
-
-    signals, checkers = get_signals_success(manager, result=2)
-
-    try:
-        with qtbot.waitSignals(
-            signals, order='strict', check_params_cbs=checkers, timeout=5000
-        ):
-            manager.submit(task)
-    finally:
-        with qtbot.waitSignal(manager.runner.stopped, timeout=5000):
-            manager.close()
-            manager.runner.wait()
+    manager.submit(task)
+    record = wait_for_task(qtbot, manager, task.id, timeout=5000)
+    assert record.status == TaskStatus.SUCCEEDED
+    assert record.worker_exited
+    assert record.result == 2  # noqa: PLR2004
 
 
-def test_cooperative_cancel(qtbot):
+def test_cooperative_cancel(qtbot, manager):
     """Test that cooperative cancel works properly."""
-    backend = MultiprocessingBackend(ipc_failure_grace=0.01)
-    manager = TaskManager(backend)
-
     task = Task(
         target=sleep_task,
         args=(5,),
@@ -165,68 +207,112 @@ def test_cooperative_cancel(qtbot):
         cancellation_policy=CancellationPolicy.COOPERATIVE,
     )
 
-    (signals_pre, checkers_pre), (signals_post, checkers_post) = get_signals_cancel(
-        manager
+    manager.submit(task)
+
+    qtbot.waitUntil(
+        lambda: manager.records[task.id].status == TaskStatus.RUNNING,
+        timeout=5000,
     )
+    manager.cancel(task.id)
 
-    try:
-        with qtbot.waitSignals(
-            signals_pre, order='strict', check_params_cbs=checkers_pre, timeout=5000
-        ):
-            manager.submit(task)
-        with qtbot.waitSignals(
-            signals_post, order='strict', check_params_cbs=checkers_post, timeout=5000
-        ):
-            manager.cancel(task.id)
-    finally:
-        with qtbot.waitSignal(manager.runner.stopped, timeout=5000):
-            manager.close()
-            manager.runner.wait()
+    record = wait_for_task(qtbot, manager, task.id, timeout=5000)
+    assert record.status == TaskStatus.CANCELLED
+    assert record.worker_exited
+    assert record.result is None
 
 
-def test_cooperative_cancel_after_exit(qtbot):
+def test_cooperative_cancel_after_exit(qtbot, manager):
     """Test that cancelling after completion does nothing."""
-    backend = MultiprocessingBackend(ipc_failure_grace=0.01)
-    manager = TaskManager(backend)
+    # backend = MultiprocessingBackend(ipc_failure_grace=0.01)
+    # manager = TaskManager(backend)
 
     task = Task(
         target=sleep_task,
-        args=(1,),
+        args=(0.1,),
         with_context=True,
         cancellation_policy=CancellationPolicy.COOPERATIVE,
     )
 
-    signals, checkers = get_signals_success(manager, result=True)
+    manager.submit(task)
+    record = wait_for_task(qtbot, manager, task.id, timeout=5000)
+    assert record.status == TaskStatus.SUCCEEDED
+    assert record.worker_exited
+    assert record.result is True
 
-    try:
-        with qtbot.waitSignals(
-            signals, check_params_cbs=checkers, order='strict', timeout=5000
-        ):
-            manager.submit(task)
-        # Cancel after finishing should be ignored
-        with qtbot.assertNotEmitted(manager.changed, wait=100):
-            manager.cancel(task.id)
-    finally:
-        with qtbot.waitSignal(manager.runner.stopped, timeout=5000):
-            manager.close()
-            manager.runner.wait()
+    # Cancel after finishing should be ignored
+    with qtbot.assertNotEmitted(manager.changed, wait=100):
+        manager.cancel(task.id)
 
 
-def test_task_exception(qtbot):
+def test_forced_termination(qtbot, manager):
+    """Test that a task can be forcibly terminated."""
+    task = Task(
+        target=long_running_task,
+        cancellation_policy=CancellationPolicy.TERMINATE,
+    )
+
+    manager.submit(task)
+
+    qtbot.waitUntil(
+        lambda: manager.records[task.id].status == TaskStatus.RUNNING,
+        timeout=5000,
+    )
+    manager.cancel(task.id)
+    record = wait_for_task(qtbot, manager, task.id)
+    assert record.status == TaskStatus.CANCELLED
+    assert record.worker_exited
+    assert task.id not in manager.backend.workers
+
+
+def test_task_exception(qtbot, manager):
     """Test case of task raising an exception."""
-    backend = MultiprocessingBackend(ipc_failure_grace=0.01)
-    manager = TaskManager(backend)
-
     task = Task(target=exception_task)
 
-    signals, checkers = get_signals_fail(manager, RuntimeError('Expected failure'))
+    manager.submit(task)
+    record = wait_for_task(qtbot, manager, task.id, timeout=5000)
+    assert record.status == TaskStatus.FAILED
+    assert 'expected failure' in record.error.lower()
+    assert record.result is None
 
-    try:
-        with qtbot.waitSignals(
-            signals, check_params_cbs=checkers, order='strict', timeout=1000
-        ):
-            manager.submit(task)
-    finally:
-        with qtbot.waitSignal(manager.runner.stopped, timeout=5000):
-            manager.close()
-            manager.runner.wait()
+
+def test_worker_crash(qtbot, manager):
+    """Test case where worker crashes without sending a terminal status."""
+    task = Task(target=crash_task)
+
+    manager.submit(task)
+    record = wait_for_task(qtbot, manager, task.id)
+
+    assert record.status == TaskStatus.FAILED
+    assert '17' in record.error
+    assert record.worker_exited
+    assert task.id not in manager.backend.workers
+
+
+def test_unpickleable_result(qtbot, manager):
+    """Test that failure to serialize a result results in a task failure."""
+    task = Task(target=unpickleable_result_task)
+
+    manager.submit(task)
+    record = wait_for_task(qtbot, manager, task.id)
+
+    assert record.status == TaskStatus.FAILED
+    assert record.worker_exited
+    assert 'pickle' in record.error.lower() or 'attribute' in record.error.lower()
+
+
+def test_worker_failure_is_isolated(qtbot, manager):
+    """With multiple tasks, test that failures are isolated."""
+    failed_task = Task(target=crash_task)
+    successful_task = Task(target=sum_task, args=(10, 20))
+
+    manager.submit(failed_task)
+    manager.submit(successful_task)
+
+    failed = wait_for_task(qtbot, manager, failed_task.id)
+    succeeded = wait_for_task(qtbot, manager, successful_task.id)
+
+    assert failed.status == TaskStatus.FAILED
+    assert succeeded.status == TaskStatus.SUCCEEDED
+    assert succeeded.result == 30  # noqa: PLR2004
+    assert failed.worker_exited
+    assert succeeded.worker_exited
