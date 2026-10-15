@@ -153,7 +153,7 @@ def multiprocessing_worker_entry(
         kwargs = dict(task.kwargs)
         if task.with_context:
             if 'context' in kwargs:
-                raise ValueError('context is reserved when with_context=True')  # noqa: TRY301
+                raise ValueError('context is reserved when with_context=True')
             kwargs['context'] = context
 
         result = task.target(*task.args, **kwargs)
@@ -180,6 +180,14 @@ def receive_worker_events(
     try:
         while True:
             event = conn.recv()
+            if not isinstance(event, TaskEvent):
+                raise TypeError(
+                    f'Invalid event type: "{type(event).__name__}"',
+                )
+            if event.task_id != task_id:
+                raise ValueError(
+                    f'Event task ID mismatch: expected {task_id}, received {event.id}.',
+                )
             updates.put(
                 ReceiverUpdate(
                     task_id=task_id,
@@ -303,21 +311,6 @@ class MultiprocessingBackend:
                     # Process the event
                     event = update.event
                     if event is None:
-                        continue
-                    if (
-                        not isinstance(event, TaskEvent)
-                        or event.task_id != update.task_id
-                    ):
-                        error = 'Invalid event received from worker'
-
-                        handle.receiver_error = error
-                        handle.ipc_failure_at = monotonic()
-
-                        events.append(IPCFailed(update.task_id, error))
-
-                        if handle.is_alive():
-                            handle.cancel()
-
                         continue
                     events.append(event)
                     if isinstance(event, TerminalEvent.__value__):
