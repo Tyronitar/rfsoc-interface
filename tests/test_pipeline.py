@@ -20,6 +20,7 @@ from tests.utils import (
 )
 
 
+@pytest.mark.smoke
 def test_single_input_routine(make_fake_data):
     """Test that a single-input routine works properly."""
     fake_data = make_fake_data('test.h5')
@@ -34,6 +35,7 @@ def test_single_input_routine(make_fake_data):
     assert_equal(pdata['tests/result'][:], result)
 
 
+@pytest.mark.smoke
 def test_mapped_inputs(make_fake_data):
     """Test a routine with mapped inputs."""
     pdata = []
@@ -51,6 +53,7 @@ def test_mapped_inputs(make_fake_data):
         assert_equal(pd['tests/result'][:], result[i])
 
 
+@pytest.mark.smoke
 def test_multi_input_routine(make_fake_data):
     """Test that a multi-input routine works properly."""
     fake_data_x = make_fake_data('test_x.h5')
@@ -80,6 +83,7 @@ def test_multi_input_routine(make_fake_data):
     assert_equal(res_y, res_x / 2)
 
 
+@pytest.mark.smoke
 def test_single_input_routine_with_default_inputs(make_fake_data):
     """Test that single-input routines work without overriding _inputs."""
     fake_data = make_fake_data('test.h5')
@@ -88,6 +92,7 @@ def test_single_input_routine_with_default_inputs(make_fake_data):
     routine.apply(pdata)
 
 
+@pytest.mark.smoke
 def test_multi_input_routine_with_default_inputs(make_fake_data):
     """Test that multi-input routines work without overriding _inputs."""
     fake_data_x = make_fake_data('test_x.h5')
@@ -101,6 +106,7 @@ def test_multi_input_routine_with_default_inputs(make_fake_data):
 # ruff: disable[SLF001]
 
 
+@pytest.mark.smoke
 def test_routine_input_normalization(make_fake_data, make_function_mock):
     """Ensure that routine inputs are normalized properly."""
     fake_data_x = make_fake_data('test_x.h5')
@@ -133,6 +139,7 @@ def test_routine_input_normalization(make_fake_data, make_function_mock):
         assert result is None
 
 
+@pytest.mark.smoke
 def test_routine_output_normalization(make_fake_data, make_function_mock):
     """Ensure that routine outputs are normalized properly."""
     fake_data = make_fake_data('test.h5')
@@ -166,6 +173,7 @@ def test_routine_output_normalization(make_fake_data, make_function_mock):
 # ruff: enable[SLF001]
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     'n_inputs',
     [1, 2, 3, 4],
@@ -182,6 +190,7 @@ def test_arbitrary_multi_input_routine(make_fake_data, n_inputs):
     routine.apply(*pdata)
 
 
+@pytest.mark.smoke
 def test_wrong_number_of_inputs(make_fake_data):
     """Test that applying the routine with the wrong number of inputs fails."""
     routine = PositionalInputsRoutine()
@@ -206,12 +215,14 @@ def test_wrong_number_of_inputs(make_fake_data):
         routine.apply(pdata_x, pdata_y, pdata_z)
 
 
+@pytest.mark.smoke
 def test_run_not_implemented():
     """Test that using a routine that doesn't override _run fails."""
     with pytest.raises(TypeError, match="Can't instantiate abstract class"):
         NoRunRoutine()
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     'n_routines',
     [0, 1, 2, 3],

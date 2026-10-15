@@ -58,6 +58,7 @@ from tests.utils import (
 )
 
 
+@pytest.mark.smoke
 def test_arg_extraction():
     """Test that getting GuiArgs from routines works."""
     arg = get_gui_args(CreateValueRoutine, use_defaults=False)[0]
@@ -151,6 +152,7 @@ def test_arg_extraction():
     assert args[3].kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     'annotation, widget_type',
     [
@@ -204,6 +206,7 @@ def test_annotation_to_widget(qtbot, annotation: Any, widget_type: type[InputWid
         assert widget.value_type == args[1]
 
 
+@pytest.mark.integration
 def test_arg_to_widget_with_metadata(qtbot):
     """Test that metadata and default values are used properly when creating widgets."""
     arg = get_gui_args(CreateValueRoutineWithMetadataAndDefault)[0]
@@ -265,6 +268,7 @@ def test_arg_to_widget_with_metadata(qtbot):
     assert not widget3.isChecked()
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     'obj',
     [
@@ -302,6 +306,7 @@ def test_docstring_extraction(obj):
     assert args[3].metadata.tooltip == 'The fourth argument.'  # From docstring
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     'obj',
     [
@@ -350,6 +355,7 @@ def test_variable_parameters(qtbot, obj):
     assert widget.container_type is dict
 
 
+@pytest.mark.smoke
 def test_bad_annotations():
     """Test that exceptions are raised with bad type hints."""
     with pytest.raises(TypeError, match='must have a type annotation'):
@@ -379,6 +385,7 @@ def test_bad_annotations():
         create_input_widget(bytes)
 
 
+@pytest.mark.smoke
 def test_metadata_inheritance():
     """Test that meta data is properly inherited, with children having precendence."""
     child = Child()

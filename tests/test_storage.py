@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import h5py
+import pytest
 
 from rfsocinterface.core.data.storage import DataStorage
 from rfsocinterface.core.utils import DEFAULT_DATA_DIRECTORY
@@ -18,6 +19,7 @@ class DummyStorage(DataStorage):
         return f'{date}-{setnum}-{data_dir}'
 
 
+@pytest.mark.smoke
 def test_load_accepts_positional_mode_for_filename(tmp_path):
     """Test that loading works using the filename as a positional argument."""
     path = tmp_path / 'example.h5'
@@ -30,6 +32,7 @@ def test_load_accepts_positional_mode_for_filename(tmp_path):
     storage.close()
 
 
+@pytest.mark.smoke
 def test_load_accepts_positional_mode_for_date_and_setnum(tmp_path):
     """Test that loading works using the date and setnum as positional arguments."""
     path = tmp_path / 'example.h5'

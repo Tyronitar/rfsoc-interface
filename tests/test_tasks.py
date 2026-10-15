@@ -202,7 +202,6 @@ def large_transfer_task(event: Event):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_normal_task_success(qtbot, manager):
     """Test that a task succeeds under normal circumstances and cleanup is handled."""
     task = Task(
@@ -217,7 +216,6 @@ def test_normal_task_success(qtbot, manager):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_cooperative_cancel(qtbot, manager):
     """Test that cooperative cancel works properly."""
     task = Task(
@@ -242,7 +240,6 @@ def test_cooperative_cancel(qtbot, manager):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_cooperative_cancel_after_exit(qtbot, manager):
     """Test that cancelling after completion does nothing."""
     # backend = MultiprocessingBackend(ipc_failure_grace=0.01)
@@ -267,7 +264,6 @@ def test_cooperative_cancel_after_exit(qtbot, manager):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_forced_termination(qtbot, manager):
     """Test that a task can be forcibly terminated."""
     task = Task(
@@ -289,7 +285,6 @@ def test_forced_termination(qtbot, manager):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_task_exception(qtbot, manager):
     """Test case of task raising an exception."""
     task = Task(target=exception_task)
@@ -302,7 +297,6 @@ def test_task_exception(qtbot, manager):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_worker_crash(qtbot, manager):
     """Test case where worker crashes without sending a terminal status."""
     task = Task(target=crash_task)
@@ -317,7 +311,6 @@ def test_worker_crash(qtbot, manager):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_unpickleable_result(qtbot, manager):
     """Test that failure to serialize a result results in a task failure."""
     task = Task(target=unpickleable_result_task)
@@ -331,7 +324,6 @@ def test_unpickleable_result(qtbot, manager):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_worker_failure_is_isolated(qtbot, manager):
     """With multiple tasks, test that failures are isolated."""
     failed_task = Task(target=crash_task)
@@ -373,7 +365,6 @@ class FakeWorkerHandle:
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_receiver_error(qtbot, manager):
     """Test that an error from the receiver is handled correctly."""
     task = Task(
@@ -405,6 +396,7 @@ def test_receiver_error(qtbot, manager):
     assert 'Simulated deserialization failure' in (manager.records[task.id].error)
 
 
+@pytest.mark.smoke
 def test_receiver_failure_handling():
     """Test that the backend's receiver failure handling works."""
     backend = MultiprocessingBackend(ipc_failure_grace=0.2)
@@ -421,7 +413,6 @@ def test_receiver_failure_handling():
 
 @pytest.mark.slow
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_terminate_during_transfer(qtbot, manager):
     """Test termination of a worker while writing its result."""
     event = manager.backend.context.Event()
@@ -459,7 +450,6 @@ def synchronized_task(event: Event):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_immediate_cancel(qtbot, manager):
     """Test cancelling immediately after submitting a task."""
     task = Task(
@@ -473,7 +463,6 @@ def test_immediate_cancel(qtbot, manager):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_cancel_near_completion(qtbot, manager):
     """Test that canceling near the end of the task doesn't cause problems."""
     event = manager.backend.context.Event()
@@ -550,7 +539,6 @@ class PollFailureBackend:
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_start_failure(qtbot):
     """Test that backend start failures are handled properly by the runner."""
     manager = TaskManager(FailingStartBackend())
@@ -574,7 +562,6 @@ def test_start_failure(qtbot):
 
 
 @pytest.mark.integration
-@pytest.mark.qapp
 def test_poll_failure(qtbot):
     """Test that poll raising an issue is handled properly."""
     manager = TaskManager(PollFailureBackend())

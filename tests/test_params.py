@@ -7,6 +7,7 @@ from rfsocinterface.core.params import RFSoCParameters
 from tests.utils import assert_close
 
 
+@pytest.mark.smoke
 def test_initialize_params(tmpdir):
     """Test the initialization of new parameters files."""
     tile_name = 'test_name'
@@ -35,6 +36,7 @@ def test_initialize_params(tmpdir):
     assert_close(params.dfoverf_per_mK, np.ones(n_tones))
 
 
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     'field, dtype, size, low, high',
     [

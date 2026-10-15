@@ -2,6 +2,7 @@
 # ruff: noqa: PLR2004
 
 import h5py
+import pytest
 
 from rfsocinterface.core.utils import (
     search,
@@ -10,6 +11,7 @@ from rfsocinterface.core.utils import (
 from tests.conftest import TOD_FILE
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search(datafiles):
     """Test searching for keywords in HDF5 files."""
@@ -23,6 +25,7 @@ def test_search(datafiles):
     assert obj == file['/time_ordered_data/adc_i']
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_fullname(datafiles):
     """Test search with the fullname."""
@@ -32,6 +35,7 @@ def test_search_fullname(datafiles):
     assert obj == file['/time_ordered_data/adc_i']
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_fullname_disabled(datafiles):
     """Test search with `fullname=False`."""
@@ -43,6 +47,7 @@ def test_search_fullname_disabled(datafiles):
     assert obj == file['/time_ordered_data/adc_i']
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_no_match(datafiles):
     """Test search where no match is found."""
@@ -52,6 +57,7 @@ def test_search_no_match(datafiles):
     assert res is None
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_exact_match_miss(datafiles):
     """Test search with `exact_match=True` and no match found."""
@@ -61,6 +67,7 @@ def test_search_exact_match_miss(datafiles):
     assert res is None
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_exact_match_hit(datafiles):
     """Test search with `exact_match=True` and a match found."""
@@ -72,6 +79,7 @@ def test_search_exact_match_hit(datafiles):
     assert obj == file['/time_ordered_data/adc_i']
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_regex_no_pattern(datafiles):
     """Test search_regex when not using regex patterns."""
@@ -90,6 +98,7 @@ def test_search_regex_no_pattern(datafiles):
     assert res[0][1] == file['/time_ordered_data/adc_i']
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_regex_wildcard(datafiles):
     """Test search_regex with a wildcard expression."""
@@ -102,6 +111,7 @@ def test_search_regex_wildcard(datafiles):
     assert res[1][1] == file['/time_ordered_data/adc_q']
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_regex_character_set(datafiles):
     """Test search_regex with a set of valid characters."""
@@ -114,6 +124,7 @@ def test_search_regex_character_set(datafiles):
     assert res[1][1] == file['/time_ordered_data/adc_q']
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_regex_pipe(datafiles):
     """Test search_regex using a pipe "|" in the pattern."""
@@ -126,6 +137,7 @@ def test_search_regex_pipe(datafiles):
     assert res[1][1] == file['/time_ordered_data/adc_q']
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_regex_no_match(datafiles):
     """Test search_regex and getting no matches."""
@@ -136,6 +148,7 @@ def test_search_regex_no_match(datafiles):
     assert len(res) == 0
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_regex_exact_match_miss(datafiles):
     """Test search_regex with `exact_match=True` and getting no matches."""
@@ -145,6 +158,7 @@ def test_search_regex_exact_match_miss(datafiles):
     assert len(res) == 0
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_regex_exact_match_hit(datafiles):
     """Test search_regex with `exact_match=True` and getting a match."""
@@ -155,6 +169,7 @@ def test_search_regex_exact_match_hit(datafiles):
     assert res[0][1] == file['/time_ordered_data/adc_i']
 
 
+@pytest.mark.smoke
 @TOD_FILE
 def test_search_regex_complicated_pattern(datafiles):
     """Test search_regex with a more complicated pattern."""

@@ -175,10 +175,10 @@ max-complexity = 15
 
 [tool.pytest.ini_options]
 markers = [
-    "smoke: these tests should always run to check for regressions quickly",
-    "slow: these tests are slow, and should be run sparingly",
-    "integration: these tests involve the integration of multiple parts.",
-    "qapp: tests that require QApplication to be running (use qtbot fixture).",
+    "smoke: Quick, critical-path tests run after every build.",
+    "regression: comprehensive testing suites ensuring old bugs aren't reintroduced.",
+    "slow: time-consuming tests to exclude from quick development runs",
+    "integration: Tests that interact with external services, databases, or APIs.",
 ]
 
 testpaths = ["tests"]
