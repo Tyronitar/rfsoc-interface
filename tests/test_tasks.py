@@ -2,14 +2,22 @@
 
 import os
 import time
+import typing
 from collections.abc import Callable, Generator
+from multiprocessing import Event
+from uuid import uuid4
 
+import numpy as np
 import pytest
 from PySide6.QtCore import SignalInstance
 
 from rfsocinterface.core.tasks import (
+    TERMINAL_STATUSES,
+    BackendUpdate,
     CancellationPolicy,
     MultiprocessingBackend,
+    ReceiverStatus,
+    ReceiverUpdate,
     Task,
     TaskContext,
     TaskManager,
@@ -180,6 +188,13 @@ def sleep_task(duration: int, context: TaskContext | None = None):
     return True
 
 
+def large_transfer_task(event: Event):
+    """Task that transfers a large amount of data."""
+    arr = np.zeros((10000, 1000), dtype=np.float64)
+    event.set()  # Signal that the result is ready to be written
+    return arr
+
+
 #
 # Final state tests
 #
@@ -316,3 +331,236 @@ def test_worker_failure_is_isolated(qtbot, manager):
     assert succeeded.result == 30  # noqa: PLR2004
     assert failed.worker_exited
     assert succeeded.worker_exited
+
+
+#
+# IPC Failure Tests
+#
+class FakeWorkerHandle:
+    """Fake WorkerHandle for testing IPC failure."""
+
+    def __init__(self):
+        """Initialize FakeWorkerHandle."""
+        self.id = uuid4()
+        self.receiver_error = None
+        self.ipc_failure_at = None
+        self._alive = True
+
+    def is_alive(self) -> bool:
+        """Whether the worker is alive."""
+        return self._alive
+
+    def cancel(self):
+        """Simulate canceling the worker."""
+        self._alive = False
+
+
+def test_receiver_error(qtbot, manager):
+    """Test that an error from the receiver is handled correctly."""
+    task = Task(
+        target=long_running_task,
+        cancellation_policy=CancellationPolicy.TERMINATE,
+    )
+
+    manager.submit(task)
+
+    qtbot.waitUntil(
+        lambda: manager.records[task.id].status == TaskStatus.RUNNING,
+        timeout=5000,
+    )
+
+    # Simulate a receiver failure.
+    manager.backend._received.put(  # noqa: SLF001
+        ReceiverUpdate(
+            task_id=task.id,
+            status=ReceiverStatus.ERROR,
+            error='Simulated deserialization failure',
+        )
+    )
+
+    qtbot.waitUntil(
+        lambda: manager.records[task.id].status == TaskStatus.FAILED,
+        timeout=5000,
+    )
+
+    assert 'Simulated deserialization failure' in (manager.records[task.id].error)
+
+
+def test_receiver_failure_handling():
+    """Test that the backend's receiver failure handling works."""
+    backend = MultiprocessingBackend(ipc_failure_grace=0.2)
+    handle = FakeWorkerHandle()
+    backend.workers[handle.id] = handle
+    t0 = time.monotonic()
+    event = backend._handle_receiver_failure(handle.id, 'Simulated IPC failure')  # noqa: SLF001
+
+    assert 'Simulated IPC failure' in handle.receiver_error
+    assert handle.ipc_failure_at > t0
+    assert not handle.is_alive()
+    assert event.error == handle.receiver_error
+
+
+def test_terminate_during_transfer(qtbot, manager):
+    """Test termination of a worker while writing its result."""
+    event = manager.backend.context.Event()
+    task = Task(
+        target=large_transfer_task,
+        args=(event,),
+        cancellation_policy=CancellationPolicy.TERMINATE,
+    )
+    manager.submit(task)
+    qtbot.waitUntil(
+        lambda: manager.records[task.id].status == TaskStatus.RUNNING,
+        timeout=5000,
+    )
+
+    # Kill the worker while it's writing its large result
+    event.wait()
+    manager.runner.backend.workers[task.id].process.terminate()
+
+    record = wait_for_task(qtbot, manager, task.id, timeout=5000)
+    assert record.status == TaskStatus.FAILED
+    assert 'worker exited' in record.error.lower()
+    assert 'without reporting a terminal outcome' in record.error.lower()
+    assert record.worker_exited
+
+
+#
+# Cancellation Race Tests
+#
+
+
+def synchronized_task(event: Event):
+    """Task that waits for a synchronization event."""
+    event.wait()
+    return True
+
+
+def test_immediate_cancel(qtbot, manager):
+    """Test cancelling immediately after submitting a task."""
+    task = Task(
+        target=long_running_task,
+        cancellation_policy=CancellationPolicy.TERMINATE,
+    )
+    manager.submit(task)
+    manager.cancel(task.id)
+    record = wait_for_task(qtbot, manager, task.id, timeout=5000)
+    assert record.status == TaskStatus.CANCELLED
+
+
+def test_cancel_near_completion(qtbot, manager):
+    """Test that canceling near the end of the task doesn't cause problems."""
+    event = manager.backend.context.Event()
+    task = Task(
+        target=synchronized_task,
+        args=(event,),
+        cancellation_policy=CancellationPolicy.TERMINATE,
+    )
+    manager.submit(task)
+    qtbot.waitUntil(
+        lambda: manager.records[task.id].status == TaskStatus.RUNNING,
+        timeout=5000,
+    )
+    event.set()
+    manager.cancel(task.id)
+    record = wait_for_task(qtbot, manager, task.id, timeout=5000)
+
+    # Whether the task finishes or is canceled first is non-deterministic
+    assert record.status in TERMINAL_STATUSES
+    assert record.worker_exited
+    if record.status == TaskStatus.SUCCEEDED:
+        assert record.result is True
+    else:
+        assert record.result is None
+
+
+# Runner isolation tests
+class FailingStartBackend:
+    """Backend that fails on starting a task."""
+
+    @typing.override
+    def start(self, task):
+        raise RuntimeError('Simulated startup failure')
+
+    @typing.override
+    def cancel(self, task_id):
+        pass
+
+    @typing.override
+    def terminate(self, task_id):
+        pass
+
+    @typing.override
+    def poll(self, limit=100):
+        return BackendUpdate([], {})
+
+    @typing.override
+    def close(self):
+        return True
+
+
+class PollFailureBackend:
+    """Backend that fails on poll."""
+
+    @typing.override
+    def start(self, task):
+        pass
+
+    @typing.override
+    def cancel(self, task_id):
+        pass
+
+    @typing.override
+    def terminate(self, task_id):
+        pass
+
+    @typing.override
+    def poll(self, limit=100):
+        raise RuntimeError('Simulated poll failure')
+
+    @typing.override
+    def close(self):
+        return True
+
+
+def test_start_failure(qtbot):
+    """Test that runner start failures are handled properly."""
+    manager = TaskManager(FailingStartBackend())
+    task = Task(target=sum_task, args=(1, 2))
+
+    try:
+        manager.submit(task)
+
+        qtbot.waitUntil(
+            lambda: manager.records[task.id].status == TaskStatus.FAILED,
+            timeout=2000,
+        )
+
+        assert 'Simulated startup failure' in manager.records[task.id].error
+    finally:
+        manager.close()
+        qtbot.waitUntil(
+            lambda: not manager.runner._thread.is_alive(),  # noqa: SLF001
+            timeout=2000,
+        )
+
+
+def test_poll_failure(qtbot):
+    """Test that poll raising an issue is handled properly."""
+    manager = TaskManager(PollFailureBackend())
+    task = Task(target=sum_task, args=(1, 2))
+
+    try:
+        manager.submit(task)
+        qtbot.waitSignal(manager.runner.fatal_error, timeout=5000)
+        qtbot.waitUntil(
+            lambda: manager.records[task.id].status == TaskStatus.UNKNOWN,
+            timeout=2000,
+        )
+        assert 'Simulated poll failure' in manager.records[task.id].error
+    finally:
+        manager.close()
+        qtbot.waitUntil(
+            lambda: not manager.runner._thread.is_alive(),  # noqa: SLF001
+            timeout=2000,
+        )

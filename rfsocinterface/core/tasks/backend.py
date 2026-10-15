@@ -328,19 +328,12 @@ class MultiprocessingBackend:
                 case ReceiverStatus.ERROR:
                     # Receiver encountered an issue while calling recv(). The
                     # communication channel is no longer usable
-                    handle.channel_closed = True
-                    handle.receiver_error = update.error
-                    handle.ipc_failure_at = monotonic()
-                    # Notify manager of the issue
                     events.append(
-                        IPCFailed(
+                        self._handle_receiver_failure(
                             update.task_id,
                             update.error or 'Unknown IPC error',
                         )
                     )
-                    # Ask the worker to stop if it is still running
-                    if handle.process.is_alive():
-                        handle.cancel()
 
         # Handle recovery from any IPC failures
         now = monotonic()
@@ -384,6 +377,23 @@ class MultiprocessingBackend:
             self.reap(task_id)
 
         return BackendUpdate(events, exited_workers)
+
+    def _handle_receiver_failure(
+        self,
+        task_id: UUID,
+        error: str,
+    ) -> IPCFailed:
+        """Handle receiver communication errors."""
+        handle = self.workers[task_id]
+
+        handle.channel_closed = True
+        handle.receiver_error = error
+        handle.ipc_failure_at = monotonic()
+
+        if handle.is_alive():
+            handle.cancel()
+
+        return IPCFailed(task_id, error)
 
     def reap(self, task_id: UUID):
         """Clean up resources of and remove references to a completed worker."""
