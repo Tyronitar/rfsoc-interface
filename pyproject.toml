@@ -87,6 +87,7 @@ ignore = [
     "ANN",  # Type hints / annotations; handled by mypy
     "COM812",  # "Trailing Comma Missing"
     "TRY003",  # "Avoid specifying long messages outside the exception class"
+    "TRY301",  # "Abstract `raise` to an inner function"
     "PLR0913",  # Too many arguments to function call
     "FBT001",  # Boolean-typed positional argument in function definitions
     "FBT002",  # Boolean default positional argument in function definitions
@@ -175,6 +176,9 @@ max-complexity = 15
 [tool.pytest.ini_options]
 markers = [
     "smoke: these tests should always run to check for regressions quickly",
+    "slow: these tests are slow, and should be run sparingly",
+    "integration: these tests involve the integration of multiple parts.",
+    "qapp: tests that require QApplication to be running (use qtbot fixture).",
 ]
 
 testpaths = ["tests"]

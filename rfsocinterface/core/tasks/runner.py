@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 import traceback
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -200,6 +201,7 @@ class BackendRunner(QObject):
                 update = self.backend.poll()
                 if update.events or update.exited_workers:
                     self.updated.emit(update)
+                time.sleep(0.05)
         except BaseException as exc:  # noqa: BLE001
             self.fatal_error.emit(
                 f'Backend cleanup failed: {exc}',

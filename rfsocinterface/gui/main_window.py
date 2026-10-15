@@ -286,7 +286,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     case 'err':
                         criticality = data[0]
                         if criticality == 'CRITICAL':
-                            raise RuntimeError(  # noqa: TRY301
+                            raise RuntimeError(
                                 f'Critical error from telescope controller: {data[1]}'
                             )
                     case 'done':
@@ -311,7 +311,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     case 'err':
                         criticality = data[0]
                         if criticality == 'CRITICAL':
-                            raise RuntimeError(  # noqa: TRY301
+                            raise RuntimeError(
                                 f'Critical error from camera controller: {data[1]}'
                             )
                     case 'done':
