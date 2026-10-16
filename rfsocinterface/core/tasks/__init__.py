@@ -18,7 +18,7 @@ from rfsocinterface.core.tasks.runner import (
     BackendCommandType,
     BackendRunner,
 )
-from rfsocinterface.core.tasks.tasks import (
+from rfsocinterface.core.tasks.task import (
     TERMINAL_STATUSES,
     CancellationPolicy,
     Cancelled,

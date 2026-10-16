@@ -12,7 +12,7 @@ import pytest
 
 from rfsocinterface.core.tasks.backend import BackendUpdate, WorkerExit
 from rfsocinterface.core.tasks.manager import TaskManager
-from rfsocinterface.core.tasks.tasks import (
+from rfsocinterface.core.tasks.task import (
     CancellationPolicy,
     Cancelled,
     Failed,

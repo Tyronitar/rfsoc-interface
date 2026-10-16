@@ -10,7 +10,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 
 from rfsocinterface.core.tasks.backend import BackendUpdate, TaskBackend
 from rfsocinterface.core.tasks.runner import BackendCommandType, BackendRunner
-from rfsocinterface.core.tasks.tasks import (
+from rfsocinterface.core.tasks.task import (
     TERMINAL_STATUSES,
     CancellationPolicy,
     Cancelled,

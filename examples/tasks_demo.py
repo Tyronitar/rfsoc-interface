@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from rfsocinterface.core.tasks.backend import MultiprocessingBackend
 from rfsocinterface.core.tasks.manager import TaskManager, TaskRecord
-from rfsocinterface.core.tasks.tasks import CancellationPolicy, Task, TaskStatus
+from rfsocinterface.core.tasks.task import CancellationPolicy, Task, TaskStatus
 
 
 def example_job(seconds: int, *, context):

@@ -13,7 +13,7 @@ from uuid import UUID
 from PySide6.QtCore import QObject, Signal
 
 from .backend import TaskBackend
-from .tasks import Task
+from .task import Task
 
 
 class BackendCommandType(Enum):
