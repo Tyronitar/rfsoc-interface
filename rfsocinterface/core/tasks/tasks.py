@@ -15,6 +15,9 @@ class TaskStatus(Enum):
     PENDING = auto()
     """Task has not started yet."""
 
+    STARTING = auto()
+    """Task has been scheduled and is beginning execution."""
+
     RUNNING = auto()
     """Task is currently executing."""
 
@@ -34,8 +37,16 @@ class TaskStatus(Enum):
     UNKNOWN = auto()
     """The backend has lost access to the task's execution ."""
 
+    SKIPPED = auto()
+    """Task did not run because a prerequesite failed, was cancelled, or was skipped."""
 
-TERMINAL_STATUSES = {TaskStatus.SUCCEEDED, TaskStatus.FAILED, TaskStatus.CANCELLED}
+
+TERMINAL_STATUSES = {
+    TaskStatus.SUCCEEDED,
+    TaskStatus.FAILED,
+    TaskStatus.CANCELLED,
+    TaskStatus.SKIPPED,
+}
 type TerminalEvent = Succeeded | Failed | Cancelled
 
 
@@ -79,6 +90,8 @@ class Task:
         id: Uniqiue identifier for this task.
         cancellation_policy: How this task should handle cancellation. Defaults to
             `CancellationPolicy.Disabled`.
+        depends_on: Other tasks this task depends on being completed prior to execution.
+        resources: Resources that this task uses.
     """
 
     target: Callable[..., Any]
@@ -88,6 +101,8 @@ class Task:
     with_context: bool = False
     id: UUID = field(default_factory=uuid4)
     cancellation_policy: CancellationPolicy = CancellationPolicy.DISABLED
+    depends_on: frozenset[UUID] = field(default_factory=frozenset)
+    resources: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
