@@ -212,7 +212,7 @@ def test_normal_task_success(qtbot, manager):
     record = wait_for_task(qtbot, manager, task.id, timeout=5000)
     assert record.status == TaskStatus.SUCCEEDED
     assert record.worker_exited
-    assert record.result == 2  # noqa: PLR2004
+    assert record.result == 2
 
 
 @pytest.mark.integration
@@ -337,7 +337,7 @@ def test_worker_failure_is_isolated(qtbot, manager):
 
     assert failed.status == TaskStatus.FAILED
     assert succeeded.status == TaskStatus.SUCCEEDED
-    assert succeeded.result == 30  # noqa: PLR2004
+    assert succeeded.result == 30
     assert failed.worker_exited
     assert succeeded.worker_exited
 

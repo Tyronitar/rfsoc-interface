@@ -1,5 +1,4 @@
 """Tests for HDF5-related code."""
-# ruff: noqa: PLR2004
 
 import h5py
 import pytest

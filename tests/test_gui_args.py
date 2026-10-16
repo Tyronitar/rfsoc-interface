@@ -1,6 +1,5 @@
 """Test automatic GUI argument discovery for DataRoutines."""
 
-# ruff: noqa: PLR2004
 import inspect
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
