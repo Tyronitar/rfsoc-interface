@@ -981,7 +981,7 @@ class LoSweepData:
     ) -> Figure:
         """Plot blind sweep results."""
         self.reset_stop_signals()
-        self.plot_full_trace(fig=fig, callback=callback)
+        fig = self.plot_full_trace(fig=fig, callback=callback)
         if self._plot_canceled:
             return None
         ax = fig.axes[0]
