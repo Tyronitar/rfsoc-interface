@@ -394,7 +394,7 @@ class ImagingWidget(TelescopeMainWidget, DataCollectionMainWidget, Ui_ImagingWid
         if self.buttonGroup.checkedButton() == self.video_radioButton:
             self.stop_recording_video()
 
-        self.make_map()
+        # self.make_map()
         # if (
         #     self._telescope_command_data == 0
         # ):  # Value other than 1 idicates the scan stopped early
