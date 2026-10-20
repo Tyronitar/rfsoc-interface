@@ -152,8 +152,8 @@ if __name__ == '__main__':
     )
 
     bad_resonators = (
-        # (256, 292, 342, 364, 580, 791),
-        # (74, 87, 95, 288, 320, 416, 667, 755),
+        (256, 292, 342, 364, 580, 791),
+        (74, 87, 95, 288, 320, 416, 667, 755),
         None,
         None,
     )
@@ -218,7 +218,21 @@ if __name__ == '__main__':
     tile_2_za_centers = za_centers[0][good_inds[0]]
     tile_3_az_centers = az_centers[1][good_inds[1]]
     tile_3_za_centers = za_centers[1][good_inds[1]]
+    good_ind_tile2 = np.argwhere(
+        (np.abs(tile_2_az_centers - np.median(tile_2_az_centers)) <= 1.2) &
+        (np.abs(tile_2_za_centers - np.median(tile_2_za_centers)) <= 1.2)
+    )
+    good_ind_tile3 = np.argwhere(
+        (np.abs(tile_3_az_centers - np.median(tile_3_az_centers)) <= 1.2) &
+        (np.abs(tile_3_za_centers - np.median(tile_3_za_centers)) <= 1.2)
+    )
+    pdb.set_trace()
+    tile_2_az_centers = tile_2_az_centers[good_ind_tile2]
+    tile_2_za_centers = tile_2_za_centers[good_ind_tile2]
+    tile_3_az_centers = tile_3_az_centers[good_ind_tile3]
+    tile_3_za_centers = tile_3_za_centers[good_ind_tile3]
 
+    print('Finding focal plane center')
     # Find the center of the focal plane
     # To find the most extreme points (when y is increasing downwards):
     # Top left = min(x + y)      |      Top Right = max(x - y)
@@ -235,6 +249,8 @@ if __name__ == '__main__':
     bottom_left_tile_3 = np.array([tile_3_az_centers[bottom_left_tile_3_idx], tile_3_za_centers[bottom_left_tile_3_idx]]).squeeze()
     diff_vector = bottom_left_tile_3 - bottom_right_tile_2
     true_top_right = top_left_tile_3 - diff_vector
+    print(f'Top right of tile 1: {true_top_right}')
+    print(f'Top left of tile 3: {top_left_tile_3}')
 
     # Use median between tiles
     focal_center = (top_left_tile_3 + true_top_right) / 2
@@ -267,12 +283,14 @@ if __name__ == '__main__':
     pdf.savefig()
     plt.show()
     pdf.close()
+    pdb.set_trace()
 
     # Make new parameters files
     detdx_2 =  focal_center[0] - tile_2_az_centers
     detdy_2 =  focal_center[1] - tile_2_za_centers
     detdx_3 =  focal_center[0] - tile_3_az_centers
     detdy_3 =  focal_center[1] - tile_3_za_centers
+    exit()
 
 
     with RFSoCParameters.load(tile_names[0], mode='r') as old_tile_2_params, \
