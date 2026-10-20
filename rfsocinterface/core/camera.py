@@ -400,7 +400,7 @@ class CameraController:
             )
             raise VmbFeatureError from e
 
-    def _consumer_loop(self):  # noqa: PLR0912
+    def _consumer_loop(self):
         frames: dict[str, Frame] = {}
         self.alive = True
 

@@ -817,7 +817,7 @@ class TelescopeMotorController:
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
-    def _dither_pattern(  # noqa: PLR0912
+    def _dither_pattern(
         self,
         file: str,
         primary_start: float,

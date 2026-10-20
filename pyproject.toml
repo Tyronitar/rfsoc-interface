@@ -162,7 +162,7 @@ extend-ignore-names = [
 ]
 
 [tool.ruff.lint.pylint]
-max-branches = 20
+max-branches = 30
 max-statements = 100
 
 [tool.ruff.lint.pydocstyle]

@@ -980,7 +980,7 @@ class OptionalInputWidget[T](QGroupBox, InputWidget[T]):
 #
 
 
-def create_input_widget[T](  # noqa: PLR0911, PLR0912
+def create_input_widget[T](  # noqa: PLR0911
     annotation: type[T],
     *,
     gui_meta: GuiMeta | None = None,

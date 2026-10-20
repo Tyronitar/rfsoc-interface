@@ -609,7 +609,7 @@ class BinTODIntoMap(DataRoutine):
             )
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):  # noqa: PLR0912
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
