@@ -1,8 +1,11 @@
 """Submodule for data storage / processing related code."""
 
 from rfsocinterface.core.data.map import (
+    BIN_TOD_INTO_MAP_CHANGE_VERSION,
+    MAP_CHANGE_VERSION,
+    AnimateVideo,
     BinTODIntoMap,
-    MakeVideo,
+    BinTODIntoVideo,
     PlotMap,
     get_extent,
     get_scaled_optical_image,
@@ -53,9 +56,11 @@ ROUTINE_NAME_MAP = ROUTINE_REGISTRY  # Temporary fix until further edits made
 
 __all__ = [
     'AZ_TRIM',
+    'BIN_TOD_INTO_MAP_CHANGE_VERSION',
     'CALIBRATION_TABLE_DTYPE',
     'DECIMATE_ORDER',
     'DEFAULT_MAP_DPIX',
+    'MAP_CHANGE_VERSION',
     'N_POLARIZATION',
     'OPTCAM_DPIX',
     'OPTCAM_OFFSET_AZ_PIX',
@@ -66,7 +71,9 @@ __all__ = [
     'SKIPR_PSF_SIGMA',
     'TONES_TABLE_DTYPE',
     'ZA_TRIM',
+    'AnimateVideo',
     'BinTODIntoMap',
+    'BinTODIntoVideo',
     'CleanTOD',
     'ConsolidatedData',
     'CutoffFilter',
@@ -74,7 +81,6 @@ __all__ = [
     'DataStorage',
     'HighPassFilter',
     'LowPassFilter',
-    'MakeVideo',
     'NormalizedRoutineInputs',
     'Pipeline',
     'PlotMap',

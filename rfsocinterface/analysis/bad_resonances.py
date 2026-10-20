@@ -1,7 +1,6 @@
 """Code for identifying bad resonances."""
 
 import logging
-import pdb
 import typing
 from typing import ClassVar
 
@@ -9,10 +8,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
+from packaging.version import Version
 from tqdm.contrib import tenumerate
 
 from rfsocinterface.analysis.beammap import find_gaussian_beams
-from rfsocinterface.core.data import DataRoutine, ProcessedData, get_extent
+from rfsocinterface.core.data import (
+    BIN_TOD_INTO_MAP_CHANGE_VERSION,
+    MAP_CHANGE_VERSION,
+    DataRoutine,
+    ProcessedData,
+    get_extent,
+)
 from rfsocinterface.core.utils import gauss_2d
 
 _logger = logging.getLogger(__name__)
@@ -36,13 +42,13 @@ class FindDoubleResonances(DataRoutine):
     }
 
     produces: ClassVar[set[str]] = {
-        '/beammap/double_resonance/az_center',
-        '/beammap/double_resonance/za_center',
-        '/beammap/double_resonance/amplitude',
-        '/beammap/double_resonance/snr',
-        '/beammap/double_resonance/chisq',
-        '/beammap/double_resonance/fwhm_az',
-        '/beammap/double_resonance/fwhm_za',
+        # '/beammap/double_resonance/az_center',
+        # '/beammap/double_resonance/za_center',
+        # '/beammap/double_resonance/amplitude',
+        # '/beammap/double_resonance/snr',
+        # '/beammap/double_resonance/chisq',
+        # '/beammap/double_resonance/fwhm_az',
+        # '/beammap/double_resonance/fwhm_za',
     }
 
     def __init__(  # noqa: D417
@@ -140,9 +146,21 @@ class FindDoubleResonances(DataRoutine):
     def _run(self, pdata: ProcessedData, inputs: list[str] | None = None):  # noqa: PLR0915
         self._initialize_datasets(pdata)
 
-        map_az = pdata['map/map_az'][:][:, np.newaxis]
-        map_za = pdata['map/map_za'][:][np.newaxis, :]
-        map_val = pdata['map/map_val'][:]
+        az = pdata['map/map_az'][:]
+        za = pdata['map/map_za'][:]
+        map_val = pdata['map/map_val']
+
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+        old_format = 'map/channel_map_val' not in pdata and (
+            pdata.get_version() < MAP_CHANGE_VERSION
+            or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+        if old_format:
+            map_val = np.transpose(map_val, (0, 2, 1))
+
+        map_az = az[:][np.newaxis, :]
+        map_za = za[:][:, np.newaxis]
         az_center = pdata['/beammap/az_center'][:]
         za_center = pdata['/beammap/za_center'][:]
         amplitude = pdata['/beammap/amplitude'][:]
@@ -203,13 +221,12 @@ class FindDoubleResonances(DataRoutine):
         new_fwhm_az_neg = pdata['beammap/double_resonances/negative/fwhm_az']
         new_fwhm_za_neg = pdata['beammap/double_resonances/negative/fwhm_za']
         new_offset_neg = pdata['beammap/double_resonances/negative/offset']
-        pdb.set_trace()
 
         # Find any second sources in the positive residual map
         find_gaussian_beams(
             tone_indices,
-            pdata['map/map_az'][:][:, np.newaxis],
-            pdata['map/map_za'][:][np.newaxis, :],
+            pdata['map/map_az'][:][np.newaxis, :],
+            pdata['map/map_za'][:][:, np.newaxis],
             residual_map_val[:],
             new_az_center_pos,
             new_za_center_pos,
@@ -229,12 +246,11 @@ class FindDoubleResonances(DataRoutine):
             maxfev=self.params['maxfev'],
             caller_name=self.name,
         )
-        pdb.set_trace()
         # Find any second sources in the negative residual map
         find_gaussian_beams(
             tone_indices,
-            pdata['map/map_az'][:][:, np.newaxis],
-            pdata['map/map_za'][:][np.newaxis, :],
+            pdata['map/map_az'][:][np.newaxis, :],
+            pdata['map/map_za'][:][:, np.newaxis],
             -1 * residual_map_val[:],
             new_az_center_neg,
             new_za_center_neg,
@@ -271,7 +287,6 @@ class FindDoubleResonances(DataRoutine):
         amp_weight = 0.75
 
         amp_matrix = np.hstack([amplitude[:, np.newaxis], np.ones((amplitude.size, 1))])
-        pdb.set_trace()
         idx = tone_indices[np.isfinite(amplitude[tone_indices])]
         idx = idx[~np.isnan(amplitude[idx])]
         idx = idx[np.isfinite(snr[idx])]
@@ -347,7 +362,7 @@ class FindDoubleResonances(DataRoutine):
 
         is_double_pos = (
             # Only care about tones we're already considering
-            np.isin(np.arange(pdata.n_tones, dtype=int), tone_indices)
+            np.isin(np.arange(pdata.total_tones, dtype=int), tone_indices)
             &
             # Amplitude is relatively large
             (amp_ratio_pos >= amplitude_threshold)
@@ -372,7 +387,7 @@ class FindDoubleResonances(DataRoutine):
 
         is_double_neg = (
             # Only care about tones we're already considering
-            np.isin(np.arange(pdata.n_tones, dtype=int), tone_indices)
+            np.isin(np.arange(pdata.total_tones, dtype=int), tone_indices)
             &
             # Amplitude is relatively large
             (amp_ratio_neg >= amplitude_threshold)
@@ -410,7 +425,10 @@ class FindDoubleResonances(DataRoutine):
                 for i, i_res in tenumerate(tone_indices):
                     if i == tone_indices.size // 2:
                         _logger.info(f'{self.name}: Halfway done plotting results...')
-                    old_plot_data = np.flip(np.transpose(map_val[i_res][::-1]), 1)
+                    if old_format:
+                        old_plot_data = np.flip(np.transpose(map_val[i_res][::-1]), 1)
+                    else:
+                        old_plot_data = map_val
                     old_med = np.nanmedian(old_plot_data)
                     old_plot_data -= old_med
                     old_max = np.nanmax(old_plot_data)
@@ -442,9 +460,12 @@ class FindDoubleResonances(DataRoutine):
                         mew=2,
                     )
 
-                    new_plot_data = np.flip(
-                        np.transpose(residual_map_val[i_res][::-1]), 1
-                    )
+                    if old_format:
+                        new_plot_data = np.flip(
+                            np.transpose(residual_map_val[i_res][::-1]), 1
+                        )
+                    else:
+                        new_plot_data = residual_map_val[:]
                     new_plot_data_pos = new_plot_data - old_med
                     new_plot_data_pos /= old_max
 
