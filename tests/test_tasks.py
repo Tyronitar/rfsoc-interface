@@ -20,11 +20,11 @@ from rfsocinterface.core.tasks import (
     ReceiverUpdate,
     Task,
     TaskCancelled,
-    TaskContext,
     TaskManager,
     TaskRecord,
     TaskStatus,
 )
+from rfsocinterface.core.tasks.context import TaskContext
 
 
 def check_record(

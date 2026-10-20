@@ -16,6 +16,7 @@ from time import monotonic
 from typing import Protocol
 from uuid import UUID
 
+from rfsocinterface.core.tasks.context import TaskContext
 from rfsocinterface.core.tasks.task import (
     CancellationPolicy,
     Cancelled,
@@ -25,7 +26,6 @@ from rfsocinterface.core.tasks.task import (
     Succeeded,
     Task,
     TaskCancelled,
-    TaskContext,
     TaskEvent,
     TerminalEvent,
 )

@@ -9,6 +9,7 @@ from rfsocinterface.core.tasks.backend import (
     TaskBackend,
     WorkerExit,
 )
+from rfsocinterface.core.tasks.context import TaskContext
 from rfsocinterface.core.tasks.manager import (
     TaskManager,
     TaskRecord,
@@ -30,7 +31,6 @@ from rfsocinterface.core.tasks.task import (
     Succeeded,
     Task,
     TaskCancelled,
-    TaskContext,
     TaskEvent,
     TaskStatus,
     TerminalEvent,

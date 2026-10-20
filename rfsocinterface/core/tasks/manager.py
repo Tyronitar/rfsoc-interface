@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -19,6 +19,7 @@ from rfsocinterface.core.tasks.task import (
     Message,
     Progress,
     Started,
+    SubtaskProgress,
     Succeeded,
     Task,
     TaskStatus,
@@ -32,6 +33,9 @@ class TaskRecord:
     task: Task
     status: TaskStatus = TaskStatus.PENDING
     progress: Progress | None = None
+    subtask_progress: dict[tuple[str, ...], SubtaskProgress] = field(
+        default_factory=dict
+    )
     result: Any = None
     error: str | None = None
     traceback: str | None = None
@@ -241,6 +245,8 @@ class TaskManager(QObject):
                         record.status = TaskStatus.RUNNING
                 case Progress():
                     record.progress = event
+                case SubtaskProgress():
+                    record.subtask_progress[event.path] = event
                 case Succeeded():
                     record.status = TaskStatus.SUCCEEDED
                     record.result = event.result

@@ -131,6 +131,20 @@ class Progress(TaskEvent):
 
 
 @dataclass(frozen=True)
+class SubtaskProgress(TaskEvent):
+    """Event indicating values for progress bars from a subtask.
+
+    Attributes correspond to the values of a QProgressBar.
+    """
+
+    path: tuple[str, ...]
+    value: float | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True)
 class Message(TaskEvent):
     """Message to communicate to the main process."""
 
@@ -167,46 +181,3 @@ class IPCFailed(TaskEvent):
 
 class TaskCancelled(Exception):  # noqa: N818
     """Exception raised to signal a task to interrupt its execution."""
-
-
-class TaskContext:
-    """Backend-independent interface for reporting progress and checking status."""
-
-    def __init__(
-        self,
-        task_id: UUID,
-        send_event: Callable[[TaskEvent], None],
-        is_cancelled: Callable[[], bool],
-    ):
-        """Initialize a TaskContext."""
-        self.task_id = task_id
-        self._send_event = send_event
-        self._is_cancelled = is_cancelled
-
-    def emit(self, kind: str, payload: Any) -> None:
-        """Send a message to the main process."""
-        self._send_event(Message(self.task_id, kind, payload))
-
-    def progress(
-        self,
-        value: float | None = None,
-        *,
-        minimum: float | None = None,
-        maximum: float | None = None,
-        label: str | None = None,
-    ) -> None:
-        """Send the task's progress to the main process."""
-        self._send_event(Progress(self.task_id, value, minimum, maximum, label))
-
-    def is_cancelled(self) -> bool:
-        """Return whether the task has started cancellation."""
-        return self._is_cancelled()
-
-    def check_cancelled(self) -> None:
-        """Check if the task has been cancelled."""
-        if self.is_cancelled():
-            raise TaskCancelled
-
-    # TODO: Implement handling for sending pickled figures to the main process.
-    # def show_plot(self, figure: Figure) -> None:
-    #     self.emit('plot', figure)
