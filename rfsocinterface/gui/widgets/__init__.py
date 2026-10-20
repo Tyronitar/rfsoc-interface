@@ -37,6 +37,8 @@ from rfsocinterface.gui.widgets.icon_label import (
 from rfsocinterface.gui.widgets.lineedit import ClickableLineEdit
 from rfsocinterface.gui.widgets.progress_bar import (
     IncrementalProgressDialog,
+    SubtaskRow,
+    TaskProgressWidget,
     make_progress_dialog_incrementer,
 )
 from rfsocinterface.gui.widgets.save_location import SaveLocationWidget
@@ -85,6 +87,8 @@ __all__ = [
     'ScrollableCanvas',
     'Section',
     'StickyWaitingSpinner',
+    'SubtaskRow',
+    'TaskProgressWidget',
     'ToolbarCanvas',
     'VLine',
     'WaitingSpinner',

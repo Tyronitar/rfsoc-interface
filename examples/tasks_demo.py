@@ -4,6 +4,7 @@ from __future__ import annotations
 import multiprocessing as mp
 import sys
 import time
+from uuid import UUID
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -15,9 +16,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from rfsocinterface.core.tasks.backend import MultiprocessingBackend
-from rfsocinterface.core.tasks.manager import TaskManager, TaskRecord
-from rfsocinterface.core.tasks.task import CancellationPolicy, Task, TaskStatus
+
+from rfsocinterface.core.tasks import (
+    MultiprocessingBackend,
+    TaskManager,
+    TaskRecord,
+    TaskProgress,
+    CancellationPolicy,
+    Task,
+    TaskStatus,
+)
+from rfsocinterface.gui.widgets import TaskProgressWidget
 
 
 def example_job(seconds: int, *, context):
@@ -29,6 +38,20 @@ def example_job(seconds: int, *, context):
         )
     context.emit('plot_request', {'x': [0, 1, 2], 'y': [0, 1, 4]})
     return f'Processed {seconds} steps'
+
+def example_composite_job(seconds: int, subtasks: int, *, context):
+    progress = TaskProgress(
+        context,
+        subtasks=[
+            (f'wait_{i}', 1.0) for i in range(subtasks)
+        ],
+    )
+    for i in range(subtasks):
+        context.check_cancelled()
+        with progress.subtask(i) as subcontext:
+            example_job(int(seconds / subtasks), context=subcontext)
+    return f'Processed {seconds} steps'
+
 
 
 def example_job_contextless(seconds: int):
@@ -112,10 +135,10 @@ class Window(QWidget):
         self.setWindowTitle('Background task demo')
         self.resize(750, 350)
         self.manager = TaskManager(MultiprocessingBackend(ipc_failure_grace=0.25))
-        self.rows = {}
+        self.rows: dict[UUID, TaskProgressWidget] = {}
         layout = QVBoxLayout(self)
         add_button = QPushButton('Start 10-second task')
-        add_button.clicked.connect(self.add_task)
+        add_button.clicked.connect(self.create_task)
         layout.addWidget(add_button)
         self.tasks_layout = QVBoxLayout()
         layout.addLayout(self.tasks_layout)
@@ -123,7 +146,7 @@ class Window(QWidget):
         self.manager.changed.connect(self.on_changed)
         self.manager.event_received.connect(self.on_event)
 
-    def add_task(self):
+    def create_task(self):
         i = len(self.rows.values())
         match i % 3:
             case 0:
@@ -150,15 +173,21 @@ class Window(QWidget):
                     with_context=False,
                     cancellation_policy=CancellationPolicy.DISABLED,
                 )
+        self.add_task(task)
+
+    def add_task(self, task: Task):
         row = TaskRow(self.manager, task.id, task.cancellation_policy)
+        row = TaskProgressWidget(self.manager, task.id, parent=self)
         self.rows[task.id] = row
         self.tasks_layout.addWidget(row)
         self.manager.submit(task)
 
-    def on_changed(self, record):
-        self.rows[record.task.id].update_record(record)
-        if record.status == TaskStatus.FAILED:
-            print(f'Task failed: {record.error}\n{record.traceback}')
+    def on_changed(self, record: TaskRecord):
+        row = self.rows.get(record.task.id)
+        if row is not None:
+            if record.status == TaskStatus.FAILED:
+                print(f'Task failed: {record.error}\n{record.traceback}')
+            row.update_record(record)
 
     def on_event(self, event):
         if event.kind == 'plot_request':
@@ -182,4 +211,13 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = Window()
     window.show()
+    window.add_task(
+        Task(
+            target=example_composite_job,
+            args=(15, 3),
+            cancellation_policy=CancellationPolicy.COOPERATIVE,
+            with_context=True,
+        )
+
+    )
     sys.exit(app.exec())

@@ -20,6 +20,7 @@ from rfsocinterface.core.tasks.task import (
     Progress,
     Started,
     SubtaskProgress,
+    SubtasksDefined,
     Succeeded,
     Task,
     TaskStatus,
@@ -33,6 +34,9 @@ class TaskRecord:
     task: Task
     status: TaskStatus = TaskStatus.PENDING
     progress: Progress | None = None
+    subtask_definitions: tuple[tuple[tuple[str, ...], str, float], ...] = field(
+        default_factory=tuple
+    )
     subtask_progress: dict[tuple[str, ...], SubtaskProgress] = field(
         default_factory=dict
     )
@@ -243,6 +247,8 @@ class TaskManager(QObject):
                 case Started():
                     if record.status != TaskStatus.CANCELLING:
                         record.status = TaskStatus.RUNNING
+                case SubtasksDefined():
+                    record.subtask_definitions = event.subtasks
                 case Progress():
                     record.progress = event
                 case SubtaskProgress():

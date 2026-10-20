@@ -137,11 +137,21 @@ class SubtaskProgress(TaskEvent):
     Attributes correspond to the values of a QProgressBar.
     """
 
-    path: tuple[str, ...]
+    path: tuple[str, ...]  # Path to this subtask by task names
     value: float | None = None
     minimum: float | None = None
     maximum: float | None = None
     label: str | None = None
+
+
+@dataclass(frozen=True)
+class SubtasksDefined(TaskEvent):
+    """Event indicating that a task has created subtasks."""
+
+    subtasks: tuple[tuple[tuple[str, ...], str, float], ...]
+    """The subtasks the task has defined. Consists of the path to the subtask, its
+    display name, and its progress weight.
+    """
 
 
 @dataclass(frozen=True)

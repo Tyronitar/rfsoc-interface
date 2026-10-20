@@ -9,7 +9,11 @@ from rfsocinterface.core.tasks.backend import (
     TaskBackend,
     WorkerExit,
 )
-from rfsocinterface.core.tasks.context import TaskContext
+from rfsocinterface.core.tasks.context import (
+    SubtaskContext,
+    TaskContext,
+    TaskProgress,
+)
 from rfsocinterface.core.tasks.manager import (
     TaskManager,
     TaskRecord,
@@ -28,6 +32,8 @@ from rfsocinterface.core.tasks.task import (
     Message,
     Progress,
     Started,
+    SubtaskProgress,
+    SubtasksDefined,
     Succeeded,
     Task,
     TaskCancelled,
@@ -53,6 +59,9 @@ __all__ = [
     'ReceiverStatus',
     'ReceiverUpdate',
     'Started',
+    'SubtaskContext',
+    'SubtaskProgress',
+    'SubtasksDefined',
     'Succeeded',
     'Task',
     'TaskBackend',
@@ -60,6 +69,7 @@ __all__ = [
     'TaskContext',
     'TaskEvent',
     'TaskManager',
+    'TaskProgress',
     'TaskRecord',
     'TaskStatus',
     'TerminalEvent',

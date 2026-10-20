@@ -1,6 +1,7 @@
 """Code for providing context to tasks and."""
 
 from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -9,6 +10,7 @@ from rfsocinterface.core.tasks.task import (
     Message,
     Progress,
     SubtaskProgress,
+    SubtasksDefined,
     TaskCancelled,
     TaskEvent,
 )
@@ -60,6 +62,7 @@ class TaskContext:
 class _SubtaskState:
     name: str
     weight: float
+    path: tuple[str, ...]
     fraction: float = 0.0
 
 
@@ -98,7 +101,7 @@ class SubtaskContext:
         self.parent._send_event(  # noqa: SLF001
             SubtaskProgress(
                 task_id=self.parent.task_id,
-                path=(self.state.name,),
+                path=self.state.path,
                 value=value,
                 minimum=minimum,
                 maximum=maximum,
@@ -131,7 +134,14 @@ class TaskProgress:
     ):
         """Initialize a TaskProgress."""
         self.context = context
-        self.states = [_SubtaskState(name, weight) for name, weight in subtasks]
+        self.states = [
+            _SubtaskState(
+                name=name,
+                weight=weight,
+                path=(str(i),),
+            )
+            for i, (name, weight) in enumerate(subtasks)
+        ]
 
         if not self.states:
             raise ValueError('At least one subtask is required')
@@ -140,6 +150,20 @@ class TaskProgress:
             raise ValueError('Weights must be positive')
 
         self.total_weight = sum(s.weight for s in self.states)
+
+        self.context._send_event(  # noqa: SLF001
+            SubtasksDefined(
+                task_id=context.task_id,
+                subtasks=tuple(
+                    (
+                        state.path,  # Stable path/identifier
+                        state.name,
+                        state.weight,
+                    )
+                    for state in self.states
+                ),
+            )
+        )
 
     def _update(self) -> None:
         """Update the progress accounting for subtasks."""
@@ -154,7 +178,8 @@ class TaskProgress:
             maximum=1,
         )
 
-    def subtask(self, index: int) -> Generator[SubtaskContext]:
+    @contextmanager
+    def subtask(self, index: int) -> Generator[SubtaskContext, None, None]:
         """Create the context for a subtask."""
         state = self.states[index]
 
@@ -167,10 +192,12 @@ class TaskProgress:
         self.context.check_cancelled()
         subcontext.progress(0, minimum=0, maximum=1)
 
-        yield subcontext
-
-        # Successful completion counts as 100%, even if
-        # the routine never explicitly reported progress.
-        state.fraction = 1.0
-        subcontext.progress(1, minimum=0, maximum=1)
-        self._update()
+        try:
+            yield subcontext
+        except BaseException:  # noqa: TRY203
+            raise
+        else:
+            # Successful completion counts as 100%, even if
+            # the routine never explicitly reported progress.
+            subcontext.progress(1, minimum=0, maximum=1)
+            self._update()
