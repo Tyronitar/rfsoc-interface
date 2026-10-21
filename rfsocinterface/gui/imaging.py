@@ -16,13 +16,13 @@ from kidpy3 import capture
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import (
     QDialog,
+    QLayout,
     QMessageBox,
     QProgressDialog,
+    QSizeGrip,
     QStackedLayout,
     QVBoxLayout,
     QWidget,
-    QSizeGrip,
-    QLayout,
 )
 
 from rfsocinterface.core.camera import MAX_FRAME_HEIGHT, MAX_FRAME_WIDTH

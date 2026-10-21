@@ -12,7 +12,6 @@ from collections.abc import Iterator
 from importlib.metadata import version
 from pathlib import Path
 from typing import Self, overload
-from scipy import signal
 
 import h5py
 import numpy as np

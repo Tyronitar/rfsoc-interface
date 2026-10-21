@@ -16,9 +16,7 @@ from packaging.version import Version
 
 from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
-    BAD_RESONANCE_COLOR,
     DEFAULT_PARAMS_DIRECTORY,
-    OFF_RESONANCE_COLOR,
     OFF_RESONANCE_COLOR,
     PERMISSIONS_ALL_FULL,
     ChanmaskValue,

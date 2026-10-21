@@ -410,22 +410,15 @@ class PlotBeamMap(DataRoutine):
         ncols = self.params['ncols']
         page_size = nrows * ncols
         dpi = self.params['dpi']
-        high_snr_percentile = self.params['high_snr_percentile']
 
-        high_snr_ind = np.argwhere(
-            amplitude > np.percentile(amplitude, high_snr_percentile),
-        ).flatten()
-
-        # Create scatter plot of beam centers
-        _logger.info(f'{self.name}: Creating beam center scatter plot...')
-        plt.scatter(az_center[high_snr_ind], za_center[high_snr_ind], marker='+')
-        plt.axis('equal')
-        plt.xlim(extent[0], extent[1])
-        plt.ylim(extent[2], extent[3])
-        plt.xlabel('X Position (deg)')
-        plt.ylabel('Y Position (deg)')
-        pdf.savefig()
-        plt.close()
+        # Make scatter plot of beam centers
+        self._plot_beam_centers(
+            pdf,
+            az_center,
+            za_center,
+            amplitude,
+            extent,
+        )
 
         # Create the big group plots
         _logger.info(f'{self.name}: Creating grid pages...')
@@ -591,6 +584,32 @@ class PlotBeamMap(DataRoutine):
 
         pdf.close()
         return RoutineResult()
+
+    def _plot_beam_centers(
+        self,
+        pdf: PdfPages,
+        az_center: npt.NDArray,
+        za_center: npt.NDArray,
+        amplitude: npt.NDArray,
+        extent: tuple[float, float, float, float],
+    ):
+        """Create a scatter plot of the beam cetners for each resonator."""
+        high_snr_percentile = self.params['high_snr_percentile']
+
+        high_snr_ind = np.argwhere(
+            amplitude > np.percentile(amplitude, high_snr_percentile),
+        ).flatten()
+
+        # Create scatter plot of beam centers
+        _logger.info(f'{self.name}: Creating beam center scatter plot...')
+        plt.scatter(az_center[high_snr_ind], za_center[high_snr_ind], marker='+')
+        plt.axis('equal')
+        plt.xlim(extent[0], extent[1])
+        plt.ylim(extent[2], extent[3])
+        plt.xlabel('X Position (deg)')
+        plt.ylabel('Y Position (deg)')
+        pdf.savefig()
+        plt.close()
 
 
 def combine_polarized_beammaps(

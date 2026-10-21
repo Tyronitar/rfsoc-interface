@@ -1841,7 +1841,9 @@ class PowerSweepData(CompositeSweepData):
             return
 
         # Histogram
-        counts, bins = np.histogram(self.power_level_non_linear, bins=60, range=(-10, 10))
+        counts, bins = np.histogram(
+            self.power_level_non_linear, bins=60, range=(-10, 10)
+        )
         plt.figure()
         plt.title('Optimal Readout Power Distribution')
         plt.xlabel(
