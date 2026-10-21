@@ -1826,9 +1826,7 @@ class BinTODIntoVideo(DataRoutine):
 
         # Find good sampels before determining number of blocks
         for i_chan in range(pdata.n_chan):
-            interpolated_samples = pdata.get_from_channel(
-                i_chan, 'time_ordered_data/interpolated_samples'
-            )
+            interpolated_samples = pdata.get_interpolated_samples(i_chan)[:]
             good_samples[i_chan] = np.setdiff1d(
                 np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
             )
