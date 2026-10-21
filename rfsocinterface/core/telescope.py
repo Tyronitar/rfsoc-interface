@@ -109,6 +109,7 @@ class TelescopeMotorController:
     def _listener_loop(self):
         if not self._initialized:
             return
+        self.send('start')
         while True:
             try:
                 command, *args = self.connection.recv()
@@ -864,9 +865,17 @@ class TelescopeMotorController:
             )
 
         if primary_az:
-            self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
+            # NOTE: Threshold for faster scan speed, when the ZA dither is large.
+            # TODO: Improve this
+            if secondary_dither >= 0.1:  # noqa: PLR2004
+                _tele_logger.info('Using fast speed for ZA dither')
+                self.set_za_speed_relation(ZA_DEAFULT_RPM_PER_VOLT)
+            else:
+                _tele_logger.info('Using scan (slow) speed for ZA dither')
+                self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
 
-        az_speed_factor = 1 / 3 if large_map_mode else 1.0
+        # az_speed_factor = 1 / 3 if large_map_mode else 1.0
+        az_speed_factor = 1
 
         self.send('dither_pattern_maximum', n_repeats)
         start_time = time.time()
@@ -910,6 +919,7 @@ class TelescopeMotorController:
                         scan_mode=True,
                         stop_run=False,
                         speed_factor=az_speed_factor,
+                        store_position_data=True,
                     )
                 else:
                     this_position_data = self._set_za_pos(
@@ -917,6 +927,7 @@ class TelescopeMotorController:
                         scan_mode=True,
                         stop_run=False,
                         primary_scan_direction=primary_dither_direction,
+                        store_position_data=True,
                     )
                 position_data = np.append(position_data, this_position_data)
             if np.mod(i_rep, 2) == 1:
@@ -926,6 +937,7 @@ class TelescopeMotorController:
                         scan_mode=True,
                         stop_run=False,
                         speed_factor=az_speed_factor,
+                        store_position_data=True,
                     )
                 else:
                     this_position_data = self._set_za_pos(
@@ -933,6 +945,7 @@ class TelescopeMotorController:
                         scan_mode=True,
                         stop_run=False,
                         primary_scan_direction=primary_dither_direction,
+                        store_position_data=True,
                     )
                 position_data = np.append(position_data, this_position_data)
             rep_end_time = time.time()

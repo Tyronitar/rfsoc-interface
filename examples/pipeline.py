@@ -3,7 +3,7 @@ import logging.config
 
 from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis
 from rfsocinterface.core.data import *
-from rfsocinterface.core.params import RFSoCParameters
+from rfsocinterface.core.params import RFSoCParameters, DEFAULT_DFOVERF_PER_MK
 from rfsocinterface.analysis import *
 import pdb
 import matplotlib.pyplot as plt
@@ -24,6 +24,8 @@ if __name__ == '__main__':
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
+    # dataset = 'data_mK'
+    # datasets = ['.*/data_mK']
 
     find_fwhm = CheckFocus(
         'az',
@@ -63,7 +65,16 @@ if __name__ == '__main__':
         dpix=0.03,
         r0=0.0,
     )
-    plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
+    plot_map_routine = PlotMap(
+        show=True,
+        # max_abs_threshold=0.4,
+        keep_figure_open=False,
+        channel=None,
+        # show_optical_overlay=True,
+        # vmin=-400,
+        # vmax=400,
+        overwrite=True,
+        )
     bin_tod_to_video = BinTODIntoVideo(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
@@ -76,7 +87,7 @@ if __name__ == '__main__':
         # show=True,
         # savefile='test.gif',
     )
-    animate_video = AnimateVideo()
+    animate_video = AnimateVideo(vmin=-400, vmax=400)
 
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap()
@@ -90,21 +101,26 @@ if __name__ == '__main__':
         clean_tod,
         # compute_psd,
         # psd_plotter,
-        # bin_tod_to_map,
-        # plotter,
-        bin_tod_to_video,
-        animate_video,
+        bin_tod_to_map,
+        plot_map_routine,
+        # bin_tod_to_video,
+        # animate_video,
         # find_fwhm,
         # analyze_beammap,
         # plot_beammap,
     ])
 
-    # date = '20260820'  # For testing normal maps
-    # setnum = 1005
+    date = '20260820'  # For testing normal maps
+    setnum = 1005
     # date = '20260710'  # For testing beammaps
     # setnum = 1006
-    date = '20260917'  # For testing video
-    setnum = 1007
+    # date = '20260917'  # For testing video
+    # setnum = 1007
+    # date = '20261001'  # For testing normal maps
+    # setnum = 1006
+
+    # date = '20260617'
+    # setnum = 1006
 
 
     pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
@@ -113,22 +129,3 @@ if __name__ == '__main__':
     # pipeline.run(pdata)
     # pdb.set_trace()
 
-    # plotter.apply(pdata)
-    # map_az = pdata['map/map_az'][:]
-    # map_za = pdata['map/map_za'][:]
-    # dpix = 0.03
-    # optim = get_scaled_optical_image(
-    #     dpix, pdata.optical_image, map_az, map_za,
-    #     optcam_offset_az_deg=0, optcam_offset_za_deg=0,
-    #     telescope_start_position=(np.nanmean(map_az), np.nanmean(map_za)),
-    # )
-    # ofig = plt.figure()
-    # plt.imshow(optim)
-    # ofig.show()
-    # pdb.set_trace()
-    # pdata = ProcessedData.load(date, setnum)
-    # tel_az = pdata.get_telescope_az(0)[:]
-    # tel_za = pdata.get_telescope_za(0)[:]
-    # plt.plot(tel_az, tel_za)
-    # plt.show()
-    # pdb.set_trace()

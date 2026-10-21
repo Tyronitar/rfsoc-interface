@@ -12,8 +12,10 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-from matplotlib import animation
+from matplotlib.animation import FuncAnimation
+from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from packaging.version import Version
 from scipy import signal
 from scipy.ndimage import gaussian_filter as apply_gaussian_blur
@@ -46,6 +48,7 @@ from rfsocinterface.core.utils import (
     ChanmaskValue,
     add_colorbar,
     argclosest,
+    convert_path,
     ensure_path,
     gaussian_filter,
     load_mp4_ffmpeg,
@@ -61,46 +64,61 @@ def plot_map(
     map_data: npt.NDArray,
     map_x: npt.NDArray,
     map_y: npt.NDArray,
-    extent: tuple[float, float, float, float],
+    ax: plt.Axes | None = None,
+    extent: tuple[float, float, float, float] | None = None,
     max_abs: float | None = None,
+    vmin: float | None = None,
+    vmax: float | None = None,
     flagged_map: npt.NDArray = None,
     contour_levels: npt.NDArray = None,
-    cb_shrink: float = 0.95,
     cb_label: str = 'Signal (mK)',
     cmap: str = 'Greys_r',
     title: str = '',
     add_x_label: bool = True,
-) -> Figure:
+    dpix: float | None = DEFAULT_MAP_DPIX,
+) -> Figure | None:
     """Create a plot for a map."""
     xlim = min(map_x), max(map_x)
     ylim = max(map_y), min(map_y)
+    if extent is None:
+        extent = get_extent(map_x, map_y, dpix=dpix)
 
     if max_abs is None:
         max_abs = np.nanmax(np.abs(map_data))
 
-    fig = plt.figure()
-    plt.imshow(
+    fig = None
+    if ax is None:
+        fig = plt.figure()
+        ax = plt.gca()
+    im = ax.imshow(
         np.flip(np.transpose(map_data[::-1]), 1),
         aspect='equal',
         extent=extent,
-        vmin=-max_abs,
-        vmax=max_abs,
+        vmin=vmin if vmin is not None else -max_abs,
+        vmax=vmax if vmax is not None else max_abs,
         cmap=cmap,
     )
-    cb = plt.colorbar(shrink=cb_shrink)
+    # Color bar
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    cb = plt.colorbar(im, cax=cax)
     cb.set_label(cb_label, rotation=270, labelpad=15)
+
+    # cb = plt.colorbar(im, shrink=cb_shrink)
+    # cb.set_label(cb_label, rotation=270, labelpad=15)
     if flagged_map:
-        plt.contour(
+        ax.contour(
             np.flip(np.flip(np.transpose(flagged_map[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
             colors='red',
         )
-    plt.title(title)
+    ax.set_title(title)
     if add_x_label:
-        plt.xlabel('Azimuth (degrees)')
-    plt.ylabel('ZA (degrees)')
-    plt.xlim(xlim), plt.ylim(ylim)
+        ax.set_xlabel('Azimuth (degrees)')
+    ax.set_ylabel('ZA (degrees)')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
 
     return fig
 
@@ -448,7 +466,7 @@ class BinTODIntoMap(DataRoutine):
     """
 
     name = 'BinTODIntoMap'
-    version = '4.1.0'
+    version = '4.1.1'
 
     produces: ClassVar[set] = {
         '/map/',
@@ -601,9 +619,7 @@ class BinTODIntoMap(DataRoutine):
             'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
         )
         for i_chan in range(pdata.n_chan):
-            interpolated_samples = pdata.get_from_channel(
-                i_chan, 'time_ordered_data/interpolated_samples'
-            )
+            interpolated_samples = pdata.get_interpolated_samples(i_chan)[:]
             good_samples[i_chan] = np.setdiff1d(
                 np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
             )
@@ -981,7 +997,7 @@ class PlotMap(DataRoutine):
     """
 
     name = 'PlotMap'
-    version = '3.1.0'
+    version = '3.2.0'
 
     requires: ClassVar[set] = {
         '/map',
@@ -1003,13 +1019,24 @@ class PlotMap(DataRoutine):
     }
 
     @ensure_path('savefile')
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         gaussian_sigma: float = GAUSSIAN_SIGMA,
         valid_covariance_threshold: float = 0.5,
         max_abs_threshold: float = 0.75,
+        show_optical_overlay: bool = False,
+        vmin: float | tuple[float, float, float] | None = None,
+        vmax: float | tuple[float, float, float] | None = None,
+        crop_to_optical_bounds: bool = False,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
+        layout: Literal['staggered', 'stacked'] = 'staggered',
+        gridspec_kw: dict | None = None,
+        figsize: tuple[float, float] = (16, 8),
+        dpi: float = 300,
         save_plot: bool = True,
         savefile: Path | None = None,
+        format: str | None = None,  # noqa: A002
         show: bool = False,
         keep_figure_open: bool = False,
         overwrite: bool = True,
@@ -1025,12 +1052,49 @@ class PlotMap(DataRoutine):
                 to 0.5.
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
-            save_plot (bool, optional): Whether to save the plot as a PNG file. Defaults
+            show_optical_overlay (bool, optional): Whether to overlay the region
+                covered by the optical camera on the mm images. Defatuls to `False`.
+            vmin, vmax (float | tuple[float, float, float], optional): The minimum /
+                maximum value(s) for the color scale in the plot. If a single value is
+                provided, the same range will be used for all plots. A tuple should have
+                3 elements, for v-pol, h-pol, and total signal respectively. If `None`,
+                will auto scale based on `max_abs_threshold` and matplotlib's default
+                behavior. Defaults to `None`.
+            crop_to_optical_bounds (bool, optional): Whehter to crop the images to the
+                bounds of the optical image. This has precedence over `xlim` and
+                `ylim`. Defaults to `False`.
+            xlim, yim (tuple[float, float], optional): The x/y bounds of the plots. All
+                plots will be cropped to fit the desired area. If `None`, uses the full
+                area. Note that ylim should be (max, min) order, as the ZA increases
+                downwards. Defaults to `None`.
+            layout (Literal['staggered', 'stacked'], optional): Which layout
+                configuration to use. If 'staggered', the optical images will be offset
+                in another column. If 'stacked', all images will be stacked vertically.
+                Defaults to 'staggered'.
+            gridspec_kw (dict, optional): The keyword arguments to pass to gridspec when
+                initializing the figure. If `None`, will use `{'hspace': 0}`. Defaults
+                to `None`.
+            figsize (tuple[float, float], optional): The (width, height) of the figure
+                in inches. Defaults to (16, 8).
+            dpi (float, optional): The saved figure's resolution in dots per inch.
+                Defaults to 300.
+            save_plot (bool, optional): Whether to save the plot to file. Defaults
                 to True.
-            savefile (Path, optional): The path to save the plot PNG file. If None, the
+            savefile (Path, optional): The path to save the plot to. If None, the
                 plot will be saved in the same directory as the HDF5 file. Defaults to
                 the animation be saved in the same directory as the HDF5 file under the
-                name "[date]_set[setnum]_Source_Finder_Image.png". Defaults to `None`.
+                name "[date]_set[setnum]_Source_Finder_Image.[format]". Defaults to
+                `None`. If format is set, it determines the output format, and the file
+                is saved as savefile. Note that savefile is used verbatim, and there is
+                no attempt to make the extension, if any, of savefile match format, and
+                no extension is appended. If format is not set, then the format is
+                inferred from the extension of savefile, if there is one. If format is
+                not set and savefile has no extension, then the file is saved with
+                `matplotlib.rcParams["savefig.format"]` (default: 'png') and the
+                appropriate extension is appended to savefile.
+            format (str, optional): The file format, e.g. 'png', 'pdf', 'svg', ... The
+                behavior when this is unset is documented under savefile. Defaults to
+                `None`.
             show (bool, optional): Whether to display the plot. Defaults to False.
             keep_figure_open (bool, optional): Whether to keep the figure open after
                 plotting. Defaults to False.
@@ -1044,8 +1108,19 @@ class PlotMap(DataRoutine):
             gaussian_sigma=gaussian_sigma,
             valid_covariance_threshold=valid_covariance_threshold,
             max_abs_threshold=max_abs_threshold,
+            show_optical_overlay=show_optical_overlay,
+            vmin=vmin,
+            vmax=vmax,
+            crop_to_optical_bounds=crop_to_optical_bounds,
+            xlim=xlim,
+            ylim=ylim,
+            layout=layout,
+            gridspec_kw=gridspec_kw,
+            figsize=figsize,
+            dpi=dpi,
             save_plot=save_plot,
             savefile=savefile,
+            format=format,
             show=show,
             keep_figure_open=keep_figure_open,
             overwrite=overwrite,
@@ -1068,10 +1143,9 @@ class PlotMap(DataRoutine):
         fig = self._plot(pdata)
 
         created = {'input': self.produces} if reset_arrays else {}
-        values = {'input': fig} if fig is not None else {}
         return RoutineResult(
             created=created,
-            value=values,
+            value=fig,
         )
 
     def _intialize_arrays(self, pdata: ProcessedData) -> bool:
@@ -1225,7 +1299,7 @@ class PlotMap(DataRoutine):
             '/map/plotting/map_good_cov', data=np.append(map_goodcov_1, map_goodcov_2)
         )
 
-    def _plot(self, pdata: ProcessedData) -> Figure | None:
+    def _plot(self, pdata: ProcessedData) -> Figure | None:  # noqa: PLR0912, PLR0915
         """Plot the maps using matplotlib.
 
         Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical
@@ -1241,6 +1315,9 @@ class PlotMap(DataRoutine):
         channel = tuple(pdata['map/plotting'].attrs['channel'].tolist())
         dpix = pdata['map'].attrs['dpix']
         units = pdata['map'].attrs.get('units', 'mK')
+        gridspec_kw = self.params['gridspec_kw']
+        if gridspec_kw is None:
+            gridspec_kw = {'hspace': 0}
 
         _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
         bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
@@ -1259,13 +1336,65 @@ class PlotMap(DataRoutine):
         valid_netd_1 = np.argwhere(netd_1 > 0)
         valid_netd_2 = np.argwhere(netd_2 > 0)
 
+        # Optical Image
+        tel_start = pdata.get_initial_telescope_position()
+        optical_image = get_scaled_optical_image(
+            dpix,
+            pdata.optical_image,
+            map_az,
+            map_za,
+            telescope_start_position=tel_start,
+        )
+        # Find optical image bounds
+        is_nonzero_opt = np.any(optical_image > 0, axis=-1)
+        nonzero_opt_idx_za, nonzero_opt_idx_az = np.nonzero(is_nonzero_opt)
+        corner_opt_za = map_za[0] + OPTCAM_DPIX * nonzero_opt_idx_za
+        corner_opt_az = map_az[0] + OPTCAM_DPIX * nonzero_opt_idx_az
+        height_opt_deg = OPTCAM_HEIGHT_PIXELS * OPTCAM_DPIX
+        width_opt_deg = OPTCAM_WIDTH_PIXELS * OPTCAM_DPIX
+        corner_opt = (corner_opt_az[0], corner_opt_za[0])
+        crop_to_optical = self.params['crop_to_optical_bounds']
+        if crop_to_optical:
+            xlim = (corner_opt[0], corner_opt[0] + width_opt_deg)
+            ylim = (corner_opt[1] + height_opt_deg, corner_opt[1])
+        else:
+            xlim = self.params['xlim']
+            ylim = self.params['ylim']
+            if xlim is None:
+                xlim = (min(map_az), max(map_az))
+            if ylim is None:
+                ylim = (max(map_za), min(map_za))
+
         max_abs_threshold = self.params['max_abs_threshold']
-        this_xlim = min(map_az), max(map_az)
-        this_ylim = max(map_za), min(map_za)
+        vmin = self.params['vmin']
+        vmax = self.params['vmax']
         max_abs = np.max(np.abs(map_good_cov)) * max_abs_threshold
-        # max_abs = 1.5e-7
-        vmin = -max_abs
-        vmax = max_abs
+        match vmin:
+            case float() | int():
+                vmin_vpol = vmin_hpol = vmin_total = vmin
+            case tuple():
+                if len(vmin) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmin must have length 3.')
+                vmin_vpol, vmin_hpol, vmin_total = vmin
+            case None:
+                vmin_vpol = vmin_hpol = vmin_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmin must be a float or tuple of floats.'
+                )
+        match vmax:
+            case float() | int():
+                vmax_vpol = vmax_hpol = vmax_total = vmax
+            case tuple():
+                if len(vmax) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmax must have length 3.')
+                vmax_vpol, vmax_hpol, vmax_total = vmax
+            case None:
+                vmax_vpol = vmax_hpol = vmax_total = max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmax must be a float or tuple of floats.'
+                )
 
         med_netd_1 = 1.0 / np.sqrt(
             np.sum(1.0 / netd_1[valid_netd_1] ** 2) / np.size(valid_netd_1)
@@ -1278,10 +1407,53 @@ class PlotMap(DataRoutine):
         vis = pdata.optical_visibility[()]
 
         # TODO: Make figure size change based on the size of the map
-        # aspect_ratio = (this_ylim[0] - this_ylim[1]) / (this_xlim[1] - this_xlim[0])
-        # fig_height = 7.5
-        # fig_width = fig_height / aspect_ratio
-        fig, axes = plt.subplots(5, 1, figsize=(15, 9), sharex=True, sharey=True)
+        layout = self.params['layout']
+        figsize = self.params['figsize']
+        if layout == 'staggered':
+            fig, axes = plt.subplot_mosaic(
+                [
+                    ['vpol', '.'],
+                    ['vpol', 'optical'],
+                    ['hpol', 'optical'],
+                    ['hpol', 'degraded'],
+                    ['total', 'degraded'],
+                    ['total', '.'],
+                ],
+                # [
+                #     ['vpol'],
+                #     ['hpol'],
+                #     ['total'],
+                #     ['optical'],
+                #     ['degraded'],
+                # ],
+                sharex=True,
+                sharey=True,
+                figsize=figsize,
+                gridspec_kw=gridspec_kw,
+                # layout='constrained',
+            )
+            for key in ['vpol', 'hpol', 'optical']:
+                plt.setp(axes[key].get_xticklines(), visible=False)
+        else:
+            fig, axes = plt.subplot_mosaic(
+                [
+                    ['vpol'],
+                    ['hpol'],
+                    ['total'],
+                    ['optical'],
+                    ['degraded'],
+                ],
+                sharex=True,
+                sharey=True,
+                figsize=figsize,
+                gridspec_kw=gridspec_kw,
+                layout='constrained',
+            )
+            fig.get_layout_engine().set(h_pad=0)
+            for key in ['vpol', 'hpol', 'total', 'optical']:
+                axes[key].tick_params(labelbottom=False)
+                axes[key].label_outer()
+                plt.setp(axes[key].get_xticklines(), visible=False)
         channel_suffix = (
             'All Channels'
             if channel == tuple(range(pdata.n_chan))
@@ -1295,22 +1467,29 @@ class PlotMap(DataRoutine):
             f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
             f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
         )
-        for ax in axes:
+        for ax in axes.values():
             ax.set_ylabel('ZA (degrees)')
-            ax.set_xlim(this_xlim)
-            ax.set_ylim(this_ylim)
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+            ax.label_outer()
+
+        ax_vpol = axes['vpol']
+        ax_hpol = axes['hpol']
+        ax_total = axes['total']
+        ax_optical = axes['optical']
+        ax_degraded = axes['degraded']
 
         # Vertical polarization
-        im = axes[0].imshow(
+        im = ax_vpol.imshow(
             np.transpose(map_val[0]) if old_format else map_val[0],
             extent=extent,
             aspect='equal',
-            vmin=vmin,
-            vmax=vmax,
+            vmin=vmin_vpol,
+            vmax=vmax_vpol,
             cmap='Blues_r',
         )
-        add_colorbar(fig, axes[0], im, f'V-Pol Signal ({units})')
-        axes[0].contour(
+        add_colorbar(fig, ax_vpol, im, f'V-Pol Signal ({units})')
+        ax_vpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
@@ -1318,16 +1497,16 @@ class PlotMap(DataRoutine):
         )
 
         # Horizontal polarization
-        im = axes[1].imshow(
+        im = ax_hpol.imshow(
             np.transpose(map_val[1]) if old_format else map_val[1],
             extent=extent,
             aspect='equal',
-            vmin=vmin,
-            vmax=vmax,
+            vmin=vmin_hpol,
+            vmax=vmax_hpol,
             cmap='Reds_r',
         )
-        add_colorbar(fig, axes[1], im, f'H-Pol Signal ({units})')
-        axes[1].contour(
+        add_colorbar(fig, ax_hpol, im, f'H-Pol Signal ({units})')
+        ax_hpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
@@ -1335,41 +1514,71 @@ class PlotMap(DataRoutine):
         )
 
         # Total signal
-        im = axes[2].imshow(
+        im = ax_total.imshow(
             np.transpose(total_map) if old_format else total_map,
             extent=extent,
             aspect='equal',
-            vmin=vmin,
-            vmax=vmax,
+            vmin=vmin_total,
+            vmax=vmax_total,
             cmap='Greys_r',
         )
-        add_colorbar(fig, axes[2], im, f'Total Signal ({units})')
-        axes[2].contour(
+        add_colorbar(fig, ax_total, im, f'Total Signal ({units})')
+        ax_total.contour(
             np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
             colors='red',
         )
 
-        # Optical Image
-        tel_start = pdata.get_initial_telescope_position()
-        optical_image = get_scaled_optical_image(
-            dpix,
-            pdata.optical_image,
-            map_az,
-            map_za,
-            telescope_start_position=tel_start,
-        )
+        # Optical image outline for mm maps
+        show_optical_overlay = self.params['show_optical_overlay']
+        if not crop_to_optical and show_optical_overlay:
+            for ax in [ax_vpol, ax_hpol, ax_total]:
+                rect = plt.Rectangle(
+                    corner_opt,
+                    width_opt_deg,
+                    height_opt_deg,
+                    facecolor='white',
+                    # edgecolor='white',
+                    # linewidth='2',
+                    alpha=0.2,
+                )
+                ax.add_patch(rect)
+                ax.text(
+                    corner_opt[0] + width_opt_deg / 2,
+                    corner_opt[1],
+                    'Optical Image Bounds',
+                    ha='center',
+                    va='bottom',
+                    fontsize=8,
+                    color='white',
+                )
+
         opt_vmax = 255.0
         opt_vmin = 0  # NOTE: Shouldn't this be 0?
-        im = axes[3].imshow(
+        im = ax_optical.imshow(
             optical_image,
             extent=extent,
             aspect='equal',
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        add_colorbar(fig, axes[3], im, 'Optical Signal (rgb)')
+        if layout == 'stacked':
+            cax_opt, _ = add_colorbar(fig, ax_optical, im, '')
+            cax_opt.set_visible(False)
+        ax_optical.text(
+            1.05,
+            0.5,
+            'Optical Signal',
+            rotation=270,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_optical.transAxes,
+            fontsize=10,
+        )
+        if layout == 'staggered':
+            ax_optical.set_ylabel('ZA (degrees)')
+            ax_optical.yaxis.set_tick_params(labelleft=True)
 
         # Blurred optical image
         sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
@@ -1377,172 +1586,76 @@ class PlotMap(DataRoutine):
             optical_image,
             (sigma, sigma, 0),
         )
-        im = axes[4].imshow(
+        im = ax_degraded.imshow(
             blurred_optical_image,
             extent=extent,
             aspect='equal',
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        add_colorbar(fig, axes[4], im, 'Dergaded\nOptical Signal (rgb)')
+        if layout == 'stacked':
+            cax_deg, _ = add_colorbar(fig, ax_degraded, im, '')
+            cax_deg.set_visible(False)
+        ax_degraded.text(
+            1.05,
+            0.5,
+            'Degraded Optical Signal'
+            if layout == 'staggered'
+            else 'Degraded\nOptical Signal',
+            rotation=270,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_degraded.transAxes,
+            fontsize=10,
+        )
+        if layout == 'staggered':
+            ax_degraded.set_ylabel('ZA (degrees)')
+            ax_degraded.yaxis.set_tick_params(labelleft=True)
+            ax_degraded.xaxis.set_tick_params(labelbottom=True)
 
-        axes[-1].set_xlabel('Azimuth (degrees)')
-        fig.tight_layout()
-        fig.subplots_adjust(wspace=0, hspace=0)
+        # Add x labels to bottom axes
+        if layout == 'staggered':
+            ax_total.set_xlabel('Azimuth (degrees)')
+        ax_degraded.set_xlabel('Azimuth (degrees)')
+
+        for ax in axes.values():
+            ylabels = ax.get_ymajorticklabels()
+            ylabels[0].set_verticalalignment('bottom')
+            ylabels[-1].set_verticalalignment('top')
+
+        # ax_vpol.set_visible(False)
+        # cax_vpol.set_visible(False)
+        # ax_hpol.set_visible(False)
+        # cax_hpol.set_visible(False)
+        # ax_degraded.set_visible(False)
 
         if self.params['save_plot']:
+            format_ = self.params['format']
             if self.params['savefile'] is None:
                 # TODO: Move this to some global getter function
-                self.params['savefile'] = (
-                    pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
-                )
-            if not self.params['savefile'].exists():
-                self.params['savefile'].parent.mkdir(
-                    mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
-                )
-                self.params['savefile'].touch(PERMISSIONS_ALL_FULL)
-            fig.savefig(self.params['savefile'], bbox_inches='tight')
+                fname = pdata.folder / f'{pdata.file_stub}_Source_Finder_Image'
+            else:
+                fname = Path(self.params['savefile'])
+            suffix = fname.suffix.lstrip('.')
+            if format_ is None:
+                # Get format from file suffix if it exists
+                format_ = suffix or 'png'
+            savefile = fname.with_suffix(f'.{format_}').resolve()
+            self.params['savefile'] = savefile
+            savefile.parent.mkdir(
+                mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
+            )
+            fig.savefig(
+                savefile, dpi=self.params['dpi'], format=format_, bbox_inches='tight'
+            )
+            _logger.info(f'{self.name}: Saved figure to "{savefile}"')
         if self.params['show']:
             plt.show()
 
         if not self.params['keep_figure_open']:
             plt.close(fig)
+            return None
         return fig
-
-
-@ensure_path('savefile')
-def animate_video(
-    map_val: npt.NDArray,
-    total_map: npt.NDArray,
-    optical_video: npt.NDArray,
-    interval_ms: float,
-    extent: tuple[int, ...],
-    bad_pixel_mask: npt.NDArray | None = None,
-    units: str = 'mK',
-    max_abs_threshold: float = 0.75,  # noqa: ARG001
-    repeat_delay_ms: float = 2000,
-    show: bool = False,
-    savefile: Path | None = None,
-) -> tuple[Figure, animation.FuncAnimation]:
-    """Animate the video of the map evolution over time.
-
-    Arguments:
-        map_val (npt.NDArray): 4D array of shape (n_frames, n_maps, n_pix_x, n_pix_y)
-            containing the map values for each frame, separated by polarization.
-        total_map (npt.NDArray): 3D array of shape (n_frames, n_pix_x, n_pix_y)
-            containing the total map values for each frame.
-        optical_video (npt.NDArray): 4D array of shape (n_frames, height, width, 3)
-            containing the optical video frames for each frame.
-        interval_ms (float): The interval between frames in milliseconds.
-        extent (tuple[int, ...]): The extent of the map in the format (xmin, xmax, ymin,
-             ymax).
-        bad_pixel_mask (npt.NDArray, optional): Boolean mask to select pixels that
-            should be marked as bad. Values will be shown in a different color in the
-            animation. Defaults to  `None`.
-        units (str, optional): The units of the data. Defaults to 'mK'.
-        max_abs_threshold (float, optional): The maximum absolute value multiplier for
-            the color scale in the animation. Defaults to 0.75.
-        repeat_delay_ms (float, optional): The delay between repeats of the animation in
-            milliseconds. Defaults to 2000 ms.
-        show (bool, optional): Whether to display the animation. Defaults to False.
-        savefile (Path, optional): The path to save the animation file. If None, the
-            animation will not be saved. Defaults to None.
-    """
-    # smoothed_map = np.transpose(total_map, (0, 2, 1))
-    smoothed_map = total_map[:]
-    if bad_pixel_mask is not None:
-        map_val[np.broadcast_to(bad_pixel_mask[:, np.newaxis], map_val.shape)] = np.nan
-        smoothed_map[bad_pixel_mask] = np.nan
-    # max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
-    # vmax = max_abs
-    # vmin = -max_abs
-    # vmax = 500
-    # vmin = -500
-
-    fig, axes = plt.subplots(4, 1, figsize=(6, 9), sharex=True, sharey=True)
-
-    # fig.suptitle(
-    #     f'{pdata.file_stub} - {channel_suffix}'
-    #     f'\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
-    #     f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
-    #     f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
-    # )
-
-    # Vertical polarization
-    cmap_vpol = mpl.colormaps.get_cmap('Blues_r')
-    cmap_vpol.set_bad(color='ivory')
-    # vmin_vpol = np.nanmin(map_val[:, 0])
-    # vmax_vpol = np.nanmax(map_val[:, 0])
-    im_vpol = axes[0].imshow(
-        map_val[0, 0],
-        # vmin=-1e-7,
-        # vmax=1e-7,
-        animated=True,
-        cmap=cmap_vpol,
-        extent=extent,
-        aspect='equal',
-    )
-    add_colorbar(fig, axes[0], im_vpol, f'V-Pol Signal ({units})')
-
-    # Horizontal polarization
-    cmap_hpol = mpl.colormaps.get_cmap('Reds_r')
-    cmap_hpol.set_bad(color='ivory')
-    # vmin_hpol = np.nanmin(map_val[:, 1])
-    # vmax_hpol = np.nanmax(map_val[:, 1])
-    im_hpol = axes[1].imshow(
-        map_val[0, 1],
-        # vmin=vmin_hpol,
-        # vmax=vmax_hpol,
-        animated=True,
-        cmap=cmap_hpol,
-        extent=extent,
-        aspect='equal',
-    )
-    add_colorbar(fig, axes[1], im_hpol, f'H-Pol Signal ({units})')
-
-    # Total signal
-    cmap_total = mpl.colormaps.get_cmap('Greys_r')
-    cmap_total.set_bad(color='ivory')
-    # vmin_total = np.nanmin(smoothed_map)
-    # vmax_total = np.nanmax(smoothed_map)
-    im_total = axes[2].imshow(
-        smoothed_map[0],
-        # vmin=vmin_total,
-        # vmax=vmax_total,
-        animated=True,
-        cmap=cmap_total,
-        extent=extent,
-        aspect='equal',
-    )
-    add_colorbar(fig, axes[2], im_total, f'Total Signal ({units})')
-
-    # Optical Image
-    im_opt = axes[3].imshow(
-        optical_video[0], animated=True, extent=extent, aspect='equal'
-    )
-    add_colorbar(fig, axes[3], im_opt, 'Optical Signal (rgb)')
-
-    fig.tight_layout()
-    fig.subplots_adjust(wspace=0, hspace=0)
-
-    def animation_func(i: int):
-        im_vpol.set_array(map_val[i, 0])
-        im_hpol.set_array(map_val[i, 1])
-        im_total.set_array(smoothed_map[i])
-        im_opt.set_array(optical_video[i])
-
-    an = animation.FuncAnimation(
-        fig,
-        animation_func,
-        frames=total_map.shape[0],
-        interval=interval_ms,
-        repeat_delay=repeat_delay_ms,
-    )
-    if savefile is not None:
-        an.save(savefile, savefig_kwargs={'bbox_inches': 'tight'})
-    if show:
-        plt.show()
-    return fig, an
 
 
 @register_routine
@@ -1577,7 +1690,7 @@ class BinTODIntoVideo(DataRoutine):
     """
 
     name = 'BinTODIntoVideo'
-    version = '3.1.0'
+    version = '3.1.1'
 
     produces: ClassVar[set] = {
         '/video',
@@ -1713,9 +1826,7 @@ class BinTODIntoVideo(DataRoutine):
 
         # Find good sampels before determining number of blocks
         for i_chan in range(pdata.n_chan):
-            interpolated_samples = pdata.get_from_channel(
-                i_chan, 'time_ordered_data/interpolated_samples'
-            )
+            interpolated_samples = pdata.get_interpolated_samples(i_chan)[:]
             good_samples[i_chan] = np.setdiff1d(
                 np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
             )
@@ -1828,12 +1939,6 @@ class BinTODIntoVideo(DataRoutine):
             optical_image_shape = scaled_optical_image.shape
         elif 'optical_video' in pdata['global_data']:
             full_optical_video = pdata['global_data/optical_video']
-        else:
-            msg = (
-                f'{self.name}: Could not find optical video for provided '
-                'procesed dataset.'
-            )
-            raise ValueError(msg)
 
         n_blocks, blocks = self._initialize_map_arrays(
             pdata,
@@ -2138,7 +2243,7 @@ class AnimateVideo(DataRoutine):
     """
 
     name = 'AnimateVideo'
-    version = '2.0.0'
+    version = '2.1.0'
 
     requires: ClassVar[set] = {
         '/video',
@@ -2153,11 +2258,17 @@ class AnimateVideo(DataRoutine):
     produces: ClassVar[set] = {}
 
     @ensure_path('savefile')
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         max_abs_threshold: float = 0.75,
+        vmin: float | tuple[float, float, float] | None = None,
+        vmax: float | tuple[float, float, float] | None = None,
+        dpi: float = 300,
+        repeat_delay_ms: float = 2000,
+        show_tile_bounds: bool = True,
         savefile: Path | None = None,
         show: bool = False,
+        keep_figure_open: bool = False,
         channel: int | Sequence[int, ...] | None = None,
     ):
         """Initialize the MakeVideo Routine.
@@ -2165,19 +2276,39 @@ class AnimateVideo(DataRoutine):
         Arguments:
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
-            show (bool, optional): Whether to display the animated plot. Defaults to
-                False.
-            savefile (Path, optional): The path to save the animated plot to. If None,
+            vmin, vmax (float | tuple[float, float, float], optional): The minimum /
+                maximum value(s) for the color scale in the plot. If a single value is
+                provided, the same range will be used for all plots. A tuple should have
+                3 elements, for v-pol, h-pol, and total signal respectively. If `None`,
+                will auto scale based on `max_abs_threshold` and matplotlib's default
+                behavior. Defaults to `None`.
+            dpi (float, optional): The saved figure's resolution in dots per inch.
+                Defaults to 300.
+            repeat_delay_ms (float, optional): The delay between repeats of the
+                animation in milliseconds. Defaults to 2000 ms.
+            show_tile_bounds (bool, optional): Whehter to show the tile bounds overlayed
+                on the optical videos. Defaults to `True`.
+            savefile (Path, optional): The path to save the animated plot to. If `None`,
                 the animation be saved in the same directory as the HDF5 file under the
                 name "[date]_set[setnum]_Map_Animation.mp4". Defaults to `None`.
+            show (bool, optional): Whether to display the animated plot. Defaults to
+                False.
+            keep_figure_open (bool, optional): Whether to keep the figure open after
+                plotting. Defaults to False.
             channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
                 use when generating the animation. See `get_required_map_datasets` for
                 more information. Defaults to `None`.
         """
         super().__init__(
             max_abs_threshold=max_abs_threshold,
+            vmin=vmin,
+            vmax=vmax,
+            dpi=dpi,
+            repeat_delay_ms=repeat_delay_ms,
+            show_tile_bounds=show_tile_bounds,
             savefile=savefile,
             show=show,
+            keep_figure_open=keep_figure_open,
             channel=channel,
         )
 
@@ -2191,37 +2322,296 @@ class AnimateVideo(DataRoutine):
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
-        # Use existing datasets and make the video
-        map_az = pdata['video/map_az'][:]
-        map_za = pdata['video/map_za'][:]
-        optical_video = pdata['video/cropped_optical_video'][:]
+        res = self._animate(pdata)
+        return RoutineResult(value=res)
 
-        map_val = pdata['video/map_val'][:]
-        total_map = pdata['video/total_map'][:]
-        bad_pixel_mask = pdata['video/bad_pixel_mask'][:]
-        bad_pixel_mask = np.all(bad_pixel_mask, axis=1)
+    def _animate(self, pdata: ProcessedData) -> tuple[Figure, FuncAnimation] | None:  # noqa: PLR0915
+        """Animate the video."""
+        # Load the parameters
         block_size_s = pdata['video'].attrs['block_size_s']
+        interval_ms = 1000 * block_size_s
+        repeat_delay_ms = self.params['repeat_delay_ms']
         dpix = pdata['video'].attrs['dpix']
         units = pdata['video'].attrs['units']
+        show = self.params['show']
+        show_tile_bounds = self.params['show_tile_bounds']
 
-        # Animation
-        _logger.info(f'{self.name}: Creating animation...')
         if self.params['savefile'] is None:
             savefile = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
         else:
             savefile = self.params['savefile']
-        animate_video(
-            map_val,
-            total_map,
-            optical_video[:],
-            1000 * block_size_s,
-            get_extent(map_az, map_za, dpix),
-            bad_pixel_mask=bad_pixel_mask,
-            units=units,
-            max_abs_threshold=self.params['max_abs_threshold'],
-            show=self.params['show'],
-            savefile=savefile,
+        savefile = convert_path(savefile)
+
+        # Read the relevant datasets
+        map_az = pdata['video/map_az'][:]
+        map_za = pdata['video/map_za'][:]
+        map_val = pdata['video/map_val'][:]
+        total_map = pdata['video/total_map'][:]
+        extent = get_extent(map_az, map_za, dpix)
+        optical_video = pdata['video/cropped_optical_video'][:]
+
+        # Determine the plot range
+        max_abs_threshold = self.params['max_abs_threshold']
+        vmin = self.params['vmin']
+        vmax = self.params['vmax']
+        max_abs = np.nanmax(np.abs(total_map)) * max_abs_threshold
+        match vmin:
+            case float() | int():
+                vmin_vpol = vmin_hpol = vmin_total = vmin
+            case tuple():
+                if len(vmin) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmin must have length 3.')
+                vmin_vpol, vmin_hpol, vmin_total = vmin
+            case None:
+                vmin_vpol = vmin_hpol = vmin_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmin must be a float or tuple of floats.'
+                )
+        match vmax:
+            case float() | int():
+                vmax_vpol = vmax_hpol = vmax_total = vmax
+            case tuple():
+                if len(vmax) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmax must have length 3.')
+                vmax_vpol, vmax_hpol, vmax_total = vmax
+            case None:
+                vmax_vpol = vmax_hpol = vmax_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmax must be a float or tuple of floats.'
+                )
+
+        # Set values for non-covered pixels to NaN
+        bad_pixel_mask = pdata['video/bad_pixel_mask'][:]
+        bad_pixel_mask = np.all(bad_pixel_mask, axis=1)
+        map_val[np.broadcast_to(bad_pixel_mask[:, np.newaxis], map_val.shape)] = np.nan
+        total_map[bad_pixel_mask] = np.nan
+        if show_tile_bounds:
+            tile_bounds_map = bad_pixel_mask.astype(float)
+            tile_bounds_map[tile_bounds_map == 0] = np.nan
+
+        # Calculate median NETD values
+        netd = pdata['video/netd']
+        netd_1 = netd[pdata.pol_ind_1]
+        netd_2 = netd[pdata.pol_ind_2]
+        valid_netd_1 = np.argwhere(netd_1 > 0)
+        valid_netd_2 = np.argwhere(netd_2 > 0)
+        med_netd_1 = 1.0 / np.sqrt(
+            np.sum(1.0 / netd_1[valid_netd_1] ** 2) / np.size(valid_netd_1)
         )
+        med_netd_2 = 1.0 / np.sqrt(
+            np.sum(1.0 / netd_2[valid_netd_2] ** 2) / np.size(valid_netd_2)
+        )
+        t0 = time.asctime(time.localtime(pdata.get_timestamp(0)[0] - 7500))
+        vis = pdata.optical_visibility[()]
+
+        # Animation
+
+        # smoothed_map = np.transpose(total_map, (0, 2, 1))
+        # max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
+        # vmax = max_abs
+        # vmin = -max_abs
+        # vmax = 500
+        # vmin = -500
+
+        _logger.info(f'{self.name}: Initializing figure...')
+        fig, axes = plt.subplot_mosaic(
+            [
+                ['vpol', '.'],
+                ['vpol', 'optical'],
+                ['hpol', 'optical'],
+                ['hpol', 'degraded'],
+                ['total', 'degraded'],
+                ['total', '.'],
+            ],
+            sharex=True,
+            sharey=True,
+            figsize=(12, 8),
+            gridspec_kw={
+                'hspace': 0,
+            },
+        )
+
+        channel_suffix = 'All Channels'
+        # channel_suffix = (
+        #     'All Channels'
+        #     if channel == tuple(range(pdata.n_chan))
+        #     else f'Channel {channel[0]} ({pdata.get_tile_name(channel[0])})'
+        #     if len(channel) == 1
+        #     else f'Channels {channel}'
+        # )
+
+        fig.suptitle(
+            f'{pdata.file_stub} - {channel_suffix}'
+            f'\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
+            f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
+            f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
+        )
+
+        for ax in axes.values():
+            ax.set_ylabel('ZA (degrees)')
+            ax.label_outer()
+
+        ax_vpol = axes['vpol']
+        ax_hpol = axes['hpol']
+        ax_total = axes['total']
+        ax_optical = axes['optical']
+        ax_degraded = axes['degraded']
+
+        # Vertical polarization
+        _logger.info(f'{self.name}: Plotting V-Pol signal...')
+        cmap_vpol = mpl.colormaps.get_cmap('Blues_r')
+        cmap_vpol.set_bad(color='ivory')
+        # vmin_vpol = np.nanmin(map_val[:, 0])
+        # vmax_vpol = np.nanmax(map_val[:, 0])
+        im_vpol = ax_vpol.imshow(
+            map_val[0, 0],
+            vmin=vmin_vpol,
+            vmax=vmax_vpol,
+            animated=True,
+            cmap=cmap_vpol,
+            extent=extent,
+            aspect='equal',
+        )
+        add_colorbar(fig, ax_vpol, im_vpol, f'V-Pol Signal ({units})')
+
+        # Horizontal polarization
+        _logger.info(f'{self.name}: Plotting H-Pol signal...')
+        cmap_hpol = mpl.colormaps.get_cmap('Reds_r')
+        cmap_hpol.set_bad(color='ivory')
+        # vmin_hpol = np.nanmin(map_val[:, 1])
+        # vmax_hpol = np.nanmax(map_val[:, 1])
+        im_hpol = ax_hpol.imshow(
+            map_val[0, 1],
+            vmin=vmin_hpol,
+            vmax=vmax_hpol,
+            animated=True,
+            cmap=cmap_hpol,
+            extent=extent,
+            aspect='equal',
+        )
+        add_colorbar(fig, ax_hpol, im_hpol, f'H-Pol Signal ({units})')
+
+        # Total signal
+        _logger.info(f'{self.name}: Plotting total signal...')
+        cmap_total = mpl.colormaps.get_cmap('Greys_r')
+        cmap_total.set_bad(color='ivory')
+        # vmin_total = np.nanmin(smoothed_map)
+        # vmax_total = np.nanmax(smoothed_map)
+        im_total = ax_total.imshow(
+            total_map[0],
+            vmin=vmin_total,
+            vmax=vmax_total,
+            animated=True,
+            cmap=cmap_total,
+            extent=extent,
+            aspect='equal',
+        )
+        add_colorbar(fig, ax_total, im_total, f'Total Signal ({units})')
+
+        # Create a colormap that is completely solid white
+        solid_white_cmap = ListedColormap(['white'])
+
+        # Optical Video
+        _logger.info(f'{self.name}: Plotting optical signal...')
+        im_opt = ax_optical.imshow(
+            optical_video[0],
+            animated=True,
+            extent=extent,
+            aspect='equal',
+        )
+        if show_tile_bounds:
+            im_opt_bounds = ax_optical.imshow(
+                tile_bounds_map[0],
+                animated=True,
+                extent=extent,
+                aspect='equal',
+                alpha=0.25,
+                cmap=solid_white_cmap,
+            )
+        ax_optical.text(
+            1.05,
+            0.5,
+            'Optical Signal',
+            rotation=270,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_optical.transAxes,
+            fontsize=10,
+        )
+        ax_optical.set_ylabel('ZA (degrees)')
+        ax_optical.yaxis.set_tick_params(labelleft=True)
+
+        # Degraded Optical Video
+        _logger.info(f'{self.name}: Applying Gaussian blur to optical video...')
+        sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
+        blurred_optical_video = apply_gaussian_blur(
+            optical_video,
+            (0, sigma, sigma, 0),
+        )
+        _logger.info(f'{self.name}: Plotting degraded optical signal...')
+        im_degraded = ax_degraded.imshow(
+            blurred_optical_video[0], animated=True, extent=extent, aspect='equal'
+        )
+        if show_tile_bounds:
+            im_degraded_bounds = ax_degraded.imshow(
+                tile_bounds_map[0],
+                animated=True,
+                extent=extent,
+                aspect='equal',
+                alpha=0.25,
+                cmap=solid_white_cmap,
+            )
+        ax_degraded.text(
+            1.05,
+            0.5,
+            'Degraded Optical Signal',
+            rotation=270,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_degraded.transAxes,
+            fontsize=10,
+        )
+        ax_degraded.set_ylabel('ZA (degrees)')
+        ax_degraded.yaxis.set_tick_params(labelleft=True)
+        ax_degraded.xaxis.set_tick_params(labelbottom=True)
+
+        # Add x labels to bottom axes
+        ax_total.set_xlabel('Azimuth (degrees)')
+        ax_degraded.set_xlabel('Azimuth (degrees)')
+
+        def animation_func(i: int):
+            im_vpol.set_array(map_val[i, 0])
+            im_hpol.set_array(map_val[i, 1])
+            im_total.set_array(total_map[i])
+            im_opt.set_array(optical_video[i])
+            im_degraded.set_array(blurred_optical_video[i])
+            if show_tile_bounds:
+                im_opt_bounds.set_array(tile_bounds_map[i])
+                im_degraded_bounds.set_array(tile_bounds_map[i])
+
+        _logger.info(f'{self.name}: Creating animation...')
+        an = FuncAnimation(
+            fig,
+            animation_func,
+            frames=total_map.shape[0],
+            interval=interval_ms,
+            repeat_delay=repeat_delay_ms,
+        )
+        if savefile is not None:
+            _logger.info(f'{self.name}: Saving animation...')
+            an.save(
+                savefile,
+                dpi=self.params['dpi'],
+                savefig_kwargs={'bbox_inches': 'tight'},
+            )
+        if show:
+            plt.show()
+        if not self.params['keep_figure_open']:
+            plt.close(fig)
+            return None
+        return fig, an
 
     def _get_combined_map(
         self,

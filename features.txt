@@ -175,7 +175,7 @@
 /// Tooltip        : Device temperature in degrees Celsius (C).
 /// Description    : Device temperature in degrees Celsius (C). It is measured at the location selected by DeviceTemperatureSelector.
 /// SFNC Namespace : Standard
-/// Value          : 37.5
+/// Value          : 48.7
 
 /// Feature name   : DeviceTemperatureStatus
 /// Display name   : Device Temperature Status
@@ -863,14 +863,14 @@
 /// Tooltip        : Format of the pixels provided by the device.
 /// Description    : Format of the pixels provided by the device. It represents all the information provided by PixelCoding, PixelSize, PixelColorFilter combined in a single feature.
 /// SFNC Namespace : Standard
-/// Value          : Mono8
+/// Value          : RGB8
 
 /// Feature name   : PixelSize
 /// Display name   : Pixel Size
 /// Tooltip        : Total size in bits of a pixel of the image.
 /// Description    : Total size in bits of a pixel of the image.
 /// SFNC Namespace : Standard
-/// Value          : Bpp8
+/// Value          : Bpp24
 
 /// Feature name   : SensorBitDepth
 /// Display name   : Sensor Bit Depth
@@ -898,14 +898,14 @@
 /// Tooltip        : Defines the width of the window used to measure the actual value for the auto function
 /// Description    : Defines the width of the window used to measure the actual value for the auto function
 /// SFNC Namespace : Custom
-/// Value          : 1296
+/// Value          : 2592
 
 /// Feature name   : AutoModeRegionHeight
 /// Display name   : Auto Mode Region Height
 /// Tooltip        : Defines the height of the window used to measure values for auto functions
 /// Description    : Defines the height of the window used to measure values for auto functions
 /// SFNC Namespace : Custom
-/// Value          : 648
+/// Value          : 1944
 
 /// Feature name   : AutoModeRegionOffsetX
 /// Display name   : Auto Mode Region OffsetX
@@ -968,14 +968,14 @@
 /// Tooltip        : Minimum for auto exposure control value.
 /// Description    : Minimum for auto exposure control value.The output of the auto exposure function affects the whole image.
 /// SFNC Namespace : Custom
-/// Value          : 38.87
+/// Value          : 38.86
 
 /// Feature name   : ExposureAutoMax
 /// Display name   : Exposure Auto Max
 /// Tooltip        : Maximum for auto exposure control value
 /// Description    : Maximum for auto exposure control value.The output of the auto exposure function affects the whole image
 /// SFNC Namespace : Custom
-/// Value          : 481205.217
+/// Value          : 2291879.382
 
 /// Feature name   : GainAutoMin
 /// Display name   : Gain Auto Min
@@ -1059,7 +1059,7 @@
 /// Tooltip        : Controls the acquisition rate (in Hertz) at which the frames are captured.
 /// Description    : Controls the acquisition rate (in Hertz) at which the frames are captured.
 /// SFNC Namespace : Standard
-/// Value          : 38.78429412841797
+/// Value          : 12.977011680603027
 
 /// Feature name   : AcquisitionStatusSelector
 /// Display name   : Acquisition Status Selector
@@ -1129,7 +1129,7 @@
 /// Tooltip        : Sets the Exposure time [µs] when ExposureMode is Timed and ExposureAuto is Off.
 /// Description    : Sets the Exposure time [µs] when ExposureMode is Timed and ExposureAuto is Off. This controls the duration where the photosensitive cells are exposed to light.
 /// SFNC Namespace : Standard
-/// Value          : 1166.087
+/// Value          : 1010.357
 
 /// Feature name   : ExposureAuto
 /// Display name   : Exposure Auto
@@ -1660,7 +1660,7 @@
 /// Tooltip        : Provides the number of bytes transferred for each image or chunk on the stream channel.
 /// Description    : Provides the number of bytes transferred for each image or chunk on the stream channel. This includes any end-of-line, end-of-frame statistics or other stamp data. This is the total size of data payload for a data block.
 /// SFNC Namespace : Standard
-/// Value          : 5038848
+/// Value          : 15116544
 
 /// Feature name   : FileSelector
 /// Display name   : File Selector

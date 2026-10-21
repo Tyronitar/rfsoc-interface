@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from rfsocinterface.core.params import RFSoCParameters
+from rfsocinterface.core.params import DEFAULT_DFOVERF_PER_MK, RFSoCParameters
 from tests.utils import assert_close
 
 
@@ -32,7 +32,7 @@ def test_initialize_params(tmpdir):
     assert_close(params.detector_delta_y, np.zeros(n_tones))
     assert_close(params.detector_beam_ampl, np.ones(n_tones))
     assert_close(params.detector_beam_ampl, np.ones(n_tones, dtype=np.int8))
-    assert_close(params.dfoverf_per_mK, np.ones(n_tones))
+    assert_close(params.dfoverf_per_mK, np.ones(n_tones) * DEFAULT_DFOVERF_PER_MK)
 
 
 @pytest.mark.parametrize(

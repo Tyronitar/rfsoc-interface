@@ -46,7 +46,7 @@ class CheckFocus(DataRoutine):
     """
 
     name = 'CheckFocus'
-    version = '2.0.0'
+    version = '2.0.1'
 
     produces: ClassVar[set] = {
         '/focus',
@@ -225,8 +225,8 @@ class CheckFocus(DataRoutine):
                             data_segment[right_fit_ind],
                         ),
                         bounds=(
-                            [-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))],
-                            [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))],
+                            [-1, 0, -15, 0.05 / (2 * np.sqrt(2 * np.log(2)))],
+                            [1, 1, 15, 0.2 / (2 * np.sqrt(2 * np.log(2)))],
                         ),
                     )
 
@@ -245,8 +245,8 @@ class CheckFocus(DataRoutine):
                         x0,
                         args=(telescope_pos[left_fit_ind], data_segment[left_fit_ind]),
                         bounds=(
-                            [-1, 0, -10, 0.05 / (2 * np.sqrt(2 * np.log(2)))],
-                            [1, 1, 10, 0.2 / (2 * np.sqrt(2 * np.log(2)))],
+                            [-1, 0, -15, 0.05 / (2 * np.sqrt(2 * np.log(2)))],
+                            [1, 1, 15, 0.2 / (2 * np.sqrt(2 * np.log(2)))],
                         ),
                     )
 
@@ -330,9 +330,12 @@ class CheckFocus(DataRoutine):
                     )
 
                     scan_rate = (
-                        telescope_pos[right_peak_idx + 10]
-                        - telescope_pos[right_peak_idx - 10]
-                    ) / (time[right_peak_idx + 10] - time[right_peak_idx - 10])
+                        telescope_pos[min(right_peak_idx + 10, len(telescope_pos) - 1)]
+                        - telescope_pos[max(right_peak_idx - 10, 0)]
+                    ) / (
+                        time[min(right_peak_idx + 10, len(telescope_pos) - 1)]
+                        - time[max(right_peak_idx - 10, 0)]
+                    )
                     time_delay = (
                         (left_az_0 - right_az_0) / scan_rate / 2
                     )  # Amount RFSoC is behind the telescope

@@ -25,6 +25,7 @@ from typing import (
     TypeVar,
 )
 
+from matplotlib.axes import Axes
 from matplotlib.colorbar import Colorbar
 from matplotlib.image import AxesImage
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -47,6 +48,7 @@ from matplotlib.ticker import FuncFormatter
 from PIL import Image
 from scipy import ndimage
 from scipy.signal import cheby1, group_delay, resample_poly, sos2tf, sosfilt, sosfilt_zi
+from scipy.spatial import KDTree
 
 DEFAULT_DATA_DIRECTORY = '/data'
 DEFAULT_PARAMS_DIRECTORY = DEFAULT_DATA_DIRECTORY + '/params/'
@@ -129,6 +131,15 @@ class MetaEnum(EnumMeta):
         except ValueError:
             return False
         return True
+
+
+def create_axis_formatter(precision: int) -> Callable[[float, int], str]:
+    """Create a MHz axis formatter with the speicifed precision."""
+
+    def formatter(x: float, pos: int) -> str:  # noqa: ARG001
+        return f'{x * 1e-6:.{precision}f}'
+
+    return formatter
 
 
 @FuncFormatter
@@ -290,6 +301,7 @@ def get_filename(
     tile_name='',
     attenuation=0.0,
     date: str | None = None,
+    setnum: int | None = None,
     hour: str | None = None,
     mkdir: bool = False,
 ):
@@ -314,15 +326,16 @@ def get_filename(
                 case 'power':
                     strings = [date, tile_name, 'Power_Sweep', hour]
         case 'tod' | 'azel' | 'optcam' | 'optcam_video':
-            this_dir_files = list(date_folder.glob('*TOD_set*'))
-            if not this_dir_files:
-                setnum = 1001
-            else:
-                this_dir_files.sort()
-                offset = 1 if file_type == 'tod' else 0
-                setnums = [f.name[-7:-3] for f in this_dir_files]
-                setnums.sort()
-                setnum = int(setnums[-1]) + offset
+            if setnum is None:
+                this_dir_files = list(date_folder.glob('*TOD_set*'))
+                if not this_dir_files:
+                    setnum = 1001
+                else:
+                    this_dir_files.sort()
+                    offset = 1 if file_type == 'tod' else 0
+                    setnums = [f.name[-7:-3] for f in this_dir_files]
+                    setnums.sort()
+                    setnum = int(setnums[-1]) + offset
             if file_type.lower() == 'optcam' or file_type.lower() == 'optcam_video':
                 strings = [date, file_type.lower(), f'set{setnum}']
             else:
@@ -1198,6 +1211,171 @@ def load_dict_or_defaults(
     return out_dict
 
 
+def mutual_nearest_pairs(
+    points: np.ndarray,
+    r: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Find mutually nearest-neighbor pairs separated by less than r.
+
+    Parameters
+    ----------
+    points
+        Array with shape (n_points, n_dimensions).
+    r
+        Strict maximum allowed distance.
+
+    Returns:
+    -------
+    pairs
+        Integer array with shape (n_pairs, 2). Each row contains (i, j),
+        with i < j.
+    distances
+        Distance corresponding to each pair.
+    """
+    points = np.asarray(points)
+
+    if points.ndim != 2:  # noqa: PLR2004
+        raise ValueError('points must have shape (n_points, n_dimensions)')
+    if r <= 0:
+        raise ValueError('r must be positive')
+
+    n = len(points)
+    if n < 2:  # noqa: PLR2004
+        return (
+            np.empty((0, 2), dtype=int),
+            np.empty(0, dtype=float),
+        )
+
+    tree = KDTree(points)
+
+    # k=2 because each point is normally its own nearest neighbor.
+    distances, indices = tree.query(
+        points,
+        k=2,
+        distance_upper_bound=r,
+    )
+
+    nearest_distance = distances[:, 1]
+    nearest_index = indices[:, 1]
+
+    point_index = np.arange(n)
+
+    # A missing neighbor is reported with index n and distance inf.
+    has_neighbor = nearest_index < n
+
+    # Only index nearest_index where it is valid.
+    mutual = np.zeros(n, dtype=bool)
+    valid_points = point_index[has_neighbor]
+    valid_neighbors = nearest_index[has_neighbor]
+
+    mutual[has_neighbor] = nearest_index[valid_neighbors] == valid_points
+
+    # i < nearest_index removes the duplicate (j, i).
+    keep = has_neighbor & mutual & (point_index < nearest_index)
+
+    pairs = np.column_stack((point_index[keep], nearest_index[keep]))
+    pair_distances = nearest_distance[keep]
+
+    return pairs, pair_distances
+
+
+def mutual_nearest_pairs_between_groups(
+    points: np.ndarray,
+    group_a_indices: np.ndarray,
+    group_b_indices: np.ndarray,
+    r: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Find mutual nearest-neighbor pairs between groups A and B.
+
+    Each returned pair (i, j) satisfies:
+      - i belongs to group A
+      - j belongs to group B
+      - j is i's nearest point in group B
+      - i is j's nearest point in group A
+      - distance(i, j) < r
+
+    Parameters
+    ----------
+    points
+        Array of shape (n_points, n_dimensions).
+    group_a_indices
+        Indices into `points` belonging to group A.
+    group_b_indices
+        Indices into `points` belonging to group B.
+    r
+        Strict maximum pair distance.
+
+    Returns:
+    -------
+    pairs
+        Array of shape (n_pairs, 2), containing global point indices.
+        The first column is from group A and the second from group B.
+    distances
+        Distance for each returned pair.
+    """
+    points = np.asarray(points)
+    group_a_indices = np.asarray(group_a_indices, dtype=int)
+    group_b_indices = np.asarray(group_b_indices, dtype=int)
+
+    if points.ndim != 2:  # noqa: PLR2004
+        raise ValueError('points must have shape (n_points, n_dimensions)')
+    if r <= 0:
+        raise ValueError('r must be positive')
+
+    if len(group_a_indices) == 0 or len(group_b_indices) == 0:
+        return (
+            np.empty((0, 2), dtype=int),
+            np.empty(0, dtype=float),
+        )
+
+    points_a = points[group_a_indices]
+    points_b = points[group_b_indices]
+
+    tree_a = KDTree(points_a)
+    tree_b = KDTree(points_b)
+
+    # For each A point, find its nearest B point.
+    distance_a_to_b, nearest_b = tree_b.query(
+        points_a,
+        k=1,
+        distance_upper_bound=r,
+    )
+
+    # For each B point, find its nearest A point.
+    _distance_b_to_a, nearest_a = tree_a.query(
+        points_b,
+        k=1,
+        distance_upper_bound=r,
+    )
+
+    a_local = np.arange(len(points_a))
+
+    # A missing neighbor is represented by index len(points_b)
+    # and distance infinity.
+    has_b_neighbor = nearest_b < len(points_b)
+
+    mutual = np.zeros(len(points_a), dtype=bool)
+
+    valid_a = a_local[has_b_neighbor]
+    valid_b = nearest_b[has_b_neighbor]
+
+    mutual[has_b_neighbor] = nearest_a[valid_b] == valid_a
+
+    # Enforce the strict condition distance < r.
+    keep = mutual & (distance_a_to_b < r)
+
+    pairs = np.column_stack(
+        (
+            group_a_indices[a_local[keep]],
+            group_b_indices[nearest_b[keep]],
+        )
+    )
+
+    distances = distance_a_to_b[keep]
+
+    return pairs, distances
+
+
 def quit_function():
     """Quit/interrupt a thread."""
     thread.interrupt_main()  # raises KeyboardInterrupt
@@ -1221,20 +1399,21 @@ def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
 
 def add_colorbar(
     fig: Figure,
-    ax: plt.Axes,
+    ax: Axes,
     im: AxesImage,
     label: str,
     position: Literal['right', 'left', 'bottom', 'top'] = 'right',
     size: str | float = '2.5%',
     pad: str | float = 0.05,
-    label_rotation: float = 90,
+    label_rotation: float = 270,
     labelpad: float = 15,
     horizontal_alignment: Literal['left', 'center', 'right'] = 'left',
     vertical_alignment: Literal[
         'bottom', 'baseline', 'center', 'center_baseline', 'top'
     ] = 'top',
     offset_position: tuple[float, float] = (1.05, 0),
-) -> Colorbar:
+    keep_ticks_in_bounds: bool = True,
+) -> tuple[Axes, Colorbar]:
     """Split an axes into two and append a colorbar to the side."""
     divider = make_axes_locatable(ax)
     cax = divider.append_axes(position, size=size, pad=pad)
@@ -1244,8 +1423,20 @@ def add_colorbar(
     offset_text.set_horizontalalignment(horizontal_alignment)
     offset_text.set_verticalalignment(vertical_alignment)
     cb.ax.yaxis.get_offset_text().set_position(offset_position)
+
+    # Align first and last tick labels so they stay within the colorbar's bounding box
+    if keep_ticks_in_bounds:
+        match position:
+            case 'right' | 'left':
+                ylabels = cb.ax.get_ymajorticklabels()
+                ylabels[0].set_verticalalignment('bottom')
+                ylabels[-1].set_verticalalignment('top')
+            case 'top' | 'bottom':
+                xlabels = cb.ax.get_xmajorticklabels()
+                xlabels[0].set_horizontalalignment('right')
+                xlabels[-1].set_horizontalalignment('left')
     cb.update_ticks()
-    return cb
+    return cax, cb
 
 
 def elide_text(text: str, max_len=30) -> str:

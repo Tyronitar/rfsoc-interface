@@ -652,7 +652,7 @@ class LoSweepData:
         """Load an LO sweep from an HDF5 file."""
         path = path.with_suffix('.h5')
         with h5py.File(path, 'r') as f:
-            if datetime.datetime.fromtimestamp(
+            if 'global_data' in f or datetime.datetime.fromtimestamp(
                 path.stat().st_mtime
             ) < datetime.datetime.strptime(NEW_LO_SWEEP_FORMAT_DATE, '%Y%m%d'):
                 _logger.warning(
@@ -665,9 +665,13 @@ class LoSweepData:
                 fit_f0 = f['global_data/fit_f0'][:]
                 fit_qi = f['global_data/fit_qi'][:]
                 fit_qc = f['global_data/fit_qc'][:]
-                f_center = f['global_data/lo_freq'][()]
+                if 'lo_freq' in f['global_data']:
+                    f_center = f['global_data/lo_freq'][()]
+                elif 'f_center' in f.attrs:
+                    f_center = f.attrs['f_center']
+                else:
+                    raise ValueError('Unkown LO Sweep file format encountered.')
                 tile_name = ''
-
                 date = None
                 hour = None
             else:
@@ -977,7 +981,7 @@ class LoSweepData:
     ) -> Figure:
         """Plot blind sweep results."""
         self.reset_stop_signals()
-        self.plot_full_trace(fig=fig, callback=callback)
+        fig = self.plot_full_trace(fig=fig, callback=callback)
         if self._plot_canceled:
             return None
         ax = fig.axes[0]
@@ -1541,6 +1545,8 @@ class PowerSweepData(CompositeSweepData):
         self.rfin = rfin
         self.rfout = rfout
         self.max_readout_power = np.zeros(self.n_tones)
+        self.power_level_non_linear = np.zeros(self.n_tones)
+        self._med_non_linear_power_level = None
         self._onres_power_levels = None
         self._onres_df = None
         self._onres_popt = None
@@ -1718,6 +1724,7 @@ class PowerSweepData(CompositeSweepData):
         self._onres_power_levels = np.array(onres_power_levels, dtype=object)
         self._onres_df = np.array(onres_df, dtype=object)
         self._onres_popt = onres_popt
+        self.power_level_non_linear = power_level_non_linear
 
         _logger.debug('Finished finding optimal readout powers.')
         self._fitted = True
@@ -1795,7 +1802,7 @@ class PowerSweepData(CompositeSweepData):
             this_power_level = self._onres_power_levels[i_onres]
             this_df = self._onres_df[i_onres]
             popt = self._onres_popt[i_onres]
-            max_power_level = self.max_readout_power[i_res]
+            max_power_level = self.power_level_non_linear[i_res]
 
             ax = np.ravel(axes)[i_plot]
             ax.set_title(rf'Tone {i_res} ($f_0$ = {self.detector_f[i_res]})')
@@ -1834,7 +1841,9 @@ class PowerSweepData(CompositeSweepData):
             return
 
         # Histogram
-        counts, bins = np.histogram(self.max_readout_power, bins=60, range=(-10, 10))
+        counts, bins = np.histogram(
+            self.power_level_non_linear, bins=60, range=(-10, 10)
+        )
         plt.figure()
         plt.title('Optimal Readout Power Distribution')
         plt.xlabel(
