@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import time
 from threading import Thread
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Any, override
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -43,6 +43,7 @@ from rfsocinterface.gui.widgets.canvas import ToolbarCanvas
 if TYPE_CHECKING:
     from rfsocinterface.gui.main_window import MainWindow
 
+_logger = logging.getLogger(__name__)
 _tele_logger = logging.getLogger('rfsocinterface.telescopeControl')
 
 
@@ -92,21 +93,25 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.live_footage_ax.set_axis_off()
 
         self.live_footage_canvas = ToolbarCanvas(parent=self, fig=self.live_footage_fig)
-        self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0)
+        self.gridLayout_2.addWidget(self.live_footage_canvas, 2, 0, 1, 2)
         self.live_footage_canvas.hide()
 
         self.live_footage_thread = None
         self.optical_pushButton.clicked.connect(self.toggle_live_footage)
         self.frame_rate = 5  # FPS
 
+        # Optical Camera Settings Connections
+        self.auto_exposure_comboBox.currentTextChanged.connect(
+            self.change_auto_exposure
+        )
+        self.update_camera_settings_pushButton.clicked.connect(self.set_camera_features)
+        self.connect_to_camera_command('get_feature', self.update_camera_feature_value)
+
         # Initialize the numbers in the GUI
         self.az_pos = self.last_az = 0
         self.az_pps_pos = None
         self.za_pos = self.last_za = 0
         self.za_pps_pos = None
-
-        self.send_telescope_command('get_ser_az_pos')
-        self.send_telescope_command('get_ser_za_pos')
 
         self.last_az_commanded = None
         self.last_za_commanded = None
@@ -115,6 +120,19 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_ui_telescope)
         self.timer.start(500)
+
+    @override
+    def do_post_setup(self):
+        # Get telescope position after setup is done
+        self.send_telescope_command('get_ser_az_pos')
+        self.send_telescope_command('get_ser_za_pos')
+
+        # Wait for camera to finish initializing and then request feature values.
+        # Sleeping prevents the camera from breaking
+        # Simultaneous access to the features was happening somehow, but I dunno.
+        time.sleep(1)
+        self.get_current_camera_settings()
+        self.change_auto_exposure(self.auto_exposure_comboBox.currentText())
 
     def toggle_controls_enabled(self, enabled: bool):
         """Set whether the telescope control widgets are enabled."""
@@ -136,6 +154,62 @@ class TelescopeControlWidget(TelescopeMainWidget, Ui_TelescopeControlWidget):
     def stop_motion(self):
         """Stop the telescope."""
         self.send_telescope_command('stop_telescope')
+
+    @Slot(str)
+    def change_auto_exposure(self, current_text: str):
+        """Change the optical camera's auto exposure setting."""
+        if current_text == 'Off':
+            self.exposure_mode_comboBox.setEnabled(True)
+            self.exposure_time_lineEdit.setEnabled(True)
+        else:
+            self.exposure_mode_comboBox.setEnabled(False)
+            self.exposure_time_lineEdit.setEnabled(False)
+
+    def set_camera_features(self):
+        """Update the optical camera's features."""
+        _logger.debug('Updating camera features...')
+        self.send_camera_command(
+            'set_feature', 'ExposureAuto', self.auto_exposure_comboBox.currentText()
+        )
+        if self.exposure_mode_comboBox.isEnabled():
+            self.send_camera_command(
+                'set_feature', 'ExposureMode', self.exposure_mode_comboBox.currentText()
+            )
+        if self.exposure_time_lineEdit.isEnabled():
+            self.send_camera_command(
+                'set_feature',
+                'ExposureTime',
+                get_num_value(self.exposure_time_lineEdit),
+            )
+
+        # Values may have been set to other values by the camera software, so update to
+        # reflect that.
+        self.get_current_camera_settings()
+
+    @Slot(str, str, object)
+    def update_camera_feature_value(self, cam_id: str, feature_name: str, value: Any):  # noqa: ARG002
+        """Update the GUI to match actual camera values."""
+        match feature_name:
+            case 'ExposureAuto':
+                self.auto_exposure_comboBox.setCurrentIndex(
+                    self.auto_exposure_comboBox.findText(value)
+                )
+            case 'ExposureMode':
+                self.exposure_mode_comboBox.setCurrentIndex(
+                    self.exposure_mode_comboBox.findText(value)
+                )
+            case 'ExposureTime':
+                self.exposure_time_lineEdit.setText(str(value))
+            case _:
+                pass  # Ignore other features not reflected in the GUI
+
+    def get_current_camera_settings(self):
+        """Update the GUI to match actual camera values."""
+        self.send_camera_command('get_feature', 'ExposureAuto')
+        self.send_camera_command('get_feature', 'ExposureMode')
+        self.send_camera_command('get_feature', 'ExposureTime')
+        self.wait_for_camera_command('get_feature', count=3)
+        _logger.info('Succesfully updated camera feature values in GUI')
 
     def take_pic(self):
         """Take an optical image and show the image to screen."""

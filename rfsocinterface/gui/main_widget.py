@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, override
 
 import numpy.typing as npt
 from kidpy3.data_handler import Rfchan
-from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtCore import QCoreApplication, Qt, Signal
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from rfsocinterface.core.rfsoc import RFSoCWrapper, get_channel_from_text
@@ -28,6 +28,7 @@ class MainWidget(QWidget):
     """Widget representing one of the tabs in the GUI."""
 
     tab_name: TabName
+    start_post_setup = Signal()
 
     def __init__(
         self,
@@ -42,6 +43,10 @@ class MainWidget(QWidget):
         self.rfsocs = rfsocs
         self.settings = settings
         self.gui_state = {}
+        self.start_post_setup.connect(self.do_post_setup)
+
+    def do_post_setup(self):
+        """Perform any tasks that must be done after all tabs are initialized."""
 
     @property
     def is_active_tab(self) -> bool:
@@ -113,8 +118,11 @@ class TelescopeMainWidget(MainWidget):
 
     def handle_camera(self, command: str, args: tuple):
         """Call any registered callbacks upon receipt of a camera command."""
-        _logger.debug(f'Handling camera command: {command} with args: {args}')
         if command in self.camera_commands:
+            # _logger.debug(
+            #     f'Tab "{self.tab_name}": Handling camera command: "{command}" '
+            #     f'with args: {args}'
+            # )
             for callback in self.camera_commands[command]:
                 callback(*args)
 
@@ -161,14 +169,17 @@ class TelescopeMainWidget(MainWidget):
             QCoreApplication.processEvents()
         self.disconnect_telescope_command(command, stop_waiting)
 
-    def wait_for_camera_command(self, command: str, err_msg: str = ''):  # noqa: ARG002
+    def wait_for_camera_command(self, command: str, err_msg: str = '', count: int = 1):  # noqa: ARG002
         """Wait for the specified command from the camera controller."""
         wait = True
+        current_count = 0
 
         def stop_waiting(*data):
-            nonlocal wait
-            wait = False
-            self._camera_command_data = data
+            nonlocal wait, current_count, count
+            current_count += 1
+            if current_count >= count:
+                wait = False
+                self._camera_command_data = data
 
         self.connect_to_camera_command(command, stop_waiting)
         while wait:
