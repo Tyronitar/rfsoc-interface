@@ -105,6 +105,9 @@ class DataStorage:
         """Load a data file."""
         if len(args) == 1:
             # Just the filename was provided
+            assert isinstance(args[0], str)
+            if not Path(args[0]).exists():
+                raise FileNotFoundError(f'File {args[0]} does not exist.')
             return cls(args[0], mode=mode)
         if len(args) == 2:
             if isinstance(args[1], (int, np.integer)):
@@ -1529,6 +1532,7 @@ class ProcessedData(DataStorage):
             _logger.info('ProcessedData: Determining parameters from LO sweep...')
             sweep = LoSweepData(
                 tones_table['baseband_freq'],
+                # channel_group.attrs['lo_freq'],
                 channel_group.attrs['f_center'],
                 channel_group['lo_sweep'][:],
                 tones_table['chanmask'],

@@ -127,26 +127,5 @@ if __name__ == '__main__':
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
     # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
-    pdb.set_trace()
+    # pdb.set_trace()
 
-    # pdata = ProcessedData.load(date, setnum)
-    # plot_map_routine.apply(pdata)
-    i_chan = 1
-    samples = np.arange(pdata.n_samples[i_chan])
-    az = pdata.get_telescope_az(i_chan)[:]
-    za = pdata.get_telescope_za(i_chan)[:]
-    timestamp = pdata.get_timestamp(i_chan)[:]
-    interp_samples = pdata.get_interpolated_samples(i_chan)[:]
-    nan_samples = np.argwhere(np.isnan(az) | np.isnan(za)).flatten()
-    interp_samples = np.setdiff1d(interp_samples, nan_samples)
-    good_samples = np.setdiff1d(samples, nan_samples)
-    good_samples = np.setdiff1d(good_samples, interp_samples)
-    # plt.scatter(good_samples, np.ones_like(good_samples), c='b')
-    # plt.scatter(nan_samples, np.zeros_like(nan_samples), c='r')
-    # plt.scatter(interp_samples, np.ones_like(interp_samples) * 2, c='g')
-
-    plt.scatter(az, za, c=timestamp, cmap='viridis')
-    plt.show()
-    pdb.set_trace()
-    # print(pdata.get_telescope_params())
-    # animate_video.apply(pdata)

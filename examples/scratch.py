@@ -2,10 +2,10 @@ import pdb
 
 import matplotlib.pyplot as plt
 import numpy as np
-import tables
 from kidpy3 import RawDataFile
 from scipy.signal import decimate
 import matplotlib.patches as mpatches
+import h5py
 
 
 from PySide6.QtWidgets import QApplication
