@@ -603,9 +603,7 @@ class BinTODIntoMap(DataRoutine):
             'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
         )
         for i_chan in range(pdata.n_chan):
-            interpolated_samples = pdata.get_from_channel(
-                i_chan, 'time_ordered_data/interpolated_samples'
-            )
+            interpolated_samples = pdata.get_interpolated_samples(i_chan)[:]
             good_samples[i_chan] = np.setdiff1d(
                 np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
             )

@@ -641,6 +641,10 @@ class DataStorage:
         """Return the data for the specified channel in ADC units."""
         return self.get_from_channel(i_chan, 'time_ordered_data/data_IQ')
 
+    def get_interpolated_samples(self, i_chan: int) -> h5py.Dataset:
+        """Return which sample indices correspond to interpolated IQ data."""
+        return self.get_from_channel(i_chan, 'time_ordered_data/interpolated_samples')
+
     def get_detector_az(self, i_chan: int) -> h5py.Dataset:
         """Return the azimuthal angle of each detector at each timestamp."""
         return self.get_from_channel(i_chan, 'time_ordered_data/detector_az')

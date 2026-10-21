@@ -58,7 +58,7 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=True,
+        beam_map_mode=False,
         dataset=dataset,
         az_trim=0,
         za_trim=0,
@@ -67,13 +67,13 @@ if __name__ == '__main__':
     )
     plot_map_routine = PlotMap(
         show=True,
-        max_abs_threshold=0.4,
+        # max_abs_threshold=0.4,
         keep_figure_open=False,
         channel=None,
-        show_optical_overlay=True,
-        vmin=-400,
-        vmax=400,
-        overwrite=False,
+        # show_optical_overlay=True,
+        # vmin=-400,
+        # vmax=400,
+        overwrite=True,
         )
     bin_tod_to_video = BinTODIntoVideo(
         hp_filter_freq=hp_filter_freq,
@@ -102,16 +102,16 @@ if __name__ == '__main__':
         # compute_psd,
         # psd_plotter,
         bin_tod_to_map,
-        # plot_map_routine,
+        plot_map_routine,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
-        analyze_beammap,
-        plot_beammap,
+        # analyze_beammap,
+        # plot_beammap,
     ])
 
-    # date = '20260820'  # For testing normal maps
-    # setnum = 1005
+    date = '20260820'  # For testing normal maps
+    setnum = 1005
     # date = '20260710'  # For testing beammaps
     # setnum = 1006
     # date = '20260917'  # For testing video
@@ -119,17 +119,34 @@ if __name__ == '__main__':
     # date = '20261001'  # For testing normal maps
     # setnum = 1006
 
-    date = '20260617'
-    setnum = 1006
+    # date = '20260617'
+    # setnum = 1006
 
 
-    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    pdata, _ = pipeline.from_consolidated_data(date, setnum)
+    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, _ = pipeline.from_consolidated_data(date, setnum)
     # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
-    # pdb.set_trace()
+    pdb.set_trace()
 
     # pdata = ProcessedData.load(date, setnum)
     # plot_map_routine.apply(pdata)
+    i_chan = 1
+    samples = np.arange(pdata.n_samples[i_chan])
+    az = pdata.get_telescope_az(i_chan)[:]
+    za = pdata.get_telescope_za(i_chan)[:]
+    timestamp = pdata.get_timestamp(i_chan)[:]
+    interp_samples = pdata.get_interpolated_samples(i_chan)[:]
+    nan_samples = np.argwhere(np.isnan(az) | np.isnan(za)).flatten()
+    interp_samples = np.setdiff1d(interp_samples, nan_samples)
+    good_samples = np.setdiff1d(samples, nan_samples)
+    good_samples = np.setdiff1d(good_samples, interp_samples)
+    # plt.scatter(good_samples, np.ones_like(good_samples), c='b')
+    # plt.scatter(nan_samples, np.zeros_like(nan_samples), c='r')
+    # plt.scatter(interp_samples, np.ones_like(interp_samples) * 2, c='g')
+
+    plt.scatter(az, za, c=timestamp, cmap='viridis')
+    plt.show()
+    pdb.set_trace()
     # print(pdata.get_telescope_params())
     # animate_video.apply(pdata)
