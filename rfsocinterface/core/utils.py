@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import stat
+import subprocess
 import typing
 import warnings
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
@@ -24,9 +25,11 @@ from typing import (
     TypeVar,
 )
 
+from matplotlib.axes import Axes
 from matplotlib.colorbar import Colorbar
 from matplotlib.image import AxesImage
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from packaging.version import Version
 
 try:
     import thread  # type: ignore
@@ -92,6 +95,9 @@ SELECTED_RESONANCE_COLOR = 'dodgerblue'
 EDITED_RESONANCE_COLOR = 'limegreen'
 
 MAX_ATTENUATION = 31.75
+
+# First version where telescope patterns always record the initial position
+TELESCOPE_INITIAL_POSITION_VERSION = Version('1.3.0')
 
 
 class ChanmaskValue(IntEnum):
@@ -295,6 +301,7 @@ def get_filename(
     tile_name='',
     attenuation=0.0,
     date: str | None = None,
+    setnum: int | None = None,
     hour: str | None = None,
     mkdir: bool = False,
 ):
@@ -319,15 +326,16 @@ def get_filename(
                 case 'power':
                     strings = [date, tile_name, 'Power_Sweep', hour]
         case 'tod' | 'azel' | 'optcam' | 'optcam_video':
-            this_dir_files = list(date_folder.glob('*TOD_set*'))
-            if not this_dir_files:
-                setnum = 1001
-            else:
-                this_dir_files.sort()
-                offset = 1 if file_type == 'tod' else 0
-                setnums = [f.name[-7:-3] for f in this_dir_files]
-                setnums.sort()
-                setnum = int(setnums[-1]) + offset
+            if setnum is None:
+                this_dir_files = list(date_folder.glob('*TOD_set*'))
+                if not this_dir_files:
+                    setnum = 1001
+                else:
+                    this_dir_files.sort()
+                    offset = 1 if file_type == 'tod' else 0
+                    setnums = [f.name[-7:-3] for f in this_dir_files]
+                    setnums.sort()
+                    setnum = int(setnums[-1]) + offset
             if file_type.lower() == 'optcam' or file_type.lower() == 'optcam_video':
                 strings = [date, file_type.lower(), f'set{setnum}']
             else:
@@ -1391,20 +1399,21 @@ def std_histogram(val: npt.NDArray, freq: npt.NDArray) -> float:
 
 def add_colorbar(
     fig: Figure,
-    ax: plt.Axes,
+    ax: Axes,
     im: AxesImage,
     label: str,
     position: Literal['right', 'left', 'bottom', 'top'] = 'right',
     size: str | float = '2.5%',
     pad: str | float = 0.05,
-    label_rotation: float = 90,
+    label_rotation: float = 270,
     labelpad: float = 15,
     horizontal_alignment: Literal['left', 'center', 'right'] = 'left',
     vertical_alignment: Literal[
         'bottom', 'baseline', 'center', 'center_baseline', 'top'
     ] = 'top',
     offset_position: tuple[float, float] = (1.05, 0),
-) -> Colorbar:
+    keep_ticks_in_bounds: bool = True,
+) -> tuple[Axes, Colorbar]:
     """Split an axes into two and append a colorbar to the side."""
     divider = make_axes_locatable(ax)
     cax = divider.append_axes(position, size=size, pad=pad)
@@ -1414,5 +1423,111 @@ def add_colorbar(
     offset_text.set_horizontalalignment(horizontal_alignment)
     offset_text.set_verticalalignment(vertical_alignment)
     cb.ax.yaxis.get_offset_text().set_position(offset_position)
+
+    # Align first and last tick labels so they stay within the colorbar's bounding box
+    if keep_ticks_in_bounds:
+        match position:
+            case 'right' | 'left':
+                ylabels = cb.ax.get_ymajorticklabels()
+                ylabels[0].set_verticalalignment('bottom')
+                ylabels[-1].set_verticalalignment('top')
+            case 'top' | 'bottom':
+                xlabels = cb.ax.get_xmajorticklabels()
+                xlabels[0].set_horizontalalignment('right')
+                xlabels[-1].set_horizontalalignment('left')
     cb.update_ticks()
-    return cb
+    return cax, cb
+
+
+def elide_text(text: str, max_len=30) -> str:
+    """Truncates text and adds ellipses if it exceeds max_len."""
+    return text[:max_len] + '...' if len(text) > max_len else text
+
+
+def get_video_size_ffprobe(video_path: str | Path) -> tuple[int, int] | None:
+    """Execute ffprobe to determine the dimensions of an mp4 video.
+
+    Arguments:
+        video_path (str | Path): Path to the video file.
+
+    Returns:
+        tuple[int, int] | None: The height and width of the video in pixels. If using
+            ffprobe failed returns `None`.
+
+    """
+    command = [
+        'ffprobe',
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=width,height',
+        '-of',
+        'json',
+        str(video_path),
+    ]
+
+    # Run the command and capture standard output via pipe
+    pipe = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    stdout, _ = pipe.communicate()
+
+    # Parse JSON output
+    data = json.loads(stdout)
+    if 'streams' in data and len(data['streams']) > 0:
+        width = data['streams'][0]['width']
+        height = data['streams'][0]['height']
+        return height, width
+
+    return None
+
+
+def load_mp4_ffmpeg(
+    video_path: str | Path,
+    pixel_format: str = 'rgb24',
+    shape: tuple[int, int] | None = None,
+) -> npt.NDArray:
+    """Execute ffmpeg to load an mp4 video into a numpy array.
+
+    Arguments:
+        video_path (str | Path): Path to the video file.
+        pixel_format (str, optional): The pixel format of the video. Defaults to
+            'rgb24'.
+        shape (tuple[int, int], optional): The height and widht of the output array.
+            If `None` will attempt to determine the shape with ffprobe. Defaults to
+            `None`.
+
+    Returns:
+        npt.NDArray: The full video as a numpy array with shape
+            (n_frames, height, width, 3).
+
+    Raises:
+        RuntimeError: If no shape was provided and ffprobe was unable to determine the
+            shape.
+    """
+    if shape is None:
+        shape = get_video_size_ffprobe(video_path)
+        if shape is None:
+            raise RuntimeError(
+                f'Unable to automatically determine shape of mp4 video "{video_path}"'
+            )
+    cmd = [
+        'ffmpeg',
+        '-i',
+        str(video_path),
+        '-f',
+        'rawvideo',
+        '-pix_fmt',
+        pixel_format,
+        '-',
+    ]
+
+    # Run the process and capture stdout
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    # Read the entire raw video stream from memory
+    raw_video, _ = process.communicate()
+    # video = np.frombuffer(raw_video, dtype=np.uint8)
+    return np.frombuffer(raw_video, np.uint8).reshape([-1, *shape, 3])

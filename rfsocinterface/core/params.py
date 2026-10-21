@@ -41,14 +41,14 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
     'dfoverf_per_mK',
     'chanmask',
 ]
-
+DEFAULT_DFOVERF_PER_MK = 7.181229465879829e-10
 DEFAULT_FOCAL_PLANE_CENTER_ZA = 90.0
 
 
 class RFSoCParameters:
     """Class wrapping around RFSoC parameters files."""
 
-    VERSION = Version('1.1.0')
+    VERSION = Version('1.1.1')
 
     @ensure_path(1)
     def __init__(self, file: Path, mode: str = 'r'):
@@ -166,7 +166,7 @@ class RFSoCParameters:
                 shape=(n_tones,),
                 dtype=np.float64,
                 maxshape=(1024,),
-                fillvalue=1,
+                fillvalue=DEFAULT_DFOVERF_PER_MK,
             )
         _logger.info(f'Initialized params file {filename}')
         return cls(filename, mode=mode)

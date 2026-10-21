@@ -7,16 +7,19 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import ClassVar, Literal
 
-import av
 import h5py
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-from matplotlib import animation
+from matplotlib.animation import FuncAnimation
+from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from packaging.version import Version
 from scipy import signal
 from scipy.ndimage import gaussian_filter as apply_gaussian_blur
+from scipy.spatial import Delaunay
 from scipy.spatial.distance import cdist
 
 from rfsocinterface.core.data.routines import (
@@ -27,10 +30,13 @@ from rfsocinterface.core.data.routines import (
 from rfsocinterface.core.data.storage import ProcessedData
 from rfsocinterface.core.data.utils import (
     DEFAULT_MAP_DPIX,
+    DEFAULT_VIDEO_DPIX,
     N_POLARIZATION,
     OPTCAM_DPIX,
     OPTCAM_HEIGHT_PIXELS,
+    OPTCAM_OFFSET_AZ_DEG,
     OPTCAM_OFFSET_AZ_PIX,
+    OPTCAM_OFFSET_ZA_DEG,
     OPTCAM_OFFSET_ZA_PIX,
     OPTCAM_WIDTH_PIXELS,
     SKIPR_PSF_SIGMA,
@@ -41,13 +47,17 @@ from rfsocinterface.core.utils import (
     PERMISSIONS_ALL_FULL,
     ChanmaskValue,
     add_colorbar,
-    add_colorbar_outside,
     argclosest,
+    convert_path,
     ensure_path,
     gaussian_filter,
+    load_mp4_ffmpeg,
 )
 
 _logger = logging.getLogger(__name__)
+MAP_CHANGE_VERSION = Version('1.1.0')
+BIN_TOD_INTO_MAP_CHANGE_VERSION = Version('4.0.0')
+BIN_TOD_INTO_VIDEO_CHANGE_VERSION = Version('3.1.0')
 
 
 def plot_map(
@@ -113,18 +123,183 @@ def plot_map(
     return fig
 
 
+def align_image(
+    im: npt.NDArray,
+    y_vals: npt.NDArray,
+    x_vals: npt.NDArray,
+    center_pos: tuple[float, float],
+    pixel_size: float,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Place an image on a grid covering the desired physical area.
+
+    Arguments:
+        im (npt.NDArray): The image or video to align, with shape (y, x, ...).
+        y_vals (npt.NDArray): The y coordinates of the area to align to.
+        x_vals (npt.NDArray): The x coordinates of the area to align to.
+        center_pos (tuple[float, float]): The center of the image in the same
+            units as the xy coordinates.
+        pixel_size (float): The size of pixels in `im`, in the same units as the xy
+            coordinates.
+
+    Returns:
+        aligned (npt.NDArray):
+            Zero-padded array containing `im` at its original resolution.
+            The first two dimensions cover the desired physical area.
+            All trailing dimensions are preserved.
+
+        y_out, x_out (npt.NDArray, npt.NDArray):
+            Physical coordinates of the output pixel centers.
+    """
+    # Physical boundaries of image 1
+    dy1 = y_vals[1] - y_vals[0]
+    dx1 = x_vals[1] - x_vals[0]
+
+    y_min = y_vals[0] - dy1 / 2
+    y_max = y_vals[-1] + dy1 / 2
+
+    x_min = x_vals[0] - dx1 / 2
+    x_max = x_vals[-1] + dx1 / 2
+
+    # Output shape at image 2's original resolution
+    height = int(np.ceil((y_max - y_min) / pixel_size))
+    width = int(np.ceil((x_max - x_min) / pixel_size))
+
+    aligned = np.zeros(
+        (height, width, *im.shape[2:]),
+        dtype=im.dtype,
+    )
+
+    # Physical coordinates of output pixel centers
+    y_out = y_min + (np.arange(height) + 0.5) * pixel_size
+    x_out = x_min + (np.arange(width) + 0.5) * pixel_size
+
+    # Center of arr2 in its own pixel coordinates
+    center_pixel2 = (np.asarray(im.shape[:2]) - 1) / 2
+
+    # Desired starting position of arr2 in the output
+    start_y = int(np.rint((center_pos[0] - y_out[0]) / pixel_size - center_pixel2[0]))
+
+    start_x = int(np.rint((center_pos[1] - x_out[0]) / pixel_size - center_pixel2[1]))
+
+    # Find overlapping slices for each spatial axis
+    target_slices = []
+    source_slices = []
+
+    # print("Input shape:", im.shape)
+    # print("Output shape:", aligned.shape)
+
+    # print("Start position:", start_y, start_x)
+
+    # print("Center position:", center_pos)
+    # print("Output center:", np.mean(y_out), np.mean(x_out))
+
+    for target_size, source_size, start in zip(
+        aligned.shape[:2],
+        im.shape[:2],
+        (start_y, start_x),
+        strict=False,
+    ):
+        dst_start = max(0, start)
+        dst_end = min(target_size, start + source_size)
+
+        # print(
+        #     f"Target size: {target_size}, "
+        #     f"Source size: {source_size}, "
+        #     f"Start: {start}, "
+        #     f"Destination: {dst_start}:{dst_end}"
+        # )
+
+        # No overlap along this axis
+        if dst_start >= dst_end:
+            return aligned, y_out, x_out
+
+        src_start = dst_start - start
+        src_end = dst_end - start
+
+        target_slices.append(slice(dst_start, dst_end))
+        source_slices.append(slice(src_start, src_end))
+
+    # Copy original pixels without interpolation
+    aligned[(*target_slices, ...)] = im[(*source_slices, ...)]
+    # pdb.set_trace()
+    # print("Source slices:", source_slices)
+    # print("Target slices:", target_slices)
+
+    # source_region = im[(*source_slices, slice(None))]
+    # target_region = aligned[(*target_slices, slice(None))]
+
+    # print("Source region shape:", source_region.shape)
+    # print("Target region shape:", target_region.shape)
+
+    # print("Source nonzero:", np.count_nonzero(source_region))
+    # print("Target nonzero:", np.count_nonzero(target_region))
+
+    # assert np.array_equal(source_region, target_region)
+
+    return aligned, y_out, x_out
+
+
 def get_scaled_optical_image(
     dpix: float,
     optical_image: npt.NDArray,
     map_az: npt.NDArray,
     map_za: npt.NDArray,
     optcam_pix_size_degrees: float = OPTCAM_DPIX,
+    optcam_offset_az_deg: float = OPTCAM_OFFSET_AZ_DEG,
+    optcam_offset_za_deg: float = OPTCAM_OFFSET_ZA_DEG,
     optcam_offset_az_pix: float = OPTCAM_OFFSET_AZ_PIX,
     optcam_offset_za_pix: float = OPTCAM_OFFSET_ZA_PIX,
     optcam_height_pixels: int = OPTCAM_HEIGHT_PIXELS,
     optcam_width_pixels: int = OPTCAM_WIDTH_PIXELS,
+    telescope_start_position: tuple[float, float] | None = None,
 ) -> npt.NDArray:
-    """Scale the optical image to match the pixel scale of the map."""
+    """Scale the optical image to match the pixel scale of the map.
+
+    Arguments:
+        dpix (float): Degrees / pixel for mm map pixels.
+        optical_image (npt.NDArray): The optical image.
+        map_az (npt.NDArray): The azimuth coordinates of mm map pixels.
+        map_za (npt.NDArray): The zenith angle coordinates of mm map pixels.
+        optcam_pix_size_degrees (float, optional): Degrees / pixel for optical
+            image pixels. Defaults to `OPTCAM_DPIX`.
+        optcam_offset_az_deg (float, optional): Optical image offset from telescope
+            position in azimuth, in optical image degrees. Defaults to
+            `OPTCAM_OFFSET_AZ_DEG`.
+        optcam_offset_za_deg (float, optional): Optical image offset from telescope
+            position in zenith angle, in optical image degrees. Defaults to
+            `OPTCAM_OFFSET_ZA_DEG`.
+        optcam_offset_az_pix (float, optional): Optical image offset from telescope
+            position in azimuth, in optical image pixels. Defaults to
+            `OPTCAM_OFFSET_AZ_PIX`.
+        optcam_offset_za_pix (float, optional): Optical image offset from telescope
+            position in zentih angle, in optical image pixels. Defaults to
+            `OPTCAM_OFFSET_ZA_PIX`.
+        optcam_height_pixels (int, optional): The height of the optical image in pixels.
+            Defaults to `OPTCAM_HEIGHT_PIXELS`.
+        optcam_width_pixels (int, optional): The width of the optical image in pixels.
+            Defaults to `OPTCAM_WIDTH_PIXELS`.
+        telescope_start_position (tuple[float, float], optional): The azimuth and
+            zentih angle of the telescope's boresight at the time of collecting the
+            optical image. If `None`, image is placed relative to the center of the map.
+            This can result in alignment issues. Defaults to `None`.
+    """
+    if telescope_start_position is not None:
+        center_az = telescope_start_position[0] + optcam_offset_az_deg
+        center_za = telescope_start_position[1] + optcam_offset_za_deg
+        full_image, _, _ = align_image(
+            optical_image,
+            map_za[:],
+            map_az[:],
+            (center_za, center_az),
+            optcam_pix_size_degrees,
+        )
+        return full_image
+
+    _logger.warning(
+        'Telescope start position not provided. '
+        'Placing optical image relative to center of map. '
+        'This may result in alignment issues.'
+    )
     opt_npix_per_tel_npix = dpix / optcam_pix_size_degrees
     opt_npix_az = int(map_az.size * opt_npix_per_tel_npix / 2) * 2
     opt_npix_za = int(map_za.size * opt_npix_per_tel_npix / 2) * 2
@@ -178,16 +353,20 @@ def get_map_size(
     az_trim: float,
     za_trim: float,
     dpix: float = DEFAULT_MAP_DPIX,
-    beam_map_mode: bool = False,  # noqa: ARG001
+    beam_map_mode: bool = False,
 ) -> tuple[int, int, npt.NDArray, npt.NDArray]:
     """Determine map size based on detector positions and desired pixel size."""
     abs_max_az = abs_max_za = -np.inf
     abs_min_az = abs_min_za = np.inf
     for i_chan in range(pdata.n_chan):
-        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
-        det_az = det_az[pdata.get_onres_ind(i_chan)]
-        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
-        det_za = det_za[pdata.get_onres_ind(i_chan)]
+        if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
+            det_az = pdata.get_telescope_az(i_chan)[:]
+            det_za = pdata.get_telescope_za(i_chan)[:]
+        else:
+            det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+            det_az = det_az[pdata.get_onres_ind(i_chan)]
+            det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+            det_za = det_za[pdata.get_onres_ind(i_chan)]
         abs_max_az = max(np.nanmax(det_az), abs_max_az)
         abs_min_az = min(np.nanmin(det_az), abs_min_az)
         abs_max_za = max(np.nanmax(det_za), abs_max_za)
@@ -203,10 +382,14 @@ def get_map_size(
     max_az = max_za = -np.inf
     min_az = min_za = np.inf
     for i_chan in range(pdata.n_chan):
-        det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
-        det_az = det_az[pdata.get_onres_ind(i_chan)]
-        det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
-        det_za = det_za[pdata.get_onres_ind(i_chan)]
+        if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
+            det_az = pdata.get_telescope_az(i_chan)[:]
+            det_za = pdata.get_telescope_za(i_chan)[:]
+        else:
+            det_az = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_az')
+            det_az = det_az[pdata.get_onres_ind(i_chan)]
+            det_za = pdata.get_from_channel(i_chan, 'time_ordered_data/detector_za')
+            det_za = det_za[pdata.get_onres_ind(i_chan)]
         good_idx = tuple(
             np.argwhere(
                 ((abs_min_az <= det_az) & (det_az <= abs_max_az))
@@ -265,21 +448,25 @@ class BinTODIntoMap(DataRoutine):
     - /map/map_az: 1D array of azimuth values for the map pixels.
     - /map/map_za: 1D array of zenith angle values for the map pixels.
     - /map/netd: 1D array of length n_tones containing the NETD values for each tone.
-    - /map/sum_map: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing the sum
-        of the data values for each pixel.
-    - /map/hits_map: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing the
+    - /map/sum_map: 4D array of shape (n_chan, n_maps, n_pix_y, n_pix_x) containing the
+        sum of the data values for each pixel.
+    - /map/hits_map: 4D array of shape (n_chan, n_maps, n_pix_y, n_pix_x) containing the
         number of hits for each pixel.
-    - /map/map_val: 3D array of shape (n_maps, n_pix_x, n_pix_y) containing
-        the binned map values (i.e. sum_map / hits_map).
+    - /map/map_val: 3D array of shape (n_maps, n_pix_y, n_pix_x) containing
+        the binned map values (i.e. (sum_{i_chan} sum_map) / (sum_{i_chan} hits_map)).
+    - /map/channel_map_val: 4D array of shape (n_chan, n_maps, n_pix_y, n_pix_x)
+        containing the binned map values (i.e. sum_map / hits_map), separated by
+        channel.
     - /map/total_map: 2D array of shape (n_pix_x, n_pix_y) containing
-        the total map values (sum over all maps).
+        the total map values (sum over all channels and maps).
+    - /map/channel_total_map: 3D array of shape (n_chan, n_pix_x, n_pix_y) containing
+        the total map values (sum over all maps), separated by channel.
     - /map/good_samples: 2D variable length array of length n_chan containing the
         indices of the good samples for each channel.
-
     """
 
     name = 'BinTODIntoMap'
-    version = '3.0.0'
+    version = '4.1.0'
 
     produces: ClassVar[set] = {
         '/map/',
@@ -287,7 +474,9 @@ class BinTODIntoMap(DataRoutine):
         '/map/hits_map',
         '/map/sum_map',
         '/map/map_val',
+        '/map/channel_map_val',
         '/map/total_map',
+        '/map/channel_total_map',
         '/map/map_az',
         '/map/map_za',
         '/map/good_samples',
@@ -382,50 +571,61 @@ class BinTODIntoMap(DataRoutine):
             )
             del pdata['map']
         map_group = pdata.create_group('map')
+        map_group.attrs['dpix'] = dpix
+        map_group.attrs['units'] = (
+            'mK' if self.params['dataset'] == 'data_mK' else 'df/f'
+        )
         map_group.create_dataset('map_az', shape=(n_pix_x,), dtype=np.float64)
         map_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
+        map_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
+        n_chan = pdata.n_chan
         map_group.create_dataset(
             'sum_map',
-            shape=(n_maps, n_pix_x, n_pix_y),
-            chunks=(1, n_pix_x, n_pix_y),
+            shape=(n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         map_group.create_dataset(
             'hits_map',
-            shape=(n_maps, n_pix_x, n_pix_y),
-            chunks=(1, n_pix_x, n_pix_y),
+            shape=(n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         map_group.create_dataset(
             'map_val',
-            shape=(n_maps, n_pix_x, n_pix_y),
-            chunks=(1, n_pix_x, n_pix_y),
+            shape=(n_maps, n_pix_y, n_pix_x),
+            chunks=(1, n_pix_y, n_pix_x),
+            dtype=np.float64,
+        )
+        map_group.create_dataset(
+            'channel_map_val',
+            shape=(n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         map_group.create_dataset(
             'total_map',
-            shape=(n_pix_x, n_pix_y),
-            chunks=(n_pix_x, n_pix_y),
+            shape=(n_pix_y, n_pix_x),
+            chunks=(n_pix_y, n_pix_x),
             dtype=np.float64,
         )
-        map_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
-        map_group.attrs['dpix'] = dpix
-        map_group.attrs['units'] = (
-            'mK' if self.params['dataset'] == 'data_mK' else 'df/f'
+        map_group.create_dataset(
+            'channel_total_map',
+            shape=(n_chan, n_pix_y, n_pix_x),
+            chunks=(1, n_pix_y, n_pix_x),
+            dtype=np.float64,
         )
         good_samples = map_group.create_dataset(
             'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
         )
         for i_chan in range(pdata.n_chan):
-            interpolated_samples = pdata.get_from_channel(
-                i_chan, 'time_ordered_data/interpolated_samples'
-            )
+            interpolated_samples = pdata.get_interpolated_samples(i_chan)[:]
             good_samples[i_chan] = np.setdiff1d(
                 np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
             )
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: list[str]):  # noqa: PLR0912
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
@@ -439,12 +639,22 @@ class BinTODIntoMap(DataRoutine):
         self._initialize_map_arrays(pdata, n_maps, n_pix_x, n_pix_y, dpix)
         pdata['map/map_az'][:] = map_az
         pdata['map/map_za'][:] = map_za
-        detector_az = [
-            pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
-        ]
-        detector_za = [
-            pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)
-        ]
+        if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
+            _logger.info(f'{self.name}: Using telescope positions for map creation')
+            detector_az = [
+                pdata.get_telescope_az(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
+            detector_za = [
+                pdata.get_telescope_za(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
+        else:
+            _logger.info(f'{self.name}: Using detector positions for map creation')
+            detector_az = [
+                pdata.get_detector_az(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
+            detector_za = [
+                pdata.get_detector_za(i_chan)[:] for i_chan in range(pdata.n_chan)
+            ]
 
         data = []
         match self.params['dataset']:
@@ -460,6 +670,7 @@ class BinTODIntoMap(DataRoutine):
         sum_map = pdata['map/sum_map'][:]
         hits_map = pdata['map/hits_map'][:]
         netd = pdata['map/netd'][:]
+        good_samples = pdata['map/good_samples'][:]
 
         chanmask = pdata.chanmask[:]
 
@@ -511,7 +722,7 @@ class BinTODIntoMap(DataRoutine):
                 good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx]
             )
 
-            netd[chanmask != 1] = 0
+            netd[chanmask != ChanmaskValue.ON_RESONANCE] = 1
 
         if beam_map_mode:
             tones_to_map = np.argwhere(
@@ -536,8 +747,12 @@ class BinTODIntoMap(DataRoutine):
                 weight = 1.0 / netd[i_tone_absolute] ** 2.0
 
             i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
-            this_detector_az = detector_az[i_chan][i_tone_relative]
-            this_detector_za = detector_za[i_chan][i_tone_relative]
+            if beam_map_mode and pdata.has('time_ordered_data/telescope_az'):
+                this_detector_az = detector_az[i_chan]
+                this_detector_za = detector_za[i_chan]
+            else:
+                this_detector_az = detector_az[i_chan][i_tone_relative]
+                this_detector_za = detector_za[i_chan][i_tone_relative]
 
             # Get the good samples if they haven't been specified
             this_clean_data = np.squeeze(data[i_chan][i_tone_relative])
@@ -545,56 +760,79 @@ class BinTODIntoMap(DataRoutine):
             # Get this detector's positions, need to account for rotation in EL based on
             # beammap taken at EL=89
             x_ind = np.squeeze(np.round((this_detector_az - map_az[0]) / dpix))
-            x_ind = np.nan_to_num(x_ind, -1).astype('int')
+            x_ind = np.nan_to_num(x_ind, nan=-1).astype('int')
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
-            y_ind = np.nan_to_num(y_ind, -1).astype('int')
+            y_ind = np.nan_to_num(y_ind, nan=-1).astype('int')
 
-            # eliminate samples outside the map
-            good_samples = pdata['map/good_samples'][i_chan][:]
+            # Eliminate samples outside the map
+            this_good_samples = np.copy(good_samples[i_chan])
             valid_index = np.ndarray.flatten(
                 np.argwhere(
                     np.logical_and(
                         np.logical_and(
-                            x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x
+                            x_ind[this_good_samples] >= 0,
+                            x_ind[this_good_samples] < n_pix_x,
                         ),
                         np.logical_and(
-                            y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y
+                            y_ind[this_good_samples] >= 0,
+                            y_ind[this_good_samples] < n_pix_y,
                         ),
                     )
                 )
             )
-            good_samples = good_samples[valid_index]
 
-            # #loop over samples to create sum and hits maps
-            for time_sample in good_samples:
-                sum_map[map_idx, x_ind[time_sample], y_ind[time_sample]] += (
-                    this_clean_data[time_sample] * weight
-                )
-                hits_map[map_idx, x_ind[time_sample], y_ind[time_sample]] += (
-                    1.0 * weight
-                )
+            # Create sum and hits maps
+            this_good_samples = this_good_samples[valid_index]
+            n_good_samples = this_good_samples.size
+            i_chan_array = np.repeat(i_chan, n_good_samples)
+            map_idx_array = np.repeat(map_idx, n_good_samples)
+            np.add.at(
+                sum_map,
+                (
+                    i_chan_array,
+                    map_idx_array,
+                    y_ind[this_good_samples],
+                    x_ind[this_good_samples],
+                ),
+                this_clean_data[this_good_samples] * weight,
+            )
+            np.add.at(
+                hits_map,
+                (
+                    i_chan_array,
+                    map_idx_array,
+                    y_ind[this_good_samples],
+                    x_ind[this_good_samples],
+                ),
+                1.0 * weight,
+            )
 
         # Create kernel and convolve with map to get more accurate values for pixels
         # with few hits.
         r0 = self.params['r0']
         if r0 > 0:
             kernel = compute_map_kernel(r0=r0, dpix=dpix, sigma=self.params['sigma'])
-            for map_idx in range(n_maps):
-                sum_map[map_idx] = signal.convolve2d(
-                    sum_map[map_idx], kernel, mode='same'
-                )
-                hits_map[map_idx] = signal.convolve2d(
-                    hits_map[map_idx], kernel, mode='same'
-                )
+            for i_chan in range(pdata.n_chan):
+                for map_idx in range(n_maps):
+                    sum_map[i_chan, map_idx] = signal.convolve2d(
+                        sum_map[i_chan, map_idx], kernel, mode='same'
+                    )
+                    hits_map[i_chan, map_idx] = signal.convolve2d(
+                        hits_map[i_chan, map_idx], kernel, mode='same'
+                    )
 
         if not beam_map_mode:
             pdata.set_chanmask(chanmask)
         pdata['map/hits_map'][:] = hits_map
         pdata['map/sum_map'][:] = sum_map
         with np.errstate(divide='ignore', invalid='ignore'):
-            pdata['map/map_val'][:] = sum_map / hits_map
-            pdata['map/total_map'][:] = np.sum(sum_map, axis=0) / np.sum(
-                hits_map, axis=0
+            pdata['map/map_val'][:] = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
+            pdata['map/channel_map_val'][:] = sum_map / hits_map
+            pdata['map/total_map'][:] = np.sum(sum_map, axis=(0, 1)) / np.sum(
+                hits_map, axis=(0, 1)
+            )
+            pdata['map/channel_total_map'][:] = np.sum(sum_map, axis=1) / np.sum(
+                hits_map, axis=1
             )
         pdata['map/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating map.')
@@ -605,12 +843,149 @@ class BinTODIntoMap(DataRoutine):
         )
 
 
+def get_required_map_datasets(
+    pdata: ProcessedData,
+    channel: int | Sequence[int, ...] | None,
+    group_name: str = '/map',
+    caller_name: str = '',
+) -> set[str]:
+    """Return the datasets needed to use the data from the selected channel(s).
+
+    Arguments:
+        pdata (ProcessedData): The datastet to reference. Used for determining valid
+            channel indices and for error messages.
+        channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
+            use when generating the plots.  If `None`, all channels will be used.
+        group_name (str): Which HDF5 group to get the datasets from. Defaults to '/map'.
+        caller_name (str): The caller of this function. Used for error messages.
+            Defaults to `None`.
+
+    Returns:
+        set[str]: The appropriate data sets to use. If all channels are selected, will
+            return "[group_name]/map_val" and "[group_name]/total_map". If a single
+            channel is selected, will return "[group_name]/channel_map_val" and
+            "[group_name]/channel_total_map". If multiple channels are selected, but not
+            all channels, the respective maps will be need to be co-added later into new
+            arrays, so returns "[group_name]/sum_map" and "[group_name]/hits_map".
+
+    Raises:
+        ValueError: If channels is not an int, sequence of int, or None.
+        ValueError: If duplicate channels are selected (e.g. [0, -n_chan]).
+        IndexError: If any selected channels are out of the valid bounds i.e.
+            [-n_chan, n_chan - 1].
+    """
+    # Check rfsocinterface version for backwards compatibility. Old maps
+    # were not separated by channel, so will always need to return map_val and total_map
+    # and have a warning.
+    try:
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_map_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+    except KeyError:
+        bintod_map_version = Version('0.0.0')
+    try:
+        _, most_recent_video_step = pdata.find_most_recent_history_step(
+            'BinTODIntoVideo'
+        )
+        bintod_video_version = Version(
+            most_recent_video_step.attrs['version'].strip('"')
+        )
+    except KeyError:
+        bintod_video_version = Version('0.0.0')
+    if 'map/channel_map_val' not in pdata and (
+        pdata.get_version() < MAP_CHANGE_VERSION
+        or (
+            group_name == '/map'
+            and bintod_map_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+        or (
+            group_name == '/video'
+            and bintod_video_version < BIN_TOD_INTO_VIDEO_CHANGE_VERSION
+        )
+    ):
+        _logger.warning(
+            (f'{caller_name}: ' if caller_name else '')
+            + f'ProcessedData {pdata.file_stub} was created prior to map data changes. '
+            'Using `map_val` and `total_map`'
+        )
+        return {f'{group_name}/map_val', f'{group_name}/total_map'}
+
+    all_channels = tuple(range(pdata.n_chan))
+    valid_channels = range(-pdata.n_chan, pdata.n_chan)
+
+    if channel is None:
+        # Use all channels
+        map_dsets = {f'{group_name}/map_val', f'{group_name}/total_map'}
+    elif isinstance(channel, Sequence) and all(isinstance(c, int) for c in channel):
+        is_valid = np.isin(channel, valid_channels)
+        if any(~is_valid):
+            first_bad = channel[np.argmin(is_valid)]
+            raise IndexError(
+                (f'{caller_name}: ' if caller_name else '')
+                + f'Channel {first_bad} is out of bounds for '
+                f'ProcessedData {pdata.file_stub} with {pdata.n_chan} '
+                f'channel{"s"[: pdata.n_chan ^ 1]}'
+            )
+        corrected_channel = np.where(
+            np.array(channel) >= 0, channel, channel + pdata.n_chan
+        )
+        has_duplicates = np.unique(corrected_channel).size != len(channel)
+        if has_duplicates:
+            raise ValueError(
+                (f'{caller_name}: ' if caller_name else '')
+                + f'Expected unique channel indices; got {corrected_channel}.'
+            )
+        if tuple(sorted(channel)) == all_channels:
+            # All channel were selected
+            map_dsets = {f'{group_name}/map_val', f'{group_name}/total_map'}
+        elif len(channel) > 1:
+            # Need to compute new map values with only the selected channels
+            map_dsets = {f'{group_name}/sum_map', f'{group_name}/hits_map'}
+        else:
+            # Only one channel selected, so we already have that data
+            if channel[0] not in valid_channels:
+                raise IndexError(
+                    (f'{caller_name}: ' if caller_name else '')
+                    + f'Channel {channel[0]} is out of bounds for '
+                    f'ProcessedData {pdata.file_stub} with {pdata.n_chan} '
+                    f'channel{"s"[: pdata.n_chan ^ 1]}'
+                )
+            map_dsets = {
+                f'{group_name}/channel_map_val',
+                f'{group_name}/channel_total_map',
+            }
+    elif isinstance(channel, int):
+        if channel not in valid_channels:
+            raise IndexError(
+                (f'{caller_name}: ' if caller_name else '')
+                + f'Channel {channel} is out of bounds for '
+                f'ProcessedData {pdata.file_stub} with {pdata.n_chan} '
+                f'channel{"s"[: pdata.n_chan ^ 1]}'
+            )
+        if pdata.n_chan == 1:
+            map_dsets = {f'{group_name}/map_val', f'{group_name}/total_map'}
+        else:
+            map_dsets = {
+                f'{group_name}/channel_map_val',
+                f'{group_name}/channel_total_map',
+            }
+    else:
+        raise ValueError(
+            (f'{caller_name}: ' if caller_name else '')
+            + 'Expected `channels` to be an int, a sequence of ints, or `None`; '
+            f'got {type(channel)}.'
+        )
+    return map_dsets
+
+
 @register_routine
 class PlotMap(DataRoutine):
     """Plot the map created by BinTODIntoMap.
 
     Creates the following items in the HDF5 file:
     - /map/plotting: group containing the plotting datasets.
+    - /map/plotting/map_val: The polarized map values used in plotting.
+    - /map/plotting/total_map: The total map values used in plotting.
+    - /map/plotting/map_good_cov: The hits_map values greater than half of the median.
     - /map/plotting/flagged_map_1: 2D array of shape (n_pix_x, n_pix_y) containing
         the flagged pixels based on the first map (e.g. polarization 1).
     - /map/plotting/flagged_map_2: 2D array of shape (n_pix_x, n_pix_y) containing
@@ -622,7 +997,7 @@ class PlotMap(DataRoutine):
     """
 
     name = 'PlotMap'
-    version = '3.0.0'
+    version = '3.1.0'
 
     requires: ClassVar[set] = {
         '/map',
@@ -630,12 +1005,13 @@ class PlotMap(DataRoutine):
         '/map/map_za',
         '/map/netd',
         '/map/hits_map',
-        '/map/map_val',
-        '/map/total_map',
     }
 
     produces: ClassVar[set] = {
         '/map/plotting',
+        '/map/plotting/map_val',
+        '/map/plotting/total_map',
+        '/map/plotting/map_good_cov',
         '/map/plotting/flagged_map_1',
         '/map/plotting/flagged_map_2',
         '/map/plotting/flagged_total_map',
@@ -643,16 +1019,28 @@ class PlotMap(DataRoutine):
     }
 
     @ensure_path('savefile')
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         gaussian_sigma: float = GAUSSIAN_SIGMA,
         valid_covariance_threshold: float = 0.5,
         max_abs_threshold: float = 0.75,
+        show_optical_overlay: bool = False,
+        vmin: float | tuple[float, float, float] | None = None,
+        vmax: float | tuple[float, float, float] | None = None,
+        crop_to_optical_bounds: bool = False,
+        xlim: tuple[float, float] | None = None,
+        ylim: tuple[float, float] | None = None,
+        layout: Literal['staggered', 'stacked'] = 'staggered',
+        gridspec_kw: dict | None = None,
+        figsize: tuple[float, float] = (16, 8),
+        dpi: float = 300,
         save_plot: bool = True,
         savefile: Path | None = None,
+        format: str | None = None,  # noqa: A002
         show: bool = False,
         keep_figure_open: bool = False,
         overwrite: bool = True,
+        channel: int | Sequence[int, ...] | None = None,
     ):
         """Initialize the PlotMap routine.
 
@@ -664,44 +1052,100 @@ class PlotMap(DataRoutine):
                 to 0.5.
             max_abs_threshold (float, optional): The maximum absolute value multiplier
                 for the color scale in the plot. Defaults to 0.75.
-            save_plot (bool, optional): Whether to save the plot as a PNG file. Defaults
+            show_optical_overlay (bool, optional): Whether to overlay the region
+                covered by the optical camera on the mm images. Defatuls to `False`.
+            vmin, vmax (float | tuple[float, float, float], optional): The minimum /
+                maximum value(s) for the color scale in the plot. If a single value is
+                provided, the same range will be used for all plots. A tuple should have
+                3 elements, for v-pol, h-pol, and total signal respectively. If `None`,
+                will auto scale based on `max_abs_threshold` and matplotlib's default
+                behavior. Defaults to `None`.
+            crop_to_optical_bounds (bool, optional): Whehter to crop the images to the
+                bounds of the optical image. This has precedence over `xlim` and
+                `ylim`. Defaults to `False`.
+            xlim, yim (tuple[float, float], optional): The x/y bounds of the plots. All
+                plots will be cropped to fit the desired area. If `None`, uses the full
+                area. Note that ylim should be (max, min) order, as the ZA increases
+                downwards. Defaults to `None`.
+            layout (Literal['staggered', 'stacked'], optional): Which layout
+                configuration to use. If 'staggered', the optical images will be offset
+                in another column. If 'stacked', all images will be stacked vertically.
+                Defaults to 'staggered'.
+            gridspec_kw (dict, optional): The keyword arguments to pass to gridspec when
+                initializing the figure. If `None`, will use `{'hspace': 0}`. Defaults
+                to `None`.
+            figsize (tuple[float, float], optional): The (width, height) of the figure
+                in inches. Defaults to (16, 8).
+            dpi (float, optional): The saved figure's resolution in dots per inch.
+                Defaults to 300.
+            save_plot (bool, optional): Whether to save the plot to file. Defaults
                 to True.
-            savefile (Path, optional): The path to save the plot PNG file. If None, the
+            savefile (Path, optional): The path to save the plot to. If None, the
                 plot will be saved in the same directory as the HDF5 file. Defaults to
-                None.
+                the animation be saved in the same directory as the HDF5 file under the
+                name "[date]_set[setnum]_Source_Finder_Image.[format]". Defaults to
+                `None`. If format is set, it determines the output format, and the file
+                is saved as savefile. Note that savefile is used verbatim, and there is
+                no attempt to make the extension, if any, of savefile match format, and
+                no extension is appended. If format is not set, then the format is
+                inferred from the extension of savefile, if there is one. If format is
+                not set and savefile has no extension, then the file is saved with
+                `matplotlib.rcParams["savefig.format"]` (default: 'png') and the
+                appropriate extension is appended to savefile.
+            format (str, optional): The file format, e.g. 'png', 'pdf', 'svg', ... The
+                behavior when this is unset is documented under savefile. Defaults to
+                `None`.
             show (bool, optional): Whether to display the plot. Defaults to False.
             keep_figure_open (bool, optional): Whether to keep the figure open after
                 plotting. Defaults to False.
             overwrite (bool, optional): Whether to overwrite existing plotting datasets
                 in the HDF5 file. Defaults to True.
+            channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
+                use when generating the plots. See `get_required_map_datasets` for more
+                information. Defaults to `None`.
         """
         super().__init__(
             gaussian_sigma=gaussian_sigma,
             valid_covariance_threshold=valid_covariance_threshold,
             max_abs_threshold=max_abs_threshold,
+            show_optical_overlay=show_optical_overlay,
+            vmin=vmin,
+            vmax=vmax,
+            crop_to_optical_bounds=crop_to_optical_bounds,
+            xlim=xlim,
+            ylim=ylim,
+            layout=layout,
+            gridspec_kw=gridspec_kw,
+            figsize=figsize,
+            dpi=dpi,
             save_plot=save_plot,
             savefile=savefile,
+            format=format,
             show=show,
             keep_figure_open=keep_figure_open,
             overwrite=overwrite,
+            channel=channel,
         )
 
     @typing.override
     def _inputs(self, pdata: ProcessedData):
-        return self.requires
+        channel = self.params['channel']
+        map_dsets = get_required_map_datasets(
+            pdata, channel, group_name='/map', caller_name=self.name
+        )
+        return self.requires.union(map_dsets)
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(self, pdata: ProcessedData, inputs: set[str]):
         reset_arrays = self._intialize_arrays(pdata)
         if reset_arrays:
-            self._get_combined_map(pdata)
+            self._get_combined_map(pdata, inputs)
         fig = self._plot(pdata)
 
         created = {'input': self.produces} if reset_arrays else {}
-        values = {'input': fig} if fig is not None else {}
         return RoutineResult(
             created=created,
-            value=values,
+            value=fig,
         )
 
     def _intialize_arrays(self, pdata: ProcessedData) -> bool:
@@ -735,12 +1179,69 @@ class PlotMap(DataRoutine):
         return True
 
     def _get_combined_map(
-        self, pdata: ProcessedData
+        self,
+        pdata: ProcessedData,
+        inputs: set[str],
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         """Get the combined map of flagged pixels."""
+        channel = self.params['channel']
+        # total_map_shape = (pdata['map/map_za'].size, pdata['map/map_az'].size)
+        total_map_shape = pdata['map/total_map'].shape
+        map_val_shape = (N_POLARIZATION, *total_map_shape)
+        if '/map/map_val' in inputs:
+            # Using all maps
+
+            # Use virtual datasets to reduce disk usage
+            map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
+            map_val_layout[:] = h5py.VirtualSource(pdata['map/map_val'])
+            map_val = pdata['map/plotting'].create_virtual_dataset(
+                'map_val', map_val_layout
+            )[:]
+            total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
+            total_map_layout[:] = h5py.VirtualSource(pdata['map/total_map'])
+            total_map = pdata['map/plotting'].create_virtual_dataset(
+                'total_map', total_map_layout
+            )[:]
+
+            hits_map = np.sum(pdata['map/hits_map'], axis=0)
+            pdata['map/plotting'].attrs['channel'] = tuple(range(pdata.n_chan))
+        elif '/map/channel_map_val' in inputs:
+            # Using a single channel
+            if isinstance(channel, Sequence):
+                # Turn tuple into singleton to properly reduce number of dimensions
+                channel = channel[0]
+
+            # Use virtual datasets to reduce disk usage
+            map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
+            map_val_src = h5py.VirtualSource(pdata['map/channel_map_val'])
+            map_val_layout[:] = map_val_src[channel]
+            map_val = pdata['map/plotting'].create_virtual_dataset(
+                'map_val', map_val_layout
+            )[:]
+            total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
+            total_map_src = h5py.VirtualSource(pdata['map/channel_total_map'])
+            total_map_layout[:] = total_map_src[channel]
+            total_map = pdata['map/plotting'].create_virtual_dataset(
+                'total_map', total_map_layout
+            )[:]
+
+            hits_map = pdata['map/hits_map'][channel]
+            pdata['map/plotting'].attrs['channel'] = (channel,)
+        else:
+            # Multiple channels selected, but not all. Need to compute new maps
+            sum_map = pdata['map/sum_map'][channel]
+            hits_map = pdata['map/hits_map'][channel]
+            map_val = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
+            total_map = np.sum(sum_map, axis=(0, 1)) / np.sum(hits_map, axis=(0, 1))
+            hits_map = np.sum(hits_map, axis=0)
+
+            # Have to make new arrays for this data
+            pdata.create_dataset('/map/plotting/map_val', data=map_val)
+            pdata.create_dataset('/map/plotting/total_map', data=total_map)
+
+            pdata['map/plotting'].attrs['channel'] = (channel,)
+
         sigma = self.params['gaussian_sigma']
-        map_val = pdata['map/map_val']
-        total_map = pdata['map/total_map']
         flagged_map_1 = gaussian_filter(map_val[0], sigma)
         flagged_map_2 = gaussian_filter(map_val[1], sigma)
         flagged_map_3 = gaussian_filter(total_map, sigma)
@@ -777,31 +1278,6 @@ class PlotMap(DataRoutine):
         # flagged_map_2 = [x for x in flagged_map_2 if not np.isnan(x)]
         # flagged_map_3 = [x for x in flagged_map_3 if not np.isnan(x)]
 
-        pdata.create_dataset('/map/plotting/flagged_map_1', data=flagged_map_1)
-        pdata.create_dataset('/map/plotting/flagged_map_2', data=flagged_map_2)
-        pdata.create_dataset('/map/plotting/flagged_total_map', data=flagged_map_3)
-        pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
-
-    def _plot(self, pdata: ProcessedData) -> Figure | None:
-        """Plot the maps using matplotlib.
-
-        Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical
-        image.
-        """
-        hits_map = pdata['map/hits_map']
-        map_val = pdata['map/map_val'][:]
-        total_map = pdata['map/total_map'][:]
-        flagged_map_1_filt = pdata['map/plotting/flagged_map_1'][:]
-        flagged_map_2_filt = pdata['map/plotting/flagged_map_2'][:]
-        flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
-        contour_levels = pdata['map/plotting/contour_levels']
-        dpix = pdata['map'].attrs['dpix']
-        units = pdata['map'].attrs.get('units', 'mK')
-
-        map_az = pdata['map/map_az']
-        map_za = pdata['map/map_za']
-        extent = get_extent(map_az, map_za, dpix)
-
         valid_cov_1 = np.argwhere(hits_map[0] > 0.5 * np.median(hits_map[0]))
         map_goodcov_1 = np.zeros(np.size(valid_cov_1[:, 0]))
         for i_cov in np.arange(np.size(valid_cov_1[:, 0])):
@@ -815,18 +1291,111 @@ class PlotMap(DataRoutine):
                 1, valid_cov_2[i_cov, 0], valid_cov_2[i_cov, 1]
             ]
 
+        pdata.create_dataset('/map/plotting/flagged_map_1', data=flagged_map_1)
+        pdata.create_dataset('/map/plotting/flagged_map_2', data=flagged_map_2)
+        pdata.create_dataset('/map/plotting/flagged_total_map', data=flagged_map_3)
+        pdata.create_dataset('/map/plotting/contour_levels', data=contour_levels)
+        pdata.create_dataset(
+            '/map/plotting/map_good_cov', data=np.append(map_goodcov_1, map_goodcov_2)
+        )
+
+    def _plot(self, pdata: ProcessedData) -> Figure | None:  # noqa: PLR0912, PLR0915
+        """Plot the maps using matplotlib.
+
+        Plot will have 4 subplots: V-Pol map, H-Pol map, total map, and the optical
+        image.
+        """
+        map_val = pdata['map/plotting/map_val'][:]
+        total_map = pdata['map/plotting/total_map'][:]
+        flagged_map_1_filt = pdata['map/plotting/flagged_map_1'][:]
+        flagged_map_2_filt = pdata['map/plotting/flagged_map_2'][:]
+        flagged_map_tot_filt = pdata['map/plotting/flagged_total_map'][:]
+        contour_levels = pdata['map/plotting/contour_levels']
+        map_good_cov = pdata['map/plotting/map_good_cov'][:]
+        channel = tuple(pdata['map/plotting'].attrs['channel'].tolist())
+        dpix = pdata['map'].attrs['dpix']
+        units = pdata['map'].attrs.get('units', 'mK')
+        gridspec_kw = self.params['gridspec_kw']
+        if gridspec_kw is None:
+            gridspec_kw = {'hspace': 0}
+
+        _, most_recent_map_step = pdata.find_most_recent_history_step('BinTODIntoMap')
+        bintod_version = Version(most_recent_map_step.attrs['version'].strip('"'))
+        old_format = 'map/channel_map_val' not in pdata and (
+            pdata.get_version() < MAP_CHANGE_VERSION
+            or bintod_version < BIN_TOD_INTO_MAP_CHANGE_VERSION
+        )
+
+        map_az = pdata['map/map_az']
+        map_za = pdata['map/map_za']
+        extent = get_extent(map_az, map_za, dpix)
+
         netd = pdata['map/netd']
         netd_1 = netd[pdata.pol_ind_1]
         netd_2 = netd[pdata.pol_ind_2]
         valid_netd_1 = np.argwhere(netd_1 > 0)
         valid_netd_2 = np.argwhere(netd_2 > 0)
 
-        max_abs_threshold = self.params['max_abs_threshold']
-        this_xlim = min(map_az), max(map_az)
-        this_ylim = max(map_za), min(map_za)
-        max_abs = (
-            np.max(np.abs(np.append(map_goodcov_1, map_goodcov_2))) * max_abs_threshold
+        # Optical Image
+        tel_start = pdata.get_initial_telescope_position()
+        optical_image = get_scaled_optical_image(
+            dpix,
+            pdata.optical_image,
+            map_az,
+            map_za,
+            telescope_start_position=tel_start,
         )
+        # Find optical image bounds
+        is_nonzero_opt = np.any(optical_image > 0, axis=-1)
+        nonzero_opt_idx_za, nonzero_opt_idx_az = np.nonzero(is_nonzero_opt)
+        corner_opt_za = map_za[0] + OPTCAM_DPIX * nonzero_opt_idx_za
+        corner_opt_az = map_az[0] + OPTCAM_DPIX * nonzero_opt_idx_az
+        height_opt_deg = OPTCAM_HEIGHT_PIXELS * OPTCAM_DPIX
+        width_opt_deg = OPTCAM_WIDTH_PIXELS * OPTCAM_DPIX
+        corner_opt = (corner_opt_az[0], corner_opt_za[0])
+        crop_to_optical = self.params['crop_to_optical_bounds']
+        if crop_to_optical:
+            xlim = (corner_opt[0], corner_opt[0] + width_opt_deg)
+            ylim = (corner_opt[1] + height_opt_deg, corner_opt[1])
+        else:
+            xlim = self.params['xlim']
+            ylim = self.params['ylim']
+            if xlim is None:
+                xlim = (min(map_az), max(map_az))
+            if ylim is None:
+                ylim = (max(map_za), min(map_za))
+
+        max_abs_threshold = self.params['max_abs_threshold']
+        vmin = self.params['vmin']
+        vmax = self.params['vmax']
+        max_abs = np.max(np.abs(map_good_cov)) * max_abs_threshold
+        match vmin:
+            case float() | int():
+                vmin_vpol = vmin_hpol = vmin_total = vmin
+            case tuple():
+                if len(vmin) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmin must have length 3.')
+                vmin_vpol, vmin_hpol, vmin_total = vmin
+            case None:
+                vmin_vpol = vmin_hpol = vmin_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmin must be a float or tuple of floats.'
+                )
+        match vmax:
+            case float() | int():
+                vmax_vpol = vmax_hpol = vmax_total = vmax
+            case tuple():
+                if len(vmax) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmax must have length 3.')
+                vmax_vpol, vmax_hpol, vmax_total = vmax
+            case None:
+                vmax_vpol = vmax_hpol = vmax_total = max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmax must be a float or tuple of floats.'
+                )
+
         med_netd_1 = 1.0 / np.sqrt(
             np.sum(1.0 / netd_1[valid_netd_1] ** 2) / np.size(valid_netd_1)
         )
@@ -838,31 +1407,89 @@ class PlotMap(DataRoutine):
         vis = pdata.optical_visibility[()]
 
         # TODO: Make figure size change based on the size of the map
-        # aspect_ratio = (this_ylim[0] - this_ylim[1]) / (this_xlim[1] - this_xlim[0])
-        # fig_height = 7.5
-        # fig_width = fig_height / aspect_ratio
-        fig, axes = plt.subplots(5, 1, figsize=(15, 9), sharex=True, sharey=True)
+        layout = self.params['layout']
+        figsize = self.params['figsize']
+        if layout == 'staggered':
+            fig, axes = plt.subplot_mosaic(
+                [
+                    ['vpol', '.'],
+                    ['vpol', 'optical'],
+                    ['hpol', 'optical'],
+                    ['hpol', 'degraded'],
+                    ['total', 'degraded'],
+                    ['total', '.'],
+                ],
+                # [
+                #     ['vpol'],
+                #     ['hpol'],
+                #     ['total'],
+                #     ['optical'],
+                #     ['degraded'],
+                # ],
+                sharex=True,
+                sharey=True,
+                figsize=figsize,
+                gridspec_kw=gridspec_kw,
+                # layout='constrained',
+            )
+            for key in ['vpol', 'hpol', 'optical']:
+                plt.setp(axes[key].get_xticklines(), visible=False)
+        else:
+            fig, axes = plt.subplot_mosaic(
+                [
+                    ['vpol'],
+                    ['hpol'],
+                    ['total'],
+                    ['optical'],
+                    ['degraded'],
+                ],
+                sharex=True,
+                sharey=True,
+                figsize=figsize,
+                gridspec_kw=gridspec_kw,
+                layout='constrained',
+            )
+            fig.get_layout_engine().set(h_pad=0)
+            for key in ['vpol', 'hpol', 'total', 'optical']:
+                axes[key].tick_params(labelbottom=False)
+                axes[key].label_outer()
+                plt.setp(axes[key].get_xticklines(), visible=False)
+        channel_suffix = (
+            'All Channels'
+            if channel == tuple(range(pdata.n_chan))
+            else f'Channel {channel[0]} ({pdata.get_tile_name(channel[0])})'
+            if len(channel) == 1
+            else f'Channels {channel}'
+        )
         fig.suptitle(
-            f'{pdata.file_stub}\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
+            f'{pdata.file_stub} - {channel_suffix}'
+            f'\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
             f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
             f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
         )
-        for ax in axes:
+        for ax in axes.values():
             ax.set_ylabel('ZA (degrees)')
-            ax.set_xlim(this_xlim)
-            ax.set_ylim(this_ylim)
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+            ax.label_outer()
+
+        ax_vpol = axes['vpol']
+        ax_hpol = axes['hpol']
+        ax_total = axes['total']
+        ax_optical = axes['optical']
+        ax_degraded = axes['degraded']
 
         # Vertical polarization
-        im = axes[0].imshow(
-            np.transpose(map_val[0]),
+        im = ax_vpol.imshow(
+            np.transpose(map_val[0]) if old_format else map_val[0],
             extent=extent,
             aspect='equal',
-            vmin=-max_abs,
-            vmax=max_abs,
+            vmin=vmin_vpol,
+            vmax=vmax_vpol,
             cmap='Blues_r',
         )
-        add_colorbar(fig, axes[0], im, f'V-Pol Signal ({units})')
-        axes[0].contour(
+        add_colorbar(fig, ax_vpol, im, f'V-Pol Signal ({units})')
+        ax_vpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_1_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
@@ -870,16 +1497,16 @@ class PlotMap(DataRoutine):
         )
 
         # Horizontal polarization
-        im = axes[1].imshow(
-            np.transpose(map_val[1]),
+        im = ax_hpol.imshow(
+            np.transpose(map_val[1]) if old_format else map_val[1],
             extent=extent,
             aspect='equal',
-            vmin=-max_abs,
-            vmax=max_abs,
+            vmin=vmin_hpol,
+            vmax=vmax_hpol,
             cmap='Reds_r',
         )
-        add_colorbar(fig, axes[1], im, f'H-Pol Signal ({units})')
-        axes[1].contour(
+        add_colorbar(fig, ax_hpol, im, f'H-Pol Signal ({units})')
+        ax_hpol.contour(
             np.flip(np.flip(np.transpose(flagged_map_2_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
@@ -887,36 +1514,71 @@ class PlotMap(DataRoutine):
         )
 
         # Total signal
-        im = axes[2].imshow(
-            np.transpose(total_map),
+        im = ax_total.imshow(
+            np.transpose(total_map) if old_format else total_map,
             extent=extent,
             aspect='equal',
-            vmin=-max_abs,
-            vmax=max_abs,
+            vmin=vmin_total,
+            vmax=vmax_total,
             cmap='Greys_r',
         )
-        add_colorbar(fig, axes[2], im, f'Total Signal ({units})')
-        axes[2].contour(
+        add_colorbar(fig, ax_total, im, f'Total Signal ({units})')
+        ax_total.contour(
             np.flip(np.flip(np.transpose(flagged_map_tot_filt[::-1]), axis=1), axis=0),
             levels=contour_levels,
             extent=extent,
             colors='red',
         )
 
-        # Optical Image
-        optical_image = get_scaled_optical_image(
-            dpix, pdata.optical_image, map_az, map_za
-        )
+        # Optical image outline for mm maps
+        show_optical_overlay = self.params['show_optical_overlay']
+        if not crop_to_optical and show_optical_overlay:
+            for ax in [ax_vpol, ax_hpol, ax_total]:
+                rect = plt.Rectangle(
+                    corner_opt,
+                    width_opt_deg,
+                    height_opt_deg,
+                    facecolor='white',
+                    # edgecolor='white',
+                    # linewidth='2',
+                    alpha=0.2,
+                )
+                ax.add_patch(rect)
+                ax.text(
+                    corner_opt[0] + width_opt_deg / 2,
+                    corner_opt[1],
+                    'Optical Image Bounds',
+                    ha='center',
+                    va='bottom',
+                    fontsize=8,
+                    color='white',
+                )
+
         opt_vmax = 255.0
         opt_vmin = 0  # NOTE: Shouldn't this be 0?
-        im = axes[3].imshow(
+        im = ax_optical.imshow(
             optical_image,
             extent=extent,
             aspect='equal',
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        add_colorbar(fig, axes[3], im, 'Optical Signal (rgb)')
+        if layout == 'stacked':
+            cax_opt, _ = add_colorbar(fig, ax_optical, im, '')
+            cax_opt.set_visible(False)
+        ax_optical.text(
+            1.05,
+            0.5,
+            'Optical Signal',
+            rotation=270,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_optical.transAxes,
+            fontsize=10,
+        )
+        if layout == 'staggered':
+            ax_optical.set_ylabel('ZA (degrees)')
+            ax_optical.yaxis.set_tick_params(labelleft=True)
 
         # Blurred optical image
         sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
@@ -924,111 +1586,80 @@ class PlotMap(DataRoutine):
             optical_image,
             (sigma, sigma, 0),
         )
-        im = axes[4].imshow(
+        im = ax_degraded.imshow(
             blurred_optical_image,
             extent=extent,
             aspect='equal',
             vmin=opt_vmin,
             vmax=opt_vmax,
         )
-        add_colorbar(fig, axes[4], im, 'Blurred\nOptical Signal (rgb)')
+        if layout == 'stacked':
+            cax_deg, _ = add_colorbar(fig, ax_degraded, im, '')
+            cax_deg.set_visible(False)
+        ax_degraded.text(
+            1.05,
+            0.5,
+            'Degraded Optical Signal'
+            if layout == 'staggered'
+            else 'Degraded\nOptical Signal',
+            rotation=270,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_degraded.transAxes,
+            fontsize=10,
+        )
+        if layout == 'staggered':
+            ax_degraded.set_ylabel('ZA (degrees)')
+            ax_degraded.yaxis.set_tick_params(labelleft=True)
+            ax_degraded.xaxis.set_tick_params(labelbottom=True)
 
-        axes[-1].set_xlabel('Azimuth (degrees)')
-        fig.tight_layout()
-        fig.subplots_adjust(wspace=0, hspace=0)
+        # Add x labels to bottom axes
+        if layout == 'staggered':
+            ax_total.set_xlabel('Azimuth (degrees)')
+        ax_degraded.set_xlabel('Azimuth (degrees)')
+
+        for ax in axes.values():
+            ylabels = ax.get_ymajorticklabels()
+            ylabels[0].set_verticalalignment('bottom')
+            ylabels[-1].set_verticalalignment('top')
+
+        # ax_vpol.set_visible(False)
+        # cax_vpol.set_visible(False)
+        # ax_hpol.set_visible(False)
+        # cax_hpol.set_visible(False)
+        # ax_degraded.set_visible(False)
 
         if self.params['save_plot']:
+            format_ = self.params['format']
             if self.params['savefile'] is None:
                 # TODO: Move this to some global getter function
-                self.params['savefile'] = (
-                    pdata.folder / f'{pdata.file_stub}_Source_Finder_Image.png'
-                )
-            if not self.params['savefile'].exists():
-                self.params['savefile'].parent.mkdir(
-                    mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
-                )
-                self.params['savefile'].touch(PERMISSIONS_ALL_FULL)
-            fig.savefig(self.params['savefile'], bbox_inches='tight')
+                fname = pdata.folder / f'{pdata.file_stub}_Source_Finder_Image'
+            else:
+                fname = Path(self.params['savefile'])
+            suffix = fname.suffix.lstrip('.')
+            if format_ is None:
+                # Get format from file suffix if it exists
+                format_ = suffix or 'png'
+            savefile = fname.with_suffix(f'.{format_}').resolve()
+            self.params['savefile'] = savefile
+            savefile.parent.mkdir(
+                mode=PERMISSIONS_ALL_FULL, parents=True, exist_ok=True
+            )
+            fig.savefig(
+                savefile, dpi=self.params['dpi'], format=format_, bbox_inches='tight'
+            )
+            _logger.info(f'{self.name}: Saved figure to "{savefile}"')
         if self.params['show']:
             plt.show()
 
         if not self.params['keep_figure_open']:
             plt.close(fig)
+            return None
         return fig
 
 
-@ensure_path('savefile')
-def animate_video(
-    total_map: npt.NDArray,
-    optical_video: npt.NDArray,
-    interval_ms: float,
-    extent: tuple[int, ...],
-    max_abs_threshold: float = 0.75,
-    repeat_delay_ms: float = 2000,
-    show: bool = False,
-    savefile: Path | None = None,
-) -> tuple[Figure, animation.FuncAnimation]:
-    """Animate the video of the map evolution over time.
-
-    Arguments:
-        total_map (npt.NDArray): 3D array of shape (n_frames, n_pix_x, n_pix_y)
-            containing the total map values for each frame.
-        optical_video (npt.NDArray): 4D array of shape (n_frames, height, width, 3)
-            containing the optical video frames for each frame.
-        interval_ms (float): The interval between frames in milliseconds.
-        extent (tuple[int, ...]): The extent of the map in the format (xmin, xmax, ymin,
-             ymax).
-        max_abs_threshold (float, optional): The maximum absolute value multiplier for
-            the color scale in the animation. Defaults to 0.75.
-        repeat_delay_ms (float, optional): The delay between repeats of the animation in
-            milliseconds. Defaults to 2000 ms.
-        show (bool, optional): Whether to display the animation. Defaults to False.
-        savefile (Path, optional): The path to save the animation file. If None, the
-            animation will not be saved. Defaults to None.
-    """
-    smoothed_map = np.transpose(total_map, (0, 2, 1))
-    max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
-    vmax = max_abs
-    vmin = -max_abs
-    # vmax = 500
-    # vmin = -500
-
-    fig, axes = plt.subplots(2, 1, figsize=(5, 10), sharex=True)
-    im_mm = axes[0].imshow(
-        smoothed_map[0],
-        vmin=vmin,
-        vmax=vmax,
-        animated=True,
-        cmap='Greys_r',
-        extent=extent,
-        aspect='equal',
-    )
-    im_opt = axes[1].imshow(
-        optical_video[0], animated=True, extent=extent, aspect='equal'
-    )
-    fig.subplots_adjust(wspace=0, hspace=0)
-    add_colorbar_outside(im_mm, axes[0], 'right')
-
-    def animation_func(i: int):
-        im_mm.set_array(smoothed_map[i])
-        im_opt.set_array(optical_video[i])
-
-    an = animation.FuncAnimation(
-        fig,
-        animation_func,
-        frames=total_map.shape[0],
-        interval=interval_ms,
-        repeat_delay=repeat_delay_ms,
-    )
-    if savefile is not None:
-        an.save(savefile)
-    if show:
-        plt.show()
-    return fig, an
-
-
 @register_routine
-class MakeVideo(DataRoutine):
+class BinTODIntoVideo(DataRoutine):
     """Create a video of the map evolution over time.
 
     Creates the following items in the HDF5 file:
@@ -1036,22 +1667,30 @@ class MakeVideo(DataRoutine):
     - /video/map_az: 1D array of azimuth values for the map pixels
     - /video/map_za: 1D array of zenith angle values for the map pixels
     - /video/netd: 1D array of length n_tones containing the NETD values for each tone
-    - /video/sum_map: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing
-        the sum of the data values for each pixel, for each time block.
-    - /video/hits_map: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing
-        the number of hitsfor each pixel, for each time block.
+    - /video/sum_map: 5D array of shape (n_blocks, n_chan, n_maps, n_pix_x, n_pix_y)
+        containing the sum of the data values for each pixel, for each time block.
+    - /video/hits_map: 5D array of shape (n_blocks, n_chan, n_maps, n_pix_x, n_pix_y)
+        containing the number of hits for each pixel, for each time block.
     - /video/map_val: 4D array of shape (n_blocks, n_maps, n_pix_x, n_pix_y) containing
-        the binned map values (i.e. sum_map / hits_map).
+        the binned map values (i.e. (sum_{i_chan} sum_map) / (sum_{i_chan} hits_map)).
+    - /video/channel_map_val: 5D array of shape (n_blocks, n_chan, n_maps, n_pix_x,
+        n_pix_y) containing the binned map values (i.e. sum_map / hits_map), separated
+        by channel.
     - /video/total_map: 3D array of shape (n_blocks, n_pix_x, n_pix_y) containing
-        the total map values (sum over all maps).
+        the total map values (sum over all channels and maps).
+    - /video/channel_total_map: 4D array of shape (n_blocks, n_chan, n_pix_x, n_pix_y)
+        containing the total map values (sum over all maps), separated by channel.
     - /video/good_samples: 2D variable length array of length n_chan containing the
         indices of the good samples for each channel
     - /video/cropped_optical_video: 4D array of shape (n_blocks, height, width, 3)
         containing the cropped optical video frames for each time block.
+    - /video/bad_pixel_mask: 4D Boolean array of shape (n_blocks, n_chan, n_pix_y,
+        n_pix_x) indicating pixels which are "bad" (i.e. outside of the map bounds for
+        each channel).
     """
 
-    name = 'MakeVideo'
-    version = '2.0.0'
+    name = 'BinTODIntoVideo'
+    version = '3.1.0'
 
     produces: ClassVar[set] = {
         '/video',
@@ -1059,11 +1698,14 @@ class MakeVideo(DataRoutine):
         '/video/hits_map',
         '/video/sum_map',
         '/video/map_val',
+        '/video/channel_map_val',
         '/video/total_map',
+        '/video/channel_total_map',
         '/video/map_az',
         '/video/map_za',
         '/video/cropped_optical_video',
         '/video/good_samples',
+        '/video/bad_pixel_mask',
     }
 
     @ensure_path('savefile')
@@ -1073,18 +1715,13 @@ class MakeVideo(DataRoutine):
         hp_filter_freq: float = 0.5,
         lp_filter_freq: float = 10.0,
         med_netd_cut_threshold: float = 3.0,
-        max_abs_threshold: float = 0.75,
         az_trim: float = 2.3,
         za_trim: float = 0.2,
         beam_map_mode: bool = False,
-        dpix: int = DEFAULT_MAP_DPIX,
+        dpix: int = DEFAULT_VIDEO_DPIX,
         r0: float = 0.15,
         sigma: float = 0.087 / 2.3,
         block_size_s: float = 1,
-        plot: bool = True,
-        show: bool = False,
-        savefile: Path | None = None,
-        overwrite: bool = True,
     ):
         """Initialize the MakeVideo routine.
 
@@ -1097,8 +1734,6 @@ class MakeVideo(DataRoutine):
                 filter applied to the data when computing NETD values.
             med_netd_cut_threshold (float, optional): The threshold for cutting tones
                 based on their NETD values.
-            max_abs_threshold (float, optional): The maximum absolute value multiplier
-                for the color scale in the plot. Defaults to 0.75.
             az_trim (float, optional): The amount to trim from the edges of the map in
                 the azimuth direction, in degrees. Defaults to 2.3 degrees.
             za_trim (float, optional): The amount to trim from the edges of the map in
@@ -1115,14 +1750,6 @@ class MakeVideo(DataRoutine):
                 SKIPR).
             block_size_s (float, optional): The size of the blocks in seconds to divide
                 the data into when creating the video. Defaults to 1 second.
-            plot (bool, optional): Whether to create an animated plot of the video.
-                Defaults to True.
-            show (bool, optional): Whether to display the animated plot. Defaults to
-                False.
-            savefile (Path, optional): The path to save the animated plot to. If None,
-                the animation will not be saved.
-            overwrite (bool, optional): Whether to overwrite existing video datasets
-                in the HDF5 file. Defaults to True.
         """
         if dataset not in ('data_mK', 'data_freq'):
             msg = (
@@ -1140,7 +1767,6 @@ class MakeVideo(DataRoutine):
             hp_filter_freq=hp_filter_freq,
             lp_filter_freq=lp_filter_freq,
             med_netd_cut_threshold=med_netd_cut_threshold,
-            max_abs_threshold=max_abs_threshold,
             az_trim=az_trim,
             za_trim=za_trim,
             beam_map_mode=beam_map_mode,
@@ -1148,10 +1774,6 @@ class MakeVideo(DataRoutine):
             r0=r0,
             sigma=sigma,
             block_size_s=block_size_s,
-            plot=plot,
-            show=show,
-            savefile=savefile,
-            overwrite=overwrite,
         )
 
     @typing.override
@@ -1169,14 +1791,14 @@ class MakeVideo(DataRoutine):
     def _initialize_map_arrays(
         self,
         pdata: ProcessedData,
-        n_blocks: int,
         n_maps: int,
         n_pix_x: int,
         n_pix_y: int,
         optical_video_shape: tuple[int, ...],
         dpix: float,
+        fs: float,
         block_size_s: float,
-    ):
+    ) -> tuple[int, npt.NDArray]:
         """Initialize the datasets for the video in the ProcessedData object.
 
         If the 'video' group already exists, it will overwrite it and create new
@@ -1189,31 +1811,82 @@ class MakeVideo(DataRoutine):
             )
             del pdata['video']
         video_group = pdata.create_group('video')
+        video_group.attrs['dpix'] = dpix
+        video_group.attrs['block_size_s'] = block_size_s
+        video_group.attrs['units'] = (
+            'mK' if self.params['dataset'] == 'data_mK' else 'df/f'
+        )
+        good_samples = video_group.create_dataset(
+            'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
+        )
         video_group.create_dataset('map_az', shape=(n_pix_x,), dtype=np.float64)
         video_group.create_dataset('map_za', shape=(n_pix_y,), dtype=np.float64)
         video_group.create_dataset('netd', shape=(pdata.total_tones,), dtype=np.float64)
+        n_chan = pdata.n_chan
+
+        # Find good sampels before determining number of blocks
+        for i_chan in range(pdata.n_chan):
+            interpolated_samples = pdata.get_from_channel(
+                i_chan, 'time_ordered_data/interpolated_samples'
+            )
+            good_samples[i_chan] = np.setdiff1d(
+                np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
+            )
+            nan_samples = np.argwhere(
+                np.isnan(pdata.get_detector_az(i_chan)[0])
+                | np.isnan(pdata.get_detector_za(i_chan)[0])
+            ).flatten()
+            good_samples[i_chan] = np.setdiff1d(
+                np.arange(pdata.get_n_samples(i_chan)), nan_samples
+            )
+        least_samples_chan = np.argmin(pdata.n_samples)
+        n_samples = pdata.get_n_samples(least_samples_chan)
+        first_good_sample = np.max(
+            [np.min(good_samples[i_chan]) for i_chan in range(pdata.n_chan)]
+        )
+        blocks = np.arange(first_good_sample, n_samples, int(fs * block_size_s))
+        n_blocks = blocks.size - 1
+
+        video_group.create_dataset(
+            'bad_pixel_mask',
+            shape=(n_blocks, n_chan, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
+            dtype=np.bool,
+        )
         video_group.create_dataset(
             'sum_map',
-            shape=(n_blocks, n_maps, n_pix_x, n_pix_y),
-            chunks=(1, 1, n_pix_x, n_pix_y),
+            shape=(n_blocks, n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         video_group.create_dataset(
             'hits_map',
-            shape=(n_blocks, n_maps, n_pix_x, n_pix_y),
-            chunks=(1, 1, n_pix_x, n_pix_y),
+            shape=(n_blocks, n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         video_group.create_dataset(
             'map_val',
-            shape=(n_blocks, n_maps, n_pix_x, n_pix_y),
-            chunks=(1, 1, n_pix_x, n_pix_y),
+            shape=(n_blocks, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
+            dtype=np.float64,
+        )
+        video_group.create_dataset(
+            'channel_map_val',
+            shape=(n_blocks, n_chan, n_maps, n_pix_y, n_pix_x),
+            chunks=(1, 1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         video_group.create_dataset(
             'total_map',
-            shape=(n_blocks, n_pix_x, n_pix_y),
-            chunks=(1, n_pix_x, n_pix_y),
+            shape=(n_blocks, n_pix_y, n_pix_x),
+            chunks=(1, n_pix_y, n_pix_x),
+            dtype=np.float64,
+        )
+        video_group.create_dataset(
+            'channel_total_map',
+            shape=(n_blocks, n_chan, n_pix_y, n_pix_x),
+            chunks=(1, 1, n_pix_y, n_pix_x),
             dtype=np.float64,
         )
         video_group.create_dataset(
@@ -1222,28 +1895,14 @@ class MakeVideo(DataRoutine):
             chunks=(1, *optical_video_shape),
             dtype=np.uint8,
         )
-        video_group.attrs['dpix'] = dpix
-        video_group.attrs['block_size_s'] = block_size_s
-        good_samples = video_group.create_dataset(
-            'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
-        )
-        for i_chan in range(pdata.n_chan):
-            interpolated_samples = pdata.get_from_channel(
-                i_chan, 'time_ordered_data/interpolated_samples'
-            )
-            good_samples[i_chan] = np.setdiff1d(
-                np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
-            )
+        return n_blocks, blocks
 
     def _compute_new_maps(self, pdata: ProcessedData):  # noqa: PLR0912, PLR0915
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         block_size_s = self.params['block_size_s']
         least_samples_chan = np.argmin(pdata.n_samples)
-        n_samples = pdata.get_n_samples(least_samples_chan)
         fs = pdata.get_fs(least_samples_chan)
-        blocks = np.arange(0, n_samples, int(fs * block_size_s))
-        n_blocks = blocks.size - 1
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
             pdata,
             self.params['az_trim'],
@@ -1254,47 +1913,46 @@ class MakeVideo(DataRoutine):
         n_maps = N_POLARIZATION if not beam_map_mode else pdata.total_tones
 
         # Determine optical video dimenmsions before intiializing arryas
+        tel_start_pos = pdata.get_initial_telescope_position()
         if np.size(pdata.optical_image) == 0:
             optical_image_shape = (0, 0, 0)
         else:
             scaled_optical_image = get_scaled_optical_image(
-                dpix, pdata.optical_image[:], map_az, map_za
+                dpix,
+                pdata.optical_image[:],
+                map_az,
+                map_za,
+                telescope_start_position=tel_start_pos,
             )
             optical_image_shape = scaled_optical_image.shape
 
         if 'optical_video_file' in pdata['global_data'].attrs:
-            container = av.open(pdata['global_data'].attrs['optical_video_file'])
-            video = container.streams.video[0]
-            n_frames = video.frames
-            shape = (video.height, video.width, 3, n_frames)
-            full_optical_video = np.zeros(shape, dtype=np.uint8)
+            video_path = pdata['global_data'].attrs['optical_video_file']
             _logger.info(f'{self.name}: Reading optical video from mp4 file...')
-            for i_frame, frame in enumerate(container.decode(video=0)):
-                full_optical_video[..., i_frame] = frame.to_ndarray(format='rgb24')
+            full_optical_video = load_mp4_ffmpeg(video_path).transpose((1, 2, 3, 0))
             _logger.info(f'{self.name}: Finished reading optical video.')
             scaled_optical_image = get_scaled_optical_image(
-                dpix, full_optical_video[..., 0], map_az, map_za
+                dpix,
+                full_optical_video[..., 0],
+                map_az,
+                map_za,
+                telescope_start_position=tel_start_pos,
             )
             optical_image_shape = scaled_optical_image.shape
         elif 'optical_video' in pdata['global_data']:
             full_optical_video = pdata['global_data/optical_video']
-        else:
-            msg = (
-                f'{self.name}: Could not find optical video for provided '
-                'procesed dataset.'
-            )
-            raise ValueError(msg)
 
-        self._initialize_map_arrays(
+        n_blocks, blocks = self._initialize_map_arrays(
             pdata,
-            n_blocks,
             n_maps,
             n_pix_x,
             n_pix_y,
             optical_image_shape,
             dpix,
+            fs,
             block_size_s,
         )
+        good_samples = pdata['video/good_samples'][:]
         pdata['video/map_az'][:] = map_az
         pdata['video/map_za'][:] = map_za
         detector_az = [
@@ -1369,7 +2027,7 @@ class MakeVideo(DataRoutine):
             good_netd < 10 ** (netd_med - netd_std * 2), -1, chanmask[good_idx]
         )
 
-        netd[chanmask != 1] = 0
+        netd[chanmask != ChanmaskValue.ON_RESONANCE] = 0
 
         if beam_map_mode:
             tones_to_map = np.argwhere(
@@ -1406,54 +2064,134 @@ class MakeVideo(DataRoutine):
             y_ind = np.squeeze(np.round((this_detector_za - map_za[0]) / dpix))
             y_ind = np.nan_to_num(y_ind, -1).astype('int')
 
-            # eliminate samples outside the map
-            good_samples = pdata['video/good_samples'][i_chan][:]
+            # Eliminate samples outside the map
+            this_good_samples = np.copy(good_samples[i_chan])
             valid_index = np.ndarray.flatten(
                 np.argwhere(
                     np.logical_and(
                         np.logical_and(
-                            x_ind[good_samples] >= 0, x_ind[good_samples] < n_pix_x
+                            x_ind[this_good_samples] >= 0,
+                            x_ind[this_good_samples] < n_pix_x,
                         ),
                         np.logical_and(
-                            y_ind[good_samples] >= 0, y_ind[good_samples] < n_pix_y
+                            y_ind[this_good_samples] >= 0,
+                            y_ind[this_good_samples] < n_pix_y,
                         ),
                     )
                 )
             )
-            good_samples = good_samples[valid_index]
+            this_good_samples = this_good_samples[valid_index]
 
-            # loop over samples to create sum and hits maps
-            for i_block, block_end in enumerate(blocks[1:]):
-                block_slice = slice(blocks[i_block], block_end)
-                for time_sample in good_samples[block_slice]:
-                    sum_map[
-                        i_block, map_idx, x_ind[time_sample], y_ind[time_sample]
-                    ] += this_clean_data[time_sample] * weight
-                    hits_map[
-                        i_block, map_idx, x_ind[time_sample], y_ind[time_sample]
-                    ] += 1.0 * weight
+            # If last block ends before the end of the timestream, don't use the
+            # trailing samples.
+            this_good_samples = this_good_samples[this_good_samples < blocks[-1]]
+
+            # Create sum and hits maps
+            n_good_samples = this_good_samples.size
+            block_idxs = np.digitize(this_good_samples, blocks[1:])
+            i_chan_array = np.repeat(i_chan, n_good_samples)
+            map_idx_array = np.repeat(map_idx, n_good_samples)
+            np.add.at(
+                sum_map,
+                (
+                    block_idxs,
+                    i_chan_array,
+                    map_idx_array,
+                    y_ind[this_good_samples],
+                    x_ind[this_good_samples],
+                ),
+                this_clean_data[this_good_samples] * weight,
+            )
+            np.add.at(
+                hits_map,
+                (
+                    block_idxs,
+                    i_chan_array,
+                    map_idx_array,
+                    y_ind[this_good_samples],
+                    x_ind[this_good_samples],
+                ),
+                1.0 * weight,
+            )
+
+        # Set the median value to 0 for each channel's sum map
+        # TODO: Inverse variance weighted median
+        for i_block in range(n_blocks):
+            for i_chan in range(pdata.n_chan):
+                for i_map in range(n_maps):
+                    nonzero = np.where(hits_map[i_block, i_chan, i_map] > 0)
+                    median = np.median(sum_map[i_block, i_chan, i_map][nonzero])
+                    sum_map[i_block, i_chan, i_map][nonzero] -= median
 
         # Create kernel and convolve with map to get more accurate values for pixels
         # with few hits
-        kernel = compute_map_kernel(
-            r0=self.params['r0'], dpix=dpix, sigma=self.params['sigma']
-        )
-        for i_block in range(n_blocks):
-            for map_idx in range(n_maps):
-                sum_map[i_block, map_idx] = signal.convolve2d(
-                    sum_map[i_block, map_idx], kernel, mode='same'
-                )
-                hits_map[i_block, map_idx] = signal.convolve2d(
-                    hits_map[i_block, map_idx], kernel, mode='same'
-                )
+        r0 = self.params['r0']
+        if r0 > 0:
+            kernel = compute_map_kernel(r0=r0, dpix=dpix, sigma=self.params['sigma'])
+            for i_block in range(n_blocks):
+                for i_chan in range(pdata.n_chan):
+                    for map_idx in range(n_maps):
+                        sum_map[i_block, i_chan, map_idx] = signal.convolve2d(
+                            sum_map[i_block, i_chan, map_idx], kernel, mode='same'
+                        )
+                        hits_map[i_block, i_chan, map_idx] = signal.convolve2d(
+                            hits_map[i_block, i_chan, map_idx], kernel, mode='same'
+                        )
+
+        # Set pixels beyond bounds of the tiles to 0
+        bad_pixel_mask = pdata['video/bad_pixel_mask']
+        for i_block, block_end in enumerate(blocks[1:]):
+            for i_chan in range(pdata.n_chan):
+                # Find map pixels outside of the convex hull of the tile's detector
+                # positions
+                block = np.arange(blocks[i_block], block_end)
+                onres_ind = pdata.get_onres_ind(i_chan)
+                az_centers = np.nanmedian(
+                    pdata.get_detector_az(i_chan)[:, block], axis=1
+                )[onres_ind]
+                za_centers = np.nanmedian(
+                    pdata.get_detector_za(i_chan)[:, block], axis=1
+                )[onres_ind]
+                centers = np.stack((za_centers, az_centers), axis=1)
+
+                triangluation = Delaunay(centers)
+                y, x = np.meshgrid(map_za, map_az)
+
+                # Include pixels within one pixel of the convex hull
+                outside_mask = None
+                for i in [-dpix, dpix]:
+                    for j in [-dpix, dpix]:
+                        map_coords = np.column_stack((y.flatten() + i, x.flatten() + j))
+                        this_outside_mask = triangluation.find_simplex(map_coords) < 0
+                        if outside_mask is None:
+                            outside_mask = this_outside_mask
+                        else:
+                            outside_mask &= this_outside_mask
+                outside_mask = outside_mask.reshape(n_pix_y, n_pix_x, order='F')
+                bad_pixel_mask[i_block, i_chan, :] = outside_mask
+
+                # hits_map[:, i_chan, :, outside_mask] = 0
+                sum_map[i_block, i_chan, :, outside_mask] = 0
 
         pdata.set_chanmask(chanmask)
         pdata['video/hits_map'][:] = hits_map
         pdata['video/sum_map'][:] = sum_map
         with np.errstate(divide='ignore', invalid='ignore'):
-            pdata['video/map_val'][:] = sum_map / hits_map
-            total_map = np.nansum(sum_map[:] / hits_map[:], axis=1)
-        pdata['video/total_map'][:] = total_map
+            pdata['video/map_val'][:] = np.nan_to_num(
+                np.sum(sum_map, axis=1) / np.sum(hits_map, axis=1),
+                nan=0.0,
+            )
+            pdata['video/channel_map_val'][:] = np.nan_to_num(
+                sum_map / hits_map, nan=0.0
+            )
+            pdata['video/total_map'][:] = np.nan_to_num(
+                np.sum(sum_map, axis=(1, 2)) / np.sum(hits_map, axis=(1, 2)),
+                nan=0.0,
+            )
+            pdata['video/channel_total_map'][:] = np.nan_to_num(
+                np.sum(sum_map, axis=2) / np.sum(hits_map, axis=2),
+                nan=0.0,
+            )
         pdata['video/netd'][:] = netd
         _logger.info(f'{self.name}: Done creating maps.')
 
@@ -1463,7 +2201,11 @@ class MakeVideo(DataRoutine):
             _logger.info(f'{self.name}: Synchronizing mm and optical videos...')
             optical_timestamp = pdata['global_data/optical_video_timestamp'][:]
             full_scaled_video = get_scaled_optical_image(
-                dpix, full_optical_video, map_az, map_za
+                dpix,
+                full_optical_video,
+                map_az,
+                map_za,
+                telescope_start_position=tel_start_pos,
             )
             video_timestamp = np.zeros(n_blocks)
             for i_block, block_end in enumerate(blocks[1:]):
@@ -1484,37 +2226,453 @@ class MakeVideo(DataRoutine):
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
-        if self.params['overwrite']:
-            self._compute_new_maps(pdata)
+        self._compute_new_maps(pdata)
 
-        # Use existing datasets and make the video
-        map_az = pdata['video/map_az'][:]
-        map_za = pdata['video/map_za'][:]
-        optical_video = pdata['video/cropped_optical_video'][:]
-
-        total_map = pdata['video/total_map'][:]
-        block_size_s = pdata['video'].attrs['block_size_s']
-        dpix = pdata['video'].attrs['dpix']
-
-        # Animation
-        if self.params['plot']:
-            _logger.info(f'{self.name}: Creating animation...')
-            if self.params['savefile'] is None:
-                savefile = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
-            else:
-                savefile = self.params['savefile']
-            animate_video(
-                total_map,
-                optical_video[:],
-                1000 * block_size_s,
-                get_extent(map_az, map_za, dpix),
-                max_abs_threshold=self.params['max_abs_threshold'],
-                show=self.params['show'],
-                savefile=savefile,
-            )
-        modified = {'input': self.produces} if not self.params['overwrite'] else {}
-        created = {'input': self.produces} if self.params['overwrite'] else {}
+        modified = {'input': self.produces}
+        created = {'input': self.produces}
         return RoutineResult(
             modified=modified,
             created=created,
         )
+
+
+@register_routine
+class AnimateVideo(DataRoutine):
+    """Make an animated plot of the mm video.
+
+    Creates the following items in the HDF5 file:
+    - N/A
+    """
+
+    name = 'AnimateVideo'
+    version = '2.0.0'
+
+    requires: ClassVar[set] = {
+        '/video',
+        '/video/netd',
+        '/video/map_val',
+        '/video/map_az',
+        '/video/map_za',
+        '/video/bad_pixel_mask',
+        '/video/cropped_optical_video',
+    }
+
+    produces: ClassVar[set] = {}
+
+    @ensure_path('savefile')
+    def __init__(  # noqa: D417
+        self,
+        max_abs_threshold: float = 0.75,
+        vmin: float | tuple[float, float, float] | None = None,
+        vmax: float | tuple[float, float, float] | None = None,
+        dpi: float = 300,
+        repeat_delay_ms: float = 2000,
+        show_tile_bounds: bool = True,
+        savefile: Path | None = None,
+        show: bool = False,
+        keep_figure_open: bool = False,
+        channel: int | Sequence[int, ...] | None = None,
+    ):
+        """Initialize the MakeVideo Routine.
+
+        Arguments:
+            max_abs_threshold (float, optional): The maximum absolute value multiplier
+                for the color scale in the plot. Defaults to 0.75.
+            vmin, vmax (float | tuple[float, float, float], optional): The minimum /
+                maximum value(s) for the color scale in the plot. If a single value is
+                provided, the same range will be used for all plots. A tuple should have
+                3 elements, for v-pol, h-pol, and total signal respectively. If `None`,
+                will auto scale based on `max_abs_threshold` and matplotlib's default
+                behavior. Defaults to `None`.
+            dpi (float, optional): The saved figure's resolution in dots per inch.
+                Defaults to 300.
+            repeat_delay_ms (float, optional): The delay between repeats of the
+                animation in milliseconds. Defaults to 2000 ms.
+            show_tile_bounds (bool, optional): Whehter to show the tile bounds overlayed
+                on the optical videos. Defaults to `True`.
+            savefile (Path, optional): The path to save the animated plot to. If `None`,
+                the animation be saved in the same directory as the HDF5 file under the
+                name "[date]_set[setnum]_Map_Animation.mp4". Defaults to `None`.
+            show (bool, optional): Whether to display the animated plot. Defaults to
+                False.
+            keep_figure_open (bool, optional): Whether to keep the figure open after
+                plotting. Defaults to False.
+            channel (int | Sequence[int, ...] | None, optional): Which channel(s) to
+                use when generating the animation. See `get_required_map_datasets` for
+                more information. Defaults to `None`.
+        """
+        super().__init__(
+            max_abs_threshold=max_abs_threshold,
+            vmin=vmin,
+            vmax=vmax,
+            dpi=dpi,
+            repeat_delay_ms=repeat_delay_ms,
+            show_tile_bounds=show_tile_bounds,
+            savefile=savefile,
+            show=show,
+            keep_figure_open=keep_figure_open,
+            channel=channel,
+        )
+
+    # @typing.override
+    # def _inputs(self, pdata: ProcessedData):
+    #     channel = self.params['channel']
+    #     map_dsets = get_required_map_datasets(
+    #         pdata, channel, group_name='/map', caller_name=self.name
+    #     )
+    #     return self.requires.union(map_dsets)
+
+    @typing.override
+    def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+        res = self._animate(pdata)
+        return RoutineResult(value=res)
+
+    def _animate(self, pdata: ProcessedData) -> tuple[Figure, FuncAnimation] | None:  # noqa: PLR0915
+        """Animate the video."""
+        # Load the parameters
+        block_size_s = pdata['video'].attrs['block_size_s']
+        interval_ms = 1000 * block_size_s
+        repeat_delay_ms = self.params['repeat_delay_ms']
+        dpix = pdata['video'].attrs['dpix']
+        units = pdata['video'].attrs['units']
+        show = self.params['show']
+        show_tile_bounds = self.params['show_tile_bounds']
+
+        if self.params['savefile'] is None:
+            savefile = str(pdata.folder / f'{pdata.file_stub}_Map_Animation.mp4')
+        else:
+            savefile = self.params['savefile']
+        savefile = convert_path(savefile)
+
+        # Read the relevant datasets
+        map_az = pdata['video/map_az'][:]
+        map_za = pdata['video/map_za'][:]
+        map_val = pdata['video/map_val'][:]
+        total_map = pdata['video/total_map'][:]
+        extent = get_extent(map_az, map_za, dpix)
+        optical_video = pdata['video/cropped_optical_video'][:]
+
+        # Determine the plot range
+        max_abs_threshold = self.params['max_abs_threshold']
+        vmin = self.params['vmin']
+        vmax = self.params['vmax']
+        max_abs = np.nanmax(np.abs(total_map)) * max_abs_threshold
+        match vmin:
+            case float() | int():
+                vmin_vpol = vmin_hpol = vmin_total = vmin
+            case tuple():
+                if len(vmin) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmin must have length 3.')
+                vmin_vpol, vmin_hpol, vmin_total = vmin
+            case None:
+                vmin_vpol = vmin_hpol = vmin_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmin must be a float or tuple of floats.'
+                )
+        match vmax:
+            case float() | int():
+                vmax_vpol = vmax_hpol = vmax_total = vmax
+            case tuple():
+                if len(vmax) != 3:  # noqa: PLR2004
+                    raise ValueError(f'{self.name}: vmax must have length 3.')
+                vmax_vpol, vmax_hpol, vmax_total = vmax
+            case None:
+                vmax_vpol = vmax_hpol = vmax_total = -max_abs
+            case _:
+                raise TypeError(
+                    f'{self.name}: vmax must be a float or tuple of floats.'
+                )
+
+        # Set values for non-covered pixels to NaN
+        bad_pixel_mask = pdata['video/bad_pixel_mask'][:]
+        bad_pixel_mask = np.all(bad_pixel_mask, axis=1)
+        map_val[np.broadcast_to(bad_pixel_mask[:, np.newaxis], map_val.shape)] = np.nan
+        total_map[bad_pixel_mask] = np.nan
+        if show_tile_bounds:
+            tile_bounds_map = bad_pixel_mask.astype(float)
+            tile_bounds_map[tile_bounds_map == 0] = np.nan
+
+        # Calculate median NETD values
+        netd = pdata['video/netd']
+        netd_1 = netd[pdata.pol_ind_1]
+        netd_2 = netd[pdata.pol_ind_2]
+        valid_netd_1 = np.argwhere(netd_1 > 0)
+        valid_netd_2 = np.argwhere(netd_2 > 0)
+        med_netd_1 = 1.0 / np.sqrt(
+            np.sum(1.0 / netd_1[valid_netd_1] ** 2) / np.size(valid_netd_1)
+        )
+        med_netd_2 = 1.0 / np.sqrt(
+            np.sum(1.0 / netd_2[valid_netd_2] ** 2) / np.size(valid_netd_2)
+        )
+        t0 = time.asctime(time.localtime(pdata.get_timestamp(0)[0] - 7500))
+        vis = pdata.optical_visibility[()]
+
+        # Animation
+
+        # smoothed_map = np.transpose(total_map, (0, 2, 1))
+        # max_abs = max_abs_threshold * np.max(np.abs(smoothed_map))
+        # vmax = max_abs
+        # vmin = -max_abs
+        # vmax = 500
+        # vmin = -500
+
+        _logger.info(f'{self.name}: Initializing figure...')
+        fig, axes = plt.subplot_mosaic(
+            [
+                ['vpol', '.'],
+                ['vpol', 'optical'],
+                ['hpol', 'optical'],
+                ['hpol', 'degraded'],
+                ['total', 'degraded'],
+                ['total', '.'],
+            ],
+            sharex=True,
+            sharey=True,
+            figsize=(12, 8),
+            gridspec_kw={
+                'hspace': 0,
+            },
+        )
+
+        channel_suffix = 'All Channels'
+        # channel_suffix = (
+        #     'All Channels'
+        #     if channel == tuple(range(pdata.n_chan))
+        #     else f'Channel {channel[0]} ({pdata.get_tile_name(channel[0])})'
+        #     if len(channel) == 1
+        #     else f'Channels {channel}'
+        # )
+
+        fig.suptitle(
+            f'{pdata.file_stub} - {channel_suffix}'
+            f'\nLocal Time = {t0}, Optical Visibility = {vis} meters\n'
+            f'NETD V-Pol (30Hz) = {med_netd_1:.1f} {units},'
+            f' NETD H-Pol (30Hz) = {med_netd_2:.1f} {units}'
+        )
+
+        for ax in axes.values():
+            ax.set_ylabel('ZA (degrees)')
+            ax.label_outer()
+
+        ax_vpol = axes['vpol']
+        ax_hpol = axes['hpol']
+        ax_total = axes['total']
+        ax_optical = axes['optical']
+        ax_degraded = axes['degraded']
+
+        # Vertical polarization
+        _logger.info(f'{self.name}: Plotting V-Pol signal...')
+        cmap_vpol = mpl.colormaps.get_cmap('Blues_r')
+        cmap_vpol.set_bad(color='ivory')
+        # vmin_vpol = np.nanmin(map_val[:, 0])
+        # vmax_vpol = np.nanmax(map_val[:, 0])
+        im_vpol = ax_vpol.imshow(
+            map_val[0, 0],
+            vmin=vmin_vpol,
+            vmax=vmax_vpol,
+            animated=True,
+            cmap=cmap_vpol,
+            extent=extent,
+            aspect='equal',
+        )
+        add_colorbar(fig, ax_vpol, im_vpol, f'V-Pol Signal ({units})')
+
+        # Horizontal polarization
+        _logger.info(f'{self.name}: Plotting H-Pol signal...')
+        cmap_hpol = mpl.colormaps.get_cmap('Reds_r')
+        cmap_hpol.set_bad(color='ivory')
+        # vmin_hpol = np.nanmin(map_val[:, 1])
+        # vmax_hpol = np.nanmax(map_val[:, 1])
+        im_hpol = ax_hpol.imshow(
+            map_val[0, 1],
+            vmin=vmin_hpol,
+            vmax=vmax_hpol,
+            animated=True,
+            cmap=cmap_hpol,
+            extent=extent,
+            aspect='equal',
+        )
+        add_colorbar(fig, ax_hpol, im_hpol, f'H-Pol Signal ({units})')
+
+        # Total signal
+        _logger.info(f'{self.name}: Plotting total signal...')
+        cmap_total = mpl.colormaps.get_cmap('Greys_r')
+        cmap_total.set_bad(color='ivory')
+        # vmin_total = np.nanmin(smoothed_map)
+        # vmax_total = np.nanmax(smoothed_map)
+        im_total = ax_total.imshow(
+            total_map[0],
+            vmin=vmin_total,
+            vmax=vmax_total,
+            animated=True,
+            cmap=cmap_total,
+            extent=extent,
+            aspect='equal',
+        )
+        add_colorbar(fig, ax_total, im_total, f'Total Signal ({units})')
+
+        # Create a colormap that is completely solid white
+        solid_white_cmap = ListedColormap(['white'])
+
+        # Optical Video
+        _logger.info(f'{self.name}: Plotting optical signal...')
+        im_opt = ax_optical.imshow(
+            optical_video[0],
+            animated=True,
+            extent=extent,
+            aspect='equal',
+        )
+        if show_tile_bounds:
+            im_opt_bounds = ax_optical.imshow(
+                tile_bounds_map[0],
+                animated=True,
+                extent=extent,
+                aspect='equal',
+                alpha=0.25,
+                cmap=solid_white_cmap,
+            )
+        ax_optical.text(
+            1.05,
+            0.5,
+            'Optical Signal',
+            rotation=270,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_optical.transAxes,
+            fontsize=10,
+        )
+        ax_optical.set_ylabel('ZA (degrees)')
+        ax_optical.yaxis.set_tick_params(labelleft=True)
+
+        # Degraded Optical Video
+        _logger.info(f'{self.name}: Applying Gaussian blur to optical video...')
+        sigma = SKIPR_PSF_SIGMA / OPTCAM_DPIX
+        blurred_optical_video = apply_gaussian_blur(
+            optical_video,
+            (0, sigma, sigma, 0),
+        )
+        _logger.info(f'{self.name}: Plotting degraded optical signal...')
+        im_degraded = ax_degraded.imshow(
+            blurred_optical_video[0], animated=True, extent=extent, aspect='equal'
+        )
+        if show_tile_bounds:
+            im_degraded_bounds = ax_degraded.imshow(
+                tile_bounds_map[0],
+                animated=True,
+                extent=extent,
+                aspect='equal',
+                alpha=0.25,
+                cmap=solid_white_cmap,
+            )
+        ax_degraded.text(
+            1.05,
+            0.5,
+            'Degraded Optical Signal',
+            rotation=270,
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax_degraded.transAxes,
+            fontsize=10,
+        )
+        ax_degraded.set_ylabel('ZA (degrees)')
+        ax_degraded.yaxis.set_tick_params(labelleft=True)
+        ax_degraded.xaxis.set_tick_params(labelbottom=True)
+
+        # Add x labels to bottom axes
+        ax_total.set_xlabel('Azimuth (degrees)')
+        ax_degraded.set_xlabel('Azimuth (degrees)')
+
+        def animation_func(i: int):
+            im_vpol.set_array(map_val[i, 0])
+            im_hpol.set_array(map_val[i, 1])
+            im_total.set_array(total_map[i])
+            im_opt.set_array(optical_video[i])
+            im_degraded.set_array(blurred_optical_video[i])
+            if show_tile_bounds:
+                im_opt_bounds.set_array(tile_bounds_map[i])
+                im_degraded_bounds.set_array(tile_bounds_map[i])
+
+        _logger.info(f'{self.name}: Creating animation...')
+        an = FuncAnimation(
+            fig,
+            animation_func,
+            frames=total_map.shape[0],
+            interval=interval_ms,
+            repeat_delay=repeat_delay_ms,
+        )
+        if savefile is not None:
+            _logger.info(f'{self.name}: Saving animation...')
+            an.save(
+                savefile,
+                dpi=self.params['dpi'],
+                savefig_kwargs={'bbox_inches': 'tight'},
+            )
+        if show:
+            plt.show()
+        if not self.params['keep_figure_open']:
+            plt.close(fig)
+            return None
+        return fig, an
+
+    def _get_combined_map(
+        self,
+        pdata: ProcessedData,
+        inputs: set[str],
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        """Get the combined video."""
+        channel = self.params['channel']
+        total_map_shape = (pdata['video/map_za'].size, pdata['video/map_az'].size)
+        map_val_shape = (N_POLARIZATION, *total_map_shape)
+        if '/video/map_val' in inputs:
+            # Using all maps
+
+            # Use virtual datasets to reduce disk usage
+            map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
+            map_val_layout[:] = h5py.VirtualSource(pdata['video/map_val'])
+            map_val = pdata['video/plotting'].create_virtual_dataset(
+                'map_val', map_val_layout
+            )[:]
+            total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
+            total_map_layout[:] = h5py.VirtualSource(pdata['video/total_map'])
+            total_map = pdata['video/plotting'].create_virtual_dataset(
+                'total_map', total_map_layout
+            )[:]
+
+            hits_map = np.sum(pdata['video/hits_map'], axis=0)
+            pdata['video/plotting'].attrs['channel'] = tuple(range(pdata.n_chan))
+        elif '/video/channel_map_val' in inputs:
+            # Using a single channel
+            if isinstance(channel, Sequence):
+                # Turn tuple into singleton to properly reduce number of dimensions
+                channel = channel[0]
+
+            # Use virtual datasets to reduce disk usage
+            map_val_layout = h5py.VirtualLayout(map_val_shape, np.float64)
+            map_val_src = h5py.VirtualSource(pdata['video/channel_map_val'])
+            map_val_layout[:] = map_val_src[channel]
+            map_val = pdata['video/plotting'].create_virtual_dataset(
+                'map_val', map_val_layout
+            )[:]
+            total_map_layout = h5py.VirtualLayout(total_map_shape, np.float64)
+            total_map_src = h5py.VirtualSource(pdata['video/channel_total_map'])
+            total_map_layout[:] = total_map_src[channel]
+            total_map = pdata['video/plotting'].create_virtual_dataset(
+                'total_map', total_map_layout
+            )[:]
+
+            hits_map = pdata['video/hits_map'][channel]
+            pdata['video/plotting'].attrs['channel'] = (channel,)
+        else:
+            # Multiple channels selected, but not all. Need to compute new maps
+            sum_map = pdata['video/sum_map'][channel]
+            hits_map = pdata['video/hits_map'][channel]
+            map_val = np.sum(sum_map, axis=0) / np.sum(hits_map, axis=0)
+            total_map = np.sum(sum_map, axis=(0, 1)) / np.sum(hits_map, axis=(0, 1))
+            hits_map = np.sum(hits_map, axis=0)
+
+            # Have to make new arrays for this data
+            pdata.create_dataset('/video/plotting/map_val', data=map_val)
+            pdata.create_dataset('/video/plotting/total_map', data=total_map)
+
+            pdata['video/plotting'].attrs['channel'] = (channel,)
