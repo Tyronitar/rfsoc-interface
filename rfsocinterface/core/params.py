@@ -48,7 +48,7 @@ DEFAULT_FOCAL_PLANE_CENTER_ZA = 90.0
 class RFSoCParameters:
     """Class wrapping around RFSoC parameters files."""
 
-    VERSION = Version('1.1.1')
+    VERSION = Version('1.1.0')
 
     @ensure_path(1)
     def __init__(self, file: Path, mode: str = 'r'):
