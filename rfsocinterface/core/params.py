@@ -42,7 +42,7 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
     'chanmask',
 ]
 DEFAULT_DFOVERF_PER_MK = 7.181229465879829e-10
-DEFAULT_FOCAL_PLANE_CENTER_ZA = 90.0
+DEFAULT_FOCAL_PLANE_CENTER_ZA = 89.0
 DEFAULT_FOCAL_PLANE_CENTER_AZ = 0.0
 
 
@@ -752,6 +752,7 @@ class RFSoCParameters:
         rdf.detector_beam_ampl[:] = self.detector_beam_ampl[:]
         rdf.detector_pol[:] = self.detector_pol[:]
         rdf.dfoverf_per_mK[:] = self.dfoverf_per_mK[:]
+        rdf.detector_dx_dy_elevation_angle[:] = self.focal_plane_center_za
 
         rdf.close()
 
