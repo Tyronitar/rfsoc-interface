@@ -43,12 +43,13 @@ PARAM_FILE_N_TONE_ATTRIBUTES = [
 ]
 DEFAULT_DFOVERF_PER_MK = 7.181229465879829e-10
 DEFAULT_FOCAL_PLANE_CENTER_ZA = 90.0
+DEFAULT_FOCAL_PLANE_CENTER_AZ = 0.0
 
 
 class RFSoCParameters:
     """Class wrapping around RFSoC parameters files."""
 
-    VERSION = Version('1.1.0')
+    VERSION = Version('1.2.0')
 
     @ensure_path(1)
     def __init__(self, file: Path, mode: str = 'r'):
@@ -113,6 +114,7 @@ class RFSoCParameters:
             fh.attrs['chan_number'] = 0
             fh.attrs['ifslice_number'] = 0
             fh.attrs['focal_plane_center_za'] = DEFAULT_FOCAL_PLANE_CENTER_ZA
+            fh.attrs['focal_plane_center_az'] = DEFAULT_FOCAL_PLANE_CENTER_AZ
             fh.attrs['params_version'] = str(RFSoCParameters.VERSION)
 
             # Datasets
@@ -181,6 +183,7 @@ class RFSoCParameters:
         chan_number: int | None = None,
         ifslice_number: int | None = None,
         focal_plane_center_za: float | None = None,
+        focal_plane_center_az: float | None = None,
         chanmask: npt.NDArray = None,
         baseband_freqs: npt.NDArray = None,
         tone_powers: npt.NDArray = None,
@@ -204,6 +207,11 @@ class RFSoCParameters:
             focal_plane_center_za
             if focal_plane_center_za is not None
             else self.focal_plane_center_za
+        )
+        focal_plane_center_az = (
+            focal_plane_center_az
+            if focal_plane_center_az is not None
+            else self.focal_plane_center_az
         )
 
         chanmask = chanmask if chanmask is not None else self.chanmask[:]
@@ -244,6 +252,7 @@ class RFSoCParameters:
         new_params.chan_number = chan_number
         new_params.ifslice_number = ifslice_number
         new_params.focal_plane_center_za = focal_plane_center_za
+        new_params.focal_plane_center_az = focal_plane_center_az
         new_params.chanmask[:] = chanmask
         new_params.baseband_freqs[:] = baseband_freqs
         new_params.tone_powers[:] = tone_powers
@@ -345,8 +354,18 @@ class RFSoCParameters:
         self._file.attrs['ifslice_number'] = n
 
     @property
+    def focal_plane_center(self) -> tuple[float, float]:
+        """The coordinates that detector positions are defined relative to."""
+        return (self.focal_plane_center_az, self.focal_plane_center_za)
+
+    @focal_plane_center.setter
+    def focal_plane_center(self, pos: tuple[float, float]):
+        self.focal_plane_center_az = pos[0]
+        self.focal_plane_center_za = pos[1]
+
+    @property
     def focal_plane_center_za(self) -> float:
-        """The zenith angle center of the focal plane."""
+        """The zenith angle of the center of the focal plane."""
         if 'focal_plane_center_za' in self._file.attrs:
             return self._file.attrs['focal_plane_center_za']
         return DEFAULT_FOCAL_PLANE_CENTER_ZA  # Backwards-compatible default value
@@ -354,6 +373,17 @@ class RFSoCParameters:
     @focal_plane_center_za.setter
     def focal_plane_center_za(self, za: float):
         self._file.attrs['focal_plane_center_za'] = za
+
+    @property
+    def focal_plane_center_az(self) -> float:
+        """The azimuth of the center of the focal plane."""
+        if 'focal_plane_center_az' in self._file.attrs:
+            return self._file.attrs['focal_plane_center_az']
+        return DEFAULT_FOCAL_PLANE_CENTER_AZ  # Backwards-compatible default value
+
+    @focal_plane_center_az.setter
+    def focal_plane_center_az(self, az: float):
+        self._file.attrs['focal_plane_center_az'] = az
 
     @property
     def f_center(self) -> float:
