@@ -1,7 +1,7 @@
 import logging
 import logging.config
 
-from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis, plot_psd_df_over_f, plot_resonator_report
+from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis, plot_psd_df_over_f, plot_resonator_report, plot_correlated_timestreams, noise_removal_two_tone
 from rfsocinterface.core.data import *
 from rfsocinterface.analysis import *
 import pdb
@@ -33,13 +33,11 @@ if __name__ == '__main__':
 
     noise_removal_offres = RemoveElectronicsNoise(
         template_selection_indices='offres',
-        lp_filt_freq = 244,
-        fspace = True
     )
     noise_removal_onres = RemoveElectronicsNoise(
         template_selection_indices='onres',
-        lp_filt_freq=10,
-        fspace = True
+        lp_filt_freq=50,
+        fspace = False
         
     )
     cosmic_ray_removal = RemoveCosmicRays()
@@ -50,7 +48,7 @@ if __name__ == '__main__':
     compute_psd = ComputeNoisePSD(PsdBasis.GAIN_PHASE, PsdBasis.FREQ_DISS, cut_time=2)
     psd_plotter = PlotPSD(
         PsdBasis.GAIN_PHASE,
-        PsdBasis.FREQ_DISS,
+        #PsdBasis.FREQ_DISS,
         show=False,
     )
     bin_tod_to_map = BinTODIntoMap(
@@ -62,7 +60,7 @@ if __name__ == '__main__':
         # za_trim=0,
         dpix=0.03,
     )
-    plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False)
+    plotter = PlotMap(show=False, max_abs_threshold=0.4, keep_figure_open=False)
     #make_video = MakeVideo(
     #    lp_filter_freq=lp_filter_freq,
     #    block_size_s=0.1,
@@ -80,8 +78,8 @@ if __name__ == '__main__':
         #noise_removal_offres,
         #noise_removal_onres,
         #noise_removal,
-        #compute_psd,
-        #psd_plotter,
+        compute_psd,
+        psd_plotter,
         #hp_filter,
         #lp_filter,
         #clean_tod,
@@ -94,8 +92,8 @@ if __name__ == '__main__':
     ])
 
 
-    date = '20260825'
-    setnums = np.array([1002])
+    date = '20261022'
+    setnums = np.array([ 1006])#, 1005, 1006, 1007, 1008, 1009, 1010])
 
     psd_fd_obj_list = []
 
@@ -109,13 +107,28 @@ if __name__ == '__main__':
         # to run the pipeline starting  from the consolidated data without issues
         # I'll fix this at some point so that the error is handled more gracefully
         # pdata = pipeline.from_consolidated_data(date, setnum)
-        pdata = pipeline.from_consolidated_data(date, setnum)
+        pdata = pipeline.from_tod(date, setnum)
         psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
         psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
-
 
     psd_fd_avg = np.mean(np.array(psd_fd_obj_list), axis=0)
-    pdb.set_trace()
+
+    data_I_1 = pdata.data_IQ[0, 0]
+    data_Q_1 = pdata.data_IQ[1, 0]
+    data_I_2 = pdata.data_IQ[0, 1]
+    data_Q_2 = pdata.data_IQ[1, 1]
+    data_g_1 = np.abs(data_I_1 + 1j * data_Q_1)
+    data_g_2 = np.abs(data_I_2 + 1j * data_Q_2)
+    data_p_1 = np.angle(data_I_1 + 1j * data_Q_1)
+    data_p_2 = np.angle(data_I_2 + 1j * data_Q_2)
+   
+    #plot_correlated_timestreams(data_g_1-np.mean(data_g_1), data_p_1-np.mean(data_p_1), data_g_2-np.mean(data_g_2), data_p_2-np.mean(data_p_2), lp_filt_freq=10, fs=244)
+    data_I_1_clean, data_Q_1_clean = noise_removal_two_tone(data_I_1, data_Q_1, data_I_2, data_Q_2, lp_freq=30, fs=244)
+    data_g_1_clean = np.abs(data_I_1_clean + 1j * data_Q_1_clean)
+    data_p_1_clean = np.angle(data_I_1_clean + 1j * data_Q_1_clean)
+    #plot_correlated_timestreams(data_g_1_clean-np.mean(data_g_1_clean), data_p_1_clean-np.mean(data_p_1_clean), data_g_2-np.mean(data_g_2), data_p_2-np.mean(data_p_2), lp_freq=1, fs=244)
+   # pdb.set_trace()
+
     psd_freq = pdata['psd/freq_diss/freq'][:]
     figs = plot_resonator_report(psd_fd_avg, psd_freq, pdata.detector_f(),pdata.onres_ind, pdata.offres_ind,  pdata.adc_units_to_hz)
     

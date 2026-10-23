@@ -1173,7 +1173,7 @@ if __name__ == '__main__':
     # sweep_type="power" explicitly rather than relying on whatever is
     # stored inside the (older) .h5 file.
     data_analyzer = TempSweepDataAnalyzer.from_h5(
-        '/data/20260721/20260721_Be260114BL_100_tones_260721_Power_Sweep_hour16p3964.h5',
+        '/data/20261016/20261016_Noise_Tone_List_Be260114BL_100_tones_260729_with_offres_Power_Sweep_hour10p2014.h5',
         sweep_type='power',
     )
     clean_dataset = data_analyzer.stitch_full_dataset()

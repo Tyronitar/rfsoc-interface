@@ -574,7 +574,7 @@ class RemoveElectronicsNoise(DataRoutine):
                 data_IQ,
                 -calibration_info['IQ_to_gain_phase_angle'],
             )
-            data_IQ[:] = data_IQ[:] - np.mean(data_IQ[:], axis=-1, keepdims=True)  # Mean center
+            data_IQ[:] = data_IQ[:]# - np.mean(data_IQ[:], axis=-1, keepdims=True)  # Mean center
             data_freq_diss = pdata.get_from_channel(i_chan, 'time_ordered_data/data_freq_diss')
             data_mK = pdata.get_from_channel(i_chan, 'time_ordered_data/data_mK')
             generate_calibrated_data(

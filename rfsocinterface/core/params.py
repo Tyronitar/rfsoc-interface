@@ -77,7 +77,7 @@ class RFSoCParameters:
         filename = Path(get_params_file_template(tile_name, params_dir=params_dir))
         if not filename.exists():
             filename.touch(PERMISSIONS_ALL_FULL)
-        with h5py.File(filename, 'w') as fh:
+        with h5py.File(filename, 'r+') as fh:
             # Attributes
             fh.attrs['tile_name'] = tile_name
             fh.attrs['n_tones'] = n_tones

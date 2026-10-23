@@ -69,7 +69,6 @@ NEW_LO_SWEEP_FORMAT_DATE = '20260612'  # For backwards compatibility
 
 CompositeSweepDataType = TypeVar('CompositeSweepDataType', bound='CompositeSweepData')
 
-
 def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.NDArray, s21: npt.NDArray):
 
     #set up some preliminary values that we'll need
@@ -95,7 +94,7 @@ def simple_derivative_fits(df: npt.NDArray, freq: npt.NDArray, tone_list: npt.ND
                 center_ind = lo_ind + min_ind
 
 
-    f0 = freq[np.argmin(s21)] + df
+    f0 = freq[center_ind]
     
     return f0, 0, 0
 
@@ -962,7 +961,7 @@ class LoSweepData:
     def load_most_recent(
         cls,
         tile_name: str,
-        high_res: bool=True,
+        high_res: bool=False,
         date: str='today',
         data_dir: str=DEFAULT_DATA_DIRECTORY,
     ) -> LoSweepData | None:

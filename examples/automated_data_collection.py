@@ -230,7 +230,7 @@ def process_noise_data(date, setnum, save_file: str, lp_filter_freq: float = 244
 
 
 
-def remote_data_collection(chan = 1, tile_name: str = 'Be260114BL_100_tones_260721', duration: int = 10, process_data: bool = False):
+def remote_data_collection(chan = 1, tile_name: str = 'Be260114BL_100_tones_260721', duration: int = 100, process_data: bool = False):
     settings = Settings()
     settings.load_settings()
 
@@ -248,8 +248,6 @@ def remote_data_collection(chan = 1, tile_name: str = 'Be260114BL_100_tones_2607
     save_file = run_noise_data_collection(rfsoc, tile_name=tile_name, chan=chan, duration=duration, process_data=process_data)
     return str(save_file)
 
-#if __name__ == '__main__':
-#
-#    tile_name = 'FTS_Tone_List_Be260114BL_100_tones_260729'
-#    file_name = remote_lo_sweep(tile_name=tile_name, chan=1, step=5e3, span=1000e3, tone_shift=0, filename_suffix=None)
-#    print(file_name)
+if __name__ == '__main__':
+    for i in range(10):
+        remote_data_collection(chan = 1, tile_name= 'Noise_Tone_List_Be260114BL_100_tones_260729_with_offres', duration=100, process_data=False)

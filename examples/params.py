@@ -90,33 +90,35 @@ def balance_tone_powers_with_offres_budget(
 if __name__ == '__main__':
 
 
-    filename = '/data/params/params_tile_Be260114BL_1000_tones_2.h5'
-    params = RFSoCParameters(filename)
+    #filename = '/data/params/params_tile_Be260114TR_1000_tones.h5'
+    #params = RFSoCParameters(filename)
 
-    onres_ind      = params.onres_ind
-    offres_ind     = params.offres_ind
-    bb_freqs_onres = params.baseband_freqs[onres_ind]
-
-
+    #onres_ind      = params.onres_ind
+    #offres_ind     = params.offres_ind
+    #bb_freqs_onres = params.baseband_freqs[onres_ind]
 
 
-    f_center = 5.775e8
 
-    onres_tones = np.array([353.022, 410.37,415.43, 440.99, 492.09, 493.177, 505.869,527.28, 605.495, 608.65, 626.461,646.21169,646.844, 724.273 , 750.330, 767.65,800.259  ])*1e6
-   
+
+    f_center = 7e8
+
+    #onres_tones = np.array([491.44, 502.252,507.37, 634.485, 644.572, 654.369, 671.74,703.158, 727.057, 736.770, 835.004, 860.211, 884.84])*1e6
+    onres_tones = np.array([720.0, 720.44, 740, 750, 760, 770, 780, 790, 800, 810])*1e6
     bb_freqs_onres = onres_tones-f_center
     new_params = RFSoCParameters.new_file(
-        'FTS_Tone_List_Be260114BL_tones_260729', len(bb_freqs_onres), f_center=f_center
+        'Noise_Tone_List_test_20261022',len(onres_tones), f_center=f_center
     )
+
     new_params.baseband_freqs[:] = bb_freqs_onres
     new_params.rfin  = 15
     new_params.rfout = 15 
-    new_params.add_off_resonance_tones_greedy(
-        new_tile_name='FTS_Tone_List_Be260114BL_100_tones_260729',
-        n_offres=100 - len(bb_freqs_onres),
-        f_min=3.5e8,
-        f_max=8.0e8,
-        q=1/1000.,
-        delta_offres_min=1e6,
-        tone_powers_frac = np.ones(100)
-    )
+    #new_params.close()
+    #new_params.add_off_resonance_tones_greedy(
+    #    new_tile_name='Noise_Tone_List_',
+    #    n_offres=10 - len(bb_freqs_onres),
+    #    f_min=7.0e8,
+    #    f_max=7.5e8,
+    #    q=1/1000.,
+    #    delta_offres_min=1e6,
+    #    tone_powers_frac = np.ones(10, dtype=np.float64)
+    #)

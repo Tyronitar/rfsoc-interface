@@ -233,6 +233,8 @@ class ProcessedData(NewDataStorage):
                 frequency/dissipation basis.
             * data_mK (n_tones, n_samples): Calibrated detector data in mK units.
             * carrier_amplitudes (2, n_tones): The median I/Q values for each tone.
+            * sweep_I (n_tones, n_sweep_points): I data from the LO sweep for each tone.
+            * sweep_Q (n_tones, n_sweep_points): Q data from the LO sweep for each tone.
             * calibration_info (n_tones,): Structered datset containing various 
                 information for creating the calibrated data. Contains:
                 * adc_units_to_hz: Conversion factor from ADC units (IQ data) to
@@ -245,7 +247,10 @@ class ProcessedData(NewDataStorage):
         Also creates virtual datasets for each dataset, combined across channels.
         """
         n_samples = self['global_data'].attrs['n_samples']
-        for _, channel_group in self['channels'].items():
+        sweep_shapes = {}   # channel name -> shape of sweep data
+        sweep_dtype = None
+
+        for channel_name, channel_group in self['channels'].items():
             time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
             n_tones = channel_group.attrs['n_tones']
             data_IQ = time_ordered_data_group['data_IQ']
@@ -284,6 +289,14 @@ class ProcessedData(NewDataStorage):
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
             calibration_info['adc_units_to_hz'] = adc_units_to_hz
 
+            # Store the sweep I/Q data as their own datasets
+            sweep_I_data = np.asarray(sweep.data_I)
+            sweep_Q_data = np.asarray(sweep.data_Q)
+            channel_group.create_dataset('sweep_I', data=sweep_I_data)
+            channel_group.create_dataset('sweep_Q', data=sweep_Q_data)
+            sweep_shapes[channel_name] = sweep_I_data.shape
+            sweep_dtype = sweep_I_data.dtype
+
             detector_f = tones_table['baseband_freq'] + channel_group.attrs['f_center']
             df_per_mK = compute_df_per_mK(
                 tones_table['polarization'],
@@ -304,7 +317,7 @@ class ProcessedData(NewDataStorage):
 
             # Generate calibrated data
             # First mean center IQ data
-            data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
+            data_IQ[:] = data_IQ[:]# - np.mean(data_IQ, axis=-1, keepdims=True)
             generate_calibrated_data(
                 data_IQ,
                 data_freq_diss,
@@ -314,12 +327,23 @@ class ProcessedData(NewDataStorage):
                 df_per_mK,
             )
 
+        # The virtual datasets for the sweep data need a common number of sweep points
+        unique_sweep_lengths = {shape[-1] for shape in sweep_shapes.values()}
+        if len(unique_sweep_lengths) != 1:
+            raise ValueError(
+                f"Cannot combine sweep data across channels with differing "
+                f"numbers of sweep points: {sweep_shapes}"
+            )
+        n_sweep = unique_sweep_lengths.pop()
+
         # Make virtual datasets for the new stuff
         total_tones = self['vdsets'].attrs['n_tones']
         data_gain_phase_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
         data_freq_diss_layout = h5py.VirtualLayout((2, total_tones, n_samples), 'f8')
         data_mK_layout = h5py.VirtualLayout((total_tones, n_samples), 'f8')
         carrier_amplitudes_layout = h5py.VirtualLayout((2, total_tones), 'f8')
+        sweep_I_layout = h5py.VirtualLayout((total_tones, n_sweep), sweep_dtype)
+        sweep_Q_layout = h5py.VirtualLayout((total_tones, n_sweep), sweep_dtype)
         calibration_info_layout = h5py.VirtualLayout((total_tones,), CALIBRATION_TABLE_DTYPE)
 
         i_tone = 0
@@ -330,6 +354,8 @@ class ProcessedData(NewDataStorage):
             data_freq_diss_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_freq_diss'])
             data_mK_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['data_mK'])
             carrier_amplitudes_layout[:, i_tone:i_tone+n_tones] = h5py.VirtualSource(this_data_group['carrier_amplitudes'])
+            sweep_I_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(channel_group['sweep_I'])
+            sweep_Q_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(channel_group['sweep_Q'])
             calibration_info_layout[i_tone:i_tone+n_tones] = h5py.VirtualSource(channel_group['calibration_info'])
             i_tone += n_tones
 
@@ -337,6 +363,8 @@ class ProcessedData(NewDataStorage):
         self['vdsets'].create_virtual_dataset('data_freq_diss', data_freq_diss_layout)
         self['vdsets'].create_virtual_dataset('data_mK', data_mK_layout)
         self['vdsets'].create_virtual_dataset('carrier_amplitudes', carrier_amplitudes_layout)
+        self['vdsets'].create_virtual_dataset('sweep_I', sweep_I_layout)
+        self['vdsets'].create_virtual_dataset('sweep_Q', sweep_Q_layout)
         self['vdsets'].create_virtual_dataset('calibration_info', calibration_info_layout)
 
     #
