@@ -874,8 +874,7 @@ class TelescopeMotorController:
                 _tele_logger.info('Using scan (slow) speed for ZA dither')
                 self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
 
-        # az_speed_factor = 1 / 3 if large_map_mode else 1.0
-        az_speed_factor = 1
+        az_speed_factor = 1 / 3 if large_map_mode else 1.0
 
         self.send('dither_pattern_maximum', n_repeats)
         start_time = time.time()
