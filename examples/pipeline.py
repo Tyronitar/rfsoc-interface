@@ -1,7 +1,8 @@
 import logging
 import logging.config
 
-from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis, plot_psd_df_over_f, plot_resonator_report, plot_correlated_timestreams, noise_removal_two_tone
+from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis, plot_psd_df_over_f, plot_resonator_report, plot_correlated_timestreams
+from two_tone_noise_removal import noise_removal_two_tone, plot_template_scan, plot_template_correlation
 from rfsocinterface.core.data import *
 from rfsocinterface.analysis import *
 import pdb
@@ -18,7 +19,7 @@ if __name__ == '__main__':
     #_logger = logging.getLogger('rfsocinterface')
     #_logger.handlers[0].setLevel(logging.INFO)
 
-    lp_filter_freq = 24
+    lp_filter_freq = 244
     hp_filter_freq = 0.001
     noise_removal_lp_filt_freq = 0 # Filter disabled if set to 0
     ds_factor = 1
@@ -92,8 +93,8 @@ if __name__ == '__main__':
     ])
 
 
-    date = '20261022'
-    setnums = np.array([ 1006])#, 1005, 1006, 1007, 1008, 1009, 1010])
+    date = '20261023'
+    setnums = np.array([ 1012])#, 1005, 1006, 1007, 1008, 1009, 1010])
 
     psd_fd_obj_list = []
 
@@ -112,33 +113,8 @@ if __name__ == '__main__':
         psd_fd_obj_list.append(pdata['psd/freq_diss/psd'])
 
     psd_fd_avg = np.mean(np.array(psd_fd_obj_list), axis=0)
-
-    data_I_1 = pdata.data_IQ[0, 0]
-    data_Q_1 = pdata.data_IQ[1, 0]
-    data_I_2 = pdata.data_IQ[0, 1]
-    data_Q_2 = pdata.data_IQ[1, 1]
-    data_g_1 = np.abs(data_I_1 + 1j * data_Q_1)
-    data_g_2 = np.abs(data_I_2 + 1j * data_Q_2)
-    data_p_1 = np.angle(data_I_1 + 1j * data_Q_1)
-    data_p_2 = np.angle(data_I_2 + 1j * data_Q_2)
-   
-    #plot_correlated_timestreams(data_g_1-np.mean(data_g_1), data_p_1-np.mean(data_p_1), data_g_2-np.mean(data_g_2), data_p_2-np.mean(data_p_2), lp_filt_freq=10, fs=244)
-    data_I_1_clean, data_Q_1_clean = noise_removal_two_tone(data_I_1, data_Q_1, data_I_2, data_Q_2, lp_freq=30, fs=244)
-    data_g_1_clean = np.abs(data_I_1_clean + 1j * data_Q_1_clean)
-    data_p_1_clean = np.angle(data_I_1_clean + 1j * data_Q_1_clean)
-    #plot_correlated_timestreams(data_g_1_clean-np.mean(data_g_1_clean), data_p_1_clean-np.mean(data_p_1_clean), data_g_2-np.mean(data_g_2), data_p_2-np.mean(data_p_2), lp_freq=1, fs=244)
-   # pdb.set_trace()
-
-    psd_freq = pdata['psd/freq_diss/freq'][:]
-    figs = plot_resonator_report(psd_fd_avg, psd_freq, pdata.detector_f(),pdata.onres_ind, pdata.offres_ind,  pdata.adc_units_to_hz)
+    plot_template_scan(pdata.data_IQ, 488.244,488.244, len(pdata.data_IQ[0,0])//10, tones=None, on_tone=0, tone_freqs=pdata.baseband_freqs-pdata.baseband_freqs[0], abs_diff=True)
     
-    
-    pdf_path = Path(date+ 'output.pdf')
-
-    with PdfPages(pdf_path) as pdf:
-        for fig in figs:
-            pdf.savefig(fig)
-            plt.close(fig)
 
 
     

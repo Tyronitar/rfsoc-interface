@@ -101,17 +101,21 @@ if __name__ == '__main__':
 
 
     f_center = 7e8
-
+    exp = np.linspace(0, 100, 1)
     #onres_tones = np.array([491.44, 502.252,507.37, 634.485, 644.572, 654.369, 671.74,703.158, 727.057, 736.770, 835.004, 860.211, 884.84])*1e6
-    onres_tones = np.array([720.0, 720.44, 740, 750, 760, 770, 780, 790, 800, 810])*1e6
+    onres_tones = np.array([727.1,736.75, 726, 728, 735, 737, 740, 745, 750, 755])*1e6
+    
+    offres_ind = np.linspace(2, 9, 8)
     bb_freqs_onres = onres_tones-f_center
     new_params = RFSoCParameters.new_file(
-        'Noise_Tone_List_test_20261022',len(onres_tones), f_center=f_center
+        'Noise_Onres_Tone_List_test_20261023',len(onres_tones), f_center=f_center
     )
 
     new_params.baseband_freqs[:] = bb_freqs_onres
     new_params.rfin  = 15
     new_params.rfout = 15 
+
+    #new_params.offres_ind = offres_ind
     #new_params.close()
     #new_params.add_off_resonance_tones_greedy(
     #    new_tile_name='Noise_Tone_List_',
