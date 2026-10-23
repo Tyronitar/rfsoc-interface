@@ -49,6 +49,7 @@ from rfsocinterface.core.data.utils import (
     ZA_TRIM,
     generate_calibrated_data,
     get_channel_group_name,
+    get_current_camera_extent,
     get_step_group_name,
     rotate_basis,
 )
@@ -94,6 +95,7 @@ __all__ = [
     'decode_tone_indices',
     'generate_calibrated_data',
     'get_channel_group_name',
+    'get_current_camera_extent',
     'get_extent',
     'get_scaled_optical_image',
     'get_step_group_name',

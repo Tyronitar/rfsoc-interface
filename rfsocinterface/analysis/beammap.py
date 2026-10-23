@@ -28,7 +28,7 @@ from rfsocinterface.core.utils import (
     OFF_RESONANCE_COLOR,
     elide_text,
     get_beammap_pdf_template,
-    get_detector_pos_pdf_template,
+    mutual_nearest_pairs_between_groups,
 )
 
 _logger = logging.getLogger(__name__)
@@ -368,7 +368,7 @@ class PlotBeamMap(DataRoutine):
         return list(self.requires)
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):  # noqa: PLR0915
+    def _run(self, pdata: ProcessedData, inputs: list[str]):
         # Load necessary datasets
         az_center = pdata['beammap/az_center'][:]
         za_center = pdata['beammap/za_center'][:]
@@ -410,22 +410,15 @@ class PlotBeamMap(DataRoutine):
         ncols = self.params['ncols']
         page_size = nrows * ncols
         dpi = self.params['dpi']
-        high_snr_percentile = self.params['high_snr_percentile']
 
-        high_snr_ind = np.argwhere(
-            amplitude > np.percentile(amplitude, high_snr_percentile),
-        ).flatten()
-
-        # Create scatter plot of beam centers
-        _logger.info(f'{self.name}: Creating beam center scatter plot...')
-        plt.scatter(az_center[high_snr_ind], za_center[high_snr_ind], marker='+')
-        plt.axis('equal')
-        plt.xlim(extent[0], extent[1])
-        plt.ylim(extent[2], extent[3])
-        plt.xlabel('X Position (deg)')
-        plt.ylabel('Y Position (deg)')
-        pdf.savefig()
-        plt.close()
+        # Make scatter plot of beam centers
+        self._plot_beam_centers(
+            pdf,
+            az_center,
+            za_center,
+            amplitude,
+            extent,
+        )
 
         # Create the big group plots
         _logger.info(f'{self.name}: Creating grid pages...')
@@ -592,21 +585,51 @@ class PlotBeamMap(DataRoutine):
         pdf.close()
         return RoutineResult()
 
+    def _plot_beam_centers(
+        self,
+        pdf: PdfPages,
+        az_center: npt.NDArray,
+        za_center: npt.NDArray,
+        amplitude: npt.NDArray,
+        extent: tuple[float, float, float, float],
+    ):
+        """Create a scatter plot of the beam cetners for each resonator."""
+        high_snr_percentile = self.params['high_snr_percentile']
+
+        high_snr_ind = np.argwhere(
+            amplitude > np.percentile(amplitude, high_snr_percentile),
+        ).flatten()
+
+        # Create scatter plot of beam centers
+        _logger.info(f'{self.name}: Creating beam center scatter plot...')
+        plt.scatter(az_center[high_snr_ind], za_center[high_snr_ind], marker='+')
+        plt.axis('equal')
+        plt.xlim(extent[0], extent[1])
+        plt.ylim(extent[2], extent[3])
+        plt.xlabel('X Position (deg)')
+        plt.ylabel('Y Position (deg)')
+        pdf.savefig()
+        plt.close()
+
 
 def combine_polarized_beammaps(
     pol1_data: ProcessedData,
     pol2_data: ProcessedData,
-    new_tile_name: str,
+    new_tile_name: str,  # noqa: ARG001
+    bad_resonators: npt.ArrayLike | None = None,
+    focal_plane_center: str = 'top left',  # noqa: ARG001
     amplitude_normalization_percentile: float = 75,  # noqa: ARG001
-    pdf_filename: str | None = None,
+    pdf_filename: str | None = None,  # noqa: ARG001
 ):
     """Determines various tile parameters from two beam maps of opposite polarizations.
 
     Creates a new params_file with detector_delta_x, detector_delta_y,
         detector_beam_ampl, and detector_pol.
     """
-    onres_ind = pol1_data.onres_ind
-    # old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']
+    good_ind = pol1_data.onres_ind
+    if bad_resonators is not None:
+        good_ind = np.setdiff1d(good_ind, bad_resonators)
+    old_tile_name = pol1_data.get_channel_group(0).attrs['tile_name']  # noqa: F841
     chanmask = pol1_data.chanmask
 
     az_center_pol1 = pol1_data['beammap/az_center'][:]
@@ -637,7 +660,7 @@ def combine_polarized_beammaps(
     detector_pol = np.zeros(chanmask.size, dtype=np.int8)
     beam_ampl = np.zeros(chanmask.size)
 
-    for i_res in onres_ind:
+    for i_res in good_ind:
         if amplitude_pol1[i_res] > amplitude_pol2[i_res]:
             detector_pol[i_res] = 1
             az_center[i_res] = az_center_pol1[i_res]
@@ -651,9 +674,20 @@ def combine_polarized_beammaps(
 
     # TODO: Update params file
 
-    # # Get positions relative to boresight of the telescope
-    # delta_dx = az_center - np.median(az_center[onres_ind])
-    # delta_dy = za_center - np.median(za_center[onres_ind])
+    # # Get positions relative to the center of the tile
+    # delta_dx = az_center - np.median(az_center[good_ind])
+    # delta_dy = za_center - np.median(za_center[good_ind])
+
+    # Rotate by the rotation of the focal plane
+    # az_median = np.median(az_center)
+    # za_median = np.median(za_center)
+    # az_center = az_center - np.median(az_center)
+    # za_center = za_center - np.median(za_center)
+    # rot = 1./90.*np.pi/2.
+    # az_center = az_center * np.cos(rot) - za_center * np.sin(rot)
+    # za_center = az_center * np.sin(rot) + za_center * np.cos(rot)
+    # az_center += az_median
+    # za_center += za_median
 
     # # Save to a new parameters file
     # copy_and_update_params_file(
@@ -665,45 +699,27 @@ def combine_polarized_beammaps(
     #     detector_pol=detector_pol
     # )
 
-    # Plot centers
-    if pdf_filename is None:
-        pdf_filename = get_detector_pos_pdf_template(pol1_data.date, new_tile_name)
-    pol1 = np.argwhere(detector_pol == 1).flatten()
-    pol2 = np.argwhere(detector_pol == 2).flatten()  # noqa: PLR2004
-    with PdfPages(pdf_filename) as pdf:
-        plt.scatter(
-            az_center[pol2],
-            za_center[pol2],
-            marker='x',
-            color='blue',
-            label=f'Polarization 2 (N = {pol2.size})',
-        )
-        for i_pol in pol2:
-            plt.text(
-                az_center[i_pol],
-                za_center[i_pol],
-                f'{i_pol}',
-                color='blue',
-                fontsize=20.0,
-            )
-        plt.scatter(
-            az_center[pol1],
-            za_center[pol1],
-            marker='+',
-            color='red',
-            label=f'Polarization 1 (N = {pol1.size})',
-        )
-        for i_pol in pol1:
-            plt.text(
-                az_center[i_pol],
-                za_center[i_pol],
-                f'{i_pol}',
-                color='red',
-                fontsize=20.0,
-            )
-        plt.xlabel('AZ Position (deg)')
-        plt.ylabel('ZA Position (deg)')
-        plt.gca().invert_yaxis()
-        # plt.legend()
-        pdf.savefig()
-        plt.show()
+    # Find pairs of points and use the median position
+    pol1 = np.argwhere(detector_pol[good_ind] == 1).flatten()
+    pol2 = np.argwhere(detector_pol[good_ind] == 2).flatten()  # noqa: PLR2004
+
+    points = np.column_stack([az_center, za_center])[good_ind]
+    pairs, _dist = mutual_nearest_pairs_between_groups(points, pol1, pol2, r=0.05)
+    # plt.figure(figsize=(8, 8))
+    # plt.scatter(points[pol2, 0], points[pol2, 1], color='blue')
+    # plt.scatter(points[pol1, 0], points[pol1, 1], color='red')
+    # for (i,j) in pairs:
+    #     plt.plot([points[i, 0], points[j, 0]], [points[i, 1], points[j, 1]], '-k')
+    # plt.gca().set_aspect('equal')
+    # plt.gca().invert_yaxis()
+
+    for i, j in pairs:
+        mean_point = (points[i] + points[j]) / 2
+        az_center[good_ind[i]] = mean_point[0]
+        za_center[good_ind[i]] = mean_point[1]
+        az_center[good_ind[j]] = mean_point[0]
+        za_center[good_ind[j]] = mean_point[1]
+        points[i, :] = mean_point
+        points[j, :] = mean_point
+
+    return az_center, za_center, detector_pol, beam_ampl

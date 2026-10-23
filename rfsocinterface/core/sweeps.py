@@ -650,7 +650,7 @@ class LoSweepData:
         """Load an LO sweep from an HDF5 file."""
         path = path.with_suffix('.h5')
         with h5py.File(path, 'r') as f:
-            if datetime.datetime.fromtimestamp(
+            if 'global_data' in f or datetime.datetime.fromtimestamp(
                 path.stat().st_mtime
             ) < datetime.datetime.strptime(NEW_LO_SWEEP_FORMAT_DATE, '%Y%m%d'):
                 _logger.warning(
@@ -663,9 +663,13 @@ class LoSweepData:
                 fit_f0 = f['global_data/fit_f0'][:]
                 fit_qi = f['global_data/fit_qi'][:]
                 fit_qc = f['global_data/fit_qc'][:]
-                f_center = f['global_data/lo_freq'][()]
+                if 'lo_freq' in f['global_data']:
+                    f_center = f['global_data/lo_freq'][()]
+                elif 'f_center' in f.attrs:
+                    f_center = f.attrs['f_center']
+                else:
+                    raise ValueError('Unkown LO Sweep file format encountered.')
                 tile_name = ''
-
                 date = None
                 hour = None
             else:
@@ -975,7 +979,7 @@ class LoSweepData:
     ) -> Figure:
         """Plot blind sweep results."""
         self.reset_stop_signals()
-        self.plot_full_trace(fig=fig, callback=callback)
+        fig = self.plot_full_trace(fig=fig, callback=callback)
         if self._plot_canceled:
             return None
         ax = fig.axes[0]
@@ -1538,10 +1542,12 @@ class PowerSweepData(CompositeSweepData):
         self.power_levels = np.array(power_levels)
         self.rfin = rfin
         self.rfout = rfout
-        self.max_readout_power = np.zeros(self.n_tones)
-        self._onres_power_levels = None
-        self._onres_df = None
-        self._onres_popt = None
+
+        self._fitted = False
+        self._power_level_non_linear = None
+        self._non_linear_slope = None
+        self._df = None
+        self._good_powers_mask = None
 
     @ensure_path(1)
     def save_as(self, fname: Path):
@@ -1552,9 +1558,24 @@ class PowerSweepData(CompositeSweepData):
             fh.attrs['rfin'] = self.rfin
             fh.attrs['rfout'] = self.rfout
             fh.create_dataset('power_levels', data=self.power_levels, dtype=np.float64)
-            fh.create_dataset(
-                'max_readout_power', data=self.max_readout_power, dtype=np.float64
-            )
+            if self._fitted:
+                fit_group = fh.create_group('power_fit')
+                fit_group.create_dataset(
+                    'power_level_non_linear',
+                    data=self._power_level_non_linear,
+                )
+                fit_group.create_dataset(
+                    'non_linear_slope',
+                    data=self._non_linear_slope,
+                )
+                fit_group.create_dataset(
+                    'df',
+                    data=self._df,
+                )
+                fit_group.create_dataset(
+                    'good_powers_mask',
+                    data=self._good_powers_mask,
+                )
         _logger.info(f'PowerSweepData saved to {path!s}')
 
     @classmethod
@@ -1573,9 +1594,16 @@ class PowerSweepData(CompositeSweepData):
             rfin = fh.attrs['rfin']
             rfout = fh.attrs['rfout']
             power_levels = fh['power_levels'][:]
-            max_readout_power = fh['max_readout_power'][:]
             date = fh.attrs.get('date', None)
             hour = fh.attrs.get('hour', None)
+            if 'power_fit' in fh:
+                fitted = True
+                power_level_non_linear = fh['power_fit/power_level_non_linear'][:]
+                non_linear_slope = fh['power_fit/non_linear_slope'][:]
+                df = fh['power_fit/df'][:]
+                good_powers_mask = fh['power_fit/good_powers_mask'][:]
+            else:
+                fitted = False
 
         sweeps = []
         for this_fit_f0, arr in zip(fit_f0, sweep_data, strict=False):
@@ -1595,7 +1623,12 @@ class PowerSweepData(CompositeSweepData):
             hour=hour,
         )
         power_sweep.get_fit_f0()
-        power_sweep.max_readout_power = max_readout_power
+        if fitted:
+            power_sweep._power_level_non_linear = power_level_non_linear
+            power_sweep._non_linear_slope = non_linear_slope
+            power_sweep._df = df
+            power_sweep._good_powers_mask = good_powers_mask
+            power_sweep._fitted = True
 
         return power_sweep
 
@@ -1603,6 +1636,13 @@ class PowerSweepData(CompositeSweepData):
     def n_fits(self) -> int:
         """The number of fits to perform for the power sweep."""
         return super().n_fits + self.onres_ind.size
+
+    @property
+    def max_readout_power(self) -> npt.NDArray | None:
+        """Return the relative maximum power level for each tone."""
+        if self._power_level_non_linear is not None:
+            return self._power_level_non_linear - np.max(self._power_level_non_linear)
+        return None
 
     def fit(self, callback: Callable | None = None):
         """Fit the power sweep data to determine the optimal readout powers."""
@@ -1623,21 +1663,22 @@ class PowerSweepData(CompositeSweepData):
         self._fitted = False
         self._fit_canceled = False
 
-        onres_power_levels = []
-        onres_df = []
-        onres_popt = np.zeros((len(self.onres_ind), 2))
-
         f0_data = self._fit_f0[:]
         power_levels = self.power_levels[:]
+        n_powers = power_levels.size
 
         sorted_data_ind = np.argsort(power_levels)
         power_levels = power_levels[sorted_data_ind]
         f0_data = f0_data[sorted_data_ind, :]
+
+        # Final data products
+        good_powers_mask = np.ones((self.n_tones, n_powers), dtype=bool)
+        df = np.zeros((self.n_tones, n_powers), dtype=float)
         power_level_non_linear = np.zeros(self.n_tones)
         non_linear_slope = np.zeros(self.n_tones)
 
         defaults = []  # resonators that needed to use default values
-        for i_onres, i_res in enumerate(self.onres_ind):
+        for i_res in self.onres_ind:
             if self._fit_canceled:
                 return None
 
@@ -1649,6 +1690,7 @@ class PowerSweepData(CompositeSweepData):
             )
             this_df -= median_baseline
             this_deriv = np.diff(this_df)
+            df[i_res, :] = this_df
 
             # Only look at the f0 values at the highest 25% of powers
             bad_power_indices = np.argwhere(this_deriv > 0).flatten()
@@ -1661,6 +1703,7 @@ class PowerSweepData(CompositeSweepData):
                 stop_index = np.min(bad_power_indices)
                 this_power_level = this_power_level[:stop_index]
                 this_df = this_df[:stop_index]
+                good_powers_mask[i_res, stop_index:] = 0
 
             nominal_non_linear_db = np.median(this_power_level)
 
@@ -1676,19 +1719,10 @@ class PowerSweepData(CompositeSweepData):
                 )
                 non_linear_slope[i_res] = popt[0]
                 power_level_non_linear[i_res] = popt[1]
-                onres_popt[i_onres] = popt
             except (RuntimeError, ValueError):
                 defaults.append(int(i_res))
                 non_linear_slope[i_res] = POWER_SWEEP_FRACTIONAL_FREQ_SHIFT
                 power_level_non_linear[i_res] = POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB
-                onres_popt[i_onres] = [
-                    POWER_SWEEP_FRACTIONAL_FREQ_SHIFT,
-                    POWER_SWEEP_NOMINAL_NON_LINEAR_POWER_DB,
-                ]
-
-            onres_power_levels.append(this_power_level)
-            onres_df.append(this_df)
-
             if callback is not None:
                 callback()
 
@@ -1712,10 +1746,11 @@ class PowerSweepData(CompositeSweepData):
 
             max_readout_power = power_level_non_linear - np.max(power_level_non_linear)
 
-        self.max_readout_power = max_readout_power
-        self._onres_power_levels = np.array(onres_power_levels, dtype=object)
-        self._onres_df = np.array(onres_df, dtype=object)
-        self._onres_popt = onres_popt
+        # Assign values of final data products
+        self._power_level_non_linear = power_level_non_linear
+        self._non_linear_slope = non_linear_slope
+        self._df = df
+        self._good_powers_mask = good_powers_mask
 
         _logger.debug('Finished finding optimal readout powers.')
         self._fitted = True
@@ -1741,6 +1776,10 @@ class PowerSweepData(CompositeSweepData):
         callback: Callable | None = None,
     ):
         """Plot the optimal readout powers for each on-resonance tone."""
+        if not self._fitted:
+            raise ValueError(
+                'Cannot plot optimal readout powers. Has the sweep been fitted?'
+            )
         _logger.info('Generating optimal readout power plots...')
         self._plotted = False
         self._plot_canceled = False
@@ -1762,7 +1801,7 @@ class PowerSweepData(CompositeSweepData):
 
         i_plot = 0
 
-        for i_onres, i_res in enumerate(self.onres_ind):
+        for i_res in self.onres_ind:
             if self._plot_canceled:
                 pdf.savefig(fig)
                 plt.close(fig)
@@ -1790,20 +1829,25 @@ class PowerSweepData(CompositeSweepData):
                 fig, axes = plt.subplots(nrows, ncols, figsize=(nrows * 4, ncols * 4))
                 i_plot = 0
 
-            this_power_level = self._onres_power_levels[i_onres]
-            this_df = self._onres_df[i_onres]
-            popt = self._onres_popt[i_onres]
-            max_power_level = self.max_readout_power[i_res]
+            this_good_power_mask = self._good_powers_mask[i_res]
+            this_power_levels = self.power_levels[this_good_power_mask]
+            this_df = self._df[i_res, this_good_power_mask]
+            this_non_linear_slope = self._non_linear_slope[i_res]
+            this_non_linear_power_level = self._power_level_non_linear[i_res]
 
             ax = np.ravel(axes)[i_plot]
             ax.set_title(rf'Tone {i_res} ($f_0$ = {self.detector_f[i_res]})')
-            ax.scatter(this_power_level, this_df, c='orange', marker='x')
+            ax.scatter(this_power_levels, this_df, c='orange', marker='x')
             ax.plot(
-                this_power_level,
-                power_sweep_fit_function(this_power_level, popt[0], popt[1]),
+                this_power_levels,
+                power_sweep_fit_function(
+                    this_power_levels,
+                    this_non_linear_slope,
+                    this_non_linear_power_level,
+                ),
                 color='blue',
             )
-            ax.axvline(max_power_level, color='red')
+            ax.axvline(this_non_linear_power_level, color='red')
             ax.set_xlabel('Power Level (dB)')
             ax.set_ylabel('df0 / f0')
             i_plot += 1
@@ -1832,7 +1876,9 @@ class PowerSweepData(CompositeSweepData):
             return
 
         # Histogram
-        counts, bins = np.histogram(self.max_readout_power, bins=60, range=(-10, 10))
+        counts, bins = np.histogram(
+            self._power_level_non_linear, bins=60, range=(-10, 10)
+        )
         plt.figure()
         plt.title('Optimal Readout Power Distribution')
         plt.xlabel(
@@ -1853,6 +1899,10 @@ class PowerSweepData(CompositeSweepData):
 
     def save_to_params_file(self, target_tile_name: str) -> RFSoCParameters:
         """Save the tone powers to a params file for the specified tile."""
+        if self.max_readout_power is None:
+            raise ValueError(
+                'Unable to save power sweep to params file; sweep has not been fitted.'
+            )
         params = RFSoCParameters.from_tile_name(target_tile_name, 'a')
         if params is not None:
             # Either self.tile_name == target_tile_name, or we're updating an existing
@@ -1863,7 +1913,10 @@ class PowerSweepData(CompositeSweepData):
             # The new tile doesn't exist yet. Populate values with current tile params
             _logger.debug(f'Creating new params file for tile "{target_tile_name}"')
             old_params = RFSoCParameters.from_tile_name(self.tile_name)
-            assert old_params is not None
+            if old_params is None:
+                raise FileNotFoundError(
+                    f'Unable to load original params file for tile "{self.tile_name}"'
+                )
             params = old_params.copy_and_update(
                 target_tile_name,
                 tone_powers=self.max_readout_power,
