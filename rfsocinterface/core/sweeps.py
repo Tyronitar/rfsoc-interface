@@ -1347,6 +1347,16 @@ class CompositeSweepData:
         self._plot_canceled = False
         self._plotted = False
 
+    def reset_fit_stop_signals(self):
+        """Reset all of the fitting-related stop signals."""
+        self._fit_canceled = False
+        self._fitted = False
+
+    def reset_plot_stop_signals(self):
+        """Reset all of the plotting-related stop signals."""
+        self._plot_canceled = False
+        self._plotted = False
+
     @property
     def chanmask(self) -> npt.NDArray:
         """The chanmask used during the sweep."""
