@@ -58,7 +58,7 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=False,
+        beam_map_mode=True,
         dataset=dataset,
         az_trim=0,
         za_trim=0,
@@ -102,16 +102,16 @@ if __name__ == '__main__':
         # compute_psd,
         # psd_plotter,
         bin_tod_to_map,
-        plot_map_routine,
+        # plot_map_routine,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
-        # analyze_beammap,
-        # plot_beammap,
+        analyze_beammap,
+        plot_beammap,
     ])
 
-    date = '20260820'  # For testing normal maps
-    setnum = 1005
+    # date = '20260820'  # For testing normal maps
+    # setnum = 1005
     # date = '20260710'  # For testing beammaps
     # setnum = 1006
     # date = '20260917'  # For testing video
@@ -119,13 +119,34 @@ if __name__ == '__main__':
     # date = '20261001'  # For testing normal maps
     # setnum = 1006
 
-    # date = '20260617'
-    # setnum = 1006
+    date = '20261023'
+    setnum = 1006
 
 
-    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum)
+    pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
     # pdb.set_trace()
+
+    onres_ind = pdata.get_onres_ind(0)
+    az_centers = pdata['beammap/az_center'][onres_ind]
+    za_centers = pdata['beammap/za_center'][onres_ind]
+    fwhm_az = pdata['beammap/fwhm_az'][onres_ind]
+    fwhm_za = pdata['beammap/fwhm_za'][onres_ind]
+    amplitude  = pdata['beammap/amplitude'][onres_ind]
+    high_snr_ind = np.argwhere(
+        amplitude > np.percentile(amplitude, 55),
+    ).flatten()
+
+    plt.scatter(
+        az_centers[high_snr_ind],
+        za_centers[high_snr_ind],
+        c=fwhm_za[high_snr_ind],
+        cmap='viridis',
+        # marker='+',
+    )
+    plt.colorbar()
+    plt.show()
+    pdb.set_trace()
 
