@@ -41,5 +41,9 @@ if __name__ == '__main__':
     sweep_file = '/data/20261020/20261020_Device_aSi3_Channel4_Power_Sweep_hour09p9742.h5'
     sweep = PowerSweepData.load(sweep_file)
     sweep.find_optimal_readout_power()
-    sweep.plot()
-    pdb.set_trace()
+    sweep.save()
+    # sweep.plot()
+
+    # sweep.save_to_params_file('Device_aSi3_Channel4_with_max_power')
+    # params = RFSoCParameters.from_tile_name('Device_aSi3_Channel4_with_max_power')
+    # pdb.set_trace()
