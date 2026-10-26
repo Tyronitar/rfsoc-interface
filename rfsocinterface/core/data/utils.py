@@ -511,10 +511,11 @@ def interpolate_telescope_positions(
     tel_position: npt.NDArray,
     pps_position: npt.NDArray,
     data_pps: npt.NDArray,
+    map_signal_mask: npt.NDArray,
     search_radius: int = 100,
     fit_radius: int = 200,
     direction: Literal['az', 'za'] = 'az',
-) -> npt.NDArray:
+) -> tuple[npt.NDArray, npt.NDArray]:
     """Interpolate and align the telescope positions."""
     n_samples = data_timestamp.size
     # Find the telescope positions and timestamps corresponding to the PPS pulses
@@ -544,7 +545,12 @@ def interpolate_telescope_positions(
         np.delete(telescope_timestamp, pps_tel_idx),
         np.delete(tel_position, pps_tel_idx),
     )
-
+    float_mask = map_signal_mask.astype(float)
+    interpolated_signal_mask = np.interp(
+        data_timestamp,
+        np.delete(telescope_timestamp, pps_tel_idx),
+        np.delete(float_mask, pps_tel_idx),
+    )
     # Now shift the upsampled positions so that the PPS is synced between the
     # raw data and the telescope data.
 
@@ -580,7 +586,8 @@ def interpolate_telescope_positions(
     np.full(n_samples, np.nan)
     sample_boundaries = ((pps_samples_tel[1:] + pps_samples_tel[:-1]) / 2).astype(int)
     xp = []
-    fp = []
+    pos_fp = []
+    mask_fp = []
     for i_tel_pps, this_pps_offset in enumerate(pps_offset):
         pps_sample = pps_samples_tel[i_tel_pps]
         max_shift = np.abs(this_pps_offset)
@@ -603,14 +610,23 @@ def interpolate_telescope_positions(
         # i_fit_stop = min(n_samples, i_tel_stop + max_shift)
         this_timestamp = data_timestamp[i_tel_start:i_tel_stop]
         possible_tel_pos = interpolated_tel_pos[i_fit_start:i_fit_stop]
+        possible_singal_mask = interpolated_signal_mask[i_fit_start:i_fit_stop]
         n_times = this_timestamp.size
         if this_pps_offset < 0:
             this_tel_pos = possible_tel_pos[0:-max_shift]
+            this_signal_mask = possible_singal_mask[0:-max_shift]
         else:
             this_tel_pos = possible_tel_pos[max_shift:]
+            this_signal_mask = possible_singal_mask[max_shift:]
         min_length = min(n_times, this_tel_pos.size)
         this_tel_pos = this_tel_pos[:min_length]
+        this_signal_mask = this_signal_mask[:min_length]
         this_timestamp = this_timestamp[:min_length]
         xp.extend(this_timestamp)
-        fp.extend(this_tel_pos)
-    return np.interp(data_timestamp, xp, fp, left=np.nan, right=np.nan)
+        pos_fp.extend(this_tel_pos)
+        mask_fp.extend(this_signal_mask)
+
+    corrected_tel_pos = np.interp(data_timestamp, xp, pos_fp, left=np.nan, right=np.nan)
+    interp_float_mask = np.interp(data_timestamp, xp, mask_fp, left=0, right=0)
+    corrected_signal_mask = interp_float_mask >= 1 / 2  # Convert float back to boolean
+    return corrected_tel_pos, corrected_signal_mask
