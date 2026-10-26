@@ -641,7 +641,24 @@ class DataStorage:
 
     def get_map_signal_mask(self, i_chan: int) -> h5py.Dataset:
         """Return the telescope signal mask for the channel's timstamps."""
-        return self.get_from_channel(i_chan, 'time_ordered_data/map_signal_mask')
+        try:
+            return self.get_from_channel(i_chan, 'time_ordered_data/map_signal_mask')
+        except KeyError:
+            # Backwards compatible fix.
+            # If mask doesn't exist yet, make it all True
+            tod_group = self.get_from_channel(i_chan, 'time_ordered_data')
+            tel_az = self.get_telescope_az(i_chan)
+
+            map_signal_mask = tod_group.create_dataset(
+                'map_signal_mask',
+                shape=tel_az.shape,
+                chunks=tel_az.chunks,
+                dtype=bool,
+                compression='lzf',
+                shuffle=True,
+            )
+            map_signal_mask[:] = True
+            return map_signal_mask
 
     def get_data_IQ(self, i_chan: int) -> h5py.Dataset:
         """Return the data for the specified channel in ADC units."""
