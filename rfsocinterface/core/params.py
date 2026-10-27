@@ -602,13 +602,12 @@ class RFSoCParameters:
 
         offres_tones = []
         tones_left = n_offres
-        freqs_in_range = baseband_freqs[(detector_f >= f_min) & (detector_f <= f_max)]
+        freqs_in_range = detector_f[(detector_f >= f_min) & (detector_f <= f_max)]
 
-        freqs_in_range = np.concatenate(
-            ([f_min - f_center], freqs_in_range, [f_max - f_center])
-        )
+        freqs_in_range = np.concatenate(([f_min], freqs_in_range, [f_max]))
         gaps = np.diff(freqs_in_range)
         sorted_gap_ind = np.argsort(gaps)[::-1]
+        _logger.debug(f'Found {sorted_gap_ind.size} candidates for off-resonance tones')
         for i_gap in sorted_gap_ind:
             f0 = freqs_in_range[i_gap]
             f1 = freqs_in_range[i_gap + 1]
@@ -621,14 +620,14 @@ class RFSoCParameters:
             this_f = search_range[0]
             while this_f <= search_range[1]:
                 offres.append(this_f)
-                diff = delta_offres_min * np.abs((this_f + f_center) / f_center)
+                diff = delta_offres_min * np.abs((this_f) / f_center)
                 this_f += diff
             this_offres_tones = np.array(offres)
             offres_tones.extend(this_offres_tones[:tones_left])
             tones_left -= len(this_offres_tones[:tones_left])
 
         # Restrict off-resonance tones to be within f_min and f_max
-        offres_tones = np.array(offres_tones)
+        offres_tones = np.array(offres_tones) - f_center
         offres_tones = offres_tones[
             (offres_tones + f_center >= f_min) & (offres_tones + f_center <= f_max)
         ]
@@ -662,10 +661,10 @@ class RFSoCParameters:
             (dfoverf_per_mK, np.ones(tones_added, dtype=np.float64))
         )[sorted_ind]
 
-        new_params = RFSoCParameters.new_file(new_tile_name, len(all_tones))
-        new_params.f_center = f_center
-        new_params.rfin = self.rfin
-        new_params = self.copy_and_update(
+        # new_params = RFSoCParameters.new_file(new_tile_name, len(all_tones))
+        # new_params.f_center = f_center
+        # new_params.rfin = self.rfin
+        return self.copy_and_update(
             new_tile_name,
             chanmask=new_chanmask,
             baseband_freqs=new_baseband_freqs,
@@ -702,10 +701,10 @@ class RFSoCParameters:
         if offres_ind.size > 0:
             # Increase 0 off-res tone powers so they're visible in the plot
             off_res_powers = tone_powers[offres_ind]
-            off_res_powers[off_res_powers == 0] = 0.25
+            off_res_powers[off_res_powers == 0] = -1
             plt.stem(
                 detector_f[offres_ind],
-                tone_powers[offres_ind],
+                off_res_powers,
                 linefmt=OFF_RESONANCE_COLOR,
                 markerfmt='none',
                 basefmt='none',

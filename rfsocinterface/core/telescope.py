@@ -431,6 +431,7 @@ class TelescopeMotorController:
         stop_run: bool = True,
         speed_factor: float = 1.0,
         store_position_data: bool = False,
+        is_signal: bool = True,
     ):
         """Set the serial azimuth position."""
         self.send('az_pos_comm', new_pos, timeout=0.25)
@@ -441,7 +442,14 @@ class TelescopeMotorController:
         az_pos, az_pps_pos = self.get_ser_az_pos()
         za_pos, za_pps_pos = self.get_ser_za_pos()
         if store_position_data:
-            position_data = [az_pos, za_pos, time.time(), az_pps_pos, za_pps_pos]
+            position_data = [
+                az_pos,
+                za_pos,
+                time.time(),
+                az_pps_pos,
+                za_pps_pos,
+                is_signal,
+            ]
         counter = 0
         ##Run loop
         pfb_time = time.time()
@@ -491,7 +499,7 @@ class TelescopeMotorController:
                 if store_position_data:
                     position_data = np.append(
                         position_data,
-                        [az_pos, za_pos, pfb_time, az_pps_pos, za_pps_pos],
+                        [az_pos, za_pos, pfb_time, az_pps_pos, za_pps_pos, is_signal],
                     )
 
                 counter = counter + 1
@@ -615,6 +623,7 @@ class TelescopeMotorController:
         stop_run: bool = True,
         primary_scan_direction: str = 'za',
         store_position_data: bool = False,
+        is_signal: bool = True,
     ):
         self.send('za_pos_comm', new_pos, timeout=0.25)
         # new_pos = float(new_pos)
@@ -624,7 +633,14 @@ class TelescopeMotorController:
         za_pos, za_pps_pos = self.get_ser_za_pos()
         az_pos, az_pps_pos = self.get_ser_az_pos()
         if store_position_data:
-            position_data = [az_pos, za_pos, time.time(), az_pps_pos, za_pps_pos]
+            position_data = [
+                az_pos,
+                za_pos,
+                time.time(),
+                az_pps_pos,
+                za_pps_pos,
+                is_signal,
+            ]
         if scan_mode and primary_scan_direction.lower() == 'za':
             tolerance = ZA_POS_TOL_DEG * 5
         else:
@@ -674,7 +690,14 @@ class TelescopeMotorController:
                 if store_position_data:
                     position_data = np.append(
                         position_data,
-                        [az_pos, za_pos, time.time(), az_pps_pos, za_pps_pos],
+                        [
+                            az_pos,
+                            za_pos,
+                            time.time(),
+                            az_pps_pos,
+                            za_pps_pos,
+                            is_signal,
+                        ],
                     )
                 counter = counter + 1
                 if counter % 500 == 0:
@@ -727,7 +750,9 @@ class TelescopeMotorController:
         za_pos, za_pos_pps = self.get_ser_za_pos()
         position_data = []
         while self._run and time.time() < end_time:
-            position_data.extend([az_pos, za_pos, time.time(), az_pos_pps, za_pos_pps])
+            position_data.extend(
+                [az_pos, za_pos, time.time(), az_pos_pps, za_pos_pps, True]
+            )
             label_text = (
                 f'Running Stared Image\nTime Remaining: {end_time - time.time():.2f} s'
             )
@@ -746,11 +771,12 @@ class TelescopeMotorController:
 
         path = Path(file)
         with h5py.File(path, 'w') as f:
-            f.create_dataset('az_tel', data=position_data[0::5])
-            f.create_dataset('za_tel', data=position_data[1::5])
-            f.create_dataset('timestamp_tel', data=position_data[2::5])
-            f.create_dataset('az_pps', data=position_data[3::5])
-            f.create_dataset('za_pps', data=position_data[4::5])
+            f.create_dataset('az_tel', data=position_data[0::6])
+            f.create_dataset('za_tel', data=position_data[1::6])
+            f.create_dataset('timestamp_tel', data=position_data[2::6])
+            f.create_dataset('az_pps', data=position_data[3::6])
+            f.create_dataset('za_pps', data=position_data[4::6])
+            f.create_dataset('map_signal_mask', data=position_data[5::6], dtype=bool)
             f.create_dataset('optical_visibility', data=['****'])
             f.attrs['params'] = json.dumps(
                 {
@@ -856,12 +882,14 @@ class TelescopeMotorController:
                 primary_start - primary_start_buffer,
                 stop_run=False,
                 store_position_data=True,
+                is_signal=False,  # Don't use movement to initial position as signal
             )
         else:
             position_data = self._set_za_pos(
                 primary_start - primary_start_buffer,
                 stop_run=False,
                 store_position_data=True,
+                is_signal=False,  # Don't use movement to initial position as signal
             )
 
         if primary_az:
@@ -874,8 +902,7 @@ class TelescopeMotorController:
                 _tele_logger.info('Using scan (slow) speed for ZA dither')
                 self.set_za_speed_relation(ZA_SCAN_RPM_PER_VOLT)
 
-        # az_speed_factor = 1 / 3 if large_map_mode else 1.0
-        az_speed_factor = 1
+        az_speed_factor = 1 / 3 if large_map_mode else 1.0
 
         self.send('dither_pattern_maximum', n_repeats)
         start_time = time.time()
@@ -895,20 +922,32 @@ class TelescopeMotorController:
             self.send('dither_pattern_label', label_text)
             if not self._run:
                 break
+
+            # Dither in secondary direction. Only flag as signal during the
+            # primary dither.
             if large_map_mode:
                 new_za = initial_za + (i_rep - (n_repeats - 1) / 2) * secondary_dither
                 this_position_data = self._set_za_pos(
-                    new_za, stop_run=False, store_position_data=True
+                    new_za,
+                    stop_run=False,
+                    store_position_data=True,
+                    is_signal=False,
                 )
             elif primary_az:
                 new_za = initial_za + (i_rep % 2) * secondary_dither
                 this_position_data = self._set_za_pos(
-                    new_za, stop_run=False, store_position_data=True
+                    new_za,
+                    stop_run=False,
+                    store_position_data=True,
+                    is_signal=False,
                 )
             else:
                 new_az = initial_az + (i_rep % 2) * secondary_dither
                 this_position_data = self._set_az_pos(
-                    new_az, stop_run=False, store_position_data=True
+                    new_az,
+                    stop_run=False,
+                    store_position_data=True,
+                    is_signal=False,
                 )
             position_data = np.append(position_data, this_position_data)
 
@@ -920,6 +959,7 @@ class TelescopeMotorController:
                         stop_run=False,
                         speed_factor=az_speed_factor,
                         store_position_data=True,
+                        is_signal=True,
                     )
                 else:
                     this_position_data = self._set_za_pos(
@@ -928,6 +968,7 @@ class TelescopeMotorController:
                         stop_run=False,
                         primary_scan_direction=primary_dither_direction,
                         store_position_data=True,
+                        is_signal=True,
                     )
                 position_data = np.append(position_data, this_position_data)
             if np.mod(i_rep, 2) == 1:
@@ -938,6 +979,7 @@ class TelescopeMotorController:
                         stop_run=False,
                         speed_factor=az_speed_factor,
                         store_position_data=True,
+                        is_signal=True,
                     )
                 else:
                     this_position_data = self._set_za_pos(
@@ -946,6 +988,7 @@ class TelescopeMotorController:
                         stop_run=False,
                         primary_scan_direction=primary_dither_direction,
                         store_position_data=True,
+                        is_signal=True,
                     )
                 position_data = np.append(position_data, this_position_data)
             rep_end_time = time.time()
@@ -969,11 +1012,12 @@ class TelescopeMotorController:
         # Save pointing information
         path = Path(file)
         with h5py.File(path, 'w') as f:
-            f.create_dataset('az_tel', data=position_data[0::5])
-            f.create_dataset('za_tel', data=position_data[1::5])
-            f.create_dataset('timestamp_tel', data=position_data[2::5])
-            f.create_dataset('az_pps', data=position_data[3::5])
-            f.create_dataset('za_pps', data=position_data[4::5])
+            f.create_dataset('az_tel', data=position_data[0::6])
+            f.create_dataset('za_tel', data=position_data[1::6])
+            f.create_dataset('timestamp_tel', data=position_data[2::6])
+            f.create_dataset('az_pps', data=position_data[3::6])
+            f.create_dataset('za_pps', data=position_data[4::6])
+            f.create_dataset('map_signal_mask', data=position_data[5::6], dtype=bool)
             f.create_dataset('optical_visibility', data=['****'])
             f.attrs['params'] = json.dumps(
                 {

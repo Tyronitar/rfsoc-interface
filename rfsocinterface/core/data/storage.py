@@ -636,8 +636,32 @@ class DataStorage:
         return self.get_from_channel(i_chan, 'time_ordered_data/telescope_az')
 
     def get_telescope_za(self, i_chan: int) -> h5py.Dataset:
-        """Return the telescope zenith angle  positions for the channel's timstamps."""
+        """Return the telescope zenith angle positions for the channel's timstamps."""
         return self.get_from_channel(i_chan, 'time_ordered_data/telescope_za')
+
+    def get_map_signal_mask(self, i_chan: int) -> h5py.Dataset:
+        """Return the telescope signal mask for the channel's timstamps."""
+        try:
+            return self.get_from_channel(i_chan, 'time_ordered_data/map_signal_mask')
+        except KeyError:
+            # Backwards compatible fix.
+            # If mask doesn't exist yet, make it all True
+            tod_group = self.get_from_channel(i_chan, 'time_ordered_data')
+            tel_az = self.get_telescope_az(i_chan)
+            tel_za = self.get_telescope_za(i_chan)
+            nan_idx = np.argwhere(np.isnan(tel_az) | np.isnan(tel_za)).flatten()
+
+            map_signal_mask = tod_group.create_dataset(
+                'map_signal_mask',
+                shape=tel_az.shape,
+                chunks=tel_az.chunks,
+                dtype=bool,
+                compression='lzf',
+                shuffle=True,
+            )
+            map_signal_mask[:] = True
+            map_signal_mask[nan_idx] = False
+            return map_signal_mask
 
     def get_data_IQ(self, i_chan: int) -> h5py.Dataset:
         """Return the data for the specified channel in ADC units."""
@@ -937,6 +961,11 @@ class ConsolidatedData(DataStorage):
                 za_pps_tel = azel_file['za_pps']
             else:
                 az_pps_tel = za_pps_tel = None
+            if 'map_signal_mask' in azel_file:
+                raw_map_signal_mask = azel_file['map_signal_mask']
+            else:
+                # For backwards compatibility, the entire dataset is marked as signal
+                raw_map_signal_mask = np.ones(za_tel.size, dtype=bool)
             # vis = azel_tfile.root.optical_visibility[0]
             vis = np.nan
             if isinstance(vis, bytes):
@@ -1215,6 +1244,14 @@ class ConsolidatedData(DataStorage):
                 compression='lzf',
                 shuffle=True,
             )
+            map_signal_mask = time_ordered_data_group.create_dataset(
+                'map_signal_mask',
+                shape=azel_shape_1d_ds,
+                chunks=chunk_shape_azel_1d_ds,
+                dtype=bool,
+                compression='lzf',
+                shuffle=True,
+            )
             # Detector Positions
             detector_az = time_ordered_data_group.create_dataset(
                 'detector_az',
@@ -1341,22 +1378,37 @@ class ConsolidatedData(DataStorage):
                         'ConsolidatedData: Correlating telescope '
                         'pointing information...'
                     )
-                    corrected_az_tel = interpolate_telescope_positions(
-                        temp_timestamp,
-                        timestamp_tel[:],
-                        az_tel[:],
-                        az_pps_tel[:],
-                        temp_pps[:],
-                        direction='az',
+                    corrected_az_tel, corrected_signal_mask_az = (
+                        interpolate_telescope_positions(
+                            temp_timestamp,
+                            timestamp_tel[:],
+                            az_tel[:],
+                            az_pps_tel[:],
+                            temp_pps[:],
+                            raw_map_signal_mask[:],
+                            direction='az',
+                        )
                     )
-                    corrected_za_tel = interpolate_telescope_positions(
-                        temp_timestamp,
-                        timestamp_tel[:],
-                        za_tel[:],
-                        za_pps_tel[:],
-                        temp_pps[:],
-                        direction='za',
+                    corrected_za_tel, corrected_signal_mask_za = (
+                        interpolate_telescope_positions(
+                            temp_timestamp,
+                            timestamp_tel[:],
+                            za_tel[:],
+                            za_pps_tel[:],
+                            temp_pps[:],
+                            raw_map_signal_mask[:],
+                            direction='za',
+                        )
                     )
+                    # Align the signal mask based on the primary dither direction, if
+                    # available. Otherwise, just use azimuth.
+                    if (
+                        telescope_params.get('primary_dither_direction', '').lower()
+                        == 'za'
+                    ):
+                        corrected_signal_mask = corrected_signal_mask_za
+                    else:
+                        corrected_signal_mask = corrected_signal_mask_az
                 else:
                     corrected_az_tel = np.interp(
                         temp_timestamp,
@@ -1372,6 +1424,18 @@ class ConsolidatedData(DataStorage):
                         left=np.nan,
                         right=np.nan,
                     )
+                    float_signal_mask = raw_map_signal_mask[:].astype(float)
+                    interp_float = np.interp(
+                        temp_timestamp,
+                        timestamp_tel[:],
+                        float_signal_mask[:],
+                        left=0,
+                        right=0,
+                    )
+                    corrected_signal_mask = interp_float >= 1 / 2
+                    corrected_signal_mask[
+                        np.isnan(corrected_az_tel) | np.isnan(corrected_za_tel)
+                    ] = False
                 _logger.info('ConsolidatedData: Downsampling telescope positions...')
                 chunked_downsample(
                     corrected_az_tel,
@@ -1383,6 +1447,13 @@ class ConsolidatedData(DataStorage):
                 chunked_downsample(
                     corrected_za_tel,
                     telescope_za,
+                    downsampling_factor,
+                    temp_timestamp.chunks[-1],
+                    use_filter=False,
+                )
+                chunked_downsample(
+                    corrected_signal_mask,
+                    map_signal_mask,
                     downsampling_factor,
                     temp_timestamp.chunks[-1],
                     use_filter=False,
