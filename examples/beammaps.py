@@ -165,9 +165,15 @@ if __name__ == '__main__':
     # except KeyError:
     #     map_signal_mask = make_signal_dset(pdata)
 
-    for setnum in [1016, 1017, 1018]:
+    # for setnum in [1016, 1017, 1018]:
+    for setnum in [1017]:
         pdata = ProcessedData.load(date, setnum)
+        pdata.setnum = setnum
         flag_non_signal(pdata, movement_threshold=1e-4)
+        # pdb.set_trace()
+        bin_tod_to_map.apply(pdata)
+        analyze_beammap.apply(pdata)
+        plot_beammap.apply(pdata)
         pdata.close()
 
 
