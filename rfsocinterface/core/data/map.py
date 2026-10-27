@@ -466,7 +466,7 @@ class BinTODIntoMap(DataRoutine):
     """
 
     name = 'BinTODIntoMap'
-    version = '4.1.1'
+    version = '4.2.0'
 
     produces: ClassVar[set] = {
         '/map/',
@@ -619,10 +619,11 @@ class BinTODIntoMap(DataRoutine):
             'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
         )
         for i_chan in range(pdata.n_chan):
+            all_samples = np.arange(pdata.get_n_samples(i_chan))
+            map_signal_mask = pdata.get_map_signal_mask(i_chan)
+            mask_samples = all_samples[map_signal_mask]
             interpolated_samples = pdata.get_interpolated_samples(i_chan)[:]
-            good_samples[i_chan] = np.setdiff1d(
-                np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
-            )
+            good_samples[i_chan] = np.setdiff1d(mask_samples, interpolated_samples)
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: list[str]):  # noqa: PLR0912
@@ -1690,7 +1691,7 @@ class BinTODIntoVideo(DataRoutine):
     """
 
     name = 'BinTODIntoVideo'
-    version = '3.1.1'
+    version = '3.2.0'
 
     produces: ClassVar[set] = {
         '/video',
@@ -1826,10 +1827,11 @@ class BinTODIntoVideo(DataRoutine):
 
         # Find good sampels before determining number of blocks
         for i_chan in range(pdata.n_chan):
+            all_samples = np.arange(pdata.get_n_samples(i_chan))
+            map_signal_mask = pdata.get_map_signal_mask(i_chan)
+            mask_samples = all_samples[map_signal_mask]
             interpolated_samples = pdata.get_interpolated_samples(i_chan)[:]
-            good_samples[i_chan] = np.setdiff1d(
-                np.arange(pdata.get_n_samples(i_chan)), interpolated_samples
-            )
+            good_samples[i_chan] = np.setdiff1d(mask_samples, interpolated_samples)
             nan_samples = np.argwhere(
                 np.isnan(pdata.get_detector_az(i_chan)[0])
                 | np.isnan(pdata.get_detector_za(i_chan)[0])

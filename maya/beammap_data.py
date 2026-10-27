@@ -24,8 +24,18 @@ def save_beammap(date, setnum, filename):
 
 
 if __name__ == '__main__':
-    date = '20260617'
-    save_beammap(date, 1001, 'tile_2_H_pol_beammap_0p02.h5')
-    save_beammap(date, 1004, 'tile_2_V_pol_beammap_0p02.h5')
-    save_beammap(date, 1005, 'tile_3_V_pol_beammap_0p02.h5')
-    save_beammap(date, 1006, 'tile_3_H_pol_beammap_0p02.h5')
+    # date = '20260617'
+    # save_beammap(date, 1001, 'tile_2_H_pol_beammap.h5')
+    # save_beammap(date, 1004, 'tile_2_V_pol_beammap.h5')
+    # save_beammap(date, 1005, 'tile_3_V_pol_beammap.h5')
+    # save_beammap(date, 1006, 'tile_3_H_pol_beammap.h5')
+    # save_beammap(date, 1001, 'tile_2_H_pol_beammap_0p02.h5')
+    # save_beammap(date, 1004, 'tile_2_V_pol_beammap_0p02.h5')
+    # save_beammap(date, 1005, 'tile_3_V_pol_beammap_0p02.h5')
+    # save_beammap(date, 1006, 'tile_3_H_pol_beammap_0p02.h5')
+
+    date = '20261023'
+    save_beammap(date, 1016, 'tile_4_H_pol_beammap.h5')
+    save_beammap(date, 1017, 'tile_4_hillside_beammap.h5')
+    save_beammap(date, 1018, 'tile_4_V_pol_beammap.h5')
+
