@@ -466,7 +466,7 @@ class BinTODIntoMap(DataRoutine):
     """
 
     name = 'BinTODIntoMap'
-    version = '4.1.1'
+    version = '4.2.0'
 
     produces: ClassVar[set] = {
         '/map/',
@@ -1691,7 +1691,7 @@ class BinTODIntoVideo(DataRoutine):
     """
 
     name = 'BinTODIntoVideo'
-    version = '3.1.1'
+    version = '3.2.0'
 
     produces: ClassVar[set] = {
         '/video',
