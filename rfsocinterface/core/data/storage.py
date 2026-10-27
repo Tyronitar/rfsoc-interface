@@ -648,6 +648,8 @@ class DataStorage:
             # If mask doesn't exist yet, make it all True
             tod_group = self.get_from_channel(i_chan, 'time_ordered_data')
             tel_az = self.get_telescope_az(i_chan)
+            tel_za = self.get_telescope_za(i_chan)
+            nan_idx = np.argwhere(np.isnan(tel_az) | np.isnan(tel_za)).flatten()
 
             map_signal_mask = tod_group.create_dataset(
                 'map_signal_mask',
@@ -658,6 +660,7 @@ class DataStorage:
                 shuffle=True,
             )
             map_signal_mask[:] = True
+            map_signal_mask[nan_idx] = False
             return map_signal_mask
 
     def get_data_IQ(self, i_chan: int) -> h5py.Dataset:
@@ -1430,6 +1433,9 @@ class ConsolidatedData(DataStorage):
                         right=0,
                     )
                     corrected_signal_mask = interp_float >= 1 / 2
+                    corrected_signal_mask[
+                        np.isnan(corrected_az_tel) | np.isnan(corrected_za_tel)
+                    ] = False
                 _logger.info('ConsolidatedData: Downsampling telescope positions...')
                 chunked_downsample(
                     corrected_az_tel,

@@ -68,6 +68,13 @@ def flag_non_signal(
     outside_samples = np.argwhere((tel_az < 4.525) | (tel_az > 9.475)).flatten()
     map_signal_mask[outside_samples] = False
 
+    # Flag samples where the position is unknown
+    nan_idx = np.argwhere(
+        np.isnan(tel_az) |
+        np.isnan(tel_za)
+    ).flatten()
+    map_signal_mask[nan_idx] = False
+
     # plt.title('First 3000 samples')
     # plt.scatter(tel_az[:3000], tel_za[:3000], c=sample_idx[:3000] / 3000, cmap='viridis')
     # plt.scatter(tel_az[:initial_pos_idx], tel_za[:initial_pos_idx], c='r')

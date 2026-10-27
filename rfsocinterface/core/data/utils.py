@@ -629,4 +629,5 @@ def interpolate_telescope_positions(
     corrected_tel_pos = np.interp(data_timestamp, xp, pos_fp, left=np.nan, right=np.nan)
     interp_float_mask = np.interp(data_timestamp, xp, mask_fp, left=0, right=0)
     corrected_signal_mask = interp_float_mask >= 1 / 2  # Convert float back to boolean
+    corrected_signal_mask[np.isnan(corrected_tel_pos)] = False
     return corrected_tel_pos, corrected_signal_mask
