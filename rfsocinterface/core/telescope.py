@@ -764,37 +764,53 @@ class TelescopeMotorController:
             time.sleep(AZ_SAMPLING_TIME)
         self.send('stared_image_progress', 100)
 
-        if not self._run:
-            _tele_logger.info('Stared Image canceled before completion.')
-            self.send('stared_image_complete', 1)
-            return
-
+        error = False
         path = Path(file)
-        with h5py.File(path, 'w') as f:
-            f.create_dataset('az_tel', data=position_data[0::6])
-            f.create_dataset('za_tel', data=position_data[1::6])
-            f.create_dataset('timestamp_tel', data=position_data[2::6])
-            f.create_dataset('az_pps', data=position_data[3::6])
-            f.create_dataset('za_pps', data=position_data[4::6])
-            f.create_dataset('map_signal_mask', data=position_data[5::6], dtype=bool)
-            f.create_dataset('optical_visibility', data=['****'])
-            f.attrs['params'] = json.dumps(
-                {
-                    # Generic parameters
-                    'initial_az': az_pos,
-                    'initial_za': za_pos,
-                    # self._run can only be False here if it was cancelled
-                    'completed': self._run,
-                    # Arguments to this function
-                    'file': str(file),
-                    'duration': duration,
-                }
+        try:
+            with h5py.File(path, 'w') as f:
+                f.create_dataset('az_tel', data=position_data[0::6])
+                f.create_dataset('za_tel', data=position_data[1::6])
+                f.create_dataset('timestamp_tel', data=position_data[2::6])
+                f.create_dataset('az_pps', data=position_data[3::6])
+                f.create_dataset('za_pps', data=position_data[4::6])
+                msk = position_data[5::6].astype(bool)
+                f.create_dataset('map_signal_mask', data=msk, dtype=bool)
+                f.create_dataset('optical_visibility', data=['****'])
+                f.attrs['params'] = json.dumps(
+                    {
+                        # Generic parameters
+                        'initial_az': az_pos,
+                        'initial_za': za_pos,
+                        # self._run can only be False here if it was cancelled
+                        'completed': self._run,
+                        # Arguments to this function
+                        'file': str(file),
+                        'duration': duration,
+                    }
+                )
+            path.chmod(PERMISSIONS_ALL_FULL)
+        except Exception as e:
+            error = True
+            _tele_logger.exception(
+                f'Stared Image: Error saving position data to {file}'
             )
-        path.chmod(PERMISSIONS_ALL_FULL)
-
-        self._run = False
-        _tele_logger.info('Scan Complete')
-        self.send('stared_image_complete', 0)
+            self.send(
+                'err',
+                'NON-CRITICAL',
+                f'Stared Image: Error saving position data to {file}: {e}',
+            )
+        finally:
+            if error:
+                _tele_logger.info('Stared Image: Error encountered during execution.')
+                self.send('stared_image_complete', 1)
+            elif not self._run:
+                # self._run is only changed if the telescope was stopped mid scan
+                _tele_logger.info('Stared Image: Canceled before completion.')
+                self.send('stared_image_complete', 1)
+            else:
+                self._run = False
+                _tele_logger.info('Stared Image: Scan Complete')
+                self.send('stared_image_complete', 0)
 
     def dither_pattern(
         self,
@@ -844,7 +860,7 @@ class TelescopeMotorController:
         self._active_jobs.append(worker_thread)
         worker_thread.start()
 
-    def _dither_pattern(  # noqa: PLR0912
+    def _dither_pattern(  # noqa: PLR0912, PLR0915
         self,
         file: str,
         primary_start: float,
@@ -1004,61 +1020,77 @@ class TelescopeMotorController:
             )
 
         stop_time = time.time()
-        _logger.info(
+        _tele_logger.info(
             f'Dither Pattern: Finished {n_repeats} repeats in '
             f'{stop_time - start_time:.3f}s'
         )
 
         # Save pointing information
+        error = False
         path = Path(file)
-        with h5py.File(path, 'w') as f:
-            f.create_dataset('az_tel', data=position_data[0::6])
-            f.create_dataset('za_tel', data=position_data[1::6])
-            f.create_dataset('timestamp_tel', data=position_data[2::6])
-            f.create_dataset('az_pps', data=position_data[3::6])
-            f.create_dataset('za_pps', data=position_data[4::6])
-            f.create_dataset('map_signal_mask', data=position_data[5::6], dtype=bool)
-            f.create_dataset('optical_visibility', data=['****'])
-            f.attrs['params'] = json.dumps(
-                {
-                    # Generic parameters
-                    'initial_az': initial_az,
-                    'initial_za': initial_za,
-                    # self._run can only be False here if the dither was cancelled
-                    'completed': self._run,
-                    # Arguments to this function
-                    'primary_start': primary_start,
-                    'primary_stop': primary_stop,
-                    'n_repeats': n_repeats,
-                    'secondary_dither': secondary_dither,
-                    'position_return': position_return,
-                    'large_map_mode': large_map_mode,
-                    'primary_dither_direction': primary_dither_direction,
-                }
+        try:
+            with h5py.File(path, 'w') as f:
+                f.create_dataset('az_tel', data=position_data[0::6])
+                f.create_dataset('za_tel', data=position_data[1::6])
+                f.create_dataset('timestamp_tel', data=position_data[2::6])
+                f.create_dataset('az_pps', data=position_data[3::6])
+                f.create_dataset('za_pps', data=position_data[4::6])
+                msk = position_data[5::6].astype(bool)
+                f.create_dataset('map_signal_mask', data=msk, dtype=bool)
+                f.create_dataset('optical_visibility', data=['****'])
+                f.attrs['params'] = json.dumps(
+                    {
+                        # Generic parameters
+                        'initial_az': initial_az,
+                        'initial_za': initial_za,
+                        # self._run can only be False here if the dither was cancelled
+                        'completed': self._run,
+                        # Arguments to this function
+                        'primary_start': primary_start,
+                        'primary_stop': primary_stop,
+                        'n_repeats': n_repeats,
+                        'secondary_dither': secondary_dither,
+                        'position_return': position_return,
+                        'large_map_mode': large_map_mode,
+                        'primary_dither_direction': primary_dither_direction,
+                    }
+                )
+            path.chmod(PERMISSIONS_ALL_FULL)
+        except Exception as e:
+            error = True
+            _tele_logger.exception(
+                f'Dither Pattern: Error saving position data to {file}'
             )
-        path.chmod(PERMISSIONS_ALL_FULL)
-
-        # Reset telescope
-        if primary_az:
-            self.set_za_speed_relation(ZA_DEAFULT_RPM_PER_VOLT)
-        if position_return:
-            _tele_logger.info('Dither Pattern: Resetting telescope position...')
             self.send(
-                'dither_pattern_label',
-                'Running Dither Pattern\nResetting telescope position',
+                'err',
+                'NON-CRITICAL',
+                f'Dither Pattern: Error saving position data to {file}: {e}',
             )
-            self._set_az_pos(initial_az, stop_run=False)
-            self._set_za_pos(initial_za, stop_run=False)
+        finally:
+            # Reset telescope
+            if primary_az:
+                self.set_za_speed_relation(ZA_DEAFULT_RPM_PER_VOLT)
+            if position_return:
+                _tele_logger.info('Dither Pattern: Resetting telescope position...')
+                self.send(
+                    'dither_pattern_label',
+                    'Running Dither Pattern\nResetting telescope position',
+                )
+                self._set_az_pos(initial_az, stop_run=False)
+                self._set_za_pos(initial_za, stop_run=False)
+                _tele_logger.info('Dither Pattern: Reset telescope position.')
 
-        # self._run is only changed if the telescope was stopped mid scan
-        if not self._run:
-            _tele_logger.info('Dither Pattern canceled before completion.')
-            self.send('dither_pattern_complete', 1)
-            return
-
-        self._run = False
-        _tele_logger.info('Scan Complete')
-        self.send('dither_pattern_complete', 0)
+            if error:
+                _tele_logger.info('Dither Pattern: Error encountered during execution.')
+                self.send('dither_pattern_complete', 1)
+            elif not self._run:
+                # self._run is only changed if the telescope was stopped mid scan
+                _tele_logger.info('Dither Pattern: Canceled before completion.')
+                self.send('dither_pattern_complete', 1)
+            else:
+                self._run = False
+                _tele_logger.info('Dither Pattern: Scan Complete')
+                self.send('dither_pattern_complete', 0)
 
     def set_za_speed_relation(self, rpm_per_volt: float):
         """Set the speed of the motor in RPM/1V.
