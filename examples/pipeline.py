@@ -76,7 +76,7 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=True,
+        beam_map_mode=False,
         dataset=dataset,
         az_trim=0,
         za_trim=0,

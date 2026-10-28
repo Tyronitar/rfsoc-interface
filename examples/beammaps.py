@@ -4,6 +4,7 @@ import logging.config
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 
 from rfsocinterface.core.data import (
     ProcessedData,
@@ -26,16 +27,23 @@ from rfsocinterface.analysis import (
     CheckFocus,
 )
 from rfsocinterface.core.params import RFSoCParameters, DEFAULT_DFOVERF_PER_MK
+from rfsocinterface.core.sweeps import LoSweepData
 
 
 def flag_non_signal(
         pdata: ProcessedData,
         movement_threshold: float=1e-4,
+        lower_bound_az: float=4.525,
+        upper_bound_az: float=9.475,
         plot: bool = False,
+        save_changes: bool = True,
     ):
     tel_az = pdata.get_telescope_az(0)[:]
     tel_za = pdata.get_telescope_za(0)[:]
     map_signal_mask = pdata.get_map_signal_mask(0)
+    if not save_changes:
+        # Load a copy of the mask to avoid modifying the original dataset
+        map_signal_mask = map_signal_mask[:]  
     sample_idx = np.arange(tel_az.size)
 
     # First, flag samples during move to initial position
@@ -65,7 +73,7 @@ def flag_non_signal(
 
 
     # Flag samples that are outside of [5, 9] AZ
-    outside_samples = np.argwhere((tel_az < 4.525) | (tel_az > 9.475)).flatten()
+    outside_samples = np.argwhere((tel_az < lower_bound_az) | (tel_az > upper_bound_az)).flatten()
     map_signal_mask[outside_samples] = False
 
     # Flag samples where the position is unknown
@@ -75,12 +83,6 @@ def flag_non_signal(
     ).flatten()
     map_signal_mask[nan_idx] = False
 
-    # plt.title('First 3000 samples')
-    # plt.scatter(tel_az[:3000], tel_za[:3000], c=sample_idx[:3000] / 3000, cmap='viridis')
-    # plt.scatter(tel_az[:initial_pos_idx], tel_za[:initial_pos_idx], c='r')
-    # plt.figure()
-    # plt.plot(d_za)
-    # plt.figure()
     if plot:
         map_signal_mask = map_signal_mask[:]
         plt.title(f'Signal Mask - {pdata.file_stub}')
@@ -103,14 +105,36 @@ def flag_non_signal(
             c='gray',
             label='Outside bounds'
         )
-        plt.axvline(4.525, color='red', linestyle='--')
-        plt.axvline(9.475, color='red', linestyle='--')
+        plt.axvline(lower_bound_az, color='red', linestyle='--')
+        plt.axvline(upper_bound_az, color='red', linestyle='--')
         plt.gca().invert_yaxis()
         plt.legend()
         plt.show()
 
-
-
+def plot_signal_mask(
+    map_signal_mask: npt.NDArray,
+    tel_az: npt.NDArray,
+    tel_za: npt.NDArray,
+    title: str,
+):
+    sample_idx = np.arange(tel_az.size)
+    plt.title(title)
+    plt.scatter(
+        tel_az[map_signal_mask],
+        tel_za[map_signal_mask],
+        c=sample_idx[map_signal_mask] / sample_idx.size,
+        cmap='viridis',
+        label='Good Samples',
+    )
+    plt.scatter(
+        tel_az[~map_signal_mask],
+        tel_za[~map_signal_mask],
+        c='gray',
+        label='Non-signal Samples'
+    )
+    plt.gca().invert_yaxis()
+    plt.legend()
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -150,31 +174,53 @@ if __name__ == '__main__':
         clean_tod,
         bin_tod_to_map,
         analyze_beammap,
-        # plot_beammap,
+        plot_beammap,
     ])
 
-    date = '20261023'
-    setnum = 1018
+    date = '20261028'
+    setnum = 1008
 
-    ## pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # tod_file = '/data/20261028/20261028_Device_aSi1_Channel2_telescope_275mK_20260804_TOD_set1001.h5'
+    # tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260804'
+    # with RFSoCParameters.load(tile_name, 'r') as params:
+    #     params.append_to_TOD(tod_file)
+    # sweep = LoSweepData.load_most_recent(tile_name)
+    # if sweep is not None:
+    #     sweep.append_to_TOD(tod_file)
+
+    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    pdata = ProcessedData.load(date, setnum)
+    # pdata = ProcessedData.load(date, setnum)
+    # plot_signal_mask(
+    #     pdata.get_map_signal_mask(0)[:],
+    #     pdata.get_telescope_az(0)[:],
+    #     pdata.get_telescope_za(0)[:],
+    #     f'Signal Mask - {pdata.file_stub}',
+    # )
+    # pdata.get_map_signal_mask(0)[:] = True
+    # flag_non_signal(
+    #     pdata,
+    #     plot=True,
+    #     lower_bound_az=2.525,
+    #     upper_bound_az=7.475,
+    # )
     # pipeline.run(pdata)
     # try:
     #     map_signal_mask = pdata.get_map_signal_mask(0)
     # except KeyError:
     #     map_signal_mask = make_signal_dset(pdata)
 
+    # date = '20261023'
     # for setnum in [1016, 1017, 1018]:
-    for setnum in [1017]:
-        pdata = ProcessedData.load(date, setnum)
-        pdata.setnum = setnum
-        flag_non_signal(pdata, movement_threshold=1e-4)
-        # pdb.set_trace()
-        bin_tod_to_map.apply(pdata)
-        analyze_beammap.apply(pdata)
-        plot_beammap.apply(pdata)
-        pdata.close()
+    # for setnum in [1017]:
+    #     pdata = ProcessedData.load(date, setnum)
+    #     pdata.setnum = setnum
+    #     flag_non_signal(pdata, movement_threshold=1e-4)
+    #     # pdb.set_trace()
+    #     bin_tod_to_map.apply(pdata)
+    #     analyze_beammap.apply(pdata)
+    #     plot_beammap.apply(pdata)
+    #     pdata.close()
 
 
 
