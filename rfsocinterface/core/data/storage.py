@@ -23,6 +23,7 @@ from rfsocinterface import __version__ as VERSION
 from rfsocinterface.core.data.utils import (
     CALIBRATION_TABLE_DTYPE,
     TONES_TABLE_DTYPE,
+    align_telescope_positions,
     compute_df_per_mK,
     find_missed_packets,
     find_missed_packets_with_indices,
@@ -31,7 +32,6 @@ from rfsocinterface.core.data.utils import (
     get_detector_positions_no_interp,
     get_step_group_name,
     interpolate_missing_data,
-    interpolate_telescope_positions,
     interpolate_timestamp_streaming,
     rotate_basis,
 )
@@ -1378,37 +1378,33 @@ class ConsolidatedData(DataStorage):
                         'ConsolidatedData: Correlating telescope '
                         'pointing information...'
                     )
-                    corrected_az_tel, corrected_signal_mask_az = (
-                        interpolate_telescope_positions(
-                            temp_timestamp,
-                            timestamp_tel[:],
-                            az_tel[:],
-                            az_pps_tel[:],
-                            temp_pps[:],
-                            raw_map_signal_mask[:],
-                            direction='az',
-                        )
-                    )
-                    corrected_za_tel, corrected_signal_mask_za = (
-                        interpolate_telescope_positions(
-                            temp_timestamp,
-                            timestamp_tel[:],
-                            za_tel[:],
-                            za_pps_tel[:],
-                            temp_pps[:],
-                            raw_map_signal_mask[:],
-                            direction='za',
-                        )
-                    )
-                    # Align the signal mask based on the primary dither direction, if
-                    # available. Otherwise, just use azimuth.
-                    if (
-                        telescope_params.get('primary_dither_direction', '').lower()
+                    # Use the primary dither direction's clock mapping for the signal
+                    # mask, if available. Otherwise, use azimuth.
+                    primary_axis = (
+                        'za'
+                        if telescope_params.get('primary_dither_direction', '').lower()
                         == 'za'
-                    ):
-                        corrected_signal_mask = corrected_signal_mask_za
-                    else:
-                        corrected_signal_mask = corrected_signal_mask_az
+                        else 'az'
+                    )
+                    alignment = align_telescope_positions(
+                        temp_timestamp[:],
+                        temp_pps[:],
+                        timestamp_tel[:],
+                        az_tel[:],
+                        za_tel[:],
+                        az_pps_tel[:],
+                        za_pps_tel[:],
+                        raw_map_signal_mask[:],
+                        primary_axis=primary_axis,
+                    )
+                    if not alignment.aligned:
+                        _logger.warning(
+                            'ConsolidatedData: Could not align telescope positions '
+                            'using the PPS; using the raw telescope timestamps.'
+                        )
+                    corrected_az_tel = alignment.az
+                    corrected_za_tel = alignment.za
+                    corrected_signal_mask = alignment.signal_mask
                 else:
                     corrected_az_tel = np.interp(
                         temp_timestamp,
