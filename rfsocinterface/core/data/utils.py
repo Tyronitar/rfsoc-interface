@@ -529,14 +529,28 @@ def interpolate_telescope_positions(
     if pps_tel_idx.size <= 1:
         # The telescope didn't move enough in this direction, so aligning the times
         # doesn't work. Just upsample the positions.
-        _logger.debug(
+        _logger.info(
             f'Doing simple interpolation for detector positions in '
             f'{direction.upper()} direction.'
         )
-        return np.interp(
+        corrected_tel_pos = np.interp(
             data_timestamp, telescope_timestamp, tel_position, left=np.nan, right=np.nan
         )
-    _logger.debug(f'Using PPS for detector positions in {direction.upper()} direction.')
+        float_signal_mask = map_signal_mask[:].astype(float)
+        interp_float_mask = np.interp(
+            data_timestamp,
+            telescope_timestamp,
+            float_signal_mask[:],
+            left=0,
+            right=0,
+        )
+        corrected_signal_mask = (
+            interp_float_mask >= 1 / 2
+        )  # Convert float back to boolean
+        corrected_signal_mask[np.isnan(corrected_tel_pos)] = False
+        return corrected_tel_pos, corrected_signal_mask
+
+    _logger.info(f'Using PPS for detector positions in {direction.upper()} direction.')
 
     # Upsample the telescope positions ignoring the positions when the pulse is receivd,
     # since the extra commands slow the loop
