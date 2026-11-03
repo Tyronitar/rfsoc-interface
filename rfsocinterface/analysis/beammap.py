@@ -1,5 +1,6 @@
 """Beam map analysis routines."""
 
+import gc
 import logging
 import typing
 from typing import ClassVar
@@ -7,6 +8,7 @@ from typing import ClassVar
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import tqdm
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.offsetbox import AnchoredText
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -307,7 +309,7 @@ class PlotBeamMap(DataRoutine):
     """Plot a beam map, post-analysis."""
 
     name = 'PlotBeamMap'
-    version = '2.1.0'
+    version = '2.2.0'
 
     requires: ClassVar[set[str]] = {
         '/map',
@@ -333,6 +335,7 @@ class PlotBeamMap(DataRoutine):
         savefile: str | None = None,
         save_dir: str = DEFAULT_DATA_DIRECTORY,
         dpi: float = 300,
+        zoom_half_width: float | None = None,
     ):
         """Initialize the PlotBeamMap routine.
 
@@ -352,6 +355,10 @@ class PlotBeamMap(DataRoutine):
                 an argument to `get_beammap_pdf_template`, and as such is only used if
                 `savefile` is `None`. Defaults to `DEFAULT_DATA_DIRECTORY`.
             dpi (float, optional): Dots per inch to use in the figures. Defaults to 300.
+            zoom_half_width (float, optional): Half-width (in degrees) of the zoomed
+                region shown next to each individual beam map. If `None`, uses 1.5x
+                the larger fitted FWHM, falling back to 10% of the map size if the
+                fit failed. Defaults to `None`.
         """
         super().__init__(
             high_snr_percentile=high_snr_percentile,
@@ -361,6 +368,7 @@ class PlotBeamMap(DataRoutine):
             savefile=savefile,
             save_dir=save_dir,
             dpi=dpi,
+            zoom_half_width=zoom_half_width,
         )
 
     @typing.override
@@ -378,9 +386,11 @@ class PlotBeamMap(DataRoutine):
         fwhm_az = pdata['beammap/fwhm_az'][:]
         fwhm_za = pdata['beammap/fwhm_za'][:]
         map_val = pdata['map/map_val'][:]
+        map_az = pdata['map/map_az'][:]
+        map_za = pdata['map/map_za'][:]
         dpix = pdata['map'].attrs['dpix']
         units = pdata['map'].attrs.get('units', 'mK')
-        extent = get_extent(pdata['map/map_az'][:], pdata['map/map_za'][:], dpix=dpix)
+        extent = get_extent(map_az, map_za, dpix=dpix)
         chanmask = pdata.chanmask
         detector_f = pdata.detector_f()
 
@@ -477,11 +487,11 @@ class PlotBeamMap(DataRoutine):
 
         # Create individul plots for each tone
         _logger.info(f'{self.name}: Creating individual resonance plots...')
-        for i_loop, i_tone_absolute in enumerate(tones_to_plot):
+        for i_loop, i_tone_absolute in tqdm.tqdm(enumerate(tones_to_plot)):
             if i_loop == tones_to_plot.size // 2:
                 _logger.info(f'{self.name}: Halfway done creating individual plots...')
 
-            fig, ax = plt.subplots()
+            fig, (ax, ax_zoom) = plt.subplots(1, 2, figsize=(12, 5.5))
 
             # data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
             data_to_plot = map_val[i_tone_absolute]
@@ -491,24 +501,26 @@ class PlotBeamMap(DataRoutine):
             data_to_plot /= np.nanmax(data_to_plot)
             # data_to_plot = 10 * np.log10(np.abs(data_to_plot))
 
-            # All map data
-            im = ax.imshow(
-                data_to_plot,
-                # vmin=-10,
-                # vmax=0,
-                extent=extent,
-                aspect='equal',
-                cmap='jet',
-                # interpolation='bilinear',
-            )
+            imshow_kwargs = {
+                'extent': extent,
+                'aspect': 'equal',
+                'cmap': 'jet',
+                # 'interpolation': 'bilinear',
+            }
 
-            # Color bar
-            divider = make_axes_locatable(ax)
+            # All map data
+            im = ax.imshow(data_to_plot, **imshow_kwargs)
+
+            # Zoomed-in map data (same color scale so the colorbar applies to both)
+            ax_zoom.imshow(data_to_plot, norm=im.norm, **imshow_kwargs)
+
+            # Color bar (shared, to the right of the zoomed panel)
+            divider = make_axes_locatable(ax_zoom)
             cax = divider.append_axes('right', size='5%', pad=0.05)
             cb = fig.colorbar(im, cax=cax)
             cb.set_label(f'Normalized signal ({units})', rotation=270, labelpad=15)
 
-            # Center of bright source
+            # Center of bright source (full map only, so it doesn't hide the beam)
             ax.plot(
                 az_center[i_tone_absolute],
                 za_center[i_tone_absolute],
@@ -518,72 +530,186 @@ class PlotBeamMap(DataRoutine):
                 mew=2,
             )
 
-            # Stats
-            if chanmask[i_tone_absolute] != 0:
-                bbox_pad = 0.3
-                t = AnchoredText(
-                    f'Amplitude = {amplitude[i_tone_absolute] * 1e5:2f}    '
-                    f'chisq = {chisq[i_tone_absolute]:.3f}    '
-                    f'snr = {snr[i_tone_absolute]:.3f}\n'
-                    f'fwhm_az = {fwhm_az[i_tone_absolute]:.2f}    '
-                    f'fwhm_za = {fwhm_za[i_tone_absolute]:.2f}\n'
-                    f'az_center = {az_center[i_tone_absolute]:.2f}    '
-                    f'za_center = {za_center[i_tone_absolute]:.2f}\n',
-                    loc='upper center',
-                    bbox_to_anchor=(0.5, 0.15),
-                    bbox_transform=fig.transFigure,
-                    pad=bbox_pad,
-                    borderpad=0,
-                    prop={
-                        # color='white',
-                        'horizontalalignment': 'center',
-                    },
-                )
-                # t.patch.set_alpha(0.25)
-                # t.patch.set_color('black')
-                ax.add_artist(t)
+            # Zoom in around the beam
+            x_lim, y_lim = self._zoom_limits(
+                data_to_plot,
+                map_az,
+                map_za,
+                extent,
+                dpix,
+                az_center[i_tone_absolute],
+                za_center[i_tone_absolute],
+                fwhm_az[i_tone_absolute],
+                fwhm_za[i_tone_absolute],
+            )
+            ax_zoom.set_xlim(*x_lim)
+            ax_zoom.set_ylim(*y_lim)
 
-            i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
-            if pdata.n_chan > 1:
-                # Spefcify the tile name if there are multiple channels
-                tile_name = pdata.get_tile_name(i_chan)
-                title = (
-                    f'{elide_text(tile_name, max_len=30)} - Tone {i_tone_relative}\n'
-                    f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
-                )
-            else:
-                title = (
-                    f'Tone {i_tone_relative} '
-                    f'($f_0$={detector_f[i_tone_absolute] * 1e-6:.3f} MHz)'
+            # Stats
+            show_stats = chanmask[i_tone_absolute] != 0
+            if show_stats:
+                self._add_stats_text(
+                    fig,
+                    amplitude[i_tone_absolute],
+                    chisq[i_tone_absolute],
+                    snr[i_tone_absolute],
+                    fwhm_az[i_tone_absolute],
+                    fwhm_za[i_tone_absolute],
+                    az_center[i_tone_absolute],
+                    za_center[i_tone_absolute],
                 )
 
             # Indicate in plot title and face color if off-resonance / bad tone
-            if chanmask[i_tone_absolute] != 1:
-                if chanmask[i_tone_absolute] == 0:
-                    title += ' (Off-resonance)'
-                    facecolor = OFF_RESONANCE_COLOR
-                else:
-                    title += ' (Bad Resonance)'
-                    facecolor = BAD_RESONANCE_COLOR
+            title, facecolor = self._tone_title(
+                pdata, i_tone_absolute, detector_f[i_tone_absolute]
+            )
+            if facecolor is not None:
                 fig.set_facecolor(facecolor)
 
-            ax.set_xlabel('X Position (deg)')
-            ax.set_ylabel('Y Position (deg)')
+            for a in (ax, ax_zoom):
+                a.set_xlabel('X Position (deg)')
+                a.set_ylabel('Y Position (deg)')
             ax.set_xlim(extent[0], extent[1])
             ax.set_ylim(extent[2], extent[3])
-            ax.set_title(title)
+            ax.set_title('Full map')
+            ax_zoom.set_title('Beam (zoomed)')
+            fig.suptitle(title)
             fig.set_dpi(dpi)
 
-            plt.subplots_adjust(bottom=0.18)
-            # if chanmask[i_res] != 0:
-            #     plt.tight_layout(rect=[0, 0.10, 1, 1])
-            # else:
-            plt.tight_layout()
+            # Leave room at the bottom for the stats box
+            fig.tight_layout(rect=(0, 0.14 if show_stats else 0, 1, 1))
+
+            # Outline the zoomed region on the full map. The connector lines are
+            # hidden since they cross the zoomed panel's tick labels.
+            indicator = ax.indicate_inset_zoom(ax_zoom, edgecolor='white', alpha=0.9)
+            for connector in indicator.connectors:
+                connector.set_visible(False)
+
             pdf.savefig(fig)
-            plt.close()
+            fig.clf()
+            plt.close(fig)
+            del fig, ax, ax_zoom
+            gc.collect()
 
         pdf.close()
         return RoutineResult()
+
+    @staticmethod
+    def _add_stats_text(
+        fig: plt.Figure,
+        amplitude: float,
+        chisq: float,
+        snr: float,
+        fwhm_az: float,
+        fwhm_za: float,
+        az_center: float,
+        za_center: float,
+    ):
+        """Add a box with the beam fit statistics to the bottom of the figure."""
+        bbox_pad = 0.3
+        t = AnchoredText(
+            f'Amplitude = {amplitude * 1e5:2f}    '
+            f'chisq = {chisq:.3f}    '
+            f'snr = {snr:.3f}\n'
+            f'fwhm_az = {fwhm_az:.2f}    '
+            f'fwhm_za = {fwhm_za:.2f}\n'
+            f'az_center = {az_center:.2f}    '
+            f'za_center = {za_center:.2f}',
+            loc='lower center',
+            bbox_to_anchor=(0.5, 0.01),
+            bbox_transform=fig.transFigure,
+            pad=bbox_pad,
+            borderpad=0,
+            prop={
+                # color='white',
+                'horizontalalignment': 'center',
+            },
+        )
+        # t.patch.set_alpha(0.25)
+        # t.patch.set_color('black')
+        fig.add_artist(t)
+
+    @staticmethod
+    def _tone_title(
+        pdata: ProcessedData,
+        i_tone_absolute: int,
+        f0: float,
+    ) -> tuple[str, str | None]:
+        """Get the plot title and face color for a tone.
+
+        The face color is `None` for good on-resonance tones.
+        """
+        i_chan, i_tone_relative = pdata.get_relative_tone_index(i_tone_absolute)
+        if pdata.n_chan > 1:
+            # Spefcify the tile name if there are multiple channels
+            tile_name = pdata.get_tile_name(i_chan)
+            title = (
+                f'{elide_text(tile_name, max_len=30)} - Tone {i_tone_relative}\n'
+                f'($f_0$={f0 * 1e-6:.3f} MHz)'
+            )
+        else:
+            title = f'Tone {i_tone_relative} ($f_0$={f0 * 1e-6:.3f} MHz)'
+
+        facecolor = None
+        chanmask_val = pdata.chanmask[i_tone_absolute]
+        if chanmask_val != 1:
+            if chanmask_val == 0:
+                title += ' (Off-resonance)'
+                facecolor = OFF_RESONANCE_COLOR
+            else:
+                title += ' (Bad Resonance)'
+                facecolor = BAD_RESONANCE_COLOR
+        return title, facecolor
+
+    def _zoom_limits(
+        self,
+        data: npt.NDArray,
+        map_az: npt.NDArray,
+        map_za: npt.NDArray,
+        extent: tuple[float, float, float, float],
+        dpix: float,
+        az_center: float,
+        za_center: float,
+        fwhm_az: float,
+        fwhm_za: float,
+    ) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Get the x and y limits of the zoomed-in region around a beam.
+
+        Centers on the fitted beam center, falling back to the brightest pixel if the
+        fit failed. The limits preserve the axis orientation given by `extent`.
+
+        Failed fits can produce NaN, zero, or absurdly large (e.g. 1e285) centers and
+        FWHMs, so the fit values are only used when they lie within the map. Using
+        them unchecked as axis limits can make matplotlib error out or exhaust memory.
+        """
+        az_min, az_max = sorted(extent[:2])
+        za_min, za_max = sorted(extent[2:])
+        map_size = min(az_max - az_min, za_max - za_min)
+
+        x0, y0 = az_center, za_center
+        if not (az_min <= x0 <= az_max and za_min <= y0 <= za_max):  # False for NaN
+            if np.all(np.isnan(data)):
+                x0 = (az_min + az_max) / 2
+                y0 = (za_min + za_max) / 2
+            else:
+                i_za, i_az = np.unravel_index(np.nanargmax(data), data.shape)
+                x0 = map_az[i_az]
+                y0 = map_za[i_za]
+
+        half_width = self.params['zoom_half_width']
+        if half_width is None:
+            fwhm = np.fmax(fwhm_az, fwhm_za)  # NaN only if both are NaN
+            # A beam narrower than a pixel or wider than the map is a failed fit.
+            # (Comparison is False for NaN.)
+            half_width = 1.5 * fwhm if dpix <= fwhm < map_size else 0.1 * map_size
+        half_width = float(np.clip(half_width, 2 * dpix, map_size / 2))
+
+        # Keep the same axis orientation as the full map (extent may be inverted)
+        x_dir = np.sign(extent[1] - extent[0]) or 1
+        y_dir = np.sign(extent[3] - extent[2]) or 1
+        x_lim = (x0 - x_dir * half_width, x0 + x_dir * half_width)
+        y_lim = (y0 - y_dir * half_width, y0 + y_dir * half_width)
+        return x_lim, y_lim
 
     def _plot_beam_centers(
         self,
