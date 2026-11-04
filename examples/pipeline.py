@@ -80,7 +80,7 @@ if __name__ == '__main__':
         dataset=dataset,
         az_trim=0,
         za_trim=0,
-        dpix=0.02,
+        dpix=0.03,
         r0=0.0,
     )
     plot_map_routine = PlotMap(
@@ -120,12 +120,12 @@ if __name__ == '__main__':
         # compute_psd,
         # psd_plotter,
         bin_tod_to_map,
-        # plot_map_routine,
+        plot_map_routine,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
-        analyze_beammap,
-        plot_beammap,
+        # analyze_beammap,
+        # plot_beammap,
     ])
 
     # date = '20260820'  # For testing normal maps
@@ -137,11 +137,11 @@ if __name__ == '__main__':
     # date = '20261001'  # For testing normal maps
     # setnum = 1006
 
-    date = '20261023'
-    setnum = 1006
+    date = '20261104'
+    setnum = 1004
 
 
-    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
     # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
@@ -168,13 +168,13 @@ if __name__ == '__main__':
     # plt.show()
     # pdb.set_trace()
 
-    pipeline = Pipeline([
-        bin_tod_to_map,
-        analyze_beammap,
-    ])
-    date = '20260617'
-    for setnum in [1001, 1004, 1005, 1006]:
-        pdata = ProcessedData.load(date, setnum)
-        # pdb.set_trace()
-        pipeline.run(pdata)
+    # pipeline = Pipeline([
+    #     bin_tod_to_map,
+    #     analyze_beammap,
+    # ])
+    # date = '20260617'
+    # for setnum in [1001, 1004, 1005, 1006]:
+    #     pdata = ProcessedData.load(date, setnum)
+    #     # pdb.set_trace()
+    #     pipeline.run(pdata)
 

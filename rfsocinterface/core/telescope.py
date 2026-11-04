@@ -440,7 +440,7 @@ class TelescopeMotorController:
 
         ##confirm position
         az_pos, az_pps_pos = self.get_ser_az_pos()
-        za_pos, za_pps_pos = self.get_ser_za_pos()
+        za_pos, za_pps_pos, latch_signal = self.get_ser_za_pos()
         if store_position_data:
             position_data = [
                 az_pos,
@@ -448,8 +448,10 @@ class TelescopeMotorController:
                 time.time(),
                 az_pps_pos,
                 za_pps_pos,
+                latch_signal,
                 is_signal,
             ]
+            latch_signal = 0.0
         counter = 0
         ##Run loop
         pfb_time = time.time()
@@ -499,7 +501,15 @@ class TelescopeMotorController:
                 if store_position_data:
                     position_data = np.append(
                         position_data,
-                        [az_pos, za_pos, pfb_time, az_pps_pos, za_pps_pos, is_signal],
+                        [
+                            az_pos,
+                            za_pos,
+                            pfb_time,
+                            az_pps_pos,
+                            za_pps_pos,
+                            latch_signal,
+                            is_signal,
+                        ],
                     )
 
                 counter = counter + 1
@@ -538,11 +548,12 @@ class TelescopeMotorController:
             _logger.info(f'AZ speed relation set to: {rpm_per_ten_volt * 10} RPM / V')
 
     # Zenith angle settings
-    def get_ser_za_pos(self, timeout: float = 0.1) -> tuple[float, float]:
+    def get_ser_za_pos(self, timeout: float = 0.1) -> tuple[float, float, float]:
         """Get the serial zenith angle position."""
         # Get old values as a fallback
         old_pos = self.za_pos
         old_pps_pos = self.za_pps_pos
+        latch_signal = 0.0
 
         # Query the values from the motor
         pos_str = self.write_ser_za('PL.FB', timeout=timeout / 3)
@@ -550,6 +561,7 @@ class TelescopeMotorController:
         state = float(state_str.split(' ')[0].split('>')[-1])
         if state == 1:
             # It's been latched so get the position and reset the latch
+            latch_signal = 1.0
             pps_pos_str = self.write_ser_za('CAP0.PLFB', timeout=timeout / 3)
             self.write_ser_za('CAP0.EN 1', timeout=timeout / 3)
         else:
@@ -590,7 +602,7 @@ class TelescopeMotorController:
 
         if self._initialized:
             self.send('za_pos', new_pos, new_pps_pos, timeout=timeout)
-        return new_pos, new_pps_pos
+        return new_pos, new_pps_pos, latch_signal
 
     def set_za_pos(
         self,
@@ -630,7 +642,7 @@ class TelescopeMotorController:
         self.set_ao_zero()
 
         # confirm position
-        za_pos, za_pps_pos = self.get_ser_za_pos()
+        za_pos, za_pps_pos, latch_signal = self.get_ser_za_pos()
         az_pos, az_pps_pos = self.get_ser_az_pos()
         if store_position_data:
             position_data = [
@@ -639,6 +651,7 @@ class TelescopeMotorController:
                 time.time(),
                 az_pps_pos,
                 za_pps_pos,
+                latch_signal,
                 is_signal,
             ]
         if scan_mode and primary_scan_direction.lower() == 'za':
@@ -684,7 +697,7 @@ class TelescopeMotorController:
 
                 self.set_ao_value(data_value, ZA_OUT_CHANNEL)
                 _tele_logger.debug('Getting ser za pos')
-                za_pos, za_pps_pos = self.get_ser_za_pos()
+                za_pos, za_pps_pos, latch_signal = self.get_ser_za_pos()
                 if abs(za_pos - new_pos) <= tolerance:
                     self.set_ao_value(ZERO_DATA, ZA_OUT_CHANNEL)
                 if store_position_data:
@@ -696,6 +709,7 @@ class TelescopeMotorController:
                             time.time(),
                             az_pps_pos,
                             za_pps_pos,
+                            latch_signal,
                             is_signal,
                         ],
                     )
@@ -717,7 +731,7 @@ class TelescopeMotorController:
         # self.zenithVelocityChanged.emit(0)
         ## Read position again
         # time.sleep(0.1)
-        za_pos, _ = self.get_ser_za_pos()
+        za_pos, _za_pps, _latch = self.get_ser_za_pos()
         _tele_logger.debug(
             f'Finished setting za_pos to {new_pos}. '
             f'Actual={za_pos}, Error={za_pos - new_pos:.5f}'
@@ -747,12 +761,23 @@ class TelescopeMotorController:
         start_time = time.time()
         end_time = start_time + duration
         az_pos, az_pos_pps = self.get_ser_az_pos()
-        za_pos, za_pos_pps = self.get_ser_za_pos()
+        za_pos, za_pos_pps, latch_signal = self.get_ser_za_pos()
         position_data = []
         while self._run and time.time() < end_time:
             position_data.extend(
-                [az_pos, za_pos, time.time(), az_pos_pps, za_pos_pps, True]
+                [
+                    az_pos,
+                    za_pos,
+                    time.time(),
+                    az_pos_pps,
+                    za_pos_pps,
+                    latch_signal,
+                    True,
+                ]
             )
+            # If the ZA latch was set on the initial read, then we record it
+            # but we never check again, so set it to 0
+            latch_signal = 0.0
             label_text = (
                 f'Running Stared Image\nTime Remaining: {end_time - time.time():.2f} s'
             )
@@ -768,12 +793,13 @@ class TelescopeMotorController:
         path = Path(file)
         try:
             with h5py.File(path, 'w') as f:
-                f.create_dataset('az_tel', data=position_data[0::6])
-                f.create_dataset('za_tel', data=position_data[1::6])
-                f.create_dataset('timestamp_tel', data=position_data[2::6])
-                f.create_dataset('az_pps', data=position_data[3::6])
-                f.create_dataset('za_pps', data=position_data[4::6])
-                msk = position_data[5::6].astype(bool)
+                f.create_dataset('az_tel', data=position_data[0::7])
+                f.create_dataset('za_tel', data=position_data[1::7])
+                f.create_dataset('timestamp_tel', data=position_data[2::7])
+                f.create_dataset('az_pps', data=position_data[3::7])
+                f.create_dataset('za_pps', data=position_data[4::7])
+                f.create_dataset('za_pps_latch', data=position_data[5::7])
+                msk = position_data[6::7].astype(bool)
                 f.create_dataset('map_signal_mask', data=msk, dtype=bool)
                 f.create_dataset('optical_visibility', data=['****'])
                 f.attrs['params'] = json.dumps(
@@ -879,7 +905,7 @@ class TelescopeMotorController:
         primary_start_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         primary_end_buffer = 0.0  # 0.2 * np.sign(AZ_stop-AZ_start)
         initial_az, _ = self.get_ser_az_pos()
-        initial_za, _ = self.get_ser_za_pos()
+        initial_za, _za_pps, _latch_signal = self.get_ser_za_pos()
         if primary_az:
             primary_start += initial_az
             primary_stop += initial_az
@@ -1030,12 +1056,13 @@ class TelescopeMotorController:
         path = Path(file)
         try:
             with h5py.File(path, 'w') as f:
-                f.create_dataset('az_tel', data=position_data[0::6])
-                f.create_dataset('za_tel', data=position_data[1::6])
-                f.create_dataset('timestamp_tel', data=position_data[2::6])
-                f.create_dataset('az_pps', data=position_data[3::6])
-                f.create_dataset('za_pps', data=position_data[4::6])
-                msk = position_data[5::6].astype(bool)
+                f.create_dataset('az_tel', data=position_data[0::7])
+                f.create_dataset('za_tel', data=position_data[1::7])
+                f.create_dataset('timestamp_tel', data=position_data[2::7])
+                f.create_dataset('az_pps', data=position_data[3::7])
+                f.create_dataset('za_pps', data=position_data[4::7])
+                f.create_dataset('za_pps_latch', data=position_data[5::7])
+                msk = position_data[6::7].astype(bool)
                 f.create_dataset('map_signal_mask', data=msk, dtype=bool)
                 f.create_dataset('optical_visibility', data=['****'])
                 f.attrs['params'] = json.dumps(

@@ -13,6 +13,22 @@ from rfsocinterface.core.utils import compute_chunk_shape, iterate_chunks
 from examples.beammaps import plot_signal_mask
 
 if __name__ == '__main__':
+    azel = '/data/20261104/20261104_AZEL_set1003.h5'
+    f = h5py.File(azel, 'r')
+    x = f['timestamp_tel'][:]
+    x -= x[0]
+    diff_za = np.concatenate([[0], np.diff(f['za_pps'][:])])
+    is_diff_za = (diff_za != 0).astype(int)
+    diff_az = np.concatenate([[0], np.diff(f['az_pps'][:])])
+    is_diff_az = (diff_az != 0).astype(int)
+    plt.scatter(x, is_diff_za, label='za_pps', marker='+')
+    plt.scatter(x, f['za_pps_latch'][:], label='za_pps_latch', marker='x')
+    plt.scatter(x, is_diff_az, label='az_pps', marker='.')
+    plt.legend()
+    plt.show()
+    pdb.set_trace()
+
+
     downsampling_factor = 16
 
     date = '20260617'
