@@ -1,16 +1,16 @@
 """Beam map analysis routines."""
 
-import gc
 import logging
 import typing
 from typing import ClassVar
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import tqdm
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.figure import Figure
 from matplotlib.offsetbox import AnchoredText
+from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from packaging.version import Version
 from scipy.optimize import curve_fit
@@ -34,6 +34,10 @@ from rfsocinterface.core.utils import (
 )
 
 _logger = logging.getLogger(__name__)
+
+# Beam fit statistics at or above this magnitude (as displayed) are treated as failed
+# fits and shown as "n/a" in PlotBeamMap.
+_MAX_STAT_MAGNITUDE = 1e6
 
 
 def gauss_2d(
@@ -419,7 +423,6 @@ class PlotBeamMap(DataRoutine):
         nrows = self.params['nrows']
         ncols = self.params['ncols']
         page_size = nrows * ncols
-        dpi = self.params['dpi']
 
         # Make scatter plot of beam centers
         self._plot_beam_centers(
@@ -432,8 +435,8 @@ class PlotBeamMap(DataRoutine):
 
         # Create the big group plots
         _logger.info(f'{self.name}: Creating grid pages...')
-        fig, axes = plt.subplots(nrows, ncols)
-        fig.set_dpi(dpi)  # Sharper plots
+        fig = self._new_figure()
+        axes = fig.subplots(nrows, ncols)
         for ax in axes.flatten():
             ax.set_axis_off()
         i_subplot = 1
@@ -460,7 +463,7 @@ class PlotBeamMap(DataRoutine):
                     else BAD_RESONANCE_COLOR
                 )
                 auto_axis = ax.axis()
-                rec = plt.Rectangle(
+                rec = Rectangle(
                     (auto_axis[0], auto_axis[2]),
                     auto_axis[1] - auto_axis[0],
                     auto_axis[3] - auto_axis[2],
@@ -473,9 +476,8 @@ class PlotBeamMap(DataRoutine):
 
             if i_subplot == page_size:
                 pdf.savefig(fig)
-                plt.close()
-                fig, axes = plt.subplots(nrows, ncols)
-                fig.set_dpi(dpi)  # Sharper plots
+                fig = self._new_figure()
+                axes = fig.subplots(nrows, ncols)
                 for ax in axes.flatten():
                     ax.set_axis_off()
                 i_subplot = 0
@@ -483,7 +485,6 @@ class PlotBeamMap(DataRoutine):
 
         if i_subplot > 1:
             pdf.savefig(fig)
-        plt.close()
 
         # Create individul plots for each tone
         _logger.info(f'{self.name}: Creating individual resonance plots...')
@@ -491,7 +492,8 @@ class PlotBeamMap(DataRoutine):
             if i_loop == tones_to_plot.size // 2:
                 _logger.info(f'{self.name}: Halfway done creating individual plots...')
 
-            fig, (ax, ax_zoom) = plt.subplots(1, 2, figsize=(12, 5.5))
+            fig = self._new_figure(figsize=(12, 5.5))
+            ax, ax_zoom = fig.subplots(1, 2)
 
             # data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
             data_to_plot = map_val[i_tone_absolute]
@@ -505,7 +507,11 @@ class PlotBeamMap(DataRoutine):
                 'extent': extent,
                 'aspect': 'equal',
                 'cmap': 'jet',
-                # 'interpolation': 'bilinear',
+                # Embed the raw map pixels in the PDF instead of an image resampled
+                # to the figure dpi. This keeps each image small regardless of dpi
+                # (the PdfPages backend holds every image in memory until it is
+                # closed) and keeps pixels sharp when zooming in on the PDF.
+                'interpolation': 'none',
             }
 
             # All map data
@@ -519,6 +525,12 @@ class PlotBeamMap(DataRoutine):
             cax = divider.append_axes('right', size='5%', pad=0.05)
             cb = fig.colorbar(im, cax=cax)
             cb.set_label(f'Normalized signal ({units})', rotation=270, labelpad=15)
+            # Matplotlib rasterizes colorbars by default. In a PDF, that renders a
+            # full-page raster buffer and stores a cropped *view* of it, which keeps
+            # the whole buffer (~24 MB at 300 dpi) alive until the PdfPages is
+            # closed. Over hundreds of pages this exhausts memory, so draw the
+            # colorbar as vectors instead (it's only a few hundred quads).
+            cb.solids.set_rasterized(False)
 
             # Center of bright source (full map only, so it doesn't hide the beam)
             ax.plot(
@@ -550,6 +562,8 @@ class PlotBeamMap(DataRoutine):
             if show_stats:
                 self._add_stats_text(
                     fig,
+                    extent,
+                    dpix,
                     amplitude[i_tone_absolute],
                     chisq[i_tone_absolute],
                     snr[i_tone_absolute],
@@ -574,7 +588,6 @@ class PlotBeamMap(DataRoutine):
             ax.set_title('Full map')
             ax_zoom.set_title('Beam (zoomed)')
             fig.suptitle(title)
-            fig.set_dpi(dpi)
 
             # Leave room at the bottom for the stats box
             fig.tight_layout(rect=(0, 0.14 if show_stats else 0, 1, 1))
@@ -586,17 +599,26 @@ class PlotBeamMap(DataRoutine):
                 connector.set_visible(False)
 
             pdf.savefig(fig)
-            fig.clf()
-            plt.close(fig)
-            del fig, ax, ax_zoom
-            gc.collect()
 
         pdf.close()
         return RoutineResult()
 
+    def _new_figure(self, **kwargs) -> Figure:
+        """Create a figure that is not registered with pyplot.
+
+        Figures created through pyplot get a GUI window with interactive backends
+        (e.g. QtAgg). Closing those windows only schedules their deletion for the
+        GUI event loop, which never runs in a script, so each one keeps its full
+        render buffer alive and memory grows with every page. A bare `Figure` has
+        no window and is freed as soon as it goes out of scope.
+        """
+        return Figure(dpi=self.params['dpi'], **kwargs)
+
     @staticmethod
     def _add_stats_text(
-        fig: plt.Figure,
+        fig: Figure,
+        extent: tuple[float, float, float, float],
+        dpix: float,
         amplitude: float,
         chisq: float,
         snr: float,
@@ -605,16 +627,29 @@ class PlotBeamMap(DataRoutine):
         az_center: float,
         za_center: float,
     ):
-        """Add a box with the beam fit statistics to the bottom of the figure."""
+        """Add a box with the beam fit statistics to the bottom of the figure.
+
+        Values from failed fits (NaN, or absurd values like 1e285) are shown as
+        "n/a". Centers must lie within the map and FWHMs must be between one pixel
+        and the map size. The other values have no natural range, so they only need
+        to be finite and print as less than `_MAX_STAT_MAGNITUDE`.
+        """
+
+        def fmt(value: float, spec: str, valid: bool = True) -> str:
+            ok = valid and np.isfinite(value) and abs(value) < _MAX_STAT_MAGNITUDE
+            return format(value, spec) if ok else 'n/a'
+
+        map_size = PlotBeamMap._map_size(extent)
+        center_ok = PlotBeamMap._center_in_map(extent, az_center, za_center)
         bbox_pad = 0.3
         t = AnchoredText(
-            f'Amplitude = {amplitude * 1e5:2f}    '
-            f'chisq = {chisq:.3f}    '
-            f'snr = {snr:.3f}\n'
-            f'fwhm_az = {fwhm_az:.2f}    '
-            f'fwhm_za = {fwhm_za:.2f}\n'
-            f'az_center = {az_center:.2f}    '
-            f'za_center = {za_center:.2f}',
+            f'Amplitude = {fmt(amplitude * 1e5, "2f")}    '
+            f'chisq = {fmt(chisq, ".3f", chisq >= 0)}    '
+            f'snr = {fmt(snr, ".3f")}\n'
+            f'fwhm_az = {fmt(fwhm_az, ".2f", dpix <= fwhm_az < map_size)}    '
+            f'fwhm_za = {fmt(fwhm_za, ".2f", dpix <= fwhm_za < map_size)}\n'
+            f'az_center = {fmt(az_center, ".2f", center_ok)}    '
+            f'za_center = {fmt(za_center, ".2f", center_ok)}',
             loc='lower center',
             bbox_to_anchor=(0.5, 0.01),
             bbox_transform=fig.transFigure,
@@ -661,6 +696,22 @@ class PlotBeamMap(DataRoutine):
                 facecolor = BAD_RESONANCE_COLOR
         return title, facecolor
 
+    @staticmethod
+    def _map_size(extent: tuple[float, float, float, float]) -> float:
+        """Get the length of the map's shorter side."""
+        return min(abs(extent[1] - extent[0]), abs(extent[3] - extent[2]))
+
+    @staticmethod
+    def _center_in_map(
+        extent: tuple[float, float, float, float],
+        az_center: float,
+        za_center: float,
+    ) -> bool:
+        """Check whether a fitted beam center lies within the map (False for NaN)."""
+        az_min, az_max = sorted(extent[:2])
+        za_min, za_max = sorted(extent[2:])
+        return bool(az_min <= az_center <= az_max and za_min <= za_center <= za_max)
+
     def _zoom_limits(
         self,
         data: npt.NDArray,
@@ -684,10 +735,10 @@ class PlotBeamMap(DataRoutine):
         """
         az_min, az_max = sorted(extent[:2])
         za_min, za_max = sorted(extent[2:])
-        map_size = min(az_max - az_min, za_max - za_min)
+        map_size = self._map_size(extent)
 
         x0, y0 = az_center, za_center
-        if not (az_min <= x0 <= az_max and za_min <= y0 <= za_max):  # False for NaN
+        if not self._center_in_map(extent, x0, y0):
             if np.all(np.isnan(data)):
                 x0 = (az_min + az_max) / 2
                 y0 = (za_min + za_max) / 2
@@ -728,14 +779,15 @@ class PlotBeamMap(DataRoutine):
 
         # Create scatter plot of beam centers
         _logger.info(f'{self.name}: Creating beam center scatter plot...')
-        plt.scatter(az_center[high_snr_ind], za_center[high_snr_ind], marker='+')
-        plt.axis('equal')
-        plt.xlim(extent[0], extent[1])
-        plt.ylim(extent[2], extent[3])
-        plt.xlabel('X Position (deg)')
-        plt.ylabel('Y Position (deg)')
-        pdf.savefig()
-        plt.close()
+        fig = self._new_figure()
+        ax = fig.subplots()
+        ax.scatter(az_center[high_snr_ind], za_center[high_snr_ind], marker='+')
+        ax.axis('equal')
+        ax.set_xlim(extent[0], extent[1])
+        ax.set_ylim(extent[2], extent[3])
+        ax.set_xlabel('X Position (deg)')
+        ax.set_ylabel('Y Position (deg)')
+        pdf.savefig(fig)
 
 
 def combine_polarized_beammaps(
