@@ -317,7 +317,7 @@ if __name__ == '__main__':
     lp_filter_freq = 15
     hp_filter_freq = 0.03
 
-    ds_factor = 16
+    ds_factor = 10
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
@@ -341,16 +341,16 @@ if __name__ == '__main__':
     plot_beammap = PlotBeamMap(dpi=100)
 
     pipeline = Pipeline([
-        # hp_filter,
-        # lp_filter,
-        # clean_tod,
+        hp_filter,
+        lp_filter,
+        clean_tod,
         bin_tod_to_map,
         analyze_beammap,
         plot_beammap,
     ])
 
-    date = '20260617'
-    setnum = 1001
+    date = '20261105'
+    setnum = 1005
 
     # tod_file = '/data/20261028/20261028_Device_aSi1_Channel2_telescope_275mK_20260804_TOD_set1001.h5'
     # tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260804'
@@ -360,12 +360,13 @@ if __name__ == '__main__':
     # if sweep is not None:
     #     sweep.append_to_TOD(tod_file)
 
-    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    for setnum in [1001, 1004, 1005, 1006]:
-        pdata = ProcessedData.load(date, setnum)
-        pipeline.run(pdata)
-        pdata.close()
+    # pdata = ProcessedData.load(date, setnum)
+    # for setnum in [1001, 1004, 1005, 1006]:
+    #     pdata = ProcessedData.load(date, setnum)
+    #     pipeline.run(pdata)
+    #     pdata.close()
 
     # pdb.set_trace()
     # bin_tod_to_map.apply(pdata)
