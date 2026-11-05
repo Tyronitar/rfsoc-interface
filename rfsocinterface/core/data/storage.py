@@ -1117,6 +1117,10 @@ class ConsolidatedData(DataStorage):
             n_missed = int(np.sum(missed_packets[:, 1]))
             n_samples = n_samples_raw + n_missed
             n_samples_ds = int(np.ceil(n_samples / downsampling_factor))
+            _logger.info(
+                f'ConsolidatedData: Raw samples = {n_samples_raw}, '
+                f'missed samples = {n_missed}, total samples = {n_samples}'
+            )
 
             tone_counts.append(n_tones)
             sample_counts.append(n_samples_ds)
