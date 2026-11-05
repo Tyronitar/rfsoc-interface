@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import tqdm
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from scipy import signal
@@ -728,7 +729,7 @@ class PlotPSD(DataRoutine):
                         plt.close(onres_fig)
 
                         # Plot individual tones
-                        for i, i_tone_absolute in enumerate(tones):
+                        for i, i_tone_absolute in tqdm.tqdm(enumerate(tones)):
                             f0 = detector_f[i_tone_absolute]
                             if offres_median is not None:
                                 this_offres_median = (
