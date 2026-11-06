@@ -863,9 +863,9 @@ class TelescopeMotorController:
             position_return (bool, optional): Whether to return to the initial
                 position. Defaults to True.
             large_map_mode (bool, optional): Whether to perform the dither in large map
-                mode. In large map mode, secondary dithers are cummulative. Otherwise,
-                the telescope will oscillate back and forth in the secondar ydirection.
-                Defaults to False.
+                mode. In large map mode, secondary dithers are cummulative and centered
+                on the initial position. Otherwise, the telescope will oscillate back
+                and forth in the secondary direction. Defaults to False.
             primary_dither_direction (str, optional): Which direction is the pimary
                 direction (must be 'az' or 'za'). Defaults to 'az'.
         """
@@ -968,25 +968,19 @@ class TelescopeMotorController:
             # Dither in secondary direction. Only flag as signal during the
             # primary dither.
             if large_map_mode:
-                new_za = initial_za + (i_rep - (n_repeats - 1) / 2) * secondary_dither
+                secondary_offset = (i_rep - (n_repeats - 1) / 2) * secondary_dither
+            else:
+                secondary_offset = (i_rep % 2) * secondary_dither
+            if primary_az:
                 this_position_data = self._set_za_pos(
-                    new_za,
-                    stop_run=False,
-                    store_position_data=True,
-                    is_signal=False,
-                )
-            elif primary_az:
-                new_za = initial_za + (i_rep % 2) * secondary_dither
-                this_position_data = self._set_za_pos(
-                    new_za,
+                    initial_za + secondary_offset,
                     stop_run=False,
                     store_position_data=True,
                     is_signal=False,
                 )
             else:
-                new_az = initial_az + (i_rep % 2) * secondary_dither
                 this_position_data = self._set_az_pos(
-                    new_az,
+                    initial_az + secondary_offset,
                     stop_run=False,
                     store_position_data=True,
                     is_signal=False,
