@@ -3,7 +3,7 @@ description: "Build libuldaq for testing, reusing a cached build when one exists
 
 inputs:
   version:
-    description: "libuldaq release to build"
+    description: "which libuldaq release to build"
     default: "1.2.2"
   build-revision:
     description: "Bump this when the build steps change, to force a rebuild"
