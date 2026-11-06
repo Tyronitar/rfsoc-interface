@@ -1,0 +1,26 @@
+name: Build libuldaq
+description: "Build libuldaq for testing"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libusb-1.0-0-dev autotools-dev automake libtool wget
+
+    - name: Download and extract libuldaq
+      shell: bash
+      run: |
+        wget -N https://github.com/mccdaq/uldaq/releases/download/v1.2.2/libuldaq-1.2.2.tar.bz2
+        tar -xvjf libuldaq-1.2.2.tar.bz2
+
+    - name: Configure, build, and install
+      shell: bash
+      run: |
+        cd libuldaq-1.2.2
+        ./configure
+        make
+        sudo make install
+        sudo ldconfig
