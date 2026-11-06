@@ -21,7 +21,7 @@ runs:
       uses: actions/cache@v6
       with:
         path: ${{ runner.temp }}/libuldaq-${{ inputs.version }}
-        key: libuldaq-${{ inputs.version }}-${{ steps.os.outputs.release }}-${{ runner.arch }}-${{ hashFiles('.github/actions/build-libuldaq/action.yaml') }}
+        key: libuldaq-${{ inputs.version }}-${{ steps.os.outputs.release }}-${{ runner.arch }}
 
     - name: Install build dependencies
       if: steps.cache.outputs.cache-hit != 'true'
