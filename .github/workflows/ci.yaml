@@ -1,5 +1,11 @@
 name: CI
-on: pull_request
+on:
+  pull_request:
+  # Caches saved in a pull request are only visible to that pull request.
+  # Running on main saves caches that every pull request can restore, and
+  # running on dev saves caches for pull requests that target dev.
+  push:
+    branches: [main, dev]
 
 jobs:
   ci:
@@ -21,6 +27,7 @@ jobs:
         uses: ./.github/actions/build-libuldaq
 
       - name: Install Python
+        id: setup-python
         uses: actions/setup-python@v4
         with:
             python-version: ${{ matrix.python-version }}
@@ -34,10 +41,11 @@ jobs:
           poetry config virtualenvs.in-project true --local
 
       - name: Define a cache for the virtual environment based on the dependencies lock file
-        uses: actions/cache@v3
+        uses: actions/cache@v6
         with:
           path: ./.venv
-          key: venv-${{ hashFiles('poetry.lock') }}
+          # The venv links to the exact Python build, so a new patch version needs a new venv.
+          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install the project dependencies
         run: poetry install
