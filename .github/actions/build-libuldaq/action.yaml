@@ -1,26 +1,58 @@
 name: Build libuldaq
-description: "Build libuldaq for testing"
+description: "Build libuldaq for testing, reusing a cached build when one exists"
+
+inputs:
+  version:
+    description: "libuldaq release to build"
+    default: "1.2.2"
 
 runs:
   using: "composite"
   steps:
-    - name: Install dependencies
+    - name: Get OS release
+      id: os
+      shell: bash
+      run: echo "release=$(. /etc/os-release && echo "$ID-$VERSION_ID")" >> "$GITHUB_OUTPUT"
+
+    # The built source tree is cached rather than the installed files, because
+    # the install hook runs udevadm and ldconfig, which fail on a staged install.
+    - name: Restore libuldaq build
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/libuldaq-${{ inputs.version }}
+        key: libuldaq-${{ inputs.version }}-${{ steps.os.outputs.release }}-${{ runner.arch }}-${{ hashFiles('.github/actions/build-libuldaq/action.yaml') }}
+
+    - name: Install build dependencies
+      if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential libusb-1.0-0-dev autotools-dev automake libtool wget
 
-    - name: Download and extract libuldaq
+    - name: Download and build libuldaq
+      if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
-        wget -N https://github.com/mccdaq/uldaq/releases/download/v1.2.2/libuldaq-1.2.2.tar.bz2
-        tar -xvjf libuldaq-1.2.2.tar.bz2
-
-    - name: Configure, build, and install
-      shell: bash
-      run: |
-        cd libuldaq-1.2.2
+        cd "$RUNNER_TEMP"
+        wget https://github.com/mccdaq/uldaq/releases/download/v${{ inputs.version }}/libuldaq-${{ inputs.version }}.tar.bz2
+        tar -xjf libuldaq-${{ inputs.version }}.tar.bz2
+        cd libuldaq-${{ inputs.version }}
         ./configure
-        make
+        make -j"$(nproc)"
+
+    - name: Install libusb runtime
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        if ! /sbin/ldconfig -p | grep -q 'libusb-1\.0\.so\.0'; then
+          sudo apt-get update
+          sudo apt-get install -y libusb-1.0-0
+        fi
+
+    - name: Install libuldaq
+      shell: bash
+      run: |
+        cd "$RUNNER_TEMP/libuldaq-${{ inputs.version }}"
         sudo make install
         sudo ldconfig
