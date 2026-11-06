@@ -2,9 +2,10 @@ name: CI
 on:
   pull_request:
   # Caches saved in a pull request are only visible to that pull request.
-  # Running on main saves caches that every pull request can restore.
+  # Running on main saves caches that every pull request can restore, and
+  # running on dev saves caches for pull requests that target dev.
   push:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   ci:
