@@ -27,6 +27,7 @@ import pytest
 
 from rfsocinterface.core.data.utils import (
     align_telescope_positions,
+    apply_backlash,
     fit_data_pps_grid,
 )
 
@@ -317,3 +318,70 @@ def test_stationary_latches_are_ignored(simulation):
     )
     assert not res.aligned
     assert np.all(res.az[~np.isnan(res.az)] == 5.0)
+
+
+def test_backlash_offsets_scan_directions_symmetrically():
+    """Scans in opposite directions move to opposite sides of the encoder position."""
+    up = np.linspace(0, 1, 101)
+    position = np.r_[up, up[::-1]]
+    corrected = apply_backlash(position, 0.02)
+    np.testing.assert_allclose(corrected[:101], up - 0.02)
+    # After the reversal has been taken up, the telescope is ahead of the encoder
+    np.testing.assert_allclose(corrected[110:], position[110:] + 0.02)
+
+
+def test_backlash_holds_position_through_reversals_and_stops():
+    """The telescope doesn't move until the encoder has taken up the backlash."""
+    position = np.r_[np.linspace(0, 1, 101), np.full(20, 1.0), np.linspace(1, 0.97, 4)]
+    corrected = apply_backlash(position, 0.02)
+    # A stop is not a change of direction
+    np.testing.assert_allclose(corrected[100:121], 0.98)
+    # Going back by 0.03 (less than the 0.04 of play) doesn't move the telescope
+    np.testing.assert_allclose(corrected[121:], 0.98)
+
+
+def test_backlash_ignores_encoder_noise():
+    """Noise smaller than the backlash can't make the telescope move back and forth."""
+    noise = np.random.default_rng(2).uniform(-0.005, 0.005, 500)
+    corrected = apply_backlash(5.0 + noise, 0.02)
+    assert np.ptp(corrected) == 0
+
+
+def test_backlash_edge_cases():
+    """Zero backlash, NaNs and negative values are all handled."""
+    position = np.array([0.0, np.nan, 1.0, 2.0])
+    np.testing.assert_array_equal(apply_backlash(position, 0.0), position)
+    corrected = apply_backlash(position, 0.1)
+    assert np.isnan(corrected[1])
+    np.testing.assert_allclose(corrected[[0, 2, 3]], [-0.1, 0.9, 1.9])
+    assert np.isnan(apply_backlash(np.full(3, np.nan), 0.1)).all()
+    with pytest.raises(ValueError, match='negative'):
+        apply_backlash(position, -0.1)
+
+
+@pytest.mark.slow
+def test_backlash_changes_positions_but_not_the_clock_model(simulation):
+    """The latch and encoder share a frame, so backlash can't affect the time alignment.
+
+    The output is the backlash-corrected trajectory mapped through the same clock model.
+    """
+    data_t, pps, tel = simulation
+    args = (data_t, pps, tel['t'], tel['az'], tel['za'], tel['az_pps'], tel['za_pps'])
+    plain = align_telescope_positions(*args)
+    res = align_telescope_positions(*args, az_backlash=0.0125)
+
+    np.testing.assert_array_equal(
+        res.info['clock_model'].values, plain.info['clock_model'].values
+    )
+    assert res.info['n_inliers'] == plain.info['n_inliers']
+
+    # Mid-sweep, up sweeps are lowered and down sweeps are raised by the backlash
+    t0, t1, _, az_target, _ = _segments()[0]  # Upward sweep
+    inside = (data_t > t0 + 2) & (data_t < t1 - 2)
+    assert az_target > 0
+    np.testing.assert_allclose((res.az - plain.az)[inside], -0.0125, atol=2e-3)
+    t0, t1, _, az_target, _ = _segments()[2]  # Downward sweep
+    inside = (data_t > t0 + 2) & (data_t < t1 - 2)
+    assert az_target == 0
+    np.testing.assert_allclose((res.az - plain.az)[inside], 0.0125, atol=2e-3)
+    np.testing.assert_array_equal(res.za, plain.za)

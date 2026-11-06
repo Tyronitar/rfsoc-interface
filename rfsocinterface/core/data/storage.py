@@ -21,9 +21,11 @@ from packaging.version import Version
 
 from rfsocinterface import __version__ as VERSION
 from rfsocinterface.core.data.utils import (
+    AZ_BACKLASH_DEG,
     CALIBRATION_TABLE_DTYPE,
     TONES_TABLE_DTYPE,
     align_telescope_positions,
+    apply_backlash,
     compute_df_per_mK,
     find_missed_packets,
     find_missed_packets_with_indices,
@@ -919,8 +921,23 @@ class ConsolidatedData(DataStorage):
         data_dir: PathLike = DEFAULT_DATA_DIRECTORY,
         downsampling_factor: int = 1,
         use_pps: bool = True,
+        az_backlash: float = AZ_BACKLASH_DEG,
+        za_backlash: float = 0.0,
     ) -> ConsolidatedData:
-        """Consolidate the data for the specified data set."""
+        """Consolidate the data for the specified data set.
+
+        Arguments:
+            date (str): The date of the data set.
+            setnum (int): The number of the data set.
+            data_dir (PathLike, optional): The directory containing the data.
+            downsampling_factor (int, optional): The factor to downsample the data by.
+            use_pps (bool, optional): Whether to align the telescope positions to the
+                data using the PPS signal, if available.
+            az_backlash (float, optional): Backlash to remove from the azimuth positions
+                in degrees (see :func:`apply_backlash`).
+            za_backlash (float, optional): Backlash to remove from the zenith angle
+                positions in degrees (see :func:`apply_backlash`).
+        """
         todtemplate = get_tod_template(date, setnum, data_dir=data_dir)
         tele_template = Path(get_azel_template(date, setnum, data_dir=data_dir))
         optcam_template = Path(get_optcam_template(date, setnum, data_dir=data_dir))
@@ -991,7 +1008,11 @@ class ConsolidatedData(DataStorage):
         step_0 = processing_history.create_group(get_step_group_name(0, 'consolidated'))
         step_0.attrs['name'] = 'ConsolidatedData'
         step_0.attrs['params'] = json.dumps(
-            {'downsampling_factor': downsampling_factor}
+            {
+                'downsampling_factor': downsampling_factor,
+                'az_backlash': az_backlash,
+                'za_backlash': za_backlash,
+            }
         )
         step_0.attrs['rfsocinterface_version'] = VERSION
         step_0.attrs['code_version'] = get_git_hash()
@@ -1396,6 +1417,8 @@ class ConsolidatedData(DataStorage):
                         za_pps_tel[:],
                         raw_map_signal_mask[:],
                         primary_axis=primary_axis,
+                        az_backlash=az_backlash,
+                        za_backlash=za_backlash,
                     )
                     if not alignment.aligned:
                         _logger.warning(
@@ -1409,14 +1432,14 @@ class ConsolidatedData(DataStorage):
                     corrected_az_tel = np.interp(
                         temp_timestamp,
                         timestamp_tel[:],
-                        az_tel[:],
+                        apply_backlash(az_tel[:], az_backlash),
                         left=np.nan,
                         right=np.nan,
                     )
                     corrected_za_tel = np.interp(
                         temp_timestamp,
                         timestamp_tel[:],
-                        za_tel[:],
+                        apply_backlash(za_tel[:], za_backlash),
                         left=np.nan,
                         right=np.nan,
                     )

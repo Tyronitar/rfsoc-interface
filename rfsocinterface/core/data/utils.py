@@ -81,6 +81,11 @@ ZA_TRIM = 0.2
 RFSOC_TIME_OFFSET_AZ = 0  # -12 ms, empirically determined
 RFSOC_TIME_OFFSET_ZA = -3e-3  # -3 ms, empirically determined
 
+# Half of the backlash between the azimuth motor encoder and the telescope, i.e. how far
+# the telescope trails the encoder while moving. Measured from the separation of the
+# beams in opposite scan directions, which is independent of the scan speed.
+AZ_BACKLASH_DEG = 0.0125
+
 
 TONES_TABLE_DTYPE = [
     ('baseband_freq', 'f8'),
@@ -1055,6 +1060,51 @@ def fit_clock_offset(
     return model, info
 
 
+def apply_backlash(position: npt.NDArray, backlash: float) -> npt.NDArray:
+    """Convert motor encoder positions to the positions of the telescope.
+
+    The telescope trails the encoder by ``backlash`` while moving, in whichever
+    direction it is moving. After a reversal, the encoder travels ``2 * backlash``
+    before the telescope follows; while the encoder is stationary, the telescope stays
+    put. Without this correction, rows of a map scanned in opposite directions are
+    offset from each other by ``2 * backlash``, whatever the scan speed.
+
+    This must not be used on the positions compared to the PPS latch, since the latch
+    and the positions it is compared to are both read from the encoder.
+
+    Arguments:
+        position (npt.NDArray): Encoder positions in time order. NaNs are left as they
+            are.
+        backlash (float): Half of the total backlash, in the units of ``position``.
+
+    Returns:
+        (npt.NDArray): The telescope positions. The mean of the two scan directions is
+            unchanged.
+    """
+    if backlash < 0:
+        raise ValueError(f'backlash must not be negative; got {backlash}')
+    position = np.asarray(position, dtype=float)
+    if backlash == 0:
+        return position.copy()
+
+    corrected = position.copy()
+    finite = np.flatnonzero(np.isfinite(position))
+    if finite.size == 0:
+        return corrected
+
+    # Assume that the backlash has been taken up in the direction of the first move
+    first = position[finite[0]]
+    moved = np.flatnonzero(np.abs(position[finite] - first) > 2 * backlash)
+    direction = np.sign(position[finite[moved[0]]] - first) if moved.size else 0.0
+    telescope = first - direction * backlash
+
+    for i in finite.tolist():
+        x = position[i]
+        telescope = min(max(telescope, x - backlash), x + backlash)
+        corrected[i] = telescope
+    return corrected
+
+
 def _strictly_increasing_rows(t: npt.NDArray) -> npt.NDArray:
     """Return indices that sort ``t`` and drop duplicate times."""
     order = np.argsort(t, kind='stable')
@@ -1080,6 +1130,8 @@ def align_telescope_positions(
     max_segment_dt: float = 0.1,
     max_residual: float = 0.1,
     min_pulses_per_axis: int = 5,
+    az_backlash: float = 0.0,
+    za_backlash: float = 0.0,
 ) -> TelescopeAlignment:
     """Align the telescope positions to the data timestamps using the shared PPS.
 
@@ -1124,6 +1176,9 @@ def align_telescope_positions(
         max_segment_dt (float): See :func:`find_telescope_pps_times`.
         max_residual (float): See :func:`fit_clock_offset`.
         min_pulses_per_axis (int): See :func:`fit_clock_offset`.
+        az_backlash (float): Azimuth backlash to remove from the output (see
+            :func:`apply_backlash`). Doesn't affect the time alignment.
+        za_backlash (float): Zenith angle backlash to remove from the output.
 
     Returns:
         (TelescopeAlignment): The aligned positions, signal mask and diagnostics.
@@ -1196,8 +1251,10 @@ def align_telescope_positions(
             return t + default_offset
         return model.to_data_clock(t, axis)
 
+    backlash = {'az': az_backlash, 'za': za_backlash}
     out = {}
     for ax in ('az', 'za'):
+        telescope_position = apply_backlash(positions[ax], backlash[ax])
         rows = np.ones(t_tel.size, dtype=bool)
         if drop_latch_rows:
             rows[np.flatnonzero(np.diff(latches[ax]) != 0) + 1] = False
@@ -1206,7 +1263,7 @@ def align_telescope_positions(
         out[ax] = np.interp(
             data_timestamp,
             to_data_clock(t_tel[rows], ax),
-            positions[ax][rows],
+            telescope_position[rows],
             left=np.nan,
             right=np.nan,
         )
