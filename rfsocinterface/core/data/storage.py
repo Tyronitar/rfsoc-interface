@@ -21,8 +21,11 @@ from packaging.version import Version
 
 from rfsocinterface import __version__ as VERSION
 from rfsocinterface.core.data.utils import (
+    AZ_BACKLASH_DEG,
     CALIBRATION_TABLE_DTYPE,
     TONES_TABLE_DTYPE,
+    align_telescope_positions,
+    apply_backlash,
     compute_df_per_mK,
     find_missed_packets,
     find_missed_packets_with_indices,
@@ -31,7 +34,6 @@ from rfsocinterface.core.data.utils import (
     get_detector_positions_no_interp,
     get_step_group_name,
     interpolate_missing_data,
-    interpolate_telescope_positions,
     interpolate_timestamp_streaming,
     rotate_basis,
 )
@@ -919,8 +921,23 @@ class ConsolidatedData(DataStorage):
         data_dir: PathLike = DEFAULT_DATA_DIRECTORY,
         downsampling_factor: int = 1,
         use_pps: bool = True,
+        az_backlash: float = AZ_BACKLASH_DEG,
+        za_backlash: float = 0.0,
     ) -> ConsolidatedData:
-        """Consolidate the data for the specified data set."""
+        """Consolidate the data for the specified data set.
+
+        Arguments:
+            date (str): The date of the data set.
+            setnum (int): The number of the data set.
+            data_dir (PathLike, optional): The directory containing the data.
+            downsampling_factor (int, optional): The factor to downsample the data by.
+            use_pps (bool, optional): Whether to align the telescope positions to the
+                data using the PPS signal, if available.
+            az_backlash (float, optional): Backlash to remove from the azimuth positions
+                in degrees (see :func:`apply_backlash`).
+            za_backlash (float, optional): Backlash to remove from the zenith angle
+                positions in degrees (see :func:`apply_backlash`).
+        """
         todtemplate = get_tod_template(date, setnum, data_dir=data_dir)
         tele_template = Path(get_azel_template(date, setnum, data_dir=data_dir))
         optcam_template = Path(get_optcam_template(date, setnum, data_dir=data_dir))
@@ -991,7 +1008,11 @@ class ConsolidatedData(DataStorage):
         step_0 = processing_history.create_group(get_step_group_name(0, 'consolidated'))
         step_0.attrs['name'] = 'ConsolidatedData'
         step_0.attrs['params'] = json.dumps(
-            {'downsampling_factor': downsampling_factor}
+            {
+                'downsampling_factor': downsampling_factor,
+                'az_backlash': az_backlash,
+                'za_backlash': za_backlash,
+            }
         )
         step_0.attrs['rfsocinterface_version'] = VERSION
         step_0.attrs['code_version'] = get_git_hash()
@@ -1117,6 +1138,10 @@ class ConsolidatedData(DataStorage):
             n_missed = int(np.sum(missed_packets[:, 1]))
             n_samples = n_samples_raw + n_missed
             n_samples_ds = int(np.ceil(n_samples / downsampling_factor))
+            _logger.info(
+                f'ConsolidatedData: Raw samples = {n_samples_raw}, '
+                f'missed samples = {n_missed}, total samples = {n_samples}'
+            )
 
             tone_counts.append(n_tones)
             sample_counts.append(n_samples_ds)
@@ -1378,49 +1403,47 @@ class ConsolidatedData(DataStorage):
                         'ConsolidatedData: Correlating telescope '
                         'pointing information...'
                     )
-                    corrected_az_tel, corrected_signal_mask_az = (
-                        interpolate_telescope_positions(
-                            temp_timestamp,
-                            timestamp_tel[:],
-                            az_tel[:],
-                            az_pps_tel[:],
-                            temp_pps[:],
-                            raw_map_signal_mask[:],
-                            direction='az',
-                        )
-                    )
-                    corrected_za_tel, corrected_signal_mask_za = (
-                        interpolate_telescope_positions(
-                            temp_timestamp,
-                            timestamp_tel[:],
-                            za_tel[:],
-                            za_pps_tel[:],
-                            temp_pps[:],
-                            raw_map_signal_mask[:],
-                            direction='za',
-                        )
-                    )
-                    # Align the signal mask based on the primary dither direction, if
-                    # available. Otherwise, just use azimuth.
-                    if (
-                        telescope_params.get('primary_dither_direction', '').lower()
+                    # Use the primary dither direction's clock mapping for the signal
+                    # mask, if available. Otherwise, use azimuth.
+                    primary_axis = (
+                        'za'
+                        if telescope_params.get('primary_dither_direction', '').lower()
                         == 'za'
-                    ):
-                        corrected_signal_mask = corrected_signal_mask_za
-                    else:
-                        corrected_signal_mask = corrected_signal_mask_az
+                        else 'az'
+                    )
+                    alignment = align_telescope_positions(
+                        temp_timestamp[:],
+                        temp_pps[:],
+                        timestamp_tel[:],
+                        az_tel[:],
+                        za_tel[:],
+                        az_pps_tel[:],
+                        za_pps_tel[:],
+                        raw_map_signal_mask[:],
+                        primary_axis=primary_axis,
+                        az_backlash=az_backlash,
+                        za_backlash=za_backlash,
+                    )
+                    if not alignment.aligned:
+                        _logger.warning(
+                            'ConsolidatedData: Could not align telescope positions '
+                            'using the PPS; using the raw telescope timestamps.'
+                        )
+                    corrected_az_tel = alignment.az
+                    corrected_za_tel = alignment.za
+                    corrected_signal_mask = alignment.signal_mask
                 else:
                     corrected_az_tel = np.interp(
                         temp_timestamp,
                         timestamp_tel[:],
-                        az_tel[:],
+                        apply_backlash(az_tel[:], az_backlash),
                         left=np.nan,
                         right=np.nan,
                     )
                     corrected_za_tel = np.interp(
                         temp_timestamp,
                         timestamp_tel[:],
-                        za_tel[:],
+                        apply_backlash(za_tel[:], za_backlash),
                         left=np.nan,
                         right=np.nan,
                     )
@@ -1612,6 +1635,8 @@ class ProcessedData(DataStorage):
 
             # # Compute IQ to freq/diss angle based on the source crossing
             # # First mean center IQ data
+            # from scipy import signal
+
             # data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
 
             # data_iq = data_IQ[:]
@@ -1637,22 +1662,27 @@ class ProcessedData(DataStorage):
             # cut_time = 5
             # cut_samples = int(cut_time * self.get_fs(i_chan))
             # cut_data_IQ = filt_data_IQ[..., cut_samples:-cut_samples]
-            # cut_data_IQ_normalized = cut_data_IQ / \
-            #     carrier_amplitudes[:][..., np.newaxis]
+            # cut_data_IQ_normalized = (
+            #     cut_data_IQ / carrier_amplitudes[:][..., np.newaxis]
+            # )
 
             # max_i_samples = np.argmax(
-            #     np.abs(cut_data_IQ_normalized[0]), axis=-1).flatten()
+            #     np.abs(cut_data_IQ_normalized[0]), axis=-1
+            # ).flatten()
             # max_i = cut_data_IQ_normalized[0, range(n_tones), max_i_samples]
             # max_q_samples = np.argmax(
-            #     np.abs(cut_data_IQ_normalized[1]), axis=-1).flatten()
+            #     np.abs(cut_data_IQ_normalized[1]), axis=-1
+            # ).flatten()
             # max_q = cut_data_IQ_normalized[1, range(n_tones), max_q_samples]
             # source_cut_sample = np.where(
-            #     np.abs(max_i) >= np.abs(max_q), max_i_samples, max_q_samples)
+            #     np.abs(max_i) >= np.abs(max_q), max_i_samples, max_q_samples
+            # )
             # # Actual sample index of the source crossing
             # source_sample = source_cut_sample + cut_samples
             # source_amplitudes = data_iq[:, range(n_tones), source_sample]
             # IQ_to_freq_diss_angle = -np.atan2(
-            #     source_amplitudes[1], source_amplitudes[0])
+            #     source_amplitudes[1], source_amplitudes[0]
+            # )
 
             calibration_info['IQ_to_freq_diss_angle'] = IQ_to_freq_diss_angle
             calibration_info['adc_units_to_hz'] = adc_units_to_hz

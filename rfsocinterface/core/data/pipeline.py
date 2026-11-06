@@ -11,6 +11,7 @@ from rfsocinterface.core.data.routines import (
     RoutineResult,
 )
 from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
+from rfsocinterface.core.data.utils import AZ_BACKLASH_DEG
 
 _logger = logging.getLogger(__name__)
 
@@ -23,12 +24,23 @@ class Pipeline:
         self.routines = routines
 
     def from_tod(
-        self, date: str, setnum: int, downsampling_factor: int = 1, use_pps: bool = True
+        self,
+        date: str,
+        setnum: int,
+        downsampling_factor: int = 1,
+        use_pps: bool = True,
+        az_backlash: float = AZ_BACKLASH_DEG,
+        za_backlash: float = 0.0,
     ) -> tuple[ProcessedData, tuple[RoutineResult | tuple[RoutineResult, ...], ...]]:
         """Run a pipeline starting from the TOD files for the desired data set."""
         _logger.info(f'Pipeline: Running pipeline on TOD {date}_set{setnum}')
         cd = ConsolidatedData.from_tod(
-            date, setnum, downsampling_factor=downsampling_factor, use_pps=use_pps
+            date,
+            setnum,
+            downsampling_factor=downsampling_factor,
+            use_pps=use_pps,
+            az_backlash=az_backlash,
+            za_backlash=za_backlash,
         )
         _logger.info('Pipeline: Creating processed data...')
         pd = cd.create_processed_data()
