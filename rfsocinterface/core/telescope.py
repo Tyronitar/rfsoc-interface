@@ -74,6 +74,32 @@ NEG_ZA_SW_LIM = -np.inf
 POS_ZA_SW_LIM = -np.inf  # TODO: Is this supposed to be negative?
 
 
+def _query_midpoint(query_start: float) -> float:
+    """Return the best estimate of when a motor sampled the value it just returned.
+
+    The time of the sample within a query isn't known, so this uses the middle of the
+    query. Every position is timestamped this way, on both axes, and by this rather than
+    by when its row is stored. Rows take different times to read: the zenith angle latch
+    commands double the time of a row, for example.
+
+    Arguments:
+        query_start (float): The time just before the query was sent.
+    """
+    return (query_start + time.time()) / 2
+
+
+def _parse_za_reply(reply: str) -> float:
+    """Return the value in a reply from the zenith angle motor.
+
+    Replies look like '89.123 [deg]' and may start with a prompt ending in '>'.
+
+    Raises:
+        ValueError: If the reply doesn't contain a number. The motor can return an empty
+            or partial reply, so callers need to handle this.
+    """
+    return float(reply.split(' ', maxsplit=1)[0].rsplit('>', maxsplit=1)[-1])
+
+
 class TelescopeMotorController:
     """Class for controlling the motion of the telescope."""
 
@@ -219,6 +245,7 @@ class TelescopeMotorController:
         # Initialize AZ values
         self.ser_az = ser_az
         self.az_pos = self.az_pps_pos = 0
+        self.az_pos_time = time.time()
         self.get_ser_az_pos()
         _tele_logger.info(f'Telescope AZ position is: {self.az_pos}')
 
@@ -254,6 +281,7 @@ class TelescopeMotorController:
 
         # Initialize ZA values
         self.za_pos = self.za_pps_pos = 0
+        self.za_pos_time = time.time()
         self.get_ser_za_pos(timeout=0.1)
         _tele_logger.info(f'Telescope ZA position is: {self.za_pos}')
         self._initialized = True
@@ -363,7 +391,11 @@ class TelescopeMotorController:
 
     # Azimuth settings
     def get_ser_az_pos(self, timeout: float = 0.1) -> tuple[float, float]:
-        """Read the serail azimuth position."""
+        """Read the serial azimuth position.
+
+        Updates `self.az_pos_time` with the time of the position read (see
+        `_query_midpoint`). If the read fails, the old position keeps its old time.
+        """
         # Get old values as a fallback
         old_pos = self.az_pos
         old_pps_pos = self.az_pps_pos
@@ -376,8 +408,11 @@ class TelescopeMotorController:
 
         # Try getting the AZ position
         try:
+            query_start = time.time()
             new_pos_str = self.write_ser_az('PFB', timeout=timeout / 2)
+            new_pos_time = _query_midpoint(query_start)
             new_pos = float(new_pos_str) / 10000.0
+            self.az_pos_time = new_pos_time
         except ValueError:
             # Couldn't convert the string to a float
             msg = (
@@ -395,7 +430,7 @@ class TelescopeMotorController:
         except ValueError:
             msg = (
                 'Error communicating with AZ controller when getting PPS position. '
-                f'PPS position set to most recent read ({old_pps_pos:.2f})',
+                f'PPS position set to most recent read ({old_pps_pos:.2f})'
             )
             _tele_logger.warning(msg)
             self.send('err', 'NON-CRITICAL', msg)
@@ -446,7 +481,7 @@ class TelescopeMotorController:
             position_data = [
                 az_pos,
                 za_pos,
-                time.time(),
+                self.az_pos_time,
                 az_pps_pos,
                 za_pps_pos,
                 latch_signal,
@@ -505,7 +540,7 @@ class TelescopeMotorController:
                         [
                             az_pos,
                             za_pos,
-                            pfb_time,
+                            self.az_pos_time,
                             az_pps_pos,
                             za_pps_pos,
                             latch_signal,
@@ -528,7 +563,7 @@ class TelescopeMotorController:
         az_pos, _ = self.get_ser_az_pos()
         _tele_logger.debug(
             f'Finished setting az_pos to {new_pos}. '
-            'Actual={az_pos}, Error={az_pos - new_pos:.5f}'
+            f'Actual={az_pos}, Error={az_pos - new_pos:.5f}'
         )
         if store_position_data:
             return position_data
@@ -550,28 +585,42 @@ class TelescopeMotorController:
 
     # Zenith angle settings
     def get_ser_za_pos(self, timeout: float = 0.1) -> tuple[float, float, float]:
-        """Get the serial zenith angle position."""
+        """Get the serial zenith angle position.
+
+        Updates `self.za_pos_time` with the time of the position read (see
+        `_query_midpoint`). If the read fails, the old position keeps its old time.
+        """
         # Get old values as a fallback
         old_pos = self.za_pos
         old_pps_pos = self.za_pps_pos
         latch_signal = 0.0
 
         # Query the values from the motor
+        query_start = time.time()
         pos_str = self.write_ser_za('PL.FB', timeout=timeout / 3)
+        pos_time = _query_midpoint(query_start)
         state_str = self.write_ser_za('CAP0.STATE', timeout=timeout / 3)
-        state = float(state_str.split(' ')[0].split('>')[-1])
-        if state == 1:
+        try:
+            latched = _parse_za_reply(state_str) == 1
+        except ValueError:
+            # Leave the latch armed. If it's set, the next read will pick it up.
+            msg = (
+                'Error communicating with ZA controller when getting the PPS latch '
+                f'state; PPS position set to most recent read ({old_pps_pos:.2f})'
+            )
+            _tele_logger.warning(msg)
+            self.send('err', 'NON-CRITICAL', msg)
+            latched = False
+        if latched:
             # It's been latched so get the position and reset the latch
             latch_signal = 1.0
             pps_pos_str = self.write_ser_za('CAP0.PLFB', timeout=timeout / 3)
             self.write_ser_za('CAP0.EN 1', timeout=timeout / 3)
-        else:
-            new_pps_pos = old_pps_pos
 
         # Try to get the ZA position
         try:
-            pos = float(pos_str.split(' ')[0].split('>')[-1])
-            new_pos = pos
+            new_pos = _parse_za_reply(pos_str)
+            self.za_pos_time = pos_time
         except ValueError:
             # Couldn't convert the string to a float
             msg = (
@@ -583,20 +632,19 @@ class TelescopeMotorController:
             new_pos = old_pos
 
         # Check that the PPS position is accesible
-        if state == 1:
-            pps_split_string = pps_pos_str.split(' ')[0].split('>')
-            if len(pps_split_string[-1]) == 0:
+        new_pps_pos = old_pps_pos
+        if latched:
+            try:
+                new_pps_pos = _parse_za_reply(pps_pos_str)
+            except ValueError:
                 # Not receiving pulse
                 msg = (
                     'Attempted to access PPS position from ZA controller; '
                     'No pulse detected; '
-                    f'PPS position set to most recent read ({old_pps_pos:.2f})',
+                    f'PPS position set to most recent read ({old_pps_pos:.2f})'
                 )
                 _tele_logger.warning(msg)
                 self.send('err', 'NON-CRITICAL', msg)
-                new_pps_pos = old_pps_pos
-            else:
-                new_pps_pos = float(pps_split_string[-1])
 
         self.za_pos = new_pos
         self.za_pps_pos = new_pps_pos
@@ -649,7 +697,7 @@ class TelescopeMotorController:
             position_data = [
                 az_pos,
                 za_pos,
-                time.time(),
+                self.za_pos_time,
                 az_pps_pos,
                 za_pps_pos,
                 latch_signal,
@@ -716,7 +764,7 @@ class TelescopeMotorController:
                         [
                             az_pos,
                             za_pos,
-                            time.time(),
+                            self.za_pos_time,
                             az_pps_pos,
                             za_pps_pos,
                             latch_signal,
@@ -809,7 +857,7 @@ class TelescopeMotorController:
                 f.create_dataset('az_pps', data=position_data[3::7])
                 f.create_dataset('za_pps', data=position_data[4::7])
                 f.create_dataset('za_pps_latch', data=position_data[5::7])
-                msk = position_data[6::7].astype(bool)
+                msk = np.asarray(position_data[6::7], dtype=bool)
                 f.create_dataset('map_signal_mask', data=msk, dtype=bool)
                 f.create_dataset('optical_visibility', data=['****'])
                 f.attrs['params'] = json.dumps(

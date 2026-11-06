@@ -77,9 +77,6 @@ DECIMATE_ORDER = 5
 AZ_TRIM = 2.3
 ZA_TRIM = 0.2
 
-# RFSOC_TIME_OFFSET_AZ = -12e-3 # -12 ms, empirically determined
-RFSOC_TIME_OFFSET_AZ = 0  # -12 ms, empirically determined
-RFSOC_TIME_OFFSET_ZA = -3e-3  # -3 ms, empirically determined
 
 # Half of the backlash between the azimuth motor encoder and the telescope, i.e. how far
 # the telescope trails the encoder while moving. Measured from the separation of the
@@ -809,7 +806,10 @@ def find_telescope_pps_times(
         position (npt.NDArray): Positions of this axis.
         latched_position (npt.NDArray): Latched PPS positions of this axis.
         drop_latch_rows (bool): Exclude the rows where the latch changed from the
-            trajectory, since the extra latch commands delay those rows.
+            trajectory. A latched value is often equal to the position on the row that
+            read it, which isn't a usable crossing, so this finds more pulses. In files
+            recorded before positions were timestamped when they were read, the extra
+            latch commands also delay the timestamps of those rows.
         max_segment_dt (float): Maximum time between trajectory samples used to
             interpolate a crossing (s).
         bracket_slack (float): Tolerance on the bracket (s).
