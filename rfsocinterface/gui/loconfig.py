@@ -1029,7 +1029,7 @@ class LoConfigWidget(MainWidget, Ui_LOConfigWidget):
         dialogs: list[PowerSweepDialog] = []
         for (rfsoc, chan), sweep in zip(selected_channels, sweeps, strict=False):
             sweep_data = sweep.data
-            sweep_data.reset_stop_signals()
+            sweep_data.reset_plot_stop_signals()
 
             dialog = PowerSweepDialog(sweep_data, parent=None)
             # Make the sweep dialog a true top-level window and non-modal so

@@ -1,13 +1,31 @@
+import pdb
 import logging
 import logging.config
 
-from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis
-from rfsocinterface.core.data import *
-from rfsocinterface.core.params import RFSoCParameters, DEFAULT_DFOVERF_PER_MK
-from rfsocinterface.analysis import *
-import pdb
 import matplotlib.pyplot as plt
 import numpy as np
+
+from rfsocinterface.core.data import (
+    ProcessedData,
+    Pipeline,
+    CleanTOD,
+    RemoveElectronicsNoise,
+    HighPassFilter,
+    LowPassFilter,
+    BinTODIntoMap,
+    PlotMap,
+    BinTODIntoVideo,
+    AnimateVideo,
+)
+from rfsocinterface.analysis import (
+    ComputeNoisePSD,
+    PlotPSD,
+    PsdBasis,
+    AnalyzeBeamMap,
+    PlotBeamMap,
+    CheckFocus,
+)
+from rfsocinterface.core.params import RFSoCParameters, DEFAULT_DFOVERF_PER_MK
 
 
 if __name__ == '__main__':
@@ -45,7 +63,7 @@ if __name__ == '__main__':
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
     clean_tod = CleanTOD(dataset=dataset)
     compute_psd = ComputeNoisePSD(
-        PsdBasis.GAIN_PHASE,
+        # PsdBasis.GAIN_PHASE,
         PsdBasis.FREQ_DISS,
         cut_time=2,
         selection_indices='all',
@@ -110,8 +128,8 @@ if __name__ == '__main__':
         # plot_beammap,
     ])
 
-    date = '20260820'  # For testing normal maps
-    setnum = 1005
+    # date = '20260820'  # For testing normal maps
+    # setnum = 1005
     # date = '20260710'  # For testing beammaps
     # setnum = 1006
     # date = '20260917'  # For testing video
@@ -119,13 +137,46 @@ if __name__ == '__main__':
     # date = '20261001'  # For testing normal maps
     # setnum = 1006
 
-    # date = '20260617'
-    # setnum = 1006
+    date = '20261105'
+    setnum = 1002
 
 
-    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum)
+    pdata = ProcessedData.load(date, setnum)
+    compute_psd.apply(pdata)
+    psd_plotter.apply(pdata)
     # pipeline.run(pdata)
     # pdb.set_trace()
+
+    # onres_ind = pdata.get_onres_ind(0)
+    # az_centers = pdata['beammap/az_center'][onres_ind]
+    # za_centers = pdata['beammap/za_center'][onres_ind]
+    # fwhm_az = pdata['beammap/fwhm_az'][onres_ind]
+    # fwhm_za = pdata['beammap/fwhm_za'][onres_ind]
+    # amplitude  = pdata['beammap/amplitude'][onres_ind]
+    # high_snr_ind = np.argwhere(
+    #     amplitude > np.percentile(amplitude, 55),
+    # ).flatten()
+
+    # plt.scatter(
+    #     az_centers[high_snr_ind],
+    #     za_centers[high_snr_ind],
+    #     c=fwhm_za[high_snr_ind],
+    #     cmap='viridis',
+    #     # marker='+',
+    # )
+    # plt.colorbar()
+    # plt.show()
+    # pdb.set_trace()
+
+    # pipeline = Pipeline([
+    #     bin_tod_to_map,
+    #     analyze_beammap,
+    # ])
+    # date = '20260617'
+    # for setnum in [1001, 1004, 1005, 1006]:
+    #     pdata = ProcessedData.load(date, setnum)
+    #     # pdb.set_trace()
+    #     pipeline.run(pdata)
 
