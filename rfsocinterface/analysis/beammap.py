@@ -40,6 +40,9 @@ _logger = logging.getLogger(__name__)
 _MAX_STAT_MAGNITUDE = 1e6
 
 
+N_GAUSS_2D_PARAMS = 6
+
+
 def gauss_2d(
     xy_coords: tuple[npt.NDArray, npt.NDArray],
     amp: float,
@@ -82,7 +85,7 @@ class AnalyzeBeamMap(DataRoutine):
     """
 
     name = 'AnalyzeBeamMap'
-    version = '2.1.0'
+    version = '2.2.0'
 
     requires: ClassVar[set[str]] = {
         '/map',
@@ -203,30 +206,33 @@ class AnalyzeBeamMap(DataRoutine):
         for i, i_res in enumerate(pdata.onres_ind):
             if i == n_tones // 2:
                 _logger.info(f'{self.name}: Halfway done analyzing beam map...')
-            this_val = np.ndarray.flatten(map_val[i_res])
-            this_val[np.isnan(this_val)] = 0
+            this_map = map_val[i_res]
+            # Pixels that weren't observed, such as the rows left empty when the pixels
+            # are smaller than the scan spacing, are NaN. These have no measurement, so
+            # they can't be part of the fit. If they were treated as zero signal, the
+            # best fit would be a spike that squeezes between the empty rows.
+            has_data = np.isfinite(this_map)
+            if not np.any(has_data):
+                _logger.warning(f'{self.name}: Map for tone {i_res} is empty.')
+                continue
 
-            max_index = np.argwhere(this_val == np.max(this_val))
-            za_idx, az_idx = np.unravel_index(max_index[0], map_val[i_res].shape)
-            az_max = az[:, az_idx]
-            za_max = za[za_idx, :]
-            separation = np.sqrt((az - az_max[0]) ** 2 + (za - za_max[0]) ** 2)
-            index = np.argwhere(separation < max_radius)
-            flat_index = np.ravel_multi_index(
-                (index[:, 0], index[:, 1]), map_val[i_res].shape
-            )
+            za_idx, az_idx = np.unravel_index(np.nanargmax(this_map), this_map.shape)
+            separation = np.sqrt((az - az[0, az_idx]) ** 2 + (za - za[za_idx, 0]) ** 2)
+            index = np.argwhere((separation < max_radius) & has_data)
+            if index.shape[0] <= N_GAUSS_2D_PARAMS:
+                _logger.warning(
+                    f'{self.name}: Too few pixels around the peak to fit tone {i_res}.'
+                )
+                continue
 
-            az_center[i_res] = np.sum(
-                az[:, index[:, 1]].squeeze() * this_val[flat_index]
-            ) / np.sum(this_val[flat_index])
-            za_center[i_res] = np.sum(
-                za[index[:, 0]].squeeze() * this_val[flat_index]
-            ) / np.sum(this_val[flat_index])
-            amplitude[i_res] = np.max(this_val[index])
+            this_az = az[0, index[:, 1]]
+            this_za = za[index[:, 0], 0]
+            this_val = this_map[index[:, 0], index[:, 1]]
 
-            this_az = np.ndarray.flatten(az[:, index[:, 1]])
-            this_za = np.ndarray.flatten(za[index[:, 0], :])
-            this_val = this_val[flat_index]
+            az_center[i_res] = np.sum(this_az * this_val) / np.sum(this_val)
+            za_center[i_res] = np.sum(this_za * this_val) / np.sum(this_val)
+            amplitude[i_res] = np.max(this_val)
+
             sigma_z = np.full(
                 int(np.size(this_val)),
                 (np.percentile(this_val, 84) - np.percentile(this_val, 16)) * 0.5,
@@ -338,7 +344,7 @@ class PlotBeamMap(DataRoutine):
         show_all: bool = True,
         savefile: str | None = None,
         save_dir: str = DEFAULT_DATA_DIRECTORY,
-        dpi: float = 300,
+        dpi: float = 100,
         zoom_half_width: float | None = None,
     ):
         """Initialize the PlotBeamMap routine.
@@ -563,7 +569,6 @@ class PlotBeamMap(DataRoutine):
                 self._add_stats_text(
                     fig,
                     extent,
-                    dpix,
                     amplitude[i_tone_absolute],
                     chisq[i_tone_absolute],
                     snr[i_tone_absolute],
@@ -618,7 +623,6 @@ class PlotBeamMap(DataRoutine):
     def _add_stats_text(
         fig: Figure,
         extent: tuple[float, float, float, float],
-        dpix: float,
         amplitude: float,
         chisq: float,
         snr: float,
@@ -639,15 +643,14 @@ class PlotBeamMap(DataRoutine):
             ok = valid and np.isfinite(value) and abs(value) < _MAX_STAT_MAGNITUDE
             return format(value, spec) if ok else 'n/a'
 
-        map_size = PlotBeamMap._map_size(extent)
         center_ok = PlotBeamMap._center_in_map(extent, az_center, za_center)
         bbox_pad = 0.3
         t = AnchoredText(
             f'Amplitude = {fmt(amplitude * 1e5, "2f")}    '
             f'chisq = {fmt(chisq, ".3f", chisq >= 0)}    '
             f'snr = {fmt(snr, ".3f")}\n'
-            f'fwhm_az = {fmt(fwhm_az, ".2f", dpix <= fwhm_az < map_size)}    '
-            f'fwhm_za = {fmt(fwhm_za, ".2f", dpix <= fwhm_za < map_size)}\n'
+            f'fwhm_az = {fmt(fwhm_az, ".2f")}    '
+            f'fwhm_za = {fmt(fwhm_za, ".2f")}\n'
             f'az_center = {fmt(az_center, ".2f", center_ok)}    '
             f'za_center = {fmt(za_center, ".2f", center_ok)}',
             loc='lower center',
