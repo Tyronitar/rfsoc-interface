@@ -1,5 +1,5 @@
 name: Build libuldaq
-description: "Build libuldaq for testing, reusing a cached build when one exists"
+description: "Build libuldaq for testing, reusing a cached build when one exists."
 
 inputs:
   version:
