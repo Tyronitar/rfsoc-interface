@@ -5,6 +5,9 @@ inputs:
   version:
     description: "libuldaq release to build"
     default: "1.2.2"
+  build-revision:
+    description: "Bump this when the build steps change, to force a rebuild"
+    default: "1"
 
 runs:
   using: "composite"
@@ -21,7 +24,7 @@ runs:
       uses: actions/cache@v6
       with:
         path: ${{ runner.temp }}/libuldaq-${{ inputs.version }}
-        key: libuldaq-${{ inputs.version }}-${{ steps.os.outputs.release }}-${{ runner.arch }}
+        key: libuldaq-${{ inputs.version }}-${{ steps.os.outputs.release }}-${{ runner.arch }}-r${{ inputs.build-revision }}
 
     - name: Install build dependencies
       if: steps.cache.outputs.cache-hit != 'true'
