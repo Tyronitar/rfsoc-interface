@@ -7,7 +7,7 @@ inputs:
     default: "1.2.2"
   build-revision:
     description: "Bump this when the build steps change, to force a rebuild"
-    default: "1"
+    default: "2"
 
 runs:
   using: "composite"
@@ -17,13 +17,14 @@ runs:
       shell: bash
       run: echo "release=$(. /etc/os-release && echo "$ID-$VERSION_ID")" >> "$GITHUB_OUTPUT"
 
-    # The built source tree is cached rather than the installed files, because
-    # the install hook runs udevadm and ldconfig, which fail on a staged install.
+    # Only the installed files are cached. Running make on a cached build tree
+    # recompiles it, because the tree depends on headers that a cache hit doesn't
+    # install.
     - name: Restore libuldaq build
       id: cache
       uses: actions/cache@v6
       with:
-        path: ${{ runner.temp }}/libuldaq-${{ inputs.version }}
+        path: ${{ runner.temp }}/libuldaq-${{ inputs.version }}-stage
         key: libuldaq-${{ inputs.version }}-${{ steps.os.outputs.release }}-${{ runner.arch }}-r${{ inputs.build-revision }}
 
     - name: Install build dependencies
@@ -43,6 +44,9 @@ runs:
         cd libuldaq-${{ inputs.version }}
         ./configure
         make -j"$(nproc)"
+        # Install from src only: the top-level install hook runs udevadm and
+        # ldconfig, which fail in a staged install, and CI needs no udev rules.
+        make -C src install DESTDIR="$RUNNER_TEMP/libuldaq-${{ inputs.version }}-stage"
 
     - name: Install libusb runtime
       if: steps.cache.outputs.cache-hit == 'true'
@@ -56,6 +60,5 @@ runs:
     - name: Install libuldaq
       shell: bash
       run: |
-        cd "$RUNNER_TEMP/libuldaq-${{ inputs.version }}"
-        sudo make install
+        sudo cp -a --no-preserve=ownership "$RUNNER_TEMP/libuldaq-${{ inputs.version }}-stage/usr/local/." /usr/local/
         sudo ldconfig
