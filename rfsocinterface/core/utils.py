@@ -47,7 +47,7 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from PIL import Image
 from scipy import ndimage
-from scipy.signal import cheby1, group_delay, resample_poly, sos2tf, sosfilt, sosfilt_zi
+from scipy.signal import cheby1, resample_poly, sosfilt, sosfiltfilt
 from scipy.spatial import KDTree
 
 DEFAULT_DATA_DIRECTORY = '/data'
@@ -826,8 +826,38 @@ def axis_reverse(a, axis=-1):
     return axis_slice(a, step=-1, axis=axis)
 
 
+def _decimation_filter(q: int) -> tuple[npt.NDArray, int]:
+    """Design the anti-aliasing filter used to decimate by a factor of ``q``.
+
+    Returns:
+        (tuple[npt.NDArray, int]): The filter's second-order sections, normalized to
+            unit gain at DC, and the number of samples its impulse response takes to
+            settle. Chunks filtered with at least this much overlap join seamlessly.
+    """
+    sos = cheby1(8, 0.05, 0.8 / q, output='sos')
+    # An even-order Chebyshev filter has a gain of -0.05 dB at DC, which would be
+    # applied twice by a forward-backward pass.
+    sos[0, :3] /= np.prod(sos[:, :3].sum(axis=1) / sos[:, 3:].sum(axis=1))
+
+    impulse = np.zeros(400 * q)
+    impulse[0] = 1
+    response = np.abs(sosfilt(sos, impulse))
+    settled = np.flatnonzero(response > 1e-6 * response.max())[-1] + 1
+    return sos, int(settled)
+
+
 def decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_shape=None):
-    """Decimate a dataset in chunks."""
+    """Low-pass filter and decimate a dataset in chunks, without any time shift.
+
+    Output sample ``k`` corresponds to input sample ``k * q``, the same samples that
+    :func:`chunked_downsample` selects with ``use_filter=False``. Data decimated here
+    therefore stays aligned with timestamps and telescope positions decimated there.
+
+    The filter is applied forward and backward so that it has zero phase. A causal
+    filter's delay varies with frequency and is generally not a whole number of output
+    samples, so it cannot be removed afterwards, and the leftover error would appear
+    as a pointing offset proportional to the scan speed.
+    """
     n = dset.shape[axis]
 
     if chunk_shape is None:
@@ -840,79 +870,56 @@ def decimate_in_chunks(dset: h5py.Dataset, out_dset, q: int, axis=-1, chunk_shap
             out_dset[out_sl] = axis_slice(dset, start, stop, axis=axis)
         return
 
-    # Create buffer for storing chunks
-    chunk = np.empty(chunk_shape, dtype=dset.dtype)
-    y = np.empty_like(chunk)
+    sos, overlap = _decimation_filter(q)
+    n_out = out_dset.shape[axis]
 
-    # Copmpute values to account for phase lag from the filter
-    wc = 0.8 / q
-    sos = cheby1(8, 0.05, wc, output='sos')
-    b, a = sos2tf(sos)
-    with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', r'^The filter\'s denominator')
-        w, gd = group_delay((b, a))
-    passband = w <= wc * np.pi
-    gd_passband = gd[passband]
-    delay = int(np.ceil(np.median(gd_passband)))
-    delay_out = int(np.round(delay / q))
-
-    n_sections = sos.shape[0]
-
-    # initialize filter state
-    zi = sosfilt_zi(sos)
-
-    zi_shape = [1] * dset.ndim
-    zi_shape[axis] = 2
-    zi = zi.reshape((n_sections, *zi_shape))
-    x0 = axis_slice(dset, stop=1, axis=axis)
-    zi = x0 * zi
-
-    out_pos = 0
-    out_pos -= delay_out
-
+    # Samples [buffer_start, buffer_stop) are held in memory. Whole chunks are read
+    # so that the overlap with the neighboring chunks doesn't decompress them twice.
+    buffer = None
+    buffer_start = 0
+    buffer_stop = 0
     for start in range(0, n, chunk_size):
         stop = min(start + chunk_size, n)
-        if stop - start < chunk.shape[axis]:
-            shape = list(dset.chunks)
-            shape[axis] = stop - start
-            chunk = np.empty(shape, dtype=dset.dtype)
-            y = np.empty_like(chunk)
+        window_start = max(0, start - overlap)
+        window_stop = min(n, stop + overlap)
 
-        chunk[:] = axis_slice(dset, start, stop, axis=axis)
+        new_data = [] if buffer is None else [buffer]
+        while buffer_stop < window_stop:
+            read_stop = min(buffer_stop + chunk_size, n)
+            new_data.append(axis_slice(dset, buffer_stop, read_stop, axis=axis))
+            buffer_stop = read_stop
+        buffer = np.concatenate(new_data, axis=axis)
+        buffer = axis_slice(buffer, start=window_start - buffer_start, axis=axis)
+        buffer_start = window_start
 
+        # Output samples whose input sample (a multiple of q) is in this chunk
+        k_start = int(np.ceil(start / q))
+        k_stop = min(int(np.ceil(stop / q)), n_out)
+        if k_stop <= k_start:
+            continue
+
+        window = axis_slice(buffer, stop=window_stop - window_start, axis=axis)
+        n_window = window.shape[axis]
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', r'^Invalid value encountered in')
-            y[:], zi = sosfilt(sos, chunk, axis=axis, zi=zi)
+            filtered = sosfiltfilt(
+                sos,
+                window,
+                axis=axis,
+                # Only matters at the ends of the data; the rest is inside the overlap
+                padlen=min(3 * (2 * sos.shape[0] + 1), n_window - 1),
+            )
 
-        # decimate
-        dec_start = (
-            int(q * np.ceil(start / q)) - start
-        )  # Make sure we start on a multiple of q
-        dec = axis_slice(y, start=dec_start, step=q, axis=axis)
-
-        n_out = dec.shape[axis]
-
-        write_start = out_pos
-        if write_start < 0:
-            # Skip the fisrt `delay_out` samples
-            dec = axis_slice(dec, start=delay_out, axis=axis)
-            write_start = 0
-            out_pos = 0
-            n_out = dec.shape[axis]
-        write_stop = min(out_pos + n_out, out_dset.shape[axis])
-
-        out_sl = get_axis_slice(out_dset, start=write_start, stop=write_stop, axis=axis)
-
-        out_dset[out_sl] = axis_slice(dec, stop=write_stop - write_start, axis=axis)
-
-        out_pos += n_out
-
-    # Use reflect padding for the last `delay_out` samples
-    same_slice = get_axis_slice(out_dset, start=out_pos, axis=axis)
-    last_values = np.take(
-        out_dset, np.arange(out_pos - 1, out_pos - delay_out - 1, -1), axis=axis
-    )
-    out_dset[same_slice] = last_values
+        first = k_start * q - window_start
+        dec = axis_slice(
+            filtered,
+            start=first,
+            stop=first + (k_stop - k_start - 1) * q + 1,
+            step=q,
+            axis=axis,
+        )
+        out_sl = get_axis_slice(out_dset, start=k_start, stop=k_stop, axis=axis)
+        out_dset[out_sl] = dec
 
 
 def iterate_chunks(
