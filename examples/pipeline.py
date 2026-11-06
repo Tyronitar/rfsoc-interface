@@ -63,7 +63,7 @@ if __name__ == '__main__':
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
     clean_tod = CleanTOD(dataset=dataset)
     compute_psd = ComputeNoisePSD(
-        PsdBasis.GAIN_PHASE,
+        # PsdBasis.GAIN_PHASE,
         PsdBasis.FREQ_DISS,
         cut_time=2,
         selection_indices='all',
@@ -137,13 +137,15 @@ if __name__ == '__main__':
     # date = '20261001'  # For testing normal maps
     # setnum = 1006
 
-    date = '20261104'
-    setnum = 1004
+    date = '20261105'
+    setnum = 1002
 
 
-    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum)
+    pdata = ProcessedData.load(date, setnum)
+    compute_psd.apply(pdata)
+    psd_plotter.apply(pdata)
     # pipeline.run(pdata)
     # pdb.set_trace()
 

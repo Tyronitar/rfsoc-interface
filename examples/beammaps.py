@@ -317,7 +317,7 @@ if __name__ == '__main__':
     lp_filter_freq = 15
     hp_filter_freq = 0.03
 
-    ds_factor = 16
+    ds_factor = 10
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']

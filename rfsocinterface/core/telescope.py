@@ -66,6 +66,7 @@ SPEED_MULTIPLIER = 0.35
 SCAN_MODE_FAR_APPROACH_SEPARATION_DEG = 0.5
 FAR_APPROACH_SEPARATION_DEG = 15
 ZA_APPROACH_SEPARATION_DEG = 0.5
+MAX_ZA_SPEED = 7.25
 
 NEG_SW_LIM = -181.000
 POS_SW_LIM = 181.000
@@ -674,27 +675,36 @@ class TelescopeMotorController:
                 # Choose direction of motion
                 direction = -1 if za_pos > new_pos else 1
 
+                pos_diff = abs(za_pos - new_pos)
                 if scan_mode:
-                    data_value = direction * analog_to_digital(1.0, -10, 10, 16)
-                elif abs(za_pos - new_pos) > FAR_APPROACH_SEPARATION_DEG:
+                    this_speed = 1.0
+                elif pos_diff > FAR_APPROACH_SEPARATION_DEG:
                     # If we are far from the setpoint, go at max speed
-                    data_value = direction * analog_to_digital(7.25, -10, 10, 16)
-                elif abs(za_pos - new_pos) > ZA_APPROACH_SEPARATION_DEG:
+                    this_speed = MAX_ZA_SPEED
+                elif pos_diff > ZA_APPROACH_SEPARATION_DEG:
                     # If we are semifar from the setpoint, start slowing down
-                    this_speed = (
-                        SPEED_MULTIPLIER * abs(za_pos - new_pos) + ZA_BASE_SPEED
-                    )
-                    data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
+                    a = SPEED_MULTIPLIER
+                    s = ZA_APPROACH_SEPARATION_DEG
+                    f = FAR_APPROACH_SEPARATION_DEG
+                    b = ZA_BASE_SPEED
+                    this_speed = (a * pos_diff + b) * (
+                        1 - (pos_diff - s) / (f - s)
+                    ) + MAX_ZA_SPEED * (pos_diff - s) / (f - s)
                 else:
                     # If we are close to the setpoint, slow down a lot
+                    a = SPEED_MULTIPLIER
+                    s = ZA_APPROACH_SEPARATION_DEG
+                    b = ZA_BASE_SPEED
                     this_speed = (
-                        SPEED_MULTIPLIER
-                        * abs(za_pos - new_pos) ** 2
-                        / ZA_APPROACH_SEPARATION_DEG
-                        + ZA_BASE_SPEED
+                        a
+                        * (
+                            pos_diff**2 / s * (1 - pos_diff / s)
+                            + (pos_diff * pos_diff / s)
+                        )
+                        + b
                     )
-                    data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
 
+                data_value = direction * analog_to_digital(this_speed, -10, 10, 16)
                 self.set_ao_value(data_value, ZA_OUT_CHANNEL)
                 _tele_logger.debug('Getting ser za pos')
                 za_pos, za_pps_pos, latch_signal = self.get_ser_za_pos()
