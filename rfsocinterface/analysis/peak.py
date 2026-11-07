@@ -1,6 +1,7 @@
 """Code for finding and characterizing peaks in the detector response."""
 
 import logging
+import pdb
 import typing
 from collections.abc import Sequence
 from typing import ClassVar, Literal
@@ -372,6 +373,8 @@ class CheckFocus(DataRoutine):
                     plt.ylabel(f'Detector Response ({units})')
                     plt.tight_layout(rect=[0, 0.15, 1, 1])
                     pdf.savefig(fig)
+                    plt.show()
+                    pdb.set_trace()
                     plt.close(fig)
 
             amplitudes = np.array(amplitudes)

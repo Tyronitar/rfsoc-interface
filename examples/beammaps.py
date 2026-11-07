@@ -334,23 +334,23 @@ if __name__ == '__main__':
         dataset=dataset,
         az_trim=0,
         za_trim=0,
-        dpix=0.03,
+        dpix=0.02,
         r0=0.0,
     )
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap(dpi=100)
 
     pipeline = Pipeline([
-        hp_filter,
-        lp_filter,
-        clean_tod,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
         bin_tod_to_map,
         analyze_beammap,
         plot_beammap,
     ])
 
-    date = '20260617'
-    setnum = 1006
+    date = '20261105'
+    setnum = 1005
 
     # tod_file = '/data/20261028/20261028_Device_aSi1_Channel2_telescope_275mK_20260804_TOD_set1001.h5'
     # tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260804'
@@ -360,9 +360,10 @@ if __name__ == '__main__':
     # if sweep is not None:
     #     sweep.append_to_TOD(tod_file)
 
-    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum)
+    pdata = ProcessedData.load(date, setnum)
+    pipeline.run(pdata)
 
     # bin_tod_to_map.apply(pdata)
     # analyze_beammap.apply(pdata)

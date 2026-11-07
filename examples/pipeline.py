@@ -45,9 +45,10 @@ if __name__ == '__main__':
     # dataset = 'data_mK'
     # datasets = ['.*/data_mK']
 
-    find_fwhm = CheckFocus(
+    check_focus = CheckFocus(
         'az',
-        [20],
+        [170],
+        dataset=dataset,
     )
 
     noise_removal_offres = RemoveElectronicsNoise(
@@ -138,16 +139,36 @@ if __name__ == '__main__':
     # setnum = 1006
 
     date = '20261105'
-    setnum = 1002
+    setnum = 1005
 
 
     # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
     pdata = ProcessedData.load(date, setnum)
-    compute_psd.apply(pdata)
-    psd_plotter.apply(pdata)
+
+    # compute_psd.apply(pdata)
+    # psd_plotter.apply(pdata)
     # pipeline.run(pdata)
-    # pdb.set_trace()
+
+    check_focus = CheckFocus(
+        'az',
+        # np.arange(163, 171, dtype=int),
+        [
+            175
+        ],
+        dataset=dataset,
+    )
+    check_focus.apply(pdata)
+    # iq = pdata.get_data_IQ(0)[:]
+    # fd = pdata.get_data_IQ(0)[:]
+    # detector_f = pdata.get_detector_f(0)
+    # i_res = 171
+    # # plt.plot(iq[0, i_res])
+    # # plt.plot(iq[1, i_res])
+    # plt.plot(fd[0, i_res] / detector_f[i_res])
+    # plt.plot(fd[1, i_res] / detector_f[i_res])
+    # plt.show()
+    pdb.set_trace()
 
     # onres_ind = pdata.get_onres_ind(0)
     # az_centers = pdata['beammap/az_center'][onres_ind]
