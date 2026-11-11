@@ -578,7 +578,7 @@ class PlotPSD(DataRoutine):
     """
 
     name = 'PlotPSD'
-    version = '1.3.0'
+    version = '1.3.1'
 
     @ensure_path('savefile')
     def __init__(
