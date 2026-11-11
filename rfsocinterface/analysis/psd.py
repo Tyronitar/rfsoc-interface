@@ -331,7 +331,8 @@ def plot_psd_df_over_f(
 
     # Create figure if needed
     if ax is None:
-        fig = plt.figure(**figure_kwargs)
+        # fig = plt.figure(**figure_kwargs)
+        fig = Figure(**figure_kwargs)
         ax = fig.add_subplot()
 
         # Setup plot

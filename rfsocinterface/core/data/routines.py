@@ -676,7 +676,7 @@ class RemoveElectronicsNoise(DataRoutine):
     """
 
     name = 'RemoveElectronicsNoise'
-    version = '2.0.0'
+    version = '2.0.1'
 
     def __init__(
         self,
@@ -751,6 +751,7 @@ class RemoveElectronicsNoise(DataRoutine):
             )  # 2 x N_modes x N_samples
 
             n_modes = templates.shape[1]
+            _logger.info(f'{self.name}: Subtracting {n_modes} eigenmodes')
             eigenmodes.append(n_modes)
             denominator = np.einsum('ijk,ijk->ij', templates, templates)  # 2 x N_modes
 
