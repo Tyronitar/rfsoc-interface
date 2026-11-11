@@ -331,7 +331,8 @@ def plot_psd_df_over_f(
 
     # Create figure if needed
     if ax is None:
-        fig = plt.figure(**figure_kwargs)
+        # fig = plt.figure(**figure_kwargs)
+        fig = Figure(**figure_kwargs)
         ax = fig.add_subplot()
 
         # Setup plot
@@ -577,7 +578,7 @@ class PlotPSD(DataRoutine):
     """
 
     name = 'PlotPSD'
-    version = '1.3.0'
+    version = '1.3.1'
 
     @ensure_path('savefile')
     def __init__(

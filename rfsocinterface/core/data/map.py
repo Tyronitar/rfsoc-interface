@@ -466,7 +466,7 @@ class BinTODIntoMap(DataRoutine):
     """
 
     name = 'BinTODIntoMap'
-    version = '4.2.0'
+    version = '4.2.1'
 
     produces: ClassVar[set] = {
         '/map/',
@@ -619,11 +619,13 @@ class BinTODIntoMap(DataRoutine):
             'good_samples', (pdata.n_chan,), dtype=h5py.vlen_dtype(np.uint32)
         )
         for i_chan in range(pdata.n_chan):
-            all_samples = np.arange(pdata.get_n_samples(i_chan))
-            map_signal_mask = pdata.get_map_signal_mask(i_chan)
-            mask_samples = all_samples[map_signal_mask]
+            this_good_samples = np.arange(pdata.get_n_samples(i_chan))
             interpolated_samples = pdata.get_interpolated_samples(i_chan)[:]
-            good_samples[i_chan] = np.setdiff1d(mask_samples, interpolated_samples)
+            map_signal_mask = pdata.get_map_signal_mask(i_chan)
+            if map_signal_mask is not None:
+                this_good_samples = this_good_samples[map_signal_mask]
+            this_good_samples = np.setdiff1d(this_good_samples, interpolated_samples)
+            good_samples[i_chan] = this_good_samples
 
     @typing.override
     def _run(self, pdata: ProcessedData, inputs: list[str]):  # noqa: PLR0912
@@ -1691,7 +1693,7 @@ class BinTODIntoVideo(DataRoutine):
     """
 
     name = 'BinTODIntoVideo'
-    version = '3.2.0'
+    version = '3.2.1'
 
     produces: ClassVar[set] = {
         '/video',
@@ -1827,18 +1829,20 @@ class BinTODIntoVideo(DataRoutine):
 
         # Find good sampels before determining number of blocks
         for i_chan in range(pdata.n_chan):
-            all_samples = np.arange(pdata.get_n_samples(i_chan))
-            map_signal_mask = pdata.get_map_signal_mask(i_chan)
-            mask_samples = all_samples[map_signal_mask]
+            this_good_samples = np.arange(pdata.get_n_samples(i_chan))
             interpolated_samples = pdata.get_interpolated_samples(i_chan)[:]
-            good_samples[i_chan] = np.setdiff1d(mask_samples, interpolated_samples)
-            nan_samples = np.argwhere(
-                np.isnan(pdata.get_detector_az(i_chan)[0])
-                | np.isnan(pdata.get_detector_za(i_chan)[0])
-            ).flatten()
-            good_samples[i_chan] = np.setdiff1d(
-                np.arange(pdata.get_n_samples(i_chan)), nan_samples
-            )
+            map_signal_mask = pdata.get_map_signal_mask(i_chan)
+            if map_signal_mask is not None:
+                this_good_samples = this_good_samples[map_signal_mask]
+            this_good_samples = np.setdiff1d(this_good_samples, interpolated_samples)
+            good_samples[i_chan] = this_good_samples
+            # nan_samples = np.argwhere(
+            #     np.isnan(pdata.get_detector_az(i_chan)[0])
+            #     | np.isnan(pdata.get_detector_za(i_chan)[0])
+            # ).flatten()
+            # good_samples[i_chan] = np.setdiff1d(
+            #     np.arange(pdata.get_n_samples(i_chan)), nan_samples
+            # )
         least_samples_chan = np.argmin(pdata.n_samples)
         n_samples = pdata.get_n_samples(least_samples_chan)
         first_good_sample = np.max(

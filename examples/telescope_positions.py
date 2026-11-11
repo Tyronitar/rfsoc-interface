@@ -13,32 +13,32 @@ from rfsocinterface.core.utils import compute_chunk_shape, iterate_chunks
 from examples.beammaps import plot_signal_mask
 
 if __name__ == '__main__':
-    azel = '/data/20261104/20261104_AZEL_set1003.h5'
-    f = h5py.File(azel, 'r')
-    x = f['timestamp_tel'][:]
-    x -= x[0]
-    diff_za = np.concatenate([[0], np.diff(f['za_pps'][:])])
-    is_diff_za = (diff_za != 0).astype(int)
-    diff_az = np.concatenate([[0], np.diff(f['az_pps'][:])])
-    is_diff_az = (diff_az != 0).astype(int)
-    plt.scatter(x, is_diff_za, label='za_pps', marker='+')
-    plt.scatter(x, f['za_pps_latch'][:], label='za_pps_latch', marker='x')
-    plt.scatter(x, is_diff_az, label='az_pps', marker='.')
-    plt.legend()
-    plt.show()
-    pdb.set_trace()
+    # azel = '/data/20261104/20261104_AZEL_set1003.h5'
+    # f = h5py.File(azel, 'r')
+    # x = f['timestamp_tel'][:]
+    # x -= x[0]
+    # diff_za = np.concatenate([[0], np.diff(f['za_pps'][:])])
+    # is_diff_za = (diff_za != 0).astype(int)
+    # diff_az = np.concatenate([[0], np.diff(f['az_pps'][:])])
+    # is_diff_az = (diff_az != 0).astype(int)
+    # plt.scatter(x, is_diff_za, label='za_pps', marker='+')
+    # plt.scatter(x, f['za_pps_latch'][:], label='za_pps_latch', marker='x')
+    # plt.scatter(x, is_diff_az, label='az_pps', marker='.')
+    # plt.legend()
+    # plt.show()
+    # pdb.set_trace()
 
 
     downsampling_factor = 16
 
-    date = '20260617'
-    setnum = 1004
-    tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260511_with_offres_and_max_power'
+    date = '20261028'
+    setnum = 1007
+    tile_name = 'Device_aSi1_Channel2_telescope_275mK_20260804'
     tod_path = f'/data/{date}/{date}_{tile_name}_TOD_set{setnum}.h5'
     azel_path = f'/data/{date}/{date}_AZEL_set{setnum}.h5'
     azel_file = h5py.File(azel_path, 'r')
     raw_data = RawDataFile(tod_path, 'r')
-    new_file = h5py.File('tel_pos.h5', 'a')
+    new_file = h5py.File(f'tel_pos_{date}_set{setnum}.h5', 'a')
 
     n_samples_raw = raw_data.adc_i.shape[-1]
     pkt_idx = raw_data.pkt_idx
@@ -143,41 +143,41 @@ if __name__ == '__main__':
     #     corrected_za_tel,
     #     f'{date}_set{setnum}'
     # )
-    plt.figure()
-    plt.title(f'{date}_set{setnum} - Azimuth vs Time')
-    plt.xlabel('Time')
-    plt.ylabel('Azimuth (deg)')
-    plt.plot(timestamp_tel[:], az_tel[:], label='Raw telescope positions')
-    plt.plot(full_timestamp[:], corrected_az_tel_old, label='Old method')
-    plt.plot(full_timestamp[:], corrected_az_tel, label='New method')
-    plt.legend()
+    # plt.figure()
+    # plt.title(f'{date}_set{setnum} - Azimuth vs Time')
+    # plt.xlabel('Time')
+    # plt.ylabel('Azimuth (deg)')
+    # plt.plot(timestamp_tel[:], az_tel[:], label='Raw telescope positions')
+    # plt.plot(full_timestamp[:], corrected_az_tel_old, label='Old method')
+    # plt.plot(full_timestamp[:], corrected_az_tel, label='New method')
+    # plt.legend()
 
-    plt.figure()
-    plt.title(f'{date}_set{setnum} - Zenith Angle vs Time')
-    plt.xlabel('Time')
-    plt.ylabel('Zenith Angle (deg)')
-    plt.plot(timestamp_tel[:], za_tel[:], label='Raw telescope positions')
-    plt.plot(full_timestamp[:], corrected_za_tel_old, label='Old method')
-    plt.plot(full_timestamp[:], corrected_za_tel, label='New method')
-    plt.legend()
+    # plt.figure()
+    # plt.title(f'{date}_set{setnum} - Zenith Angle vs Time')
+    # plt.xlabel('Time')
+    # plt.ylabel('Zenith Angle (deg)')
+    # plt.plot(timestamp_tel[:], za_tel[:], label='Raw telescope positions')
+    # plt.plot(full_timestamp[:], corrected_za_tel_old, label='Old method')
+    # plt.plot(full_timestamp[:], corrected_za_tel, label='New method')
+    # plt.legend()
 
-    plt.show()
+    # plt.show()
 
 
-    idx = np.arange(n_samples)
-    plt.figure()
-    plt.title(f'{date}_set{setnum} - Telescope Position Over Time - Old Method')
-    plt.xlabel('Azimuth (deg)')
-    plt.ylabel('Zenith Angle (deg)')
-    plt.scatter(corrected_az_tel_old, corrected_za_tel_old, c=idx / n_samples, cmap='viridis')
+    # idx = np.arange(n_samples)
+    # plt.figure()
+    # plt.title(f'{date}_set{setnum} - Telescope Position Over Time - Old Method')
+    # plt.xlabel('Azimuth (deg)')
+    # plt.ylabel('Zenith Angle (deg)')
+    # plt.scatter(corrected_az_tel_old, corrected_za_tel_old, c=idx / n_samples, cmap='viridis')
 
-    plt.figure()
-    plt.title(f'{date}_set{setnum} - Telescope Position Over Time - New Method')
-    plt.xlabel('Azimuth (deg)')
-    plt.ylabel('Zenith Angle (deg)')
-    plt.scatter(corrected_az_tel, corrected_za_tel, c=idx / n_samples, cmap='viridis')
+    # plt.figure()
+    # plt.title(f'{date}_set{setnum} - Telescope Position Over Time - New Method')
+    # plt.xlabel('Azimuth (deg)')
+    # plt.ylabel('Zenith Angle (deg)')
+    # plt.scatter(corrected_az_tel, corrected_za_tel, c=idx / n_samples, cmap='viridis')
 
-    plt.show()
+    # plt.show()
     pdb.set_trace()
 
 
