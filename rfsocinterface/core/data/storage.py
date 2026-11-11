@@ -649,8 +649,11 @@ class DataStorage:
             # Backwards compatible fix.
             # If mask doesn't exist yet, make it all True
             tod_group = self.get_from_channel(i_chan, 'time_ordered_data')
-            tel_az = self.get_telescope_az(i_chan)
-            tel_za = self.get_telescope_za(i_chan)
+            try:
+                tel_az = self.get_telescope_az(i_chan)
+                tel_za = self.get_telescope_za(i_chan)
+            except KeyError:
+                return None
             nan_idx = np.argwhere(np.isnan(tel_az) | np.isnan(tel_za)).flatten()
 
             map_signal_mask = tod_group.create_dataset(
