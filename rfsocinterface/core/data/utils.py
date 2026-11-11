@@ -695,6 +695,57 @@ class TelescopeAlignment:
     info: dict = field(default_factory=dict)
 
 
+def summarize_alignment(alignment: TelescopeAlignment) -> dict:
+    """Return the statistics of an alignment as plain values that can be saved.
+
+    All times are in seconds. Offsets are ``data_time - tel_time``. The summary is the
+    same whether or not the PPS could be used; if it couldn't, ``aligned`` is False and
+    the statistics that need a fit are None.
+
+    Returns:
+        (dict): With the keys
+            ``aligned``: whether the PPS was used to align the clocks;
+            ``offset_range``: (min, max) of the clock offset curve shared by the axes;
+            ``axis_constants``: extra offset for each axis, relative to their average;
+            ``rms_residual`` and ``max_abs_residual``: of the pulses used, from the fit;
+            ``axes``: per axis, ``n_pulses`` found, ``n_used`` in the fit,
+            ``mean_offset``, ``min_offset``, ``max_offset`` and ``rms_residual``;
+            ``data_pps``: ``n_pulses``, ``period`` and ``rms_residual`` of the RFSoC PPS
+            grid, or None if the data had too few pulses.
+    """
+    info = alignment.info
+
+    def _clean(value):
+        """Convert numpy values to Python ones, and NaN to None."""
+        if isinstance(value, dict):
+            return {k: _clean(v) for k, v in value.items()}
+        if isinstance(value, (tuple, list)):
+            return [_clean(v) for v in value]
+        if isinstance(value, (np.floating, float)):
+            return None if np.isnan(value) else float(value)
+        if isinstance(value, np.integer):
+            return int(value)
+        return value
+
+    grid = info.get('data_pps_grid')
+    summary = {
+        'aligned': bool(alignment.aligned),
+        'offset_range': info.get('offset_range'),
+        'axis_constants': info.get('axis_constants'),
+        'rms_residual': info.get('rms_residual'),
+        'max_abs_residual': info.get('max_abs_residual'),
+        'axes': info.get('axis_stats'),
+        'data_pps': None
+        if grid is None
+        else {
+            'n_pulses': grid.n_pulses,
+            'period': grid.b,
+            'rms_residual': grid.rms_residual,
+        },
+    }
+    return _clean(summary)
+
+
 def _wrap(x: npt.ArrayLike, period: float) -> npt.NDArray:
     """Wrap ``x`` into ``[-period / 2, period / 2)``."""
     return (np.asarray(x) + period / 2) % period - period / 2
@@ -1056,8 +1107,53 @@ def fit_clock_offset(
         'pulse_offsets': y,
         'pulse_residuals': resid,
         'pulse_inliers': inliers,
+        'axis_stats': {
+            ax: _axis_pulse_stats(y, resid, inliers & (labels == ax), labels == ax)
+            for ax in pulse_times
+        },
     }
     return model, info
+
+
+def _axis_pulse_stats(
+    offsets: npt.NDArray, residuals: npt.NDArray, used: npt.NDArray, found: npt.NDArray
+) -> dict:
+    """Summarize the pulses of one axis (offsets and residuals in seconds).
+
+    The offset of a pulse is ``data_time - tel_time``: how much later the data saw the
+    pulse than the telescope clock did. Statistics of pulses that weren't used in the
+    fit are NaN.
+    """
+    if not np.any(used):
+        nan = float('nan')
+        return {
+            'n_pulses': int(found.sum()),
+            'n_used': 0,
+            'mean_offset': nan,
+            'min_offset': nan,
+            'max_offset': nan,
+            'rms_residual': nan,
+        }
+    return {
+        'n_pulses': int(found.sum()),
+        'n_used': int(used.sum()),
+        'mean_offset': float(np.mean(offsets[used])),
+        'min_offset': float(np.min(offsets[used])),
+        'max_offset': float(np.max(offsets[used])),
+        'rms_residual': float(np.sqrt(np.mean(residuals[used] ** 2))),
+    }
+
+
+def _format_axis_stats(axis: str, stats: dict) -> str:
+    """Format the statistics of one axis for the log, in ms."""
+    if stats['n_used'] == 0:
+        return f'{axis.upper()}: none of {stats["n_pulses"]} pulses used'
+    return (
+        f'{axis.upper()}: mean {stats["mean_offset"] * 1e3:+.2f} ms '
+        f'({stats["min_offset"] * 1e3:+.2f} to {stats["max_offset"] * 1e3:+.2f}), '
+        f'rms residual {stats["rms_residual"] * 1e3:.2f} ms, '
+        f'{stats["n_used"]}/{stats["n_pulses"]} pulses used'
+    )
 
 
 def apply_backlash(position: npt.NDArray, backlash: float) -> npt.NDArray:
@@ -1238,11 +1334,15 @@ def align_telescope_positions(
                 f'{ax.upper()} {c * 1e3:+.2f} ms'
                 for ax, c in fit_info['axis_constants'].items()
             )
+            per_axis = '; '.join(
+                _format_axis_stats(ax, stats)
+                for ax, stats in fit_info['axis_stats'].items()
+            )
             _logger.info(
                 f'align_telescope_positions: Clock offset {lo * 1e3:.2f} to '
                 f'{hi * 1e3:.2f} ms (axis constants: {consts}); '
-                f'inliers {fit_info["n_inliers"]} of {fit_info["n_pulses"]}; '
-                f'rms residual {fit_info["rms_residual"] * 1e3:.2f} ms'
+                f'rms residual {fit_info["rms_residual"] * 1e3:.2f} ms. '
+                f'Pulse offsets (data - telescope) by axis: {per_axis}'
             )
     info['clock_model'] = model
 

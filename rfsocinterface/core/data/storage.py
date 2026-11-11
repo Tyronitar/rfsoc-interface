@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import typing
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
 from typing import Self, overload
@@ -24,6 +25,7 @@ from rfsocinterface.core.data.utils import (
     AZ_BACKLASH_DEG,
     CALIBRATION_TABLE_DTYPE,
     TONES_TABLE_DTYPE,
+    TelescopeAlignment,
     align_telescope_positions,
     apply_backlash,
     compute_df_per_mK,
@@ -36,6 +38,7 @@ from rfsocinterface.core.data.utils import (
     interpolate_missing_data,
     interpolate_timestamp_streaming,
     rotate_basis,
+    summarize_alignment,
 )
 from rfsocinterface.core.params import DEFAULT_DFOVERF_PER_MK
 from rfsocinterface.core.sweeps import LoSweepData
@@ -64,6 +67,57 @@ from rfsocinterface.core.utils import (
 )
 
 _logger = logging.getLogger(__name__)
+
+
+TELESCOPE_ALIGNMENT_GROUP = 'telescope_alignment'
+
+
+def store_telescope_alignment(
+    channel_group: h5py.Group,
+    alignment: TelescopeAlignment | None,
+    note: str | None = None,
+):
+    """Save the statistics of a telescope alignment in a channel group.
+
+    Creates ``<channel>/telescope_alignment``, replacing any existing one, containing:
+    - attrs['summary']: JSON of :func:`summarize_alignment`, in seconds.
+    - attrs['code_version'], attrs['created'] and, if given, attrs['note'].
+    - pulse_time, pulse_axis, pulse_offset, pulse_residual, pulse_used: every
+        telescope pulse found, if the PPS was used (seconds, telescope clock).
+    - clock_knots, clock_values: the fitted clock offset curve shared by the axes,
+        if the PPS was used (seconds).
+
+    Arguments:
+        channel_group (h5py.Group): The channel group to save the statistics in.
+        alignment (TelescopeAlignment | None): The result of
+            :func:`align_telescope_positions`, or None if the telescope positions were
+            interpolated without using the PPS.
+        note (str | None, optional): A note to save with the statistics.
+    """
+    if TELESCOPE_ALIGNMENT_GROUP in channel_group:
+        del channel_group[TELESCOPE_ALIGNMENT_GROUP]
+    group = channel_group.create_group(TELESCOPE_ALIGNMENT_GROUP)
+    if alignment is None:
+        summary = {'aligned': False}
+        note = note or 'The PPS was not used to align the telescope positions.'
+    else:
+        summary = summarize_alignment(alignment)
+    group.attrs['summary'] = json.dumps(summary)
+    group.attrs['code_version'] = get_git_hash()
+    group.attrs['created'] = datetime.now(UTC).isoformat()
+    if note is not None:
+        group.attrs['note'] = note
+
+    if alignment is None or not alignment.aligned:
+        return
+    info = alignment.info
+    group.create_dataset('pulse_time', data=info['pulse_times'])
+    group.create_dataset('pulse_axis', data=info['pulse_axes'].astype('S2'))
+    group.create_dataset('pulse_offset', data=info['pulse_offsets'])
+    group.create_dataset('pulse_residual', data=info['pulse_residuals'])
+    group.create_dataset('pulse_used', data=info['pulse_inliers'], dtype=bool)
+    group.create_dataset('clock_knots', data=info['clock_model'].knots)
+    group.create_dataset('clock_values', data=info['clock_model'].values)
 
 
 class DataStorage:
@@ -676,6 +730,51 @@ class DataStorage:
         """Return which sample indices correspond to interpolated IQ data."""
         return self.get_from_channel(i_chan, 'time_ordered_data/interpolated_samples')
 
+    def get_n_missed_packets(self, i_chan: int) -> int | None:
+        """Return how many packets were dropped while recording the channel.
+
+        Returns:
+            (int | None): The number of dropped packets, or None if the file was
+                created before this was saved.
+        """
+        n_missed = self.get_channel_group(i_chan).attrs.get('n_missed_packets')
+        return None if n_missed is None else int(n_missed)
+
+    def get_telescope_alignment(self, i_chan: int) -> dict | None:
+        """Return the statistics of the telescope alignment for the channel.
+
+        See :func:`store_telescope_alignment` and :func:`summarize_alignment`. Times
+        are in seconds, and offsets are ``data_time - tel_time``.
+
+        Returns:
+            (dict | None): The summary, with the ``code_version`` and ``created`` time
+                of the statistics, any ``note``, and, if the PPS was used, ``pulses``
+                (a dict of the per-pulse arrays, keyed by name without the ``pulse_``
+                prefix) and ``clock_model`` (a dict of ``knots`` and ``values``). None
+                if the file was created before these statistics were saved.
+        """
+        channel_group = self.get_channel_group(i_chan)
+        if TELESCOPE_ALIGNMENT_GROUP not in channel_group:
+            return None
+        group = channel_group[TELESCOPE_ALIGNMENT_GROUP]
+        result = json.loads(group.attrs['summary'])
+        for key in ('code_version', 'created', 'note'):
+            if key in group.attrs:
+                result[key] = group.attrs[key]
+        if 'pulse_time' in group:
+            result['pulses'] = {
+                'time': group['pulse_time'][:],
+                'axis': group['pulse_axis'][:].astype(str),
+                'offset': group['pulse_offset'][:],
+                'residual': group['pulse_residual'][:],
+                'used': group['pulse_used'][:],
+            }
+            result['clock_model'] = {
+                'knots': group['clock_knots'][:],
+                'values': group['clock_values'][:],
+            }
+        return result
+
     def get_detector_az(self, i_chan: int) -> h5py.Dataset:
         """Return the azimuthal angle of each detector at each timestamp."""
         return self.get_from_channel(i_chan, 'time_ordered_data/detector_az')
@@ -1164,6 +1263,7 @@ class ConsolidatedData(DataStorage):
             )
             this_channel_group.attrs['n_tones'] = n_tones
             this_channel_group.attrs['n_samples'] = n_samples_ds
+            this_channel_group.attrs['n_missed_packets'] = n_missed
 
             # Store the tone parameters
             tones_table = this_channel_group.create_dataset(
@@ -1435,7 +1535,9 @@ class ConsolidatedData(DataStorage):
                     corrected_az_tel = alignment.az
                     corrected_za_tel = alignment.za
                     corrected_signal_mask = alignment.signal_mask
+                    store_telescope_alignment(this_channel_group, alignment)
                 else:
+                    store_telescope_alignment(this_channel_group, None)
                     corrected_az_tel = np.interp(
                         temp_timestamp,
                         timestamp_tel[:],
