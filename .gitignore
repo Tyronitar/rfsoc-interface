@@ -175,8 +175,7 @@ cython_debug/
 # Data files
 *.npy
 *.npz
-*.h5
-*.h5.*
+*.h5*
 data/
 !rfsocinterface/core/*
 !Default_tone_list.npy
@@ -197,6 +196,8 @@ data/
 # Configuration Files
 *.yml
 *.yaml
+!.github/**/*.yaml
+!.github/**/*.yml
 *.json
 !*example*.json
 

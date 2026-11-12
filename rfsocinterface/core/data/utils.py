@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from typing import Literal
 
 # import tables
@@ -25,9 +26,10 @@ _logger = logging.getLogger(__name__)
 # OPTCAM_SENSOR_SIZE = (5.76, 4.29)  # mm, (width, height)
 OPTCAM_DPIX = 0.0025  # Degrees / pixel
 # Empirically determined optical camera offset relative to telescope position
-# i.e. telescope position + offset = optcam position
-OPTCAM_OFFSET_AZ_DEG = -1.11111
-OPTCAM_OFFSET_ZA_DEG = -1.65628
+# i.e. optical position in telescope coordinates = tel position - offset
+# optical camera aligned to tel position -> tel position + offset
+OPTCAM_OFFSET_ZA_DEG = -1.7138
+OPTCAM_OFFSET_AZ_DEG = -1.1465
 OPTCAM_OFFSET_AZ_PIX = int(OPTCAM_OFFSET_AZ_DEG / OPTCAM_DPIX)
 OPTCAM_OFFSET_ZA_PIX = int(OPTCAM_OFFSET_ZA_DEG / OPTCAM_DPIX)
 OPTCAM_HEIGHT_PIXELS = 1944
@@ -79,6 +81,11 @@ ZA_TRIM = 0.2
 RFSOC_TIME_OFFSET_AZ = 0  # -12 ms, empirically determined
 RFSOC_TIME_OFFSET_ZA = -3e-3  # -3 ms, empirically determined
 
+# Half of the backlash between the azimuth motor encoder and the telescope, i.e. how far
+# the telescope trails the encoder while moving. Measured from the separation of the
+# beams in opposite scan directions, which is independent of the scan speed.
+AZ_BACKLASH_DEG = 0.0125
+
 
 TONES_TABLE_DTYPE = [
     ('baseband_freq', 'f8'),
@@ -98,6 +105,23 @@ CALIBRATION_TABLE_DTYPE = [
     ('IQ_to_freq_diss_angle', 'f8'),
     ('df_per_mK', 'f8'),
 ]
+
+
+def get_current_camera_extent(
+    tel_az: float, tel_za: float
+) -> tuple[float, float, float, float]:
+    """Return the extent of the camera given the current telescope position."""
+    # Get the optical image's actual coordinates (hence subtraction)
+    opt_center_az = tel_az - OPTCAM_OFFSET_AZ_DEG
+    opt_center_za = tel_za - OPTCAM_OFFSET_ZA_DEG
+    opt_width_deg = OPTCAM_WIDTH_PIXELS * OPTCAM_DPIX
+    opt_height_deg = OPTCAM_HEIGHT_PIXELS * OPTCAM_DPIX
+    return (
+        opt_center_az - opt_width_deg / 2,
+        opt_center_az + opt_width_deg / 2,
+        opt_center_za + opt_height_deg / 2,
+        opt_center_za - opt_height_deg / 2,
+    )
 
 
 def get_channel_group_name(idx: int) -> str:
@@ -493,10 +517,11 @@ def interpolate_telescope_positions(
     tel_position: npt.NDArray,
     pps_position: npt.NDArray,
     data_pps: npt.NDArray,
+    map_signal_mask: npt.NDArray,
     search_radius: int = 100,
     fit_radius: int = 200,
     direction: Literal['az', 'za'] = 'az',
-) -> npt.NDArray:
+) -> tuple[npt.NDArray, npt.NDArray]:
     """Interpolate and align the telescope positions."""
     n_samples = data_timestamp.size
     # Find the telescope positions and timestamps corresponding to the PPS pulses
@@ -510,14 +535,28 @@ def interpolate_telescope_positions(
     if pps_tel_idx.size <= 1:
         # The telescope didn't move enough in this direction, so aligning the times
         # doesn't work. Just upsample the positions.
-        _logger.debug(
+        _logger.info(
             f'Doing simple interpolation for detector positions in '
             f'{direction.upper()} direction.'
         )
-        return np.interp(
+        corrected_tel_pos = np.interp(
             data_timestamp, telescope_timestamp, tel_position, left=np.nan, right=np.nan
         )
-    _logger.debug(f'Using PPS for detector positions in {direction.upper()} direction.')
+        float_signal_mask = map_signal_mask[:].astype(float)
+        interp_float_mask = np.interp(
+            data_timestamp,
+            telescope_timestamp,
+            float_signal_mask[:],
+            left=0,
+            right=0,
+        )
+        corrected_signal_mask = (
+            interp_float_mask >= 1 / 2
+        )  # Convert float back to boolean
+        corrected_signal_mask[np.isnan(corrected_tel_pos)] = False
+        return corrected_tel_pos, corrected_signal_mask
+
+    _logger.info(f'Using PPS for detector positions in {direction.upper()} direction.')
 
     # Upsample the telescope positions ignoring the positions when the pulse is receivd,
     # since the extra commands slow the loop
@@ -526,7 +565,12 @@ def interpolate_telescope_positions(
         np.delete(telescope_timestamp, pps_tel_idx),
         np.delete(tel_position, pps_tel_idx),
     )
-
+    float_mask = map_signal_mask.astype(float)
+    interpolated_signal_mask = np.interp(
+        data_timestamp,
+        np.delete(telescope_timestamp, pps_tel_idx),
+        np.delete(float_mask, pps_tel_idx),
+    )
     # Now shift the upsampled positions so that the PPS is synced between the
     # raw data and the telescope data.
 
@@ -562,7 +606,8 @@ def interpolate_telescope_positions(
     np.full(n_samples, np.nan)
     sample_boundaries = ((pps_samples_tel[1:] + pps_samples_tel[:-1]) / 2).astype(int)
     xp = []
-    fp = []
+    pos_fp = []
+    mask_fp = []
     for i_tel_pps, this_pps_offset in enumerate(pps_offset):
         pps_sample = pps_samples_tel[i_tel_pps]
         max_shift = np.abs(this_pps_offset)
@@ -585,14 +630,758 @@ def interpolate_telescope_positions(
         # i_fit_stop = min(n_samples, i_tel_stop + max_shift)
         this_timestamp = data_timestamp[i_tel_start:i_tel_stop]
         possible_tel_pos = interpolated_tel_pos[i_fit_start:i_fit_stop]
+        possible_singal_mask = interpolated_signal_mask[i_fit_start:i_fit_stop]
         n_times = this_timestamp.size
         if this_pps_offset < 0:
             this_tel_pos = possible_tel_pos[0:-max_shift]
+            this_signal_mask = possible_singal_mask[0:-max_shift]
         else:
             this_tel_pos = possible_tel_pos[max_shift:]
+            this_signal_mask = possible_singal_mask[max_shift:]
         min_length = min(n_times, this_tel_pos.size)
         this_tel_pos = this_tel_pos[:min_length]
+        this_signal_mask = this_signal_mask[:min_length]
         this_timestamp = this_timestamp[:min_length]
         xp.extend(this_timestamp)
-        fp.extend(this_tel_pos)
-    return np.interp(data_timestamp, xp, fp, left=np.nan, right=np.nan)
+        pos_fp.extend(this_tel_pos)
+        mask_fp.extend(this_signal_mask)
+
+    corrected_tel_pos = np.interp(data_timestamp, xp, pos_fp, left=np.nan, right=np.nan)
+    interp_float_mask = np.interp(data_timestamp, xp, mask_fp, left=0, right=0)
+    corrected_signal_mask = interp_float_mask >= 1 / 2  # Convert float back to boolean
+    corrected_signal_mask[np.isnan(corrected_tel_pos)] = False
+    return corrected_tel_pos, corrected_signal_mask
+
+
+#
+# PPS-based telescope / RFSoC time alignment
+#
+PPS_PERIOD_S = 1.0
+
+
+@dataclass
+class PPSGrid:
+    """Linear model of the RFSoC PPS pulse times: ``T(n) = t_ref + a + b * n``."""
+
+    t_ref: float
+    a: float
+    b: float
+    n_pulses: int
+    rms_residual: float
+
+    def time(self, n: npt.ArrayLike) -> npt.NDArray:
+        """Return the (data clock) time of pulse number ``n``."""
+        return self.t_ref + self.a + self.b * np.asarray(n, dtype=float)
+
+
+@dataclass
+class TelescopeAlignment:
+    """Result of :func:`align_telescope_positions`.
+
+    Attributes:
+        az (npt.NDArray): Azimuth at every data sample (NaN outside telescope data).
+        za (npt.NDArray): Zenith angle at every data sample (NaN outside telescope
+            data).
+        signal_mask (npt.NDArray): Map signal mask at every data sample.
+        aligned (bool): Whether a PPS-based clock correction was applied. If False,
+            the telescope timestamps were used as-is (plus ``default_offset``).
+        info (dict): Diagnostics (pulse counts, fit coefficients, residuals, ...).
+    """
+
+    az: npt.NDArray
+    za: npt.NDArray
+    signal_mask: npt.NDArray
+    aligned: bool
+    info: dict = field(default_factory=dict)
+
+
+def summarize_alignment(alignment: TelescopeAlignment) -> dict:
+    """Return the statistics of an alignment as plain values that can be saved.
+
+    All times are in seconds. Offsets are ``data_time - tel_time``. The summary is the
+    same whether or not the PPS could be used; if it couldn't, ``aligned`` is False and
+    the statistics that need a fit are None.
+
+    Returns:
+        (dict): With the keys
+            ``aligned``: whether the PPS was used to align the clocks;
+            ``offset_range``: (min, max) of the clock offset curve shared by the axes;
+            ``axis_constants``: extra offset for each axis, relative to their average;
+            ``rms_residual`` and ``max_abs_residual``: of the pulses used, from the fit;
+            ``axes``: per axis, ``n_pulses`` found, ``n_used`` in the fit,
+            ``mean_offset``, ``min_offset``, ``max_offset`` and ``rms_residual``;
+            ``data_pps``: ``n_pulses``, ``period`` and ``rms_residual`` of the RFSoC PPS
+            grid, or None if the data had too few pulses.
+    """
+    info = alignment.info
+
+    def _clean(value):
+        """Convert numpy values to Python ones, and NaN to None."""
+        if isinstance(value, dict):
+            return {k: _clean(v) for k, v in value.items()}
+        if isinstance(value, (tuple, list)):
+            return [_clean(v) for v in value]
+        if isinstance(value, (np.floating, float)):
+            return None if np.isnan(value) else float(value)
+        if isinstance(value, np.integer):
+            return int(value)
+        return value
+
+    grid = info.get('data_pps_grid')
+    summary = {
+        'aligned': bool(alignment.aligned),
+        'offset_range': info.get('offset_range'),
+        'axis_constants': info.get('axis_constants'),
+        'rms_residual': info.get('rms_residual'),
+        'max_abs_residual': info.get('max_abs_residual'),
+        'axes': info.get('axis_stats'),
+        'data_pps': None
+        if grid is None
+        else {
+            'n_pulses': grid.n_pulses,
+            'period': grid.b,
+            'rms_residual': grid.rms_residual,
+        },
+    }
+    return _clean(summary)
+
+
+def _wrap(x: npt.ArrayLike, period: float) -> npt.NDArray:
+    """Wrap ``x`` into ``[-period / 2, period / 2)``."""
+    return (np.asarray(x) + period / 2) % period - period / 2
+
+
+def _circular_center(x: npt.NDArray, period: float) -> float:
+    """Robust center of ``x`` modulo ``period`` (circular mean + median refinement)."""
+    ang = 2 * np.pi * np.asarray(x) / period
+    center = np.angle(np.mean(np.exp(1j * ang))) * period / (2 * np.pi)
+    return center + float(np.median(_wrap(x - center, period)))
+
+
+def fit_data_pps_grid(
+    data_timestamp: npt.NDArray,
+    data_pps: npt.NDArray,
+    period: float = PPS_PERIOD_S,
+    max_residual: float = 0.01,
+) -> PPSGrid | None:
+    """Fit the RFSoC PPS pulses to a regular grid of pulse times.
+
+    Each pulse is assigned an integer pulse number using the known PPS period, so
+    pulses missing from the data (e.g. dropped packets) and spurious pulses do not
+    break the pulse numbering. Fitting a line to (pulse number, time) also averages
+    away the +/- 1 sample quantization of the individual pulses.
+
+    Arguments:
+        data_timestamp (npt.NDArray): Equally spaced data timestamps.
+        data_pps (npt.NDArray): 1 where a pulse was received, 0 elsewhere.
+        period (float): Nominal PPS period in seconds.
+        max_residual (float): Pulses further than this (s) from the grid are ignored.
+
+    Returns:
+        (PPSGrid | None): The fitted grid, or None if fewer than two consistent pulses
+            were found.
+    """
+    pps = np.asarray(data_pps).astype(bool)
+    # Rising edges only, so multi-sample pulses are counted once. A pulse already
+    # high at sample 0 has an unknown start and is skipped.
+    edges = np.flatnonzero(pps[1:] & ~pps[:-1]) + 1
+    if edges.size < 2:  # noqa: PLR2004
+        return None
+
+    t_edges = np.asarray(data_timestamp)[edges]
+    t_ref = float(t_edges[0])
+    rel = t_edges - t_ref
+
+    # Phase of the pulses on the 1 s grid; reject pulses off the dominant phase.
+    phase = _circular_center(rel, period)
+    inliers = np.abs(_wrap(rel - phase, period)) < max_residual
+    if inliers.sum() < 2:  # noqa: PLR2004
+        return None
+    n = np.round((rel - phase) / period)
+
+    a, b = phase, period
+    for _ in range(5):
+        if np.unique(n[inliers]).size < 2:  # noqa: PLR2004
+            return None
+        b, a = np.polyfit(n[inliers], rel[inliers], 1)
+        resid = rel - (a + b * n)
+        new_inliers = np.abs(resid) < max_residual
+        if np.array_equal(new_inliers, inliers):
+            break
+        inliers = new_inliers
+
+    rms = float(np.sqrt(np.mean(resid[inliers] ** 2)))
+    if abs(b - period) > 1e-3 * period:
+        _logger.warning(
+            f'fit_data_pps_grid: Fitted PPS period {b:.6f} s differs from nominal '
+            f'{period} s; check the data timestamp.'
+        )
+    _logger.debug(
+        f'fit_data_pps_grid: {inliers.sum()}/{edges.size} pulses used, '
+        f'period={b:.7f} s, rms residual={rms * 1e3:.3f} ms'
+    )
+    return PPSGrid(t_ref, float(a), float(b), int(inliers.sum()), rms)
+
+
+def find_telescope_pps_times(
+    telescope_timestamp: npt.NDArray,
+    position: npt.NDArray,
+    latched_position: npt.NDArray,
+    drop_latch_rows: bool = True,
+    max_segment_dt: float = 0.1,
+    bracket_slack: float = 0.02,
+    search_rows: int = 3,
+    prior_motion_rows: int = 4,
+) -> npt.NDArray:
+    """Estimate the telescope-clock times of the PPS pulses seen by one motor axis.
+
+    The motors latch their position when a pulse arrives. A new latch value means a
+    pulse occurred between the previous latch read (row ``i - 1``) and this one (row
+    ``i``). The time of the pulse is the time at which the recorded trajectory passed
+    through the latched position, found by linear interpolation of the trajectory.
+
+    A pulse is only used when this is well defined:
+      * The latched value lies *strictly* between two consecutive positions, so the
+        axis was actually moving. This rejects pulses while the axis was stationary
+        and stale latch values (e.g. the first latch read after the axis was idle,
+        which equals the current position).
+      * The two positions are at most ``max_segment_dt`` apart in time, so the
+        interpolated time is precise.
+      * The crossing falls inside the bracket ``[t[i-1], t[i]]`` (+/- slack).
+      * The axis was already moving in the ``prior_motion_rows`` rows before the
+        change. A latch is only polled while its axis is being driven, so the first
+        read at the start of a move can return a value latched long ago (the ZA
+        latch holds the first pulse after it was last re-armed, ~1 s after the end
+        of the previous ZA move). If the axis passes back through that position, the
+        stale value would otherwise look like a valid crossing.
+
+    Arguments:
+        telescope_timestamp (npt.NDArray): Telescope timestamps.
+        position (npt.NDArray): Positions of this axis.
+        latched_position (npt.NDArray): Latched PPS positions of this axis.
+        drop_latch_rows (bool): Exclude the rows where the latch changed from the
+            trajectory, since the extra latch commands delay those rows.
+        max_segment_dt (float): Maximum time between trajectory samples used to
+            interpolate a crossing (s).
+        bracket_slack (float): Tolerance on the bracket (s).
+        search_rows (int): Number of rows on either side of the latch change to look
+            for the crossing.
+        prior_motion_rows (int): Number of rows before the latch change in which the
+            axis must have moved.
+
+    Returns:
+        (npt.NDArray): Telescope-clock times of the identified pulses.
+    """
+    t = np.asarray(telescope_timestamp, dtype=float)
+    pos = np.asarray(position, dtype=float)
+    latch = np.asarray(latched_position, dtype=float)
+
+    change_rows = np.flatnonzero(np.diff(latch) != 0) + 1
+    keep = np.ones(t.size, dtype=bool)
+    if drop_latch_rows:
+        keep[change_rows] = False
+    traj_rows = np.flatnonzero(keep)
+    t_traj = t[traj_rows]
+    pos_traj = pos[traj_rows]
+
+    times = []
+    for i in change_rows:
+        p = latch[i]
+        if np.ptp(pos[max(0, i - 1 - prior_motion_rows) : i]) == 0:
+            continue  # Axis was not being driven before this latch read
+        lo_t = t[i - 1] - bracket_slack
+        hi_t = t[i] + bracket_slack
+        # Segments of the (reduced) trajectory near row i
+        k = np.searchsorted(traj_rows, i)
+        j0 = max(0, k - 1 - search_rows)
+        j1 = min(t_traj.size - 1, k + search_rows)
+        if j1 <= j0:
+            continue
+        p0 = pos_traj[j0:j1]
+        p1 = pos_traj[j0 + 1 : j1 + 1]
+        t0 = t_traj[j0:j1]
+        t1 = t_traj[j0 + 1 : j1 + 1]
+        crosses = ((p0 - p) * (p1 - p) < 0) & ((t1 - t0) <= max_segment_dt)
+        if not crosses.any():
+            continue
+        frac = (p - p0[crosses]) / (p1[crosses] - p0[crosses])
+        t_cross = t0[crosses] + frac * (t1[crosses] - t0[crosses])
+        t_cross = t_cross[(t_cross >= lo_t) & (t_cross <= hi_t)]
+        if t_cross.size == 0:
+            continue
+        # If several crossings qualify, use the one closest to the bracket center
+        times.append(t_cross[np.argmin(np.abs(t_cross - (t[i - 1] + t[i]) / 2))])
+
+    return np.asarray(times, dtype=float)
+
+
+@dataclass
+class ClockOffsetModel:
+    """Smooth model of the offset ``data_time - tel_time`` as a function of time.
+
+    The offset is a piecewise-linear curve through ``(knots, values)`` (held constant
+    beyond the ends) plus a constant per axis for the axis-specific read latency.
+    """
+
+    knots: npt.NDArray
+    values: npt.NDArray
+    axis_constants: dict[str, float]
+
+    def offset(self, tel_time: npt.ArrayLike, axis: str | None = None) -> npt.NDArray:
+        """Return ``data_time - tel_time`` at the given telescope-clock times."""
+        const = self.axis_constants.get(axis, 0.0) if axis is not None else 0.0
+        return np.interp(tel_time, self.knots, self.values) + const
+
+    def to_data_clock(
+        self, tel_time: npt.ArrayLike, axis: str | None = None
+    ) -> npt.NDArray:
+        """Convert telescope-clock times to data-clock times."""
+        tel_time = np.asarray(tel_time, dtype=float)
+        return tel_time + self.offset(tel_time, axis)
+
+
+def _running_median(t: npt.NDArray, y: npt.NDArray, window: float) -> npt.NDArray:
+    """Median of ``y`` within +/- ``window / 2`` of each (sorted) ``t``."""
+    lo = np.searchsorted(t, t - window / 2)
+    hi = np.searchsorted(t, t + window / 2, side='right')
+    return np.array([np.median(y[a:b]) for a, b in zip(lo, hi, strict=True)])
+
+
+def fit_clock_offset(
+    pulse_times: dict[str, npt.NDArray],
+    grid: PPSGrid,
+    knot_spacing: float = 1.0,
+    smoothing: float = 0.1,
+    expected_offset: float = 0.0,
+    max_residual: float = 0.1,
+    n_sigma: float = 4.0,
+    min_tolerance: float = 2e-3,
+    min_pulses_per_axis: int = 5,
+) -> tuple[ClockOffsetModel, dict] | None:
+    """Fit the offset between the telescope clock and the data clock.
+
+    The model is ``data_time = tel_time + c_axis + s(tel_time)``, where ``s`` is a
+    smooth piecewise-linear curve shared by all axes and ``c_axis`` is a constant per
+    axis that absorbs the axis-specific read latency. ``s`` is time-varying because
+    the host clock used for the telescope timestamps wanders relative to the
+    (linearized) RFSoC sample clock: slowly by tens of ms over minutes, and in
+    some runs by transients of up to ~50 ms/s lasting ~10 s. Pulses arrive every
+    second, so the default 1 s knot spacing follows those transients while the
+    curvature penalty keeps the curve smooth and bridges gaps without pulses.
+
+    ``s`` has knots every ``knot_spacing`` seconds and is regularized by a penalty on
+    its curvature, so stretches without usable pulses (e.g. the telescope is not
+    moving) are bridged smoothly. An axis with fewer than ``min_pulses_per_axis``
+    pulses does not get its own constant. Mis-numbered or badly timed pulses are
+    removed by iterative sigma clipping.
+
+    Arguments:
+        pulse_times (dict[str, npt.NDArray]): Telescope-clock pulse times per axis.
+        grid (PPSGrid): The data PPS grid.
+        knot_spacing (float): Spacing of the knots of ``s`` (s). Use ``np.inf`` for a
+            single linear drift.
+        smoothing (float): Weight of the curvature penalty relative to one pulse.
+        expected_offset (float): Prior on the offset (s). The PPS only fixes the
+            offset modulo the PPS period; the solution closest to this is chosen.
+        max_residual (float): Absolute limit on a pulse's residual (s).
+        n_sigma (float): Clipping threshold in robust standard deviations.
+        min_tolerance (float): Lower limit on the clipping threshold (s).
+        min_pulses_per_axis (int): Minimum pulses for an axis to get its own
+            constant.
+
+    Returns:
+        (tuple[ClockOffsetModel, dict] | None): The model and diagnostics, or None
+            if there are not enough usable pulses.
+    """
+    axes = [ax for ax, tp in pulse_times.items() if tp.size > 0]
+    if not axes:
+        return None
+    t_all = np.concatenate([pulse_times[ax] for ax in axes])
+    labels = np.concatenate([[ax] * pulse_times[ax].size for ax in axes])
+    order = np.argsort(t_all)
+    t_all, labels = t_all[order], labels[order]
+    if t_all.size < 2:  # noqa: PLR2004
+        return None
+
+    # Initial offset (modulo the PPS period) from the pulse phases
+    rel = t_all - grid.t_ref
+    frac = (rel - grid.a) / grid.b
+    offset0 = _circular_center((np.round(frac) - frac) * grid.b, grid.b)
+    offset0 += grid.b * np.round((expected_offset - offset0) / grid.b)
+
+    # Assign each telescope pulse to a data pulse number and measure the offsets
+    n = np.round((rel + offset0 - grid.a) / grid.b)
+    y = grid.time(n) - t_all  # data_time - tel_time
+
+    # Axis constants are relative to the axis with the most pulses
+    counts = {ax: int((labels == ax).sum()) for ax in axes}
+    own = [ax for ax in axes if counts[ax] >= min_pulses_per_axis]
+    ref_axis = max(own or axes, key=counts.get)
+    rel_axes = [ax for ax in own if ax != ref_axis]
+    valid = np.isin(labels, own) if own else np.ones(t_all.size, dtype=bool)
+
+    # Piecewise-linear basis: each pulse touches two neighboring knots
+    span = t_all[-1] - t_all[0]
+    n_knots = (
+        2
+        if not np.isfinite(knot_spacing)
+        else max(2, int(np.ceil(span / knot_spacing)) + 1)
+    )
+    knots = (
+        np.linspace(t_all[0], t_all[-1], n_knots)
+        if span > 0
+        else t_all[[0, -1]] + [0, 1]
+    )
+    k = np.clip(np.searchsorted(knots, t_all, side='right') - 1, 0, n_knots - 2)
+    w = (t_all - knots[k]) / (knots[k + 1] - knots[k])
+    n_par = n_knots + len(rel_axes)
+    axis_col = {ax: n_knots + i for i, ax in enumerate(rel_axes)}
+
+    # Curvature penalty (second differences of the knot values)
+    penalty = np.zeros((n_par, n_par))
+    if n_knots > 2:  # noqa: PLR2004
+        d2 = np.zeros((n_knots - 2, n_par))
+        idx = np.arange(n_knots - 2)
+        d2[idx, idx], d2[idx, idx + 1], d2[idx, idx + 2] = 1.0, -2.0, 1.0
+        penalty = smoothing * d2.T @ d2
+
+    def predict(params: npt.NDArray) -> npt.NDArray:
+        pred = (1 - w) * params[k] + w * params[k + 1]
+        for ax, col in axis_col.items():
+            pred = pred + np.where(labels == ax, params[col], 0.0)
+        return pred
+
+    def solve(use: npt.NDArray) -> npt.NDArray:
+        # Normal equations, accumulated sparsely (each row has <= 3 nonzeros)
+        cols = [k[use], k[use] + 1]
+        vals = [1 - w[use], w[use]]
+        lab = labels[use]
+        for ax, col in axis_col.items():
+            cols.append(np.full(lab.size, col))
+            vals.append((lab == ax).astype(float))
+        ata = penalty.copy()
+        aty = np.zeros(n_par)
+        for ci, vi in zip(cols, vals, strict=True):
+            np.add.at(aty, ci, vi * y[use])
+            for cj, vj in zip(cols, vals, strict=True):
+                np.add.at(ata, (ci, cj), vi * vj)
+        # Tiny ridge keeps knots without any constraint well defined
+        ata[np.diag_indices(n_par)] += 1e-9
+        return np.linalg.solve(ata, aty)
+
+    # Start from a running median so a few mis-numbered pulses can't skew the fit
+    window = max(3 * knot_spacing, 6.0) if np.isfinite(knot_spacing) else np.inf
+    start = _running_median(t_all, y, window) if np.isfinite(window) else np.median(y)
+    inliers = valid & (np.abs(y - start) < max_residual)
+    if inliers.sum() < 2:  # noqa: PLR2004
+        return None
+    for _ in range(20):
+        params = solve(inliers)
+        resid = y - predict(params)
+        sigma = 1.4826 * np.median(np.abs(resid[inliers]))
+        thresh = min(max(n_sigma * sigma, min_tolerance), max_residual)
+        new_inliers = valid & (np.abs(resid) < thresh)
+        if np.array_equal(new_inliers, inliers) or new_inliers.sum() < 2:  # noqa: PLR2004
+            break
+        inliers = new_inliers
+
+    # Put the mean axis constant into the curve so each constant is a small latency
+    consts = {ref_axis: 0.0} | {ax: float(params[col]) for ax, col in axis_col.items()}
+    weights = {ax: (inliers & (labels == ax)).sum() for ax in consts}
+    mean_const = sum(consts[ax] * weights[ax] for ax in consts) / max(
+        1, sum(weights.values())
+    )
+    axis_constants = {ax: consts[ax] - mean_const for ax in consts}
+    model = ClockOffsetModel(knots, params[:n_knots] + mean_const, axis_constants)
+
+    info = {
+        'axes_with_own_constant': [ref_axis, *rel_axes] if own else [],
+        'axis_constants': axis_constants,
+        'n_pulses': {ax: int((labels == ax).sum()) for ax in pulse_times},
+        'n_inliers': {ax: int((inliers & (labels == ax)).sum()) for ax in pulse_times},
+        'rms_residual': float(np.sqrt(np.mean(resid[inliers] ** 2))),
+        'max_abs_residual': float(np.max(np.abs(resid[inliers]))),
+        'offset_range': (float(np.min(model.values)), float(np.max(model.values))),
+        'pulse_times': t_all,
+        'pulse_axes': labels,
+        'pulse_offsets': y,
+        'pulse_residuals': resid,
+        'pulse_inliers': inliers,
+        'axis_stats': {
+            ax: _axis_pulse_stats(y, resid, inliers & (labels == ax), labels == ax)
+            for ax in pulse_times
+        },
+    }
+    return model, info
+
+
+def _axis_pulse_stats(
+    offsets: npt.NDArray, residuals: npt.NDArray, used: npt.NDArray, found: npt.NDArray
+) -> dict:
+    """Summarize the pulses of one axis (offsets and residuals in seconds).
+
+    The offset of a pulse is ``data_time - tel_time``: how much later the data saw the
+    pulse than the telescope clock did. Statistics of pulses that weren't used in the
+    fit are NaN.
+    """
+    if not np.any(used):
+        nan = float('nan')
+        return {
+            'n_pulses': int(found.sum()),
+            'n_used': 0,
+            'mean_offset': nan,
+            'min_offset': nan,
+            'max_offset': nan,
+            'rms_residual': nan,
+        }
+    return {
+        'n_pulses': int(found.sum()),
+        'n_used': int(used.sum()),
+        'mean_offset': float(np.mean(offsets[used])),
+        'min_offset': float(np.min(offsets[used])),
+        'max_offset': float(np.max(offsets[used])),
+        'rms_residual': float(np.sqrt(np.mean(residuals[used] ** 2))),
+    }
+
+
+def _format_axis_stats(axis: str, stats: dict) -> str:
+    """Format the statistics of one axis for the log, in ms."""
+    if stats['n_used'] == 0:
+        return f'{axis.upper()}: none of {stats["n_pulses"]} pulses used'
+    return (
+        f'{axis.upper()}: mean {stats["mean_offset"] * 1e3:+.2f} ms '
+        f'({stats["min_offset"] * 1e3:+.2f} to {stats["max_offset"] * 1e3:+.2f}), '
+        f'rms residual {stats["rms_residual"] * 1e3:.2f} ms, '
+        f'{stats["n_used"]}/{stats["n_pulses"]} pulses used'
+    )
+
+
+def apply_backlash(position: npt.NDArray, backlash: float) -> npt.NDArray:
+    """Convert motor encoder positions to the positions of the telescope.
+
+    The telescope trails the encoder by ``backlash`` while moving, in whichever
+    direction it is moving. After a reversal, the encoder travels ``2 * backlash``
+    before the telescope follows; while the encoder is stationary, the telescope stays
+    put. Without this correction, rows of a map scanned in opposite directions are
+    offset from each other by ``2 * backlash``, whatever the scan speed.
+
+    This must not be used on the positions compared to the PPS latch, since the latch
+    and the positions it is compared to are both read from the encoder.
+
+    Arguments:
+        position (npt.NDArray): Encoder positions in time order. NaNs are left as they
+            are.
+        backlash (float): Half of the total backlash, in the units of ``position``.
+
+    Returns:
+        (npt.NDArray): The telescope positions. The mean of the two scan directions is
+            unchanged.
+    """
+    if backlash < 0:
+        raise ValueError(f'backlash must not be negative; got {backlash}')
+    position = np.asarray(position, dtype=float)
+    if backlash == 0:
+        return position.copy()
+
+    corrected = position.copy()
+    finite = np.flatnonzero(np.isfinite(position))
+    if finite.size == 0:
+        return corrected
+
+    # Assume that the backlash has been taken up in the direction of the first move
+    first = position[finite[0]]
+    moved = np.flatnonzero(np.abs(position[finite] - first) > 2 * backlash)
+    direction = np.sign(position[finite[moved[0]]] - first) if moved.size else 0.0
+    telescope = first - direction * backlash
+
+    for i in finite.tolist():
+        x = position[i]
+        telescope = min(max(telescope, x - backlash), x + backlash)
+        corrected[i] = telescope
+    return corrected
+
+
+def _strictly_increasing_rows(t: npt.NDArray) -> npt.NDArray:
+    """Return indices that sort ``t`` and drop duplicate times."""
+    order = np.argsort(t, kind='stable')
+    keep = np.r_[True, np.diff(t[order]) > 0]
+    return order[keep]
+
+
+def align_telescope_positions(
+    data_timestamp: npt.NDArray,
+    data_pps: npt.NDArray,
+    telescope_timestamp: npt.NDArray,
+    az_tel: npt.NDArray,
+    za_tel: npt.NDArray,
+    az_pps: npt.NDArray,
+    za_pps: npt.NDArray,
+    map_signal_mask: npt.NDArray | None = None,
+    primary_axis: Literal['az', 'za'] = 'az',
+    knot_spacing: float = 1.0,
+    smoothing: float = 0.1,
+    expected_offset: float = 0.0,
+    default_offset: float = 0.0,
+    drop_latch_rows: bool = True,
+    max_segment_dt: float = 0.1,
+    max_residual: float = 0.1,
+    min_pulses_per_axis: int = 5,
+    az_backlash: float = 0.0,
+    za_backlash: float = 0.0,
+) -> TelescopeAlignment:
+    """Align the telescope positions to the data timestamps using the shared PPS.
+
+    Rather than locally shifting each axis to line up individual pulses, this finds
+    a single smooth mapping from the telescope clock to the data clock and then
+    resamples the raw telescope trajectory through it:
+
+    1. Fit the data PPS pulses to a regular 1 s grid (:func:`fit_data_pps_grid`).
+    2. For each axis, find the telescope-clock time of every pulse whose latched
+       position can be located on the recorded trajectory, i.e. the axis was moving
+       (:func:`find_telescope_pps_times`). Pulses while an axis is stationary are
+       simply not used; they are not needed.
+    3. Fit a smooth ``data_time = tel_time + offset_axis(tel_time)`` to all pulses
+       from both axes together (:func:`fit_clock_offset`). The time-varying part is
+       shared, so an axis with few or no usable pulses still gets a well constrained
+       mapping.
+    4. Map each raw telescope row onto the data clock and interpolate each axis onto
+       ``data_timestamp``.
+
+    Because every row is moved by a smooth, slowly varying amount, the shape of
+    the trajectory is preserved: if only one axis moves in the raw telescope data,
+    only that axis moves in the output, and simultaneous motion is kept as well.
+    The axes can only differ by their (few ms) latency constants.
+
+    Arguments:
+        data_timestamp (npt.NDArray): Equally spaced data timestamps.
+        data_pps (npt.NDArray): Data PPS (1 where a pulse was received).
+        telescope_timestamp (npt.NDArray): Telescope timestamps.
+        az_tel (npt.NDArray): Telescope azimuth.
+        za_tel (npt.NDArray): Telescope zenith angle.
+        az_pps (npt.NDArray): Latched azimuth at the most recent pulse.
+        za_pps (npt.NDArray): Latched zenith angle at the most recent pulse.
+        map_signal_mask (npt.NDArray | None): Per-row signal mask. All True if None.
+        primary_axis ('az' | 'za'): The axis whose time mapping is used for the
+            signal mask.
+        knot_spacing (float): See :func:`fit_clock_offset`.
+        smoothing (float): See :func:`fit_clock_offset`.
+        expected_offset (float): Prior on the clock offset (s); the solution within
+            half a PPS period of this is used.
+        default_offset (float): Offset (s) to apply if the PPS cannot be used.
+        drop_latch_rows (bool): See :func:`find_telescope_pps_times`.
+        max_segment_dt (float): See :func:`find_telescope_pps_times`.
+        max_residual (float): See :func:`fit_clock_offset`.
+        min_pulses_per_axis (int): See :func:`fit_clock_offset`.
+        az_backlash (float): Azimuth backlash to remove from the output (see
+            :func:`apply_backlash`). Doesn't affect the time alignment.
+        za_backlash (float): Zenith angle backlash to remove from the output.
+
+    Returns:
+        (TelescopeAlignment): The aligned positions, signal mask and diagnostics.
+    """
+    data_timestamp = np.asarray(data_timestamp, dtype=float)
+    t_tel = np.asarray(telescope_timestamp, dtype=float)
+    positions = {
+        'az': np.asarray(az_tel, dtype=float),
+        'za': np.asarray(za_tel, dtype=float),
+    }
+    latches = {
+        'az': np.asarray(az_pps, dtype=float),
+        'za': np.asarray(za_pps, dtype=float),
+    }
+    if map_signal_mask is None:
+        map_signal_mask = np.ones(t_tel.size, dtype=bool)
+    mask_float = np.asarray(map_signal_mask).astype(float)
+    primary_axis = primary_axis.lower()
+
+    info: dict = {}
+    model: ClockOffsetModel | None = None
+
+    grid = fit_data_pps_grid(data_timestamp, data_pps)
+    info['data_pps_grid'] = grid
+    if grid is None:
+        _logger.warning('align_telescope_positions: Not enough PPS pulses in the data.')
+    else:
+        pulse_times = {
+            ax: find_telescope_pps_times(
+                t_tel,
+                positions[ax],
+                latches[ax],
+                drop_latch_rows=drop_latch_rows,
+                max_segment_dt=max_segment_dt,
+            )
+            for ax in ('az', 'za')
+        }
+        fit = fit_clock_offset(
+            pulse_times,
+            grid,
+            knot_spacing=knot_spacing,
+            smoothing=smoothing,
+            expected_offset=expected_offset,
+            max_residual=max_residual,
+            min_pulses_per_axis=min_pulses_per_axis,
+        )
+        if fit is None:
+            _logger.warning(
+                'align_telescope_positions: No usable telescope PPS pulses '
+                f'(az: {pulse_times["az"].size}, za: {pulse_times["za"].size}).'
+            )
+        else:
+            model, fit_info = fit
+            info.update(fit_info)
+            lo, hi = fit_info['offset_range']
+            consts = ', '.join(
+                f'{ax.upper()} {c * 1e3:+.2f} ms'
+                for ax, c in fit_info['axis_constants'].items()
+            )
+            per_axis = '; '.join(
+                _format_axis_stats(ax, stats)
+                for ax, stats in fit_info['axis_stats'].items()
+            )
+            _logger.info(
+                f'align_telescope_positions: Clock offset {lo * 1e3:.2f} to '
+                f'{hi * 1e3:.2f} ms (axis constants: {consts}); '
+                f'rms residual {fit_info["rms_residual"] * 1e3:.2f} ms. '
+                f'Pulse offsets (data - telescope) by axis: {per_axis}'
+            )
+    info['clock_model'] = model
+
+    def to_data_clock(t: npt.NDArray, axis: str) -> npt.NDArray:
+        if model is None:
+            return t + default_offset
+        return model.to_data_clock(t, axis)
+
+    backlash = {'az': az_backlash, 'za': za_backlash}
+    out = {}
+    for ax in ('az', 'za'):
+        telescope_position = apply_backlash(positions[ax], backlash[ax])
+        rows = np.ones(t_tel.size, dtype=bool)
+        if drop_latch_rows:
+            rows[np.flatnonzero(np.diff(latches[ax]) != 0) + 1] = False
+        rows = np.flatnonzero(rows)
+        rows = rows[_strictly_increasing_rows(t_tel[rows])]
+        out[ax] = np.interp(
+            data_timestamp,
+            to_data_clock(t_tel[rows], ax),
+            telescope_position[rows],
+            left=np.nan,
+            right=np.nan,
+        )
+
+    rows = _strictly_increasing_rows(t_tel)
+    interp_mask = np.interp(
+        data_timestamp,
+        to_data_clock(t_tel[rows], primary_axis),
+        mask_float[rows],
+        left=0,
+        right=0,
+    )
+    signal_mask = (interp_mask >= 1 / 2) & ~np.isnan(out['az']) & ~np.isnan(out['za'])
+
+    return TelescopeAlignment(
+        az=out['az'],
+        za=out['za'],
+        signal_mask=signal_mask,
+        aligned=model is not None,
+        info=info,
+    )

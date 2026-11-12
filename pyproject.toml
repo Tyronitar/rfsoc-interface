@@ -2,7 +2,7 @@
 
 [tool.poetry]
 name = "rfsocinterface"
-version = "1.3.0"
+version = "1.5.0"
 description = "A user-friendly GUI for configuring and monitoring MKID readout software"
 authors = ["Nia McNichols <niamcnichols@gmail.com>"]
 readme = "README.md"
@@ -175,6 +175,7 @@ max-complexity = 15
 [tool.pytest.ini_options]
 markers = [
     "smoke: these tests should always run to check for regressions quickly",
+    "slow: these tests are slow, and should only be run for full testing",
 ]
 
 testpaths = ["tests"]

@@ -64,5 +64,6 @@ if __name__ == '__main__':
     w.setScreen(screen)
     move_to_center(w, screen)
     w.show()
+    w.do_post_setup()
 
     app.exec()

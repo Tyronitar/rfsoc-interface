@@ -1,13 +1,31 @@
+import pdb
 import logging
 import logging.config
 
-from rfsocinterface.analysis.psd import ComputeNoisePSD, PlotPSD, PsdBasis
-from rfsocinterface.core.data import *
-from rfsocinterface.core.params import RFSoCParameters
-from rfsocinterface.analysis import *
-import pdb
 import matplotlib.pyplot as plt
 import numpy as np
+
+from rfsocinterface.core.data import (
+    ProcessedData,
+    Pipeline,
+    CleanTOD,
+    RemoveElectronicsNoise,
+    HighPassFilter,
+    LowPassFilter,
+    BinTODIntoMap,
+    PlotMap,
+    BinTODIntoVideo,
+    AnimateVideo,
+)
+from rfsocinterface.analysis import (
+    ComputeNoisePSD,
+    PlotPSD,
+    PsdBasis,
+    AnalyzeBeamMap,
+    PlotBeamMap,
+    CheckFocus,
+)
+from rfsocinterface.core.params import RFSoCParameters, DEFAULT_DFOVERF_PER_MK
 
 
 if __name__ == '__main__':
@@ -24,10 +42,13 @@ if __name__ == '__main__':
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
+    # dataset = 'data_mK'
+    # datasets = ['.*/data_mK']
 
-    find_fwhm = CheckFocus(
+    check_focus = CheckFocus(
         'az',
-        [20],
+        [170],
+        dataset=dataset,
     )
 
     noise_removal_offres = RemoveElectronicsNoise(
@@ -43,7 +64,7 @@ if __name__ == '__main__':
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
     clean_tod = CleanTOD(dataset=dataset)
     compute_psd = ComputeNoisePSD(
-        PsdBasis.GAIN_PHASE,
+        # PsdBasis.GAIN_PHASE,
         PsdBasis.FREQ_DISS,
         cut_time=2,
         selection_indices='all',
@@ -56,14 +77,23 @@ if __name__ == '__main__':
     bin_tod_to_map = BinTODIntoMap(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
-        beam_map_mode=False,
+        beam_map_mode=True,
         dataset=dataset,
         az_trim=0,
         za_trim=0,
         dpix=0.03,
         r0=0.0,
     )
-    plotter = PlotMap(show=True, max_abs_threshold=0.4, keep_figure_open=False, channel=None)
+    plot_map_routine = PlotMap(
+        show=True,
+        # max_abs_threshold=0.4,
+        keep_figure_open=False,
+        channel=None,
+        # show_optical_overlay=True,
+        # vmin=-400,
+        # vmax=400,
+        overwrite=True,
+        )
     bin_tod_to_video = BinTODIntoVideo(
         hp_filter_freq=hp_filter_freq,
         lp_filter_freq=lp_filter_freq,
@@ -76,7 +106,7 @@ if __name__ == '__main__':
         # show=True,
         # savefile='test.gif',
     )
-    animate_video = AnimateVideo()
+    animate_video = AnimateVideo(vmin=-400, vmax=400)
 
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap()
@@ -85,50 +115,103 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        hp_filter,
-        lp_filter,
-        clean_tod,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
         # compute_psd,
         # psd_plotter,
-        # bin_tod_to_map,
-        # plotter,
-        bin_tod_to_video,
-        animate_video,
+        bin_tod_to_map,
+        # plot_map_routine,
+        # bin_tod_to_video,
+        # animate_video,
         # find_fwhm,
-        # analyze_beammap,
-        # plot_beammap,
+        analyze_beammap,
+        plot_beammap,
     ])
 
     # date = '20260820'  # For testing normal maps
     # setnum = 1005
     # date = '20260710'  # For testing beammaps
     # setnum = 1006
-    date = '20260917'  # For testing video
-    setnum = 1007
+    # date = '20260917'  # For testing video
+    # setnum = 1007
+    # date = '20261001'  # For testing normal maps
+    # setnum = 1006
+
+    date = '20260917'
+    setnum = 1005
 
 
-    pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+    # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    # pdata = ProcessedData.load(date, setnum)
-    # pipeline.run(pdata)
-    # pdb.set_trace()
+    pdata = ProcessedData.load(date, setnum)
 
-    # plotter.apply(pdata)
-    # map_az = pdata['map/map_az'][:]
-    # map_za = pdata['map/map_za'][:]
-    # dpix = 0.03
-    # optim = get_scaled_optical_image(
-    #     dpix, pdata.optical_image, map_az, map_za,
-    #     optcam_offset_az_deg=0, optcam_offset_za_deg=0,
-    #     telescope_start_position=(np.nanmean(map_az), np.nanmean(map_za)),
+    # bin_tod_to_map.apply(pdata)
+    # plot_map_routine.apply(pdata)
+    plot_map_routine = PlotMap(
+        show=True,
+        # max_abs_threshold=0.4,
+        channel=1,
+        # show_optical_overlay=True,
+        vmin=-500,
+        vmax=500,
+        overwrite=False,
+    )
+    plot_map_routine.apply(pdata)
+    pdb.set_trace()
+
+    # compute_psd.apply(pdata)
+    # psd_plotter.apply(pdata)
+    # pipeline.run(pdata)
+
+    # check_focus = CheckFocus(
+    #     'az',
+    #     np.arange(163, 171, dtype=int),
+    #     # [
+    #     #     175
+    #     # ],
+    #     dataset=dataset,
     # )
-    # ofig = plt.figure()
-    # plt.imshow(optim)
-    # ofig.show()
-    # pdb.set_trace()
-    # pdata = ProcessedData.load(date, setnum)
-    # tel_az = pdata.get_telescope_az(0)[:]
-    # tel_za = pdata.get_telescope_za(0)[:]
-    # plt.plot(tel_az, tel_za)
+    # check_focus.apply(pdata)
+    # iq = pdata.get_data_IQ(0)[:]
+    # fd = pdata.get_data_IQ(0)[:]
+    # detector_f = pdata.get_detector_f(0)
+    # i_res = 171
+    # # plt.plot(iq[0, i_res])
+    # # plt.plot(iq[1, i_res])
+    # plt.plot(fd[0, i_res] / detector_f[i_res])
+    # plt.plot(fd[1, i_res] / detector_f[i_res])
     # plt.show()
     # pdb.set_trace()
+
+    # onres_ind = pdata.get_onres_ind(0)
+    # az_centers = pdata['beammap/az_center'][onres_ind]
+    # za_centers = pdata['beammap/za_center'][onres_ind]
+    # fwhm_az = pdata['beammap/fwhm_az'][onres_ind]
+    # fwhm_za = pdata['beammap/fwhm_za'][onres_ind]
+    # amplitude  = pdata['beammap/amplitude'][onres_ind]
+    # high_snr_ind = np.argwhere(
+    #     amplitude > np.percentile(amplitude, 55),
+    # ).flatten()
+
+    # plt.scatter(
+    #     az_centers[high_snr_ind],
+    #     za_centers[high_snr_ind],
+    #     c=fwhm_za[high_snr_ind],
+    #     cmap='viridis',
+    #     # marker='+',
+    # )
+    # plt.colorbar()
+    # plt.show()
+    # pdb.set_trace()
+
+    # pipeline = Pipeline([
+    #     bin_tod_to_map,
+    #     analyze_beammap,
+    # ])
+    # date = '20260617'
+    # for setnum in [1001, 1004, 1005, 1006]:
+    #     pdata = ProcessedData.load(date, setnum)
+    #     # pdb.set_trace()
+    #     pipeline.run(pdata)
+
