@@ -9,6 +9,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
+import tqdm
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from scipy import signal
@@ -331,7 +332,8 @@ def plot_psd_df_over_f(
 
     # Create figure if needed
     if ax is None:
-        fig = plt.figure(**figure_kwargs)
+        # fig = plt.figure(**figure_kwargs)
+        fig = Figure(**figure_kwargs)
         ax = fig.add_subplot()
 
         # Setup plot
@@ -577,7 +579,7 @@ class PlotPSD(DataRoutine):
     """
 
     name = 'PlotPSD'
-    version = '1.3.0'
+    version = '1.3.1'
 
     @ensure_path('savefile')
     def __init__(
@@ -729,7 +731,7 @@ class PlotPSD(DataRoutine):
                         plt.close(onres_fig)
 
                         # Plot individual tones
-                        for i, i_tone_absolute in enumerate(tones):
+                        for i, i_tone_absolute in tqdm.tqdm(enumerate(tones)):
                             f0 = detector_f[i_tone_absolute]
                             if offres_median is not None:
                                 this_offres_median = (

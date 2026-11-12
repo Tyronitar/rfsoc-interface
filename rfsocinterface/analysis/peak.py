@@ -372,6 +372,7 @@ class CheckFocus(DataRoutine):
                     plt.ylabel(f'Detector Response ({units})')
                     plt.tight_layout(rect=[0, 0.15, 1, 1])
                     pdf.savefig(fig)
+                    plt.show()
                     plt.close(fig)
 
             amplitudes = np.array(amplitudes)

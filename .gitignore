@@ -196,6 +196,8 @@ data/
 # Configuration Files
 *.yml
 *.yaml
+!.github/**/*.yaml
+!.github/**/*.yml
 *.json
 !*example*.json
 
