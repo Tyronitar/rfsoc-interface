@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 import time
@@ -14,6 +15,8 @@ from PySide6.QtCore import QObject, Signal
 
 from .backend import TaskBackend
 from .task import Task
+
+_logger = logging.getLogger(__name__)
 
 
 class BackendCommandType(Enum):
@@ -119,21 +122,24 @@ class BackendRunner(QObject):
                 raise ValueError(f'Unexpected command: {command.kind}')
 
         self.command_succeeded.emit(command.task_id, command.kind)
+        _logger.debug(f'Succesfully executed command {command}')
 
     def _run(self) -> None:
         """Wrapper around run loop for handling backend errors."""
         try:
             self._run_loop()
-        except BaseException as exc:  # noqa: BLE001
+        except BaseException as exc:
             self.fatal_error.emit(
                 f'{type(exc).__name__}: {exc}',
                 traceback.format_exc(),
             )
+            _logger.exception('Encountered fatal error in runner polling thread')
         finally:
             self._stop()
 
     def _run_loop(self) -> None:
         """Core loop for handling communications."""
+        _logger.debug('Started backend polling thread')
         while True:
             # # If stopping, wait until the backend is finished with cleanup
             # if self._stopping:
@@ -152,18 +158,22 @@ class BackendRunner(QObject):
                 command = None
 
             if command is not None:
+                _logger.debug(f'Received command {command}')
                 if command.kind == BackendCommandType.STOP:
                     self._stopping = True  # Probably redundant
                     break  # Go to the stopping block
 
                 try:
                     self._execute(command)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     self.command_failed.emit(
                         command.kind,
                         command.task_id,
                         f'{type(exc).__name__}: {exc}',
                         traceback.format_exc(),
+                    )
+                    _logger.exception(
+                        f'Error encountered when executing command {command}'
                     )
 
             # Drain additional commands without waiting.
@@ -174,18 +184,22 @@ class BackendRunner(QObject):
                 except queue.Empty:
                     break
 
+                _logger.debug(f'Received command {command}')
                 if command.kind == BackendCommandType.STOP:
                     self._stopping = True
                     break
 
                 try:
                     self._execute(command)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     self.command_failed.emit(
                         command.kind,
                         command.task_id,
                         f'{type(exc).__name__}: {exc}',
                         traceback.format_exc(),
+                    )
+                    _logger.exception(
+                        f'Error encountered when executing command {command}'
                     )
 
             update = self.backend.poll()
@@ -196,16 +210,19 @@ class BackendRunner(QObject):
     def _stop(self):
         """Stop the backend and wait for resources to be cleaned up."""
         try:
+            _logger.debug('Waiting for backend to close')
             while not self.backend.close():
                 # Keep polling for WorkerExits and other events
                 update = self.backend.poll()
                 if update.events or update.exited_workers:
                     self.updated.emit(update)
                 time.sleep(0.05)
-        except BaseException as exc:  # noqa: BLE001
+            _logger.debug('Backend sucessfully closed')
+        except BaseException as exc:
             self.fatal_error.emit(
                 f'Backend cleanup failed: {exc}',
                 traceback.format_exc(),
             )
+            _logger.exception('Backend cleanup failed')
         finally:
             self.stopped.emit()

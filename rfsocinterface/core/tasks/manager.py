@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -30,6 +31,8 @@ from rfsocinterface.core.tasks.task import (
     Task,
     TaskStatus,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -110,16 +113,20 @@ class TaskManager(QObject):
     def _validate_dependencies(self, task: Task) -> None:
         """Check that a task's dependencies are valid."""
         if task.id in task.depends_on:
+            _logger.error(f'Task {task.id} depends on itself')
             raise ValueError('A task cannot depend on itself')
 
         missing = task.depends_on - self.records.keys()
 
         if missing:
-            raise ValueError(f'Task has unknown dependencies: {missing}')
+            msg = f'Task has unknown dependencies: {missing}'
+            _logger.error(msg)
+            raise ValueError(msg)
 
     def submit(self, task: Task) -> UUID:
         """Submit a task to the manager."""
         if task.id in self.records:
+            _logger.error(f'Cannot submit task with duplicate ID {task.id}')
             raise ValueError('Duplicate task ID')
 
         self._validate_dependencies(task)
@@ -129,6 +136,8 @@ class TaskManager(QObject):
 
         self.changed.emit(record)
         self._schedule()
+
+        _logger.debug(f'Succesfully scheduled new task {task.id}')
 
         return task.id
 
@@ -203,7 +212,9 @@ class TaskManager(QObject):
 
             try:
                 self.runner.submit(task)
+                _logger.debug(f'Dispatched task {task.id}')
             except Exception:
+                _logger.exception(f'Error occured dispatching {task.id}')
                 self._active.remove(task.id)
                 self._release_resources(task)
                 raise
@@ -247,6 +258,7 @@ class TaskManager(QObject):
                         self.terminate(task_id)
                     case CancellationPolicy.DISABLED:
                         return
+        _logger.debug(f'Sucessfully cancelled task {task_id}')
 
     def terminate(self, task_id: UUID) -> None:
         """Forcibly terminate a currently executing task."""
@@ -255,6 +267,7 @@ class TaskManager(QObject):
             self.runner.terminate(task_id)
             record.status = TaskStatus.CANCELLING
             self.changed.emit(record)
+            _logger.debug(f'Requested forced termination of task {task_id}')
 
     @Slot(object)
     def _handle_update(self, updates: BackendUpdate):
@@ -357,6 +370,7 @@ class TaskManager(QObject):
         self, command: BackendCommandType, task_id: UUID, error: str, traceback: str
     ):
         """Handle failed commands sent to the runner."""
+        _logger.debug(f'Command {command.name} for task {task_id} failed')
         record = self.records.get(task_id)
 
         if record is None or record.status in TERMINAL_STATUSES:
@@ -381,6 +395,7 @@ class TaskManager(QObject):
     def _handle_fatal_error(self, error: str, traceback: str):
         """Handle fatal errors reported by the runner."""
         # TODO: Mark affected tasks as failed or indicate unknown execution state
+        _logger.debug('Manager received fatal error from receiver')
         for record in self.records.values():
             if record.worker_exited:
                 continue
@@ -402,3 +417,4 @@ class TaskManager(QObject):
         """Close the manager and do the necessary cleanup."""
         self._stopping = True
         self.runner.request_stop()
+        _logger.debug('Succesfully closed TaskManager')

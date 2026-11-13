@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import multiprocessing as mp
 import queue
 import time
@@ -29,6 +30,8 @@ from rfsocinterface.core.tasks.task import (
     TaskEvent,
     TerminalEvent,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -188,6 +191,10 @@ def receive_worker_events(
                 raise ValueError(
                     f'Event task ID mismatch: expected {task_id}, received {event.id}.',
                 )
+            _logger.debug(
+                f'Received event of type {event.__class__.__name__} from task '
+                f'{event.task_id}'
+            )
             updates.put(
                 ReceiverUpdate(
                     task_id=task_id,
@@ -202,7 +209,8 @@ def receive_worker_events(
                 status=ReceiverStatus.EOF,
             )
         )
-    except Exception as exc:  # noqa: BLE001
+        _logger.debug(f'Closed communication channel with task {task_id}')
+    except Exception as exc:
         updates.put(
             ReceiverUpdate(
                 task_id=task_id,
@@ -210,6 +218,7 @@ def receive_worker_events(
                 error=f'{type(exc).__name__}: {exc}',
             )
         )
+        _logger.exception('Encountered exception in receiver thread')
 
 
 class MultiprocessingBackend:
@@ -243,9 +252,13 @@ class MultiprocessingBackend:
             process.close()
             send_conn.close()
             recv_conn.close()
+            _logger.exception('Error encountered when starting worker process')
             raise
         else:
             send_conn.close()
+            _logger.debug(
+                f'Succesfully started worker process {process.pid} for task {task.id}'
+            )
 
         # Create thread for receiving messages from the worker process
         receiver = Thread(
@@ -276,11 +289,15 @@ class MultiprocessingBackend:
                 handle.conn.close()
                 handle.process.close()
 
+            _logger.exception('Error encountered when starting receiver')
             raise
+        else:
+            _logger.debug(f'Succesfully started receiver for task {task.id}')
 
     @typing.override
     def cancel(self, task_id: UUID) -> None:
         self.workers[task_id].cancel_event.set()
+        _logger.debug(f'Set cancel event for task {task_id}')
 
     @typing.override
     def terminate(self, task_id: UUID) -> None:
@@ -288,6 +305,7 @@ class MultiprocessingBackend:
         handle.termination_requested = True
         if handle.process.is_alive():
             handle.process.terminate()
+        _logger.debug(f'Foricbly terminated task {task_id}')
 
     @typing.override
     def poll(self, limit: int = 100) -> BackendUpdate:
@@ -330,7 +348,7 @@ class MultiprocessingBackend:
 
         # Handle recovery from any IPC failures
         now = monotonic()
-        for handle in self.workers.values():
+        for task_id, handle in self.workers.items():
             if handle.ipc_failure_at is None:
                 continue
 
@@ -339,11 +357,19 @@ class MultiprocessingBackend:
 
             elapsed = now - handle.ipc_failure_at
 
-            if elapsed >= self.ipc_failure_grace:  # noqa: SIM102
+            if elapsed >= self.ipc_failure_grace:
+                msg = (
+                    f'Worker for task {task_id} took too long to recover '
+                    'from IPC failure. '
+                )
                 # Worker took too long to cancel after the issue. Force terminate it.
                 if handle.cancellation_policy == CancellationPolicy.TERMINATE:
                     handle.process.terminate()
-                # Otherwise, keep supervision of the worker until it exits
+                    msg += 'Forcibly terminated worker per cancellation policy.'
+                else:
+                    # Otherwise, keep supervision of the worker until it exits
+                    msg += 'Keeping supervision until worker exits.'
+                _logger.debug(msg)
 
         # Reconcile worker process exits.
         for task_id, handle in list(self.workers.items()):
@@ -402,6 +428,7 @@ class MultiprocessingBackend:
         handle.conn.close()
         handle.process.close()
         del self.workers[task_id]
+        _logger.debug(f'Cleaned up resources for task {task_id}')
 
     @typing.override
     def close(self) -> bool:
@@ -431,7 +458,10 @@ class MultiprocessingBackend:
                 handle.process.join(timeout=0)
 
         self.reap_finished_workers()
-        return not self.workers
+        done = not self.workers
+        if done:
+            _logger.debug('Completed cleanup of MultiprocessingBackend')
+        return done
 
     def reap_finished_workers(self):
         """Close IPC resources and reap receiver threads for finished workers."""
