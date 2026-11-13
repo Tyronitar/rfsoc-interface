@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -11,6 +12,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 from rfsocinterface.core.tasks.backend import BackendUpdate, TaskBackend
 from rfsocinterface.core.tasks.runner import BackendCommandType, BackendRunner
 from rfsocinterface.core.tasks.task import (
+    ETA,
     TERMINAL_STATUSES,
     CancellationPolicy,
     Cancelled,
@@ -19,8 +21,11 @@ from rfsocinterface.core.tasks.task import (
     Message,
     Progress,
     Started,
+    SubtaskETA,
+    SubtaskFinished,
     SubtaskProgress,
     SubtasksDefined,
+    SubtaskStarted,
     Succeeded,
     Task,
     TaskStatus,
@@ -34,16 +39,42 @@ class TaskRecord:
     task: Task
     status: TaskStatus = TaskStatus.PENDING
     progress: Progress | None = None
-    subtask_definitions: tuple[tuple[tuple[str, ...], str, float], ...] = field(
-        default_factory=tuple
-    )
-    subtask_progress: dict[tuple[str, ...], SubtaskProgress] = field(
-        default_factory=dict
-    )
+    subtasks: dict[tuple[str, ...], SubtaskRecord] = field(default_factory=dict)
     result: Any = None
     error: str | None = None
     traceback: str | None = None
     worker_exited: bool = False
+    start_time: float | None = None
+    end_time: float | None = None
+    eta: float | None = None
+
+    @property
+    def subtask_progress(self) -> dict[tuple[str, ...], SubtaskProgress]:
+        """Dictionary of each subtask's progress, if applicable."""
+        return {
+            path: subtask.progress
+            for path, subtask in self.subtasks.items()
+            if subtask.progress is not None
+        }
+
+
+@dataclass
+class SubtaskRecord:
+    """A record of a subtask and its current state."""
+
+    name: str
+    weight: float
+
+    start_time: float | None = None
+    end_time: float | None = None
+
+    progress: SubtaskProgress | None = None
+    eta: SubtaskETA | None = None
+
+    @property
+    def is_active(self) -> bool:
+        """Whether the subtask is actively executing or not."""
+        return self.start_time is not None and self.end_time is None
 
 
 class TaskManager(QObject):
@@ -247,12 +278,31 @@ class TaskManager(QObject):
                 case Started():
                     if record.status != TaskStatus.CANCELLING:
                         record.status = TaskStatus.RUNNING
+                        record.start_time = event.start_time
                 case SubtasksDefined():
-                    record.subtask_definitions = event.subtasks
+                    subtasks = {}
+                    for path, name, weight in event.subtasks:
+                        subtasks[path] = SubtaskRecord(
+                            name=name,
+                            weight=weight,
+                        )
+                    record.subtasks = subtasks
                 case Progress():
                     record.progress = event
+                case ETA():
+                    record.eta = event.eta
+                case SubtaskStarted():
+                    subtask = record.subtasks[event.path]
+                    subtask.start_time = event.start_time
+                case SubtaskFinished():
+                    subtask = record.subtasks[event.path]
+                    subtask.end_time = event.end_time
                 case SubtaskProgress():
-                    record.subtask_progress[event.path] = event
+                    subtask = record.subtasks[event.path]
+                    subtask.progress = event
+                case SubtaskETA():
+                    subtask = record.subtasks[event.path]
+                    subtask.eta = event
                 case Succeeded():
                     record.status = TaskStatus.SUCCEEDED
                     record.result = event.result
@@ -277,6 +327,7 @@ class TaskManager(QObject):
                 continue
 
             record.worker_exited = True
+            record.end_time = time.time()
 
             if record.status not in TERMINAL_STATUSES:
                 if exit_info.receiver_error:

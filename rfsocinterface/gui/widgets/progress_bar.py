@@ -1,10 +1,12 @@
 """Progress-tracking related widgets."""
 
 from collections.abc import Callable
+from datetime import UTC, datetime
+from time import monotonic
 from typing import Protocol
 from uuid import UUID
 
-from PySide6.QtCore import QCoreApplication, Qt, Signal, Slot
+from PySide6.QtCore import QCoreApplication, Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -84,6 +86,18 @@ def update_progress_bar(
     bar.setValue(round(fraction * 1000))
 
 
+def format_duration(seconds: float) -> str:
+    """Format seconds into HH:MM:SS or MM:SS."""
+    seconds = max(0, int(seconds))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    if hours:
+        return f'{hours}:{minutes:02}:{seconds:02}'
+
+    return f'{minutes:02}:{seconds:02}'
+
+
 class SubtaskRow(QWidget):
     """Row for a subtask in the TaskProgressWidget."""
 
@@ -95,6 +109,9 @@ class SubtaskRow(QWidget):
         self.progress_label = QLabel()
         self.progress_label.setMinimumWidth(45)
 
+        self.elapsed_label = QLabel()
+        self.eta_label = QLabel()
+
         self.bar = QProgressBar()
         self.bar.setTextVisible(False)
         self.bar.setFixedHeight(7)
@@ -103,10 +120,15 @@ class SubtaskRow(QWidget):
         header.addWidget(self.name_label, 1)
         header.addWidget(self.progress_label)
 
+        time_header = QHBoxLayout()
+        time_header.addWidget(self.elapsed_label, 1)
+        time_header.addWidget(self.eta_label, 1)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 3, 8, 3)
         layout.setSpacing(4)
         layout.addLayout(header)
+        layout.addLayout(time_header)
         layout.addWidget(self.bar)
 
         self.set_pending()
@@ -116,6 +138,14 @@ class SubtaskRow(QWidget):
         self.bar.setRange(0, 1000)
         self.bar.setValue(0)
         self.progress_label.setText('Waiting')
+
+    def update_elapsed(self, start_time: float):
+        """Update the elapsed time for this subtask."""
+        self.elapsed_label.setText(f'Elapsed time: {monotonic() - start_time:.2f} s')
+
+    def update_eta(self, eta: float):
+        """Update the ETA for this subtask."""
+        self.eta_label.setText(f'Estimated time remaining: {eta:.2f} s')
 
     def update_progress(self, progress: ProgressData):
         """Update the progress for this subtask."""
@@ -148,6 +178,7 @@ class TaskProgressWidget(QFrame):
         self.manager = manager
         self.task_id = task_id
         self.subtask_rows: dict[tuple[str, ...], SubtaskRow] = {}
+        self.record: TaskRecord | None = None
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
 
@@ -160,6 +191,9 @@ class TaskProgressWidget(QFrame):
         self.title_label = QLabel()
         self.status_label = QLabel()
 
+        self.elapsed_label = QLabel()
+        self.eta_label = QLabel()
+
         self.cancel_button = QPushButton('Cancel')
         self.cancel_button.clicked.connect(lambda: self.manager.cancel(self.task_id))
 
@@ -168,6 +202,10 @@ class TaskProgressWidget(QFrame):
         header.addWidget(self.title_label, 1)
         header.addWidget(self.status_label)
         header.addWidget(self.cancel_button)
+
+        time_header = QHBoxLayout()
+        time_header.addWidget(self.elapsed_label, 1)
+        time_header.addWidget(self.eta_label, 1)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
@@ -183,9 +221,15 @@ class TaskProgressWidget(QFrame):
 
         layout = QVBoxLayout(self)
         layout.addLayout(header)
+        layout.addLayout(time_header)
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.detail_label)
         layout.addWidget(self.details)
+
+        self.timer = QTimer(self)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.update_elapsed_times)
+        self.timer.start()
 
     def _toggle_details(self, expanded: bool):
         self.details.setVisible(expanded)
@@ -205,20 +249,45 @@ class TaskProgressWidget(QFrame):
 
         return self.subtask_rows[path]
 
+    def update_elapsed_times(self):
+        """Update the elapsed time for the task and all subtasks."""
+        now = datetime.now(UTC).timestamp()
+
+        record = self.record
+        if record is None:
+            return
+
+        if record.start_time is not None:
+            end = record.end_time if record.end_time is not None else now
+            elapsed = max(0, end - record.start_time)
+
+            self.elapsed_label.setText(f'Elapsed time: {format_duration(elapsed)}')
+
+        for path, subtask in record.subtasks.items():
+            if subtask.start_time is None:
+                continue
+
+            end = now if subtask.is_active else subtask.end_time
+
+            elapsed = max(0, end - subtask.start_time)
+
+            row = self.subtask_rows.get(path)
+
+            if row is not None:
+                row.elapsed_label.setText(f'Elapsed time: {format_duration(elapsed)}')
+
     def update_record(self, record: TaskRecord):
         """Update the widget to reflect the current state of the task."""
         if record.task.id != self.task_id:
             return
+        self.record = record
 
         self.title_label.setText(record.task.name)
         self.status_label.setText(record.status.name.replace('_', ' ').title())
 
         # Set up subtask rows
-        for (
-            path,
-            display_name,
-            _,
-        ) in record.subtask_definitions:
+        for path, subtask in record.subtasks.items():
+            display_name = subtask.name
             self._get_subtask_row(path, display_name=display_name)
 
         # Overall progress
@@ -234,10 +303,20 @@ class TaskProgressWidget(QFrame):
                 self.progress_bar.setRange(0, 1000)
                 self.progress_bar.setValue(0)
 
-        # Subtask progress
-        for path, progress in record.subtask_progress.items():
+        # Update elapsed time
+        self.update_elapsed_times()
+
+        # ETAs
+        if record.eta is not None:
+            self.eta_label.setText(f'Estimated time remaining: {record.eta:.2f} s')
+
+        # Subtasks
+        for path, subtask in record.subtasks.items():
             row = self._get_subtask_row(path)
-            row.update_progress(progress)
+            if subtask.progress is not None:
+                row.update_progress(subtask.progress)
+            if subtask.eta is not None:
+                row.update_eta(subtask.eta)
 
         has_subtasks = bool(self.subtask_rows)
         self.expand_button.setVisible(has_subtasks)

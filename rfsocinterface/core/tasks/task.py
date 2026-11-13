@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -116,6 +117,24 @@ class TaskEvent:
 class Started(TaskEvent):
     """Event indicating the beginning of execution."""
 
+    start_time: float = field(default_factory=time.time)
+
+
+@dataclass(frozen=True)
+class SubtaskStarted(TaskEvent):
+    """Event indicating the beginning of execution of a subtask."""
+
+    path: tuple[str, ...]
+    start_time: float = field(default_factory=time.time)
+
+
+@dataclass(frozen=True)
+class SubtaskFinished(TaskEvent):
+    """Event indicating the end of execution of a subtask."""
+
+    path: tuple[str, ...]
+    end_time: float = field(default_factory=time.time)
+
 
 @dataclass(frozen=True)
 class Progress(TaskEvent):
@@ -142,6 +161,21 @@ class SubtaskProgress(TaskEvent):
     minimum: float | None = None
     maximum: float | None = None
     label: str | None = None
+
+
+@dataclass(frozen=True)
+class ETA(TaskEvent):
+    """Event indicating the estimated remaining time for a task to complete."""
+
+    eta: float
+
+
+@dataclass(frozen=True)
+class SubtaskETA(TaskEvent):
+    """Event indicating the estimated remaining time for a subtask to complete."""
+
+    path: tuple[str, ...]  # Path to this subtask by task names
+    eta: float
 
 
 @dataclass(frozen=True)

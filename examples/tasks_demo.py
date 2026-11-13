@@ -176,7 +176,6 @@ class Window(QWidget):
         self.add_task(task)
 
     def add_task(self, task: Task):
-        row = TaskRow(self.manager, task.id, task.cancellation_policy)
         row = TaskProgressWidget(self.manager, task.id, parent=self)
         self.rows[task.id] = row
         self.tasks_layout.addWidget(row)

@@ -1,5 +1,6 @@
 """Code for providing context to tasks and."""
 
+import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -7,10 +8,14 @@ from typing import Any
 from uuid import UUID
 
 from rfsocinterface.core.tasks.task import (
+    ETA,
     Message,
     Progress,
+    SubtaskETA,
+    SubtaskFinished,
     SubtaskProgress,
     SubtasksDefined,
+    SubtaskStarted,
     TaskCancelled,
     TaskEvent,
 )
@@ -48,6 +53,10 @@ class TaskContext:
         """Send the task's progress to the main process."""
         self._send_event(Progress(self.task_id, value, minimum, maximum, label))
 
+    def eta(self, value: float):
+        """Send the task's estimated remaining time to the main process."""
+        self._send_event(ETA(self.task_id, value))
+
     def is_cancelled(self) -> bool:
         """Return whether the task has started cancellation."""
         return self._is_cancelled()
@@ -64,6 +73,8 @@ class _SubtaskState:
     weight: float
     path: tuple[str, ...]
     fraction: float = 0.0
+    start_time: float | None = None
+    start_monotonic: float | None = None
 
 
 class SubtaskContext:
@@ -110,6 +121,10 @@ class SubtaskContext:
         )
 
         self._update()
+
+    def eta(self, value: float):
+        """Send the subtask's estimated remaining time to the main process."""
+        self._send_event(SubtaskETA(self.task_id, self.state.path, value))
 
     def check_cancelled(self) -> None:
         """Return whether the subtask's parent has started cancellation."""
@@ -183,13 +198,25 @@ class TaskProgress:
         """Create the context for a subtask."""
         state = self.states[index]
 
+        self.context.check_cancelled()
+
+        state.start_time = time.time()
+        state.start_monotonic = time.monotonic()
+
+        self.context._send_event(  # noqa: SLF001
+            SubtaskStarted(
+                task_id=self.context.task_id,
+                path=state.path,
+                start_time=state.start_time,
+            )
+        )
+
         subcontext = SubtaskContext(
             parent=self.context,
             state=state,
             update=self._update,
         )
 
-        self.context.check_cancelled()
         subcontext.progress(0, minimum=0, maximum=1)
 
         try:
@@ -201,3 +228,11 @@ class TaskProgress:
             # the routine never explicitly reported progress.
             subcontext.progress(1, minimum=0, maximum=1)
             self._update()
+        finally:
+            self.context._send_event(  # noqa: SLF001
+                SubtaskFinished(
+                    task_id=self.context.task_id,
+                    path=state.path,
+                    end_time=time.time(),
+                )
+            )

@@ -15,6 +15,7 @@ from rfsocinterface.core.tasks.context import (
     TaskProgress,
 )
 from rfsocinterface.core.tasks.manager import (
+    SubtaskRecord,
     TaskManager,
     TaskRecord,
 )
@@ -32,8 +33,11 @@ from rfsocinterface.core.tasks.task import (
     Message,
     Progress,
     Started,
+    SubtaskETA,
+    SubtaskFinished,
     SubtaskProgress,
     SubtasksDefined,
+    SubtaskStarted,
     Succeeded,
     Task,
     TaskCancelled,
@@ -60,7 +64,11 @@ __all__ = [
     'ReceiverUpdate',
     'Started',
     'SubtaskContext',
+    'SubtaskETA',
+    'SubtaskFinished',
     'SubtaskProgress',
+    'SubtaskRecord',
+    'SubtaskStarted',
     'SubtasksDefined',
     'Succeeded',
     'Task',
