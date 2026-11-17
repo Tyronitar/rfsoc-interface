@@ -7,6 +7,8 @@ from rfsocinterface.core.tasks.backend import (
     ReceiverStatus,
     ReceiverUpdate,
     TaskBackend,
+    ThreadingBackend,
+    ThreadingWorkerHandle,
     WorkerExit,
 )
 from rfsocinterface.core.tasks.context import (
@@ -81,5 +83,7 @@ __all__ = [
     'TaskRecord',
     'TaskStatus',
     'TerminalEvent',
+    'ThreadingBackend',
+    'ThreadingWorkerHandle',
     'WorkerExit',
 ]

@@ -9,10 +9,11 @@ import queue
 import time
 import traceback
 import typing
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 from multiprocessing.connection import Connection
-from threading import Thread
+from threading import Event, Thread
 from time import monotonic
 from typing import Protocol
 from uuid import UUID
@@ -140,18 +141,26 @@ class MultiprocessingWorkerHandle:
         self.cancel_event.set()
 
 
-def multiprocessing_worker_entry(
-    task: Task, cancel_event: mp.Event, event_conn: Connection
+def execute_task(
+    task: Task,
+    send_event: Callable[[TaskEvent], None],
+    is_cancelled: Callable[[], bool],
 ) -> None:
-    """Entry point for a worker to execute a task from a MultiprocessingBackend."""
+    """Execute a task, reporting its lifecycle events through `send_event`.
+
+    Shared by all backends so that every worker reports the same sequence of events.
+    Cancellation is only honored before the target starts or when the target raises
+    `TaskCancelled`. A target that returns normally is reported as `Succeeded`, even if
+    cancellation was requested after it could last react.
+    """
     context = TaskContext(
         task.id,
-        send_event=event_conn.send,
-        is_cancelled=cancel_event.is_set,
+        send_event=send_event,
+        is_cancelled=is_cancelled,
     )
     try:
         context.check_cancelled()
-        event_conn.send(Started(task.id))
+        send_event(Started(task.id))
 
         kwargs = dict(task.kwargs)
         if task.with_context:
@@ -160,16 +169,22 @@ def multiprocessing_worker_entry(
             kwargs['context'] = context
 
         result = task.target(*task.args, **kwargs)
-        context.check_cancelled()
-
-        event_conn.send(Succeeded(task.id, result))
+        send_event(Succeeded(task.id, result))
     except TaskCancelled:
-        event_conn.send(Cancelled(task.id))
+        send_event(Cancelled(task.id))
     except Exception as exc:  # noqa: BLE001
         with contextlib.suppress(OSError, BrokenPipeError):
-            event_conn.send(
+            send_event(
                 Failed(task.id, f'{type(exc).__name__}: {exc}', traceback.format_exc())
             )
+
+
+def multiprocessing_worker_entry(
+    task: Task, cancel_event: mp.Event, event_conn: Connection
+) -> None:
+    """Entry point for a worker to execute a task from a MultiprocessingBackend."""
+    try:
+        execute_task(task, event_conn.send, cancel_event.is_set)
     finally:
         event_conn.close()
 
@@ -432,9 +447,13 @@ class MultiprocessingBackend:
 
     @typing.override
     def close(self) -> bool:
-        # Request cooperative cancellation
+        # Request cooperative cancellation. Tasks with cancellation disabled are left
+        # to run to completion.
         for handle in self.workers.values():
-            if handle.is_alive():
+            if (
+                handle.is_alive()
+                and handle.cancellation_policy != CancellationPolicy.DISABLED
+            ):
                 handle.cancel()
 
         # Give workers an opportunity to finish cleanup.
@@ -477,4 +496,243 @@ class MultiprocessingBackend:
 
     def active_workers(self) -> int:
         """Return the number of workers still alive."""
+        return len(self.workers)
+
+
+@dataclass
+class ThreadingWorkerHandle:
+    """Handle containing a worker thread's information."""
+
+    thread: Thread
+    """The thread this worker is executing on."""
+
+    cancel_event: Event
+    """Event to trigger cancellation."""
+
+    cancellation_policy: CancellationPolicy
+    """How this worker should handle cancellation. Inherited from the task."""
+
+    termination_requested: bool = False
+    """Whether termination was requested for this task."""
+
+    terminal_received: bool = False
+    """Whether the worker's terminal event was received."""
+
+    finished: bool = False
+    """Whether the worker has sent its final message (i.e. no more events will come)."""
+
+    exit_code: int | None = None
+    """0 if the worker exited normally, 1 if an exception escaped it."""
+
+    worker_error: str | None = None
+    """Exception that escaped the worker, if any."""
+
+    abandoned: bool = False
+    """Whether the backend gave up waiting for this thread during shutdown."""
+
+    def is_alive(self) -> bool:
+        """Whether the thread is still alive."""
+        return self.thread.is_alive()
+
+    def cancel(self) -> None:
+        """Trigger this worker's cancel event."""
+        self.cancel_event.set()
+
+
+def threading_worker_entry(
+    task: Task, cancel_event: Event, updates: queue.Queue[ReceiverUpdate]
+) -> None:
+    """Entry point for a worker to execute a task from a ThreadingBackend.
+
+    Events are placed directly on the backend's shared queue. An EOF update is always
+    sent last, so every event from this worker precedes it in the queue.
+    """
+    error: str | None = None
+
+    def send_event(event: TaskEvent) -> None:
+        updates.put(ReceiverUpdate(task.id, ReceiverStatus.EVENT, event=event))
+
+    try:
+        execute_task(task, send_event, cancel_event.is_set)
+    except BaseException as exc:  # Anything execute_task didn't handle
+        error = f'{type(exc).__name__}: {exc}'
+        _logger.exception(f'Unhandled exception in worker thread for task {task.id}')
+    finally:
+        updates.put(
+            ReceiverUpdate(
+                task.id,
+                ReceiverStatus.ERROR if error else ReceiverStatus.EOF,
+                error=error,
+            )
+        )
+
+
+class ThreadingBackend:
+    """TaskBackend implementation using threads.
+
+    Tasks share the main process's memory, so arguments and results are not pickled
+    and there is no IPC to fail. The tradeoffs are that CPU-bound tasks are serialized
+    by the GIL and that threads cannot be forcibly terminated:
+
+    - `terminate` sets the task's cancel event and marks termination as requested, but
+      the task keeps running until it checks for cancellation or returns. Its worker
+      slot and resources remain held until then.
+    - `close` waits `shutdown_grace` seconds for workers to exit. Workers with
+      `CancellationPolicy.TERMINATE` still running after that are abandoned (they are
+      daemon threads, so they won't block interpreter exit). All other workers are
+      waited on until they finish.
+    """
+
+    def __init__(self, shutdown_grace: float = 2.0) -> None:
+        """Initialize a ThreadingBackend."""
+        self.workers: dict[UUID, ThreadingWorkerHandle] = {}
+        self._received: queue.Queue[ReceiverUpdate] = queue.Queue()
+        self.shutdown_grace = shutdown_grace
+        self._close_deadline: float | None = None
+
+    @typing.override
+    def start(self, task: Task) -> None:
+        if task.id in self.workers:
+            raise ValueError(f'Duplicate task ID: {task.id}')
+
+        cancel_event = Event()
+        thread = Thread(
+            target=threading_worker_entry,
+            args=(task, cancel_event, self._received),
+            name=f'TaskWorker-{task.name}-{task.id}',
+            daemon=True,  # Allows interpreter exit if a worker must be abandoned
+        )
+
+        self.workers[task.id] = ThreadingWorkerHandle(
+            thread=thread,
+            cancel_event=cancel_event,
+            cancellation_policy=task.cancellation_policy,
+        )
+        try:
+            thread.start()
+        except BaseException:
+            del self.workers[task.id]
+            _logger.exception('Error encountered when starting worker thread')
+            raise
+        _logger.debug(f'Succesfully started worker thread for task {task.id}')
+
+    @typing.override
+    def cancel(self, task_id: UUID) -> None:
+        self.workers[task_id].cancel()
+        _logger.debug(f'Set cancel event for task {task_id}')
+
+    @typing.override
+    def terminate(self, task_id: UUID) -> None:
+        # Threads cannot be killed, so this is the strongest request available.
+        handle = self.workers[task_id]
+        handle.termination_requested = True
+        handle.cancel()
+        _logger.debug(
+            f'Requested termination of task {task_id}; threads cannot be forcibly '
+            'stopped, so it will exit at its next cancellation check'
+        )
+
+    @typing.override
+    def poll(self, limit: int = 100) -> BackendUpdate:
+        events: list[TaskEvent] = []
+        exited_workers: dict[UUID, WorkerExit] = {}
+
+        for _ in range(limit):
+            try:
+                update = self._received.get_nowait()
+            except queue.Empty:
+                break
+
+            handle = self.workers.get(update.task_id)
+
+            # Unknown, or an abandoned worker that's still producing events
+            if handle is None:
+                continue
+
+            match update.status:
+                case ReceiverStatus.EVENT:
+                    event = update.event
+                    if event is None:
+                        continue
+                    events.append(event)
+                    if isinstance(event, TerminalEvent.__value__):
+                        handle.terminal_received = True
+                case ReceiverStatus.EOF:
+                    handle.finished = True
+                    handle.exit_code = 0
+                case ReceiverStatus.ERROR:
+                    handle.finished = True
+                    handle.exit_code = 1
+                    handle.worker_error = update.error
+
+        # Reconcile worker exits. The final update is sent from the thread's `finally`
+        # block, so the thread may still be alive for an instant afterward.
+        for task_id, handle in list(self.workers.items()):
+            if handle.abandoned:
+                exited_workers[task_id] = WorkerExit(
+                    exit_code=None,
+                    termination_requested=True,
+                    receiver_error=None,
+                )
+                del self.workers[task_id]
+                _logger.debug(f'Released abandoned worker for task {task_id}')
+                continue
+
+            if not handle.finished or handle.thread.is_alive():
+                continue
+
+            exited_workers[task_id] = WorkerExit(
+                exit_code=handle.exit_code,
+                termination_requested=handle.termination_requested,
+                receiver_error=handle.worker_error,
+            )
+            self.reap(task_id)
+
+        return BackendUpdate(events, exited_workers)
+
+    def reap(self, task_id: UUID) -> None:
+        """Remove references to a completed worker."""
+        handle = self.workers[task_id]
+
+        if handle.thread.is_alive():
+            raise RuntimeError('Cannot reap a running worker')
+
+        handle.thread.join(timeout=0)
+        del self.workers[task_id]
+        _logger.debug(f'Cleaned up resources for task {task_id}')
+
+    @typing.override
+    def close(self) -> bool:
+        # Called repeatedly by the runner until it returns True, interleaved with
+        # poll(), so this must not block for long.
+        if self._close_deadline is None:
+            for handle in self.workers.values():
+                if (
+                    handle.is_alive()
+                    and handle.cancellation_policy != CancellationPolicy.DISABLED
+                ):
+                    handle.cancel()
+            self._close_deadline = monotonic() + self.shutdown_grace
+
+        if monotonic() >= self._close_deadline:
+            for task_id, handle in self.workers.items():
+                if (
+                    not handle.abandoned
+                    and handle.is_alive()
+                    and handle.cancellation_policy == CancellationPolicy.TERMINATE
+                ):
+                    handle.abandoned = True
+                    _logger.warning(
+                        f'Abandoning worker thread for task {task_id}, which did not '
+                        'exit within the shutdown grace period'
+                    )
+
+        # Workers are removed by poll(), so their WorkerExit reaches the manager.
+        done = not self.workers
+        if done:
+            _logger.debug('Completed cleanup of ThreadingBackend')
+        return done
+
+    def active_workers(self) -> int:
+        """Return the number of workers still tracked."""
         return len(self.workers)

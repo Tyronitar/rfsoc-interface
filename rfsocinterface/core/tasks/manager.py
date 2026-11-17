@@ -50,6 +50,12 @@ class TaskRecord:
     start_time: float | None = None
     end_time: float | None = None
     eta: float | None = None
+    cancel_requested: bool = False
+    """Whether cancellation was requested for this task or one of its dependencies.
+
+    A task may still finish as SUCCEEDED if it completes before reacting to the
+    request, but its pending dependents are cancelled either way.
+    """
 
     @property
     def subtask_progress(self) -> dict[tuple[str, ...], SubtaskProgress]:
@@ -176,7 +182,15 @@ class TaskManager(QObject):
 
             dependencies = [self.records[dep_id] for dep_id in record.task.depends_on]
 
-            if any(
+            # Cancelling a task cancels everything waiting on it. Records are in
+            # submission order and dependencies must be submitted first, so this
+            # single pass propagates through the whole chain.
+            if any(dep.cancel_requested for dep in dependencies):
+                record.status = TaskStatus.CANCELLED
+                record.cancel_requested = True
+                record.error = 'A dependency was cancelled'
+                self.changed.emit(record)
+            elif any(
                 dep.status
                 in {
                     TaskStatus.FAILED,
@@ -238,6 +252,7 @@ class TaskManager(QObject):
             case TaskStatus.PENDING:
                 if record.task.cancellation_policy == CancellationPolicy.DISABLED:
                     return
+                record.cancel_requested = True
                 record.status = TaskStatus.CANCELLED
                 self.changed.emit(record)
                 self._schedule()
@@ -245,6 +260,7 @@ class TaskManager(QObject):
             # Send cancellation request to the backend to handle for starting tasks
             case TaskStatus.STARTING:
                 self.runner.cancel(task_id)
+                record.cancel_requested = True
                 record.status = TaskStatus.CANCELLING
                 self.changed.emit(record)
             # Cancel a running task according to its policy
@@ -252,6 +268,7 @@ class TaskManager(QObject):
                 match record.task.cancellation_policy:
                     case CancellationPolicy.COOPERATIVE:
                         self.runner.cancel(task_id)
+                        record.cancel_requested = True
                         record.status = TaskStatus.CANCELLING
                         self.changed.emit(record)
                     case CancellationPolicy.TERMINATE:
@@ -259,15 +276,20 @@ class TaskManager(QObject):
                     case CancellationPolicy.DISABLED:
                         return
         _logger.debug(f'Sucessfully cancelled task {task_id}')
+        # Cancel dependents
+        self._schedule()
 
     def terminate(self, task_id: UUID) -> None:
         """Forcibly terminate a currently executing task."""
         record = self.records[task_id]
         if record.status not in TERMINAL_STATUSES:
             self.runner.terminate(task_id)
+            record.cancel_requested = True
             record.status = TaskStatus.CANCELLING
             self.changed.emit(record)
             _logger.debug(f'Requested forced termination of task {task_id}')
+            # Cancel dependents
+            self._schedule()
 
     @Slot(object)
     def _handle_update(self, updates: BackendUpdate):

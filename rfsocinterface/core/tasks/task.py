@@ -60,7 +60,8 @@ class CancellationPolicy(Enum):
     Use for tasks that should not be stopped mid execution (e.g. file writes,
     telescope motion). Worker is expected to handle cleanup during signal handling.
     Requires `Task.with_context == True`, as the cancel signal would not be received
-    otherwise.
+    otherwise. If the target returns before reacting to the request, the task is
+    reported as succeeded, but its pending dependents are still cancelled.
     """
 
     TERMINATE = auto()

@@ -1,6 +1,7 @@
 """Tests for running backend tasks."""
 
 import os
+import threading
 import time
 import typing
 from collections.abc import Callable, Generator
@@ -23,6 +24,7 @@ from rfsocinterface.core.tasks import (
     TaskManager,
     TaskRecord,
     TaskStatus,
+    ThreadingBackend,
 )
 from rfsocinterface.core.tasks.context import TaskContext
 
@@ -121,10 +123,13 @@ def get_signals_fail(
     return signals, status_checkers
 
 
-@pytest.fixture
-def manager(qtbot) -> Generator[TaskManager, None, None]:
-    """Fixture for creating a TaskManager and handling cleanup."""
-    backend = MultiprocessingBackend(ipc_failure_grace=0.2)
+@pytest.fixture(params=['multiprocessing', 'threading'])
+def manager(request, qtbot) -> Generator[TaskManager, None, None]:
+    """Fixture for creating a TaskManager with each backend and handling cleanup."""
+    if request.param == 'multiprocessing':
+        backend = MultiprocessingBackend(ipc_failure_grace=0.2)
+    else:
+        backend = ThreadingBackend(shutdown_grace=0.2)
     manager = TaskManager(backend)
 
     yield manager
@@ -135,6 +140,13 @@ def manager(qtbot) -> Generator[TaskManager, None, None]:
         lambda: not manager.runner._thread.is_alive(),  # noqa: SLF001
         timeout=5000,
     )
+
+
+def make_event(manager: TaskManager):
+    """Create an event that can be shared with the manager's workers."""
+    if isinstance(manager.backend, ThreadingBackend):
+        return threading.Event()
+    return manager.backend.context.Event()
 
 
 def wait_for_task(qtbot, manager, task_id, timeout=5000):
@@ -264,6 +276,7 @@ def test_cooperative_cancel_after_exit(qtbot, manager):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize('manager', [('multiprocessing')], indirect=['manager'])
 def test_forced_termination(qtbot, manager):
     """Test that a task can be forcibly terminated."""
     task = Task(
@@ -273,6 +286,31 @@ def test_forced_termination(qtbot, manager):
 
     manager.submit(task)
 
+    qtbot.waitUntil(
+        lambda: manager.records[task.id].status == TaskStatus.RUNNING,
+        timeout=5000,
+    )
+    manager.cancel(task.id)
+    record = wait_for_task(qtbot, manager, task.id)
+    assert record.status == TaskStatus.CANCELLED
+    assert record.worker_exited
+    assert task.id not in manager.backend.workers
+
+
+@pytest.mark.integration
+def test_terminate_context_aware_task(qtbot, manager):
+    """Test terminating a TERMINATE-policy task that checks for cancellation.
+
+    Multiprocessing kills the process; threading stops at the next cancellation check.
+    Both should end CANCELLED.
+    """
+    task = Task(
+        target=sleep_task,
+        args=(30,),
+        with_context=True,
+        cancellation_policy=CancellationPolicy.TERMINATE,
+    )
+    manager.submit(task)
     qtbot.waitUntil(
         lambda: manager.records[task.id].status == TaskStatus.RUNNING,
         timeout=5000,
@@ -297,6 +335,7 @@ def test_task_exception(qtbot, manager):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize('manager', [('multiprocessing')], indirect=['manager'])
 def test_worker_crash(qtbot, manager):
     """Test case where worker crashes without sending a terminal status."""
     task = Task(target=crash_task)
@@ -311,6 +350,7 @@ def test_worker_crash(qtbot, manager):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize('manager', [('multiprocessing')], indirect=['manager'])
 def test_unpickleable_result(qtbot, manager):
     """Test that failure to serialize a result results in a task failure."""
     task = Task(target=unpickleable_result_task)
@@ -326,7 +366,10 @@ def test_unpickleable_result(qtbot, manager):
 @pytest.mark.integration
 def test_worker_failure_is_isolated(qtbot, manager):
     """With multiple tasks, test that failures are isolated."""
-    failed_task = Task(target=crash_task)
+    crash = (
+        exception_task if isinstance(manager.backend, ThreadingBackend) else crash_task
+    )
+    failed_task = Task(target=crash)
     successful_task = Task(target=sum_task, args=(10, 20))
 
     manager.submit(failed_task)
@@ -365,6 +408,7 @@ class FakeWorkerHandle:
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize('manager', [('multiprocessing')], indirect=['manager'])
 def test_receiver_error(qtbot, manager):
     """Test that an error from the receiver is handled correctly."""
     task = Task(
@@ -413,6 +457,7 @@ def test_receiver_failure_handling():
 
 @pytest.mark.slow
 @pytest.mark.integration
+@pytest.mark.parametrize('manager', [('multiprocessing')], indirect=['manager'])
 def test_terminate_during_transfer(qtbot, manager):
     """Test termination of a worker while writing its result."""
     event = manager.backend.context.Event()
@@ -450,6 +495,7 @@ def synchronized_task(event: Event):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize('manager', [('multiprocessing')], indirect=['manager'])
 def test_immediate_cancel(qtbot, manager):
     """Test cancelling immediately after submitting a task."""
     task = Task(
@@ -465,7 +511,7 @@ def test_immediate_cancel(qtbot, manager):
 @pytest.mark.integration
 def test_cancel_near_completion(qtbot, manager):
     """Test that canceling near the end of the task doesn't cause problems."""
-    event = manager.backend.context.Event()
+    event = make_event(manager)
     task = Task(
         target=synchronized_task,
         args=(event,),
@@ -568,8 +614,10 @@ def test_poll_failure(qtbot):
     task = Task(target=sum_task, args=(1, 2))
 
     try:
-        manager.submit(task)
-        qtbot.waitSignal(manager.runner.fatal_error, timeout=5000)
+        # Keep the blocker alive (and actually wait) until fatal_error arrives.
+        # Discarding it can leave a queued call pointing at a freed object.
+        with qtbot.waitSignal(manager.runner.fatal_error, timeout=5000):
+            manager.submit(task)
         qtbot.waitUntil(
             lambda: manager.records[task.id].status == TaskStatus.UNKNOWN,
             timeout=2000,
@@ -581,3 +629,146 @@ def test_poll_failure(qtbot):
             lambda: not manager.runner._thread.is_alive(),  # noqa: SLF001
             timeout=2000,
         )
+
+
+#
+# Threading shutdown tests
+#
+
+
+def blocking_task(release: threading.Event):
+    """Task that ignores cancellation and blocks until released."""
+    release.wait()
+    return True
+
+
+@pytest.mark.integration
+def test_threading_close_abandons_stuck_terminate_task(qtbot):
+    """Test that close() abandons a stuck TERMINATE thread after the grace period."""
+    release = threading.Event()
+    backend = ThreadingBackend(shutdown_grace=0.2)
+    manager = TaskManager(backend)
+    task = Task(
+        target=blocking_task,
+        args=(release,),
+        cancellation_policy=CancellationPolicy.TERMINATE,
+    )
+
+    try:
+        manager.submit(task)
+        qtbot.waitUntil(
+            lambda: manager.records[task.id].status == TaskStatus.RUNNING,
+            timeout=5000,
+        )
+        thread = backend.workers[task.id].thread
+
+        manager.close()
+        qtbot.waitUntil(
+            lambda: not manager.runner._thread.is_alive(),  # noqa: SLF001
+            timeout=5000,
+        )
+
+        # The runner shut down even though the worker thread is still running
+        assert thread.is_alive()
+        assert not backend.workers
+
+        record = wait_for_task(qtbot, manager, task.id)
+        assert record.status == TaskStatus.CANCELLED
+        assert record.result is None
+    finally:
+        release.set()
+
+    # Events from the abandoned thread are ignored once it finishes
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert backend.poll().events == []
+    assert manager.records[task.id].status == TaskStatus.CANCELLED
+
+
+def make_backend(kind: str):
+    """Create a backend by name."""
+    if kind == 'multiprocessing':
+        return MultiprocessingBackend(ipc_failure_grace=0.2)
+    return ThreadingBackend(shutdown_grace=0.2)
+
+
+def gated_task(release: Event, context: TaskContext) -> bool:
+    """Ignore cancellation, block until released, and report if cancel was seen."""
+    release.wait()
+    return context.is_cancelled()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize('kind', ['multiprocessing', 'threading'])
+def test_close_does_not_cancel_disabled_task(qtbot, kind):
+    """Test that close() neither cancels nor abandons a task with cancel disabled."""
+    backend = make_backend(kind)
+    manager = TaskManager(backend)
+    release = make_event(manager)
+    task = Task(target=gated_task, args=(release,), with_context=True)
+
+    try:
+        manager.submit(task)
+        qtbot.waitUntil(
+            lambda: manager.records[task.id].status == TaskStatus.RUNNING,
+            timeout=5000,
+        )
+
+        manager.close()
+        # Well past the grace period, the runner should still be waiting
+        qtbot.wait(500)
+        assert manager.runner._thread.is_alive()  # noqa: SLF001
+        assert task.id in backend.workers
+    finally:
+        release.set()
+
+    qtbot.waitUntil(
+        lambda: not manager.runner._thread.is_alive(),  # noqa: SLF001
+        timeout=5000,
+    )
+    record = wait_for_task(qtbot, manager, task.id)
+    assert record.status == TaskStatus.SUCCEEDED
+    assert record.result is False, 'Cancel event was set on a DISABLED task'
+
+
+#
+# Cancellation that arrives too late
+#
+
+
+@pytest.mark.integration
+def test_cooperative_task_finishing_after_cancel_succeeds(qtbot, manager):
+    """A task that returns before reacting to cancellation is reported as succeeded.
+
+    Its pending dependents are cancelled regardless.
+    """
+    release = make_event(manager)
+    a = Task(
+        target=gated_task,
+        args=(release,),
+        with_context=True,
+        cancellation_policy=CancellationPolicy.COOPERATIVE,
+    )
+    b = Task(target=sum_task, args=(1, 2), depends_on=frozenset({a.id}))
+    c = Task(target=sum_task, args=(3, 4), depends_on=frozenset({b.id}))
+    for t in (a, b, c):
+        manager.submit(t)
+
+    qtbot.waitUntil(
+        lambda: manager.records[a.id].status == TaskStatus.RUNNING,
+        timeout=5000,
+    )
+    manager.cancel(a.id)
+    assert manager.records[a.id].status == TaskStatus.CANCELLING
+    assert manager.records[b.id].status == TaskStatus.CANCELLED
+    assert manager.records[c.id].status == TaskStatus.CANCELLED
+
+    # Release only once the request has actually reached the worker
+    qtbot.waitUntil(manager.backend.workers[a.id].cancel_event.is_set, timeout=5000)
+    release.set()
+    record = wait_for_task(qtbot, manager, a.id)
+    assert record.status == TaskStatus.SUCCEEDED
+    assert record.result is True, 'Task should have seen the cancel request'
+    assert manager.records[b.id].status == TaskStatus.CANCELLED
+    assert manager.records[c.id].status == TaskStatus.CANCELLED
+    assert not manager.records[b.id].worker_exited, 'Dependent should never start'

@@ -251,6 +251,57 @@ def test_unsuccessful_dependency_skips_descendants(qtbot, rig, outcome):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize('outcome', ['succeeded', 'cancelled'])
+def test_cancel_request_cancels_descendants(qtbot, rig, outcome):
+    """Requesting cancellation cancels pending descendants, however the task ends."""
+    manager, backend = rig
+    a = task()
+    b = task(depends_on={a.id})
+    c = task(depends_on={b.id})
+    manager.submit(a)
+    manager.submit(b)
+    manager.submit(c)
+    wait_status(qtbot, manager, a.id, TaskStatus.RUNNING)
+
+    manager.cancel(a.id)
+    assert manager.records[b.id].status == TaskStatus.CANCELLED
+    assert manager.records[c.id].status == TaskStatus.CANCELLED
+    qtbot.waitUntil(lambda: a.id in backend.cancelled, timeout=3000)
+
+    if outcome == 'succeeded':
+        # Task finished before it could react to the request
+        backend.succeed(a.id, result=1)
+        wait_status(qtbot, manager, a.id, TaskStatus.SUCCEEDED)
+        assert manager.records[a.id].result == 1
+    else:
+        backend.finish_cancelled(a.id)
+        wait_status(qtbot, manager, a.id, TaskStatus.CANCELLED)
+    backend.exit(a.id)
+    qtbot.waitUntil(lambda: manager.records[a.id].worker_exited, timeout=3000)
+
+    assert manager.records[b.id].status == TaskStatus.CANCELLED
+    assert manager.records[c.id].status == TaskStatus.CANCELLED
+    assert backend.start_order == [a.id]
+
+
+@pytest.mark.integration
+def test_cancel_disabled_task_does_not_cancel_descendants(qtbot, rig):
+    """Cancelling a task with cancellation disabled is a no-op for its dependents."""
+    manager, backend = rig
+    a = task(policy=CancellationPolicy.DISABLED)
+    b = task(depends_on={a.id})
+    manager.submit(a)
+    manager.submit(b)
+    wait_status(qtbot, manager, a.id, TaskStatus.RUNNING)
+
+    manager.cancel(a.id)
+    assert manager.records[b.id].status == TaskStatus.PENDING
+    complete(qtbot, manager, backend, a.id)
+    wait_started(qtbot, backend, b.id)
+    assert a.id not in backend.cancelled
+
+
+@pytest.mark.integration
 def test_multiple_resources_are_acquired_atomically(qtbot, rig):
     """Check that all resource locks are acquired before dispatch."""
     manager, backend = rig
