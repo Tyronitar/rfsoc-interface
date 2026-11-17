@@ -7,8 +7,9 @@ import json
 import logging
 import shutil
 import tempfile
+import time
 import typing
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator, Mapping
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -48,6 +49,7 @@ from rfsocinterface.core.utils import (
     TELESCOPE_INITIAL_POSITION_VERSION,
     ChanmaskValue,
     H5pyObject,
+    MetadataJSONEncoder,
     PathLike,
     chunked_downsample,
     compute_chunk_shape,
@@ -70,6 +72,7 @@ _logger = logging.getLogger(__name__)
 
 
 TELESCOPE_ALIGNMENT_GROUP = 'telescope_alignment'
+PROCESSED_STEP_LABEL = 'processed'
 
 
 def store_telescope_alignment(
@@ -409,9 +412,20 @@ class DataStorage:
         )
 
     def get_version(self) -> Version:
-        """Return the rfsocinterface version that this data was processed in."""
-        step0 = self.get_history_step(0)
-        version_string = step0.attrs['rfsocinterface_version']
+        """Return the rfsocinterface version that this data was processed in.
+
+        Uses the processing step if there is one, otherwise the consolidation step
+        (e.g. for ConsolidatedData, or ProcessedData created before the processing
+        step was recorded).
+        """
+        hist = self['processing_history']
+        processed_steps = [
+            k for k in sorted(hist.keys()) if k.endswith(f'_{PROCESSED_STEP_LABEL}')
+        ]
+        step = (
+            hist[processed_steps[-1]] if processed_steps else self.get_history_step(0)
+        )
+        version_string = step.attrs['rfsocinterface_version']
         return Version(version_string)
 
     def find_most_recent_history_step(self, pattern: str) -> tuple[str, h5py.Group]:
@@ -452,6 +466,50 @@ class DataStorage:
 
                 param_str = ', '.join(f'{k}={v}' for k, v in params.items())
                 print(f'[{k}] {name}({param_str})')  # noqa: T201
+
+    def record_history_step(
+        self,
+        label: str,
+        name: str,
+        params: Mapping | None = None,
+        runtime: float | None = None,
+        timestamp: str | None = None,
+        **extra,
+    ) -> h5py.Group:
+        """Append a step to the 'processing_history' group.
+
+        Records the same metadata as the data routines: the step ``name``,
+        ``params`` (JSON), ``timestamp`` (ISO 8601, UTC), ``code_version`` (git hash)
+        and ``runtime_sec``, along with the ``rfsocinterface_version``. Any ``extra``
+        keyword arguments are stored as additional attributes.
+
+        Arguments:
+            label (str): Suffix for the step's group name (e.g. ``'processed'`` gives
+                ``'0001_processed'``).
+            name (str): Name of the step.
+            params (Mapping, optional): Parameters used for this step.
+            runtime (float, optional): How long the step took, in seconds.
+            timestamp (str, optional): When the step finished. Defaults to now.
+            **extra: Additional attributes to store on the step.
+        """
+        hist = self.file.require_group('processing_history')
+        step_group = hist.create_group(get_step_group_name(len(hist), label))
+        meta = {
+            'name': name,
+            'timestamp': timestamp or datetime.now(UTC).isoformat(),
+            'params': params or {},
+            'code_version': get_git_hash(),
+            'rfsocinterface_version': VERSION,
+            **extra,
+        }
+        if runtime is not None:
+            meta['runtime_sec'] = runtime
+        for k, v in meta.items():
+            if isinstance(v, Mapping | Collection) and not isinstance(v, str | bytes):
+                step_group.attrs[k] = json.dumps(v, cls=MetadataJSONEncoder)
+            else:
+                step_group.attrs[k] = v
+        return step_group
 
     def channels(self) -> Iterator[h5py.Group]:
         """Return an iterator over each channel group."""
@@ -1040,6 +1098,7 @@ class ConsolidatedData(DataStorage):
             za_backlash (float, optional): Backlash to remove from the zenith angle
                 positions in degrees (see :func:`apply_backlash`).
         """
+        t0 = time.time()
         todtemplate = get_tod_template(date, setnum, data_dir=data_dir)
         tele_template = Path(get_azel_template(date, setnum, data_dir=data_dir))
         optcam_template = Path(get_optcam_template(date, setnum, data_dir=data_dir))
@@ -1105,29 +1164,15 @@ class ConsolidatedData(DataStorage):
         cdata.date = date
         cdata.setnum = setnum
 
-        # Create processing history
-        processing_history = cdata.create_group('processing_history')
-        step_0 = processing_history.create_group(get_step_group_name(0, 'consolidated'))
-        step_0.attrs['name'] = 'ConsolidatedData'
-        step_0.attrs['params'] = json.dumps(
-            {
-                'downsampling_factor': downsampling_factor,
-                'az_backlash': az_backlash,
-                'za_backlash': za_backlash,
-            }
-        )
-        step_0.attrs['rfsocinterface_version'] = VERSION
-        step_0.attrs['code_version'] = get_git_hash()
+        # Initialize global data group
+        global_data_group = cdata.create_group('global_data')
 
         try:
             kidpy_version = version('kidpy3')
         except Exception as e:  # noqa: BLE001
             _logger.warning(f'kidpy3 version could not be accessed: {e}')
             kidpy_version = 'N/A'
-        step_0.attrs['kidpy_version'] = kidpy_version
-
-        # Initialize global data group
-        global_data_group = cdata.create_group('global_data')
+        global_data_group.attrs['kidpy_version'] = kidpy_version
 
         if azel_exists:
             global_data_group.attrs['telescope_params'] = json.dumps(telescope_params)
@@ -1641,8 +1686,23 @@ class ConsolidatedData(DataStorage):
 
         vdsets.create_virtual_dataset('tones', tones_table_layout)
 
+        # Record processing history
+        runtime = time.time() - t0
+        cdata.record_history_step(
+            'consolidated',
+            'ConsolidatedData',
+            params={
+                'downsampling_factor': downsampling_factor,
+                'use_pps': use_pps,
+                'az_backlash': az_backlash,
+                'za_backlash': za_backlash,
+            },
+            runtime=runtime,
+        )
+
         _logger.info(
-            f'ConsolidatedData: Finished consolidating data for {date}_set{setnum}.'
+            f'ConsolidatedData: Finished consolidating data for {date}_set{setnum} '
+            f'in {runtime:.2f} seconds.'
         )
 
         return cdata
@@ -1650,12 +1710,17 @@ class ConsolidatedData(DataStorage):
     def create_processed_data(self, mode: str = 'a') -> ProcessedData:
         """Create the processed data from this consolidated data."""
         _logger.info('ConsolidatedData: Creating processed data file...')
+        t0 = time.time()
         pfile_path = Path(self.processed_file_template)
         self.close()
         shutil.copy2(self.filename, pfile_path)
         if self.mode == 'w':
             self.mode = 'a'
         self.open(self.mode)
+        _logger.info(
+            'ConsolidatedData: Finished creating processed data file in '
+            f'{time.time() - t0:.2f} seconds.'
+        )
 
         pd = ProcessedData(pfile_path, mode=mode)
         pd.initialize_processed_data_fields()
@@ -1690,10 +1755,18 @@ class ProcessedData(DataStorage):
                     frequency/dissipation.
                 * df_per_mK: Conversion factor to convert Hz to mK.
         Also creates virtual datasets for each dataset, combined across channels.
+
+        Note that data_IQ is mean-centered in place.
+
+        Records a ``processed`` step in the processing history, listing the datasets
+        that were created and modified.
         """
+        t0 = time.time()
         _logger.info(
             f'ProcessedData: Initializing processed data fields for {self.file_stub}...'
         )
+        created: list[str] = []
+        modified: list[str] = []
         for i_chan, channel_group in enumerate(self['channels'].values()):
             _logger.info(
                 f'ProcessedData: Creating procesed data for channel {i_chan}...'
@@ -1818,6 +1891,16 @@ class ProcessedData(DataStorage):
             # First mean center IQ data
             _logger.info('ProcessedData: Generating calibrated data...')
             data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
+            modified.append(data_IQ.name)
+            created.extend(
+                dset.name
+                for dset in (
+                    data_gain_phase,
+                    data_freq_diss,
+                    data_mK,
+                    calibration_info,
+                )
+            )
             generate_calibrated_data(
                 data_IQ,
                 data_freq_diss,
@@ -1841,10 +1924,23 @@ class ProcessedData(DataStorage):
             )
             i_tone += n_tones
 
-        self['vdsets'].create_virtual_dataset(
+        vdset = self['vdsets'].create_virtual_dataset(
             'calibration_info', calibration_info_layout
         )
-        _logger.info('ProcessedData: Finished initializing processed data fields.')
+        created.append(vdset.name)
+
+        runtime = time.time() - t0
+        self.record_history_step(
+            PROCESSED_STEP_LABEL,
+            'ProcessedData',
+            runtime=runtime,
+            created=created,
+            modified=modified,
+        )
+        _logger.info(
+            'ProcessedData: Finished initializing processed data fields in '
+            f'{runtime:.2f} seconds.'
+        )
 
     #
     # Time-ordered data

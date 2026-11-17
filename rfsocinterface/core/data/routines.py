@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import json
 import logging
 import time
 import typing
@@ -24,7 +23,7 @@ from rfsocinterface.core.data.utils import (
     get_step_group_name,
     rotate_basis,
 )
-from rfsocinterface.core.utils import BUTTER_ORDER, MetadataJSONEncoder, get_git_hash
+from rfsocinterface.core.utils import BUTTER_ORDER
 
 __all__ = (
     'ROUTINE_REGISTRY',
@@ -381,7 +380,7 @@ class DataRoutine(ABC):
         self,
         normalized_inputs: NormalizedRoutineInputs,
         result: RoutineResult,
-        timestamp: float,
+        timestamp: str,
         runtime: float,
     ):
         """Record metadata to the input data files."""
@@ -395,20 +394,9 @@ class DataRoutine(ABC):
             )
             self._log_step(meta, pdata)
 
-    def _log_step(self, meta: str, pdata: ProcessedData):
+    def _log_step(self, meta: dict, pdata: ProcessedData):
         """Append to the 'processing_history' group of the ProcessedData."""
-        hist = pdata.file.require_group('processing_history')
-
-        step_idx = len(hist)
-        step_name = get_step_group_name(step_idx, self.name)
-
-        step_group = hist.create_group(step_name)
-
-        for k, v in meta.items():
-            if isinstance(v, Mapping | Collection):
-                step_group.attrs[k] = json.dumps(v, cls=MetadataJSONEncoder)
-            else:
-                step_group.attrs[k] = v
+        pdata.record_history_step(self.name, **meta)
 
     def _checkpoint(self, *pdata: ProcessedData):
         """Save a checkpoint of the current state of the ProcessedData."""
@@ -428,7 +416,7 @@ class DataRoutine(ABC):
         role: str,
         inputs: Collection[str],
         result: RoutineResult,
-        timestamp: float,
+        timestamp: str,
         runtime: float,
     ) -> dict:
         """Helper method to construct the metadata dictionary for history logging."""
@@ -438,8 +426,7 @@ class DataRoutine(ABC):
             'timestamp': timestamp,
             'params': self.params,
             'inputs': inputs,
-            'code_version': get_git_hash(),
-            'runtime_sec': runtime,
+            'runtime': runtime,
         }
         modified = result.modified.get(role, {})
         if modified:
