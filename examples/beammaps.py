@@ -776,24 +776,24 @@ if __name__ == '__main__':
         dataset=dataset,
         az_trim=0,
         za_trim=0,
-        dpix=0.02,
+        dpix=0.03,
         r0=0.0,
     )
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap(dpi=100)
 
     pipeline = Pipeline([
-        noise_removal_offres,
-        noise_removal_onres,
-        hp_filter,
-        lp_filter,
-        clean_tod,
+        # noise_removal_offres,
+        # noise_removal_onres,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
         bin_tod_to_map,
         analyze_beammap,
         plot_beammap,
     ])
 
-    date = '20261105'
+    date = '20260617'
     setnum = 1001
 
 
@@ -807,10 +807,22 @@ if __name__ == '__main__':
 
     # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    pdata = ProcessedData.load(date, setnum)
+    # pdata = ProcessedData.load(date, setnum)
     # pipeline.run(pdata)
 
-    # pdata.print_history()
+    # for setnum in [1001, 1004]:
+    for setnum in [1005]:
+    # for setnum in [1001, 1004, 1005, 1006]:
+        print(f'\nProcessing {date}_set{setnum}...')
+        # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
+        # pdata, _ = pipeline.from_consolidated_data(date, setnum)
+        pdata = ProcessedData.load(date, setnum)
+        pipeline.run(pdata)
+        print(f'Finished processing {pdata.file_stub}\n')
+        pdata.close()
+
+
+    # pdata.print_history(True)
     # pdb.set_trace()
 
     # bin_tod_to_map.apply(pdata)
@@ -821,11 +833,11 @@ if __name__ == '__main__':
     # plt.imshow(pdata['map/map_val'][300], extent=get_extent(pdata['map/map_az'][:], pdata['map/map_za'][:], 0.02))
     # plt.show()
     # pdb.set_trace()
-    plot_one_beammap(
-        pdata,
-        plot_beammap,
-        213,
-    )
+    # plot_one_beammap(
+    #     pdata,
+    #     plot_beammap,
+    #     213,
+    # )
     # za_range = (88.5, 88.8)
     # tel_za = pdata.get_telescope_za(0)[:]
     # pickup_samples = np.argwhere((za_range[0] <= tel_za) & (tel_za <= za_range[1])).flatten()
