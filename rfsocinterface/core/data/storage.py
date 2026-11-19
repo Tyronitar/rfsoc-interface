@@ -82,6 +82,10 @@ FROM_TOD_TELESCOPE_STEPS = 2  # Steps for getting telescope / detector positions
 PROCESSED_INIT_BASE_STEPS = 2  # Steps for general processed data creation
 PROCESSED_INIT_STEPS_PER_CHANNEL = 4  # Steps taken when procesing any channel
 
+# Use higher weights for DataStorage methods, since they're slower than most routines
+FROM_TOD_PROGRESS_WEIGHT = 3.0
+PROCESSED_INIT_PROGRESS_WEIGHT = 2.0
+
 
 def store_telescope_alignment(
     channel_group: h5py.Group,

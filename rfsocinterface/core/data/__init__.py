@@ -29,6 +29,8 @@ from rfsocinterface.core.data.routines import (
     register_routine,
 )
 from rfsocinterface.core.data.storage import (
+    FROM_TOD_PROGRESS_WEIGHT,
+    PROCESSED_INIT_PROGRESS_WEIGHT,
     ConsolidatedData,
     DataStorage,
     ProcessedData,
@@ -62,11 +64,13 @@ __all__ = [
     'CALIBRATION_TABLE_DTYPE',
     'DECIMATE_ORDER',
     'DEFAULT_MAP_DPIX',
+    'FROM_TOD_PROGRESS_WEIGHT',
     'MAP_CHANGE_VERSION',
     'N_POLARIZATION',
     'OPTCAM_DPIX',
     'OPTCAM_OFFSET_AZ_PIX',
     'OPTCAM_OFFSET_ZA_PIX',
+    'PROCESSED_INIT_PROGRESS_WEIGHT',
     'RFSOC_TIME_OFFSET_AZ',
     'RFSOC_TIME_OFFSET_ZA',
     'ROUTINE_GUI_ARGS',

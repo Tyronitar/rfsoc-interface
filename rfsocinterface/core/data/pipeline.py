@@ -11,7 +11,12 @@ from rfsocinterface.core.data.routines import (
     DataRoutine,
     RoutineResult,
 )
-from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
+from rfsocinterface.core.data.storage import (
+    FROM_TOD_PROGRESS_WEIGHT,
+    PROCESSED_INIT_PROGRESS_WEIGHT,
+    ConsolidatedData,
+    ProcessedData,
+)
 from rfsocinterface.core.data.utils import AZ_BACKLASH_DEG
 from rfsocinterface.core.tasks import (
     Task,
@@ -263,14 +268,16 @@ class Pipeline:
         # )
         self._context = context
         subtasks = []
+
         if start.lower() == 'consolidated':
-            subtasks.append(('Create ConsolidatedData', 1.0))
-            subtasks.append(('Create ProcessedData', 1.0))
+            subtasks.append(('Create ConsolidatedData', FROM_TOD_PROGRESS_WEIGHT))
+            subtasks.append(('Create ProcessedData', PROCESSED_INIT_PROGRESS_WEIGHT))
         elif start.lower() == 'processed':
-            subtasks.append(('Create ProcessedData', 1.0))
+            subtasks.append(('Create ProcessedData', PROCESSED_INIT_PROGRESS_WEIGHT))
         self._task_progress = TaskProgress(
             context,
-            subtasks=subtasks + [(routine.name, 1.0) for routine in self.routines],
+            subtasks=subtasks
+            + [(routine.name, routine.progress_weight) for routine in self.routines],
         )
         self._current_step = 0
 

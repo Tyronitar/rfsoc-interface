@@ -133,6 +133,9 @@ class DataRoutine(ABC):
             None, the routine can take an arbitray amount of inputs. Defaults to 1.
         map_over_inputs (bool): Whether to apply the routine to each input ProcessedData
             individually. Defaults to True.
+        progress_weight (float): The relative weight for this routine as a subtask of
+            a data Pipeline. Increase this value if it typically is slower than other
+            routines. Default is 1.0.
     """
 
     name: ClassVar[str] = 'base'
@@ -146,6 +149,9 @@ class DataRoutine(ABC):
 
     requires: ClassVar[set[str]] = set()
     produces: ClassVar[set[str]] = set()
+
+    # Support for progress reporting / task context
+    progress_weight: ClassVar[float] = 1.0
 
     def __init__(self, **params):
         """Initialize a DataRoutine."""

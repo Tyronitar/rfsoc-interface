@@ -75,7 +75,7 @@ class Window(QWidget):
             pipeline.from_tod,
             args=(date, setnum),
             kwargs=kwargs,
-            name=f'Pipeline Execution on {date}_set{setnum}',
+            name=f'Process data from {date}_set{setnum}',
             with_context=True,
             cancellation_policy=CancellationPolicy.COOPERATIVE,
             resources=frozenset({f'{date}_set{setnum}'}),
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     lp_filter_freq = 15
     hp_filter_freq = 0.03
 
-    ds_factor = 1
+    ds_factor = 10
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
