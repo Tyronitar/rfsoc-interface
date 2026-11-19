@@ -562,6 +562,11 @@ class CutoffFilter(DataRoutine):
             dsets.extend(pdata.search_regex_names(pattern, full_name=True))
         return dsets
 
+    @property
+    def btype(self) -> str:
+        """The type of filter being used."""
+        return self.params['btype'].lower()
+
     @typing.override
     def _run(
         self,
@@ -574,9 +579,25 @@ class CutoffFilter(DataRoutine):
         Applies a Butterworth filter with the specified cutoff frequency and type to
         each of the input datasets.
         """
+        base_label = (
+            f'Applying {"Low" if self.btype in ("low", "lowpass") else "High"}'
+            '-pass filter '
+        )
+        n_steps = len(inputs)
         filter_freq = self.params['filter_freq']
         btype = self.params['btype']
-        for dset_name in inputs:
+        for i_step, dset_name in enumerate(inputs):
+            if context is not None:
+                # Check if cancelled
+                context.check_cancelled()
+
+                # Update progress bar
+                context.progress(
+                    i_step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=base_label + f'to {dset_name}',
+                )
             i_chan = get_channel_index_from_dset_name(dset_name)
             if i_chan is None:
                 msg = (
