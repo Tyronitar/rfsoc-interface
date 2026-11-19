@@ -1042,10 +1042,10 @@ class ConsolidatedData(DataStorage):
     def __str__(self):
         """Return a string representation of the ConsolidatedData file."""
         return (
-            f'ConsolidatedData {self.date}_set{self.setnum}' if self.file is not None
+            f'ConsolidatedData {self.date}_set{self.setnum}'
+            if self.file is not None
             else f'ConsolidatedData {self.filename!s}'
         )
-
 
     @classmethod
     def from_tod(  # noqa: PLR0912, PLR0915
@@ -1712,7 +1712,8 @@ class ProcessedData(DataStorage):
     def __str__(self):
         """Return a string representation of the ProcessedData file."""
         return (
-            f'ProcessedData {self.date}_set{self.setnum}' if self.file is not None
+            f'ProcessedData {self.date}_set{self.setnum}'
+            if self.file is not None
             else f'ProcessedData {self.filename!s}'
         )
 

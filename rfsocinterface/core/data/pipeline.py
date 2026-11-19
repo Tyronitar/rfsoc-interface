@@ -99,9 +99,7 @@ class Pipeline:
             pd.close()
             raise
         except BaseException:
-            _logger.warning(
-                f'Pipeline: Closing {pd} in response to error.'
-            )
+            _logger.warning(f'Pipeline: Closing {pd} in response to error.')
             pd.close()
             raise
 
@@ -146,9 +144,7 @@ class Pipeline:
             pd.close()
             raise
         except BaseException:
-            _logger.warning(
-                f'Pipeline: Closing {pd} in response to error.'
-            )
+            _logger.warning(f'Pipeline: Closing {pd} in response to error.')
             pd.close()
             raise
 
