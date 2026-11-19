@@ -154,7 +154,9 @@ class SubtaskContext:
 
     def eta(self, value: float):
         """Send the subtask's estimated remaining time to the main process."""
-        self._send_event(SubtaskETA(self.task_id, self.state.path, value))
+        self.parent._send_event(  # noqa: SLF001
+            SubtaskETA(self.parent.task_id, self.state.path, value)
+        )
 
     def check_cancelled(self) -> None:
         """Return whether the subtask's parent has started cancellation."""
