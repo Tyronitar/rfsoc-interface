@@ -78,7 +78,7 @@ class SubtaskRecord:
     end_time: float | None = None
 
     progress: SubtaskProgress | None = None
-    eta: SubtaskETA | None = None
+    eta: float | None = None
 
     @property
     def is_active(self) -> bool:
@@ -337,7 +337,7 @@ class TaskManager(QObject):
                     subtask.progress = event
                 case SubtaskETA():
                     subtask = record.subtasks[event.path]
-                    subtask.eta = event
+                    subtask.eta = event.eta
                 case Succeeded():
                     record.status = TaskStatus.SUCCEEDED
                     record.result = event.result
