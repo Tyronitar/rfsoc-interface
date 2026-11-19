@@ -326,10 +326,12 @@ class TaskProgressWidget(QFrame):
             latest = next(reversed(record.subtask_progress.values()))
 
             description = ' / '.join(latest.path)
-
-            if latest.label:
+            if record.status == TaskStatus.SUCCEEDED:
+                description = 'Finished'
+            elif latest.label:
                 description += f' — {latest.label}'
-            else:
+            elif self.detail_label.text():
+                # Preserve most recent label if a new one was not provided
                 description = self.detail_label.text()
 
             self.detail_label.setText(description)

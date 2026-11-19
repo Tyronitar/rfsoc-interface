@@ -72,6 +72,13 @@ _logger = logging.getLogger(__name__)
 
 TELESCOPE_ALIGNMENT_GROUP = 'telescope_alignment'
 
+# Number of steps for tracking progress of ConsolidatedData.from_tod
+FROM_TOD_BASE_STEPS = 3  # Steps for general file creation
+FROM_TOD_STEPS_PER_CHANNEL = 11  # Steps taken when procesing any channel
+FROM_TOD_TELESCOPE_STEPS = 2  # Steps for getting telescope / detector positions
+# + 1 for copying telescope data, if applicable
+# + 1 for copying optical camera data, if applicable
+
 
 def store_telescope_alignment(
     channel_group: h5py.Group,
@@ -1057,7 +1064,7 @@ class ConsolidatedData(DataStorage):
         use_pps: bool = True,
         az_backlash: float = AZ_BACKLASH_DEG,
         za_backlash: float = 0.0,
-        context: TaskContext | None = None,  # noqa: ARG003
+        context: TaskContext | None = None,
     ) -> ConsolidatedData:
         """Consolidate the data for the specified data set.
 
@@ -1075,6 +1082,15 @@ class ConsolidatedData(DataStorage):
             context (TaskContext, optional): Context to use for reporting progress, if
                 running in the GUI.
         """
+        file_stub = f'{date}_set{setnum}'
+        name = 'ConsolidatedData'
+        step = 0
+        if context is not None:
+            context.check_cancelled()
+            context.progress(
+                0,
+                label=f'{name}: Finding files for {file_stub}...',
+            )
         todtemplate = get_tod_template(date, setnum, data_dir=data_dir)
         tele_template = Path(get_azel_template(date, setnum, data_dir=data_dir))
         optcam_template = Path(get_optcam_template(date, setnum, data_dir=data_dir))
@@ -1100,8 +1116,23 @@ class ConsolidatedData(DataStorage):
         if nchan == 0:
             raise FileNotFoundError(f'No TOD files found for {date} set {setnum}')
 
-        # Load telescope data
+        n_steps = (
+            FROM_TOD_BASE_STEPS
+            + int(azel_exists)
+            + int(optcam_exists)
+            + FROM_TOD_STEPS_PER_CHANNEL * nchan
+            + FROM_TOD_TELESCOPE_STEPS * nchan * int(azel_exists)
+        )
         if azel_exists:
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=f'{name}: Loading telescope data...',
+                )
             # pdb.set_trace()
             az_tel = azel_file['az_tel']
             telescope_params = json.loads(azel_file.attrs.get('params', '{}'))
@@ -1128,6 +1159,15 @@ class ConsolidatedData(DataStorage):
             vis = 0.0
 
         # Initialize consolidated data file
+        if context is not None:
+            context.check_cancelled()
+            step += 1
+            context.progress(
+                step,
+                minimum=0,
+                maximum=n_steps,
+                label=f'{name}: Initializing file structure...',
+            )
         cfile_path = Path(
             get_consolidated_file_template(date, setnum, data_dir=data_dir)
         )
@@ -1175,6 +1215,15 @@ class ConsolidatedData(DataStorage):
 
         # Optical image
         if optcam_exists:
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=f'{name}: Loading optical camera data...',
+                )
             _logger.info('ConsolidatedData: Copying optical data...')
             # optical_image = optcam_file.root.optical_image
             if 'optical_image' in optcam_file:
@@ -1199,6 +1248,7 @@ class ConsolidatedData(DataStorage):
                 if (
                     'initial_telescope_pos' not in global_data_group.attrs
                     and Version(VERSION) <= TELESCOPE_INITIAL_POSITION_VERSION
+                    and azel_exists
                 ):
                     # NOTE: This is only correct for versions < 1.3.0 if in video mode
                     initial_tel_pos = (az_tel[0], za_tel[0])
@@ -1215,6 +1265,7 @@ class ConsolidatedData(DataStorage):
                 if (
                     'initial_telescope_pos' not in global_data_group.attrs
                     and Version(VERSION) <= TELESCOPE_INITIAL_POSITION_VERSION
+                    and azel_exists
                 ):
                     # NOTE: This is only correct for versions < 1.3.0 if in video mode
                     initial_tel_pos = (az_tel[0], za_tel[0])
@@ -1235,6 +1286,18 @@ class ConsolidatedData(DataStorage):
             _logger.info(
                 f'ConsolidatedData: Consolidating data for channel {i_chan}...'
             )
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                        'Determining dataset dimensions...'
+                    ),
+                )
             raw_data = RawDataFile(file, 'r')
 
             # Verify the LO sweep exists
@@ -1262,6 +1325,18 @@ class ConsolidatedData(DataStorage):
             n_samples_raw = raw_data.adc_i.shape[-1]
 
             # Find missed packets
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                        'Finding missed packets...'
+                    ),
+                )
             _logger.info('ConsolidatedData: Finding missed packets...')
             if raw_data.pkt_idx is not None:
                 _logger.debug('ConsolidatedData: Using pkt_idx to find missed packets')
@@ -1285,6 +1360,18 @@ class ConsolidatedData(DataStorage):
 
             # Create the HDF5 group for this channel
             _logger.info('ConsolidatedData: Initializing HDF5 group in file...')
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                        'Initializing HDF5 group in file...'
+                    ),
+                )
             this_channel_group = all_channels_group.create_group(
                 get_channel_group_name(i_chan)
             )
@@ -1301,6 +1388,18 @@ class ConsolidatedData(DataStorage):
             this_channel_group.attrs['n_missed_packets'] = n_missed
 
             # Store the tone parameters
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                        'Storing tone parameters...'
+                    ),
+                )
             tones_table = this_channel_group.create_dataset(
                 'tones', shape=(n_tones,), dtype=TONES_TABLE_DTYPE
             )
@@ -1346,9 +1445,32 @@ class ConsolidatedData(DataStorage):
             tones_table['chanmask'] = chanmask
 
             # Copy LO sweep
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) Copying LO sweep...'
+                    ),
+                )
             this_channel_group.create_dataset('lo_sweep', data=raw_data.lo_sweep[:])
 
             # Compute the chunk sizes to use
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                        'Initializing time-ordered data...'
+                    ),
+                )
             chunk_shape_1d = compute_chunk_shape((), 8, max_chunk_size=n_samples)
             chunk_shape_1d_ds = compute_chunk_shape((), 8, max_chunk_size=n_samples_ds)
             azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
@@ -1464,6 +1586,18 @@ class ConsolidatedData(DataStorage):
             )
 
             # Get packet indices
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                        'Determinig data packet indices...'
+                    ),
+                )
             _logger.info('ConsolidatedData: Determining packet indices...')
             if raw_data.pkt_idx is not None:
                 pkt_idx = raw_data.pkt_idx
@@ -1474,6 +1608,18 @@ class ConsolidatedData(DataStorage):
             valid_tone_index = np.arange(n_tones, dtype=int) + 0
 
             # Interpolate timestamp so that it is equally spaced
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                        'Creating timestamp...'
+                    ),
+                )
             _logger.info('ConsolidatedData: Interpolating timestamp...')
             interpolate_timestamp_streaming(
                 raw_data.timestamp,
@@ -1492,6 +1638,18 @@ class ConsolidatedData(DataStorage):
             this_channel_group.attrs['fs'] = fs
 
             # Interpolate missing IQ data
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                        'Interpolating missing IQ data...'
+                    ),
+                )
             if n_missed > 0:
                 _logger.info('ConsolidatedData: Interpolating missing IQ data...')
                 interpolate_missing_data(
@@ -1504,6 +1662,19 @@ class ConsolidatedData(DataStorage):
                     pkt_idx,
                     missed_packets,
                     valid_tone_index,
+                )
+
+            # Copy raw PPS and IQ data
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) Copying raw data...'
+                    ),
                 )
             if raw_data.pps is not None:
                 _logger.info('ConsolidatedData: Copying pps dataset...')
@@ -1541,6 +1712,18 @@ class ConsolidatedData(DataStorage):
                         'ConsolidatedData: Correlating telescope '
                         'pointing information...'
                     )
+                    if context is not None:
+                        context.check_cancelled()
+                        step += 1
+                        context.progress(
+                            step,
+                            minimum=0,
+                            maximum=n_steps,
+                            label=(
+                                f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                                'Determining telescope positions...'
+                            ),
+                        )
                     # Use the primary dither direction's clock mapping for the signal
                     # mask, if available. Otherwise, use azimuth.
                     primary_axis = (
@@ -1622,6 +1805,18 @@ class ConsolidatedData(DataStorage):
                     use_filter=False,
                 )
                 _logger.info('ConsolidatedData: Computing detector positions...')
+                if context is not None:
+                    context.check_cancelled()
+                    step += 1
+                    context.progress(
+                        step,
+                        minimum=0,
+                        maximum=n_steps,
+                        label=(
+                            f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                            'Computing detector positions...'
+                        ),
+                    )
                 get_detector_positions_no_interp(
                     telescope_az,
                     telescope_za,
@@ -1633,6 +1828,18 @@ class ConsolidatedData(DataStorage):
                 )
 
             # Downsample IQ data
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                        'Downsampling IQ data...'
+                    ),
+                )
             _logger.info('ConsolidatedData: Downsampling IQ data...')
             decimate_in_chunks(
                 temp_data_IQ,
@@ -1657,6 +1864,18 @@ class ConsolidatedData(DataStorage):
                 f'ConsolidatedData: Finished consolidating data for channel {i_chan}.'
             )
 
+        if context is not None:
+            context.check_cancelled()
+            step += 1
+            context.progress(
+                step,
+                minimum=0,
+                maximum=n_steps,
+                label=(
+                    f'{name}: (Channel {i_chan + 1} / {nchan}) '
+                    'Creating virtual datasets...'
+                ),
+            )
         total_tones = np.sum(tone_counts)
         global_data_group.attrs['n_samples'] = tuple(sample_counts)
         global_data_group.attrs['n_tones'] = tuple(tone_counts)
