@@ -596,9 +596,6 @@ class CutoffFilter(DataRoutine):
         btype = self.params['btype']
         for i_step, dset_name in enumerate(inputs):
             if context is not None:
-                # Check if cancelled
-                context.check_cancelled()
-
                 # Update progress bar
                 context.progress(
                     i_step,
@@ -606,6 +603,8 @@ class CutoffFilter(DataRoutine):
                     maximum=n_steps,
                     label=base_label + f'to {elide_text(dset_name)}',
                 )
+                # Check if cancelled
+                context.check_cancelled()
             i_chan = get_channel_index_from_dset_name(dset_name)
             if i_chan is None:
                 msg = (
@@ -820,7 +819,6 @@ class RemoveElectronicsNoise(DataRoutine):
 
         for i_chan in range(pdata.n_chan):
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -831,6 +829,7 @@ class RemoveElectronicsNoise(DataRoutine):
                         'Filtering data...'
                     ),
                 )
+                context.check_cancelled()
             fs = pdata.get_fs(i_chan)
             selection_indices = decode_tone_indices(
                 pdata, template_selection_indices, i_chan
@@ -855,7 +854,6 @@ class RemoveElectronicsNoise(DataRoutine):
                 data_lp = clean_gain_phase[:]
 
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -866,12 +864,12 @@ class RemoveElectronicsNoise(DataRoutine):
                         'Computing templates...'
                     ),
                 )
+                context.check_cancelled()
             templates = _compute_templates(
                 data_lp[:, selection_indices], max_modes=max_modes
             )  # 2 x N_modes x N_samples
 
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -882,6 +880,7 @@ class RemoveElectronicsNoise(DataRoutine):
                         'Removing templates from filtered data...'
                     ),
                 )
+                context.check_cancelled()
 
             n_modes = templates.shape[1]
             _logger.info(f'{self.name}: Subtracting {n_modes} eigenmodes')
@@ -902,7 +901,6 @@ class RemoveElectronicsNoise(DataRoutine):
             data_gain_phase[:] = clean_gain_phase
 
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -913,6 +911,7 @@ class RemoveElectronicsNoise(DataRoutine):
                         'Recomputing calibrated data...'
                     ),
                 )
+                context.check_cancelled()
 
             # Regenerate other data arrays
             data_IQ = pdata.get_from_channel(i_chan, 'time_ordered_data/data_IQ')
@@ -984,9 +983,6 @@ class CleanTOD(DataRoutine):
         n_steps = len(inputs)
         for i_chan, dset in enumerate(inputs):
             if context is not None:
-                # Check if cancelled
-                context.check_cancelled()
-
                 # Update progress bar
                 context.progress(
                     i_chan,
@@ -997,6 +993,8 @@ class CleanTOD(DataRoutine):
                         f'{i_chan + 1} / {pdata.n_chan}...'
                     ),
                 )
+                # Check if cancelled
+                context.check_cancelled()
             data = pdata[dset]
             good_tones = pdata.get_onres_ind(i_chan)
             if data.ndim == 2:  # noqa: PLR2004

@@ -1093,11 +1093,11 @@ class ConsolidatedData(DataStorage):
         name = 'ConsolidatedData'
         step = 0
         if context is not None:
-            context.check_cancelled()
             context.progress(
                 0,
                 label=f'{name}: Finding files for {file_stub}...',
             )
+            context.check_cancelled()
         todtemplate = get_tod_template(date, setnum, data_dir=data_dir)
         tele_template = Path(get_azel_template(date, setnum, data_dir=data_dir))
         optcam_template = Path(get_optcam_template(date, setnum, data_dir=data_dir))
@@ -1132,7 +1132,6 @@ class ConsolidatedData(DataStorage):
         )
         if azel_exists:
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1140,6 +1139,7 @@ class ConsolidatedData(DataStorage):
                     maximum=n_steps,
                     label=f'{name}: Loading telescope data...',
                 )
+                context.check_cancelled()
             # pdb.set_trace()
             az_tel = azel_file['az_tel']
             telescope_params = json.loads(azel_file.attrs.get('params', '{}'))
@@ -1167,7 +1167,6 @@ class ConsolidatedData(DataStorage):
 
         # Initialize consolidated data file
         if context is not None:
-            context.check_cancelled()
             step += 1
             context.progress(
                 step,
@@ -1175,6 +1174,7 @@ class ConsolidatedData(DataStorage):
                 maximum=n_steps,
                 label=f'{name}: Initializing file structure...',
             )
+            context.check_cancelled()
         cfile_path = Path(
             get_consolidated_file_template(date, setnum, data_dir=data_dir)
         )
@@ -1223,7 +1223,6 @@ class ConsolidatedData(DataStorage):
         # Optical image
         if optcam_exists:
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1231,6 +1230,7 @@ class ConsolidatedData(DataStorage):
                     maximum=n_steps,
                     label=f'{name}: Loading optical camera data...',
                 )
+                context.check_cancelled()
             _logger.info('ConsolidatedData: Copying optical data...')
             # optical_image = optcam_file.root.optical_image
             if 'optical_image' in optcam_file:
@@ -1294,7 +1294,6 @@ class ConsolidatedData(DataStorage):
                 f'ConsolidatedData: Consolidating data for channel {i_chan}...'
             )
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1305,6 +1304,7 @@ class ConsolidatedData(DataStorage):
                         'Determining dataset dimensions...'
                     ),
                 )
+                context.check_cancelled()
             raw_data = RawDataFile(file, 'r')
 
             # Verify the LO sweep exists
@@ -1333,7 +1333,6 @@ class ConsolidatedData(DataStorage):
 
             # Find missed packets
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1344,6 +1343,7 @@ class ConsolidatedData(DataStorage):
                         'Finding missed packets...'
                     ),
                 )
+                context.check_cancelled()
             _logger.info('ConsolidatedData: Finding missed packets...')
             if raw_data.pkt_idx is not None:
                 _logger.debug('ConsolidatedData: Using pkt_idx to find missed packets')
@@ -1368,7 +1368,6 @@ class ConsolidatedData(DataStorage):
             # Create the HDF5 group for this channel
             _logger.info('ConsolidatedData: Initializing HDF5 group in file...')
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1379,6 +1378,7 @@ class ConsolidatedData(DataStorage):
                         'Initializing HDF5 group in file...'
                     ),
                 )
+                context.check_cancelled()
             this_channel_group = all_channels_group.create_group(
                 get_channel_group_name(i_chan)
             )
@@ -1396,7 +1396,6 @@ class ConsolidatedData(DataStorage):
 
             # Store the tone parameters
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1407,6 +1406,7 @@ class ConsolidatedData(DataStorage):
                         'Storing tone parameters...'
                     ),
                 )
+                context.check_cancelled()
             tones_table = this_channel_group.create_dataset(
                 'tones', shape=(n_tones,), dtype=TONES_TABLE_DTYPE
             )
@@ -1453,7 +1453,6 @@ class ConsolidatedData(DataStorage):
 
             # Copy LO sweep
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1463,11 +1462,11 @@ class ConsolidatedData(DataStorage):
                         f'{name}: (Channel {i_chan + 1} / {nchan}) Copying LO sweep...'
                     ),
                 )
+                context.check_cancelled()
             this_channel_group.create_dataset('lo_sweep', data=raw_data.lo_sweep[:])
 
             # Compute the chunk sizes to use
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1478,6 +1477,7 @@ class ConsolidatedData(DataStorage):
                         'Initializing time-ordered data...'
                     ),
                 )
+                context.check_cancelled()
             chunk_shape_1d = compute_chunk_shape((), 8, max_chunk_size=n_samples)
             chunk_shape_1d_ds = compute_chunk_shape((), 8, max_chunk_size=n_samples_ds)
             azel_shape_ds = (n_tones, n_samples_ds) if azel_exists else (n_tones, 1)
@@ -1594,7 +1594,6 @@ class ConsolidatedData(DataStorage):
 
             # Get packet indices
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1605,6 +1604,7 @@ class ConsolidatedData(DataStorage):
                         'Determinig data packet indices...'
                     ),
                 )
+                context.check_cancelled()
             _logger.info('ConsolidatedData: Determining packet indices...')
             if raw_data.pkt_idx is not None:
                 pkt_idx = raw_data.pkt_idx
@@ -1616,7 +1616,6 @@ class ConsolidatedData(DataStorage):
 
             # Interpolate timestamp so that it is equally spaced
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1627,6 +1626,7 @@ class ConsolidatedData(DataStorage):
                         'Creating timestamp...'
                     ),
                 )
+                context.check_cancelled()
             _logger.info('ConsolidatedData: Interpolating timestamp...')
             interpolate_timestamp_streaming(
                 raw_data.timestamp,
@@ -1646,7 +1646,6 @@ class ConsolidatedData(DataStorage):
 
             # Interpolate missing IQ data
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1657,6 +1656,7 @@ class ConsolidatedData(DataStorage):
                         'Interpolating missing IQ data...'
                     ),
                 )
+                context.check_cancelled()
             if n_missed > 0:
                 _logger.info('ConsolidatedData: Interpolating missing IQ data...')
                 interpolate_missing_data(
@@ -1673,7 +1673,6 @@ class ConsolidatedData(DataStorage):
 
             # Copy raw PPS and IQ data
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1683,6 +1682,7 @@ class ConsolidatedData(DataStorage):
                         f'{name}: (Channel {i_chan + 1} / {nchan}) Copying raw data...'
                     ),
                 )
+                context.check_cancelled()
             if raw_data.pps is not None:
                 _logger.info('ConsolidatedData: Copying pps dataset...')
                 for chunk_start, chunk_end, chunk in iterate_chunks(
@@ -1720,7 +1720,6 @@ class ConsolidatedData(DataStorage):
                         'pointing information...'
                     )
                     if context is not None:
-                        context.check_cancelled()
                         step += 1
                         context.progress(
                             step,
@@ -1731,6 +1730,7 @@ class ConsolidatedData(DataStorage):
                                 'Determining telescope positions...'
                             ),
                         )
+                        context.check_cancelled()
                     # Use the primary dither direction's clock mapping for the signal
                     # mask, if available. Otherwise, use azimuth.
                     primary_axis = (
@@ -1813,7 +1813,6 @@ class ConsolidatedData(DataStorage):
                 )
                 _logger.info('ConsolidatedData: Computing detector positions...')
                 if context is not None:
-                    context.check_cancelled()
                     step += 1
                     context.progress(
                         step,
@@ -1824,6 +1823,7 @@ class ConsolidatedData(DataStorage):
                             'Computing detector positions...'
                         ),
                     )
+                    context.check_cancelled()
                 get_detector_positions_no_interp(
                     telescope_az,
                     telescope_za,
@@ -1836,7 +1836,6 @@ class ConsolidatedData(DataStorage):
 
             # Downsample IQ data
             if context is not None:
-                context.check_cancelled()
                 step += 1
                 context.progress(
                     step,
@@ -1847,6 +1846,7 @@ class ConsolidatedData(DataStorage):
                         'Downsampling IQ data...'
                     ),
                 )
+                context.check_cancelled()
             _logger.info('ConsolidatedData: Downsampling IQ data...')
             decimate_in_chunks(
                 temp_data_IQ,
@@ -1872,7 +1872,6 @@ class ConsolidatedData(DataStorage):
             )
 
         if context is not None:
-            context.check_cancelled()
             step += 1
             context.progress(
                 step,
@@ -1880,6 +1879,7 @@ class ConsolidatedData(DataStorage):
                 maximum=n_steps,
                 label='Creating virtual datasets...',
             )
+            context.check_cancelled()
         total_tones = np.sum(tone_counts)
         global_data_group.attrs['n_samples'] = tuple(sample_counts)
         global_data_group.attrs['n_tones'] = tuple(tone_counts)
@@ -1916,13 +1916,13 @@ class ConsolidatedData(DataStorage):
             PROCESSED_INIT_BASE_STEPS + PROCESSED_INIT_STEPS_PER_CHANNEL * self.n_chan
         )
         if context is not None:
-            context.check_cancelled()
             context.progress(
                 0,
                 minimum=0,
                 maximum=n_steps,
                 label=('ConsolidatedData: Initializing processed data file...'),
             )
+            context.check_cancelled()
         pfile_path = Path(self.processed_file_template)
         self.close()
         shutil.copy2(self.filename, pfile_path)
@@ -1992,7 +1992,6 @@ class ProcessedData(DataStorage):
                 f'ProcessedData: Creating procesed data for channel {i_chan}...'
             )
             if context is not None:
-                context.check_cancelled()
                 current_step += 1
                 context.progress(
                     current_step,
@@ -2003,6 +2002,7 @@ class ProcessedData(DataStorage):
                         f'Initializing calibration datasets...'
                     ),
                 )
+                context.check_cancelled()
             time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
             n_tones = channel_group.attrs['n_tones']
             n_samples = channel_group.attrs['n_samples']
@@ -2033,7 +2033,6 @@ class ProcessedData(DataStorage):
 
             # Collect calibration information
             if context is not None:
-                context.check_cancelled()
                 current_step += 1
                 context.progress(
                     current_step,
@@ -2044,6 +2043,7 @@ class ProcessedData(DataStorage):
                         f'Determining calibration parameters...'
                     ),
                 )
+                context.check_cancelled()
             _logger.info('ProcessedData: Determining parameters from LO sweep...')
             sweep = LoSweepData(
                 tones_table['baseband_freq'],
@@ -2121,7 +2121,6 @@ class ProcessedData(DataStorage):
 
             # Rotate to Gain / Phase
             if context is not None:
-                context.check_cancelled()
                 current_step += 1
                 context.progress(
                     current_step,
@@ -2132,6 +2131,7 @@ class ProcessedData(DataStorage):
                         f'Rotating IQ data to gain / phase basis...'
                     ),
                 )
+                context.check_cancelled()
             _logger.info('ProcessedData: Rotating to gain/phase basis...')
             IQ_to_gain_phase_angle = np.atan2(
                 carrier_amplitudes[0], carrier_amplitudes[1]
@@ -2145,7 +2145,6 @@ class ProcessedData(DataStorage):
 
             # Generate calibrated data
             if context is not None:
-                context.check_cancelled()
                 current_step += 1
                 context.progress(
                     current_step,
@@ -2156,6 +2155,7 @@ class ProcessedData(DataStorage):
                         f'Computing calibrated data...'
                     ),
                 )
+                context.check_cancelled()
             # First mean center IQ data
             _logger.info('ProcessedData: Generating calibrated data...')
             data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
@@ -2170,7 +2170,6 @@ class ProcessedData(DataStorage):
 
         # Make virtual datasets for the new stuff
         if context is not None:
-            context.check_cancelled()
             current_step += 1
             context.progress(
                 current_step,
@@ -2178,6 +2177,7 @@ class ProcessedData(DataStorage):
                 maximum=n_steps,
                 label='Creating virtual datasets...',
             )
+            context.check_cancelled()
         total_tones = self['global_data'].attrs['total_tones']
         calibration_info_layout = h5py.VirtualLayout(
             (total_tones,), CALIBRATION_TABLE_DTYPE
