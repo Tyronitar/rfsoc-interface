@@ -96,10 +96,11 @@ class Pipeline:
             results = self.run(pd, context=context)
         except TaskCancelled:
             _logger.info('Pipeline: Pipeline execution was cancelled.')
+            pd.close()
             raise
         except BaseException:
             _logger.warning(
-                f'Pipeline: Closing ProcessedData {pd.file_stub} in response to error.'
+                f'Pipeline: Closing {pd} in response to error.'
             )
             pd.close()
             raise
@@ -142,10 +143,11 @@ class Pipeline:
             results = self.run(pd, context=context)
         except TaskCancelled:
             _logger.info('Pipeline: Pipeline execution was cancelled.')
+            pd.close()
             raise
         except BaseException:
             _logger.warning(
-                f'Pipeline: Closing ProcessedData {pd.file_stub} in response to error.'
+                f'Pipeline: Closing {pd} in response to error.'
             )
             pd.close()
             raise

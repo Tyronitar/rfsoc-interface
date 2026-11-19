@@ -212,6 +212,11 @@ class DataStorage:
         data.mode = file.mode
         return data
 
+    @property
+    def is_open(self) -> bool:
+        """Whether this object currently has its file open."""
+        return self.file is not None
+
     def open(self, mode: str | None = None):
         """Open the file in the specified mode."""
         if mode is None:
@@ -1034,6 +1039,14 @@ class ConsolidatedData(DataStorage):
     def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
         return get_consolidated_file_template(date, setnum, data_dir=data_dir)
 
+    def __str__(self):
+        """Return a string representation of the ConsolidatedData file."""
+        return (
+            f'ConsolidatedData {self.date}_set{self.setnum}' if self.file is not None
+            else f'ConsolidatedData {self.filename!s}'
+        )
+
+
     @classmethod
     def from_tod(  # noqa: PLR0912, PLR0915
         cls,
@@ -1695,6 +1708,13 @@ class ProcessedData(DataStorage):
     @staticmethod
     def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
         return get_processed_file_template(date, setnum, data_dir=data_dir)
+
+    def __str__(self):
+        """Return a string representation of the ProcessedData file."""
+        return (
+            f'ProcessedData {self.date}_set{self.setnum}' if self.file is not None
+            else f'ProcessedData {self.filename!s}'
+        )
 
     def initialize_processed_data_fields(self, context: TaskContext | None = None):  # noqa: ARG002
         """Initialize the datasets unique to the ProcessedData File.

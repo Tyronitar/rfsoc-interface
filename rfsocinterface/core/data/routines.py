@@ -580,7 +580,8 @@ class CutoffFilter(DataRoutine):
         each of the input datasets.
         """
         base_label = (
-            f'Applying {"Low" if self.btype in ("low", "lowpass") else "High"}'
+            f'{self.name}: Applying '
+            f'{"low" if self.btype in ("low", "lowpass") else "high"}'
             '-pass filter '
         )
         n_steps = len(inputs)

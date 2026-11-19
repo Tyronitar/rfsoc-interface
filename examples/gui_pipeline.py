@@ -93,6 +93,13 @@ class Window(QWidget):
         if row is not None:
             if record.status == TaskStatus.FAILED:
                 print(f'Task failed: {record.error}\n{record.traceback}')
+            elif record.status == TaskStatus.SUCCEEDED and record.worker_exited:
+                pdata: ProcessedData = record.result[0]
+                if pdata.is_open:
+                    print(f'{pdata}: File still open')
+                else:
+                    print(f'{pdata}: File sucessfully closed')
+
             row.update_record(record)
 
     def on_event(self, event):

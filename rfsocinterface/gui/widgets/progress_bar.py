@@ -329,6 +329,8 @@ class TaskProgressWidget(QFrame):
 
             if latest.label:
                 description += f' — {latest.label}'
+            else:
+                description = self.detail_label.text()
 
             self.detail_label.setText(description)
             self.detail_label.setVisible(True)
