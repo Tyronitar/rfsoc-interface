@@ -79,6 +79,9 @@ FROM_TOD_TELESCOPE_STEPS = 2  # Steps for getting telescope / detector positions
 # + 1 for copying telescope data, if applicable
 # + 1 for copying optical camera data, if applicable
 
+PROCESSED_INIT_BASE_STEPS = 2  # Steps for general processed data creation
+PROCESSED_INIT_STEPS_PER_CHANNEL = 4  # Steps taken when procesing any channel
+
 
 def store_telescope_alignment(
     channel_group: h5py.Group,
@@ -1871,10 +1874,7 @@ class ConsolidatedData(DataStorage):
                 step,
                 minimum=0,
                 maximum=n_steps,
-                label=(
-                    f'{name}: (Channel {i_chan + 1} / {nchan}) '
-                    'Creating virtual datasets...'
-                ),
+                label='Creating virtual datasets...',
             )
         total_tones = np.sum(tone_counts)
         global_data_group.attrs['n_samples'] = tuple(sample_counts)
@@ -1904,10 +1904,21 @@ class ConsolidatedData(DataStorage):
     def create_processed_data(
         self,
         mode: str = 'a',
-        context: TaskContext | None = None,  # noqa: ARG002
+        context: TaskContext | None = None,
     ) -> ProcessedData:
         """Create the processed data from this consolidated data."""
         _logger.info('ConsolidatedData: Creating processed data file...')
+        n_steps = (
+            PROCESSED_INIT_BASE_STEPS + PROCESSED_INIT_STEPS_PER_CHANNEL * self.n_chan
+        )
+        if context is not None:
+            context.check_cancelled()
+            context.progress(
+                0,
+                minimum=0,
+                maximum=n_steps,
+                label=('ConsolidatedData: Initializing processed data file...'),
+            )
         pfile_path = Path(self.processed_file_template)
         self.close()
         shutil.copy2(self.filename, pfile_path)
@@ -1916,7 +1927,7 @@ class ConsolidatedData(DataStorage):
         self.open(self.mode)
 
         pd = ProcessedData(pfile_path, mode=mode)
-        pd.initialize_processed_data_fields()
+        pd.initialize_processed_data_fields(current_step=0, context=context)
         return pd
 
 
@@ -1936,7 +1947,9 @@ class ProcessedData(DataStorage):
             else f'ProcessedData {self.filename!s}'
         )
 
-    def initialize_processed_data_fields(self, context: TaskContext | None = None):  # noqa: ARG002
+    def initialize_processed_data_fields(
+        self, current_step: int = 0, context: TaskContext | None = None
+    ):
         """Initialize the datasets unique to the ProcessedData File.
 
         Will create the following datasets for each channel:
@@ -1958,9 +1971,15 @@ class ProcessedData(DataStorage):
         Also creates virtual datasets for each dataset, combined across channels.
 
         Arguments:
+            current_step (int, optional): The current step in this task's context. Used
+                by `ConsolidatedData.create_processed_data`.
             context (TaskContext, optional): Context to use for reporting progress, if
                 running in the GUI.
         """
+        n_steps = (
+            PROCESSED_INIT_BASE_STEPS + PROCESSED_INIT_STEPS_PER_CHANNEL * self.n_chan
+        )
+        name = 'ProcessedData'
         _logger.info(
             f'ProcessedData: Initializing processed data fields for {self.file_stub}...'
         )
@@ -1968,6 +1987,18 @@ class ProcessedData(DataStorage):
             _logger.info(
                 f'ProcessedData: Creating procesed data for channel {i_chan}...'
             )
+            if context is not None:
+                context.check_cancelled()
+                current_step += 1
+                context.progress(
+                    current_step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {self.n_chan}) '
+                        f'Initializing calibration datasets...'
+                    ),
+                )
             time_ordered_data_group: h5py.Group = channel_group['time_ordered_data']
             n_tones = channel_group.attrs['n_tones']
             n_samples = channel_group.attrs['n_samples']
@@ -1997,6 +2028,18 @@ class ProcessedData(DataStorage):
             calibration_info['carrier_amplitudes'] = carrier_amplitudes.T
 
             # Collect calibration information
+            if context is not None:
+                context.check_cancelled()
+                current_step += 1
+                context.progress(
+                    current_step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {self.n_chan}) '
+                        f'Determining calibration parameters...'
+                    ),
+                )
             _logger.info('ProcessedData: Determining parameters from LO sweep...')
             sweep = LoSweepData(
                 tones_table['baseband_freq'],
@@ -2073,6 +2116,18 @@ class ProcessedData(DataStorage):
             calibration_info['df_per_mK'] = df_per_mK
 
             # Rotate to Gain / Phase
+            if context is not None:
+                context.check_cancelled()
+                current_step += 1
+                context.progress(
+                    current_step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {self.n_chan}) '
+                        f'Rotating IQ data to gain / phase basis...'
+                    ),
+                )
             _logger.info('ProcessedData: Rotating to gain/phase basis...')
             IQ_to_gain_phase_angle = np.atan2(
                 carrier_amplitudes[0], carrier_amplitudes[1]
@@ -2085,6 +2140,18 @@ class ProcessedData(DataStorage):
             )
 
             # Generate calibrated data
+            if context is not None:
+                context.check_cancelled()
+                current_step += 1
+                context.progress(
+                    current_step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{name}: (Channel {i_chan + 1} / {self.n_chan}) '
+                        f'Computing calibrated data...'
+                    ),
+                )
             # First mean center IQ data
             _logger.info('ProcessedData: Generating calibrated data...')
             data_IQ[:] = data_IQ[:] - np.mean(data_IQ, axis=-1, keepdims=True)
@@ -2098,6 +2165,15 @@ class ProcessedData(DataStorage):
             )
 
         # Make virtual datasets for the new stuff
+        if context is not None:
+            context.check_cancelled()
+            current_step += 1
+            context.progress(
+                current_step,
+                minimum=0,
+                maximum=n_steps,
+                label='Creating virtual datasets...',
+            )
         total_tones = self['global_data'].attrs['total_tones']
         calibration_info_layout = h5py.VirtualLayout(
             (total_tones,), CALIBRATION_TABLE_DTYPE
