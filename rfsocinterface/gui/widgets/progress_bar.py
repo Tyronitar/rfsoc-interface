@@ -67,7 +67,7 @@ def update_progress_bar(
     bar: QProgressBar,
     progress: ProgressData | None,
 ) -> None:
-    """Updatea progress bar, distinguishing unknown progress from zero progress."""
+    """Update a progress bar, distinguishing unknown progress from zero progress."""
     if progress is None or progress.value is None:
         bar.setRange(0, 0)  # Indeterminate
         return
