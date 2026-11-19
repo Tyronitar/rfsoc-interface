@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Literal, overload
 
 from rfsocinterface.core.data.routines import (
@@ -44,8 +45,11 @@ class Pipeline:
         use_pps: bool = True,
         az_backlash: float = AZ_BACKLASH_DEG,
         za_backlash: float = 0.0,
+        make_pickle_safe: bool = False,
         context: TaskContext | None = None,
-    ) -> tuple[ProcessedData, tuple[RoutineResult | tuple[RoutineResult, ...], ...]]:
+    ) -> tuple[
+        ProcessedData | Path, tuple[RoutineResult | tuple[RoutineResult, ...], ...]
+    ]:
         """Run a pipeline starting from the TOD files for the desired data set."""
         # Setup context
         if context is not None:
@@ -93,20 +97,31 @@ class Pipeline:
 
         try:
             results = self.run(pd, context=context)
+        except TaskCancelled:
+            _logger.info('Pipeline: Pipeline execution was cancelled.')
+            raise
         except BaseException:
             _logger.warning(
                 f'Pipeline: Closing ProcessedData {pd.file_stub} in response to error.'
             )
             pd.close()
             raise
+        if make_pickle_safe:
+            # Can't pickle HDF5 files, so main process will need to reopen the file
+            f = pd.filename
+            pd.close()
+            return f, results
         return pd, results
 
     def from_consolidated_data(
         self,
         date: str,
         setnum: int,
+        make_pickle_safe: bool = False,
         context: TaskContext | None = None,
-    ) -> tuple[ProcessedData, tuple[RoutineResult | tuple[RoutineResult, ...], ...]]:
+    ) -> tuple[
+        ProcessedData | Path, tuple[RoutineResult | tuple[RoutineResult, ...], ...]
+    ]:
         """Run a pipeline starting from a consolidated file."""
         if context is not None:
             self._setup_task_context(context, start='processed')
@@ -131,12 +146,21 @@ class Pipeline:
 
         try:
             results = self.run(pd, context=context)
+        except TaskCancelled:
+            _logger.info('Pipeline: Pipeline execution was cancelled.')
+            raise
         except BaseException:
             _logger.warning(
                 f'Pipeline: Closing ProcessedData {pd.file_stub} in response to error.'
             )
             pd.close()
             raise
+
+        if make_pickle_safe:
+            # Can't pickle HDF5 files, so main process will need to reopen the file
+            f = pd.filename
+            pd.close()
+            return f, results
         return pd, results
 
     def run(
