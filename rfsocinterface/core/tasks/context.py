@@ -4,7 +4,7 @@ import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from rfsocinterface.core.tasks.task import (
@@ -21,10 +21,40 @@ from rfsocinterface.core.tasks.task import (
 )
 
 
+class TaskContext(Protocol):
+    """Standard protocol for reporting progress and checking status."""
+
+    def emit(self, kind: str, payload: Any):
+        """Send a message to the main process."""
+
+    def progress(
+        self,
+        value: float | None = None,
+        *,
+        minimum: float | None = None,
+        maximum: float | None = None,
+        label: str | None = None,
+    ):
+        """Send the task's progress to the main process."""
+
+    def eta(self, value: float):
+        """Send the task's estimated remaining time to the main process."""
+
+    def is_cancelled(self) -> bool:
+        """Return whether the task has started cancellation."""
+
+    def check_cancelled(self) -> None:
+        """Check if the task has been cancelled.
+
+        Raises:
+            TaskCancelled: if the task has been cancelled.
+        """
+
+
 # TODO: Implement handling for sending pickled figures to the main process.
 # def show_plot(self, figure: Figure) -> None:
 #     self.emit('plot', figure)
-class TaskContext:
+class MainTaskContext:
     """Backend-independent interface for reporting progress and checking status."""
 
     def __init__(
@@ -85,7 +115,7 @@ class SubtaskContext:
 
     def __init__(
         self,
-        parent: TaskContext,
+        parent: MainTaskContext,
         state: _SubtaskState,
         update: Callable[[], None],
     ):
@@ -144,7 +174,7 @@ class TaskProgress:
 
     def __init__(
         self,
-        context: TaskContext,
+        context: MainTaskContext,
         subtasks: list[tuple[str, float]],
     ):
         """Initialize a TaskProgress."""

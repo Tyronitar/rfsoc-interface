@@ -18,7 +18,7 @@ from time import monotonic
 from typing import Protocol
 from uuid import UUID
 
-from rfsocinterface.core.tasks.context import TaskContext
+from rfsocinterface.core.tasks.context import MainTaskContext
 from rfsocinterface.core.tasks.task import (
     CancellationPolicy,
     Cancelled,
@@ -153,7 +153,7 @@ def execute_task(
     `TaskCancelled`. A target that returns normally is reported as `Succeeded`, even if
     cancellation was requested after it could last react.
     """
-    context = TaskContext(
+    context = MainTaskContext(
         task.id,
         send_event=send_event,
         is_cancelled=is_cancelled,

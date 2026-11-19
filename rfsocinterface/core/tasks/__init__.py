@@ -12,6 +12,7 @@ from rfsocinterface.core.tasks.backend import (
     WorkerExit,
 )
 from rfsocinterface.core.tasks.context import (
+    MainTaskContext,
     SubtaskContext,
     TaskContext,
     TaskProgress,
@@ -58,6 +59,7 @@ __all__ = [
     'Cancelled',
     'Failed',
     'IPCFailed',
+    'MainTaskContext',
     'Message',
     'MultiprocessingBackend',
     'MultiprocessingWorkerHandle',
