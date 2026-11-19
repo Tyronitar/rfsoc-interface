@@ -129,7 +129,7 @@ if __name__ == '__main__':
     lp_filter_freq = 15
     hp_filter_freq = 0.03
 
-    ds_factor = 10
+    ds_factor = 5
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
@@ -140,6 +140,7 @@ if __name__ == '__main__':
         dataset=dataset,
     )
 
+    noise_removal = RemoveElectronicsNoise()
     lp_filter = LowPassFilter(filter_freq=lp_filter_freq, datasets=datasets)
     hp_filter = HighPassFilter(filter_freq=hp_filter_freq, datasets=datasets)
     clean_tod = CleanTOD(dataset=dataset)
@@ -165,9 +166,10 @@ if __name__ == '__main__':
         )
 
     pipeline = Pipeline([
+        noise_removal,
         hp_filter,
         lp_filter,
-        # clean_tod,
+        clean_tod,
         # bin_tod_to_map,
         # plot_map_routine,
     ])

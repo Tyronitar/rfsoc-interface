@@ -35,6 +35,7 @@ from rfsocinterface.core.utils import (
     GuiArg,
     GuiMeta,
     MetadataJSONEncoder,
+    elide_text,
     get_git_hash,
     get_gui_args,
 )
@@ -603,7 +604,7 @@ class CutoffFilter(DataRoutine):
                     i_step,
                     minimum=0,
                     maximum=n_steps,
-                    label=base_label + f'to {dset_name}',
+                    label=base_label + f'to {elide_text(dset_name)}',
                 )
             i_chan = get_channel_index_from_dset_name(dset_name)
             if i_chan is None:
@@ -750,6 +751,9 @@ def _compute_templates(
     return np.real(templates) - np.mean(np.real(templates), axis=(2))[:, :, np.newaxis]
 
 
+ELECTRONICS_NOISE_REMOVAL_STEPS_PER_CHANNEL = 4
+
+
 @register_routine
 class RemoveElectronicsNoise(DataRoutine):
     """Routine to remove correlated electronics noise.
@@ -811,8 +815,22 @@ class RemoveElectronicsNoise(DataRoutine):
         lp_filt_freq = self.params['lp_filt_freq']
         template_selection_indices = self.params['template_selection_indices']
         max_modes = self.params['max_modes']
+        step = -1
+        n_steps = ELECTRONICS_NOISE_REMOVAL_STEPS_PER_CHANNEL * pdata.n_chan
 
         for i_chan in range(pdata.n_chan):
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{self.name}: (Channel {i_chan + 1} / {pdata.n_chan}) '
+                        'Filtering data...'
+                    ),
+                )
             fs = pdata.get_fs(i_chan)
             selection_indices = decode_tone_indices(
                 pdata, template_selection_indices, i_chan
@@ -835,9 +853,35 @@ class RemoveElectronicsNoise(DataRoutine):
                 data_lp = signal.sosfiltfilt(filt_sos, clean_gain_phase)
             else:
                 data_lp = clean_gain_phase[:]
+
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{self.name}: (Channel {i_chan + 1} / {pdata.n_chan}) '
+                        'Computing templates...'
+                    ),
+                )
             templates = _compute_templates(
                 data_lp[:, selection_indices], max_modes=max_modes
             )  # 2 x N_modes x N_samples
+
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{self.name}: (Channel {i_chan + 1} / {pdata.n_chan}) '
+                        'Removing templates from filtered data...'
+                    ),
+                )
 
             n_modes = templates.shape[1]
             _logger.info(f'{self.name}: Subtracting {n_modes} eigenmodes')
@@ -856,6 +900,19 @@ class RemoveElectronicsNoise(DataRoutine):
 
             # Apply clean data
             data_gain_phase[:] = clean_gain_phase
+
+            if context is not None:
+                context.check_cancelled()
+                step += 1
+                context.progress(
+                    step,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{self.name}: (Channel {i_chan + 1} / {pdata.n_chan}) '
+                        'Recomputing calibrated data...'
+                    ),
+                )
 
             # Regenerate other data arrays
             data_IQ = pdata.get_from_channel(i_chan, 'time_ordered_data/data_IQ')
@@ -924,7 +981,22 @@ class CleanTOD(DataRoutine):
         inputs: list[str],
         context: TaskContext | None = None,
     ):
+        n_steps = len(inputs)
         for i_chan, dset in enumerate(inputs):
+            if context is not None:
+                # Check if cancelled
+                context.check_cancelled()
+
+                # Update progress bar
+                context.progress(
+                    i_chan,
+                    minimum=0,
+                    maximum=n_steps,
+                    label=(
+                        f'{self.name}: Cleaning data from channel '
+                        f'{i_chan + 1} / {pdata.n_chan}...'
+                    ),
+                )
             data = pdata[dset]
             good_tones = pdata.get_onres_ind(i_chan)
             if data.ndim == 2:  # noqa: PLR2004
