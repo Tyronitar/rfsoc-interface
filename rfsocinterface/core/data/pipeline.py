@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from typing import overload
+from typing import Literal, overload
 
 from rfsocinterface.core.data.routines import (
     ROUTINE_REGISTRY,
@@ -13,6 +13,11 @@ from rfsocinterface.core.data.routines import (
 )
 from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
 from rfsocinterface.core.data.utils import AZ_BACKLASH_DEG
+from rfsocinterface.core.tasks import (
+    TaskContext,
+    TaskProgress,
+)
+from rfsocinterface.core.utils import nullcontext
 
 _logger = logging.getLogger(__name__)
 
@@ -25,6 +30,8 @@ class Pipeline:
         if routines is None:
             routines = []
         self.routines = routines
+        self._task_progress = None
+        self._current_step = 0
 
     def from_tod(
         self,
@@ -34,36 +41,84 @@ class Pipeline:
         use_pps: bool = True,
         az_backlash: float = AZ_BACKLASH_DEG,
         za_backlash: float = 0.0,
+        context: TaskContext | None = None,
     ) -> tuple[ProcessedData, tuple[RoutineResult | tuple[RoutineResult, ...], ...]]:
         """Run a pipeline starting from the TOD files for the desired data set."""
+        # Setup context
+        if context is not None:
+            self._setup_task_context(context, start='consolidated')
+
         _logger.info(f'Pipeline: Running pipeline on TOD {date}_set{setnum}')
-        cd = ConsolidatedData.from_tod(
-            date,
-            setnum,
-            downsampling_factor=downsampling_factor,
-            use_pps=use_pps,
-            az_backlash=az_backlash,
-            za_backlash=za_backlash,
-        )
+
+        # Create ConsolidatedData
+        with self._get_next_subtask_context_manager() as subcontext:
+            cd = ConsolidatedData.from_tod(
+                date,
+                setnum,
+                downsampling_factor=downsampling_factor,
+                use_pps=use_pps,
+                az_backlash=az_backlash,
+                za_backlash=za_backlash,
+                context=subcontext,
+            )
+
+        # Create ProcessedData
         _logger.info('Pipeline: Creating processed data...')
-        pd = cd.create_processed_data()
+        with self._get_next_subtask_context_manager() as subcontext:
+            pd = cd.create_processed_data(context=subcontext)
         cd.close()
-        results = self.run(pd)
+        results = self.run(pd, context=context)
         return pd, results
 
     def from_consolidated_data(
-        self, date: str, setnum: int
+        self,
+        date: str,
+        setnum: int,
+        context: TaskContext | None = None,
     ) -> tuple[ProcessedData, tuple[RoutineResult | tuple[RoutineResult, ...], ...]]:
         """Run a pipeline starting from a consolidated file."""
+        if context is not None:
+            self._setup_task_context(context, start='processed')
         _logger.info(
             f'Pipeline: Running pipeline from ConsolidatedData {date}_set{setnum}'
         )
         cd = ConsolidatedData.load(date, setnum)
         _logger.info('Pipeline: Creating processed data...')
-        pd = cd.create_processed_data()
+        with self._get_next_subtask_context_manager() as subcontext:
+            pd = cd.create_processed_data(context=subcontext)
         cd.close()
-        results = self.run(pd)
+        results = self.run(pd, context=context)
         return pd, results
+
+    def run(
+        self,
+        *pdata: ProcessedData,
+        context: TaskContext | None = None,
+    ) -> tuple[RoutineResult | tuple[RoutineResult, ...], ...]:
+        """Run this pipeline on one or more processed data objects."""
+        if not pdata:
+            raise ValueError('Pipeline requires at least one ProcessedData object.')
+        self.validate(len(pdata))
+
+        # Don't reset context if this was called in `from_consolidated_data`
+        # or `from_tod`. `self._task_progress`` is only None if this is the beginning of
+        # the pipeline's execution.
+        if context is not None and self._task_progress is None:
+            self._setup_task_context()
+        results = []
+
+        try:
+            for routine in self.routines:
+                with self._get_next_subtask_context_manager() as subcontext:
+                    results.append(routine.apply(*pdata, context=subcontext))
+        except Exception as e:
+            msg = f'Error occurred during pipeline execution: {e}'
+            _logger.exception(msg)
+            raise
+        else:
+            return tuple(results)
+        finally:
+            self._clean_task_context()
 
     @overload
     def add_routine(self, name: str, **params):
@@ -124,19 +179,40 @@ class Pipeline:
             count = 1 if routine.map_over_inputs else n_inputs
             routine.validate_input_count(count)
 
-    def run(
-        self, *pdata: ProcessedData
-    ) -> tuple[RoutineResult | tuple[RoutineResult, ...], ...]:
-        """Run this pipeline on one or more processed data objects."""
-        if not pdata:
-            raise ValueError('Pipeline requires at least one ProcessedData object.')
-        self.validate(len(pdata))
+    def _setup_task_context(
+        self,
+        context: TaskContext,
+        start: Literal['consolidated', 'processed', 'routines'],
+    ):
+        """Create the TaskContext for running this pipeline."""
+        # self._task_progress = TaskProgress(
+        #     context,
+        #     subtasks=[
+        #         (routine.name, 1.0) for routine in self.routines
+        #     ]
+        # )
+        subtasks = []
+        if start.lower() == 'consolidated':
+            subtasks.append(('Create ConsolidatedData', 1.0))
+            subtasks.append(('Create ProcessedData', 1.0))
+        elif start.lower() == 'processed':
+            subtasks.append(('Create ProcessedData', 1.0))
+        self._task_progress = TaskProgress(
+            context,
+            subtasks=subtasks + [(routine.name, 1.0) for routine in self.routines],
+        )
+        self._current_step = 0
 
-        try:
-            results = tuple(routine.apply(*pdata) for routine in self.routines)
-        except Exception as e:
-            msg = f'Error occurred during pipeline execution: {e}'
-            _logger.exception(msg)
-            raise
+    def _clean_task_context(self):
+        """Cleanup the task context after completing a run."""
+        self._task_progress = None
+        self._current_step = 0
+
+    def _get_next_subtask_context_manager(self):
+        """Return a context manager for the next task."""
+        if self._task_progress is not None:
+            cm = self._task_progress.subtask(self._current_step)
         else:
-            return results
+            cm = nullcontext(None)
+        self._current_step += 1
+        return cm

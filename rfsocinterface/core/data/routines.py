@@ -29,6 +29,7 @@ from rfsocinterface.core.data.utils import (
     get_step_group_name,
     rotate_basis,
 )
+from rfsocinterface.core.tasks import TaskContext
 from rfsocinterface.core.utils import (
     BUTTER_ORDER,
     GuiArg,
@@ -298,31 +299,42 @@ class DataRoutine(ABC):
                     )
 
     # ---- main entry point ----
-    def apply(self, *pdata: ProcessedData) -> Any:
+    def apply(self, *pdata: ProcessedData, context: TaskContext | None = None) -> Any:
         """Apply this routine to the input(s).
 
         Serves as the main entry point to the routine's execution. Handles, how
         the routine should be applied depending on the number of inputs and the
         routine's mapping behavior.
+
+        Arguments:
+            *pdata (ProcessedData): The dataset(s) to perform the routine on.
+            context (TaskContext, optional): Context to use for reporting progress, if
+                running in the GUI.
         """
         if not pdata:
             raise ValueError(f'{self.name} requires at least one ProcessedData object.')
 
         if self.map_over_inputs and len(pdata) > 1:
-            outputs = tuple(self._apply_once(pd) for pd in pdata)
+            outputs = tuple(self._apply_once(pd, context=context) for pd in pdata)
             if all(x is None for x in outputs):
                 return None
             return outputs
 
-        return self._apply_once(*pdata)
+        return self._apply_once(*pdata, context=context)
 
-    def _apply_once(self, *pdata: ProcessedData) -> Any:
+    def _apply_once(
+        self, *pdata: ProcessedData, context: TaskContext | None = None
+    ) -> Any:
         """Apply the routine to the given ProcessedData objects.
 
         This method handles the common workflow of validating inputs, running the
         computation, logging metadata, and recording checkpoints. The actual computation
         should be implemented in the run() method of the subclass.
 
+        Arguments:
+            *pdata (ProcessedData): The dataset(s) to perform the routine on.
+            context (TaskContext, optional): Context to use for reporting progress, if
+                running in the GUI.
         """
         _logger.debug(f'{self.name}: Validating inputs...')
         self.validate_input_count(len(pdata))  # Validate number of input datasets
@@ -336,7 +348,7 @@ class DataRoutine(ABC):
         # Run actual computation
         _logger.info(f'{self.name}: Applying routine...')
         t0 = time.time()
-        output = self._run(*pdata, inputs=inputs)
+        output = self._run(*pdata, inputs=inputs, context=context)
         runtime = time.time() - t0
         timestamp = datetime.datetime.now(datetime.UTC).isoformat()
 
@@ -368,10 +380,18 @@ class DataRoutine(ABC):
         self,
         pdata: ProcessedData,
         inputs: RoutineInputs,
+        context: TaskContext | None = None,
     ) -> RoutineResult | Collection[str] | None:
         """Run this data routine.
 
-        Note, `inputs` will have the same format returned from `self.inputs`.
+        Note, `inputs` will have the same format returned from `self._inputs`.
+
+        Arguments:
+            pdata (ProcessedData): The dataset to perform the routine on.
+            inputs (RoutineInputs): The inputs to the routine as returned by
+                `self._inputs`.
+            context (TaskContext, optional): Context to use for reporting progress, if
+                running in the GUI.
         """
         raise NotImplementedError(
             f'DataRoutine [{type(self).__name__}] is missing a run method'
@@ -542,7 +562,13 @@ class CutoffFilter(DataRoutine):
             dsets.extend(pdata.search_regex_names(pattern, full_name=True))
         return dsets
 
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    @typing.override
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: list[str],
+        context: TaskContext | None = None,
+    ):
         """Apply the cutoff filter to the specified datasets.
 
         Applies a Butterworth filter with the specified cutoff frequency and type to
@@ -747,7 +773,12 @@ class RemoveElectronicsNoise(DataRoutine):
         return list(pdata.search_regex_names(pattern))
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: list[str],
+        context: TaskContext | None = None,
+    ):
         eigenmodes = []  # The actual number of modes we use for each channel
         lp_filt_freq = self.params['lp_filt_freq']
         template_selection_indices = self.params['template_selection_indices']
@@ -859,7 +890,12 @@ class CleanTOD(DataRoutine):
         return list(pdata.search_regex_names(dataset))
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: list[str],
+        context: TaskContext | None = None,
+    ):
         for i_chan, dset in enumerate(inputs):
             data = pdata[dset]
             good_tones = pdata.get_onres_ind(i_chan)

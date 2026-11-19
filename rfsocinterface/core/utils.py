@@ -11,8 +11,17 @@ import stat
 import subprocess
 import typing
 import warnings
-from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
+from collections.abc import (
+    Callable,
+    Collection,
+    Generator,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
@@ -1999,3 +2008,9 @@ def merge_gui_meta(
         if child.internal_labels is not None
         else parent.internal_labels,
     )
+
+
+@contextmanager
+def nullcontext[T](obj: T | None = None) -> Generator[T | None, None, None]:
+    """Context manager that does nothing."""
+    yield obj

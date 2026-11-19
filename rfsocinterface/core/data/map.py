@@ -42,6 +42,7 @@ from rfsocinterface.core.data.utils import (
     SKIPR_PSF_SIGMA,
     get_channel_group_name,
 )
+from rfsocinterface.core.tasks import TaskContext
 from rfsocinterface.core.utils import (
     GAUSSIAN_SIGMA,
     PERMISSIONS_ALL_FULL,
@@ -628,7 +629,12 @@ class BinTODIntoMap(DataRoutine):
             good_samples[i_chan] = this_good_samples
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: list[str],
+        context: TaskContext | None = None,
+    ):
         dpix = self.params['dpix']
         beam_map_mode = self.params['beam_map_mode']
         n_pix_x, n_pix_y, map_az, map_za = get_map_size(
@@ -1139,7 +1145,9 @@ class PlotMap(DataRoutine):
         return self.requires.union(map_dsets)
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: set[str]):
+    def _run(
+        self, pdata: ProcessedData, inputs: set[str], context: TaskContext | None = None
+    ):
         reset_arrays = self._intialize_arrays(pdata)
         if reset_arrays:
             self._get_combined_map(pdata, inputs)
@@ -2229,7 +2237,12 @@ class BinTODIntoVideo(DataRoutine):
         # optical_video[:] = optical_video[:] * 2
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: Sequence[str] = [],
+        context: TaskContext | None = None,
+    ):
         self._compute_new_maps(pdata)
 
         modified = {'input': self.produces}
@@ -2327,7 +2340,12 @@ class AnimateVideo(DataRoutine):
     #     return self.requires.union(map_dsets)
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: Sequence[str] = []):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: Sequence[str] = [],
+        context: TaskContext | None = None,
+    ):
         res = self._animate(pdata)
         return RoutineResult(value=res)
 

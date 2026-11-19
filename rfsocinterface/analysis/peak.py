@@ -18,6 +18,7 @@ from rfsocinterface.core.data import (
     RoutineResult,
     register_routine,
 )
+from rfsocinterface.core.tasks import TaskContext
 from rfsocinterface.core.utils import mean_histogram, sigma_to_fwhm, std_histogram
 
 _logger = logging.getLogger(__name__)
@@ -127,7 +128,12 @@ class CheckFocus(DataRoutine):
         return True
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: list[str],
+        context: TaskContext | None = None,
+    ):
         created_new = self._initialize_arrays(pdata)
         primary_direction = self.params['primary_direction']
         resonators = self.params['resonators']

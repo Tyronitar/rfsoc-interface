@@ -24,6 +24,7 @@ from rfsocinterface.core.data import (
     get_extent,
     register_routine,
 )
+from rfsocinterface.core.tasks import TaskContext
 from rfsocinterface.core.utils import (
     BAD_RESONANCE_COLOR,
     DEFAULT_DATA_DIRECTORY,
@@ -169,7 +170,12 @@ class AnalyzeBeamMap(DataRoutine):
         beammap_group.create_dataset('fwhm_za', (pdata.total_tones,), dtype=np.float64)
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: list[str],
+        context: TaskContext | None = None,
+    ):
         self._initialize_datasets(pdata)
 
         az = pdata['map/map_az'][:][np.newaxis, :]
@@ -386,7 +392,12 @@ class PlotBeamMap(DataRoutine):
         return list(self.requires)
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: list[str],
+        context: TaskContext | None = None,
+    ):
         # Load necessary datasets
         az_center = pdata['beammap/az_center'][:]
         za_center = pdata['beammap/za_center'][:]

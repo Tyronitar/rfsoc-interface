@@ -15,6 +15,7 @@ from rfsocinterface.core.data import (
     ProcessedData,
     RoutineResult,
 )
+from rfsocinterface.core.tasks import TaskContext
 from rfsocinterface.core.utils import GuiMeta
 
 __all__ = [
@@ -78,7 +79,7 @@ class ExEnum(Enum):
 
 class SingleInputRoutine(DataRoutine):
     @typing.override
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         test_group = pdata.create_group('tests')
         res = test_group.create_dataset('result', shape=(2, 10), dtype=np.float64)
         res[:] = np.random.default_rng(2).random((2, 10))
@@ -113,7 +114,13 @@ class MultiInputRoutine(DataRoutine):
         }
 
     @typing.override
-    def _run(self, x: ProcessedData, y: ProcessedData, inputs):
+    def _run(
+        self,
+        x: ProcessedData,
+        y: ProcessedData,
+        inputs,
+        context: TaskContext | None = None,
+    ):
         test_group_x = x.create_group('tests')
         res_x = test_group_x.create_dataset('result', shape=(2, 10), dtype=np.float64)
         res_x[:] = np.random.default_rng(2).random((2, 10))
@@ -152,7 +159,7 @@ class CreateValueRoutine(DataRoutine):
     def __init__(self, val: int):
         super().__init__(val=val)
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         if 'test' not in pdata:
             test_group = pdata.create_group('test')
         else:
@@ -279,7 +286,7 @@ class DocstringExtractionRoutine(DataRoutine):
             arg3=arg3,
         )
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -306,7 +313,7 @@ class VariableParameterRoutine(DataRoutine):
     ):
         super().__init__()
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -319,7 +326,7 @@ class PositionalOnlyRoutine(DataRoutine):
     ):
         super().__init__()
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -327,7 +334,7 @@ class AnyAnnotationRoutine(DataRoutine):
     def __init__(self, arg: Any):
         super().__init__()
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -335,7 +342,7 @@ class MissingAnnotationRoutine(DataRoutine):
     def __init__(self, arg):
         super().__init__()
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -343,7 +350,7 @@ class ArgsAnyAnnotationRoutine(DataRoutine):
     def __init__(self, arg: Any):
         super().__init__()
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -351,7 +358,7 @@ class ArgsMissingAnnotationRoutine(DataRoutine):
     def __init__(self, arg):
         super().__init__()
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -359,7 +366,7 @@ class KeywordAnyAnnotationRoutine(DataRoutine):
     def __init__(self, **kwargs: Any):
         super().__init__()
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -367,7 +374,7 @@ class KeywordMissingAnnotationRoutine(DataRoutine):
     def __init__(self, **kwargs):
         super().__init__()
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -404,7 +411,7 @@ class ReduceRoutine(DataRoutine):
     ):
         super().__init__(terms=terms, operation=operation, start=start, reverse=reverse)
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return
 
 
@@ -436,7 +443,7 @@ class MultiInputDefaultInputsRoutine(DataRoutine):
     max_inputs = 2
     map_over_inputs = False
 
-    def _run(self, *pdata, inputs):
+    def _run(self, *pdata, inputs, context: TaskContext | None = None):
         return RoutineResult()
 
 
@@ -445,17 +452,17 @@ class NoRunRoutine(DataRoutine):
 
 
 class SingleInputDefaultInputsRoutine(DataRoutine):
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return RoutineResult()
 
 
 class ReturnNoneRoutine(DataRoutine):
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return None
 
 
 class ReturnCollectionRoutine(DataRoutine):
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return []
 
 
@@ -475,7 +482,7 @@ class ListInputsRoutine(DataRoutine):
             'channels/channel_000/time_ordered_data/data_gain_phase',
         ]
 
-    def _run(self, pdata, inputs):
+    def _run(self, pdata, inputs, context: TaskContext | None = None):
         return RoutineResult()
 
 
@@ -512,7 +519,7 @@ class PositionalInputsRoutine(DataRoutine):
             ],
         )
 
-    def _run(self, *pdata, inputs):
+    def _run(self, *pdata, inputs, context: TaskContext | None = None):
         return RoutineResult()
 
 
@@ -549,14 +556,14 @@ class NamedInputsRoutine(DataRoutine):
             ],
         }
 
-    def _run(self, pdata_x, pdata_y, inputs):
+    def _run(self, pdata_x, pdata_y, inputs, context: TaskContext | None = None):
         return RoutineResult()
 
 
 class ArbitraryArgumentRoutine(DataRoutine):
     max_inputs = None
 
-    def _run(self, *pdata, inputs):
+    def _run(self, *pdata, inputs, context: TaskContext | None = None):
         return RoutineResult()
 
 

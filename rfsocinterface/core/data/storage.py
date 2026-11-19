@@ -42,6 +42,7 @@ from rfsocinterface.core.data.utils import (
 )
 from rfsocinterface.core.params import DEFAULT_DFOVERF_PER_MK
 from rfsocinterface.core.sweeps import LoSweepData
+from rfsocinterface.core.tasks import TaskContext
 from rfsocinterface.core.utils import (
     DEFAULT_DATA_DIRECTORY,
     PERMISSIONS_ALL_FULL,
@@ -1025,6 +1026,7 @@ class ConsolidatedData(DataStorage):
         use_pps: bool = True,
         az_backlash: float = AZ_BACKLASH_DEG,
         za_backlash: float = 0.0,
+        context: TaskContext | None = None,  # noqa: ARG003
     ) -> ConsolidatedData:
         """Consolidate the data for the specified data set.
 
@@ -1039,6 +1041,8 @@ class ConsolidatedData(DataStorage):
                 in degrees (see :func:`apply_backlash`).
             za_backlash (float, optional): Backlash to remove from the zenith angle
                 positions in degrees (see :func:`apply_backlash`).
+            context (TaskContext, optional): Context to use for reporting progress, if
+                running in the GUI.
         """
         todtemplate = get_tod_template(date, setnum, data_dir=data_dir)
         tele_template = Path(get_azel_template(date, setnum, data_dir=data_dir))
@@ -1647,7 +1651,11 @@ class ConsolidatedData(DataStorage):
 
         return cdata
 
-    def create_processed_data(self, mode: str = 'a') -> ProcessedData:
+    def create_processed_data(
+        self,
+        mode: str = 'a',
+        context: TaskContext | None = None,  # noqa: ARG002
+    ) -> ProcessedData:
         """Create the processed data from this consolidated data."""
         _logger.info('ConsolidatedData: Creating processed data file...')
         pfile_path = Path(self.processed_file_template)
@@ -1670,7 +1678,7 @@ class ProcessedData(DataStorage):
     def get_template(date: str, setnum: int, data_dir=DEFAULT_DATA_DIRECTORY):
         return get_processed_file_template(date, setnum, data_dir=data_dir)
 
-    def initialize_processed_data_fields(self):
+    def initialize_processed_data_fields(self, context: TaskContext | None = None):  # noqa: ARG002
         """Initialize the datasets unique to the ProcessedData File.
 
         Will create the following datasets for each channel:
@@ -1690,6 +1698,10 @@ class ProcessedData(DataStorage):
                     frequency/dissipation.
                 * df_per_mK: Conversion factor to convert Hz to mK.
         Also creates virtual datasets for each dataset, combined across channels.
+
+        Arguments:
+            context (TaskContext, optional): Context to use for reporting progress, if
+                running in the GUI.
         """
         _logger.info(
             f'ProcessedData: Initializing processed data fields for {self.file_stub}...'

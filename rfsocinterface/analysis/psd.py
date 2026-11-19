@@ -21,6 +21,7 @@ from rfsocinterface.core.data import (
     register_routine,
 )
 from rfsocinterface.core.data.storage import decode_tone_indices
+from rfsocinterface.core.tasks import TaskContext
 from rfsocinterface.core.utils import (
     MetaEnum,
     ensure_path,
@@ -103,7 +104,12 @@ class ComputeNoisePSD(DataRoutine):
         return inputs
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: list[str],
+        context: TaskContext | None = None,
+    ):
         created = []
         modified = []
         # Initialize PSD group in the file if needed
@@ -636,7 +642,12 @@ class PlotPSD(DataRoutine):
         return inputs
 
     @typing.override
-    def _run(self, pdata: ProcessedData, inputs: list[str]):
+    def _run(
+        self,
+        pdata: ProcessedData,
+        inputs: list[str],
+        context: TaskContext | None = None,
+    ):
         bases = self.params['bases']
         title = self.params['title']
         show_error_band = self.params['show_error_band']
