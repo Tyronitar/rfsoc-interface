@@ -134,6 +134,7 @@ class DataStorage:
         self.filename = filename
         self.file = None
         self.mode = None
+        self._opened = False
         if open_file:
             self.open(mode=mode)
 
@@ -211,16 +212,20 @@ class DataStorage:
         data.mode = file.mode
         return data
 
-    def open(self, mode: str = 'r'):
+    def open(self, mode: str | None = None):
         """Open the file in the specified mode."""
+        if mode is None:
+            mode = self.mode if self.mode is not None else 'r'
         self.file = h5py.File(self.filename, mode=mode)
         self.mode = mode
+        self._opened = True
 
     def close(self):
         """Close the file."""
         if self.file is None:
             raise OSError(f'Attempting to close {self.filename} before opening file.')
         self.file.close()
+        self.file = None
 
     def get(self, name: str) -> H5pyObject:
         """Get an object from the file."""
@@ -233,6 +238,19 @@ class DataStorage:
     def __delitem__(self, key: str):
         """Remove an object from the file."""
         del self.file[key]
+
+    def __getstate__(self):
+        """Close the file before pickling."""
+        self.close()
+        state = self.__dict__.copy()
+        del state['file']
+        return state
+
+    def __setstate__(self, state):
+        """Load the pickled state and reopen the file."""
+        self.__dict__.update(state)
+        if self._opened:
+            self.open(self.mode)
 
     def has(self, name: str, exact_match: bool = False) -> bool:
         """Whether an key is present in the file."""

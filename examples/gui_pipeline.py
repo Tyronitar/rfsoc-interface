@@ -70,7 +70,7 @@ class Window(QWidget):
         self.manager.event_received.connect(self.on_event)
 
     def create_task(self, pipeline: Pipeline, date: str, setnum: int, **kwargs):
-        kwargs['make_pickle_safe'] = True
+        kwargs['close_file'] = True
         task = Task(
             pipeline.from_tod,
             args=(date, setnum),
