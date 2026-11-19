@@ -16,7 +16,9 @@ from rfsocinterface.core.tasks import (
     TERMINAL_STATUSES,
     BackendUpdate,
     CancellationPolicy,
+    Message,
     MultiprocessingBackend,
+    Progress,
     ReceiverStatus,
     ReceiverUpdate,
     Task,
@@ -26,7 +28,7 @@ from rfsocinterface.core.tasks import (
     TaskStatus,
     ThreadingBackend,
 )
-from rfsocinterface.core.tasks.context import TaskContext
+from rfsocinterface.core.tasks.context import TaskContext, TaskProgress
 
 
 def check_record(
@@ -772,3 +774,159 @@ def test_cooperative_task_finishing_after_cancel_succeeds(qtbot, manager):
     assert manager.records[b.id].status == TaskStatus.CANCELLED
     assert manager.records[c.id].status == TaskStatus.CANCELLED
     assert not manager.records[b.id].worker_exited, 'Dependent should never start'
+
+
+#
+# Context event tests
+#
+
+
+def progress_task(context: TaskContext) -> str:
+    """Report progress and ETA updates, then finish."""
+    context.eta(10.0)
+    for value in (0, 5, 10):
+        context.progress(value, minimum=0, maximum=10, label=f'step {value}')
+    context.eta(0.0)
+    return 'done'
+
+
+def message_task(context: TaskContext) -> None:
+    """Emit messages of different kinds and payload types."""
+    context.emit('status', 'hello')
+    context.emit('data', {'x': [1, 2, 3]})
+    context.emit('status', 'goodbye')
+
+
+def subtask_task(context: TaskContext) -> bool:
+    """Run two weighted subtasks that report their own progress and ETA."""
+    progress = TaskProgress(context, [('load', 1.0), ('fit', 3.0)])
+    with progress.subtask(0) as sub:
+        sub.progress(50, maximum=100, label='loading')
+        sub.eta(1.5)
+        sub.emit('subtask', 'from load')
+    with progress.subtask(1) as sub:
+        sub.progress(1, minimum=0, maximum=2)
+    return True
+
+
+def failing_subtask_task(context: TaskContext) -> None:
+    """Fail partway through the first of two subtasks."""
+    progress = TaskProgress(context, [('first', 1.0), ('second', 1.0)])
+    with progress.subtask(0) as sub:
+        sub.progress(25)
+        raise ValueError('Subtask failed')
+    with progress.subtask(1):
+        pass
+
+
+def collect_changes(manager: TaskManager, task_id, attr: str) -> list:
+    """Record a task's `attr` each time it changes, in the order changes arrive."""
+    seen = []
+
+    def on_changed(record: TaskRecord):
+        if record.task.id != task_id:
+            return
+        value = getattr(record, attr)
+        if value is not None and (not seen or seen[-1] != value):
+            seen.append(value)
+
+    manager.changed.connect(on_changed)
+    return seen
+
+
+@pytest.mark.integration
+def test_progress_and_eta_events(qtbot, manager):
+    """Test that progress and ETA updates reach the task record in order."""
+    task = Task(target=progress_task, with_context=True)
+    progress_seen = collect_changes(manager, task.id, 'progress')
+    eta_seen = collect_changes(manager, task.id, 'eta')
+
+    manager.submit(task)
+    record = wait_for_task(qtbot, manager, task.id)
+
+    assert record.status == TaskStatus.SUCCEEDED
+    assert record.result == 'done'
+    assert [p.value for p in progress_seen] == [0, 5, 10]
+    assert [p.label for p in progress_seen] == ['step 0', 'step 5', 'step 10']
+    assert record.progress == Progress(task.id, 10, 0, 10, 'step 10')
+    assert eta_seen == [10.0, 0.0]
+    assert record.eta == 0.0
+
+
+@pytest.mark.integration
+def test_message_events(qtbot, manager):
+    """Test that messages are forwarded through event_received, in order."""
+    task = Task(target=message_task, with_context=True)
+    messages = []
+    manager.event_received.connect(messages.append)
+
+    manager.submit(task)
+    record = wait_for_task(qtbot, manager, task.id)
+
+    assert record.status == TaskStatus.SUCCEEDED
+    assert all(isinstance(m, Message) and m.task_id == task.id for m in messages)
+    assert [(m.kind, m.payload) for m in messages] == [
+        ('status', 'hello'),
+        ('data', {'x': [1, 2, 3]}),
+        ('status', 'goodbye'),
+    ]
+
+
+@pytest.mark.integration
+def test_subtask_events(qtbot, manager):
+    """Test subtask definition, timing, progress, ETA, and weighted overall progress."""
+    task = Task(target=subtask_task, with_context=True)
+    overall_seen = collect_changes(manager, task.id, 'progress')
+    messages = []
+    manager.event_received.connect(messages.append)
+
+    manager.submit(task)
+    record = wait_for_task(qtbot, manager, task.id)
+
+    assert record.status == TaskStatus.SUCCEEDED, record.error
+    assert record.result is True
+
+    load, fit = record.subtasks[('0',)], record.subtasks[('1',)]
+    assert set(record.subtasks) == {('0',), ('1',)}
+    assert (load.name, load.weight) == ('load', 1.0)
+    assert (fit.name, fit.weight) == ('fit', 3.0)
+
+    # Both ran, one after the other
+    assert load.start_time <= load.end_time <= fit.start_time <= fit.end_time
+    assert not load.is_active
+    assert not fit.is_active
+
+    # Completing a subtask counts as 100%, regardless of what it last reported
+    assert load.progress.value == 1
+    assert fit.progress.value == 1
+    assert load.eta == 1.5
+    assert fit.eta is None
+
+    # Overall progress is weighted: load is 1/4 of the total, fit 3/4
+    values = [p.value for p in overall_seen]
+    assert values == sorted(values), 'Overall progress went backwards'
+    assert values[-1] == pytest.approx(1.0)
+    assert pytest.approx(0.125) in values  # load at 50%
+    assert pytest.approx(0.25) in values  # load done
+    assert pytest.approx(0.625) in values  # fit at 50%
+
+    assert [(m.kind, m.payload) for m in messages] == [('subtask', 'from load')]
+
+
+@pytest.mark.integration
+def test_subtask_failure_events(qtbot, manager):
+    """Test that a failing subtask still reports finishing and later ones never run."""
+    task = Task(target=failing_subtask_task, with_context=True)
+
+    manager.submit(task)
+    record = wait_for_task(qtbot, manager, task.id)
+
+    assert record.status == TaskStatus.FAILED
+    assert 'Subtask failed' in record.error
+
+    first, second = record.subtasks[('0',)], record.subtasks[('1',)]
+    assert first.start_time is not None
+    assert first.end_time is not None
+    assert first.progress.value == 25  # No automatic completion on failure
+    assert second.start_time is None
+    assert second.progress is None
