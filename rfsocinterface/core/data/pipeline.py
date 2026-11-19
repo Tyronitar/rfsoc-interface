@@ -14,6 +14,8 @@ from rfsocinterface.core.data.routines import (
 from rfsocinterface.core.data.storage import ConsolidatedData, ProcessedData
 from rfsocinterface.core.data.utils import AZ_BACKLASH_DEG
 from rfsocinterface.core.tasks import (
+    Task,
+    TaskCancelled,
     TaskContext,
     TaskProgress,
 )
@@ -30,6 +32,7 @@ class Pipeline:
         if routines is None:
             routines = []
         self.routines = routines
+        self._context = None
         self._task_progress = None
         self._current_step = 0
 
@@ -51,23 +54,51 @@ class Pipeline:
         _logger.info(f'Pipeline: Running pipeline on TOD {date}_set{setnum}')
 
         # Create ConsolidatedData
-        with self._get_next_subtask_context_manager() as subcontext:
-            cd = ConsolidatedData.from_tod(
-                date,
-                setnum,
-                downsampling_factor=downsampling_factor,
-                use_pps=use_pps,
-                az_backlash=az_backlash,
-                za_backlash=za_backlash,
-                context=subcontext,
+        try:
+            with self._get_next_subtask_context_manager() as subcontext:
+                _logger.info('Pipeline: Creating consolidated data...')
+                cd = ConsolidatedData.from_tod(
+                    date,
+                    setnum,
+                    downsampling_factor=downsampling_factor,
+                    use_pps=use_pps,
+                    az_backlash=az_backlash,
+                    za_backlash=za_backlash,
+                    context=subcontext,
+                )
+        except TaskCancelled:
+            _logger.info('Pipeline: Pipeline execution was cancelled.')
+            raise
+        except BaseException:
+            _logger.exception(
+                'Pipeline: Error encountered during consolidated data creation.'
             )
+            raise
 
         # Create ProcessedData
-        _logger.info('Pipeline: Creating processed data...')
-        with self._get_next_subtask_context_manager() as subcontext:
-            pd = cd.create_processed_data(context=subcontext)
-        cd.close()
-        results = self.run(pd, context=context)
+        try:
+            with self._get_next_subtask_context_manager() as subcontext:
+                _logger.info('Pipeline: Creating processed data...')
+                pd = cd.create_processed_data(context=subcontext)
+        except TaskCancelled:
+            _logger.info('Pipeline: Pipeline execution was cancelled.')
+            raise
+        except BaseException:
+            _logger.exception(
+                'Pipeline: Error encountered during processed data creation.'
+            )
+            raise
+        finally:
+            cd.close()
+
+        try:
+            results = self.run(pd, context=context)
+        except BaseException:
+            _logger.warning(
+                f'Pipeline: Closing ProcessedData {pd.file_stub} in response to error.'
+            )
+            pd.close()
+            raise
         return pd, results
 
     def from_consolidated_data(
@@ -83,11 +114,29 @@ class Pipeline:
             f'Pipeline: Running pipeline from ConsolidatedData {date}_set{setnum}'
         )
         cd = ConsolidatedData.load(date, setnum)
-        _logger.info('Pipeline: Creating processed data...')
-        with self._get_next_subtask_context_manager() as subcontext:
-            pd = cd.create_processed_data(context=subcontext)
-        cd.close()
-        results = self.run(pd, context=context)
+        try:
+            with self._get_next_subtask_context_manager() as subcontext:
+                _logger.info('Pipeline: Creating processed data...')
+                pd = cd.create_processed_data(context=subcontext)
+        except TaskCancelled:
+            _logger.info('Pipeline: Pipeline execution was cancelled.')
+            raise
+        except BaseException:
+            _logger.exception(
+                'Pipeline: Error encountered during processed data creation.'
+            )
+            raise
+        finally:
+            cd.close()
+
+        try:
+            results = self.run(pd, context=context)
+        except BaseException:
+            _logger.warning(
+                f'Pipeline: Closing ProcessedData {pd.file_stub} in response to error.'
+            )
+            pd.close()
+            raise
         return pd, results
 
     def run(
@@ -111,8 +160,12 @@ class Pipeline:
             for routine in self.routines:
                 with self._get_next_subtask_context_manager() as subcontext:
                     results.append(routine.apply(*pdata, context=subcontext))
-        except Exception as e:
-            msg = f'Error occurred during pipeline execution: {e}'
+        except TaskCancelled:
+            msg = 'Pipeline: Pipeline execution was cancelled.'
+            _logger.info(msg)
+            raise
+        except BaseException:
+            msg = 'Pipeline: Error encountered during pipeline execution.'
             _logger.exception(msg)
             raise
         else:
@@ -179,6 +232,9 @@ class Pipeline:
             count = 1 if routine.map_over_inputs else n_inputs
             routine.validate_input_count(count)
 
+    def create_task(self) -> Task:
+        """Create a task for executing the pipeline."""
+
     def _setup_task_context(
         self,
         context: TaskContext,
@@ -191,6 +247,7 @@ class Pipeline:
         #         (routine.name, 1.0) for routine in self.routines
         #     ]
         # )
+        self._context = context
         subtasks = []
         if start.lower() == 'consolidated':
             subtasks.append(('Create ConsolidatedData', 1.0))
@@ -205,12 +262,15 @@ class Pipeline:
 
     def _clean_task_context(self):
         """Cleanup the task context after completing a run."""
+        self._context = None
         self._task_progress = None
         self._current_step = 0
 
     def _get_next_subtask_context_manager(self):
         """Return a context manager for the next task."""
-        if self._task_progress is not None:
+        if self._context is not None:
+            # Check for cancellation first:
+            self._context.check_cancelled()
             cm = self._task_progress.subtask(self._current_step)
         else:
             cm = nullcontext(None)
