@@ -56,6 +56,17 @@ if __name__ == '__main__':
         dx = params.detector_delta_x[:]
         dy = params.detector_delta_y[:]
 
+        az_center_h = pdata_h['beammap/az_center'][:]
+        az_center_v = pdata_v['beammap/az_center'][:]
+        za_center_h = pdata_h['beammap/za_center'][:]
+        za_center_v = pdata_v['beammap/za_center'][:]
+
+        az_center = np.choose(detector_pol, [np.zeros(n_tones), az_center_h, az_center_v])
+        za_center = np.choose(detector_pol, [np.zeros(n_tones), za_center_h, za_center_v])
+
+        dx = az_center - focal_center[0]
+        dy = za_center - focal_center[1]
+
         ampl_h = pdata_h['beammap/amplitude'][:]
         ampl_v = pdata_v['beammap/amplitude'][:]
         rel_ampl_v = (ampl_v - ampl_v.min()) / ampl_v.max()
@@ -66,13 +77,14 @@ if __name__ == '__main__':
             ampl_v,
             ampl_h,
         ]
-        ampl = np.choose(detector_pol, [np.zeros(n_tones), ampl_v, ampl_h])
+        ampl = np.choose(detector_pol, [np.zeros(n_tones), ampl_h, ampl_v])
         ampl_mean = np.mean(ampl[onres_ind])
         ampl_std = np.std(ampl[onres_ind])
 
 
         good_ampl = np.argwhere(
-            (ampl >= ampl_mean)
+            (ampl <= ampl_mean + 2 * ampl_std)
+            & (ampl >= ampl_mean)
             & (ampl > 0)
         ).flatten()
 
@@ -95,12 +107,12 @@ if __name__ == '__main__':
         sorted_dist_v = sorted_dist[np.isin(sorted_dist, good_v)]
 
         # Plot Non-close beam centers
-        ax.scatter(-dx[low_ampl], -dy[low_ampl], facecolors='none', edgecolors=colors[i_tile], marker='o', s=10)
-        ax.scatter(-dx[good_ind], -dy[good_ind], c=colors[i_tile], marker='o', s=10)
+        ax.scatter(dx[low_ampl], dy[low_ampl], facecolors='none', edgecolors=colors[i_tile], marker='o', s=10)
+        ax.scatter(dx[good_ind], dy[good_ind], c=colors[i_tile], marker='o', s=10)
 
         for i_res in sorted_dist_h[:5]:
             ax.text(
-                -dx[i_res] + 0.01, -dy[i_res] - 0.01,
+                dx[i_res] + 0.01, dy[i_res] - 0.01,
                 f'{i_res} H',
                 fontsize='small',
                 horizontalalignment='left',
@@ -108,7 +120,7 @@ if __name__ == '__main__':
 
         for i_res in sorted_dist_v[:5]:
             ax.text(
-                -dx[i_res] - 0.01, -dy[i_res] - 0.01,
+                dx[i_res] - 0.01, dy[i_res] - 0.01,
                 f'{i_res} V',
                 fontsize='small',
                 horizontalalignment='right',
