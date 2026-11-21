@@ -10,8 +10,14 @@ from rfsocinterface.core.sweeps import LoSweepData
 from rfsocinterface.core.utils import argclosest
 
 if __name__ == '__main__':
+
+    og_params = RFSoCParameters.load('Device_aSi1_Channel2_telescope_275mK_20260325', 'r')
     params = RFSoCParameters.load('Device_aSi1_Channel2_telescope_275mK_20260325_with_offres', 'r')
     new_params = RFSoCParameters.load('Device_aSi1_Channel2_telescope_275mK_20260804', 'r')
+    pdb.set_trace()
+    i_tone_og = 241
+    i_match = argclosest(params.baseband_freqs[:], og_params.baseband_freqs[i_tone_og])
+    print(f'Resaonator {i_tone_og} is {i_match} with off-resonance tones added')
     i_tone_old = 282
     i_tone_new = argclosest(new_params.baseband_freqs[:], params.baseband_freqs[i_tone_old])
     az_center = 5.978

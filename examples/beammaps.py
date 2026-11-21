@@ -159,6 +159,7 @@ def plot_one_beammap(
     pdata: ProcessedData,
     plotter: PlotBeamMap,
     i_tone_absolute: int,
+    show: bool = False,
 ):
     az_center = pdata['beammap/az_center'][:]
     za_center = pdata['beammap/za_center'][:]
@@ -176,7 +177,8 @@ def plot_one_beammap(
     chanmask = pdata.chanmask
     detector_f = pdata.detector_f()
 
-    fig = plotter._new_figure(figsize=(12, 5.5))
+    # fig = plotter._new_figure(figsize=(12, 5.5))
+    fig = plt.figure(figsize=(12, 5.5))
     ax, ax_zoom = fig.subplots(1, 2)
 
     # data_to_plot = np.flip(np.transpose(map_val[i_tone_absolute][::-1]), 1)
@@ -280,6 +282,11 @@ def plot_one_beammap(
         connector.set_visible(False)
 
     fig.savefig(f'{pdata.file_stub}_beammap_tone_{i_tone_absolute}.png', dpi=300)
+
+    if show:
+        plt.show()
+
+    plt.close(fig)
 
 
 
@@ -749,7 +756,7 @@ if __name__ == '__main__':
     lp_filter_freq = 15
     hp_filter_freq = 0.03
 
-    ds_factor = 16
+    ds_factor = 10
 
     dataset = 'data_freq'
     datasets = ['.*/data_freq_diss']
@@ -776,25 +783,32 @@ if __name__ == '__main__':
         dataset=dataset,
         az_trim=0,
         za_trim=0,
-        dpix=0.02,
+        dpix=0.03,
         r0=0.0,
     )
     analyze_beammap = AnalyzeBeamMap()
     plot_beammap = PlotBeamMap(dpi=100)
 
+    check_focus = CheckFocus(
+        'az',
+        [245],
+        dataset=dataset,
+    )
+
     pipeline = Pipeline([
-        noise_removal_offres,
-        noise_removal_onres,
-        hp_filter,
-        lp_filter,
-        clean_tod,
-        bin_tod_to_map,
+        # noise_removal_offres,
+        # noise_removal_onres,
+        # hp_filter,
+        # lp_filter,
+        # clean_tod,
+        # bin_tod_to_map,
         analyze_beammap,
-        plot_beammap,
+        # plot_beammap,
+        # check_focus,
     ])
 
-    date = '20261105'
-    setnum = 1001
+    date = '20261120'
+    setnum = 1015
 
 
     # tod_file = '/data/20261028/20261028_Device_aSi1_Channel2_telescope_275mK_20260804_TOD_set1001.h5'
@@ -808,7 +822,7 @@ if __name__ == '__main__':
     # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
     # pdata, _ = pipeline.from_consolidated_data(date, setnum)
     pdata = ProcessedData.load(date, setnum)
-    # pipeline.run(pdata)
+    pipeline.run(pdata)
 
     # pdata.print_history()
     # pdb.set_trace()
@@ -824,7 +838,8 @@ if __name__ == '__main__':
     plot_one_beammap(
         pdata,
         plot_beammap,
-        213,
+        245,
+        show=True,
     )
     # za_range = (88.5, 88.8)
     # tel_za = pdata.get_telescope_za(0)[:]

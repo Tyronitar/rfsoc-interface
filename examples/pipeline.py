@@ -47,7 +47,7 @@ if __name__ == '__main__':
 
     check_focus = CheckFocus(
         'az',
-        [170],
+        [245],
         dataset=dataset,
     )
 
@@ -115,18 +115,19 @@ if __name__ == '__main__':
         # noise_removal_offres,
         # noise_removal_onres,
         # noise_removal,
-        # hp_filter,
-        # lp_filter,
+        hp_filter,
+        lp_filter,
         # clean_tod,
+        check_focus,
         # compute_psd,
         # psd_plotter,
-        bin_tod_to_map,
+        # bin_tod_to_map,
         # plot_map_routine,
         # bin_tod_to_video,
         # animate_video,
         # find_fwhm,
-        analyze_beammap,
-        plot_beammap,
+        # analyze_beammap,
+        # plot_beammap,
     ])
 
     # date = '20260820'  # For testing normal maps
@@ -138,27 +139,28 @@ if __name__ == '__main__':
     # date = '20261001'  # For testing normal maps
     # setnum = 1006
 
-    date = '20260917'
-    setnum = 1005
+    date = '20261120'
+    setnum = 1014
 
 
     # pdata, _ = pipeline.from_tod(date, setnum, ds_factor, use_pps=True)
-    # pdata, _ = pipeline.from_consolidated_data(date, setnum)
-    pdata = ProcessedData.load(date, setnum)
+    pdata, _ = pipeline.from_consolidated_data(date, setnum)
+    # pdata = ProcessedData.load(date, setnum)
+    # check_focus.apply(pdata)
 
     # bin_tod_to_map.apply(pdata)
     # plot_map_routine.apply(pdata)
-    plot_map_routine = PlotMap(
-        show=True,
-        # max_abs_threshold=0.4,
-        channel=1,
-        # show_optical_overlay=True,
-        vmin=-500,
-        vmax=500,
-        overwrite=False,
-    )
-    plot_map_routine.apply(pdata)
-    pdb.set_trace()
+    # plot_map_routine = PlotMap(
+    #     show=True,
+    #     # max_abs_threshold=0.4,
+    #     channel=1,
+    #     # show_optical_overlay=True,
+    #     vmin=-500,
+    #     vmax=500,
+    #     overwrite=False,
+    # )
+    # plot_map_routine.apply(pdata)
+    # pdb.set_trace()
 
     # compute_psd.apply(pdata)
     # psd_plotter.apply(pdata)

@@ -1,6 +1,7 @@
 """Code for finding and characterizing peaks in the detector response."""
 
 import logging
+import pdb
 import typing
 from collections.abc import Sequence
 from typing import ClassVar, Literal
@@ -164,6 +165,7 @@ class CheckFocus(DataRoutine):
                     data = all_data[i_chan][i_tone_relative]
                     telescope_pos = tel_pos[i_chan][i_tone_relative]
 
+
                     first_good_sample = np.argwhere(~np.isnan(telescope_pos))[0]
                     last_good_sample = np.argwhere(~np.isnan(telescope_pos))[-1]
                     relative_pos = np.abs(
@@ -192,6 +194,9 @@ class CheckFocus(DataRoutine):
                         np.argmax(data_segment[right_indices])
                     ]
                     left_peak_idx = left_indices[np.argmax(data_segment[left_indices])]
+
+                    # left_peak_idx = left_indices[np.argmin(np.abs(telescope_pos[left_indices] - 5.63))]
+                    # right_peak_idx = right_indices[np.argmin(np.abs(telescope_pos[right_indices] - 5.63))]
 
                     right_fit_ind = np.argwhere(
                         np.isclose(
@@ -271,7 +276,8 @@ class CheckFocus(DataRoutine):
                     time = timestamp - timestamp[0]
                     fig = plt.figure(figsize=(8, 5))
                     plt.title(
-                        f'{tile_name} - Tone {i_tone_relative} Peak Finding '
+                        f'{tile_name}\n'
+                        f'Tone {i_tone_relative} Peak Finding '
                         f'(Polarization {pdata.detector_pol[i_res_abs]})'
                     )
                     plt.plot(
@@ -358,9 +364,12 @@ class CheckFocus(DataRoutine):
                         handles=handles,
                         fontsize=8,
                     )
+                    xlim_0 = telescope_pos[max(0, right_peak_idx - 50)]
+                    xlim_1 = telescope_pos[min(right_peak_idx + 50, len(telescope_pos) - 1)]
+
                     plt.xlim(
-                        telescope_pos[max(0, right_peak_idx - 50)],
-                        telescope_pos[min(right_peak_idx + 50, len(telescope_pos) - 1)],
+                        min(xlim_0, xlim_1),
+                        max(xlim_0, xlim_1),
                     )
                     plt.xlabel(
                         f'{
@@ -372,6 +381,9 @@ class CheckFocus(DataRoutine):
                     plt.ylabel(f'Detector Response ({units})')
                     plt.tight_layout(rect=[0, 0.15, 1, 1])
                     pdf.savefig(fig)
+
+                    print(rf'Average amplitude: {amplitude_mean:.3e} {units}')
+                    print(f'Average AZ FWHM: {fwhm_mean:.3f} deg')
                     plt.show()
                     plt.close(fig)
 
@@ -383,6 +395,7 @@ class CheckFocus(DataRoutine):
             self._plot_summary_statistics(
                 fwhms, amplitudes, good_resonators, pdf, pdata
             )
+            plt.close('all')
 
         if created_new:
             return RoutineResult(created={'input': self.produces})
