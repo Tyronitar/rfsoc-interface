@@ -726,7 +726,7 @@ class LoSweepData:
     @property
     def n_fits(self) -> int:
         """The number of fits to perform."""
-        return self.n_good_tones
+        return np.size(self.non_offres_ind)
 
     @property
     def n_plots(self) -> int:
@@ -742,6 +742,12 @@ class LoSweepData:
     def onres_ind(self) -> npt.NDArray:
         """Indices of on-resonance tones."""
         return np.argwhere(self.chanmask == ChanmaskValue.ON_RESONANCE).flatten()
+
+    @property
+    def non_offres_ind(self) -> npt.NDArray:
+        """Indices of non-off-resonance tones."""
+        return np.argwhere(self.chanmask != ChanmaskValue.OFF_RESONANCE).flatten()
+
 
     @property
     def offres_ind(self) -> npt.NDArray:
@@ -831,14 +837,14 @@ class LoSweepData:
             res = executor.map(
                 simple_derivative_fits,
                 (self.df for _ in range(self.n_good_tones)),
-                self.freq[self.onres_ind, :],
-                self.detector_f[self.onres_ind],
-                self.s21[self.onres_ind, :],
+                self.freq[self.non_offres_ind, :],
+                self.detector_f[self.non_offres_ind],
+                self.s21[self.non_offres_ind, :],
             )
             for i, f0 in enumerate(res):
                 if self._fit_canceled:
                     return
-                i_res = self.onres_ind[i]
+                i_res = self.non_offres_ind[i]
                 self.fit_f0[i_res] = f0
                 self.fit_qc[i_res] = 0.0
                 self.fit_qi[i_res] = 0.0
